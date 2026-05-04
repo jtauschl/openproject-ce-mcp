@@ -120,7 +120,6 @@ from .models import (
     WatcherSummary,
     WatcherWriteResult,
     WikiPageDetail,
-    WikiPageListResult,
     WorkingDay,
     WorkingDayListResult,
     WorkPackageDetail,
