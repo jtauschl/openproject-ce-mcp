@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## Unreleased
+
+### Bug fixes
+
+- `list_work_packages`, `list_my_open_work_packages`, `list_versions`, and `list_projects`
+  now report `total` and `count` consistently when the read allowlist filters items out
+  of the API response. Previously `total` reflected the unfiltered server count while
+  `count`/`results` reflected the filtered set, producing responses like
+  `{"total": 8, "count": 0, "results": []}`. `next_offset` and `truncated` continue to
+  follow server-side pagination so callers still walk every page that may contain
+  allowed items.
+
+---
+
 ## 2026-04-08
 
 ### Tools

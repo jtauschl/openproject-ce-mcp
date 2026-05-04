@@ -211,15 +211,15 @@ class OpenProjectClient:
         projects = [project for project in raw_projects if project.get("_type") == "Project"]
         projects = [project for project in projects if self._project_payload_allowed(project)]
         results = [self.normalize_project(project) for project in projects]
-        total = int(payload.get("total", len(results)))
-        count = len(results)
+        server_total = int(payload.get("total", len(results)))
+        total = len(results)
         return ProjectListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=count,
-            next_offset=_next_offset(offset, effective_limit, total),
-            truncated=total > offset * effective_limit,
+            count=total,
+            next_offset=_next_offset(offset, effective_limit, server_total),
+            truncated=server_total > offset * effective_limit,
             results=results,
         )
 
@@ -1861,14 +1861,15 @@ class OpenProjectClient:
             if isinstance(item, dict) and self._work_package_payload_allowed(item)
         ]
         results = [self.normalize_work_package_summary(item) for item in raw_items]
-        total = int(payload.get("total", len(results)))
+        server_total = int(payload.get("total", len(results)))
+        total = len(results)
         return WorkPackageListResult(
             offset=offset,
             limit=limit,
             total=total,
-            count=len(results),
-            next_offset=_next_offset(offset, limit, total),
-            truncated=total > offset * limit,
+            count=total,
+            next_offset=_next_offset(offset, limit, server_total),
+            truncated=server_total > offset * limit,
             results=results,
         )
 
@@ -2365,14 +2366,15 @@ class OpenProjectClient:
             if isinstance(item, dict) and self._work_package_payload_allowed(item)
         ]
         results = [self.normalize_work_package_summary(item) for item in raw_items]
-        total = int(payload.get("total", len(results)))
+        server_total = int(payload.get("total", len(results)))
+        total = len(results)
         return WorkPackageListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=len(results),
-            next_offset=_next_offset(offset, effective_limit, total),
-            truncated=total > offset * effective_limit,
+            count=total,
+            next_offset=_next_offset(offset, effective_limit, server_total),
+            truncated=server_total > offset * effective_limit,
             results=results,
         )
 
@@ -2404,14 +2406,15 @@ class OpenProjectClient:
             if isinstance(item, dict) and (project_already_verified or self._version_payload_allowed(item))
         ]
         results = [self.normalize_version(item) for item in raw_items]
-        total = int(payload.get("total", len(results)))
+        server_total = int(payload.get("total", len(results)))
+        total = len(results)
         return VersionListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=len(results),
-            next_offset=_next_offset(offset, effective_limit, total),
-            truncated=total > offset * effective_limit,
+            count=total,
+            next_offset=_next_offset(offset, effective_limit, server_total),
+            truncated=server_total > offset * effective_limit,
             results=results,
         )
 

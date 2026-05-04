@@ -2664,9 +2664,147 @@ async def test_global_list_work_packages_and_versions_respect_allowlist_ids() ->
     versions = await client.list_versions()
 
     assert work_packages.count == 1
+    assert work_packages.total == 1
     assert work_packages.results[0].id == 42
     assert versions.count == 1
+    assert versions.total == 1
     assert versions.results[0].id == 1
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_my_open_work_packages_filters_total_when_all_items_blocked_by_allowlist() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/users/me":
+            return httpx.Response(
+                200,
+                json={"id": 5, "name": "Demo User", "login": "demo"},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages":
+            return httpx.Response(
+                200,
+                json={
+                    "total": 3,
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 101,
+                                "subject": "Hidden A",
+                                "_links": {
+                                    "type": {"title": "Task"},
+                                    "status": {"title": "Open"},
+                                    "project": {"href": "/api/v3/projects/7", "title": "Other"},
+                                },
+                            },
+                            {
+                                "id": 102,
+                                "subject": "Hidden B",
+                                "_links": {
+                                    "type": {"title": "Task"},
+                                    "status": {"title": "Open"},
+                                    "project": {"href": "/api/v3/projects/7", "title": "Other"},
+                                },
+                            },
+                            {
+                                "id": 103,
+                                "subject": "Hidden C",
+                                "_links": {
+                                    "type": {"title": "Task"},
+                                    "status": {"title": "Open"},
+                                    "project": {"href": "/api/v3/projects/8", "title": "Another"},
+                                },
+                            },
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        allowed_projects=("6",),
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_my_open_work_packages(limit=20, offset=1)
+
+    assert result.results == []
+    assert result.count == 0
+    assert result.total == 0
+    assert result.next_offset is None
+    assert result.truncated is False
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_projects_reports_filtered_total_when_allowlist_drops_items() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects":
+            return httpx.Response(
+                200,
+                json={
+                    "total": 3,
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "_type": "Project",
+                                "id": 6,
+                                "name": "Demo",
+                                "identifier": "demo",
+                                "_links": {"self": {"href": "/api/v3/projects/6", "title": "Demo"}},
+                            },
+                            {
+                                "_type": "Project",
+                                "id": 7,
+                                "name": "Other",
+                                "identifier": "other",
+                                "_links": {"self": {"href": "/api/v3/projects/7", "title": "Other"}},
+                            },
+                            {
+                                "_type": "Project",
+                                "id": 8,
+                                "name": "Another",
+                                "identifier": "another",
+                                "_links": {"self": {"href": "/api/v3/projects/8", "title": "Another"}},
+                            },
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        allowed_projects=("demo",),
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_projects()
+
+    assert result.count == 1
+    assert result.total == 1
+    assert result.results[0].identifier == "demo"
+    assert result.next_offset is None
+    assert result.truncated is False
 
     await client.aclose()
 
