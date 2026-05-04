@@ -1,9 +1,9 @@
 """Integration tests for stateless metadata endpoints."""
 from __future__ import annotations
 
-import pytest
-
 import json
+
+import pytest
 
 from openproject_mcp.client import OpenProjectClient, OpenProjectError
 

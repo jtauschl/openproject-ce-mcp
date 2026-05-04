@@ -74,7 +74,6 @@ from openproject_mcp.tools import (
     list_types,
     list_versions,
     list_views,
-
     list_work_package_attachments,
     list_work_package_file_links,
     list_work_package_watchers,
