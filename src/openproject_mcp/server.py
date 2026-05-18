@@ -22,6 +22,7 @@ def create_app(settings: Settings) -> FastMCP:
     async def app_lifespan(_: FastMCP) -> AsyncIterator[AppContext]:
         configure_logging(settings.log_level)
         client = OpenProjectClient(settings)
+        await client.initialize()
         try:
             yield AppContext(settings=settings, client=client)
         finally:

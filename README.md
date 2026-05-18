@@ -147,7 +147,7 @@ Access is grouped into five chains: `project`, `membership`, `work_package`, `ve
 |---|---|---|---|
 | `OPENPROJECT_BASE_URL` | yes | — | Base URL of your OpenProject instance, e.g. `https://op.example.com` |
 | `OPENPROJECT_API_TOKEN` | yes | — | Personal API token |
-| `OPENPROJECT_ALLOWED_PROJECTS_READ` | no | `*` | Readable projects by id, identifier, or title; comma-separated, `*` wildcards supported |
+| `OPENPROJECT_ALLOWED_PROJECTS_READ` | no | `*` | Readable projects; comma-separated identifiers, names, or glob patterns (e.g. `my-project,team-*`); `*` allows all visible projects |
 | `OPENPROJECT_ALLOWED_PROJECTS_WRITE` | no | empty | Writable projects; empty disables all project-scoped writes; always intersected with read scope |
 | `OPENPROJECT_ALLOWED_PROJECTS` | no | — | Backward-compatible alias for `OPENPROJECT_ALLOWED_PROJECTS_READ` |
 | `OPENPROJECT_ENABLE_PROJECT_READ` | no | `true` | Projects, documents, news, wiki, lifecycle |

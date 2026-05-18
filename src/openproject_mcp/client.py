@@ -170,6 +170,7 @@ class OpenProjectClient:
         self.settings = settings
         self._origin = _origin_from_url(settings.base_url)
         self._api_prefix = urlparse(settings.api_base_url).path.rstrip("/") + "/"
+        self._project_id_to_identifier: dict[int, str] = {}
         self._http = httpx.AsyncClient(
             base_url=f"{settings.api_base_url.rstrip('/')}/",
             headers={
@@ -182,6 +183,28 @@ class OpenProjectClient:
             follow_redirects=True,
             transport=transport,
         )
+
+    async def initialize(self) -> None:
+        if not self.settings.allowed_projects or _scope_allows_all(self.settings.allowed_projects):
+            return
+        try:
+            payload = await self._get("projects", params={"pageSize": "500"})
+            for item in payload.get("_embedded", {}).get("elements", []):
+                proj_id = item.get("id")
+                proj_identifier = item.get("identifier")
+                proj_name = item.get("name") or ""
+                if not isinstance(proj_id, int) or not isinstance(proj_identifier, str):
+                    continue
+                candidates: set[str] = {
+                    proj_identifier.casefold(),
+                    str(proj_id),
+                    proj_name.casefold(),
+                    proj_name.casefold().replace(" ", "-"),
+                }
+                if _scope_matches_candidates(self.settings.allowed_projects, candidates):
+                    self._project_id_to_identifier[proj_id] = proj_identifier
+        except Exception:
+            pass
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -1818,6 +1841,12 @@ class OpenProjectClient:
             project_payload = await self._get_project_payload(project)
             project_id = int(project_payload["id"])
             filters.append({"project_id": {"operator": "=", "values": [str(project_id)]}})
+        elif self.settings.allowed_projects and not _scope_allows_all(self.settings.allowed_projects):
+            # No explicit project given but read scope is restricted — add a server-side
+            # project filter so the API only returns WPs from the allowed projects.
+            allowed_ids = [str(pid) for pid in self._project_id_to_identifier]
+            if allowed_ids:
+                filters.append({"project_id": {"operator": "=", "values": allowed_ids}})
         if open_only:
             filters.append({"status_id": {"operator": "o", "values": []}})
         if assignee_me:
@@ -5914,6 +5943,9 @@ class OpenProjectClient:
                 project_id = _id_from_href(href)
                 if project_id is not None:
                     candidates.add(str(project_id).casefold())
+                    known_identifier = self._project_id_to_identifier.get(project_id)
+                    if known_identifier:
+                        candidates.add(known_identifier.casefold())
             if title:
                 title_cf = str(title).casefold()
                 candidates.add(title_cf)

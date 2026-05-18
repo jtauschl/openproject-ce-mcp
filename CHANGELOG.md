@@ -29,6 +29,19 @@ All notable changes to this project will be documented in this file.
   `{"total": 8, "count": 0, "results": []}`. `next_offset` and `truncated` continue to
   follow server-side pagination so callers still walk every page that may contain
   allowed items.
+- `list_work_packages` without an explicit `project` argument now correctly filters
+  results to allowed projects when `OPENPROJECT_ALLOWED_PROJECTS_READ` is restricted.
+  Previously the API returned all visible work packages and client-side filtering was
+  applied per-page, causing `total` to be unreliable. The server is now given a
+  project-id filter so only allowed work packages are returned from the start.
+- Allowlist matching now resolves project names and hyphenated display names to their
+  canonical identifiers at startup, so HAL links that carry only the project id are
+  correctly matched against name-based allowlist entries.
+
+### Configuration
+
+- `OPENPROJECT_ALLOWED_PROJECTS_READ` now accepts glob patterns in addition to exact
+  identifiers and names (e.g. `team-*` matches `team-alpha`, `team-beta`).
 
 ---
 

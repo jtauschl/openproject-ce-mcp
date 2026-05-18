@@ -86,5 +86,5 @@ This guide covers GitHub Copilot in Agent mode with VS Code.
 - Workspace-scoped setup (`.vscode/mcp.json`) is preferred for fine-grained project permissions
 - Avoid hardcoding sensitive information when possible. VS Code recommends using environment files or input variables
 - After changing the config, reload: **Cmd+Shift+P** → "Developer: Reload Window"
-- `OPENPROJECT_ALLOWED_PROJECTS_READ` accepts comma-separated identifiers or names: `project-one,project-two`. Use `*` for all visible projects
+- `OPENPROJECT_ALLOWED_PROJECTS_READ` accepts comma-separated identifiers, names, or glob patterns: `project-one,team-*`. Use `*` for all visible projects
 - `OPENPROJECT_ALLOWED_PROJECTS_WRITE` only narrows scope; it doesn't enable writes. Use the scoped `OPENPROJECT_ENABLE_*_WRITE` flags for the operations you need

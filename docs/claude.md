@@ -126,5 +126,5 @@
 ## Notes
 
 - After changing the config, reload MCP servers: press **Cmd+Shift+P** and run "Developer: Reload Window"
-- `OPENPROJECT_ALLOWED_PROJECTS_READ` accepts comma-separated identifiers or names: `project-one,project-two`. Use `*` for all visible projects
+- `OPENPROJECT_ALLOWED_PROJECTS_READ` accepts comma-separated identifiers, names, or glob patterns: `project-one,team-*`. Use `*` for all visible projects
 - `OPENPROJECT_ALLOWED_PROJECTS_WRITE` only narrows scope; it doesn't enable writes. Use the scoped `OPENPROJECT_ENABLE_*_WRITE` flags for the operations you need
