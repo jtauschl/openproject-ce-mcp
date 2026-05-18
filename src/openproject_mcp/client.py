@@ -174,7 +174,7 @@ class OpenProjectClient:
             base_url=f"{settings.api_base_url.rstrip('/')}/",
             headers={
                 "Accept": "application/hal+json, application/json",
-                "Authorization": f"Bearer {settings.api_token}",
+                "Authorization": f"Basic {__import__('base64').b64encode(f'apikey:{settings.api_token}'.encode()).decode()}",
                 "User-Agent": "openproject-mcp/0.1.0",
             },
             timeout=httpx.Timeout(settings.timeout),
@@ -4014,6 +4014,7 @@ class OpenProjectClient:
         description = self._visible_formattable_text(payload.get("description"), "work_package", "description", limit=SUBJECT_LIMIT)
         return self._apply_hidden_fields("work_package", WorkPackageSummary(
             id=int(payload["id"]),
+            display_id=payload.get("displayId"),
             subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Work package {payload['id']}",
             type=_link_title(links.get("type")),
             status=_link_title(links.get("status")),
@@ -4035,6 +4036,7 @@ class OpenProjectClient:
         links = payload.get("_links", {})
         return self._apply_hidden_fields("work_package", WorkPackageDetail(
             id=int(payload["id"]),
+            display_id=payload.get("displayId"),
             subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Work package {payload['id']}",
             type=_link_title(links.get("type")),
             status=_link_title(links.get("status")),

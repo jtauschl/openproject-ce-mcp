@@ -4,7 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## Unreleased
+## 2026-05-18
+
+### Compatibility
+
+- Verified against OpenProject 17.4. No breaking API changes in 17.4.
+- Work package responses now expose a `display_id` field (`displayId` in the API),
+  introduced in 17.4 as preparation for project-based identifiers in 17.5.
+  The numeric `id` remains the canonical identifier for all tool parameters; `display_id`
+  is informational and may show a project-prefixed form (e.g. `ABC-42`) once 17.5 is deployed.
+
+### Fixes
+
+- Authentication header changed from `Bearer <token>` to `Basic base64(apikey:<token>)`,
+  aligning with the OpenProject API documentation. Both formats are accepted by OpenProject;
+  this change makes the implementation spec-compliant.
 
 ### Bug fixes
 

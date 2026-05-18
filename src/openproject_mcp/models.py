@@ -367,6 +367,7 @@ class ProjectWorkPackageContext:
 @dataclass
 class WorkPackageSummary:
     id: int
+    display_id: str | None
     subject: str
     type: str | None
     status: str | None
@@ -387,6 +388,7 @@ class WorkPackageSummary:
 @dataclass
 class WorkPackageDetail:
     id: int
+    display_id: str | None
     subject: str
     type: str | None
     status: str | None
