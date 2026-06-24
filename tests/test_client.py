@@ -5003,3 +5003,150 @@ def test_extract_formattable_text_trims_large_payloads() -> None:
     assert trimmed is not None
     assert len(trimmed) <= 1200
     assert trimmed.endswith("…")
+
+
+def _write_settings() -> Settings:
+    return Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        enable_work_package_write=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_time_entry_links_work_package_when_schema_exposes_it() -> None:
+    posted: dict[str, dict] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/77":
+            return httpx.Response(
+                200,
+                json={"id": 77, "subject": "T", "_links": {"project": {"href": "/api/v3/projects/6", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/time_entries/form" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"schema": {
+                    "workPackage": {"type": "WorkPackage", "writable": True, "location": "_links"},
+                }}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/time_entries" and request.method == "POST":
+            posted["body"] = json.loads(request.content)
+            return httpx.Response(
+                201,
+                json={"id": 900, "hours": "PT8H", "spentOn": "2026-06-22", "_links": {
+                    "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                    "workPackage": {"href": "/api/v3/work_packages/77", "title": "T"},
+                    "activity": {"href": "/api/v3/time_entries/activities/3", "title": "Development"},
+                }},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_settings(), transport=httpx.MockTransport(handler))
+    created = await client.create_time_entry(
+        work_package_id=77, activity="3", hours="PT8H", spent_on="2026-06-22", confirm=True
+    )
+    assert posted["body"]["_links"]["workPackage"] == {"href": "/api/v3/work_packages/77"}
+    assert "entity" not in posted["body"]["_links"]
+    assert created.result is not None
+    assert created.result.entity_type == "WorkPackage"
+    assert created.result.entity_id == 77
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_time_entry_falls_back_to_entity_link_when_schema_exposes_it() -> None:
+    posted: dict[str, dict] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/77":
+            return httpx.Response(
+                200,
+                json={"id": 77, "subject": "T", "_links": {"project": {"href": "/api/v3/projects/6", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/time_entries/form" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"schema": {
+                    "entity": {"type": "AnyEntity", "writable": True, "location": "_links"},
+                }}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/time_entries" and request.method == "POST":
+            posted["body"] = json.loads(request.content)
+            return httpx.Response(
+                201,
+                json={"id": 901, "hours": "PT8H", "spentOn": "2026-06-22", "entityType": "WorkPackage", "_links": {
+                    "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                    "entity": {"href": "/api/v3/work_packages/77", "title": "T"},
+                    "activity": {"href": "/api/v3/time_entries/activities/3", "title": "Development"},
+                }},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_settings(), transport=httpx.MockTransport(handler))
+    created = await client.create_time_entry(
+        work_package_id=77, activity="3", hours="PT8H", spent_on="2026-06-22", confirm=True
+    )
+    assert posted["body"]["_links"]["entity"] == {"href": "/api/v3/work_packages/77"}
+    assert "workPackage" not in posted["body"]["_links"]
+    assert created.result is not None
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_normalize_time_entry_reads_work_package_link_without_entity_type() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/time_entries/55" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 55, "hours": "PT8H", "spentOn": "2026-06-22", "_links": {
+                    "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                    "workPackage": {"href": "/api/v3/work_packages/77", "title": "Feature"},
+                    "activity": {"href": "/api/v3/time_entries/activities/3", "title": "Development"},
+                }},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    entry = await client.get_time_entry(55)
+    assert entry.entity_type == "WorkPackage"
+    assert entry.entity_id == 77
+    assert entry.entity_name == "Feature"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_delete_sends_content_type_header() -> None:
+    seen: dict[str, str | None] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/time_entries/10" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 10, "hours": "PT1H", "spentOn": "2026-06-22", "_links": {
+                    "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                }},
+                request=request,
+            )
+        if request.url.path == "/api/v3/time_entries/10" and request.method == "DELETE":
+            seen["content_type"] = request.headers.get("content-type")
+            return httpx.Response(204, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_settings(), transport=httpx.MockTransport(handler))
+    await client.delete_time_entry(time_entry_id=10, confirm=True)
+    assert seen["content_type"] == "application/json"
+    await client.aclose()

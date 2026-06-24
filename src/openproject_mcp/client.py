@@ -1582,6 +1582,7 @@ class OpenProjectClient:
             project_payload = await self._get_project_payload(project, write=True)
             project_name = _trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT)
             activity_project_id = int(project_payload["id"])
+        work_package_link_key = "workPackage"
         if work_package_id is not None:
             work_package_payload = await self._get(f"work_packages/{work_package_id}")
             self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
@@ -1589,6 +1590,7 @@ class OpenProjectClient:
                 project_name = _link_title(work_package_payload.get("_links", {}).get("project"))
             if activity_project_id is None:
                 activity_project_id = _id_from_href(work_package_payload.get("_links", {}).get("project", {}).get("href"))
+            work_package_link_key = await self._time_entry_work_package_link_key(activity_project_id)
         payload = await self._build_time_entry_write_payload(
             project=project,
             work_package_id=work_package_id,
@@ -1599,6 +1601,7 @@ class OpenProjectClient:
             comment=comment,
             ongoing=ongoing,
             activity_project_id=activity_project_id,
+            work_package_link_key=work_package_link_key,
         )
         if self._preview_mode(confirm):
             return TimeEntryWriteResult(
@@ -3756,7 +3759,11 @@ class OpenProjectClient:
         *,
         params: dict[str, str] | None = None,
     ) -> None:
-        response = await self._request("DELETE", path, params=params)
+        # OpenProject rejects DELETE without a Content-Type header (HTTP 406,
+        # "Missing content-type header"), even though the request carries no body.
+        response = await self._request(
+            "DELETE", path, params=params, headers={"Content-Type": "application/json"}
+        )
         if response.status_code not in {200, 202, 204}:
             raise OpenProjectServerError(f"OpenProject delete request failed with status {response.status_code}.")
 
@@ -3782,9 +3789,10 @@ class OpenProjectClient:
         params: dict[str, str] | None = None,
         json_body: dict[str, Any] | None = None,
         files: dict[str, tuple[str, str | bytes, str]] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> httpx.Response:
         try:
-            response = await self._http.request(method, path, params=params, json=json_body, files=files)
+            response = await self._http.request(method, path, params=params, json=json_body, files=files, headers=headers)
         except httpx.TimeoutException as exc:
             raise TransportError("OpenProject request timed out.") from exc
         except httpx.HTTPError as exc:
@@ -4595,11 +4603,17 @@ class OpenProjectClient:
     def normalize_time_entry(self, payload: dict[str, Any]) -> TimeEntrySummary:
         links = payload.get("_links", {})
         project_link = links.get("project")
-        entity_link = links.get("entity")
+        # OpenProject links the logged entity through "entity" (generic) or "workPackage"
+        # (work-package time entries); accept either so reads work across versions.
+        work_package_link = links.get("workPackage")
+        entity_link = links.get("entity") or work_package_link
+        entity_type = _trim_text(payload.get("entityType"), limit=SUBJECT_LIMIT)
+        if entity_type is None and isinstance(work_package_link, dict) and work_package_link.get("href"):
+            entity_type = "WorkPackage"
         return self._apply_hidden_fields("time_entry", TimeEntrySummary(
             id=int(payload["id"]),
             project=_link_title(project_link),
-            entity_type=_trim_text(payload.get("entityType"), limit=SUBJECT_LIMIT),
+            entity_type=entity_type,
             entity_id=_id_from_href(entity_link.get("href")) if isinstance(entity_link, dict) else None,
             entity_name=_link_title(entity_link),
             user=_link_title(links.get("user")),
@@ -5213,6 +5227,7 @@ class OpenProjectClient:
         comment: str | None,
         ongoing: bool | None,
         activity_project_id: int | None = None,
+        work_package_link_key: str = "workPackage",
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {}
         links: dict[str, dict[str, str]] = {}
@@ -5232,7 +5247,7 @@ class OpenProjectClient:
             payload["ongoing"] = ongoing
         if work_package_id is not None:
             self._ensure_field_writable("time_entry", "entity")
-            links["entity"] = {"href": self._api_href(f"work_packages/{work_package_id}")}
+            links[work_package_link_key] = {"href": self._api_href(f"work_packages/{work_package_id}")}
         elif project is not None:
             self._ensure_field_writable("time_entry", "project")
             project_id = await self._resolve_project_id(project)
@@ -5248,6 +5263,26 @@ class OpenProjectClient:
         if links:
             payload["_links"] = links
         return payload
+
+    async def _time_entry_work_package_link_key(self, project_id: int | None) -> str:
+        # OpenProject names the writable work-package link "workPackage" in the time
+        # entry form schema; some versions expose the generic "entity" link instead.
+        # Read the schema so the write targets whichever link the instance accepts,
+        # preferring the first candidate as the default.
+        candidates = ("workPackage", "entity")
+        if project_id is not None:
+            try:
+                form = await self._post(
+                    "time_entries/form",
+                    json_body={"_links": {"project": {"href": self._api_href(f"projects/{project_id}")}}},
+                )
+            except OpenProjectError:
+                form = {}
+            schema = form.get("_embedded", {}).get("schema", {})
+            for key in candidates:
+                if isinstance(schema.get(key), dict):
+                    return key
+        return candidates[0]
 
     async def _get_project_payload(self, project_ref: str, *, write: bool = False) -> dict[str, Any]:
         payload = await self._get(f"projects/{quote(project_ref, safe='')}")
