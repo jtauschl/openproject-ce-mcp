@@ -1458,7 +1458,7 @@ class OpenProjectClient:
             ]
             if results:
                 return TimeEntryActivityListResult(count=len(results), results=results)
-        except (NotFoundError, PermissionDeniedError, OpenProjectServerError):
+        except (NotFoundError, PermissionDeniedError, InvalidInputError, OpenProjectServerError):
             pass
         # Global endpoint not available or returned no results — derive activities from the
         # time_entries form schema by scanning visible projects until one exposes activities.
@@ -1469,7 +1469,7 @@ class OpenProjectClient:
                 for project in projects.results:
                     try:
                         results = await self._time_entry_activities_from_project(project.id)
-                    except (NotFoundError, PermissionDeniedError, OpenProjectServerError):
+                    except (NotFoundError, PermissionDeniedError, InvalidInputError, OpenProjectServerError):
                         continue
                     if results:
                         return TimeEntryActivityListResult(count=len(results), results=results)
@@ -1477,7 +1477,7 @@ class OpenProjectClient:
                     break
                 offset = projects.next_offset
             return TimeEntryActivityListResult(count=0, results=[])
-        except (NotFoundError, PermissionDeniedError, OpenProjectServerError):
+        except (NotFoundError, PermissionDeniedError, InvalidInputError, OpenProjectServerError):
             return TimeEntryActivityListResult(count=0, results=[])
 
     async def list_time_entries(

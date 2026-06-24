@@ -2466,6 +2466,79 @@ async def test_list_time_entry_activities_paginates_project_fallback() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_time_entry_activities_falls_back_when_global_endpoint_returns_400() -> None:
+    # Some OpenProject versions do not expose GET /time_entries/activities and route the
+    # path to time_entries/:id, replying 400 "id is invalid". The project-scoped fallback
+    # must still run instead of surfacing the 400.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/time_entries/activities":
+            return httpx.Response(
+                400,
+                json={"_type": "Error", "message": "id is invalid"},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects":
+            return httpx.Response(
+                200,
+                json={
+                    "total": 1,
+                    "_embedded": {
+                        "elements": [
+                            {"_type": "Project", "id": 6, "name": "Demo", "identifier": "demo", "_links": {}},
+                        ]
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/time_entries/form":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Form",
+                    "_embedded": {
+                        "schema": {
+                            "activity": {
+                                "_embedded": {
+                                    "allowedValues": [
+                                        {
+                                            "id": 3,
+                                            "name": "Development",
+                                            "_links": {
+                                                "self": {"href": "/api/v3/time_entries/activities/3", "title": "Development"},
+                                                "projects": [{"href": "/api/v3/projects/6", "title": "Demo"}],
+                                            },
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=10,
+        max_page_size=10,
+        max_results=10,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    activities = await client.list_time_entry_activities()
+
+    assert activities.count == 1
+    assert activities.results[0].name == "Development"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_time_entry_activities_falls_back_across_visible_projects() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/time_entries/activities":
