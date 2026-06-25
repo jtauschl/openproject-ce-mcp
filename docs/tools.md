@@ -167,6 +167,12 @@ All list tools are bounded and paginated. They return compact summaries — not 
 | `list_work_package_file_links` | List Nextcloud file links attached to a work package (Community Edition) |
 | `delete_file_link` | Validate and then delete a Nextcloud file link; only deletes when called again with `confirm=true` |
 
+> **Note:** The read tools `get_work_package`, `list_work_packages`,
+> `search_work_packages`, and `list_my_open_work_packages` return a `custom_fields`
+> list of `{key, name, value}` for populated custom fields. Names come from the
+> work package schema (cached per type); empty fields are omitted. Hidden via
+> `OPENPROJECT_HIDE_CUSTOM_FIELDS`.
+
 ## Attachments
 
 | Tool | Description |

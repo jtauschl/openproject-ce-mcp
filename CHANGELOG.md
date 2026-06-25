@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## 2026-06-25
+
+### Added
+
+- Work package read tools (`get_work_package`, `list_work_packages`,
+  `search_work_packages`, `list_my_open_work_packages`) now return a
+  `custom_fields` list (`{key, name, value}`) for populated custom fields.
+  Names are resolved from the schema (cached per type); empty fields are
+  omitted; hidden via `OPENPROJECT_HIDE_CUSTOM_FIELDS`.
+
 ## 2026-05-18
 
 ### Compatibility
