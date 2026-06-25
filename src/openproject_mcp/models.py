@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -365,6 +365,13 @@ class ProjectWorkPackageContext:
 
 
 @dataclass
+class WorkPackageCustomField:
+    key: str
+    name: str | None
+    value: Any
+
+
+@dataclass
 class WorkPackageSummary:
     id: int
     display_id: str | None
@@ -383,6 +390,7 @@ class WorkPackageSummary:
     description: str | None
     has_description: bool
     url: str
+    custom_fields: list[WorkPackageCustomField] = field(default_factory=list)
 
 
 @dataclass
@@ -406,6 +414,7 @@ class WorkPackageDetail:
     url: str
     activities_url: str | None
     relations_url: str | None
+    custom_fields: list[WorkPackageCustomField] = field(default_factory=list)
 
 
 @dataclass

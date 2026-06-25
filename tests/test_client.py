@@ -13,6 +13,11 @@ from openproject_mcp.client import (
     _extract_formattable_text,
 )
 from openproject_mcp.config import Settings
+from openproject_mcp.models import (
+    WorkPackageCustomField,
+    WorkPackageDetail,
+    WorkPackageSummary,
+)
 
 
 def make_settings() -> Settings:
@@ -4930,3 +4935,26 @@ def test_extract_formattable_text_trims_large_payloads() -> None:
     assert trimmed is not None
     assert len(trimmed) <= 1200
     assert trimmed.endswith("…")
+
+
+def test_work_package_custom_field_dataclass_defaults() -> None:
+    cf = WorkPackageCustomField(key="customField6", name="НПП", value=140)
+    assert (cf.key, cf.name, cf.value) == ("customField6", "НПП", 140)
+
+    cf_no_name = WorkPackageCustomField(key="customField6", name=None, value=140)
+    assert cf_no_name.name is None
+
+    detail = WorkPackageDetail(
+        id=1, display_id=None, subject="x", type=None, status=None, priority=None,
+        project_phase=None, assignee=None, responsible=None, project=None, version=None,
+        start_date=None, due_date=None, percentage_complete=None, lock_version=None,
+        description=None, url="u", activities_url=None, relations_url=None,
+    )
+    assert detail.custom_fields == []
+    summary = WorkPackageSummary(
+        id=1, display_id=None, subject="x", type=None, status=None, priority=None,
+        project_phase=None, assignee=None, responsible=None, project=None, version=None,
+        start_date=None, due_date=None, percentage_complete=None, description=None,
+        has_description=False, url="u",
+    )
+    assert summary.custom_fields == []
