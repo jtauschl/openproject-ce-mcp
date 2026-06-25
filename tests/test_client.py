@@ -4975,3 +4975,38 @@ def test_extract_raw_custom_fields_scalar_and_ref() -> None:
     }
     raw = client._extract_raw_custom_fields(payload)
     assert raw == {"customField6": 140, "customField10": "Опт A", "customField11": ["A", "B"]}
+
+
+@pytest.mark.asyncio
+async def test_custom_field_names_cached_per_href() -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(200, json={"customField6": {"name": "НПП", "type": "Integer"}})
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    names1 = await client._custom_field_names("/api/v3/work_packages/schemas/4-7")
+    names2 = await client._custom_field_names("/api/v3/work_packages/schemas/4-7")
+    assert names1 == {"customField6": "НПП"}
+    assert names2 == {"customField6": "НПП"}
+    assert len(calls) == 1  # second call served from cache
+    assert await client._custom_field_names(None) == {}
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_custom_field_names_error_is_cached_empty() -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(500, json={"_type": "Error", "message": "boom"})
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    first = await client._custom_field_names("/api/v3/work_packages/schemas/9-9")
+    second = await client._custom_field_names("/api/v3/work_packages/schemas/9-9")
+    assert first == {}
+    assert second == {}
+    assert len(calls) == 1  # error result is cached; no second network call
+    await client.aclose()

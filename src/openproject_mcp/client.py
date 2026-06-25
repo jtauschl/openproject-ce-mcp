@@ -172,6 +172,7 @@ class OpenProjectClient:
         self._origin = _origin_from_url(settings.base_url)
         self._api_prefix = urlparse(settings.api_base_url).path.rstrip("/") + "/"
         self._project_id_to_identifier: dict[int, str] = {}
+        self._custom_field_name_cache: dict[str, dict[str, str]] = {}
         self._http = httpx.AsyncClient(
             base_url=f"{settings.api_base_url.rstrip('/')}/",
             headers={
@@ -6116,6 +6117,27 @@ class OpenProjectClient:
                 if title:
                     raw[key] = title
         return raw
+
+    async def _custom_field_names(self, schema_href: str | None) -> dict[str, str]:
+        if not schema_href:
+            return {}
+        cached = self._custom_field_name_cache.get(schema_href)
+        if cached is not None:
+            return cached
+        names: dict[str, str] = {}
+        try:
+            relative = self._link_to_api_path(schema_href)
+            schema = await self._get(relative)
+        except OpenProjectError:
+            self._custom_field_name_cache[schema_href] = names
+            return names
+        for key, definition in schema.items():
+            if self._CUSTOM_FIELD_KEY.match(key) and isinstance(definition, dict):
+                name = definition.get("name")
+                if isinstance(name, str):
+                    names[key] = name
+        self._custom_field_name_cache[schema_href] = names
+        return names
 
     def _apply_hidden_fields(self, entity: str, value: Any) -> Any:
         if not is_dataclass(value):
