@@ -5048,3 +5048,50 @@ async def test_work_package_custom_fields_hides_configured() -> None:
     )
     assert result == []
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_work_package_returns_custom_fields() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/work_packages/14344"):
+            return httpx.Response(200, json={
+                "id": 14344, "subject": "x", "customField6": 140,
+                "_links": {
+                    "schema": {"href": "/api/v3/work_packages/schemas/4-7"},
+                    "activities": {"href": "/api/v3/work_packages/14344/activities"},
+                    "relations": {"href": "/api/v3/work_packages/14344/relations"},
+                },
+            })
+        if "schemas" in request.url.path:
+            return httpx.Response(200, json={"customField6": {"name": "НПП", "type": "Integer"}})
+        return httpx.Response(404, json={})
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    detail = await client.get_work_package(14344)
+    assert [(c.key, c.name, c.value) for c in detail.custom_fields] == [("customField6", "НПП", 140)]
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_returns_custom_fields() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages":
+            return httpx.Response(200, json={
+                "total": 1,
+                "_embedded": {"elements": [{
+                    "id": 99, "subject": "y", "customField6": 77,
+                    "_links": {
+                        "schema": {"href": "/api/v3/work_packages/schemas/4-7"},
+                    },
+                }]},
+            })
+        if "schemas" in request.url.path:
+            return httpx.Response(200, json={"customField6": {"name": "НПП", "type": "Integer"}})
+        return httpx.Response(404, json={})
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    result = await client.list_work_packages()
+    assert len(result.results) == 1
+    summary = result.results[0]
+    assert [(c.key, c.name, c.value) for c in summary.custom_fields] == [("customField6", "НПП", 77)]
+    await client.aclose()

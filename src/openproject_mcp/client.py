@@ -1891,7 +1891,9 @@ class OpenProjectClient:
             for item in payload.get("_embedded", {}).get("elements", [])
             if isinstance(item, dict) and self._work_package_payload_allowed(item)
         ]
-        results = [self.normalize_work_package_summary(item) for item in raw_items]
+        results = []
+        for item in raw_items:
+            results.append(self.normalize_work_package_summary(item, await self._work_package_custom_fields(item)))
         server_total = int(payload.get("total", len(results)))
         total = len(results)
         return WorkPackageListResult(
@@ -1908,7 +1910,8 @@ class OpenProjectClient:
         self._ensure_read_enabled("work_package")
         payload = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
-        return self.normalize_work_package_detail(payload)
+        custom_fields = await self._work_package_custom_fields(payload)
+        return self.normalize_work_package_detail(payload, custom_fields)
 
     async def create_work_package(
         self,
@@ -2396,7 +2399,9 @@ class OpenProjectClient:
             for item in payload.get("_embedded", {}).get("elements", [])
             if isinstance(item, dict) and self._work_package_payload_allowed(item)
         ]
-        results = [self.normalize_work_package_summary(item) for item in raw_items]
+        results = []
+        for item in raw_items:
+            results.append(self.normalize_work_package_summary(item, await self._work_package_custom_fields(item)))
         server_total = int(payload.get("total", len(results)))
         total = len(results)
         return WorkPackageListResult(
@@ -4041,7 +4046,11 @@ class OpenProjectClient:
             url=self._web_url(f"memberships/{payload['id']}"),
         ))
 
-    def normalize_work_package_summary(self, payload: dict[str, Any]) -> WorkPackageSummary:
+    def normalize_work_package_summary(
+        self,
+        payload: dict[str, Any],
+        custom_fields: list[WorkPackageCustomField] | None = None,
+    ) -> WorkPackageSummary:
         links = payload.get("_links", {})
         description = self._visible_formattable_text(payload.get("description"), "work_package", "description", limit=SUBJECT_LIMIT)
         return self._apply_hidden_fields("work_package", WorkPackageSummary(
@@ -4062,9 +4071,14 @@ class OpenProjectClient:
             description=description,
             has_description=description is not None,
             url=self._web_url(f"work_packages/{payload['id']}"),
+            custom_fields=custom_fields or [],
         ))
 
-    def normalize_work_package_detail(self, payload: dict[str, Any]) -> WorkPackageDetail:
+    def normalize_work_package_detail(
+        self,
+        payload: dict[str, Any],
+        custom_fields: list[WorkPackageCustomField] | None = None,
+    ) -> WorkPackageDetail:
         links = payload.get("_links", {})
         return self._apply_hidden_fields("work_package", WorkPackageDetail(
             id=int(payload["id"]),
@@ -4086,6 +4100,7 @@ class OpenProjectClient:
             url=self._web_url(f"work_packages/{payload['id']}"),
             activities_url=self._link_to_web_url(links.get("activities", {}).get("href")),
             relations_url=self._link_to_web_url(links.get("relations", {}).get("href")),
+            custom_fields=custom_fields or [],
         ))
 
     def normalize_relation(self, payload: dict[str, Any]) -> RelationSummary:
