@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
+import re
 from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass, replace
 from fnmatch import fnmatchcase
@@ -6092,6 +6093,29 @@ class OpenProjectClient:
         if isinstance(value, dict):
             return {}
         return None
+
+    _CUSTOM_FIELD_KEY = re.compile(r"^customField\d+$")
+
+    def _extract_raw_custom_fields(self, payload: dict[str, Any]) -> dict[str, Any]:
+        raw: dict[str, Any] = {}
+        for key, value in payload.items():
+            if not self._CUSTOM_FIELD_KEY.match(key):
+                continue
+            if value is None or value == "":
+                continue
+            raw[key] = value
+        for key, link in payload.get("_links", {}).items():
+            if not self._CUSTOM_FIELD_KEY.match(key):
+                continue
+            if isinstance(link, list):
+                titles = [t for item in link if isinstance(item, dict) if (t := item.get("title"))]
+                if titles:
+                    raw[key] = titles
+            elif isinstance(link, dict):
+                title = link.get("title")
+                if title:
+                    raw[key] = title
+        return raw
 
     def _apply_hidden_fields(self, entity: str, value: Any) -> Any:
         if not is_dataclass(value):

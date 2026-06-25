@@ -4958,3 +4958,20 @@ def test_work_package_custom_field_dataclass_defaults() -> None:
         has_description=False, url="u",
     )
     assert summary.custom_fields == []
+
+
+def test_extract_raw_custom_fields_scalar_and_ref() -> None:
+    client = OpenProjectClient(make_settings())
+    payload = {
+        "id": 1,
+        "customField6": 140,
+        "customField2": None,
+        "customField9": "",
+        "_links": {
+            "customField10": {"href": "/api/v3/x/3", "title": "Опт A"},
+            "customField11": [{"href": "/a", "title": "A"}, {"href": "/b", "title": "B"}],
+            "customField12": {"href": None, "title": None},
+        },
+    }
+    raw = client._extract_raw_custom_fields(payload)
+    assert raw == {"customField6": 140, "customField10": "Опт A", "customField11": ["A", "B"]}
