@@ -5095,3 +5095,66 @@ async def test_list_work_packages_returns_custom_fields() -> None:
     summary = result.results[0]
     assert [(c.key, c.name, c.value) for c in summary.custom_fields] == [("customField6", "НПП", 77)]
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_caches_schema_across_elements() -> None:
+    schema_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal schema_calls
+        if request.url.path == "/api/v3/work_packages":
+            return httpx.Response(200, json={
+                "total": 2,
+                "_embedded": {"elements": [
+                    {
+                        "id": 11, "subject": "a", "customField6": 10,
+                        "_links": {"schema": {"href": "/api/v3/work_packages/schemas/4-7"}},
+                    },
+                    {
+                        "id": 12, "subject": "b", "customField6": 20,
+                        "_links": {"schema": {"href": "/api/v3/work_packages/schemas/4-7"}},
+                    },
+                ]},
+            })
+        if "schemas" in request.url.path:
+            schema_calls += 1
+            return httpx.Response(200, json={"customField6": {"name": "НПП", "type": "Integer"}})
+        return httpx.Response(404, json={})
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    result = await client.list_work_packages()
+    assert [
+        [(c.key, c.name, c.value) for c in summary.custom_fields]
+        for summary in result.results
+    ] == [
+        [("customField6", "НПП", 10)],
+        [("customField6", "НПП", 20)],
+    ]
+    assert schema_calls == 1  # one schema fetch shared across both elements
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_my_open_work_packages_returns_custom_fields() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/users/me":
+            return httpx.Response(200, json={"id": 5, "name": "Demo User", "login": "demo"})
+        if request.url.path == "/api/v3/work_packages":
+            return httpx.Response(200, json={
+                "total": 1,
+                "_embedded": {"elements": [{
+                    "id": 88, "subject": "mine", "customField6": 55,
+                    "_links": {"schema": {"href": "/api/v3/work_packages/schemas/4-7"}},
+                }]},
+            })
+        if "schemas" in request.url.path:
+            return httpx.Response(200, json={"customField6": {"name": "НПП", "type": "Integer"}})
+        return httpx.Response(404, json={})
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    result = await client.list_my_open_work_packages()
+    assert len(result.results) == 1
+    summary = result.results[0]
+    assert [(c.key, c.name, c.value) for c in summary.custom_fields] == [("customField6", "НПП", 55)]
+    await client.aclose()
