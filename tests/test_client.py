@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 
 import httpx
@@ -5009,4 +5010,41 @@ async def test_custom_field_names_error_is_cached_empty() -> None:
     assert first == {}
     assert second == {}
     assert len(calls) == 1  # error result is cached; no second network call
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_work_package_custom_fields_builds_named_list() -> None:
+    schema_calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        schema_calls.append(request.url.path)
+        return httpx.Response(200, json={"customField6": {"name": "НПП", "type": "Integer"}})
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with_value = await client._work_package_custom_fields(
+        {"id": 1, "customField6": 140, "_links": {"schema": {"href": "/api/v3/work_packages/schemas/4-7"}}}
+    )
+    assert [(c.key, c.name, c.value) for c in with_value] == [("customField6", "НПП", 140)]
+
+    empty = await client._work_package_custom_fields(
+        {"id": 2, "_links": {"schema": {"href": "/api/v3/work_packages/schemas/4-7"}}}
+    )
+    assert empty == []
+    assert len(schema_calls) == 1  # no schema request for a payload without custom values
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_work_package_custom_fields_hides_configured() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"customField6": {"name": "НПП", "type": "Integer"}})
+
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("НПП",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client._work_package_custom_fields(
+        {"id": 1, "customField6": 140, "_links": {"schema": {"href": "/api/v3/work_packages/schemas/4-7"}}}
+    )
+    assert result == []
     await client.aclose()

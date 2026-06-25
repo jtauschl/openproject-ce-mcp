@@ -123,6 +123,7 @@ from .models import (
     WikiPageDetail,
     WorkingDay,
     WorkingDayListResult,
+    WorkPackageCustomField,
     WorkPackageDetail,
     WorkPackageFieldSchema,
     WorkPackageListResult,
@@ -6138,6 +6139,20 @@ class OpenProjectClient:
                     names[key] = name
         self._custom_field_name_cache[schema_href] = names
         return names
+
+    async def _work_package_custom_fields(self, payload: dict[str, Any]) -> list[WorkPackageCustomField]:
+        raw = self._extract_raw_custom_fields(payload)
+        if not raw:
+            return []
+        schema_href = payload.get("_links", {}).get("schema", {}).get("href")
+        names = await self._custom_field_names(schema_href)
+        result: list[WorkPackageCustomField] = []
+        for key, value in raw.items():
+            name = names.get(key)
+            if self._custom_field_hidden(name or "", key):
+                continue
+            result.append(WorkPackageCustomField(key=key, name=name, value=value))
+        return result
 
     def _apply_hidden_fields(self, entity: str, value: Any) -> Any:
         if not is_dataclass(value):
