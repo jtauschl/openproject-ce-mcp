@@ -5276,7 +5276,13 @@ class OpenProjectClient:
                     "time_entries/form",
                     json_body={"_links": {"project": {"href": self._api_href(f"projects/{project_id}")}}},
                 )
-            except OpenProjectError:
+            except OpenProjectError as exc:
+                # Could not read the form schema: fall back to the default link
+                # key below. Warn because this is a write path -- a wrong key
+                # choice can make the time entry creation fail downstream.
+                LOGGER.warning(
+                    "Could not read time entry form schema for project %s: %s", project_id, exc
+                )
                 form = {}
             schema = form.get("_embedded", {}).get("schema", {})
             for key in candidates:
