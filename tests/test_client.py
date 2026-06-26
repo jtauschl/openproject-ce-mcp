@@ -4997,6 +4997,55 @@ async def test_custom_field_names_cached_per_href() -> None:
 
 
 @pytest.mark.asyncio
+async def test_custom_field_names_cache_expires_after_ttl(monkeypatch) -> None:
+    from openproject_mcp import client as client_module
+
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(200, json={"customField6": {"name": "НПП", "type": "Integer"}})
+
+    fake_now = {"t": 1000.0}
+    monkeypatch.setattr(client_module.time, "monotonic", lambda: fake_now["t"])
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    await client._custom_field_names("/api/v3/work_packages/schemas/4-7")
+    await client._custom_field_names("/api/v3/work_packages/schemas/4-7")
+    assert len(calls) == 1  # second call served from cache
+
+    fake_now["t"] += client_module.CUSTOM_FIELD_SCHEMA_CACHE_TTL_SECONDS + 1
+    await client._custom_field_names("/api/v3/work_packages/schemas/4-7")
+    assert len(calls) == 2  # entry expired and was refetched
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_prefetch_custom_field_schemas_fetches_each_schema_once() -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(200, json={"customField6": {"name": "НПП", "type": "Integer"}})
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    payloads = [
+        {"id": 1, "customField6": 10, "_links": {"schema": {"href": "/api/v3/work_packages/schemas/4-7"}}},
+        {"id": 2, "customField6": 20, "_links": {"schema": {"href": "/api/v3/work_packages/schemas/4-7"}}},
+        {"id": 3, "customField6": 30, "_links": {"schema": {"href": "/api/v3/work_packages/schemas/5-9"}}},
+        {"id": 4, "_links": {"schema": {"href": "/api/v3/work_packages/schemas/8-8"}}},  # no custom values
+    ]
+    await client._prefetch_custom_field_schemas(payloads)
+    # One request per distinct schema that actually has custom values; the
+    # duplicate 4-7 is deduplicated and the value-less payload is skipped.
+    assert sorted(calls) == [
+        "/api/v3/work_packages/schemas/4-7",
+        "/api/v3/work_packages/schemas/5-9",
+    ]
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_custom_field_names_error_is_cached_empty() -> None:
     calls: list[str] = []
 

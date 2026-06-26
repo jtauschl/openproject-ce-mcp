@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import mimetypes
 import re
+import time
 from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass, replace
 from fnmatch import fnmatchcase
@@ -136,6 +138,11 @@ LOGGER = logging.getLogger(__name__)
 FORMATTABLE_LIMIT = 1_200
 SUBJECT_LIMIT = 255
 
+# Custom field schema definitions change rarely (an admin adds or renames a
+# field), so the per-href name cache may hold entries for this long before a
+# refetch picks up changes.
+CUSTOM_FIELD_SCHEMA_CACHE_TTL_SECONDS = 300.0
+
 
 class OpenProjectError(Exception):
     """Base error for safe OpenProject failures."""
@@ -173,7 +180,8 @@ class OpenProjectClient:
         self._origin = _origin_from_url(settings.base_url)
         self._api_prefix = urlparse(settings.api_base_url).path.rstrip("/") + "/"
         self._project_id_to_identifier: dict[int, str] = {}
-        self._custom_field_name_cache: dict[str, dict[str, str]] = {}
+        # schema href -> (expires_at_monotonic, custom field key -> name)
+        self._custom_field_name_cache: dict[str, tuple[float, dict[str, str]]] = {}
         self._http = httpx.AsyncClient(
             base_url=f"{settings.api_base_url.rstrip('/')}/",
             headers={
@@ -1891,9 +1899,11 @@ class OpenProjectClient:
             for item in payload.get("_embedded", {}).get("elements", [])
             if isinstance(item, dict) and self._work_package_payload_allowed(item)
         ]
-        results = []
-        for item in raw_items:
-            results.append(self.normalize_work_package_summary(item, await self._work_package_custom_fields(item)))
+        await self._prefetch_custom_field_schemas(raw_items)
+        results = [
+            self.normalize_work_package_summary(item, await self._work_package_custom_fields(item))
+            for item in raw_items
+        ]
         server_total = int(payload.get("total", len(results)))
         total = len(results)
         return WorkPackageListResult(
@@ -2399,9 +2409,11 @@ class OpenProjectClient:
             for item in payload.get("_embedded", {}).get("elements", [])
             if isinstance(item, dict) and self._work_package_payload_allowed(item)
         ]
-        results = []
-        for item in raw_items:
-            results.append(self.normalize_work_package_summary(item, await self._work_package_custom_fields(item)))
+        await self._prefetch_custom_field_schemas(raw_items)
+        results = [
+            self.normalize_work_package_summary(item, await self._work_package_custom_fields(item))
+            for item in raw_items
+        ]
         server_total = int(payload.get("total", len(results)))
         total = len(results)
         return WorkPackageListResult(
@@ -6137,23 +6149,52 @@ class OpenProjectClient:
     async def _custom_field_names(self, schema_href: str | None) -> dict[str, str]:
         if not schema_href:
             return {}
+        now = time.monotonic()
         cached = self._custom_field_name_cache.get(schema_href)
-        if cached is not None:
-            return cached
+        if cached is not None and cached[0] > now:
+            return cached[1]
         names: dict[str, str] = {}
         try:
             relative = self._link_to_api_path(schema_href)
             schema = await self._get(relative)
         except OpenProjectError:
-            self._custom_field_name_cache[schema_href] = names
+            self._cache_custom_field_names(schema_href, names)
             return names
         for key, definition in schema.items():
             if self._CUSTOM_FIELD_KEY.match(key) and isinstance(definition, dict):
                 name = definition.get("name")
                 if isinstance(name, str):
                     names[key] = name
-        self._custom_field_name_cache[schema_href] = names
+        self._cache_custom_field_names(schema_href, names)
         return names
+
+    def _cache_custom_field_names(self, schema_href: str, names: dict[str, str]) -> None:
+        self._custom_field_name_cache[schema_href] = (
+            time.monotonic() + CUSTOM_FIELD_SCHEMA_CACHE_TTL_SECONDS,
+            names,
+        )
+
+    async def _prefetch_custom_field_schemas(self, payloads: list[dict[str, Any]]) -> None:
+        """Warm the schema-name cache for a page of work packages.
+
+        Collect the distinct schema hrefs of payloads that actually carry custom
+        field values and resolve the missing ones concurrently. This turns the
+        per-item sequential schema lookups during normalization into a single
+        bounded batch (one request per distinct schema) instead of an N+1 chain.
+        """
+        now = time.monotonic()
+        pending: set[str] = set()
+        for payload in payloads:
+            if not self._extract_raw_custom_fields(payload):
+                continue
+            href = payload.get("_links", {}).get("schema", {}).get("href")
+            if not href:
+                continue
+            cached = self._custom_field_name_cache.get(href)
+            if cached is None or cached[0] <= now:
+                pending.add(href)
+        if pending:
+            await asyncio.gather(*(self._custom_field_names(href) for href in pending))
 
     async def _work_package_custom_fields(self, payload: dict[str, Any]) -> list[WorkPackageCustomField]:
         raw = self._extract_raw_custom_fields(payload)
