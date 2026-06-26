@@ -6157,7 +6157,10 @@ class OpenProjectClient:
         try:
             relative = self._link_to_api_path(schema_href)
             schema = await self._get(relative)
-        except OpenProjectError:
+        except OpenProjectError as exc:
+            # Degrade to unnamed custom fields, but record the cause so a
+            # systematic schema-access failure is diagnosable from the logs.
+            LOGGER.debug("Could not resolve custom field names for %s: %s", schema_href, exc)
             self._cache_custom_field_names(schema_href, names)
             return names
         for key, definition in schema.items():
