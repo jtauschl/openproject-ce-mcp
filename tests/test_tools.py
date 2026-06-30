@@ -78,6 +78,7 @@ from openproject_mcp.tools import (
     list_views,
     list_work_package_attachments,
     list_work_package_file_links,
+    list_work_package_reactions,
     list_work_package_watchers,
     list_work_packages,
     lock_user,
@@ -85,6 +86,7 @@ from openproject_mcp.tools import (
     mark_notification_read,
     remove_work_package_watcher,
     search_work_packages,
+    toggle_activity_emoji_reaction,
     unlock_user,
     update_board,
     update_document,
@@ -870,6 +872,39 @@ async def test_watcher_tools_pass_expected_arguments() -> None:
     assert listed["work_package_id"] == "42"
     assert added["user_id"] == 7
     assert removed["confirm"] is True
+
+
+@pytest.mark.asyncio
+async def test_emoji_reaction_tools_pass_expected_arguments() -> None:
+    class StubClient:
+        async def list_work_package_reactions(self, work_package_id):
+            return {"work_package_id": work_package_id}
+
+        async def toggle_activity_emoji_reaction(self, activity_id, reaction):
+            return {"activity_id": activity_id, "reaction": reaction}
+
+    ctx = FakeContext(StubClient())  # type: ignore[arg-type]
+
+    listed = await list_work_package_reactions(ctx, "PROJ-1")
+    toggled = await toggle_activity_emoji_reaction(ctx, 1988, "thumbs_up")
+
+    assert listed["work_package_id"] == "PROJ-1"
+    assert toggled["activity_id"] == 1988
+    assert toggled["reaction"] == "thumbs_up"
+
+
+@pytest.mark.asyncio
+async def test_toggle_emoji_reaction_validates_inputs() -> None:
+    class StubClient:
+        async def toggle_activity_emoji_reaction(self, activity_id, reaction):
+            return {"activity_id": activity_id, "reaction": reaction}
+
+    ctx = FakeContext(StubClient())  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="activity_id must be at least 1"):
+        await toggle_activity_emoji_reaction(ctx, 0, "thumbs_up")
+    with pytest.raises(ValueError, match="reaction is required"):
+        await toggle_activity_emoji_reaction(ctx, 1, "")
 
 
 @pytest.mark.asyncio

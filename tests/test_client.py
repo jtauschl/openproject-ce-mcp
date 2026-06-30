@@ -5145,3 +5145,69 @@ async def test_resolve_work_package_id_returns_numeric_id_for_semantic_reference
     assert requests == ["/api/v3/work_packages/PROJ-7"]
 
     await client.aclose()
+
+
+def _write_enabled_settings() -> Settings:
+    s = make_settings()
+    return Settings(
+        base_url=s.base_url,
+        api_token=s.api_token,
+        enable_work_package_write=True,
+        timeout=s.timeout,
+        verify_ssl=s.verify_ssl,
+        default_page_size=s.default_page_size,
+        max_page_size=s.max_page_size,
+        max_results=s.max_results,
+        log_level=s.log_level,
+    )
+
+
+@pytest.mark.asyncio
+async def test_toggle_activity_emoji_reaction_patches_and_normalizes() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/activities/1988/emoji_reactions" and request.method == "PATCH":
+            assert json.loads(request.content) == {"reaction": "heart"}
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Collection",
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "_type": "EmojiReaction",
+                                "reaction": "heart",
+                                "emoji": "❤️",
+                                "reactionsCount": 2,
+                                "_links": {"reactingUsers": [{"title": "Alice"}, {"title": "Bob"}]},
+                            }
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.toggle_activity_emoji_reaction(1988, "heart")
+
+    assert result.count == 1
+    assert result.results[0].reaction == "heart"
+    assert result.results[0].emoji == "❤️"
+    assert result.results[0].count == 2
+    assert result.results[0].users == ["Alice", "Bob"]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_toggle_activity_emoji_reaction_rejects_invalid_reaction() -> None:
+    client = OpenProjectClient(
+        _write_enabled_settings(),
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}, request=r)),
+    )
+
+    with pytest.raises(InvalidInputError, match="reaction must be one of"):
+        await client.toggle_activity_emoji_reaction(1988, "banana")
+
+    await client.aclose()

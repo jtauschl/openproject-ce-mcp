@@ -35,6 +35,7 @@ from .models import (
     DocumentDetail,
     DocumentListResult,
     DocumentWriteResult,
+    EmojiReactionListResult,
     FileLinkListResult,
     FileLinkWriteResult,
     GridListResult,
@@ -179,6 +180,7 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
         mcp.tool()(get_work_package)
         mcp.tool()(list_my_open_work_packages)
         mcp.tool()(get_work_package_activities)
+        mcp.tool()(list_work_package_reactions)
         mcp.tool()(get_work_package_relations)
         mcp.tool()(list_work_package_attachments)
         mcp.tool()(get_attachment)
@@ -229,6 +231,7 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
         mcp.tool()(bulk_update_work_packages)
         mcp.tool()(delete_work_package)
         mcp.tool()(add_work_package_comment)
+        mcp.tool()(toggle_activity_emoji_reaction)
         mcp.tool()(create_work_package_relation)
         mcp.tool()(delete_relation)
         mcp.tool()(create_work_package_attachment)
@@ -1953,6 +1956,36 @@ async def get_work_package_activities(
     safe_id = _validate_work_package_ref(work_package_id)
     safe_limit = _validate_limit(limit)
     return await _run_tool(client.get_work_package_activities(safe_id, limit=safe_limit))
+
+
+async def list_work_package_reactions(
+    ctx: Context,
+    work_package_id: int | str,
+) -> EmojiReactionListResult:
+    """List emoji reactions across a work package's comment activities.
+
+    Accepts a numeric id or a project-prefixed reference like PROJ-123.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_work_package_ref(work_package_id)
+    return await _run_tool(client.list_work_package_reactions(safe_id))
+
+
+async def toggle_activity_emoji_reaction(
+    ctx: Context,
+    activity_id: int,
+    reaction: str,
+) -> EmojiReactionListResult:
+    """Toggle an emoji reaction on a work package comment activity.
+
+    Adds the reaction if absent, removes it if already present, and returns the
+    activity's full reaction set. `reaction` is one of: thumbs_up, thumbs_down,
+    grinning_face_with_smiling_eyes, confused_face, heart, party_popper, rocket, eyes.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(activity_id, field_name="activity_id")
+    safe_reaction = _validate_required_query(reaction, field_name="reaction", max_length=50)
+    return await _run_tool(client.toggle_activity_emoji_reaction(safe_id, safe_reaction))
 
 
 async def get_current_user(ctx: Context) -> CurrentUser:

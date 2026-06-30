@@ -398,6 +398,8 @@ class WorkPackageDetail:
     responsible: str | None
     project: str | None
     version: str | None
+    parent_id: int | None
+    parent_display_id: str | None
     start_date: str | None
     due_date: str | None
     percentage_complete: int | None
@@ -1294,3 +1296,17 @@ class RelationUpdateResult:
     relation_id: int | None
     payload: dict[str, Any]
     result: RelationSummary | None
+
+
+@dataclass
+class EmojiReactionSummary:
+    reaction: str
+    emoji: str | None
+    count: int
+    users: list[str]
+
+
+@dataclass
+class EmojiReactionListResult:
+    count: int
+    results: list[EmojiReactionSummary]

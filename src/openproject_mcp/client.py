@@ -39,6 +39,8 @@ from .models import (
     DocumentListResult,
     DocumentSummary,
     DocumentWriteResult,
+    EmojiReactionListResult,
+    EmojiReactionSummary,
     FileLinkListResult,
     FileLinkSummary,
     FileLinkWriteResult,
@@ -2822,6 +2824,53 @@ class OpenProjectClient:
         results = [self.normalize_activity(item) for item in reversed(elements)]
         return ActivityListResult(count=len(results), results=results)
 
+    # --- Emoji reactions (on work-package comment activities) ---
+
+    # Valid reactions per the OpenProject API spec.
+    EMOJI_REACTIONS = (
+        "thumbs_up", "thumbs_down", "grinning_face_with_smiling_eyes",
+        "confused_face", "heart", "party_popper", "rocket", "eyes",
+    )
+
+    def normalize_emoji_reaction(self, payload: dict[str, Any]) -> EmojiReactionSummary:
+        users = [
+            _trim_text(u.get("title"), limit=SUBJECT_LIMIT) or ""
+            for u in payload.get("_links", {}).get("reactingUsers", [])
+            if isinstance(u, dict)
+        ]
+        return EmojiReactionSummary(
+            reaction=payload.get("reaction", ""),
+            emoji=payload.get("emoji"),
+            count=int(payload.get("reactionsCount", 0)),
+            users=[u for u in users if u],
+        )
+
+    def _emoji_reactions_result(self, payload: dict[str, Any]) -> EmojiReactionListResult:
+        elements = payload.get("_embedded", {}).get("elements", [])
+        results = [self.normalize_emoji_reaction(item) for item in elements if isinstance(item, dict)]
+        return EmojiReactionListResult(count=len(results), results=results)
+
+    async def list_work_package_reactions(self, work_package_id: int | str) -> EmojiReactionListResult:
+        self._ensure_read_enabled("work_package")
+        work_package_id = self._work_package_ref(work_package_id)
+        await self.get_work_package(work_package_id)
+        payload = await self._get(f"work_packages/{work_package_id}/activities_emoji_reactions")
+        return self._emoji_reactions_result(payload)
+
+    async def toggle_activity_emoji_reaction(self, activity_id: int, reaction: str) -> EmojiReactionListResult:
+        self._ensure_write_enabled("work_package")
+        if reaction not in self.EMOJI_REACTIONS:
+            raise InvalidInputError(
+                f"reaction must be one of: {', '.join(self.EMOJI_REACTIONS)}."
+            )
+        # PATCH toggles: adds the reaction if absent, removes it if present, and
+        # returns the full reaction collection for the activity afterwards.
+        payload = await self._patch(
+            f"activities/{activity_id}/emoji_reactions",
+            json_body={"reaction": reaction},
+        )
+        return self._emoji_reactions_result(payload)
+
     async def get_current_user(self) -> CurrentUser:
         self._ensure_read_enabled("principal")
         payload = await self._get("users/me")
@@ -4098,6 +4147,10 @@ class OpenProjectClient:
             responsible=_link_title(links.get("responsible")),
             project=_link_title(links.get("project")),
             version=_link_title(links.get("version")),
+            parent_id=_id_from_href(links.get("parent", {}).get("href")),
+            # Hierarchy links carry displayId from 17.5 (semantic mode); absent on
+            # older/classic instances, where this stays None.
+            parent_display_id=links.get("parent", {}).get("displayId"),
             start_date=payload.get("startDate"),
             due_date=payload.get("dueDate"),
             percentage_complete=_percentage_done(payload),
