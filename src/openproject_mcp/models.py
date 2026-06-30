@@ -881,6 +881,8 @@ class TimeEntrySummary:
     activity: str | None
     hours: str | None
     spent_on: str | None
+    start_time: str | None
+    end_time: str | None
     ongoing: bool
     comment: str | None
     created_at: str | None

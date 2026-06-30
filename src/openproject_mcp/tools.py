@@ -1871,6 +1871,8 @@ async def create_time_entry(
     project: str | None = None,
     work_package_id: int | str | None = None,
     user: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
     comment: str | None = None,
     ongoing: bool | None = None,
     confirm: bool = False,
@@ -1878,6 +1880,8 @@ async def create_time_entry(
     """Prepare or create a time entry.
 
     work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    start_time/end_time are ISO 8601 date-times and require the instance setting
+    "allow tracking of start and end times"; they are ignored otherwise.
     """
     client = _client_from_context(ctx)
     safe_activity = _validate_required_query(activity, field_name="activity", max_length=100)
@@ -1886,6 +1890,8 @@ async def create_time_entry(
     safe_project = _validate_optional_project_ref(project)
     safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
     safe_user = _validate_optional_user_or_principal_ref(user)
+    safe_start_time = _validate_optional_datetime(start_time, field_name="start_time")
+    safe_end_time = _validate_optional_datetime(end_time, field_name="end_time")
     safe_comment = _validate_optional_text(comment, field_name="comment", max_length=10_000)
     if safe_project is None and safe_work_package_id is None:
         raise ValueError("Either project or work_package_id is required.")
@@ -1897,6 +1903,8 @@ async def create_time_entry(
             activity=safe_activity,
             hours=safe_hours,
             spent_on=safe_spent_on,
+            start_time=safe_start_time,
+            end_time=safe_end_time,
             comment=safe_comment,
             ongoing=ongoing,
             confirm=confirm,
@@ -1911,19 +1919,26 @@ async def update_time_entry(
     activity: str | None = None,
     hours: str | None = None,
     spent_on: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
     comment: str | None = None,
     ongoing: bool | None = None,
     confirm: bool = False,
 ) -> TimeEntryWriteResult:
-    """Prepare or update a time entry."""
+    """Prepare or update a time entry. start_time/end_time are ISO 8601 date-times."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(time_entry_id, field_name="time_entry_id")
     safe_user = _validate_optional_user_or_principal_ref(user)
     safe_activity = _validate_optional_query(activity, field_name="activity", max_length=100)
     safe_hours = _validate_optional_duration(hours, field_name="hours")
     safe_spent_on = _validate_optional_date(spent_on, field_name="spent_on")
+    safe_start_time = _validate_optional_datetime(start_time, field_name="start_time")
+    safe_end_time = _validate_optional_datetime(end_time, field_name="end_time")
     safe_comment = _validate_optional_text(comment, field_name="comment", max_length=10_000)
-    if not any(value is not None for value in (safe_user, safe_activity, safe_hours, safe_spent_on, safe_comment, ongoing)):
+    if not any(
+        value is not None
+        for value in (safe_user, safe_activity, safe_hours, safe_spent_on, safe_start_time, safe_end_time, safe_comment, ongoing)
+    ):
         raise ValueError("At least one field to update is required.")
     return await _run_tool(
         client.update_time_entry(
@@ -1932,6 +1947,8 @@ async def update_time_entry(
             activity=safe_activity,
             hours=safe_hours,
             spent_on=safe_spent_on,
+            start_time=safe_start_time,
+            end_time=safe_end_time,
             comment=safe_comment,
             ongoing=ongoing,
             confirm=confirm,

@@ -1582,6 +1582,8 @@ class OpenProjectClient:
         activity: str,
         hours: str,
         spent_on: str,
+        start_time: str | None = None,
+        end_time: str | None = None,
         comment: str | None = None,
         ongoing: bool | None = None,
         confirm: bool = False,
@@ -1608,6 +1610,8 @@ class OpenProjectClient:
             activity=activity,
             hours=hours,
             spent_on=spent_on,
+            start_time=start_time,
+            end_time=end_time,
             comment=comment,
             ongoing=ongoing,
             activity_project_id=activity_project_id,
@@ -1649,6 +1653,8 @@ class OpenProjectClient:
         activity: str | None = None,
         hours: str | None = None,
         spent_on: str | None = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
         comment: str | None = None,
         ongoing: bool | None = None,
         confirm: bool = False,
@@ -1663,6 +1669,8 @@ class OpenProjectClient:
             activity=activity,
             hours=hours,
             spent_on=spent_on,
+            start_time=start_time,
+            end_time=end_time,
             comment=comment,
             ongoing=ongoing,
             activity_project_id=project_id,
@@ -4870,6 +4878,10 @@ class OpenProjectClient:
             activity=_link_title(links.get("activity")),
             hours=_trim_text(payload.get("hours"), limit=SUBJECT_LIMIT),
             spent_on=_trim_text(payload.get("spentOn"), limit=SUBJECT_LIMIT),
+            # Only present when the admin enabled allow_tracking_start_and_end_times;
+            # otherwise absent, so these stay None.
+            start_time=_trim_text(payload.get("startTime"), limit=SUBJECT_LIMIT),
+            end_time=_trim_text(payload.get("endTime"), limit=SUBJECT_LIMIT),
             ongoing=bool(payload.get("ongoing")),
             comment=self._visible_formattable_text(payload.get("comment"), "activity", "comment"),
             created_at=payload.get("createdAt"),
@@ -5487,6 +5499,8 @@ class OpenProjectClient:
         activity: str | None,
         hours: str | None,
         spent_on: str | None,
+        start_time: str | None,
+        end_time: str | None,
         comment: str | None,
         ongoing: bool | None,
         activity_project_id: int | None = None,
@@ -5500,6 +5514,12 @@ class OpenProjectClient:
         if spent_on is not None:
             self._ensure_field_writable("time_entry", "spent_on")
             payload["spentOn"] = spent_on
+        # start/end times require the admin setting; OpenProject rejects them when
+        # disabled, so we only include them when the caller provides a value.
+        if start_time is not None:
+            payload["startTime"] = start_time
+        if end_time is not None:
+            payload["endTime"] = end_time
         if comment is not None:
             self._ensure_field_writable("time_entry", "comment")
             self._ensure_field_writable("activity", "comment")

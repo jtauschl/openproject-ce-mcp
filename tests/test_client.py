@@ -5328,3 +5328,45 @@ async def test_list_work_packages_version_status_builds_filter() -> None:
     assert version_filter["version"]["values"] == []
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_time_entry_includes_start_and_end_time() -> None:
+    captured: dict[str, dict] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/time_entries" and request.method == "POST":
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(
+                201,
+                json={"id": 9, "spentOn": "2026-07-01", "startTime": "2026-07-01T09:00:00Z",
+                      "endTime": "2026-07-01T10:00:00Z", "_links": {}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.create_time_entry(
+        work_package_id=42,
+        activity=None,
+        hours="PT1H",
+        spent_on="2026-07-01",
+        start_time="2026-07-01T09:00:00Z",
+        end_time="2026-07-01T10:00:00Z",
+        confirm=True,
+    )
+
+    assert captured["body"]["startTime"] == "2026-07-01T09:00:00Z"
+    assert captured["body"]["endTime"] == "2026-07-01T10:00:00Z"
+    assert result.result is not None
+    assert result.result.start_time == "2026-07-01T09:00:00Z"
+    assert result.result.end_time == "2026-07-01T10:00:00Z"
+
+    await client.aclose()

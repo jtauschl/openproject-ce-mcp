@@ -770,6 +770,8 @@ async def test_time_entry_tools_pass_expected_arguments() -> None:
         activity="Development",
         hours="PT1H30M",
         spent_on="2026-03-20",
+        start_time="2026-03-20T09:00:00Z",
+        end_time="2026-03-20T10:30:00Z",
         confirm=False,
     )
     updated = await update_time_entry(ctx, 5, hours="PT2H", confirm=True)
@@ -781,8 +783,16 @@ async def test_time_entry_tools_pass_expected_arguments() -> None:
     assert listed["user"] == "me"
     assert detail["time_entry_id"] == 5
     assert created["hours"] == "PT1H30M"
+    assert created["start_time"] == "2026-03-20T09:00:00Z"
+    assert created["end_time"] == "2026-03-20T10:30:00Z"
     assert updated["confirm"] is True
     assert deleted["confirm"] is True
+
+    with pytest.raises(ValueError, match="start_time must be an ISO 8601 date-time"):
+        await create_time_entry(
+            ctx, project="demo", activity="Development", hours="PT1H",
+            spent_on="2026-03-20", start_time="09:00", confirm=False,
+        )
 
 
 @pytest.mark.asyncio
