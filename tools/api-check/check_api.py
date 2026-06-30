@@ -121,6 +121,18 @@ ASSUMPTIONS: list[Assumption] = [
     Assumption("status_id filter", "filter", "status_filter.rb", subtree=_WP_FILTERS),
     Assumption("involved (relations) filter", "filter", "involved_filter.rb",
                subtree="app/models/queries/relations/filters"),
+    # --- Endpoints/operators behind the CE coverage-expansion tools. Each has a
+    # different minimum version, recorded so the matrix flags a tool used on too
+    # old an instance. (time-entry start/end lives in the costs module, which is
+    # not in the sparse checkout, so it is verified at runtime instead.)
+    Assumption("emoji_reactions endpoint", "path", "emoji_reactions",
+               subtree="lib/api/v3", present_from="16.1"),
+    Assumption("reminders endpoint", "path", "reminders",
+               subtree="lib/api/v3"),  # present since 16.0
+    Assumption("favorites endpoint", "path", "favorites",
+               subtree="lib/api/v3", present_from="16.5"),
+    Assumption("version open status operator", "filter", "open_status.rb",
+               subtree="app/models/queries/operators/versions", present_from="16.4"),
 ]
 
 
