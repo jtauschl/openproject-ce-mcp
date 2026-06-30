@@ -1,0 +1,54 @@
+# Local OpenProject instances for runtime verification of the MCP client across
+# versions. Two all-in-one containers (each bundles PostgreSQL + memcached), so
+# no separate database service is needed.
+#
+#   16.6 = classic numeric identifiers (no semantic ids) — backwards-compat path
+#   17.5 = project-based semantic identifiers
+#
+# Driven by up.sh / down.sh. SECRET_KEY_BASE comes from a generated .env
+# (gitignored); never hardcode it here.
+
+services:
+  op-16-6:
+    image: openproject/openproject:16.6-slim
+    ports:
+      - "8166:80"
+    environment:
+      OPENPROJECT_HOST__NAME: localhost:8166
+      OPENPROJECT_HTTPS: "false"
+      OPENPROJECT_DEFAULT__LANGUAGE: en
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?set via up.sh / .env}
+    volumes:
+      - op166_pgdata:/var/openproject/pgdata
+      - op166_assets:/var/openproject/assets
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/health_checks/default"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 120s
+
+  op-17-5:
+    image: openproject/openproject:17.5-slim
+    ports:
+      - "8175:80"
+    environment:
+      OPENPROJECT_HOST__NAME: localhost:8175
+      OPENPROJECT_HTTPS: "false"
+      OPENPROJECT_DEFAULT__LANGUAGE: en
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?set via up.sh / .env}
+    volumes:
+      - op175_pgdata:/var/openproject/pgdata
+      - op175_assets:/var/openproject/assets
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/health_checks/default"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 120s
+
+volumes:
+  op166_pgdata:
+  op166_assets:
+  op175_pgdata:
+  op175_assets:
