@@ -1028,7 +1028,7 @@ async def list_work_packages(
 
 async def get_work_package(
     ctx: Context,
-    work_package_id: str,
+    work_package_id: int | str,
 ) -> WorkPackageDetail:
     """Get a compact work package summary by id.
 
@@ -1097,7 +1097,7 @@ async def create_work_package(
 
 async def update_work_package(
     ctx: Context,
-    work_package_id: str,
+    work_package_id: int | str,
     subject: str | None = None,
     description: str | None = None,
     type: str | None = None,
@@ -1303,7 +1303,7 @@ async def bulk_update_work_packages(
 
 async def delete_work_package(
     ctx: Context,
-    work_package_id: str,
+    work_package_id: int | str,
     confirm: bool = False,
 ) -> WorkPackageWriteResult:
     """Prepare or delete a work package.
@@ -1318,7 +1318,7 @@ async def delete_work_package(
 
 async def create_subtask(
     ctx: Context,
-    parent_work_package_id: str,
+    parent_work_package_id: int | str,
     type: str,
     subject: str,
     description: str | None = None,
@@ -1374,7 +1374,7 @@ async def create_subtask(
 
 async def add_work_package_comment(
     ctx: Context,
-    work_package_id: str,
+    work_package_id: int | str,
     comment: str,
     internal: bool = False,
     notify: bool = False,
@@ -1401,8 +1401,8 @@ async def add_work_package_comment(
 
 async def create_work_package_relation(
     ctx: Context,
-    work_package_id: str,
-    related_to_work_package_id: str,
+    work_package_id: int | str,
+    related_to_work_package_id: int | str,
     relation_type: str,
     description: str | None = None,
     lag: int | None = None,
@@ -1732,7 +1732,7 @@ async def delete_board(
 
 async def list_work_package_attachments(
     ctx: Context,
-    work_package_id: str,
+    work_package_id: int | str,
 ) -> AttachmentListResult:
     """List attachments on a work package.
 
@@ -1755,7 +1755,7 @@ async def get_attachment(
 
 async def create_work_package_attachment(
     ctx: Context,
-    work_package_id: str,
+    work_package_id: int | str,
     file_path: str,
     description: str | None = None,
     confirm: bool = False,
@@ -1798,7 +1798,7 @@ async def list_time_entry_activities(ctx: Context) -> TimeEntryActivityListResul
 async def list_time_entries(
     ctx: Context,
     project: str | None = None,
-    work_package_id: str | None = None,
+    work_package_id: int | str | None = None,
     user: str | None = None,
     spent_on_from: str | None = None,
     spent_on_to: str | None = None,
@@ -1846,7 +1846,7 @@ async def create_time_entry(
     hours: str,
     spent_on: str,
     project: str | None = None,
-    work_package_id: str | None = None,
+    work_package_id: int | str | None = None,
     user: str | None = None,
     comment: str | None = None,
     ongoing: bool | None = None,
@@ -1929,7 +1929,7 @@ async def delete_time_entry(
 
 async def get_work_package_relations(
     ctx: Context,
-    work_package_id: str,
+    work_package_id: int | str,
 ) -> RelationListResult:
     """Get all relations for a work package (blocks, relates to, duplicates, etc.).
 
@@ -1942,7 +1942,7 @@ async def get_work_package_relations(
 
 async def get_work_package_activities(
     ctx: Context,
-    work_package_id: str,
+    work_package_id: int | str,
     limit: int | None = None,
 ) -> ActivityListResult:
     """Get the activity log for a work package, most recent first.
@@ -2006,7 +2006,7 @@ async def get_type(ctx: Context, type_id: int) -> TypeSummary:
 
 async def list_work_package_watchers(
     ctx: Context,
-    work_package_id: str,
+    work_package_id: int | str,
 ) -> WatcherListResult:
     """List watchers of a work package.
 
@@ -2019,7 +2019,7 @@ async def list_work_package_watchers(
 
 async def add_work_package_watcher(
     ctx: Context,
-    work_package_id: str,
+    work_package_id: int | str,
     user_id: int,
     confirm: bool = False,
 ) -> WatcherWriteResult:
@@ -2035,7 +2035,7 @@ async def add_work_package_watcher(
 
 async def remove_work_package_watcher(
     ctx: Context,
-    work_package_id: str,
+    work_package_id: int | str,
     user_id: int,
     confirm: bool = False,
 ) -> WatcherWriteResult:
@@ -2222,7 +2222,7 @@ async def delete_group(
 
 async def list_work_package_file_links(
     ctx: Context,
-    work_package_id: str,
+    work_package_id: int | str,
 ) -> FileLinkListResult:
     """List Nextcloud file links attached to a work package (Community Edition).
 

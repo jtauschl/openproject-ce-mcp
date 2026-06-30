@@ -17,7 +17,8 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Single work package tools now accept a project-prefixed identifier (e.g. `PROJ-123`)
-  in addition to the numeric id; the bulk tools remain numeric-only. OpenProject 17.5
+  in addition to the numeric id (sent as either a number or a string); the bulk tools
+  remain numeric-only. OpenProject 17.5
   lets administrators switch the displayed identifier to a project-based format exposed
   via `displayId`; these tools resolve such a reference server-side through a typeahead
   search with an exact `displayId` match, then operate on the canonical numeric id. A
