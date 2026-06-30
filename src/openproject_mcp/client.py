@@ -171,7 +171,6 @@ class OpenProjectClient:
         self._origin = _origin_from_url(settings.base_url)
         self._api_prefix = urlparse(settings.api_base_url).path.rstrip("/") + "/"
         self._project_id_to_identifier: dict[int, str] = {}
-        self._wp_ref_cache: dict[str, int] = {}
         self._http = httpx.AsyncClient(
             base_url=f"{settings.api_base_url.rstrip('/')}/",
             headers={
@@ -1318,7 +1317,7 @@ class OpenProjectClient:
 
     async def list_work_package_attachments(self, work_package_id: int | str) -> AttachmentListResult:
         self._ensure_read_enabled("work_package")
-        work_package_id = await self._resolve_work_package_id(work_package_id)
+        work_package_id = self._work_package_ref(work_package_id)
         work_package = await self.get_work_package(work_package_id)
         payload = await self._get(f"work_packages/{work_package_id}/attachments")
         results = [
@@ -1348,7 +1347,7 @@ class OpenProjectClient:
         description: str | None = None,
         confirm: bool = False,
     ) -> AttachmentWriteResult:
-        work_package_id = await self._resolve_work_package_id(work_package_id)
+        work_package_id = self._work_package_ref(work_package_id)
         work_package_payload = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
         file_info = self._prepare_attachment_file(file_path, include_bytes=confirm)
@@ -1582,7 +1581,7 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> TimeEntryWriteResult:
         if work_package_id is not None:
-            work_package_id = await self._resolve_work_package_id(work_package_id)
+            work_package_id = self._work_package_ref(work_package_id)
         project_name = None
         activity_project_id = None
         if project is not None:
@@ -1910,7 +1909,7 @@ class OpenProjectClient:
 
     async def get_work_package(self, work_package_id: int | str) -> WorkPackageDetail:
         self._ensure_read_enabled("work_package")
-        work_package_id = await self._resolve_work_package_id(work_package_id)
+        work_package_id = self._work_package_ref(work_package_id)
         payload = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
         return self.normalize_work_package_detail(payload)
@@ -1980,7 +1979,7 @@ class OpenProjectClient:
         due_date: str | None = None,
         confirm: bool = False,
     ) -> WorkPackageWriteResult:
-        parent_work_package_id = await self._resolve_work_package_id(parent_work_package_id)
+        parent_work_package_id = self._work_package_ref(parent_work_package_id)
         parent = await self._get(f"work_packages/{parent_work_package_id}")
         project_id = _id_from_href(parent.get("_links", {}).get("project", {}).get("href"))
         if project_id is None:
@@ -2034,9 +2033,9 @@ class OpenProjectClient:
         due_date: str | None = None,
         confirm: bool = False,
     ) -> WorkPackageWriteResult:
-        work_package_id = await self._resolve_work_package_id(work_package_id)
+        work_package_id = self._work_package_ref(work_package_id)
         if parent_work_package_id is not None:
-            parent_work_package_id = await self._resolve_work_package_id(parent_work_package_id)
+            parent_work_package_id = self._work_package_ref(parent_work_package_id)
         current = await self._get(f"work_packages/{work_package_id}")
         project_id = _id_from_href(current.get("_links", {}).get("project", {}).get("href"))
         if project_id is None:
@@ -2189,7 +2188,7 @@ class OpenProjectClient:
     ) -> ActivityWriteResult:
         if comment is not None:
             self._ensure_field_writable("activity", "comment")
-        work_package_id = await self._resolve_work_package_id(work_package_id)
+        work_package_id = self._work_package_ref(work_package_id)
         work_package = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
         payload = {
@@ -2242,8 +2241,8 @@ class OpenProjectClient:
         lag: int | None = None,
         confirm: bool = False,
     ) -> RelationWriteResult:
-        work_package_id = await self._resolve_work_package_id(work_package_id)
-        related_to_work_package_id = await self._resolve_work_package_id(related_to_work_package_id)
+        work_package_id = self._work_package_ref(work_package_id)
+        related_to_work_package_id = self._work_package_ref(related_to_work_package_id)
         work_package = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
         payload: dict[str, Any] = {
@@ -2293,7 +2292,7 @@ class OpenProjectClient:
         work_package_id: int | str,
         confirm: bool = False,
     ) -> WorkPackageWriteResult:
-        work_package_id = await self._resolve_work_package_id(work_package_id)
+        work_package_id = self._work_package_ref(work_package_id)
         current = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
         detail = self.normalize_work_package_detail(current)
@@ -2813,7 +2812,7 @@ class OpenProjectClient:
 
     async def get_work_package_activities(self, work_package_id: int | str, *, limit: int | None = None) -> ActivityListResult:
         self._ensure_read_enabled("work_package")
-        work_package_id = await self._resolve_work_package_id(work_package_id)
+        work_package_id = self._work_package_ref(work_package_id)
         await self.get_work_package(work_package_id)
         effective_limit = self._resolve_limit(limit)
         payload = await self._get(f"work_packages/{work_package_id}/activities")
@@ -2895,7 +2894,7 @@ class OpenProjectClient:
 
     async def list_work_package_watchers(self, work_package_id: int | str) -> WatcherListResult:
         self._ensure_read_enabled("work_package")
-        work_package_id = await self._resolve_work_package_id(work_package_id)
+        work_package_id = self._work_package_ref(work_package_id)
         payload = await self._get(f"work_packages/{work_package_id}/watchers")
         results = [
             self.normalize_watcher(item)
@@ -2911,7 +2910,7 @@ class OpenProjectClient:
         *,
         confirm: bool = False,
     ) -> WatcherWriteResult:
-        work_package_id = await self._resolve_work_package_id(work_package_id)
+        work_package_id = self._work_package_ref(work_package_id)
         wp_payload = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(wp_payload.get("_links", {}).get("project"))
         if self._preview_mode(confirm):
@@ -2953,7 +2952,7 @@ class OpenProjectClient:
         *,
         confirm: bool = False,
     ) -> WatcherWriteResult:
-        work_package_id = await self._resolve_work_package_id(work_package_id)
+        work_package_id = self._work_package_ref(work_package_id)
         wp_payload = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(wp_payload.get("_links", {}).get("project"))
         if self._preview_mode(confirm):
@@ -3372,7 +3371,7 @@ class OpenProjectClient:
 
     async def list_work_package_file_links(self, work_package_id: int | str) -> FileLinkListResult:
         self._ensure_read_enabled("work_package")
-        work_package_id = await self._resolve_work_package_id(work_package_id)
+        work_package_id = self._work_package_ref(work_package_id)
         payload = await self._get(f"work_packages/{work_package_id}/file_links")
         results = [
             self.normalize_file_link(item)
@@ -6229,34 +6228,34 @@ class OpenProjectClient:
             )
         return matches[0]
 
-    async def _resolve_work_package_id(self, ref: int | str) -> int:
-        """Resolve a work-package reference to its numeric id.
+    def _work_package_ref(self, ref: int | str) -> str:
+        """Return a path-safe work-package reference for a ``work_packages/{id}`` path.
 
-        A numeric reference passes through without an API call. A project-prefixed
-        identifier (e.g. ``PROJ-123``, exposed as ``displayId`` in OpenProject 17.5+)
-        is resolved via a typeahead search and an exact ``display_id`` match.
+        Both a numeric id and a project-prefixed identifier (e.g. ``PROJ-123``,
+        exposed as ``displayId`` in OpenProject 17.5+) are accepted directly by the
+        ``GET/PATCH/DELETE /api/v3/work_packages/{id}`` endpoints: in semantic mode
+        OpenProject resolves the project-based form on the server. The reference is
+        passed through verbatim (URL-encoded) so the behaviour degrades cleanly — on
+        instances without semantic identifiers a project-prefixed reference simply
+        yields a 404 (mapped to ``NotFoundError``), while numeric ids keep working on
+        every supported version.
+        """
+        return quote(str(ref).strip(), safe="")
+
+    async def _resolve_work_package_id(self, ref: int | str) -> int:
+        """Resolve a work-package reference to its canonical numeric id.
+
+        Needed where the numeric id itself is required (e.g. a relation filter or a
+        client-side equality check) rather than a request path. A numeric reference
+        is returned directly without an API call; a project-prefixed identifier is
+        resolved by fetching the work package — the path endpoint accepts the semantic
+        form on OpenProject 17.5+ — and reading back its numeric ``id``.
         """
         s = str(ref).strip()
         if s.isdigit():
             return int(s)
-        key = s.casefold()
-        if key in self._wp_ref_cache:
-            return self._wp_ref_cache[key]
-        result = await self._list_work_package_collection(
-            project_id=None,
-            filters=[{"subject_or_id": {"operator": "**", "values": [s]}}],
-            offset=1,
-            limit=self.settings.max_results,
-        )
-        matches = [item for item in result.results if (item.display_id or "").casefold() == key]
-        if not matches:
-            raise NotFoundError(f"OpenProject work package '{ref}' was not found.")
-        if len({item.id for item in matches}) > 1:
-            raise InvalidInputError(
-                f"Work package reference '{ref}' is ambiguous. Pass the numeric id."
-            )
-        self._wp_ref_cache[key] = matches[0].id
-        return matches[0].id
+        payload = await self._get(f"work_packages/{quote(s, safe='')}")
+        return int(payload["id"])
 
     async def _resolve_status_id(self, status_ref: str) -> str:
         if status_ref.isdigit():

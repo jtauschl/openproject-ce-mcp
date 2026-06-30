@@ -18,13 +18,12 @@ All notable changes to this project will be documented in this file.
 
 - Single work package tools now accept a project-prefixed identifier (e.g. `PROJ-123`)
   in addition to the numeric id (sent as either a number or a string); the bulk tools
-  remain numeric-only. OpenProject 17.5
-  lets administrators switch the displayed identifier to a project-based format exposed
-  via `displayId`; these tools resolve such a reference server-side through a typeahead
-  search with an exact `displayId` match, then operate on the canonical numeric id. A
-  numeric reference is passed through without an extra request, so existing numeric
-  callers are unchanged. Resolved references are cached for the lifetime of the
-  connection.
+  remain numeric-only. OpenProject 17.5 lets administrators switch the displayed
+  identifier to a project-based format exposed via `displayId`, and its
+  `work_packages/{id}` endpoints resolve that form server-side. References are passed
+  through to the endpoint verbatim, so the behaviour degrades cleanly: on instances
+  without semantic identifiers a project-prefixed reference simply yields a 404
+  (surfaced as not-found), while numeric ids keep working on every supported version.
 
 ---
 

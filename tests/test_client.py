@@ -5067,15 +5067,12 @@ def _wp_detail_payload(wp_id: int, display_id: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_resolve_work_package_id_numeric_fast_path_makes_no_extra_request() -> None:
-    collection_calls = 0
+async def test_get_work_package_numeric_reference_hits_canonical_path() -> None:
+    paths: list[str] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal collection_calls
-        if request.url.path == "/api/v3/work_packages" and request.method == "GET":
-            collection_calls += 1
-            return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
-        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+        if request.method == "GET" and request.url.path == "/api/v3/work_packages/42":
+            paths.append(request.url.path)
             return httpx.Response(200, json=_wp_detail_payload(42, "42"), request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
@@ -5084,99 +5081,67 @@ async def test_resolve_work_package_id_numeric_fast_path_makes_no_extra_request(
     detail = await client.get_work_package("42")
 
     assert detail.id == 42
-    # A numeric reference resolves without hitting the collection/typeahead endpoint.
-    assert collection_calls == 0
+    # Exactly one request, straight to the canonical numeric path. No lookup roundtrip.
+    assert paths == ["/api/v3/work_packages/42"]
 
     await client.aclose()
 
 
 @pytest.mark.asyncio
-async def test_resolve_work_package_id_resolves_semantic_reference_and_caches() -> None:
-    collection_calls = 0
-
+async def test_get_work_package_semantic_reference_passes_through_to_path() -> None:
+    # OpenProject 17.5+ resolves a project-prefixed identifier server-side on the
+    # work_packages/{id} endpoint, so the reference is sent through the path verbatim.
     async def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal collection_calls
-        if request.url.path == "/api/v3/work_packages" and request.method == "GET":
-            collection_calls += 1
-            return httpx.Response(
-                200,
-                json={
-                    "_embedded": {
-                        "elements": [
-                            {
-                                "id": 77,
-                                "subject": "Match",
-                                "displayId": "PROJ-123",
-                                "_links": {"project": {"title": "Demo"}},
-                            },
-                            {
-                                "id": 78,
-                                "subject": "Other",
-                                "displayId": "PROJ-1234",
-                                "_links": {"project": {"title": "Demo"}},
-                            },
-                        ]
-                    },
-                    "total": 2,
-                },
-                request=request,
-            )
-        if request.url.path == "/api/v3/work_packages/77" and request.method == "GET":
-            return httpx.Response(200, json=_wp_detail_payload(77, "PROJ-123"), request=request)
+        if request.method == "GET" and request.url.path == "/api/v3/work_packages/PROJ-123":
+            return httpx.Response(200, json=_wp_detail_payload(412, "PROJ-123"), request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    first = await client.get_work_package("PROJ-123")
-    assert first.id == 77
-    # Only the exact displayId match resolves, not the fuzzy "PROJ-1234".
-    assert collection_calls == 1
+    detail = await client.get_work_package("PROJ-123")
 
-    # A second lookup of the same reference is served from the cache.
-    second = await client.get_work_package("PROJ-123")
-    assert second.id == 77
-    assert collection_calls == 1
+    assert detail.id == 412
+    assert detail.display_id == "PROJ-123"
 
     await client.aclose()
 
 
 @pytest.mark.asyncio
-async def test_resolve_work_package_id_not_found_raises() -> None:
+async def test_get_work_package_unknown_reference_maps_404_to_not_found() -> None:
+    # On instances without semantic identifiers a project-prefixed reference simply
+    # yields a 404, which must surface as NotFoundError (backwards compatible).
     async def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/v3/work_packages" and request.method == "GET":
-            return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
+        if request.url.path == "/api/v3/work_packages/PROJ-999":
+            return httpx.Response(404, json={"message": "Not found"}, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    with pytest.raises(NotFoundError, match="PROJ-999"):
+    with pytest.raises(NotFoundError):
         await client.get_work_package("PROJ-999")
 
     await client.aclose()
 
 
 @pytest.mark.asyncio
-async def test_resolve_work_package_id_ambiguous_raises() -> None:
+async def test_resolve_work_package_id_returns_numeric_id_for_semantic_reference() -> None:
+    # The numeric-id resolver (used where the canonical id itself is needed, e.g. the
+    # relations "involved" filter) fetches the WP for a semantic ref and reads back id;
+    # a numeric ref short-circuits without any request.
+    requests: list[str] = []
+
     async def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/v3/work_packages" and request.method == "GET":
-            return httpx.Response(
-                200,
-                json={
-                    "_embedded": {
-                        "elements": [
-                            {"id": 5, "subject": "A", "displayId": "DUP-1", "_links": {"project": {"title": "Demo"}}},
-                            {"id": 6, "subject": "B", "displayId": "DUP-1", "_links": {"project": {"title": "Demo"}}},
-                        ]
-                    },
-                    "total": 2,
-                },
-                request=request,
-            )
+        requests.append(request.url.path)
+        if request.url.path == "/api/v3/work_packages/PROJ-7":
+            return httpx.Response(200, json=_wp_detail_payload(55, "PROJ-7"), request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    with pytest.raises(InvalidInputError, match="ambiguous"):
-        await client.get_work_package("DUP-1")
+    assert await client._resolve_work_package_id(99) == 99
+    assert requests == []  # numeric short-circuit, no API call
+
+    assert await client._resolve_work_package_id("PROJ-7") == 55
+    assert requests == ["/api/v3/work_packages/PROJ-7"]
 
     await client.aclose()
