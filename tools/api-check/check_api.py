@@ -26,6 +26,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -164,10 +165,125 @@ def _present(version: str, asm: Assumption) -> bool:
         raise
 
 
+# --- Full auto-extracted coverage (every resource + filter the client uses) ---
+
+CLIENT = ROOT / "src" / "openproject_mcp" / "client.py"
+
+# Resources whose v3 API lives in a separate module engine (modules/<x>/), which
+# the sparse source checkout does not include. They exist in CE but cannot be
+# source-verified here, so they are reported as "module" rather than missing.
+MODULE_RESOURCES = {
+    "grids": "my_page", "documents": "documents", "file_links": "storages",
+    "job_statuses": "job_statuses", "time_entries": "costs",
+}
+# Path-helper / directory names that differ from the client's path segment.
+RESOURCE_ALIASES = {"statuses": "status", "my_preferences": "user_preferences"}
+# Client path segments that are not standalone API resources (skip them).
+RESOURCE_SKIP = {"api", "v3"}
+
+# Client filter keys whose source filter file is named differently, and keys
+# that are query parameters rather than registered filters (skip those).
+FILTER_ALIASES = {
+    "status_id": "status", "project_id": "project", "assignee": "assigned_to",
+}
+FILTER_SKIP = {"date", "scope", "context"}  # query params / matchers, not filter files
+
+
+def _extract_client_resources() -> set[str]:
+    text = CLIENT.read_text()
+    used: set[str] = set()
+    for m in re.findall(r'self\._(?:get|post|patch|delete)\(\s*f?"([^"]+)"', text):
+        seg = re.sub(r"\{[^}]*\}", "", m.lstrip("/")).split("/")[0]
+        if re.fullmatch(r"[a-z_]+", seg) and seg not in RESOURCE_SKIP:
+            used.add(seg)
+    for m in re.findall(r'_api_href\(f?"([a-z_]+)', text):
+        used.add(m)
+    return used
+
+
+def _extract_client_filters() -> set[str]:
+    text = CLIENT.read_text()
+    keys = set(re.findall(r'\{"([a-z_]+)":\s*\{"operator"', text))
+    return keys - FILTER_SKIP
+
+
+def _resource_present(version: str, resource: str) -> bool:
+    """Robust presence check: directory, path-helper entry, or *_api.rb file."""
+    api = SOURCES / version / "lib" / "api" / "v3"
+    if not api.exists():
+        return False
+    name = RESOURCE_ALIASES.get(resource, resource)
+    if (api / name).is_dir():
+        return True
+    helper = api / "utilities" / "path_helper.rb"
+    if helper.exists():
+        hit = subprocess.run(["grep", "-qE", rf"\b{name}\b", str(helper)],
+                             capture_output=True, check=False).returncode == 0
+        if hit:
+            return True
+    found = subprocess.run(["find", str(api), "-name", f"*{name}*"],
+                           capture_output=True, text=True, check=False).stdout.strip()
+    return bool(found)
+
+
+def _filter_present(version: str, filter_key: str) -> bool:
+    qroot = SOURCES / version / "app" / "models" / "queries"
+    if not qroot.exists():
+        return False
+    name = FILTER_ALIASES.get(filter_key, filter_key)
+    # Filters are <name>_filter.rb files (allow plural dir layouts).
+    found = subprocess.run(["find", str(qroot), "-name", f"{name}_filter.rb"],
+                           capture_output=True, text=True, check=False).stdout.strip()
+    return bool(found)
+
+
+def run_full_coverage() -> int:
+    resources = sorted(_extract_client_resources())
+    filters = sorted(_extract_client_filters())
+    rows: list[tuple[str, str, list[str]]] = []
+    introduced_late: list[str] = []
+
+    for r in resources:
+        if r in MODULE_RESOURCES:
+            rows.append((r, "resource", ["module"] * len(VERSIONS)))
+            continue
+        cells = ["yes" if _resource_present(v, r) else "—" for v in VERSIONS]
+        rows.append((r, "resource", cells))
+        if cells[0] == "—" and "yes" in cells:
+            introduced_late.append(f"{r} (from {VERSIONS[cells.index('yes')]})")
+    for f in filters:
+        cells = ["yes" if _filter_present(v, f) else "—" for v in VERSIONS]
+        rows.append((f, "filter", cells))
+        if cells[0] == "—" and "yes" in cells:
+            introduced_late.append(f"{f} filter (from {VERSIONS[cells.index('yes')]})")
+
+    header = f"{'access':<28} {'kind':<9} " + " ".join(f"{v:<6}" for v in VERSIONS)
+    print(header)
+    print("-" * len(header))
+    for name, kind, cells in rows:
+        print(f"{name:<28} {kind:<9} " + " ".join(f"{c:<6}" for c in cells))
+
+    print()
+    module_only = [n for n, k, c in rows if c and c[0] == "module"]
+    print(f"{len(resources)} resources + {len(filters)} filters checked across "
+          f"{VERSIONS[0]}..{VERSIONS[-1]}.")
+    if module_only:
+        print(f"module-only (not source-verifiable, CE): {', '.join(module_only)}")
+    if introduced_late:
+        print("introduced after 16.0 (a tool using these needs a newer server):")
+        for x in introduced_late:
+            print(f"  - {x}")
+    else:
+        print("All source-verifiable accesses exist back to 16.0.")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verbose", action="store_true",
                         help="list every checked symbol, not just mismatches")
+    parser.add_argument("--all", action="store_true",
+                        help="auto-extract and map EVERY resource + filter the client uses")
     args = parser.parse_args()
 
     missing_sources = [v for v in VERSIONS if not (SOURCES / v).exists()]
@@ -175,6 +291,9 @@ def main() -> int:
         print(f"error: missing source clones for {missing_sources}.", file=sys.stderr)
         print("Run: tools/api-check/fetch-sources.sh", file=sys.stderr)
         return 2
+
+    if args.all:
+        return run_full_coverage()
 
     header = f"{'symbol':<32} {'kind':<8} " + " ".join(f"{v:<8}" for v in VERSIONS) + " verdict"
     print(header)

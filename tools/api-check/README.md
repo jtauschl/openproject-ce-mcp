@@ -17,14 +17,26 @@ Two tools that keep this MCP honest against the OpenProject API:
 ```bash
 tools/api-check/fetch-sources.sh        # clone OP source for each version (once)
 
-python tools/api-check/check_api.py     # version matrix; exit 1 on unexpected drift
+python tools/api-check/check_api.py     # curated version matrix; exit 1 on unexpected drift
 python tools/api-check/check_api.py --verbose   # also list matching symbols
+python tools/api-check/check_api.py --all       # auto-map EVERY resource + filter the client uses
 
 # Coverage: set OPENPROJECT_BASE_URL / OPENPROJECT_API_TOKEN to enable the live
 # CE probe (a CE instance), otherwise the live column is skipped.
 python tools/api-check/check_coverage.py          # coverage matrix to stdout
 python tools/api-check/check_coverage.py --write  # also (re)write COVERAGE.md
 ```
+
+`--all` is the **full** version map: it auto-extracts every endpoint resource and
+query-filter key from `client.py` and checks each across all 13 versions, so no
+access is missed as the client grows. It flags anything introduced after 16.0
+(e.g. `workspaces` from 17.0 — used by the favorite tools — and `project_phases`
+from 16.1). Resources whose v3 API lives in a separate module engine
+(`documents`, `file_links`, `grids`, `job_statuses`, `time_entries`) are reported
+as `module` since the sparse checkout omits `modules/`; they are CE and verified
+at runtime instead. The curated default run (without `--all`) stays the
+pass/fail gate; `--all` is the exhaustive audit. Maintain `RESOURCE_ALIASES` /
+`FILTER_ALIASES` / `MODULE_RESOURCES` when a name doesn't line up.
 
 `check_coverage.py` classifies each of OpenProject's ~53 v3 resources as
 **covered**, **GAP (CE)** (a plain top-level CE resource we don't use yet),
