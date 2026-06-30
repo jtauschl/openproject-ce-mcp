@@ -2031,6 +2031,7 @@ class OpenProjectClient:
             raise OpenProjectServerError("OpenProject work package is missing a project link.")
         self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
 
+        lock_version = current.get("lockVersion")
         payload = await self._build_write_payload(
             project=str(project_id),
             type=type,
@@ -2048,8 +2049,9 @@ class OpenProjectClient:
             start_date=start_date,
             due_date=due_date,
             work_package_id=work_package_id,
+            lock_version=lock_version,
         )
-        payload["lockVersion"] = current.get("lockVersion")
+        payload["lockVersion"] = lock_version
         form = await self._post(f"work_packages/{work_package_id}/form", json_body=payload)
         return await self._finalize_work_package_write(
             action="update",
@@ -4852,6 +4854,7 @@ class OpenProjectClient:
         start_date: str | None = None,
         due_date: str | None = None,
         work_package_id: int | None = None,
+        lock_version: int | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {}
         links: dict[str, dict[str, str]] = {}
@@ -4910,6 +4913,7 @@ class OpenProjectClient:
                 type=type,
                 work_package_id=work_package_id,
                 draft_payload=payload,
+                lock_version=lock_version,
             )
             if responsible is not None:
                 self._ensure_field_writable("work_package", "responsible")
@@ -4936,9 +4940,17 @@ class OpenProjectClient:
         type: str | None,
         work_package_id: int | None,
         draft_payload: dict[str, Any],
+        lock_version: int | None = None,
     ) -> dict[str, Any]:
         if work_package_id is not None:
-            form = await self._post(f"work_packages/{work_package_id}/form", json_body=draft_payload)
+            # OpenProject 17.x rejects the work-package form endpoint with a
+            # "could not be updated due to conflicting modifications" (409) error
+            # unless the current lockVersion is included, even for a schema-only
+            # probe. Inject it so the schema fetch on update succeeds.
+            schema_body = dict(draft_payload)
+            if lock_version is not None:
+                schema_body["lockVersion"] = lock_version
+            form = await self._post(f"work_packages/{work_package_id}/form", json_body=schema_body)
             return form.get("_embedded", {}).get("schema", {})
 
         schema_payload = dict(draft_payload)
