@@ -8,7 +8,7 @@ Classifications: **covered** (client uses it), **GAP (CE)** (top-level CE resour
 resource                   client  live   classification
 ------------------------------------------------------------
 actions                    yes     200    covered
-activities                 —       404    subresource
+activities                 yes     404    covered
 attachments                yes     404    covered
 backups                    —       404    enterprise
 capabilities               yes     400    covered
@@ -39,7 +39,7 @@ project_phases             yes     404    covered
 projects                   yes     200    covered
 queries                    yes     200    covered
 relations                  yes     200    covered
-reminders                  —       200    GAP (CE)
+reminders                  yes     200    covered
 render                     —       404    internal
 repositories               —       404    enterprise
 roles                      yes     200    covered
@@ -59,12 +59,11 @@ views                      yes     200    covered
 watchers                   —       404    subresource
 wiki_pages                 yes     404    covered
 work_packages              yes     200    covered
-workspaces                 —       200    internal
+workspaces                 yes     200    covered
 
-Summary: GAP (CE)=2, covered=26, enterprise=4, internal=8, subresource=7, subresource?=6
+Summary: GAP (CE)=1, covered=29, enterprise=4, internal=7, subresource=6, subresource?=6
 ```
 
 ## Genuine CE gaps
 
 - `placeholder_users`
-- `reminders`
