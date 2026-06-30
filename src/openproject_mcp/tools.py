@@ -36,6 +36,7 @@ from .models import (
     DocumentListResult,
     DocumentWriteResult,
     EmojiReactionListResult,
+    FavoriteWriteResult,
     FileLinkListResult,
     FileLinkWriteResult,
     GridListResult,
@@ -219,6 +220,8 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
         mcp.tool()(update_project)
         mcp.tool()(delete_project)
         mcp.tool()(copy_project)
+        mcp.tool()(add_project_favorite)
+        mcp.tool()(remove_project_favorite)
         mcp.tool()(create_news)
         mcp.tool()(update_news)
         mcp.tool()(delete_news)
@@ -2060,6 +2063,34 @@ async def delete_reminder(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(reminder_id, field_name="reminder_id")
     return await _run_tool(client.delete_reminder(reminder_id=safe_id, confirm=confirm))
+
+
+async def add_project_favorite(
+    ctx: Context,
+    project: str,
+    confirm: bool = False,
+) -> FavoriteWriteResult:
+    """Prepare or mark a project as a favorite; only writes when called again with confirm=true.
+
+    project accepts a numeric id or a project identifier.
+    """
+    client = _client_from_context(ctx)
+    safe_project = _validate_project_ref(project)
+    return await _run_tool(client.add_project_favorite(project=safe_project, confirm=confirm))
+
+
+async def remove_project_favorite(
+    ctx: Context,
+    project: str,
+    confirm: bool = False,
+) -> FavoriteWriteResult:
+    """Prepare or remove a project from favorites; only writes when called again with confirm=true.
+
+    project accepts a numeric id or a project identifier.
+    """
+    client = _client_from_context(ctx)
+    safe_project = _validate_project_ref(project)
+    return await _run_tool(client.remove_project_favorite(project=safe_project, confirm=confirm))
 
 
 async def get_current_user(ctx: Context) -> CurrentUser:

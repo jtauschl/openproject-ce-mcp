@@ -1339,3 +1339,14 @@ class ReminderWriteResult:
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: ReminderSummary | None
+
+
+@dataclass
+class FavoriteWriteResult:
+    action: str
+    confirmed: bool
+    requires_confirmation: bool
+    ready: bool
+    message: str
+    project_id: int | None
+    project: str | None

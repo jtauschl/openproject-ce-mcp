@@ -41,6 +41,7 @@ from .models import (
     DocumentWriteResult,
     EmojiReactionListResult,
     EmojiReactionSummary,
+    FavoriteWriteResult,
     FileLinkListResult,
     FileLinkSummary,
     FileLinkWriteResult,
@@ -3009,6 +3010,48 @@ class OpenProjectClient:
             validation_errors={},
             result=None,
         )
+
+    # --- Project favorites (via the workspaces endpoint) ---
+
+    async def _set_project_favorite(self, project: str, *, favorite: bool, confirm: bool) -> FavoriteWriteResult:
+        # Use the workspaces endpoint (the project-favorite path is deprecated).
+        project_payload = await self._get_project_payload(project, write=True)
+        project_id = int(project_payload["id"])
+        project_name = _trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT)
+        action = "favorite" if favorite else "unfavorite"
+        if self._preview_mode(confirm):
+            verb = "mark as favorite" if favorite else "remove from favorites"
+            return FavoriteWriteResult(
+                action=action,
+                confirmed=False,
+                requires_confirmation=True,
+                ready=True,
+                message=f"OpenProject is ready to {verb}. Ask for confirmation, then call again with confirm=true.",
+                project_id=project_id,
+                project=project_name,
+            )
+        self._ensure_write_enabled("project")
+        if favorite:
+            # The favorite endpoint returns 204 with no body, so go through
+            # _request (not _post, which would try to parse empty JSON).
+            await self._request("POST", f"workspaces/{project_id}/favorite", json_body={})
+        else:
+            await self._delete(f"workspaces/{project_id}/favorite")
+        return FavoriteWriteResult(
+            action=action,
+            confirmed=True,
+            requires_confirmation=False,
+            ready=True,
+            message=f"Project {'added to' if favorite else 'removed from'} favorites.",
+            project_id=project_id,
+            project=project_name,
+        )
+
+    async def add_project_favorite(self, *, project: str, confirm: bool = False) -> FavoriteWriteResult:
+        return await self._set_project_favorite(project, favorite=True, confirm=confirm)
+
+    async def remove_project_favorite(self, *, project: str, confirm: bool = False) -> FavoriteWriteResult:
+        return await self._set_project_favorite(project, favorite=False, confirm=confirm)
 
     async def get_current_user(self) -> CurrentUser:
         self._ensure_read_enabled("principal")

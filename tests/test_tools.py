@@ -11,6 +11,7 @@ from openproject_mcp.config import Settings
 from openproject_mcp.tools import (
     _validate_optional_work_package_ref,
     _validate_work_package_ref,
+    add_project_favorite,
     add_work_package_comment,
     add_work_package_watcher,
     bulk_create_work_packages,
@@ -87,6 +88,7 @@ from openproject_mcp.tools import (
     lock_user,
     mark_all_notifications_read,
     mark_notification_read,
+    remove_project_favorite,
     remove_work_package_watcher,
     search_work_packages,
     toggle_activity_emoji_reaction,
@@ -957,6 +959,26 @@ async def test_reminder_tools_validate_inputs() -> None:
         await create_work_package_reminder(ctx, "5", "2026-12-01", confirm=True)
     with pytest.raises(ValueError, match="remind_at is required"):
         await create_work_package_reminder(ctx, "5", "", confirm=True)
+
+
+@pytest.mark.asyncio
+async def test_project_favorite_tools_pass_expected_arguments() -> None:
+    class StubClient:
+        async def add_project_favorite(self, **kwargs):
+            return {"action": "favorite", **kwargs}
+
+        async def remove_project_favorite(self, **kwargs):
+            return {"action": "unfavorite", **kwargs}
+
+    ctx = FakeContext(StubClient())  # type: ignore[arg-type]
+
+    added = await add_project_favorite(ctx, "demo", confirm=True)
+    removed = await remove_project_favorite(ctx, "demo", confirm=False)
+
+    assert added["project"] == "demo"
+    assert added["confirm"] is True
+    assert removed["action"] == "unfavorite"
+    assert removed["confirm"] is False
 
 
 @pytest.mark.asyncio
