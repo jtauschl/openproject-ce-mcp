@@ -5306,3 +5306,25 @@ async def test_add_project_favorite_uses_workspaces_path_and_empty_body() -> Non
     assert result.project == "Demo"
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_version_status_builds_filter() -> None:
+    captured: dict[str, str] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages" and request.method == "GET":
+            captured["filters"] = request.url.params.get("filters", "")
+            return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    await client.list_work_packages(version_status="closed")
+
+    filters = json.loads(captured["filters"])
+    version_filter = next(f for f in filters if "version" in f)
+    assert version_filter["version"]["operator"] == "c"
+    assert version_filter["version"]["values"] == []
+
+    await client.aclose()

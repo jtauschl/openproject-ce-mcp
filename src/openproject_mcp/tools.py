@@ -1013,17 +1013,25 @@ async def list_work_packages(
     project: str | None = None,
     type: str | None = None,
     version: str | None = None,
+    version_status: str | None = None,
     open_only: bool = False,
     assignee_me: bool = False,
     has_description: bool | None = None,
     offset: int = 1,
     limit: int | None = None,
 ) -> WorkPackageListResult:
-    """List work packages with structured filters and no free-text query requirement."""
+    """List work packages with structured filters and no free-text query requirement.
+
+    version_status filters by the status of a work package's assigned version:
+    one of 'open', 'closed', or 'locked'.
+    """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_type = _validate_optional_query(type, field_name="type", max_length=100)
     safe_version = _validate_optional_query(version, field_name="version", max_length=100)
+    safe_version_status = _validate_optional_choice(
+        version_status, field_name="version_status", allowed_values={"open", "closed", "locked"}
+    )
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     return await _run_tool(
@@ -1031,6 +1039,7 @@ async def list_work_packages(
             project=safe_project,
             type=safe_type,
             version=safe_version,
+            version_status=safe_version_status,
             open_only=open_only,
             assignee_me=assignee_me,
             has_description=has_description,

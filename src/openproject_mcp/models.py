@@ -343,6 +343,7 @@ class WorkPackageFieldSchema:
     required: bool
     writable: bool
     has_default: bool
+    placeholder: str | None
     location: str | None
     allowed_values: list[OptionValue]
 

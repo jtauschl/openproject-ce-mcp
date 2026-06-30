@@ -1839,6 +1839,7 @@ class OpenProjectClient:
         project: str | None = None,
         type: str | None = None,
         version: str | None = None,
+        version_status: str | None = None,
         open_only: bool = False,
         assignee_me: bool = False,
         has_description: bool | None = None,
@@ -1870,6 +1871,11 @@ class OpenProjectClient:
         if version:
             version_id = await self._resolve_version_id(version, project=project)
             filters.append({"version": {"operator": "=", "values": [version_id]}})
+        if version_status:
+            # Filter by the status of a work package's assigned version. The
+            # version filter supports operators o/c/l for open/closed/locked.
+            status_operator = {"open": "o", "closed": "c", "locked": "l"}[version_status]
+            filters.append({"version": {"operator": status_operator, "values": []}})
         if has_description is not None:
             filters.append({"description": {"operator": "*" if has_description else "!*", "values": []}})
         return await self._list_work_package_collection(
@@ -5038,6 +5044,9 @@ class OpenProjectClient:
             required=bool(payload.get("required")),
             writable=bool(payload.get("writable")),
             has_default=bool(payload.get("hasDefault")),
+            # Templated-subject hint (17.3+); present only when a type configures
+            # a subject template, otherwise absent.
+            placeholder=_trim_text(payload.get("placeholder"), limit=SUBJECT_LIMIT),
             location=_trim_text(payload.get("location"), limit=SUBJECT_LIMIT),
             allowed_values=normalized_allowed_values,
         )

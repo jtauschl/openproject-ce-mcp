@@ -982,6 +982,21 @@ async def test_project_favorite_tools_pass_expected_arguments() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_work_packages_version_status_validation() -> None:
+    class StubClient:
+        async def list_work_packages(self, **kwargs):
+            return kwargs
+
+    ctx = FakeContext(StubClient())  # type: ignore[arg-type]
+
+    ok = await list_work_packages(ctx, version_status="open")
+    assert ok["version_status"] == "open"
+
+    with pytest.raises(ValueError, match="version_status must be one of"):
+        await list_work_packages(ctx, version_status="archived")
+
+
+@pytest.mark.asyncio
 async def test_notification_tools_pass_expected_arguments() -> None:
     class StubClient:
         async def list_notifications(self, **kwargs):

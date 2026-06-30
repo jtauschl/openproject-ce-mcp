@@ -152,7 +152,7 @@ All list tools are bounded and paginated. They return compact summaries — not 
 | `list_categories` | List work-package categories configured for a project |
 | `get_category` | Fetch a single category from a project's category list |
 | `get_project_work_package_context` | Return project metadata plus the writable work-package schema for an optional type, including custom fields, project phases, and allowed values |
-| `list_work_packages` | List work packages with structured filters such as `project`, `type`, `version`, and `has_description` |
+| `list_work_packages` | List work packages with structured filters such as `project`, `type`, `version`, `version_status` (open/closed/locked), and `has_description` |
 | `search_work_packages` | Search work packages by free-text query; optional `project`, `status`, `open_only`, and `assignee_me` filters |
 | `get_work_package` | Fetch a detailed work package summary by id or `displayId` reference |
 | `create_work_package` | Validate and then create a work package; only writes when called again with `confirm=true` |
