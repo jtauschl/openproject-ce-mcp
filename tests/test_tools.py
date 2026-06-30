@@ -9,6 +9,8 @@ import pytest
 from openproject_mcp.client import OpenProjectClient
 from openproject_mcp.config import Settings
 from openproject_mcp.tools import (
+    _validate_optional_work_package_ref,
+    _validate_work_package_ref,
     add_work_package_comment,
     add_work_package_watcher,
     bulk_create_work_packages,
@@ -305,12 +307,12 @@ async def test_update_work_package_tool_passes_project_phase() -> None:
 
     result = await update_work_package(
         FakeContext(StubClient()),  # type: ignore[arg-type]
-        42,
+        "42",
         project_phase="Executing",
         confirm=False,
     )
 
-    assert result["work_package_id"] == 42
+    assert result["work_package_id"] == "42"
     assert result["project_phase"] == "Executing"
 
 
@@ -320,9 +322,9 @@ async def test_delete_work_package_tool_passes_confirmation_flag() -> None:
         async def delete_work_package(self, **kwargs):
             return kwargs
 
-    result = await delete_work_package(FakeContext(StubClient()), 42, confirm=True)  # type: ignore[arg-type]
+    result = await delete_work_package(FakeContext(StubClient()), "42", confirm=True)  # type: ignore[arg-type]
 
-    assert result["work_package_id"] == 42
+    assert result["work_package_id"] == "42"
     assert result["confirm"] is True
 
 
@@ -334,13 +336,13 @@ async def test_add_work_package_comment_tool_passes_notify_flag() -> None:
 
     result = await add_work_package_comment(
         FakeContext(StubClient()),  # type: ignore[arg-type]
-        42,
+        "42",
         "Looks good",
         notify=False,
         confirm=True,
     )
 
-    assert result["work_package_id"] == 42
+    assert result["work_package_id"] == "42"
     assert result["notify"] is False
     assert result["confirm"] is True
 
@@ -380,14 +382,14 @@ async def test_create_subtask_tool_passes_parent_id() -> None:
 
     result = await create_subtask(
         FakeContext(StubClient()),  # type: ignore[arg-type]
-        42,
+        "42",
         "Task",
         "Child ticket",
         project_phase="Executing",
         confirm=False,
     )
 
-    assert result["parent_work_package_id"] == 42
+    assert result["parent_work_package_id"] == "42"
     assert result["project_phase"] == "Executing"
     assert result["subject"] == "Child ticket"
 
@@ -709,9 +711,9 @@ async def test_view_category_and_attachment_tools_pass_expected_arguments(tmp_pa
     view = await get_view(ctx, 12)
     categories = await list_categories(ctx, "demo")
     category = await get_category(ctx, "demo", 3)
-    attachments = await list_work_package_attachments(ctx, 7)
+    attachments = await list_work_package_attachments(ctx, "7")
     attachment = await get_attachment(ctx, 5)
-    created = await create_work_package_attachment(ctx, 7, str(sample_file), description="Spec", confirm=False)
+    created = await create_work_package_attachment(ctx, "7", str(sample_file), description="Spec", confirm=False)
     deleted = await delete_attachment(ctx, 5, confirm=True)
 
     assert views["project"] == "demo"
@@ -720,9 +722,9 @@ async def test_view_category_and_attachment_tools_pass_expected_arguments(tmp_pa
     assert categories["project"] == "demo"
     assert category["project_ref"] == "demo"
     assert category["category_id"] == 3
-    assert attachments["work_package_id"] == 7
+    assert attachments["work_package_id"] == "7"
     assert attachment["attachment_id"] == 5
-    assert created["work_package_id"] == 7
+    assert created["work_package_id"] == "7"
     assert created["file_path"] == str(sample_file)
     assert deleted["attachment_id"] == 5
     assert deleted["confirm"] is True
@@ -752,7 +754,7 @@ async def test_time_entry_tools_pass_expected_arguments() -> None:
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
     activities = await list_time_entry_activities(ctx)
-    listed = await list_time_entries(ctx, project="demo", work_package_id=7, user="me")
+    listed = await list_time_entries(ctx, project="demo", work_package_id="7", user="me")
     detail = await get_time_entry(ctx, 5)
     created = await create_time_entry(
         ctx,
@@ -767,7 +769,7 @@ async def test_time_entry_tools_pass_expected_arguments() -> None:
 
     assert activities["activities"] is True
     assert listed["project"] == "demo"
-    assert listed["work_package_id"] == 7
+    assert listed["work_package_id"] == "7"
     assert listed["user"] == "me"
     assert detail["time_entry_id"] == 5
     assert created["hours"] == "PT1H30M"
@@ -861,11 +863,11 @@ async def test_watcher_tools_pass_expected_arguments() -> None:
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
-    listed = await list_work_package_watchers(ctx, 42)
-    added = await add_work_package_watcher(ctx, 42, 7, confirm=False)
-    removed = await remove_work_package_watcher(ctx, 42, 7, confirm=True)
+    listed = await list_work_package_watchers(ctx, "42")
+    added = await add_work_package_watcher(ctx, "42", 7, confirm=False)
+    removed = await remove_work_package_watcher(ctx, "42", 7, confirm=True)
 
-    assert listed["work_package_id"] == 42
+    assert listed["work_package_id"] == "42"
     assert added["user_id"] == 7
     assert removed["confirm"] is True
 
@@ -985,10 +987,10 @@ async def test_file_link_tools_pass_expected_arguments() -> None:
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
-    listed = await list_work_package_file_links(ctx, 42)
+    listed = await list_work_package_file_links(ctx, "42")
     deleted = await delete_file_link(ctx, 5, confirm=True)
 
-    assert listed["work_package_id"] == 42
+    assert listed["work_package_id"] == "42"
     assert deleted["confirm"] is True
 
 
@@ -1213,3 +1215,30 @@ async def test_bulk_update_work_packages_tool_passes_validated_items() -> None:
     assert received[0]["status"] == "In progress"
     assert received[0]["parent_work_package_id"] == 30
     assert received[1]["due_date"] == "2026-12-31"
+
+
+def test_validate_work_package_ref_accepts_numeric_and_semantic() -> None:
+    assert _validate_work_package_ref(42) == "42"
+    assert _validate_work_package_ref("42") == "42"
+    assert _validate_work_package_ref("PROJ-123") == "PROJ-123"
+    # Surrounding whitespace is normalized.
+    assert _validate_work_package_ref("  PROJ-7  ") == "PROJ-7"
+
+
+def test_validate_work_package_ref_rejects_invalid() -> None:
+    with pytest.raises(ValueError, match="work_package_id is required"):
+        _validate_work_package_ref("   ")
+    with pytest.raises(ValueError, match="positive integer id or a work package reference"):
+        _validate_work_package_ref("PROJ/123")
+    with pytest.raises(ValueError, match="positive integer id or a work package reference"):
+        _validate_work_package_ref("PROJ 123")
+    with pytest.raises(ValueError, match="positive integer id or a work package reference"):
+        # A project identifier without a "-<number>" suffix is not a work package ref.
+        _validate_work_package_ref("PROJ")
+    with pytest.raises(ValueError, match="must be at least 1"):
+        _validate_work_package_ref("0")
+
+
+def test_validate_optional_work_package_ref_passes_through_none() -> None:
+    assert _validate_optional_work_package_ref(None) is None
+    assert _validate_optional_work_package_ref("PROJ-9") == "PROJ-9"

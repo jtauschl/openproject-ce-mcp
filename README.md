@@ -88,7 +88,7 @@ All write operations follow a preview-then-confirm pattern by default: call a to
 | | |
 |---|---|
 | Python | 3.10 or later |
-| OpenProject | Community Edition 16.1 or later, API v3 accessible |
+| OpenProject | Community Edition 16.1 or later (reviewed for compatibility through 17.5), API v3 accessible |
 | OS | macOS 12+, Linux, or Windows 10/11 |
 
 [`uv`](https://github.com/astral-sh/uv) is recommended for dependency management but not required.

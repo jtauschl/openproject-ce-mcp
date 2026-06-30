@@ -135,6 +135,10 @@ All list tools are bounded and paginated. They return compact summaries — not 
 
 ## Work packages
 
+> Single work-package tools accept either a numeric id or a project-prefixed
+> `displayId` reference such as `PROJ-123` (OpenProject 17.5+). The bulk tools
+> (`bulk_create_work_packages`, `bulk_update_work_packages`) are numeric-only.
+
 | Tool | Description |
 |---|---|
 | `list_statuses` | List available work-package statuses |
@@ -148,7 +152,7 @@ All list tools are bounded and paginated. They return compact summaries — not 
 | `get_project_work_package_context` | Return project metadata plus the writable work-package schema for an optional type, including custom fields, project phases, and allowed values |
 | `list_work_packages` | List work packages with structured filters such as `project`, `type`, `version`, and `has_description` |
 | `search_work_packages` | Search work packages by free-text query; optional `project`, `status`, `open_only`, and `assignee_me` filters |
-| `get_work_package` | Fetch a detailed work package summary by id |
+| `get_work_package` | Fetch a detailed work package summary by id or `displayId` reference |
 | `create_work_package` | Validate and then create a work package; only writes when called again with `confirm=true` |
 | `create_subtask` | Validate and then create a child work package below an existing parent; only writes when called again with `confirm=true` |
 | `update_work_package` | Validate and then update a work package; only writes when called again with `confirm=true` |

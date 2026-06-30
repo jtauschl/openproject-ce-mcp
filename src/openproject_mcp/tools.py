@@ -110,6 +110,9 @@ from .models import (
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 ISO8601_DURATION_RE = re.compile(r"^P(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)$")
 PROJECT_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+# A project-based work package reference: a project identifier followed by "-<number>"
+# (e.g. PROJ-123). The numeric form is handled separately before this pattern applies.
+WORK_PACKAGE_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}-\d+$")
 RELATION_TYPE_RE = re.compile(r"^(relates|duplicates|duplicated|blocks|blocked|precedes|follows|includes|partof|requires|required)$")
 
 
@@ -1025,11 +1028,14 @@ async def list_work_packages(
 
 async def get_work_package(
     ctx: Context,
-    work_package_id: int,
+    work_package_id: str,
 ) -> WorkPackageDetail:
-    """Get a compact work package summary by id."""
+    """Get a compact work package summary by id.
+
+    Accepts a numeric id or a project-prefixed reference like PROJ-123.
+    """
     client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(work_package_id, field_name="work_package_id")
+    safe_id = _validate_work_package_ref(work_package_id)
     return await _run_tool(client.get_work_package(safe_id))
 
 
@@ -1091,7 +1097,7 @@ async def create_work_package(
 
 async def update_work_package(
     ctx: Context,
-    work_package_id: int,
+    work_package_id: str,
     subject: str | None = None,
     description: str | None = None,
     type: str | None = None,
@@ -1110,10 +1116,11 @@ async def update_work_package(
     """Prepare or update a work package.
 
     The tool validates the patch first. Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
+    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
     assignee accepts a numeric user id or 'me'. Omitted fields stay unchanged.
     """
     client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(work_package_id, field_name="work_package_id")
+    safe_id = _validate_work_package_ref(work_package_id)
     safe_subject = _validate_optional_query(subject, field_name="subject", max_length=255)
     safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
     safe_type = _validate_optional_query(type, field_name="type", max_length=100)
@@ -1296,21 +1303,22 @@ async def bulk_update_work_packages(
 
 async def delete_work_package(
     ctx: Context,
-    work_package_id: int,
+    work_package_id: str,
     confirm: bool = False,
 ) -> WorkPackageWriteResult:
     """Prepare or delete a work package.
 
     The tool previews the target first. Set confirm=true to delete, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
+    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
     """
     client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(work_package_id, field_name="work_package_id")
+    safe_id = _validate_work_package_ref(work_package_id)
     return await _run_tool(client.delete_work_package(work_package_id=safe_id, confirm=confirm))
 
 
 async def create_subtask(
     ctx: Context,
-    parent_work_package_id: int,
+    parent_work_package_id: str,
     type: str,
     subject: str,
     description: str | None = None,
@@ -1328,9 +1336,10 @@ async def create_subtask(
     """Prepare or create a subtask under an existing work package.
 
     The tool validates the payload first. Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
+    parent_work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
     """
     client = _client_from_context(ctx)
-    safe_parent_id = _validate_positive_int(parent_work_package_id, field_name="parent_work_package_id")
+    safe_parent_id = _validate_work_package_ref(parent_work_package_id, field_name="parent_work_package_id")
     safe_type = _validate_required_query(type, field_name="type", max_length=100)
     safe_subject = _validate_required_query(subject, field_name="subject", max_length=255)
     safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
@@ -1365,7 +1374,7 @@ async def create_subtask(
 
 async def add_work_package_comment(
     ctx: Context,
-    work_package_id: int,
+    work_package_id: str,
     comment: str,
     internal: bool = False,
     notify: bool = False,
@@ -1374,9 +1383,10 @@ async def add_work_package_comment(
     """Prepare or add a comment to a work package.
 
     The tool only writes when confirm=true. notify=false avoids change emails by default.
+    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
     """
     client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(work_package_id, field_name="work_package_id")
+    safe_id = _validate_work_package_ref(work_package_id)
     safe_comment = _validate_required_text(comment, field_name="comment", max_length=10_000)
     return await _run_tool(
         client.add_work_package_comment(
@@ -1391,17 +1401,21 @@ async def add_work_package_comment(
 
 async def create_work_package_relation(
     ctx: Context,
-    work_package_id: int,
-    related_to_work_package_id: int,
+    work_package_id: str,
+    related_to_work_package_id: str,
     relation_type: str,
     description: str | None = None,
     lag: int | None = None,
     confirm: bool = False,
 ) -> RelationWriteResult:
-    """Prepare or create a relation between work packages."""
+    """Prepare or create a relation between work packages.
+
+    Both work_package_id and related_to_work_package_id accept a numeric id or a
+    project-prefixed reference like PROJ-123.
+    """
     client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(work_package_id, field_name="work_package_id")
-    safe_related_id = _validate_positive_int(related_to_work_package_id, field_name="related_to_work_package_id")
+    safe_id = _validate_work_package_ref(work_package_id)
+    safe_related_id = _validate_work_package_ref(related_to_work_package_id, field_name="related_to_work_package_id")
     safe_relation_type = _validate_relation_type(relation_type)
     safe_description = _validate_optional_text(description, field_name="description", max_length=255)
     safe_lag = _validate_optional_non_negative_int(lag, field_name="lag")
@@ -1718,11 +1732,14 @@ async def delete_board(
 
 async def list_work_package_attachments(
     ctx: Context,
-    work_package_id: int,
+    work_package_id: str,
 ) -> AttachmentListResult:
-    """List attachments on a work package."""
+    """List attachments on a work package.
+
+    Accepts a numeric id or a project-prefixed reference like PROJ-123.
+    """
     client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(work_package_id, field_name="work_package_id")
+    safe_id = _validate_work_package_ref(work_package_id)
     return await _run_tool(client.list_work_package_attachments(safe_id))
 
 
@@ -1738,14 +1755,17 @@ async def get_attachment(
 
 async def create_work_package_attachment(
     ctx: Context,
-    work_package_id: int,
+    work_package_id: str,
     file_path: str,
     description: str | None = None,
     confirm: bool = False,
 ) -> AttachmentWriteResult:
-    """Prepare or upload an attachment to a work package."""
+    """Prepare or upload an attachment to a work package.
+
+    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    """
     client = _client_from_context(ctx)
-    safe_work_package_id = _validate_positive_int(work_package_id, field_name="work_package_id")
+    safe_work_package_id = _validate_work_package_ref(work_package_id)
     safe_file_path = _validate_required_text(file_path, field_name="file_path", max_length=4096)
     safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
     return await _run_tool(
@@ -1778,17 +1798,20 @@ async def list_time_entry_activities(ctx: Context) -> TimeEntryActivityListResul
 async def list_time_entries(
     ctx: Context,
     project: str | None = None,
-    work_package_id: int | None = None,
+    work_package_id: str | None = None,
     user: str | None = None,
     spent_on_from: str | None = None,
     spent_on_to: str | None = None,
     offset: int = 1,
     limit: int | None = None,
 ) -> TimeEntryListResult:
-    """List time entries with optional project, work package, user, and date filters."""
+    """List time entries with optional project, work package, user, and date filters.
+
+    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
-    safe_work_package_id = _validate_optional_positive_int(work_package_id, field_name="work_package_id")
+    safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
     safe_user = _validate_optional_user_or_principal_ref(user)
     safe_spent_on_from = _validate_optional_date(spent_on_from, field_name="spent_on_from")
     safe_spent_on_to = _validate_optional_date(spent_on_to, field_name="spent_on_to")
@@ -1823,19 +1846,22 @@ async def create_time_entry(
     hours: str,
     spent_on: str,
     project: str | None = None,
-    work_package_id: int | None = None,
+    work_package_id: str | None = None,
     user: str | None = None,
     comment: str | None = None,
     ongoing: bool | None = None,
     confirm: bool = False,
 ) -> TimeEntryWriteResult:
-    """Prepare or create a time entry."""
+    """Prepare or create a time entry.
+
+    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    """
     client = _client_from_context(ctx)
     safe_activity = _validate_required_query(activity, field_name="activity", max_length=100)
     safe_hours = _validate_required_duration(hours, field_name="hours")
     safe_spent_on = _validate_required_date(spent_on, field_name="spent_on")
     safe_project = _validate_optional_project_ref(project)
-    safe_work_package_id = _validate_optional_positive_int(work_package_id, field_name="work_package_id")
+    safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
     safe_user = _validate_optional_user_or_principal_ref(user)
     safe_comment = _validate_optional_text(comment, field_name="comment", max_length=10_000)
     if safe_project is None and safe_work_package_id is None:
@@ -1903,22 +1929,28 @@ async def delete_time_entry(
 
 async def get_work_package_relations(
     ctx: Context,
-    work_package_id: int,
+    work_package_id: str,
 ) -> RelationListResult:
-    """Get all relations for a work package (blocks, relates to, duplicates, etc.)."""
+    """Get all relations for a work package (blocks, relates to, duplicates, etc.).
+
+    Accepts a numeric id or a project-prefixed reference like PROJ-123.
+    """
     client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(work_package_id, field_name="work_package_id")
+    safe_id = _validate_work_package_ref(work_package_id)
     return await _run_tool(client.get_work_package_relations(safe_id))
 
 
 async def get_work_package_activities(
     ctx: Context,
-    work_package_id: int,
+    work_package_id: str,
     limit: int | None = None,
 ) -> ActivityListResult:
-    """Get the activity log for a work package, most recent first."""
+    """Get the activity log for a work package, most recent first.
+
+    Accepts a numeric id or a project-prefixed reference like PROJ-123.
+    """
     client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(work_package_id, field_name="work_package_id")
+    safe_id = _validate_work_package_ref(work_package_id)
     safe_limit = _validate_limit(limit)
     return await _run_tool(client.get_work_package_activities(safe_id, limit=safe_limit))
 
@@ -1974,36 +2006,45 @@ async def get_type(ctx: Context, type_id: int) -> TypeSummary:
 
 async def list_work_package_watchers(
     ctx: Context,
-    work_package_id: int,
+    work_package_id: str,
 ) -> WatcherListResult:
-    """List watchers of a work package."""
+    """List watchers of a work package.
+
+    Accepts a numeric id or a project-prefixed reference like PROJ-123.
+    """
     client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(work_package_id, field_name="work_package_id")
+    safe_id = _validate_work_package_ref(work_package_id)
     return await _run_tool(client.list_work_package_watchers(safe_id))
 
 
 async def add_work_package_watcher(
     ctx: Context,
-    work_package_id: int,
+    work_package_id: str,
     user_id: int,
     confirm: bool = False,
 ) -> WatcherWriteResult:
-    """Prepare or add a watcher to a work package."""
+    """Prepare or add a watcher to a work package.
+
+    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    """
     client = _client_from_context(ctx)
-    safe_wp_id = _validate_positive_int(work_package_id, field_name="work_package_id")
+    safe_wp_id = _validate_work_package_ref(work_package_id)
     safe_user_id = _validate_positive_int(user_id, field_name="user_id")
     return await _run_tool(client.add_work_package_watcher(safe_wp_id, safe_user_id, confirm=confirm))
 
 
 async def remove_work_package_watcher(
     ctx: Context,
-    work_package_id: int,
+    work_package_id: str,
     user_id: int,
     confirm: bool = False,
 ) -> WatcherWriteResult:
-    """Prepare or remove a watcher from a work package."""
+    """Prepare or remove a watcher from a work package.
+
+    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    """
     client = _client_from_context(ctx)
-    safe_wp_id = _validate_positive_int(work_package_id, field_name="work_package_id")
+    safe_wp_id = _validate_work_package_ref(work_package_id)
     safe_user_id = _validate_positive_int(user_id, field_name="user_id")
     return await _run_tool(client.remove_work_package_watcher(safe_wp_id, safe_user_id, confirm=confirm))
 
@@ -2181,11 +2222,14 @@ async def delete_group(
 
 async def list_work_package_file_links(
     ctx: Context,
-    work_package_id: int,
+    work_package_id: str,
 ) -> FileLinkListResult:
-    """List Nextcloud file links attached to a work package (Community Edition)."""
+    """List Nextcloud file links attached to a work package (Community Edition).
+
+    Accepts a numeric id or a project-prefixed reference like PROJ-123.
+    """
     client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(work_package_id, field_name="work_package_id")
+    safe_id = _validate_work_package_ref(work_package_id)
     return await _run_tool(client.list_work_package_file_links(safe_id))
 
 
@@ -2516,6 +2560,26 @@ def _validate_project_identifier(value: str) -> str:
     if not PROJECT_REF_RE.fullmatch(normalized):
         raise ValueError("identifier must be a valid project identifier.")
     return normalized
+
+
+def _validate_work_package_ref(value: str, *, field_name: str = "work_package_id") -> str:
+    normalized = " ".join(str(value).split())
+    if not normalized:
+        raise ValueError(f"{field_name} is required.")
+    if normalized.isdigit():
+        _validate_positive_int(int(normalized), field_name=field_name)
+        return normalized
+    if not WORK_PACKAGE_REF_RE.fullmatch(normalized):
+        raise ValueError(
+            f"{field_name} must be a positive integer id or a work package reference (e.g. PROJ-123)."
+        )
+    return normalized
+
+
+def _validate_optional_work_package_ref(value: str | None, *, field_name: str = "work_package_id") -> str | None:
+    if value is None:
+        return None
+    return _validate_work_package_ref(value, field_name=field_name)
 
 
 def _validate_optional_user_ref(value: str | None) -> str | None:

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import getpass
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -31,7 +30,9 @@ def _venv_binary() -> Path:
 
 
 def _check_python() -> None:
-    if sys.version_info < (3, 10):
+    # Intentional runtime guard: this setup script may be launched by whatever
+    # interpreter the user has on PATH, which can predate the project minimum.
+    if sys.version_info < (3, 10):  # noqa: UP036
         print(f"Python 3.10+ required. Current: {sys.version}", file=sys.stderr)
         sys.exit(1)
 

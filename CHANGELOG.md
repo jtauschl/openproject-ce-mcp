@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## 2026-06-30
+
+### Compatibility
+
+- Reviewed for compatibility with OpenProject 17.5.1 / 17.5.0. No breaking API change
+  affects this server. The 17.5 change that replaces the `X-Requested-With` header check with
+  `Sec-Fetch-Site` applies to session authentication only; this server authenticates
+  with an API token (HTTP Basic auth) and is unaffected. The 17.4.1 security fixes
+  touch meeting, journal, and baseline endpoints that this server does not use.
+
+### Added
+
+- Single work package tools now accept a project-prefixed identifier (e.g. `PROJ-123`)
+  in addition to the numeric id; the bulk tools remain numeric-only. OpenProject 17.5
+  lets administrators switch the displayed identifier to a project-based format exposed
+  via `displayId`; these tools resolve such a reference server-side through a typeahead
+  search with an exact `displayId` match, then operate on the canonical numeric id. A
+  numeric reference is passed through without an extra request, so existing numeric
+  callers are unchanged. Resolved references are cached for the lifetime of the
+  connection.
+
+---
+
 ## 2026-05-18
 
 ### Compatibility
