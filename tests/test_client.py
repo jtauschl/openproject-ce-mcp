@@ -5211,3 +5211,59 @@ async def test_toggle_activity_emoji_reaction_rejects_invalid_reaction() -> None
         await client.toggle_activity_emoji_reaction(1988, "banana")
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_work_package_reminder_posts_and_normalizes() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/reminders" and request.method == "POST":
+            assert json.loads(request.content) == {"remindAt": "2026-12-01T09:00:00Z", "note": "n"}
+            return httpx.Response(
+                201,
+                json={
+                    "_type": "Reminder",
+                    "id": 7,
+                    "remindAt": "2026-12-01T09:00:00.000Z",
+                    "note": "n",
+                    "_embedded": {"creator": {"name": "Alice"}},
+                    "_links": {
+                        "self": {"href": "/api/v3/reminders/7"},
+                        "remindable": {"href": "/api/v3/work_packages/42"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.create_work_package_reminder(
+        work_package_id=42, remind_at="2026-12-01T09:00:00Z", note="n", confirm=True
+    )
+
+    assert result.confirmed is True
+    assert result.reminder_id == 7
+    assert result.result is not None
+    assert result.result.work_package_id == 42
+    assert result.result.creator == "Alice"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_reminder_requires_a_field() -> None:
+    client = OpenProjectClient(
+        _write_enabled_settings(),
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}, request=r)),
+    )
+
+    with pytest.raises(InvalidInputError, match="At least one field"):
+        await client.update_reminder(reminder_id=7, confirm=True)
+
+    await client.aclose()

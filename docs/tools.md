@@ -166,6 +166,10 @@ All list tools are bounded and paginated. They return compact summaries — not 
 | `get_work_package_activities` | Fetch the activity log for a work package, most recent first |
 | `list_work_package_reactions` | List emoji reactions across a work package's comment activities |
 | `toggle_activity_emoji_reaction` | Toggle an emoji reaction on a work package comment activity (add if absent, remove if present) |
+| `list_reminders` | List the current user's active reminders across all work packages |
+| `create_work_package_reminder` | Validate and then create a reminder on a work package (one active reminder per work package) |
+| `update_reminder` | Validate and then update a reminder's time or note |
+| `delete_reminder` | Validate and then delete a reminder; only deletes when called again with `confirm=true` |
 | `list_my_open_work_packages` | List the current user's open assigned work packages |
 | `list_work_package_watchers` | List watchers on a work package |
 | `add_work_package_watcher` | Add a user as a watcher on a work package |

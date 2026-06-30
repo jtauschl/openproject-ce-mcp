@@ -79,6 +79,8 @@ from .models import (
     RelationListResult,
     RelationUpdateResult,
     RelationWriteResult,
+    ReminderListResult,
+    ReminderWriteResult,
     RenderedText,
     RoleListResult,
     StatusListResult,
@@ -109,6 +111,8 @@ from .models import (
 )
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# ISO 8601 date-time, e.g. 2026-12-01T09:00:00Z or with a +HH:MM offset.
+DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
 ISO8601_DURATION_RE = re.compile(r"^P(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)$")
 PROJECT_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 # A project-based work package reference: a project identifier followed by "-<number>"
@@ -181,6 +185,7 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
         mcp.tool()(list_my_open_work_packages)
         mcp.tool()(get_work_package_activities)
         mcp.tool()(list_work_package_reactions)
+        mcp.tool()(list_reminders)
         mcp.tool()(get_work_package_relations)
         mcp.tool()(list_work_package_attachments)
         mcp.tool()(get_attachment)
@@ -232,6 +237,9 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
         mcp.tool()(delete_work_package)
         mcp.tool()(add_work_package_comment)
         mcp.tool()(toggle_activity_emoji_reaction)
+        mcp.tool()(create_work_package_reminder)
+        mcp.tool()(update_reminder)
+        mcp.tool()(delete_reminder)
         mcp.tool()(create_work_package_relation)
         mcp.tool()(delete_relation)
         mcp.tool()(create_work_package_attachment)
@@ -1988,6 +1996,72 @@ async def toggle_activity_emoji_reaction(
     return await _run_tool(client.toggle_activity_emoji_reaction(safe_id, safe_reaction))
 
 
+async def list_reminders(ctx: Context) -> ReminderListResult:
+    """List the current user's active reminders across all work packages."""
+    client = _client_from_context(ctx)
+    return await _run_tool(client.list_reminders())
+
+
+async def create_work_package_reminder(
+    ctx: Context,
+    work_package_id: int | str,
+    remind_at: str,
+    note: str | None = None,
+    confirm: bool = False,
+) -> ReminderWriteResult:
+    """Prepare or create a reminder on a work package.
+
+    `remind_at` is an ISO 8601 date-time (e.g. 2026-12-01T09:00:00Z). Only one
+    active reminder per work package is allowed; creating a second one fails.
+    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_work_package_ref(work_package_id)
+    safe_remind_at = _validate_required_datetime(remind_at, field_name="remind_at")
+    safe_note = _validate_optional_text(note, field_name="note", max_length=2000)
+    return await _run_tool(
+        client.create_work_package_reminder(
+            work_package_id=safe_id,
+            remind_at=safe_remind_at,
+            note=safe_note,
+            confirm=confirm,
+        )
+    )
+
+
+async def update_reminder(
+    ctx: Context,
+    reminder_id: int,
+    remind_at: str | None = None,
+    note: str | None = None,
+    confirm: bool = False,
+) -> ReminderWriteResult:
+    """Prepare or update a reminder's time or note. At least one field is required."""
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(reminder_id, field_name="reminder_id")
+    safe_remind_at = _validate_optional_datetime(remind_at, field_name="remind_at")
+    safe_note = _validate_optional_text(note, field_name="note", max_length=2000)
+    return await _run_tool(
+        client.update_reminder(
+            reminder_id=safe_id,
+            remind_at=safe_remind_at,
+            note=safe_note,
+            confirm=confirm,
+        )
+    )
+
+
+async def delete_reminder(
+    ctx: Context,
+    reminder_id: int,
+    confirm: bool = False,
+) -> ReminderWriteResult:
+    """Prepare or delete a reminder; only deletes when called again with confirm=true."""
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(reminder_id, field_name="reminder_id")
+    return await _run_tool(client.delete_reminder(reminder_id=safe_id, confirm=confirm))
+
+
 async def get_current_user(ctx: Context) -> CurrentUser:
     """Return the currently authenticated user's profile."""
     client = _client_from_context(ctx)
@@ -2658,6 +2732,24 @@ def _validate_optional_date(value: str | None, *, field_name: str) -> str | None
 
 def _validate_required_date(value: str, *, field_name: str) -> str:
     normalized = _validate_optional_date(value, field_name=field_name)
+    if not normalized:
+        raise ValueError(f"{field_name} is required.")
+    return normalized
+
+
+def _validate_optional_datetime(value: str | None, *, field_name: str) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if not DATETIME_RE.fullmatch(normalized):
+        raise ValueError(f"{field_name} must be an ISO 8601 date-time, e.g. 2026-12-01T09:00:00Z.")
+    return normalized
+
+
+def _validate_required_datetime(value: str, *, field_name: str) -> str:
+    normalized = _validate_optional_datetime(value, field_name=field_name)
     if not normalized:
         raise ValueError(f"{field_name} is required.")
     return normalized

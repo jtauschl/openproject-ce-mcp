@@ -27,6 +27,7 @@ from openproject_mcp.tools import (
     create_work_package,
     create_work_package_attachment,
     create_work_package_relation,
+    create_work_package_reminder,
     delete_attachment,
     delete_board,
     delete_file_link,
@@ -34,6 +35,7 @@ from openproject_mcp.tools import (
     delete_group,
     delete_news,
     delete_relation,
+    delete_reminder,
     delete_time_entry,
     delete_user,
     delete_version,
@@ -69,6 +71,7 @@ from openproject_mcp.tools import (
     list_project_memberships,
     list_project_phase_definitions,
     list_projects,
+    list_reminders,
     list_roles,
     list_statuses,
     list_time_entries,
@@ -93,6 +96,7 @@ from openproject_mcp.tools import (
     update_grid,
     update_group,
     update_news,
+    update_reminder,
     update_time_entry,
     update_user,
     update_version,
@@ -905,6 +909,54 @@ async def test_toggle_emoji_reaction_validates_inputs() -> None:
         await toggle_activity_emoji_reaction(ctx, 0, "thumbs_up")
     with pytest.raises(ValueError, match="reaction is required"):
         await toggle_activity_emoji_reaction(ctx, 1, "")
+
+
+@pytest.mark.asyncio
+async def test_reminder_tools_pass_expected_arguments() -> None:
+    class StubClient:
+        async def list_reminders(self):
+            return {"listed": True}
+
+        async def create_work_package_reminder(self, **kwargs):
+            return kwargs
+
+        async def update_reminder(self, **kwargs):
+            return kwargs
+
+        async def delete_reminder(self, **kwargs):
+            return kwargs
+
+    ctx = FakeContext(StubClient())  # type: ignore[arg-type]
+
+    listed = await list_reminders(ctx)
+    created = await create_work_package_reminder(
+        ctx, "PROJ-1", "2026-12-01T09:00:00Z", note="hi", confirm=True
+    )
+    updated = await update_reminder(ctx, 5, note="changed", confirm=True)
+    deleted = await delete_reminder(ctx, 5, confirm=True)
+
+    assert listed["listed"] is True
+    assert created["work_package_id"] == "PROJ-1"
+    assert created["remind_at"] == "2026-12-01T09:00:00Z"
+    assert updated["reminder_id"] == 5
+    assert deleted["confirm"] is True
+
+
+@pytest.mark.asyncio
+async def test_reminder_tools_validate_inputs() -> None:
+    class StubClient:
+        async def create_work_package_reminder(self, **kwargs):
+            return kwargs
+
+        async def update_reminder(self, **kwargs):
+            return kwargs
+
+    ctx = FakeContext(StubClient())  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="remind_at must be an ISO 8601 date-time"):
+        await create_work_package_reminder(ctx, "5", "2026-12-01", confirm=True)
+    with pytest.raises(ValueError, match="remind_at is required"):
+        await create_work_package_reminder(ctx, "5", "", confirm=True)
 
 
 @pytest.mark.asyncio

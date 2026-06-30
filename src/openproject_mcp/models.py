@@ -1310,3 +1310,32 @@ class EmojiReactionSummary:
 class EmojiReactionListResult:
     count: int
     results: list[EmojiReactionSummary]
+
+
+@dataclass
+class ReminderSummary:
+    id: int
+    remind_at: str | None
+    note: str | None
+    work_package_id: int | None
+    creator: str | None
+    url: str | None
+
+
+@dataclass
+class ReminderListResult:
+    count: int
+    results: list[ReminderSummary]
+
+
+@dataclass
+class ReminderWriteResult:
+    action: str
+    confirmed: bool
+    requires_confirmation: bool
+    ready: bool
+    message: str
+    reminder_id: int | None
+    payload: dict[str, Any]
+    validation_errors: dict[str, str]
+    result: ReminderSummary | None

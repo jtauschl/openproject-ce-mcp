@@ -93,6 +93,9 @@ from .models import (
     RelationSummary,
     RelationUpdateResult,
     RelationWriteResult,
+    ReminderListResult,
+    ReminderSummary,
+    ReminderWriteResult,
     RenderedText,
     RoleListResult,
     RoleSummary,
@@ -2870,6 +2873,142 @@ class OpenProjectClient:
             json_body={"reaction": reaction},
         )
         return self._emoji_reactions_result(payload)
+
+    # --- Reminders (personal, on work packages) ---
+
+    def normalize_reminder(self, payload: dict[str, Any]) -> ReminderSummary:
+        links = payload.get("_links", {})
+        creator = payload.get("_embedded", {}).get("creator", {})
+        return self._apply_hidden_fields("reminder", ReminderSummary(
+            id=int(payload["id"]),
+            remind_at=payload.get("remindAt"),
+            note=_trim_text(payload.get("note"), limit=SUBJECT_LIMIT),
+            work_package_id=_id_from_href(links.get("remindable", {}).get("href")),
+            creator=_trim_text(creator.get("name"), limit=SUBJECT_LIMIT) if isinstance(creator, dict) else None,
+            url=self._link_to_web_url(links.get("self", {}).get("href")),
+        ))
+
+    async def list_reminders(self) -> ReminderListResult:
+        self._ensure_read_enabled("work_package")
+        payload = await self._get("reminders")
+        results = [
+            self.normalize_reminder(item)
+            for item in payload.get("_embedded", {}).get("elements", [])
+            if isinstance(item, dict)
+        ]
+        return ReminderListResult(count=len(results), results=results)
+
+    async def create_work_package_reminder(
+        self,
+        *,
+        work_package_id: int | str,
+        remind_at: str,
+        note: str | None = None,
+        confirm: bool = False,
+    ) -> ReminderWriteResult:
+        wp_ref = self._work_package_ref(work_package_id)
+        current = await self._get(f"work_packages/{wp_ref}")
+        self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
+        payload: dict[str, Any] = {"remindAt": remind_at}
+        if note is not None:
+            payload["note"] = note
+        if self._preview_mode(confirm):
+            return ReminderWriteResult(
+                action="create",
+                confirmed=False,
+                requires_confirmation=True,
+                ready=True,
+                message="OpenProject is ready to create this reminder. Ask for confirmation, then call again with confirm=true.",
+                reminder_id=None,
+                payload=payload,
+                validation_errors={},
+                result=None,
+            )
+        self._ensure_write_enabled("work_package")
+        # One active reminder per work package/user: a second create returns 409,
+        # surfaced as InvalidInputError with the API's "update or delete" message.
+        response = await self._post(f"work_packages/{wp_ref}/reminders", json_body=payload)
+        result = self.normalize_reminder(response)
+        return ReminderWriteResult(
+            action="create",
+            confirmed=True,
+            requires_confirmation=False,
+            ready=True,
+            message="Reminder created successfully.",
+            reminder_id=result.id,
+            payload=payload,
+            validation_errors={},
+            result=result,
+        )
+
+    async def update_reminder(
+        self,
+        *,
+        reminder_id: int,
+        remind_at: str | None = None,
+        note: str | None = None,
+        confirm: bool = False,
+    ) -> ReminderWriteResult:
+        payload: dict[str, Any] = {}
+        if remind_at is not None:
+            payload["remindAt"] = remind_at
+        if note is not None:
+            payload["note"] = note
+        if not payload:
+            raise InvalidInputError("At least one field (remind_at or note) is required.")
+        if self._preview_mode(confirm):
+            return ReminderWriteResult(
+                action="update",
+                confirmed=False,
+                requires_confirmation=True,
+                ready=True,
+                message="OpenProject is ready to update this reminder. Ask for confirmation, then call again with confirm=true.",
+                reminder_id=reminder_id,
+                payload=payload,
+                validation_errors={},
+                result=None,
+            )
+        self._ensure_write_enabled("work_package")
+        response = await self._patch(f"reminders/{reminder_id}", json_body=payload)
+        result = self.normalize_reminder(response)
+        return ReminderWriteResult(
+            action="update",
+            confirmed=True,
+            requires_confirmation=False,
+            ready=True,
+            message="Reminder updated successfully.",
+            reminder_id=result.id,
+            payload=payload,
+            validation_errors={},
+            result=result,
+        )
+
+    async def delete_reminder(self, *, reminder_id: int, confirm: bool = False) -> ReminderWriteResult:
+        if self._preview_mode(confirm):
+            return ReminderWriteResult(
+                action="delete",
+                confirmed=False,
+                requires_confirmation=True,
+                ready=True,
+                message="OpenProject is ready to delete this reminder. Ask for confirmation, then call again with confirm=true.",
+                reminder_id=reminder_id,
+                payload={},
+                validation_errors={},
+                result=None,
+            )
+        self._ensure_write_enabled("work_package")
+        await self._delete(f"reminders/{reminder_id}")
+        return ReminderWriteResult(
+            action="delete",
+            confirmed=True,
+            requires_confirmation=False,
+            ready=True,
+            message="Reminder deleted successfully.",
+            reminder_id=reminder_id,
+            payload={},
+            validation_errors={},
+            result=None,
+        )
 
     async def get_current_user(self) -> CurrentUser:
         self._ensure_read_enabled("principal")
