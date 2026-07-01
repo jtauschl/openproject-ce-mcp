@@ -16,11 +16,14 @@ def _registered_tool_names() -> set[str]:
         if isinstance(node, ast.FunctionDef) and node.name == "register_tools":
             names: set[str] = set()
             for stmt in ast.walk(node):
-                # Match: mcp.tool()(some_name)
+                # Registrations go through the local helper: tool(some_name).
+                # (The helper wraps mcp.tool() with error categorization.)
                 if (
                     isinstance(stmt, ast.Expr)
                     and isinstance(stmt.value, ast.Call)
-                    and isinstance(stmt.value.func, ast.Call)
+                    and isinstance(stmt.value.func, ast.Name)
+                    and stmt.value.func.id == "tool"
+                    and stmt.value.args
                     and isinstance(stmt.value.args[0], ast.Name)
                 ):
                     names.add(stmt.value.args[0].id)

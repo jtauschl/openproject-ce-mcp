@@ -1376,3 +1376,53 @@ def test_validate_work_package_ref_rejects_invalid() -> None:
 def test_validate_optional_work_package_ref_passes_through_none() -> None:
     assert _validate_optional_work_package_ref(None) is None
     assert _validate_optional_work_package_ref("PROJ-9") == "PROJ-9"
+
+
+@pytest.mark.asyncio
+async def test_run_tool_prefixes_client_error_categories() -> None:
+    from openproject_mcp.client import (
+        AuthenticationError,
+        InvalidInputError,
+        NotFoundError,
+        PermissionDeniedError,
+        TransportError,
+    )
+    from openproject_mcp.tools import _run_tool
+
+    async def raiser(exc):
+        raise exc
+
+    # Validation failures stay ValueError with a [validation_error] prefix.
+    with pytest.raises(ValueError, match=r"^\[validation_error\] bad"):
+        await _run_tool(raiser(InvalidInputError("bad")))
+
+    # Every other category is a RuntimeError with its own prefix.
+    cases = {
+        AuthenticationError("x"): "auth_error",
+        PermissionDeniedError("x"): "permission_denied",
+        NotFoundError("x"): "not_found",
+        TransportError("x"): "transport_error",
+    }
+    for exc, category in cases.items():
+        with pytest.raises(RuntimeError, match=rf"^\[{category}\] "):
+            await _run_tool(raiser(exc))
+
+
+@pytest.mark.asyncio
+async def test_categorize_tool_errors_tags_validation_and_avoids_double_prefix() -> None:
+    from openproject_mcp.tools import _categorize_tool_errors
+
+    @_categorize_tool_errors
+    async def raw_validation(_ctx):
+        raise ValueError("subject is required")
+
+    with pytest.raises(ValueError, match=r"^\[validation_error\] subject is required$"):
+        await raw_validation(None)
+
+    # An already-categorized message must not be prefixed twice.
+    @_categorize_tool_errors
+    async def already_tagged(_ctx):
+        raise ValueError("[not_found] gone")
+
+    with pytest.raises(ValueError, match=r"^\[not_found\] gone$"):
+        await already_tagged(None)

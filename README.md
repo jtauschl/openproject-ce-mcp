@@ -198,6 +198,26 @@ Tools are grouped by area: projects, memberships, users, groups, work packages, 
 
 See the full [tool reference](docs/tools.md) for descriptions of every tool.
 
+### Errors
+
+Every tool failure carries a stable, machine-readable category as a leading
+`[category]` prefix on the error message, so an agent can branch on the failure
+type instead of parsing free text. The categories are:
+
+| Category | Meaning |
+|---|---|
+| `[validation_error]` | An input was rejected before the request (fix the arguments and retry) |
+| `[auth_error]` | Authentication failed (check the API token) |
+| `[permission_denied]` | The token lacks permission, or a write scope is disabled |
+| `[not_found]` | The resource does not exist (or the feature needs a newer OpenProject) |
+| `[transport_error]` | OpenProject could not be reached (transient — safe to retry) |
+| `[server_error]` | OpenProject returned an unexpected failure |
+| `[openproject_error]` | Any other OpenProject-side failure |
+
+Successful write previews are not errors — they return a structured result with
+`ready`, `requires_confirmation`, `validation_errors`, and a human-readable
+`message`.
+
 ---
 
 ## Integrations

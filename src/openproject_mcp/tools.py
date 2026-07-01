@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import re
 from typing import Any, cast
 
@@ -123,168 +124,173 @@ RELATION_TYPE_RE = re.compile(r"^(relates|duplicates|duplicated|blocks|blocked|p
 
 
 def register_tools(mcp: FastMCP, settings: Settings) -> None:
+    # Register a tool with error-categorization applied, so every failure reaches
+    # the agent with a stable [category] prefix.
+    def tool(fn):
+        return mcp.tool()(_categorize_tool_errors(fn))
+
     # Always-available read tools
-    mcp.tool()(get_current_user)
-    mcp.tool()(get_instance_configuration)
-    mcp.tool()(list_actions)
-    mcp.tool()(list_capabilities)
-    mcp.tool()(get_job_status)
-    mcp.tool()(get_query_filter)
-    mcp.tool()(get_query_column)
-    mcp.tool()(get_query_operator)
-    mcp.tool()(get_query_sort_by)
-    mcp.tool()(list_query_filter_instance_schemas)
-    mcp.tool()(get_query_filter_instance_schema)
-    mcp.tool()(list_statuses)
-    mcp.tool()(get_status)
-    mcp.tool()(list_priorities)
-    mcp.tool()(get_priority)
-    mcp.tool()(list_types)
-    mcp.tool()(get_type)
-    mcp.tool()(list_notifications)
-    mcp.tool()(get_my_preferences)
-    mcp.tool()(update_my_preferences)
-    mcp.tool()(render_text)
-    mcp.tool()(list_help_texts)
-    mcp.tool()(get_help_text)
-    mcp.tool()(list_working_days)
-    mcp.tool()(list_non_working_days)
-    mcp.tool()(get_custom_option)
-    mcp.tool()(list_documents)
-    mcp.tool()(get_document)
-    mcp.tool()(list_news)
-    mcp.tool()(get_news)
-    mcp.tool()(get_wiki_page)
-    mcp.tool()(list_views)
-    mcp.tool()(get_view)
-    mcp.tool()(list_grids)
-    mcp.tool()(get_grid)
-    mcp.tool()(list_categories)
-    mcp.tool()(get_category)
-    mcp.tool()(list_time_entry_activities)
-    mcp.tool()(list_time_entries)
-    mcp.tool()(get_time_entry)
-    mcp.tool()(list_relations)
-    mcp.tool()(list_project_phase_definitions)
-    mcp.tool()(get_project_phase_definition)
-    mcp.tool()(get_project_phase)
+    tool(get_current_user)
+    tool(get_instance_configuration)
+    tool(list_actions)
+    tool(list_capabilities)
+    tool(get_job_status)
+    tool(get_query_filter)
+    tool(get_query_column)
+    tool(get_query_operator)
+    tool(get_query_sort_by)
+    tool(list_query_filter_instance_schemas)
+    tool(get_query_filter_instance_schema)
+    tool(list_statuses)
+    tool(get_status)
+    tool(list_priorities)
+    tool(get_priority)
+    tool(list_types)
+    tool(get_type)
+    tool(list_notifications)
+    tool(get_my_preferences)
+    tool(update_my_preferences)
+    tool(render_text)
+    tool(list_help_texts)
+    tool(get_help_text)
+    tool(list_working_days)
+    tool(list_non_working_days)
+    tool(get_custom_option)
+    tool(list_documents)
+    tool(get_document)
+    tool(list_news)
+    tool(get_news)
+    tool(get_wiki_page)
+    tool(list_views)
+    tool(get_view)
+    tool(list_grids)
+    tool(get_grid)
+    tool(list_categories)
+    tool(get_category)
+    tool(list_time_entry_activities)
+    tool(list_time_entries)
+    tool(get_time_entry)
+    tool(list_relations)
+    tool(list_project_phase_definitions)
+    tool(get_project_phase_definition)
+    tool(get_project_phase)
 
     # Scoped read: project
     if settings.read_enabled("project"):
-        mcp.tool()(list_projects)
-        mcp.tool()(get_project)
-        mcp.tool()(get_project_admin_context)
-        mcp.tool()(get_project_configuration)
-        mcp.tool()(get_project_work_package_context)
-        mcp.tool()(get_my_project_access)
+        tool(list_projects)
+        tool(get_project)
+        tool(get_project_admin_context)
+        tool(get_project_configuration)
+        tool(get_project_work_package_context)
+        tool(get_my_project_access)
 
     # Scoped read: work_package
     if settings.read_enabled("work_package"):
-        mcp.tool()(list_work_packages)
-        mcp.tool()(search_work_packages)
-        mcp.tool()(get_work_package)
-        mcp.tool()(list_my_open_work_packages)
-        mcp.tool()(get_work_package_activities)
-        mcp.tool()(list_work_package_reactions)
-        mcp.tool()(list_reminders)
-        mcp.tool()(get_work_package_relations)
-        mcp.tool()(list_work_package_attachments)
-        mcp.tool()(get_attachment)
-        mcp.tool()(list_work_package_file_links)
-        mcp.tool()(list_work_package_watchers)
+        tool(list_work_packages)
+        tool(search_work_packages)
+        tool(get_work_package)
+        tool(list_my_open_work_packages)
+        tool(get_work_package_activities)
+        tool(list_work_package_reactions)
+        tool(list_reminders)
+        tool(get_work_package_relations)
+        tool(list_work_package_attachments)
+        tool(get_attachment)
+        tool(list_work_package_file_links)
+        tool(list_work_package_watchers)
 
     # Scoped read: membership
     if settings.read_enabled("membership"):
-        mcp.tool()(list_project_memberships)
-        mcp.tool()(get_membership)
-        mcp.tool()(list_roles)
-        mcp.tool()(list_principals)
-        mcp.tool()(list_users)
-        mcp.tool()(get_user)
-        mcp.tool()(list_groups)
-        mcp.tool()(get_group)
+        tool(list_project_memberships)
+        tool(get_membership)
+        tool(list_roles)
+        tool(list_principals)
+        tool(list_users)
+        tool(get_user)
+        tool(list_groups)
+        tool(get_group)
 
     # Scoped read: version
     if settings.read_enabled("version"):
-        mcp.tool()(list_versions)
-        mcp.tool()(get_version)
+        tool(list_versions)
+        tool(get_version)
 
     # Scoped read: board
     if settings.read_enabled("board"):
-        mcp.tool()(list_boards)
-        mcp.tool()(get_board)
+        tool(list_boards)
+        tool(get_board)
 
     # Scoped write: project
     if settings.write_enabled("project"):
-        mcp.tool()(create_project)
-        mcp.tool()(update_project)
-        mcp.tool()(delete_project)
-        mcp.tool()(copy_project)
-        mcp.tool()(add_project_favorite)
-        mcp.tool()(remove_project_favorite)
-        mcp.tool()(create_news)
-        mcp.tool()(update_news)
-        mcp.tool()(delete_news)
-        mcp.tool()(update_document)
-        mcp.tool()(create_grid)
-        mcp.tool()(update_grid)
-        mcp.tool()(delete_grid)
+        tool(create_project)
+        tool(update_project)
+        tool(delete_project)
+        tool(copy_project)
+        tool(add_project_favorite)
+        tool(remove_project_favorite)
+        tool(create_news)
+        tool(update_news)
+        tool(delete_news)
+        tool(update_document)
+        tool(create_grid)
+        tool(update_grid)
+        tool(delete_grid)
 
     # Scoped write: work_package
     if settings.write_enabled("work_package"):
-        mcp.tool()(create_work_package)
-        mcp.tool()(create_subtask)
-        mcp.tool()(update_work_package)
-        mcp.tool()(bulk_create_work_packages)
-        mcp.tool()(bulk_update_work_packages)
-        mcp.tool()(delete_work_package)
-        mcp.tool()(add_work_package_comment)
-        mcp.tool()(toggle_activity_emoji_reaction)
-        mcp.tool()(create_work_package_reminder)
-        mcp.tool()(update_reminder)
-        mcp.tool()(delete_reminder)
-        mcp.tool()(create_work_package_relation)
-        mcp.tool()(delete_relation)
-        mcp.tool()(create_work_package_attachment)
-        mcp.tool()(delete_attachment)
-        mcp.tool()(add_work_package_watcher)
-        mcp.tool()(remove_work_package_watcher)
-        mcp.tool()(create_time_entry)
-        mcp.tool()(update_time_entry)
-        mcp.tool()(delete_time_entry)
-        mcp.tool()(mark_notification_read)
-        mcp.tool()(mark_all_notifications_read)
-        mcp.tool()(update_relation)
-        mcp.tool()(delete_file_link)
+        tool(create_work_package)
+        tool(create_subtask)
+        tool(update_work_package)
+        tool(bulk_create_work_packages)
+        tool(bulk_update_work_packages)
+        tool(delete_work_package)
+        tool(add_work_package_comment)
+        tool(toggle_activity_emoji_reaction)
+        tool(create_work_package_reminder)
+        tool(update_reminder)
+        tool(delete_reminder)
+        tool(create_work_package_relation)
+        tool(delete_relation)
+        tool(create_work_package_attachment)
+        tool(delete_attachment)
+        tool(add_work_package_watcher)
+        tool(remove_work_package_watcher)
+        tool(create_time_entry)
+        tool(update_time_entry)
+        tool(delete_time_entry)
+        tool(mark_notification_read)
+        tool(mark_all_notifications_read)
+        tool(update_relation)
+        tool(delete_file_link)
 
     # Scoped write: membership
     if settings.write_enabled("membership"):
-        mcp.tool()(create_membership)
-        mcp.tool()(update_membership)
-        mcp.tool()(delete_membership)
+        tool(create_membership)
+        tool(update_membership)
+        tool(delete_membership)
 
     # Scoped write: version
     if settings.write_enabled("version"):
-        mcp.tool()(create_version)
-        mcp.tool()(update_version)
-        mcp.tool()(delete_version)
+        tool(create_version)
+        tool(update_version)
+        tool(delete_version)
 
     # Scoped write: board
     if settings.write_enabled("board"):
-        mcp.tool()(create_board)
-        mcp.tool()(update_board)
-        mcp.tool()(delete_board)
+        tool(create_board)
+        tool(update_board)
+        tool(delete_board)
 
     # Admin write: instance-global user/group management
     if settings.enable_admin_write:
-        mcp.tool()(create_user)
-        mcp.tool()(update_user)
-        mcp.tool()(delete_user)
-        mcp.tool()(lock_user)
-        mcp.tool()(unlock_user)
-        mcp.tool()(create_group)
-        mcp.tool()(update_group)
-        mcp.tool()(delete_group)
+        tool(create_user)
+        tool(update_user)
+        tool(delete_user)
+        tool(lock_user)
+        tool(unlock_user)
+        tool(create_group)
+        tool(update_group)
+        tool(delete_group)
 
 
 async def list_projects(
@@ -2608,23 +2614,58 @@ def _client_from_context(ctx: Context) -> OpenProjectClient:
     return app_context.client
 
 
+# Stable, machine-readable category prefixes so a calling agent can branch on the
+# kind of failure rather than parsing free text. The prefix leads the message,
+# which stays human-readable, e.g.
+#   "[permission_denied] OpenProject work package write support is disabled. ..."
+_ERROR_CATEGORY: dict[type[Exception], str] = {
+    InvalidInputError: "validation_error",
+    AuthenticationError: "auth_error",
+    PermissionDeniedError: "permission_denied",
+    NotFoundError: "not_found",
+    TransportError: "transport_error",
+    OpenProjectServerError: "server_error",
+    OpenProjectError: "openproject_error",  # base fallback
+}
+_CATEGORY_PREFIX_RE = re.compile(r"^\[[a-z_]+\]\s")
+
+
+def _prefix(category: str, message: str) -> str:
+    if _CATEGORY_PREFIX_RE.match(message):
+        return message  # already categorized; don't double-prefix
+    return f"[{category}] {message}"
+
+
 async def _run_tool(awaitable):
     try:
         return await awaitable
     except InvalidInputError as exc:
-        raise ValueError(str(exc)) from exc
-    except AuthenticationError as exc:
-        raise RuntimeError(str(exc)) from exc
-    except PermissionDeniedError as exc:
-        raise RuntimeError(str(exc)) from exc
-    except NotFoundError as exc:
-        raise RuntimeError(str(exc)) from exc
-    except TransportError as exc:
-        raise RuntimeError(str(exc)) from exc
-    except OpenProjectServerError as exc:
-        raise RuntimeError(str(exc)) from exc
+        # Validation failures surface as ValueError; everything else as RuntimeError.
+        raise ValueError(_prefix("validation_error", str(exc))) from exc
     except OpenProjectError as exc:
-        raise RuntimeError(str(exc)) from exc
+        category = next(
+            (cat for typ, cat in _ERROR_CATEGORY.items() if isinstance(exc, typ)),
+            "openproject_error",
+        )
+        raise RuntimeError(_prefix(category, str(exc))) from exc
+
+
+def _categorize_tool_errors(fn):
+    """Wrap a tool so every failure carries a category prefix.
+
+    _run_tool already prefixes errors from the client call, but input validators
+    in the tool body raise plain ValueError *before* _run_tool runs. This wrapper
+    catches those and tags them [validation_error] too, so an agent sees a
+    consistent, machine-readable category for every tool failure.
+    """
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await fn(*args, **kwargs)
+        except ValueError as exc:
+            raise ValueError(_prefix("validation_error", str(exc))) from exc
+
+    return wrapper
 
 
 def _validate_optional_query(value: str | None, *, field_name: str, max_length: int) -> str | None:
