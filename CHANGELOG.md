@@ -7,6 +7,16 @@ development baseline.
 
 ---
 
+## 0.2.2 (unreleased)
+
+### Fixed
+
+- `openproject-ce-mcp configure` now exits cleanly on Ctrl+C — it prints
+  "Cancelled" and exits with code 130 instead of dumping a `KeyboardInterrupt`
+  traceback.
+
+---
+
 ## 0.2.1 – 2026-07-01
 
 ### Changed

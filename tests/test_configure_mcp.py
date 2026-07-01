@@ -783,3 +783,19 @@ def test_main_project_claude_no_duplicate_mcp_json(monkeypatch, tmp_path: Path) 
     # exactly one .mcp.json, no stray backup from a second write
     backups = list(tmp_path.glob(".mcp.json.bak.*"))
     assert backups == [], "Claude Code project write must not double-write .mcp.json"
+
+
+def test_main_ctrl_c_exits_130_no_traceback(monkeypatch, capsys) -> None:
+    # Ctrl+C during a prompt → clean "Cancelled" message + exit 130, no traceback.
+    monkeypatch.setattr(c, "_check_python", lambda: None)
+    monkeypatch.setattr(c, "_installed_mode", lambda: True)
+    monkeypatch.setattr(c, "_install_deps", lambda *a, **k: None)
+    monkeypatch.setattr(c, "_server_command", lambda installed: ("openproject-ce-mcp", True))
+    monkeypatch.setattr(c, "_clients", lambda: [])
+    def _interrupt(*a, **k):
+        raise KeyboardInterrupt
+    monkeypatch.setattr("builtins.input", _interrupt)
+    with pytest.raises(SystemExit) as exc:
+        c.main([])
+    assert exc.value.code == 130
+    assert "Cancelled" in capsys.readouterr().err

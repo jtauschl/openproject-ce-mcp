@@ -835,6 +835,19 @@ def _merge_prefill(pairs: list[tuple[Client, Path | None]]) -> dict[str, str]:
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Console entry point: run the interactive setup, exiting cleanly on Ctrl+C.
+
+    Ctrl+C during any prompt should read as "cancelled", not a Python traceback,
+    so we catch KeyboardInterrupt here and exit 130 (the conventional SIGINT code).
+    """
+    try:
+        _run_configure(argv)
+    except KeyboardInterrupt:
+        print("\nCancelled — nothing was written.", file=sys.stderr)
+        sys.exit(130)
+
+
+def _run_configure(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="openproject-ce-mcp",
         description="Configure or remove the openproject MCP server for your clients.",
