@@ -6,6 +6,7 @@ build/
 
 # Test / coverage
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 
@@ -26,6 +27,9 @@ htmlcov/
 .vscode/
 .DS_Store
 CONTINUE.md
+
+# Local backups
+*.bak.*
 
 # OpenProject source clones for the API source-check tool (tools/api-check/)
 .op-sources/

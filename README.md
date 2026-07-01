@@ -267,4 +267,18 @@ For local, throwaway instances across multiple OpenProject versions (16.6 classi
 
 The MCP server runs as a subprocess. After any code change, restart your MCP client before updated tools become active.
 
+### Releasing
+
+Releases are cut manually — the project is not published to PyPI, and CI does not
+publish anything. Every push and PR runs the test matrix plus a `build` job
+(`uv build` + `uvx twine check dist/*`) so the package always stays buildable.
+
+To cut a release:
+
+1. Bump `version` in `pyproject.toml` and update `CHANGELOG.md`.
+2. `uv run pytest` and `uv build` locally (CI enforces both).
+3. Merge to `main`, then tag: `git tag vX.Y.Z && git push --tags`.
+4. Create the GitHub release from the tag; attach the `dist/` artifacts if you
+   want distributable builds.
+
 ---
