@@ -80,11 +80,23 @@ if ENV["SEED_SEMANTIC"] == "1"
   if defined?(Setting::WorkPackageIdentifier)
     Setting.work_packages_identifier = "semantic"
     log("set work_packages_identifier = semantic")
+    # In semantic mode OpenProject requires an UPPERCASE project identifier
+    # (letters/numbers/underscores). Our lowercase "tst" is valid in classic mode
+    # but produces an inconsistent state whose single-fetch endpoint 500s — so
+    # switch the identifier to uppercase before allocating semantic ids.
+    if project.identifier != project.identifier.upcase
+      project.update_column(:identifier, project.identifier.upcase)
+      log("uppercased identifier to #{project.reload.identifier} for semantic mode")
+    end
     # Allocate semantic ids for existing work packages. Saving is not enough —
-    # OpenProject exposes an explicit allocation method for this.
+    # OpenProject exposes an explicit allocation method for this. Clear any stale
+    # aliases first so repeated seeds don't accumulate duplicates.
     sample_wp = project.work_packages.first
     if sample_wp && sample_wp.respond_to?(:allocate_and_register_semantic_id)
-      project.work_packages.find_each(&:allocate_and_register_semantic_id)
+      project.work_packages.find_each do |w|
+        w.semantic_aliases.destroy_all
+        w.allocate_and_register_semantic_id
+      end
       log("sample display_id=#{project.work_packages.first.reload.display_id}")
     end
   else

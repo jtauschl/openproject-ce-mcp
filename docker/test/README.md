@@ -60,21 +60,17 @@ project-prefixed reference to `NotFoundError`.
 Run the full suite against a running instance with the env block `up.sh` prints,
 e.g. `OPENPROJECT_BASE_URL=http://localhost:8175 OPENPROJECT_API_TOKEN=… OPENPROJECT_TEST_PROJECT=tst uv run pytest -m integration`.
 
-## Known OpenProject issue (not the MCP)
+## Note: semantic identifiers require an UPPERCASE project identifier
 
-On 17.5.1 with semantic identifiers **active**, OpenProject's own
-`GET /api/v3/work_packages/{id}` single-fetch endpoint returns a 500 for any work
-package that carries a semantic alias — for **both** the numeric id and the
-`tst-N` form (`No route matches action:"show"` in the server log; it builds the
-show route from the eager-loading wrapper instead of the id).
+In semantic mode OpenProject only accepts uppercase project identifiers
+(`[A-Z0-9_]`). A lowercase identifier such as `tst` is fine in classic mode but,
+once semantic mode is switched on, produces an inconsistent alias state whose
+`GET /api/v3/work_packages/{id}` single-fetch endpoint 500s (`No route matches
+action:"show"`). The seed script therefore uppercases the project identifier
+(`tst` → `TST`) before allocating semantic ids, which makes both the numeric and
+the `TST-N` single-fetch paths return 200.
 
-Isolated on a fresh database with exactly one alias, so it is neither a duplicate
-alias artefact nor MCP-side. Confirmed by contrast: a demo work package with no
-alias (`display_id` numeric) returns 200; a seeded WP with an alias returns 500.
-The collection endpoint and classic mode are unaffected, and the MCP surfaces the
-failure cleanly as `[server_error]`.
-
-Consequence: the classic `op-16-6` / `op-17-4` instances run the full integration
-suite green; on the semantic `op-17-5` instance the suite is green in classic
-mode, and the semantic single-fetch path is blocked by this upstream bug (not by
-the client).
+This was originally mistaken for an upstream OpenProject bug; it is not — a
+lowercase-vs-uppercase identifier in semantic mode is the trigger, and the seed
+handles it. The MCP itself is unaffected either way (it surfaces any server-side
+failure as `[server_error]`).
