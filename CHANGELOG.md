@@ -1,12 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file. Versions
-follow [semantic versioning](https://semver.org); 0.1.0 is the first tagged
-release and 0.0.1 is the development baseline.
+follow [semantic versioning](https://semver.org); 0.2.0 is the first release
+published to PyPI, 0.1.0 is the first tagged release, and 0.0.1 is the
+development baseline.
 
 ---
 
-## 0.2.0 (unreleased)
+## 0.2.0 – 2026-07-01
 
 First release published to PyPI. Supersedes the never-released 0.1.1 (its
 package-rename and installer fixes are folded in here).
