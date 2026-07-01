@@ -7,6 +7,33 @@ development baseline.
 
 ---
 
+## 0.2.1 – 2026-07-01
+
+### Changed
+
+- **Configure flow simplified.** `openproject-ce-mcp configure` now asks two
+  independent questions — "Configure globally (user-wide)?" and "Configure
+  project-scoped (this directory)?" — and writes only the targets you pick,
+  instead of mixing a client prompt with an implicit project `.mcp.json`. Project
+  scope is offered for every supported client (Claude Code, Codex, Cursor, VS
+  Code), whether or not it is detected, so a fresh IDE setup works. The wording is
+  "configure", not "install" (the package is already installed).
+- The **early 0.2.0 `--local` / `--global` flags were removed** before adoption;
+  the two interactive gates replace them.
+- Prefill when re-running is now field-wise: a partial project config contributes
+  the fields it has without discarding a complete global entry's token.
+- The "Writable projects" prompt clarifies that `*` means *all readable projects*
+  (write scope is always intersected with read scope).
+
+### Added
+
+- Per-client restart hints after configuring (config written ≠ server running).
+- `configure --uninstall` now also removes project-local entries in the current
+  directory (`.mcp.json`, `.codex/config.toml`, `.vscode/mcp.json`,
+  `.cursor/mcp.json`), grouped by scope, keeping other MCP servers intact.
+
+---
+
 ## 0.2.0 – 2026-07-01
 
 First release published to PyPI. Supersedes the never-released 0.1.1 (its

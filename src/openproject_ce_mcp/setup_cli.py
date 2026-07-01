@@ -318,7 +318,13 @@ def _merge_codex_toml(existing: str, command: str, env: dict[str, str]) -> str:
 
 
 class Client:
-    """A registerable MCP client: how to detect it and where its global config lives."""
+    """A registerable MCP client: how to detect it and where its config lives.
+
+    ``target`` is the user-wide (global) config path; ``project_target`` is the
+    project-local (cwd-relative) path, or ``None`` when the client has no
+    project-local config (Claude Desktop). ``restart_hint`` is how the user makes
+    the client pick up a newly written config.
+    """
 
     def __init__(
         self,
@@ -331,20 +337,30 @@ class Client:
         *,
         root_key: str = "",
         stdio: bool = False,
+        project_target: Path | None = None,
+        restart_hint: str = "",
     ) -> None:
         self.key = key
         self.label = label
-        self.target = target
+        self.target = target  # global / user-wide
         self.fmt = fmt  # "json" or "toml"
         self._detect = detect
         self.doc = doc
         self.root_key = root_key
         self.stdio = stdio
+        self.project_target = project_target  # cwd-relative; None = global-only
+        self.restart_hint = restart_hint
 
     def detected(self) -> bool:
         return self._detect()
 
+    def target_for(self, scope: str) -> Path | None:
+        """Return the config path for ``scope`` ("global" | "project")."""
+        return self.target if scope == "global" else self.project_target
+
     def merge(self, existing: str, command: str, env: dict[str, str]) -> str:
+        # Format is a property of the client, not the scope: the same JSON/TOML
+        # shape is written to either the global or the project-local target.
         if self.fmt == "toml":
             return _merge_codex_toml(existing, command, env)
         return _merge_json(
@@ -395,6 +411,10 @@ def _detect_cursor() -> bool:
 
 
 def _clients() -> list[Client]:
+    # project_target is cwd-relative so it honours the directory the user runs in.
+    # Claude Code's project file (.mcp.json) may be overridden to the repo root in
+    # clone mode by main() (see _resolve_mcp_json); the default here is the cwd.
+    cwd = Path.cwd()
     return [
         Client(
             "claude-code",
@@ -404,6 +424,8 @@ def _clients() -> list[Client]:
             _detect_claude_code,
             "docs/claude.md",
             root_key="mcpServers",
+            project_target=cwd / ".mcp.json",
+            restart_hint="run /mcp in Claude Code, or start a new session",
         ),
         Client(
             "claude-desktop",
@@ -413,6 +435,8 @@ def _clients() -> list[Client]:
             _detect_claude_desktop,
             "docs/claude-desktop.md",
             root_key="mcpServers",
+            project_target=None,  # global-only
+            restart_hint="quit Claude Desktop completely and reopen it (a window reload is not enough)",
         ),
         Client(
             "codex",
@@ -421,6 +445,8 @@ def _clients() -> list[Client]:
             "toml",
             _detect_codex,
             "docs/codex.md",
+            project_target=cwd / ".codex" / "config.toml",
+            restart_hint="reload the editor window or restart Codex",
         ),
         Client(
             "vscode",
@@ -431,6 +457,8 @@ def _clients() -> list[Client]:
             "docs/github.md",
             root_key="servers",
             stdio=True,
+            project_target=cwd / ".vscode" / "mcp.json",
+            restart_hint="Start/Restart the server from the MCP view, or run 'Developer: Reload Window'",
         ),
         Client(
             "cursor",
@@ -440,18 +468,26 @@ def _clients() -> list[Client]:
             _detect_cursor,
             "docs/cursor.md",
             root_key="mcpServers",
+            project_target=cwd / ".cursor" / "mcp.json",
+            restart_hint="reload the Cursor window",
         ),
     ]
 
 
-def _write_client_config(client: Client, command: str, env: dict[str, str]) -> bool:
-    """Merge the ``openproject`` server into a client's global config.
+def _write_client_config(
+    client: Client, command: str, env: dict[str, str], *, target: Path | None = None
+) -> bool:
+    """Merge the ``openproject`` server into a client config at ``target``.
 
-    Existing content is preserved — only the ``openproject`` entry is added or
-    replaced. A timestamped backup is taken before any existing file is rewritten.
-    Returns True on success, False if the existing file could not be parsed.
+    ``target`` defaults to the client's global config; pass ``client.project_target``
+    for the project-local file. Existing content is preserved — only the
+    ``openproject`` entry is added or replaced — and a timestamped backup is taken
+    before any existing file is rewritten. Returns True on success, False if the
+    existing file could not be parsed. The rest of the body uses the local
+    ``target`` throughout (never ``client.target``) so project-local writes land in
+    the right file.
     """
-    target = client.target
+    target = target if target is not None else client.target
     existing = ""
     if target.exists():
         existing = target.read_text(encoding="utf-8")
@@ -496,13 +532,15 @@ def _remove_json_openproject(existing: str, root_key: str) -> str | None:
     return json.dumps(data, indent=2) + "\n"
 
 
-def _remove_client_config(client: Client) -> bool:
-    """Remove the openproject entry from a client's config; keep everything else.
+def _remove_client_config(client: Client, *, target: Path | None = None) -> bool:
+    """Remove the openproject entry from a client config at ``target``; keep the rest.
 
-    Backs up before rewriting. Returns True if something was removed.
+    ``target`` defaults to the client's global config; pass ``client.project_target``
+    for the project-local file. Backs up before rewriting. Returns True if something
+    was removed.
     """
-    target = client.target
-    if not target.exists():
+    target = target if target is not None else client.target
+    if target is None or not target.exists():
         return False
     existing = target.read_text(encoding="utf-8")
     try:
@@ -528,21 +566,42 @@ def _remove_client_config(client: Client) -> bool:
 
 
 def _run_uninstall() -> None:
-    """Remove the openproject entry from any client config it was registered in.
+    """Remove the openproject entry from client configs (existing settings kept).
 
-    The local .mcp.json and the venv are handled by uninstall.sh/.ps1; this Python
-    step owns the client-config edits (JSON/TOML merge) so the same robust logic
-    used to install is used to uninstall.
+    Removes from BOTH the user-wide (global) config of each client AND the
+    project-local config in the current directory (mirroring what configure now
+    writes). Output is grouped by scope, one line per target with its status. The
+    venv/caches of a source checkout are handled by uninstall.sh/.ps1.
     """
+    clients = _clients()
+
+    def _clean(scope: str, targets: list[tuple[Client, Path]]) -> bool:
+        removed = False
+        for client, target in targets:
+            if not target.exists():
+                print(f"  · {client.label}: {target} — not found")
+                continue
+            if _remove_client_config(client, target=target):
+                removed = True  # message printed inside _remove_client_config
+            else:
+                print(f"  · {client.label}: {target} — no openproject entry / skipped")
+        return removed
+
     print("Removing the openproject server from client configs (existing settings kept)…")
-    removed_any = False
-    for client in _clients():
-        if client.target.exists() and _remove_client_config(client):
-            removed_any = True
-    if not removed_any:
-        print("  · No client config contained an openproject entry — nothing to remove.")
     print()
-    print("Client configs done. Restart any client you had it registered in.")
+    print("User-wide (global):")
+    removed_global = _clean("global", [(c, c.target) for c in clients])
+    print()
+    print(f"Project-local (this directory: {Path.cwd()}):")
+    removed_project = _clean(
+        "project", [(c, c.project_target) for c in clients if c.project_target is not None]
+    )
+
+    print()
+    if not (removed_global or removed_project):
+        print("No client config contained an openproject entry — nothing removed.")
+    else:
+        print("Done. Restart any client you had it registered in.")
 
 
 def _check_python() -> None:
@@ -583,18 +642,20 @@ def _load_existing(mcp_json: Path) -> dict[str, str]:
     return {}
 
 
-def _read_client_env(client: Client) -> dict[str, str]:
-    """Read back an already-registered openproject ``env`` from a client's config.
+def _read_client_env(client: Client, *, target: Path | None = None) -> dict[str, str]:
+    """Read back an already-registered openproject ``env`` from a client config.
 
-    Used to pre-fill prompt defaults when re-running global setup, so amending a
-    single flag does not force re-entering the base URL and token. Returns {} if
-    the client has no config yet or its openproject entry can't be read; TOML
-    (Codex) is not parsed for prefill on Python 3.10 (no tomllib) and returns {}.
+    ``target`` defaults to the client's global config; pass ``client.project_target``
+    to read the project-local file. Used to pre-fill prompt defaults so amending a
+    single flag does not force re-entering the base URL and token. Returns {} if the
+    file has no config yet or its openproject entry can't be read; TOML (Codex) is
+    not parsed for prefill on Python 3.10 (no tomllib) and returns {}.
     """
-    if not client.target.exists():
+    target = target if target is not None else client.target
+    if target is None or not target.exists():
         return {}
     try:
-        text = client.target.read_text(encoding="utf-8")
+        text = target.read_text(encoding="utf-8")
         if client.fmt == "toml":
             if _tomllib is None:
                 return {}
@@ -604,15 +665,6 @@ def _read_client_env(client: Client) -> dict[str, str]:
         return data.get(client.root_key, {}).get("openproject", {}).get("env", {})
     except Exception:
         return {}
-
-
-def _existing_from_clients(clients: list[Client]) -> dict[str, str]:
-    """First non-empty openproject env found across the given clients (for prefill)."""
-    for client in clients:
-        env = _read_client_env(client)
-        if env:
-            return env
-    return {}
 
 
 def _backup(path: Path) -> None:
@@ -703,74 +755,80 @@ def _bool_from_env(env: dict[str, str], key: str, fallback: bool = False) -> boo
     return fallback
 
 
-def _choose_registration_mode(require: bool = False) -> list[Client]:
-    """Ask up front whether to auto-configure any detected client; return the chosen.
+def _choose_targets(clients: list[Client]) -> tuple[list[Client], list[Client]]:
+    """Two independent gates deciding WHERE to configure the server.
 
-    Asked before credentials are collected so the user decides the mode first.
-    Only clients actually detected on this machine are offered.
+    Returns ``(global_clients, project_clients)``. The gates run before any
+    credentials are collected so the user decides the targets first, and CONFIGURE
+    (not install) is the wording throughout.
 
-    When ``require`` is False the opt-in gate defaults to "no" — the setup writes a
-    local .mcp.json to copy from, and project-specific setup (docs/) is recommended.
-    When ``require`` is True (global scope: no .mcp.json is written) registering a
-    client is the only way the server gets configured, so the gate is skipped and
-    the per-client prompts default to "yes"; if no client is detected we warn.
+    * Gate 1 (global / user-wide) offers only DETECTED clients — a user-wide config
+      for a client that isn't installed makes no sense.
+    * Gate 2 (project-scoped) offers ALL project-capable clients (``project_target``
+      set), detected or not: a fresh IDE setup can want ``.codex/config.toml`` even
+      when the ``codex`` CLI isn't on PATH yet. Detection only sets the default
+      answer (detected → yes), never the availability.
     """
-    detected = [c for c in _clients() if c.detected()]
-    if not detected:
-        if require:
-            print()
-            print(
-                "No MCP client was detected to register globally, and no .mcp.json "
-                "was written. Nothing was configured — install/point a client at "
-                "the server manually (see the guides), or re-run inside a project "
-                "directory (or with --local) to write a .mcp.json.",
-                file=sys.stderr,
-            )
-        return []
+    detected = [c for c in clients if c.detected()]
+    project_capable = [c for c in clients if c.project_target is not None]
 
     print()
-    print("Detected MCP clients:")
-    for client in detected:
-        print(f"  - {client.label}")
-    print()
-    if require:
-        print("Global setup: the server will be registered user-wide with a detected")
-        print("client (existing settings kept and backed up first). No .mcp.json is")
-        print("written in this mode.")
-    else:
-        print("The setup always writes a local .mcp.json you can copy into any client")
-        print("(see the guides). It can also set up a detected client for you — adding the")
-        print("server to its config, available in every project (existing settings kept and")
-        print("backed up first).")
+    if detected:
+        print("Detected MCP clients:")
+        for client in detected:
+            print(f"  - {client.label}")
         print()
-        print("No is recommended if you prefer project-specific client config.")
-        if not _prompt_bool("Set up a detected client automatically?", default=False):
-            return []
 
-    chosen = []
-    for client in detected:
-        if _prompt_bool(f"  Set up {client.label} automatically? ({client.target})", default=require):
-            chosen.append(client)
-        else:
-            print(f"    Skipped. Use {client.doc} for project-specific setup.")
-    if require and not chosen:
-        print(
-            "\nGlobal scope was requested but no client was selected, and no "
-            ".mcp.json was written — nothing was configured.",
-            file=sys.stderr,
-        )
-    return chosen
+    global_clients: list[Client] = []
+    if detected and _prompt_bool("Configure globally (user-wide)?", default=False):
+        for client in detected:
+            if _prompt_bool(f"  Configure {client.label}? ({client.target})", default=True):
+                global_clients.append(client)
+
+    project_clients: list[Client] = []
+    detected_keys = {c.key for c in detected}
+    detected_project = [c for c in project_capable if c.key in detected_keys]
+    if _prompt_bool("Configure project-scoped (this directory)?", default=False):
+        print("  This writes config files into the current directory (they contain")
+        print("  your API token — keep them out of version control).")
+        for client in project_capable:
+            # Default yes if this client is detected; also default yes for Claude
+            # Code when nothing else project-capable is detected, so a user standing
+            # in a project doesn't end up with nothing written.
+            default = client.key in detected_keys or (
+                client.key == "claude-code" and not detected_project
+            )
+            if _prompt_bool(f"  Configure {client.label}? ({client.project_target})", default=default):
+                project_clients.append(client)
+
+    return global_clients, project_clients
 
 
-def _apply_global_registration(clients: list[Client], command: str, env: dict[str, str]) -> None:
+def _apply_registration(clients: list[Client], command: str, env: dict[str, str], *, scope: str) -> None:
     for client in clients:
-        _write_client_config(client, command, env)
+        _write_client_config(client, command, env, target=client.target_for(scope))
 
 
-def _abort_if_nothing_to_write(mcp_json: Path | None, global_clients: list[Client]) -> None:
-    """Stop before collecting credentials when no config target was selected."""
-    if mcp_json is None and not global_clients:
-        sys.exit(1)
+# Backwards-compatible wrapper (global scope) for callers/tests.
+def _apply_global_registration(clients: list[Client], command: str, env: dict[str, str]) -> None:
+    _apply_registration(clients, command, env, scope="global")
+
+
+def _merge_prefill(pairs: list[tuple[Client, Path | None]]) -> dict[str, str]:
+    """Field-wise prefill merge over (client, target) pairs, in priority order.
+
+    Later pairs override earlier ones ONLY for keys they actually define — so a
+    partial config (e.g. a project ``.codex/config.toml`` with a base URL but no
+    token) contributes its URL without discarding a complete global entry's token.
+    Pass pairs LOWEST priority first (globals), HIGHEST last (project/cwd).
+    """
+    merged: dict[str, str] = {}
+    for client, target in pairs:
+        env = _read_client_env(client, target=target)
+        for key, value in env.items():
+            if value:
+                merged[key] = value
+    return merged
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
@@ -778,28 +836,13 @@ def _abort_if_nothing_to_write(mcp_json: Path | None, global_clients: list[Clien
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        prog="openproject-ce-mcp-setup",
-        description="Set up or remove the openproject MCP server.",
+        prog="openproject-ce-mcp",
+        description="Configure or remove the openproject MCP server for your clients.",
     )
     parser.add_argument(
         "--uninstall",
         action="store_true",
-        help="Remove the openproject entry from detected client configs (leaves other servers/settings intact).",
-    )
-    scope = parser.add_mutually_exclusive_group()
-    scope.add_argument(
-        "--local",
-        dest="scope",
-        action="store_const",
-        const="local",
-        help="Write a project-local .mcp.json in the current directory.",
-    )
-    scope.add_argument(
-        "--global",
-        dest="scope",
-        action="store_const",
-        const="global",
-        help="Register globally (user-wide) with detected MCP clients instead of a project .mcp.json.",
+        help="Remove the openproject entry from client configs (user-wide, and project-local in the current directory). Leaves other servers/settings intact.",
     )
     args = parser.parse_args(argv)
 
@@ -816,33 +859,41 @@ def main(argv: list[str] | None = None) -> None:
     uv = _find_uv()
     _install_deps(uv, installed)
 
-    # Resolve where the project-local .mcp.json goes (or None for global). The
-    # whole scope policy lives in _resolve_mcp_json.
-    mcp_json = _resolve_mcp_json(args.scope, installed)
-
-    # #3: auto-scope may write a token-bearing .mcp.json into whatever project the
-    # user happens to be standing in. When we picked the local path implicitly
-    # (no --local flag) inside an installed run, confirm before dropping the file.
-    if mcp_json is not None and args.scope is None and installed:
-        print(f"About to write {mcp_json} (contains your API token) in this directory.")
-        if not _prompt_bool("Write a project-local .mcp.json here?", default=True):
-            mcp_json = None
-
     command, command_resolved = _server_command(installed)
 
-    # Decide the registration mode before collecting credentials. When there is
-    # no .mcp.json to write (global scope), auto-registration is the only way the
-    # server gets configured, so require it rather than defaulting to "no".
-    global_clients = _choose_registration_mode(require=mcp_json is None)
-    _abort_if_nothing_to_write(mcp_json, global_clients)
+    clients = _clients()
+    # Clone mode writes Claude Code's project .mcp.json to the repo root, not cwd
+    # (historical behaviour); reflect that on the client's project_target.
+    if not installed:
+        for client in clients:
+            if client.key == "claude-code":
+                client.project_target = _resolve_mcp_json(None, installed=False)
 
-    # Seed prompt defaults from any existing config: the project .mcp.json when
-    # writing one, otherwise (#1: global re-run) an already-registered client's
-    # env, so amending one flag doesn't force re-entering the URL and token.
-    if mcp_json is not None:
-        existing = _load_existing(mcp_json)
-    else:
-        existing = _existing_from_clients(global_clients)
+    # Two independent gates decide WHERE to configure — before collecting creds.
+    global_clients, project_clients = _choose_targets(clients)
+
+    # A generic .mcp.json copy-source is written when project scope is chosen (or
+    # in a clone/source setup), NOT for a purely global configuration. If Claude
+    # Code is among the project clients, its project_target IS .mcp.json, so we
+    # write it once via _write_client_config and skip the generic write.
+    claude_code_project = any(c.key == "claude-code" for c in project_clients)
+    write_generic_mcp_json = (bool(project_clients) or not installed) and not claude_code_project
+
+    if not global_clients and not project_clients and not write_generic_mcp_json:
+        print(
+            "\nNothing selected to configure. Re-run and choose a global and/or "
+            "project-scoped target (see the guides).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Field-wise prefill: global targets first (low priority), then project targets
+    # in cwd (override only keys they define), so a partial project config doesn't
+    # discard a complete global entry's token.
+    prefill_pairs: list[tuple[Client, Path | None]] = [
+        (c, c.target) for c in global_clients
+    ] + [(c, c.project_target) for c in project_clients]
+    existing = _merge_prefill(prefill_pairs)
 
     print()
 
@@ -867,7 +918,7 @@ def main(argv: list[str] | None = None) -> None:
         existing.get("OPENPROJECT_ALLOWED_PROJECTS_READ", "*"),
     )
     write_projects = _prompt(
-        "Writable projects (leave empty to disable writes; * = all)",
+        "Writable projects (leave empty to disable writes; * = all readable projects)",
         existing.get("OPENPROJECT_ALLOWED_PROJECTS_WRITE", ""),
     )
 
@@ -969,10 +1020,17 @@ def main(argv: list[str] | None = None) -> None:
     }
 
     print()
-    if mcp_json is not None:
-        _write_mcp_json(env, mcp_json, command)
-
-    _apply_global_registration(global_clients, command, env)
+    if global_clients:
+        print("Configuring user-wide (global):")
+        _apply_registration(global_clients, command, env, scope="global")
+    if project_clients:
+        print("Configuring project-scoped (this directory):")
+        _apply_registration(project_clients, command, env, scope="project")
+    # Generic copy-source .mcp.json: only when project scope was chosen (or clone),
+    # and not already covered by Claude Code's project write.
+    if write_generic_mcp_json:
+        generic = _resolve_mcp_json("local", installed) if installed else _resolve_mcp_json(None, installed=False)
+        _write_mcp_json(env, generic, command)
 
     print()
     print("Server configured.")
@@ -985,16 +1043,23 @@ def main(argv: list[str] | None = None) -> None:
             "often do NOT inherit your shell PATH — if the server fails to start, "
             "edit the written config to use the absolute path to the binary."
         )
-    print()
-    print("Registered a client above? Restart it and you're done.")
-    print("Otherwise register the server yourself — copy the values from")
-    if mcp_json is not None:
-        print(f"{mcp_json} into your client's config.")
+
+    # Per-client restart hints (config written ≠ server running), deduped across
+    # both gates by client key.
+    configured: dict[str, Client] = {}
+    for client in [*global_clients, *project_clients]:
+        configured.setdefault(client.key, client)
+    if configured:
+        print()
+        print("Config written — now (re)load each client so it picks up the server:")
+        for client in configured.values():
+            print(f"  - {client.label}: {client.restart_hint}")
     else:
-        print("the client config written above into your client's config.")
-    print("Guides (project-scoped, global, verify):")
-    for label, doc in _doc_locations(installed).items():
-        print(f"  - {label:<26} {doc}")
+        print()
+        print("Register the server yourself — copy the values from the generated")
+        print(".mcp.json into your client's config. Guides:")
+        for label, doc in _doc_locations(installed).items():
+            print(f"  - {label:<26} {doc}")
 
 
 def _doc_locations(installed: bool) -> dict[str, str]:

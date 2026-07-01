@@ -191,9 +191,9 @@ def test_main_configure_dispatches_to_setup(monkeypatch) -> None:
     forwarded = []
     monkeypatch.setattr(setup_cli, "main", lambda argv: forwarded.append(argv))
     monkeypatch.setattr(srv, "_run_server", lambda: forwarded.append("SERVER"))
-    monkeypatch.setattr(srv.sys, "argv", ["openproject-ce-mcp", "configure", "--local"])
+    monkeypatch.setattr(srv.sys, "argv", ["openproject-ce-mcp", "configure", "--uninstall"])
     srv.main()
-    assert forwarded == [["--local"]]
+    assert forwarded == [["--uninstall"]]
 
 
 def test_main_unexpected_flag_still_runs_server(monkeypatch) -> None:

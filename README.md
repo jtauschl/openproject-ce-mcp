@@ -142,12 +142,20 @@ writes the config:
 openproject-ce-mcp configure
 ```
 
-Run it inside a project directory (a folder with `.git`, `pyproject.toml`, etc.)
-and it writes a project-local `.mcp.json` there. Run it elsewhere and it registers
-the server user-wide with a detected MCP client instead — no `.mcp.json` is written.
-Force either mode with `--local` (always write `.mcp.json` in the current directory)
-or `--global` (always register with a detected client). Global mode needs a client
-it can detect; if none is found it tells you so rather than writing nothing silently.
+It asks two independent questions:
+
+1. **Configure globally (user-wide)?** — registers the server in a detected
+   client's user-wide config (e.g. `~/.claude.json`), available in every project.
+2. **Configure project-scoped (this directory)?** — writes config files into the
+   current directory (`.mcp.json`, `.codex/config.toml`, `.vscode/mcp.json`,
+   `.cursor/mcp.json`); offered for every supported client, whether or not it is
+   detected. A generic `.mcp.json` you can copy values from is written too (unless
+   you selected Claude Code, whose project config *is* `.mcp.json`).
+
+Choose one or both; choosing neither aborts without writing anything (before it
+even asks for your token). Existing entries for other MCP servers are kept and
+each edited file is backed up first. After it writes, it tells you how to
+(re)load each client so the server actually starts.
 
 > **Zero-install run:** with `uv` you can skip installing entirely — point your
 > client's `command` at `uvx` with args `["openproject-ce-mcp"]`. See the
@@ -207,16 +215,22 @@ config to another verbatim:
 > **VS Code users:** the Copilot guide below is your guide — VS Code runs MCP
 > servers through GitHub Copilot in Agent mode.
 
-**The installer can set up a detected client for you.** Before collecting your
-settings, it asks whether to configure a detected client automatically. This adds
-the server to that client's user-wide config, making it available in every
-project. **The default is no** — project-specific config (below) gives finer
-control and is recommended. When you opt in, only the `openproject` entry is added
-and your existing config is backed up first.
+**`openproject-ce-mcp configure` can write these files for you.** Before
+collecting your settings it asks two independent questions:
 
-To register manually, copy the `command` and `env` values from the installer's
-`.mcp.json` into the file and format your client's guide shows — the values are
-identical across clients.
+- **Configure globally (user-wide)?** — adds the server to a detected client's
+  user-wide config, available in every project.
+- **Configure project-scoped (this directory)?** — writes config files into the
+  current directory for every supported client (offered whether or not the client
+  is detected), plus a generic `.mcp.json` you can copy from.
+
+Choose one or both; choosing neither aborts without writing anything. Only the
+`openproject` entry is written; existing entries for other MCP servers are kept
+and each edited file is backed up first.
+
+To register manually instead, copy the `command` and `env` values from the
+generated `.mcp.json` into the file and format your client's guide shows — the
+values are identical across clients.
 
 Follow the guide for your client:
 
@@ -245,9 +259,12 @@ client, and how to verify the server is picked up.
 
 **Uninstall**
 
-First unregister the server from any client config you set up — this removes the
-`openproject` entry from each detected client, keeping your other MCP servers and
-settings and backing up each edited file (your local `.mcp.json` is left untouched):
+First unregister the server. This removes the `openproject` entry from your
+clients' **user-wide** configs **and** from **project-local** configs in the
+current directory (`.mcp.json`, `.codex/config.toml`, `.vscode/mcp.json`,
+`.cursor/mcp.json`) — so run it from the project directory to clean that up too.
+Your other MCP servers and settings are kept and each edited file is backed up
+first; results are listed grouped by scope:
 
 ```bash
 openproject-ce-mcp configure --uninstall   # or: openproject-ce-mcp-setup --uninstall
