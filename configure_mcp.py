@@ -5,6 +5,7 @@
 """Interactive setup: installs dependencies and writes .mcp.json."""
 from __future__ import annotations
 
+import argparse
 import getpass
 import json
 import os
@@ -133,6 +134,10 @@ def _codex_block(command: str, env: dict[str, str]) -> str:
 # line of a multi-line array value such as ``  ["--flag"],`` — those start with
 # ``[`` but are not headers. Matching only true headers is what keeps multi-line
 # array values inside a table from being mistaken for the end of that table.
+# Limitation (accepted): a header whose quoted key contains a literal ``]`` (e.g.
+# ``["weird]name"]``) is not recognized. Codex never emits such names; the worst
+# case is that _merge_codex_toml's tomllib round-trip check (3.11+) rejects the
+# result and we refuse to write — fail-safe, not corruption.
 _TOML_HEADER_RE = re.compile(r"^\[\[?[^\]]+\]\]?\s*(#.*)?$")
 
 # The openproject server expressed as a dotted key or inline table at top level,
@@ -365,6 +370,78 @@ def _write_client_config(client: Client, command: str, env: dict[str, str]) -> b
     return True
 
 
+def _remove_json_openproject(existing: str, root_key: str) -> str | None:
+    """Remove only the ``openproject`` server under ``root_key``; keep the rest.
+
+    Returns the new text, or None if nothing changed (no openproject entry).
+    Raises ValueError on an unexpected shape (caller leaves the file untouched).
+    """
+    if not existing.strip():
+        return None
+    data = json.loads(existing)
+    if not isinstance(data, dict):
+        raise ValueError(f"expected a JSON object at the top level, got {type(data).__name__}")
+    servers = data.get(root_key)
+    if not isinstance(servers, dict) or "openproject" not in servers:
+        return None
+    del servers["openproject"]
+    if servers:
+        data[root_key] = servers
+    else:
+        # Drop an emptied server map so we don't leave "mcpServers": {}
+        data.pop(root_key, None)
+    return json.dumps(data, indent=2) + "\n"
+
+
+def _remove_client_config(client: Client) -> bool:
+    """Remove the openproject entry from a client's config; keep everything else.
+
+    Backs up before rewriting. Returns True if something was removed.
+    """
+    target = client.target
+    if not target.exists():
+        return False
+    existing = target.read_text(encoding="utf-8")
+    try:
+        if client.fmt == "toml":
+            stripped = _strip_codex_openproject(existing).rstrip()
+            new_text = (stripped + "\n") if stripped else ""
+            changed = new_text.strip() != existing.strip()
+        else:
+            merged = _remove_json_openproject(existing, client.root_key)
+            changed = merged is not None
+            new_text = merged if merged is not None else existing
+    except (json.JSONDecodeError, ValueError, CodexMergeError) as exc:
+        print(f"  ! {target} could not be parsed ({exc}). Leaving it untouched.")
+        return False
+    if not changed:
+        return False
+    _backup(target)
+    target.write_text(new_text, encoding="utf-8")
+    if not _IS_WINDOWS and new_text:
+        target.chmod(0o600)
+    print(f"  ✓ Removed openproject from {target}")
+    return True
+
+
+def _run_uninstall() -> None:
+    """Remove the openproject entry from any client config it was registered in.
+
+    The local .mcp.json and the venv are handled by uninstall.sh/.ps1; this Python
+    step owns the client-config edits (JSON/TOML merge) so the same robust logic
+    used to install is used to uninstall.
+    """
+    print("Removing the openproject server from client configs (existing settings kept)…")
+    removed_any = False
+    for client in _clients():
+        if client.target.exists() and _remove_client_config(client):
+            removed_any = True
+    if not removed_any:
+        print("  · No client config contained an openproject entry — nothing to remove.")
+    print()
+    print("Client configs done. Restart any client you had it registered in.")
+
+
 def _check_python() -> None:
     # Intentional runtime guard: this setup script may be launched by whatever
     # interpreter the user has on PATH, which can predate the project minimum.
@@ -421,12 +498,18 @@ def _backup(path: Path) -> None:
 
 def _write_mcp_json(env: dict[str, str]) -> None:
     existing = MCP_JSON.read_text(encoding="utf-8") if MCP_JSON.exists() else ""
+    # Merge first: if the existing file has an unexpected shape, _merge_json
+    # raises and we must leave it untouched (do NOT back up then abort, which
+    # would strand the user's data in a .bak with no working file written).
+    try:
+        merged = _merge_json(existing, "mcpServers", str(_venv_binary()), env, stdio=False)
+    except (json.JSONDecodeError, ValueError) as exc:
+        print(f"Could not update {MCP_JSON}: {exc}", file=sys.stderr)
+        print("Left it untouched. Fix or remove the file by hand, then re-run.", file=sys.stderr)
+        return
     if MCP_JSON.exists():
         _backup(MCP_JSON)
-    MCP_JSON.write_text(
-        _merge_json(existing, "mcpServers", str(_venv_binary()), env, stdio=False),
-        encoding="utf-8",
-    )
+    MCP_JSON.write_text(merged, encoding="utf-8")
     if not _IS_WINDOWS:
         MCP_JSON.chmod(0o600)
     print(f"Written: {MCP_JSON}")
@@ -510,7 +593,19 @@ def _apply_global_registration(clients: list[Client], command: str, env: dict[st
 # ── main ──────────────────────────────────────────────────────────────────────
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Set up or remove the openproject MCP server.")
+    parser.add_argument(
+        "--uninstall",
+        action="store_true",
+        help="Remove the openproject entry from detected client configs (leaves other servers/settings intact).",
+    )
+    args = parser.parse_args(argv)
+
+    if args.uninstall:
+        _run_uninstall()
+        return
+
     _check_python()
 
     uv = _find_uv()

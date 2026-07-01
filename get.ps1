@@ -46,6 +46,13 @@ if (Test-Path (Join-Path $Dest ".git")) {
     git clone $Repo $Dest
 }
 
+# ── verify checkout ───────────────────────────────────────────────────────────
+# Guard against a stale or partial Dest left by an interrupted clone/pull.
+if (-not (Test-Path (Join-Path $Dest "configure_mcp.py"))) {
+    Write-Error "Setup script not found at $Dest\configure_mcp.py. The checkout looks incomplete. Remove it and re-run: Remove-Item -Recurse -Force `"$Dest`""
+    exit 1
+}
+
 # ── run setup ─────────────────────────────────────────────────────────────────
 Set-Location $Dest
 & $Python @PyArgs configure_mcp.py

@@ -373,3 +373,63 @@ def test_backup_collision_keeps_both(monkeypatch, tmp_path: Path) -> None:
     assert len(backups) == 2, f"both backups must be kept, got {backups}"
     contents = {p.read_text() for p in tmp_path.glob("config.toml.bak.*")}
     assert contents == {"first\n", "second\n"}
+
+
+# ── uninstall (remove openproject from client configs) ──────────────────────────
+
+
+def test_remove_json_openproject_keeps_others() -> None:
+    existing = json.dumps({
+        "mcpServers": {"openproject": {"command": "/x"}, "github": {"command": "/gh"}},
+        "theme": "dark",
+    })
+    out = json.loads(c._remove_json_openproject(existing, "mcpServers"))
+    assert "openproject" not in out["mcpServers"]
+    assert out["mcpServers"]["github"] == {"command": "/gh"}
+    assert out["theme"] == "dark"
+
+
+def test_remove_json_openproject_drops_emptied_map() -> None:
+    existing = json.dumps({"mcpServers": {"openproject": {"command": "/x"}}, "editorMode": "vim"})
+    out = json.loads(c._remove_json_openproject(existing, "mcpServers"))
+    assert "mcpServers" not in out  # emptied map removed
+    assert out["editorMode"] == "vim"
+
+
+def test_remove_json_openproject_noop_when_absent() -> None:
+    existing = json.dumps({"mcpServers": {"github": {"command": "/gh"}}})
+    assert c._remove_json_openproject(existing, "mcpServers") is None
+
+
+@_needs_tomllib
+def test_remove_codex_openproject_keeps_siblings() -> None:
+    existing = (
+        '[some]\nk = "v"\n\n'
+        '[mcp_servers.openproject]\ncommand = "/x"\n\n'
+        '[mcp_servers.openproject.env]\nA = "1"\n\n'
+        '[mcp_servers.keep]\ncommand = "/keep"\n'
+    )
+    stripped = c._strip_codex_openproject(existing)
+    data = tomllib.loads(stripped)
+    assert "openproject" not in data.get("mcp_servers", {})
+    assert data["mcp_servers"]["keep"]["command"] == "/keep"
+    assert data["some"]["k"] == "v"
+
+
+def test_remove_client_config_backs_up_and_removes(monkeypatch, tmp_path) -> None:
+    target = tmp_path / ".claude.json"
+    target.write_text(json.dumps({"mcpServers": {"openproject": {"command": "/x"}, "gh": {"command": "/gh"}}}))
+    monkeypatch.setattr(c, "_backup", lambda p: p.rename(p.with_name(f"{p.name}.bak.fixed")))
+    client = c.Client("claude-code", "Claude Code", target, "json", lambda: True, "docs/claude.md", root_key="mcpServers")
+    assert c._remove_client_config(client) is True
+    assert (tmp_path / ".claude.json.bak.fixed").exists()
+    result = json.loads(target.read_text())
+    assert "openproject" not in result["mcpServers"]
+    assert "gh" in result["mcpServers"]
+
+
+def test_remove_client_config_noop_when_no_entry(tmp_path) -> None:
+    target = tmp_path / ".claude.json"
+    target.write_text(json.dumps({"mcpServers": {"gh": {"command": "/gh"}}}))
+    client = c.Client("claude-code", "Claude Code", target, "json", lambda: True, "docs/claude.md", root_key="mcpServers")
+    assert c._remove_client_config(client) is False
