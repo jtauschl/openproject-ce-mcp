@@ -2275,6 +2275,8 @@ class OpenProjectClient:
         related_numeric_id = await self._resolve_work_package_id(related_to_work_package_id)
         work_package = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
+        # Reuse the numeric id from the fetch above rather than a second GET.
+        source_numeric_id = int(work_package["id"])
         payload: dict[str, Any] = {
             "type": relation_type,
             "_links": {"to": {"href": self._api_href(f"work_packages/{related_numeric_id}")}},
@@ -2285,7 +2287,6 @@ class OpenProjectClient:
         if lag is not None:
             payload["lag"] = lag
 
-        source_numeric_id = await self._resolve_work_package_id(work_package_id)
         preview_payload = payload | {"to_work_package_id": related_numeric_id}
         if self._preview_mode(confirm):
             return RelationWriteResult(
@@ -2974,9 +2975,14 @@ class OpenProjectClient:
             return
         current = await self._get(f"reminders/{reminder_id}")
         remindable = current.get("_links", {}).get("remindable")
-        if isinstance(remindable, dict) and remindable.get("href"):
-            work_package = await self._get(self._link_to_api_path(remindable["href"]))
-            self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
+        if not isinstance(remindable, dict) or not remindable.get("href"):
+            # Fail closed: a configured allowlist must not be bypassed just
+            # because the reminder's work-package link is missing/malformed.
+            raise PermissionDeniedError(
+                "OpenProject writes to this reminder are disabled by OPENPROJECT_ALLOWED_PROJECTS_WRITE."
+            )
+        work_package = await self._get(self._link_to_api_path(remindable["href"]))
+        self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
 
     async def update_reminder(
         self,
@@ -3990,26 +3996,51 @@ class OpenProjectClient:
             params["filters"] = json.dumps([{"type": {"operator": "=", "values": [relation_type]}}])
         payload = await self._get("relations", params=params or None)
         results = []
+        allowlisted = self.settings.allowed_projects and not _scope_allows_all(self.settings.allowed_projects)
+        results = []
+        # Cache project-allow decisions per work package so a batch of relations
+        # between the same work packages doesn't refetch (mitigates N+1).
+        wp_allowed: dict[str, bool] = {}
         for item in payload.get("_embedded", {}).get("elements", []):
             if not isinstance(item, dict):
                 continue
-            if not await self._relation_source_allowed(item):
+            if allowlisted and not await self._relation_endpoints_allowed(item, wp_allowed):
                 continue
             results.append(self.normalize_relation(item))
         return RelationListResult(count=len(results), results=results)
 
-    async def _relation_source_allowed(self, relation: dict[str, Any]) -> bool:
-        """True if the relation's source work package is in an allowed project."""
-        if not self.settings.allowed_projects or _scope_allows_all(self.settings.allowed_projects):
-            return True
-        source = relation.get("_links", {}).get("from")
-        if not isinstance(source, dict) or not source.get("href"):
-            return False
+    async def _relation_endpoints_allowed(
+        self, relation: dict[str, Any], cache: dict[str, bool]
+    ) -> bool:
+        """True only if BOTH linked work packages are in an allowed project.
+
+        Both ``from`` and ``to`` must pass — otherwise a relation to a work
+        package in a project the caller may not read would still leak that work
+        package's id and subject through ``to_id``/``to_subject``.
+        """
+        links = relation.get("_links", {})
+        for side in ("from", "to"):
+            link = links.get(side)
+            if not isinstance(link, dict) or not link.get("href"):
+                return False
+            href = link["href"]
+            if href not in cache:
+                cache[href] = await self._work_package_project_allowed(href)
+            if not cache[href]:
+                return False
+        return True
+
+    async def _work_package_project_allowed(self, href: str) -> bool:
         try:
-            work_package = await self._get(self._link_to_api_path(source["href"]))
+            work_package = await self._get(self._link_to_api_path(href))
+        except NotFoundError:
+            return False
+        # Do NOT swallow server/transport errors as "not allowed" — a transient
+        # 5xx must not silently drop a relation the caller is entitled to see.
+        try:
             self._ensure_project_link_allowed(work_package.get("_links", {}).get("project"))
             return True
-        except (PermissionDeniedError, NotFoundError, OpenProjectServerError):
+        except PermissionDeniedError:
             return False
 
     async def update_relation(
@@ -6383,6 +6414,23 @@ class OpenProjectClient:
         base = Path(configured).expanduser() if configured else Path.cwd()
         return base.resolve()
 
+    # Files that must never be uploaded even from inside the attachment root:
+    # the config often lives in the server's working directory, so directory
+    # containment alone would still expose the API token and other secrets.
+    _ATTACHMENT_DENY_NAMES = frozenset({
+        ".mcp.json", ".env", "credentials", "id_rsa", "id_ed25519",
+    })
+    _ATTACHMENT_DENY_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
+
+    def _is_sensitive_attachment(self, path: Path) -> bool:
+        name = path.name
+        lower = name.lower()
+        if lower in self._ATTACHMENT_DENY_NAMES:
+            return True
+        if lower.startswith(".mcp.json"):  # e.g. .mcp.json.bak.<ts>
+            return True
+        return any(lower.endswith(suffix) for suffix in self._ATTACHMENT_DENY_SUFFIXES)
+
     def _prepare_attachment_file(self, file_path: str, *, include_bytes: bool) -> dict[str, Any]:
         root = self._attachment_root()
         # Resolve symlinks and .. so the containment check cannot be defeated.
@@ -6391,6 +6439,11 @@ class OpenProjectClient:
             raise InvalidInputError(
                 f"Attachment file '{file_path}' is outside the allowed attachment directory "
                 f"({root}). Set OPENPROJECT_ATTACHMENT_ROOT to permit another location."
+            )
+        if self._is_sensitive_attachment(path):
+            raise InvalidInputError(
+                f"Attachment file '{file_path}' looks like a credential/config file and cannot be "
+                "uploaded. This protects the API token and other local secrets."
             )
         if not path.is_file():
             raise InvalidInputError(f"Attachment file '{file_path}' does not exist or is not a file.")
