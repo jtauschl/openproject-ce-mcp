@@ -7,7 +7,7 @@ All mutating tools follow the same guarded write pattern by default:
 - Call the tool without `confirm=true` to get a preview or validation result.
 - Call it again with `confirm=true` to execute the write or delete.
 
-If `OPENPROJECT_AUTO_CONFIRM_WRITE` is explicitly enabled, the preview step is skipped for all writes, including deletes.
+If `OPENPROJECT_AUTO_CONFIRM_WRITE` is explicitly enabled, the preview step is skipped for all writes, including deletes. `OPENPROJECT_AUTO_CONFIRM_DELETE` controls deletes independently and inherits `OPENPROJECT_AUTO_CONFIRM_WRITE` when unset; set it to require a preview for deletes while auto-confirming other writes, or to skip the preview for deletes only.
 
 All list tools are bounded and paginated. They return compact summaries — not raw OpenProject HAL payloads.
 

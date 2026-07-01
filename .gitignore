@@ -33,3 +33,6 @@ CONTINUE.md
 
 # OpenProject source clones for the API source-check tool (tools/api-check/)
 .op-sources/
+
+# Internal review notes
+SELF_REVIEW.md

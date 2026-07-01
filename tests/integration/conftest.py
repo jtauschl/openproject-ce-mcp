@@ -1,9 +1,19 @@
 """Shared fixtures for integration tests against a live OpenProject instance.
 
+WARNING — these fixtures build a FULLY WRITE-ENABLED client (every
+``enable_*_write`` flag on, plus ``auto_confirm_write=True``) and the write tests
+create and DELETE real data. Run them ONLY against a disposable test instance or a
+throwaway test project. NEVER point ``OPENPROJECT_BASE_URL`` /
+``OPENPROJECT_API_TOKEN`` at a production instance or a project whose data you care
+about — a failed cleanup, a bug, or an interrupted run can leave or destroy data.
+
+Integration tests are opt-in: they are excluded from the default run and only
+collected with ``-m integration``. When creds are absent every fixture skips.
+
 Required environment variables:
     OPENPROJECT_BASE_URL       e.g. https://op.example.com
     OPENPROJECT_API_TOKEN      API token with admin access
-    OPENPROJECT_TEST_PROJECT   project identifier to use (default: mcp-test)
+    OPENPROJECT_TEST_PROJECT   DISPOSABLE project identifier to use (default: mcp-test)
 """
 from __future__ import annotations
 
@@ -13,6 +23,24 @@ import pytest
 
 from openproject_mcp.client import OpenProjectClient
 from openproject_mcp.config import Settings
+
+# Project identifiers that must never be used as the disposable test project.
+# These name real, non-throwaway projects; running the write suite against them
+# would create and delete production data. Override the guard deliberately by
+# setting OPENPROJECT_TEST_PROJECT to a throwaway project (default: mcp-test).
+_PROTECTED_TEST_PROJECTS = frozenset({"openproject-mcp"})
+
+
+def _resolve_test_project() -> str:
+    """Return the disposable test project, refusing known non-throwaway ones."""
+    project = os.environ.get("OPENPROJECT_TEST_PROJECT", "mcp-test").strip()
+    if project.lower() in _PROTECTED_TEST_PROJECTS:
+        pytest.fail(
+            f"Refusing to run write integration tests against protected project "
+            f"'{project}'. Set OPENPROJECT_TEST_PROJECT to a disposable/throwaway "
+            f"project (default: mcp-test)."
+        )
+    return project
 
 
 def _integration_settings() -> Settings | None:
@@ -44,12 +72,14 @@ def client():
     settings = _integration_settings()
     if settings is None:
         pytest.skip("OPENPROJECT_BASE_URL / OPENPROJECT_API_TOKEN not set")
+    # Fail fast before handing out a write-enabled client aimed at a protected project.
+    _resolve_test_project()
     return OpenProjectClient(settings)
 
 
 @pytest.fixture
 def test_project() -> str:
-    return os.environ.get("OPENPROJECT_TEST_PROJECT", "mcp-test")
+    return _resolve_test_project()
 
 
 # ---------------------------------------------------------------------------

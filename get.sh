@@ -41,6 +41,15 @@ else
   git clone "$REPO" "$DEST"
 fi
 
+# ── verify checkout ───────────────────────────────────────────────────────────
+# Guard against a stale or partial DEST left by an interrupted clone/pull.
+if [ ! -f "$DEST/configure_mcp.py" ]; then
+  echo "Setup script not found at $DEST/configure_mcp.py." >&2
+  echo "The checkout at $DEST looks incomplete. Remove it and re-run:" >&2
+  echo "  rm -rf \"$DEST\"" >&2
+  exit 1
+fi
+
 # ── run setup ─────────────────────────────────────────────────────────────────
 cd "$DEST"
 exec "$PYTHON_BIN" configure_mcp.py
