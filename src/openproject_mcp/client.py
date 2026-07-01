@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
+from collections.abc import Awaitable
 from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass, replace
 from fnmatch import fnmatchcase
@@ -3027,6 +3028,25 @@ class OpenProjectClient:
 
     # --- Project favorites (via the workspaces endpoint) ---
 
+    async def _run_version_gated(self, coro: Awaitable[Any], *, feature: str, min_version: str) -> Any:
+        """Run a call whose endpoint only exists from a newer OpenProject version.
+
+        A NotFoundError from such a call means the endpoint is absent (i.e. the
+        instance is too old), not that some resource is missing. Translating it
+        into a clear "requires OpenProject X+" message matters for an MCP: the
+        calling agent can explain the limitation instead of misreading a raw 404
+        as "the project does not exist". Any prerequisite (e.g. the project) has
+        already been fetched successfully before this runs, so the 404 is
+        unambiguous.
+        """
+        try:
+            return await coro
+        except NotFoundError as exc:
+            raise NotFoundError(
+                f"{feature} requires OpenProject {min_version} or newer; "
+                "this instance appears to be older."
+            ) from exc
+
     async def _set_project_favorite(self, project: str, *, favorite: bool, confirm: bool) -> FavoriteWriteResult:
         # Use the workspaces endpoint (the project-favorite path is deprecated).
         project_payload = await self._get_project_payload(project, write=True)
@@ -3045,12 +3065,20 @@ class OpenProjectClient:
                 project=project_name,
             )
         self._ensure_write_enabled("project")
+        # The workspaces favorite endpoint exists only from 17.0; on older
+        # instances a 404 is translated into a clear version hint.
         if favorite:
             # The favorite endpoint returns 204 with no body, so go through
             # _request (not _post, which would try to parse empty JSON).
-            await self._request("POST", f"workspaces/{project_id}/favorite", json_body={})
+            await self._run_version_gated(
+                self._request("POST", f"workspaces/{project_id}/favorite", json_body={}),
+                feature="Project favorites", min_version="17.0",
+            )
         else:
-            await self._delete(f"workspaces/{project_id}/favorite")
+            await self._run_version_gated(
+                self._delete(f"workspaces/{project_id}/favorite"),
+                feature="Project favorites", min_version="17.0",
+            )
         return FavoriteWriteResult(
             action=action,
             confirmed=True,

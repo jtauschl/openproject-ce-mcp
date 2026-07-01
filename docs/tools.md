@@ -26,8 +26,8 @@ All list tools are bounded and paginated. They return compact summaries — not 
 | `get_job_status` | Fetch the current status of a background job such as project copy |
 | `update_project` | Validate and then update a project; only writes when called again with `confirm=true` |
 | `delete_project` | Validate and then delete a project; only deletes when called again with `confirm=true` |
-| `add_project_favorite` | Validate and then mark a project as a favorite; only writes when called again with `confirm=true` |
-| `remove_project_favorite` | Validate and then remove a project from favorites; only writes when called again with `confirm=true` |
+| `add_project_favorite` | Validate and then mark a project as a favorite (OpenProject 17.0+); only writes when called again with `confirm=true` |
+| `remove_project_favorite` | Validate and then remove a project from favorites (OpenProject 17.0+); only writes when called again with `confirm=true` |
 | `get_instance_configuration` | Return instance-level OpenProject configuration and active feature flags |
 
 ## Memberships

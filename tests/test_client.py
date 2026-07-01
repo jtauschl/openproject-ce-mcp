@@ -5309,6 +5309,42 @@ async def test_add_project_favorite_uses_workspaces_path_and_empty_body() -> Non
 
 
 @pytest.mark.asyncio
+async def test_add_project_favorite_translates_404_to_version_hint() -> None:
+    # Simulates an OpenProject older than 17.0, where the workspaces favorite
+    # endpoint does not exist and returns 404.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 6, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/workspaces/6/favorite":
+            return httpx.Response(404, json={"message": "Not found"}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = make_settings()
+    settings = Settings(
+        base_url=settings.base_url,
+        api_token=settings.api_token,
+        enable_project_write=True,
+        allowed_write_projects=("demo",),
+        timeout=settings.timeout,
+        verify_ssl=settings.verify_ssl,
+        default_page_size=settings.default_page_size,
+        max_page_size=settings.max_page_size,
+        max_results=settings.max_results,
+        log_level=settings.log_level,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(NotFoundError, match="Project favorites requires OpenProject 17.0"):
+        await client.add_project_favorite(project="demo", confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_work_packages_version_status_builds_filter() -> None:
     captured: dict[str, str] = {}
 
