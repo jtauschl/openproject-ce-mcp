@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from openproject_mcp.client import OpenProjectClient
+from openproject_mcp.client import NotFoundError, OpenProjectClient
 
 pytestmark = pytest.mark.integration
 
@@ -26,7 +26,11 @@ async def test_get_project_admin_context(client: OpenProjectClient, test_project
 
 
 async def test_get_project_configuration(client: OpenProjectClient, test_project: str) -> None:
-    config = await client.get_project_configuration(test_project)
+    # The project configuration endpoint was added in 17.4; older instances 404.
+    try:
+        config = await client.get_project_configuration(test_project)
+    except NotFoundError:
+        pytest.skip("project configuration endpoint requires OpenProject 17.4+")
     assert config is not None
 
 

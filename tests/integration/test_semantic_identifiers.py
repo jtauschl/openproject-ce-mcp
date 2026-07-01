@@ -55,8 +55,10 @@ async def test_reference_resolution_matches_instance_mode(
         relations = await client.get_work_package_relations(display_id)
         assert relations is not None
     else:
-        # Classic instance: display_id is just the numeric id as a string, and a
-        # made-up project-prefixed reference degrades cleanly to not-found.
-        assert display_id == str(created.work_package_id)
+        # Classic instance. On 17.x classic mode display_id is the numeric id as a
+        # string; on 16.x (before the displayId field existed, added in 17.4) it is
+        # absent, so display_id is empty. Either way it must not be a semantic form.
+        assert display_id in ("", str(created.work_package_id))
+        # A made-up project-prefixed reference degrades cleanly to not-found.
         with pytest.raises(NotFoundError):
             await client.get_work_package("TST-999999")
