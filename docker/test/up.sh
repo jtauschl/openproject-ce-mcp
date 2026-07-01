@@ -22,9 +22,10 @@ fi
 
 case "${1:-all}" in
   16) SERVICES=(op-16-6); SEMANTIC=("op-16-6:0") ;;
-  17) SERVICES=(op-17-5); SEMANTIC=("op-17-5:1") ;;
-  all|"") SERVICES=(op-16-6 op-17-5); SEMANTIC=("op-16-6:0" "op-17-5:1") ;;
-  *) echo "usage: up.sh [16|17|all]" >&2; exit 2 ;;
+  174) SERVICES=(op-17-4); SEMANTIC=("op-17-4:0") ;;  # displayId present, semantic off
+  17|175) SERVICES=(op-17-5); SEMANTIC=("op-17-5:1") ;;
+  all|"") SERVICES=(op-16-6 op-17-4 op-17-5); SEMANTIC=("op-16-6:0" "op-17-4:0" "op-17-5:1") ;;
+  *) echo "usage: up.sh [16|174|17|all]" >&2; exit 2 ;;
 esac
 
 echo "Starting: ${SERVICES[*]} (first boot can take >5 min)…"
@@ -43,7 +44,7 @@ wait_healthy() {
   echo " TIMEOUT"; return 1
 }
 
-declare -A PORT=( [op-16-6]=8166 [op-17-5]=8175 )
+declare -A PORT=( [op-16-6]=8166 [op-17-4]=8174 [op-17-5]=8175 )
 
 for entry in "${SEMANTIC[@]}"; do
   svc="${entry%%:*}"; semantic="${entry#*:}"

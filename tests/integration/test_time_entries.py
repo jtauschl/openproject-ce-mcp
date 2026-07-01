@@ -45,7 +45,7 @@ async def test_create_get_update_delete_time_entry(
     # Create
     result = await client.create_time_entry(
         activity=activity,
-        hours=1.5,
+        hours="PT1H30M",
         spent_on=spent_on,
         project=test_project,
         work_package_id=wp_id,
@@ -64,7 +64,7 @@ async def test_create_get_update_delete_time_entry(
     # Update
     update_result = await client.update_time_entry(
         time_entry_id=te_id,
-        hours=2.0,
+        hours="PT2H",
         confirm=True,
     )
     assert update_result.ready, update_result.validation_errors

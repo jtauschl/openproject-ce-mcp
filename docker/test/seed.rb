@@ -44,6 +44,9 @@ end
 # a project member with a work-package-capable role.
 all_modules = OpenProject::AccessControl.available_project_modules.map(&:to_s)
 project.enabled_module_names = (project.enabled_module_names | all_modules)
+# A new project also has no work-package types enabled; assign them all so
+# create_work_package (Task, etc.) works.
+project.types = Type.all
 project.save!
 log("enabled modules: #{project.reload.enabled_module_names.sort.join(', ')}")
 wp_role = Role.givable.find { |r| r.permissions.include?(:view_work_packages) }

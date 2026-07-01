@@ -1,16 +1,18 @@
-# Local OpenProject instances for runtime verification of the MCP client across
-# versions. Uses the all-in-one images (NOT the -slim variants) so each container
-# bundles PostgreSQL + memcached and needs no separate database service.
+# Local OpenProject instances for runtime verification of the MCP client at the
+# versions where the API changed in ways that matter to this client. We run the
+# LATEST patch of each such minor (what users actually run), using the all-in-one
+# images (NOT -slim, which have no bundled database and crash on boot).
 #
-#   16.6 = classic numeric identifiers (no semantic ids) — backwards-compat path
-#   17.5 = project-based semantic identifiers
+#   16.6.10 = classic numeric identifiers (baseline, no displayId, no semantic)
+#   17.4.1  = displayId field introduced
+#   17.5.1  = project-based semantic identifiers active + workspaces (favorites)
 #
 # Driven by up.sh / down.sh. SECRET_KEY_BASE comes from a generated .env
 # (gitignored); never hardcode it here.
 
 services:
   op-16-6:
-    image: openproject/openproject:16.6
+    image: openproject/openproject:16.6.10
     ports:
       - "8166:80"
     environment:
@@ -28,8 +30,27 @@ services:
       retries: 40
       start_period: 120s
 
+  op-17-4:
+    image: openproject/openproject:17.4.1
+    ports:
+      - "8174:80"
+    environment:
+      OPENPROJECT_HOST__NAME: localhost:8174
+      OPENPROJECT_HTTPS: "false"
+      OPENPROJECT_DEFAULT__LANGUAGE: en
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?set via up.sh / .env}
+    volumes:
+      - op174_pgdata:/var/openproject/pgdata
+      - op174_assets:/var/openproject/assets
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/health_checks/default"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 120s
+
   op-17-5:
-    image: openproject/openproject:17.5
+    image: openproject/openproject:17.5.1
     ports:
       - "8175:80"
     environment:
@@ -50,5 +71,7 @@ services:
 volumes:
   op166_pgdata:
   op166_assets:
+  op174_pgdata:
+  op174_assets:
   op175_pgdata:
   op175_assets:
