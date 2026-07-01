@@ -3,8 +3,8 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "openproject-mcp"
-version = "0.1.0"
+name = "openproject-ce-mcp"
+version = "0.1.1"
 description = "MCP server for OpenProject Community Edition with guarded read/write support."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -47,15 +47,15 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jtauschl/openproject-mcp"
-Repository = "https://github.com/jtauschl/openproject-mcp"
-"Bug Tracker" = "https://github.com/jtauschl/openproject-mcp/issues"
+Homepage = "https://github.com/jtauschl/openproject-ce-mcp"
+Repository = "https://github.com/jtauschl/openproject-ce-mcp"
+"Bug Tracker" = "https://github.com/jtauschl/openproject-ce-mcp/issues"
 
 [project.scripts]
-openproject-mcp = "openproject_mcp.server:main"
+openproject-ce-mcp = "openproject_ce_mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/openproject_mcp"]
+packages = ["src/openproject_ce_mcp"]
 
 [tool.hatch.build]
 dev-mode-dirs = ["src"]

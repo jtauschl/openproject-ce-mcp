@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from openproject_mcp.client import NotFoundError, OpenProjectClient
+from openproject_ce_mcp.client import NotFoundError, OpenProjectClient
 
 pytestmark = pytest.mark.integration
 

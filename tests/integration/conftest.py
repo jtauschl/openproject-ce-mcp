@@ -21,14 +21,14 @@ import os
 
 import pytest
 
-from openproject_mcp.client import OpenProjectClient
-from openproject_mcp.config import Settings
+from openproject_ce_mcp.client import OpenProjectClient
+from openproject_ce_mcp.config import Settings
 
 # Project identifiers that must never be used as the disposable test project.
 # These name real, non-throwaway projects; running the write suite against them
 # would create and delete production data. Override the guard deliberately by
 # setting OPENPROJECT_TEST_PROJECT to a throwaway project (default: mcp-test).
-_PROTECTED_TEST_PROJECTS = frozenset({"openproject-mcp"})
+_PROTECTED_TEST_PROJECTS = frozenset({"openproject-ce-mcp"})
 
 
 def _resolve_test_project() -> str:

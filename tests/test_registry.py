@@ -3,7 +3,7 @@ import ast
 import re
 from pathlib import Path
 
-TOOLS_PY = Path(__file__).parent.parent / "src" / "openproject_mcp" / "tools.py"
+TOOLS_PY = Path(__file__).parent.parent / "src" / "openproject_ce_mcp" / "tools.py"
 TOOLS_MD = Path(__file__).parent.parent / "docs" / "tools.md"
 
 

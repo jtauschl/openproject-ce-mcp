@@ -6,6 +6,30 @@ release and 0.0.1 is the development baseline.
 
 ---
 
+## 0.1.1 (unreleased)
+
+### Changed
+
+- Renamed the package to **openproject-ce-mcp** (distribution name, import
+  package `openproject_ce_mcp`, and the `openproject-ce-mcp` command). The PyPI
+  name `openproject-mcp` is taken by an unrelated project; the new name is free
+  and states the Community-Edition focus. The MCP server key stays `openproject`,
+  so existing client configs do not change.
+
+### Fixed
+
+- The `curl … | sh` installer no longer crashes with `EOFError` on the first
+  prompt: `get.sh` attaches the controlling terminal, and the prompt helpers fall
+  back to defaults when stdin is not interactive.
+
+### Added
+
+- `check_api.py --constants` verifies hardcoded enum/constant values (emoji
+  reactions, version statuses and their operators) against the OpenProject source
+  across versions, catching a value rename the presence check would miss.
+
+---
+
 ## 0.1.0 – 2026-07-01
 
 ### Compatibility

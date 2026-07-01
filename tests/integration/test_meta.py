@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from openproject_mcp.client import OpenProjectClient, OpenProjectError
+from openproject_ce_mcp.client import OpenProjectClient, OpenProjectError
 
 pytestmark = pytest.mark.integration
 

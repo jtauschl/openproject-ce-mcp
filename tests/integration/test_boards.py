@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from openproject_mcp.client import OpenProjectClient
+from openproject_ce_mcp.client import OpenProjectClient
 
 pytestmark = pytest.mark.integration
 

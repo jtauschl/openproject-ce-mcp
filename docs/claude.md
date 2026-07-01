@@ -22,12 +22,12 @@
    - Protect it if it contains secrets: `chmod 600 .mcp.json`
    - **This file holds your API token.** Add `.mcp.json` to your project's `.gitignore` so it is never committed.
 
-3. **Example config** — this mirrors what `configure_mcp.py` writes. On Windows the `command` path is `...\.venv\Scripts\openproject-mcp.exe`; the installer fills in the correct path for your OS automatically.
+3. **Example config** — this mirrors what `configure_mcp.py` writes. On Windows the `command` path is `...\.venv\Scripts\openproject-ce-mcp.exe`; the installer fills in the correct path for your OS automatically.
    ```json
    {
      "mcpServers": {
        "openproject": {
-         "command": "/absolute/path/to/openproject-mcp/.venv/bin/openproject-mcp",
+         "command": "/absolute/path/to/openproject-ce-mcp/.venv/bin/openproject-ce-mcp",
          "env": {
            "OPENPROJECT_BASE_URL": "https://op.example.com",
            "OPENPROJECT_API_TOKEN": "replace-with-your-token",
@@ -97,7 +97,7 @@ After reloading, confirm the server is live:
 {
   "mcpServers": {
     "openproject": {
-      "command": "/absolute/path/to/openproject-mcp/.venv/bin/openproject-mcp",
+      "command": "/absolute/path/to/openproject-ce-mcp/.venv/bin/openproject-ce-mcp",
       "env": {
         "OPENPROJECT_BASE_URL": "https://op.example.com",
         "OPENPROJECT_API_TOKEN": "replace-with-your-token",

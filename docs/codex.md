@@ -21,10 +21,10 @@ You do not need the Codex CLI installed for this setup if you use the IDE extens
    ```
    **This file holds your API token.** Add `.codex/config.toml` to your project's `.gitignore` so it is never committed.
 
-3. **Example config:** Copy the `command` path and the `env` values from the `.mcp.json` the installer generated into this TOML layout. On Windows the `command` path is `...\.venv\Scripts\openproject-mcp.exe`; use the exact path the installer printed.
+3. **Example config:** Copy the `command` path and the `env` values from the `.mcp.json` the installer generated into this TOML layout. On Windows the `command` path is `...\.venv\Scripts\openproject-ce-mcp.exe`; use the exact path the installer printed.
    ```toml
    [mcp_servers.openproject]
-   command = "/absolute/path/to/openproject-mcp/.venv/bin/openproject-mcp"
+   command = "/absolute/path/to/openproject-ce-mcp/.venv/bin/openproject-ce-mcp"
 
    [mcp_servers.openproject.env]
    OPENPROJECT_BASE_URL = "https://op.example.com"
@@ -94,7 +94,7 @@ codex mcp add openproject \
   --env OPENPROJECT_BASE_URL=https://op.example.com \
   --env OPENPROJECT_API_TOKEN=your-token \
   -- \
-  /absolute/path/to/openproject-mcp/.venv/bin/openproject-mcp
+  /absolute/path/to/openproject-ce-mcp/.venv/bin/openproject-ce-mcp
 ```
 
 ---

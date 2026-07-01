@@ -462,8 +462,8 @@ wheels = [
 ]
 
 [[package]]
-name = "openproject-mcp"
-version = "0.1.0"
+name = "openproject-ce-mcp"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

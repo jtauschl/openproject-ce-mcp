@@ -6,7 +6,7 @@ import re
 import httpx
 import pytest
 
-from openproject_mcp.client import (
+from openproject_ce_mcp.client import (
     AuthenticationError,
     InvalidInputError,
     NotFoundError,
@@ -14,7 +14,7 @@ from openproject_mcp.client import (
     PermissionDeniedError,
     _extract_formattable_text,
 )
-from openproject_mcp.config import Settings
+from openproject_ce_mcp.config import Settings
 
 
 def make_settings() -> Settings:

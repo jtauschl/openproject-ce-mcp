@@ -38,8 +38,8 @@ _IS_MACOS = sys.platform == "darwin"
 
 def _venv_binary() -> Path:
     if _IS_WINDOWS:
-        return VENV / "Scripts" / "openproject-mcp.exe"
-    return VENV / "bin" / "openproject-mcp"
+        return VENV / "Scripts" / "openproject-ce-mcp.exe"
+    return VENV / "bin" / "openproject-ce-mcp"
 
 
 # ── global client registration ─────────────────────────────────────────────────

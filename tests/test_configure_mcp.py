@@ -31,7 +31,7 @@ ENV = {
     "OPENPROJECT_BASE_URL": "https://op.example.com",
     "OPENPROJECT_API_TOKEN": 'opapi-with"quote\\and-backslash',
 }
-CMD = "/home/user/openproject-mcp/.venv/bin/openproject-mcp"
+CMD = "/home/user/openproject-ce-mcp/.venv/bin/openproject-ce-mcp"
 
 
 # ── JSON merge (mcpServers / servers) ──────────────────────────────────────────

@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "openproject": {
-      "command": "/path/to/.venv/bin/openproject-mcp",
+      "command": "/path/to/.venv/bin/openproject-ce-mcp",
       "env": {
         "OPENPROJECT_BASE_URL": "https://op.example.com",
         "OPENPROJECT_API_TOKEN": "replace-with-your-token",

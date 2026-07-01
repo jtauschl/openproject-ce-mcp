@@ -1,12 +1,12 @@
-# One-liner installer for openproject-mcp (Windows PowerShell).
-# Usage: irm https://raw.githubusercontent.com/jtauschl/openproject-mcp/main/get.ps1 | iex
+# One-liner installer for openproject-ce-mcp (Windows PowerShell).
+# Usage: irm https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.ps1 | iex
 #
-# Clones the repo to %USERPROFILE%\openproject-mcp (override: $env:DIR),
+# Clones the repo to %USERPROFILE%\openproject-ce-mcp (override: $env:DIR),
 # then runs the interactive setup.
 $ErrorActionPreference = "Stop"
 
-$Repo = "https://github.com/jtauschl/openproject-mcp.git"
-$Dest = if ($env:DIR) { $env:DIR } else { Join-Path $env:USERPROFILE "openproject-mcp" }
+$Repo = "https://github.com/jtauschl/openproject-ce-mcp.git"
+$Dest = if ($env:DIR) { $env:DIR } else { Join-Path $env:USERPROFILE "openproject-ce-mcp" }
 
 # ── check git ─────────────────────────────────────────────────────────────────
 if (-not (Get-Command "git" -ErrorAction SilentlyContinue)) {

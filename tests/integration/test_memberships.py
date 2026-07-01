@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from openproject_mcp.client import OpenProjectClient, PermissionDeniedError
+from openproject_ce_mcp.client import OpenProjectClient, PermissionDeniedError
 
 pytestmark = pytest.mark.integration
 

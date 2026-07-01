@@ -1,6 +1,6 @@
 """Tests for dynamic tool registration in create_app()."""
-from openproject_mcp.config import Settings
-from openproject_mcp.server import create_app
+from openproject_ce_mcp.config import Settings
+from openproject_ce_mcp.server import create_app
 
 
 def make_settings(**overrides) -> Settings:

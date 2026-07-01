@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from openproject_mcp.config import ConfigError, Settings
+from openproject_ce_mcp.config import ConfigError, Settings
 
 
 def test_settings_from_env_loads_and_normalizes_values() -> None:
@@ -10,7 +10,7 @@ def test_settings_from_env_loads_and_normalizes_values() -> None:
             {
                 "OPENPROJECT_BASE_URL": "https://op.example.com/",
                 "OPENPROJECT_API_TOKEN": "token-value",
-                "OPENPROJECT_ALLOWED_PROJECTS_READ": "mcp-test, openproject-mcp",
+                "OPENPROJECT_ALLOWED_PROJECTS_READ": "mcp-test, openproject-ce-mcp",
                 "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "mcp-test",
                 "OPENPROJECT_ENABLE_PROJECT_READ": "true",
                 "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "false",
@@ -31,7 +31,7 @@ def test_settings_from_env_loads_and_normalizes_values() -> None:
 
     assert settings.base_url == "https://op.example.com"
     assert settings.api_base_url == "https://op.example.com/api/v3"
-    assert settings.allowed_projects == ("mcp-test", "openproject-mcp")
+    assert settings.allowed_projects == ("mcp-test", "openproject-ce-mcp")
     assert settings.allowed_write_projects == ("mcp-test",)
     assert settings.allowed_write_projects_configured is True
     assert settings.enable_project_read is True

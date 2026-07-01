@@ -1,13 +1,13 @@
 #!/usr/bin/env sh
-# One-liner installer for openproject-mcp.
-# Usage: curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-mcp/main/get.sh | sh
+# One-liner installer for openproject-ce-mcp.
+# Usage: curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.sh | sh
 #
-# Clones the repo to ~/openproject-mcp (override with DIR=…),
+# Clones the repo to ~/openproject-ce-mcp (override with DIR=…),
 # then runs the interactive setup.
 set -e
 
-REPO="https://github.com/jtauschl/openproject-mcp.git"
-DEST="${DIR:-$HOME/openproject-mcp}"
+REPO="https://github.com/jtauschl/openproject-ce-mcp.git"
+DEST="${DIR:-$HOME/openproject-ce-mcp}"
 
 # ── check git ─────────────────────────────────────────────────────────────────
 if ! command -v git >/dev/null 2>&1; then

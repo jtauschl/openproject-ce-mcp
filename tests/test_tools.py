@@ -6,9 +6,9 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from openproject_mcp.client import OpenProjectClient
-from openproject_mcp.config import Settings
-from openproject_mcp.tools import (
+from openproject_ce_mcp.client import OpenProjectClient
+from openproject_ce_mcp.config import Settings
+from openproject_ce_mcp.tools import (
     _validate_optional_work_package_ref,
     _validate_work_package_ref,
     add_project_favorite,
@@ -1380,14 +1380,14 @@ def test_validate_optional_work_package_ref_passes_through_none() -> None:
 
 @pytest.mark.asyncio
 async def test_run_tool_prefixes_client_error_categories() -> None:
-    from openproject_mcp.client import (
+    from openproject_ce_mcp.client import (
         AuthenticationError,
         InvalidInputError,
         NotFoundError,
         PermissionDeniedError,
         TransportError,
     )
-    from openproject_mcp.tools import _run_tool
+    from openproject_ce_mcp.tools import _run_tool
 
     async def raiser(exc):
         raise exc
@@ -1410,7 +1410,7 @@ async def test_run_tool_prefixes_client_error_categories() -> None:
 
 @pytest.mark.asyncio
 async def test_categorize_tool_errors_tags_validation_and_avoids_double_prefix() -> None:
-    from openproject_mcp.tools import _categorize_tool_errors
+    from openproject_ce_mcp.tools import _categorize_tool_errors
 
     @_categorize_tool_errors
     async def raw_validation(_ctx):

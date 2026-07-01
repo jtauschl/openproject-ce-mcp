@@ -177,7 +177,7 @@ def _present(version: str, asm: Assumption) -> bool:
 # Only versions whose source file exists are checked (these models arrived at
 # different releases), so missing files are reported as "n/a", not a failure.
 
-CLIENT_PY = ROOT / "src" / "openproject_mcp" / "client.py"
+CLIENT_PY = ROOT / "src" / "openproject_ce_mcp" / "client.py"
 
 
 @dataclass(frozen=True)
@@ -277,7 +277,7 @@ def run_constants(verbose: bool = False) -> int:
 
 # --- Full auto-extracted coverage (every resource + filter the client uses) ---
 
-CLIENT = ROOT / "src" / "openproject_mcp" / "client.py"
+CLIENT = ROOT / "src" / "openproject_ce_mcp" / "client.py"
 
 # Resources whose v3 API lives in a separate module engine (modules/<x>/), which
 # the sparse source checkout does not include. They exist in CE but cannot be

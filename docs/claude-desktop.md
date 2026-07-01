@@ -29,13 +29,13 @@ permissions, use Claude Code — see [claude.md](claude.md)).
 
 3. **Add the server.** Use the `command` path and `env` values from the
    `.mcp.json` the installer generated (the root key is the same, `mcpServers`).
-   On Windows the `command` path is `...\.venv\Scripts\openproject-mcp.exe`; use
+   On Windows the `command` path is `...\.venv\Scripts\openproject-ce-mcp.exe`; use
    the exact path the installer printed.
    ```json
    {
      "mcpServers": {
        "openproject": {
-         "command": "/absolute/path/to/openproject-mcp/.venv/bin/openproject-mcp",
+         "command": "/absolute/path/to/openproject-ce-mcp/.venv/bin/openproject-ce-mcp",
          "env": {
            "OPENPROJECT_BASE_URL": "https://op.example.com",
            "OPENPROJECT_API_TOKEN": "replace-with-your-token",

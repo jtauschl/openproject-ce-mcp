@@ -183,7 +183,7 @@ class OpenProjectClient:
             headers={
                 "Accept": "application/hal+json, application/json",
                 "Authorization": f"Basic {__import__('base64').b64encode(f'apikey:{settings.api_token}'.encode()).decode()}",
-                "User-Agent": "openproject-mcp/0.1.0",
+                "User-Agent": "openproject-ce-mcp/0.1.0",
             },
             timeout=httpx.Timeout(settings.timeout),
             verify=settings.verify_ssl,

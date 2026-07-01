@@ -5,7 +5,7 @@
 [![MCP](https://img.shields.io/badge/protocol-MCP%20stdio-purple.svg)](https://modelcontextprotocol.io)
 
 <p align="center">
-  <img src="img/openproject-mcp-hero.png" alt="Hero image showing a Python terminal and an OpenProject board connected by a structured data stream." width="960">
+  <img src="img/openproject-ce-mcp-hero.png" alt="Hero image showing a Python terminal and an OpenProject board connected by a structured data stream." width="960">
 </p>
 
 An MCP server for OpenProject that lets local AI agents read and manage project data through structured, guarded tools.
@@ -126,34 +126,34 @@ The installer clones the repo, installs dependencies (via `uv` if available, or
 #### Windows (PowerShell)
 
 ```powershell
-irm https://raw.githubusercontent.com/jtauschl/openproject-mcp/main/get.ps1 | iex
+irm https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.ps1 | iex
 ```
 
-Clones to `%USERPROFILE%\openproject-mcp`. The installed binary is
-`...\.venv\Scripts\openproject-mcp.exe`. To override the destination, set
+Clones to `%USERPROFILE%\openproject-ce-mcp`. The installed binary is
+`...\.venv\Scripts\openproject-ce-mcp.exe`. To override the destination, set
 `$env:DIR` before running.
 
 #### macOS
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-mcp/main/get.sh | sh
+curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.sh | sh
 ```
 
-Clones to `~/openproject-mcp`. The installed binary is
-`~/openproject-mcp/.venv/bin/openproject-mcp`. To override the destination:
+Clones to `~/openproject-ce-mcp`. The installed binary is
+`~/openproject-ce-mcp/.venv/bin/openproject-ce-mcp`. To override the destination:
 
 ```bash
-DIR=~/tools/openproject-mcp curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-mcp/main/get.sh | sh
+DIR=~/tools/openproject-ce-mcp curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.sh | sh
 ```
 
 #### Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-mcp/main/get.sh | sh
+curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.sh | sh
 ```
 
-Same as macOS: clones to `~/openproject-mcp`, binary at
-`~/openproject-mcp/.venv/bin/openproject-mcp`, `DIR=…` overrides the destination.
+Same as macOS: clones to `~/openproject-ce-mcp`, binary at
+`~/openproject-ce-mcp/.venv/bin/openproject-ce-mcp`, `DIR=…` overrides the destination.
 
 In all cases the setup then writes a local `.mcp.json` and can optionally set up
 a detected MCP client for you (see below).
@@ -162,7 +162,7 @@ a detected MCP client for you (see below).
 
 Setup has two steps:
 
-1. **Install the server once** — the steps above build the `openproject-mcp`
+1. **Install the server once** — the steps above build the `openproject-ce-mcp`
    binary in `.venv`, regardless of how many clients or projects you use.
 2. **Register it per client** — each client needs its own config file pointing at
    that binary. Registration only points your client to the installed binary; it
@@ -230,8 +230,8 @@ clones) and removes the `openproject` entry from any client config you registere
 it in — keeping your other MCP servers and settings, and backing up each edited
 file. Your local `.mcp.json` is left untouched.
 
-- **Windows:** `.\uninstall.ps1` (then remove the install dir if you want: `Remove-Item -Recurse -Force $env:USERPROFILE\openproject-mcp`)
-- **macOS / Linux:** `~/openproject-mcp/uninstall.sh`
+- **Windows:** `.\uninstall.ps1` (then remove the install dir if you want: `Remove-Item -Recurse -Force $env:USERPROFILE\openproject-ce-mcp`)
+- **macOS / Linux:** `~/openproject-ce-mcp/uninstall.sh`
 
 ---
 
@@ -332,8 +332,8 @@ See [docs/architecture.md](docs/architecture.md) for request flow details and th
 ### Set up
 
 ```bash
-git clone https://github.com/jtauschl/openproject-mcp.git
-cd openproject-mcp
+git clone https://github.com/jtauschl/openproject-ce-mcp.git
+cd openproject-ce-mcp
 
 # option A: uv (recommended)
 uv sync --dev

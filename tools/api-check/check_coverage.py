@@ -6,7 +6,7 @@ Combines three sources of truth into one matrix:
 1. **Source inventory** — every ``lib/api/v3/<resource>/`` directory in the
    pinned 17.5 clone (the full set of API resources).
 2. **Client usage** — resources this MCP actually calls, extracted from the
-   request paths and HAL hrefs in ``src/openproject_mcp/client.py``.
+   request paths and HAL hrefs in ``src/openproject_ce_mcp/client.py``.
 3. **Live CE probe** (optional) — ``GET /api/v3/<resource>`` against a running
    Community Edition instance, to see what actually answers (200 / 403 / 404).
    Enabled when ``OPENPROJECT_BASE_URL`` and ``OPENPROJECT_API_TOKEN`` are set.
@@ -36,7 +36,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCES = ROOT / ".op-sources"
-CLIENT = ROOT / "src" / "openproject_mcp" / "client.py"
+CLIENT = ROOT / "src" / "openproject_ce_mcp" / "client.py"
 COVERAGE_MD = Path(__file__).resolve().parent / "COVERAGE.md"
 SOURCE_VERSION = "17.5"  # inventory reference
 

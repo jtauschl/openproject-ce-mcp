@@ -5,7 +5,7 @@ OpenProject MCP is intentionally small and flat. The codebase keeps transport, v
 ## Layout
 
 ```text
-src/openproject_mcp/
+src/openproject_ce_mcp/
 ├── config.py    environment loading, validation, and safe defaults
 ├── client.py    OpenProject API client: auth, timeouts, pagination, normalization, error mapping
 ├── models.py    compact dataclasses returned to MCP clients

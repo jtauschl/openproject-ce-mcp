@@ -29,13 +29,13 @@ Agent mode**. If you use VS Code, this is your guide.
    ```
    **This file holds your API token.** Add `.vscode/mcp.json` to your project's `.gitignore` so it is never committed.
 
-3. **Example config:** On Windows the `command` path is `...\.venv\Scripts\openproject-mcp.exe`; use the exact path the installer printed.
+3. **Example config:** On Windows the `command` path is `...\.venv\Scripts\openproject-ce-mcp.exe`; use the exact path the installer printed.
    ```json
    {
      "servers": {
        "openproject": {
          "type": "stdio",
-         "command": "/absolute/path/to/openproject-mcp/.venv/bin/openproject-mcp",
+         "command": "/absolute/path/to/openproject-ce-mcp/.venv/bin/openproject-ce-mcp",
          "env": {
            "OPENPROJECT_BASE_URL": "https://op.example.com",
            "OPENPROJECT_API_TOKEN": "replace-with-your-token",
