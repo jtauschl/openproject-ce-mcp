@@ -1,10 +1,17 @@
-# GitHub
+# VS Code (GitHub Copilot)
 
 <p align="center">
   <img src="../img/github.png" alt="GitHub Copilot artwork for the GitHub Copilot MCP guide." width="960">
 </p>
 
-This guide covers GitHub Copilot in Agent mode with VS Code.
+This guide covers **VS Code**, where MCP servers run through **GitHub Copilot in
+Agent mode**. If you use VS Code, this is your guide.
+
+> **Note on the installer:** `configure_mcp.py` writes a Claude-format
+> `.mcp.json` (root key `mcpServers`) into the install directory. VS Code uses a
+> **different file, location, and root key** — `.vscode/mcp.json` with a
+> `servers` block, as shown below. Don't copy `.mcp.json` verbatim; copy the
+> `command` path and the `env` values from it into the config below.
 
 ## Setup: Workspace-scoped (Preferred)
 
@@ -12,14 +19,16 @@ This guide covers GitHub Copilot in Agent mode with VS Code.
 
 ### Steps
 
-1. **Create `.vscode/mcp.json` in your workspace root**
+1. **Create `.vscode/mcp.json` in your workspace root.** Use the `command` path
+   and `env` values from the `.mcp.json` the installer generated (the values are
+   identical; only the file location and the surrounding JSON structure differ).
 
 2. **Protect it if it contains secrets:**
    ```bash
    chmod 600 .vscode/mcp.json
    ```
 
-3. **Example config:**
+3. **Example config:** On Windows the `command` path is `...\.venv\Scripts\openproject-mcp.exe`; use the exact path the installer printed.
    ```json
    {
      "servers": {
@@ -44,7 +53,7 @@ This guide covers GitHub Copilot in Agent mode with VS Code.
            "OPENPROJECT_HIDE_ACTIVITY_FIELDS": "",
            "OPENPROJECT_HIDE_CUSTOM_FIELDS": "",
 
-           "OPENPROJECT_AUTO_CONFIRM_WRITE": "false",
+           "OPENPROJECT_ENABLE_ADMIN_WRITE": "false",
 
            "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
@@ -64,7 +73,16 @@ This guide covers GitHub Copilot in Agent mode with VS Code.
    }
    ```
 
-4. **Reload:** Press **Cmd+Shift+P** and run "Developer: Reload Window"
+   Other keys (such as `OPENPROJECT_AUTO_CONFIRM_WRITE`) are optional and fall back to safe defaults when omitted — see the [Configuration table](../README.md#configuration) for the full list.
+
+4. **Reload:** Open the command palette (**Cmd+Shift+P** on macOS, **Ctrl+Shift+P** on Windows/Linux) and run "Developer: Reload Window".
+
+### Verify
+
+- Switch Copilot Chat to **Agent mode** (MCP tools are only available there).
+- Open the tool picker in Copilot Chat and confirm the `openproject` tools are listed.
+- Ask Copilot to call `list_projects` (or `get_current_user`). A successful reply confirms the base URL and token work.
+- If the server doesn't appear, re-check that the file is `.vscode/mcp.json` with a `servers` block and `"type": "stdio"`, and that `command` is the absolute path the installer printed.
 
 ---
 
@@ -72,9 +90,15 @@ This guide covers GitHub Copilot in Agent mode with VS Code.
 
 **Alternative:** Use the user `mcp.json` if you want the server available in all workspaces.
 
-1. **Press Cmd+Shift+P** and select "Open User MCP Settings"
+1. Open the command palette (**Cmd+Shift+P** on macOS, **Ctrl+Shift+P** on Windows/Linux) and select "Open User MCP Settings"
 2. **Add the same config** as above (workspace-scoped example)
-3. **Reload:** Press **Cmd+Shift+P** and run "Developer: Reload Window"
+3. **Reload:** Open the command palette again and run "Developer: Reload Window"
+
+If you prefer to edit the file directly, the user `mcp.json` lives at:
+
+- **Windows:** `%APPDATA%\Code\User\mcp.json`
+- **macOS:** `~/Library/Application Support/Code/User/mcp.json`
+- **Linux:** `~/.config/Code/User/mcp.json`
 
 **Note:** All workspaces share the same credentials and permissions. Workspace-scoped setup (above) is the preferred method.
 
@@ -85,6 +109,6 @@ This guide covers GitHub Copilot in Agent mode with VS Code.
 - Switch Copilot Chat to Agent mode so MCP tools are available
 - Workspace-scoped setup (`.vscode/mcp.json`) is preferred for fine-grained project permissions
 - Avoid hardcoding sensitive information when possible. VS Code recommends using environment files or input variables
-- After changing the config, reload: **Cmd+Shift+P** → "Developer: Reload Window"
+- After changing the config, reload: open the command palette (**Cmd+Shift+P** on macOS, **Ctrl+Shift+P** on Windows/Linux) → "Developer: Reload Window"
 - `OPENPROJECT_ALLOWED_PROJECTS_READ` accepts comma-separated identifiers, names, or glob patterns: `project-one,team-*`. Use `*` for all visible projects
 - `OPENPROJECT_ALLOWED_PROJECTS_WRITE` only narrows scope; it doesn't enable writes. Use the scoped `OPENPROJECT_ENABLE_*_WRITE` flags for the operations you need

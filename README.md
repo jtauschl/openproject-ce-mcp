@@ -88,6 +88,7 @@ All write operations follow a preview-then-confirm pattern by default: call a to
 | | |
 |---|---|
 | Python | 3.10 or later |
+| git | required — the installer clones this repository |
 | OpenProject | Community Edition 16.1 or later (reviewed for compatibility through 17.5), API v3 accessible |
 | OS | macOS 12+, Linux, or Windows 10/11 |
 
@@ -109,45 +110,93 @@ To create a personal token: **My account → Access tokens → + API token**. Co
 
 ### Install
 
-**macOS / Linux**
+The installer clones the repo, installs dependencies (via `uv` if available, or
+`venv` + `pip` otherwise), and runs the interactive setup. Pick your OS:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-mcp/main/get.sh | sh
-```
-
-**Windows (PowerShell)**
+#### Windows (PowerShell)
 
 ```powershell
 irm https://raw.githubusercontent.com/jtauschl/openproject-mcp/main/get.ps1 | iex
 ```
 
-The script clones the repo (to `~/openproject-mcp` or `%USERPROFILE%\openproject-mcp`), installs dependencies via `uv` if available or `venv` + `pip` otherwise, and runs the interactive setup that writes `.mcp.json`.
+Clones to `%USERPROFILE%\openproject-mcp`. The installed binary is
+`...\.venv\Scripts\openproject-mcp.exe`. To override the destination, set
+`$env:DIR` before running.
 
-To override the destination:
+#### macOS
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-mcp/main/get.sh | sh
+```
+
+Clones to `~/openproject-mcp`. The installed binary is
+`~/openproject-mcp/.venv/bin/openproject-mcp`. To override the destination:
 
 ```bash
 DIR=~/tools/openproject-mcp curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-mcp/main/get.sh | sh
 ```
 
+#### Linux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-mcp/main/get.sh | sh
+```
+
+Same as macOS: clones to `~/openproject-mcp`, binary at
+`~/openproject-mcp/.venv/bin/openproject-mcp`, `DIR=…` overrides the destination.
+
+In all cases the setup then writes a project-local `.mcp.json` and can optionally
+register the server globally with any MCP client it detects (see below).
+
 ### Register the server in your MCP client
 
-Installing the server is only step one — your MCP client still needs to know
-about it. The `.mcp.json` the installer writes lives in the install directory; a
-project-scoped client expects it in your project root, and a user-wide client
-expects the server in its own config. Follow the guide for your client:
+Setup has two steps:
+
+1. **Install the server once** — the steps above build the `openproject-mcp`
+   binary in `.venv`, regardless of how many clients or projects you use.
+2. **Register it per client** — each client needs its own config file pointing at
+   that binary. Registration only points your client to the installed binary; it
+   is not a second install. Using more than one client (say Claude *and* Codex)?
+   Create one config file per client; they sit side by side.
+
+The file, location, and format differ per client — you cannot copy one client's
+config to another verbatim:
+
+| Client | Project-scoped file | User-wide file | Format | Root key |
+|---|---|---|---|---|
+| Claude / Claude Code | `.mcp.json` | `~/.claude.json` | JSON | `mcpServers` |
+| Claude Desktop app | — (global only) | `claude_desktop_config.json` | JSON | `mcpServers` |
+| Codex | `.codex/config.toml` | `~/.codex/config.toml` | TOML | `[mcp_servers.openproject]` |
+| VS Code (GitHub Copilot) | `.vscode/mcp.json` | User `mcp.json` | JSON | `servers` |
+
+> **VS Code users:** the Copilot guide below is your guide — VS Code runs MCP
+> servers through GitHub Copilot in Agent mode.
+
+**The installer can register detected clients for you.** After collecting your
+settings, it offers to add the server to the **user-wide (global)** config of each
+installed client. Global registration makes this server available in every
+project, so each prompt defaults to *no*; only the `openproject` entry is added
+and your existing config is backed up first. For per-project permissions
+(recommended), skip that step and use the project-scoped guide below.
+
+To register manually, copy the `command` and `env` values from the installer's
+`.mcp.json` into the file and format your client's guide shows — the values are
+identical across clients.
+
+Follow the guide for your client:
 
 - [Claude / Claude Code](docs/claude.md)
+- [Claude Desktop app](docs/claude-desktop.md)
 - [Codex](docs/codex.md)
-- [GitHub Copilot](docs/github.md)
+- [VS Code / GitHub Copilot](docs/github.md)
 
-Each guide shows both the project-scoped `.mcp.json` and the user-wide config,
-and how to reload the client so the server is picked up.
+Each guide shows the project-scoped and/or user-wide config, how to reload the
+client, and how to verify the server is picked up.
 
 **Uninstall**
 
-```bash
-~/openproject-mcp/uninstall.sh    # macOS / Linux
-```
+- **Windows:** remove the install directory (`Remove-Item -Recurse -Force $env:USERPROFILE\openproject-mcp`) and delete the `openproject` entry from any client config you registered it in.
+- **macOS / Linux:** `~/openproject-mcp/uninstall.sh`
 
 ---
 

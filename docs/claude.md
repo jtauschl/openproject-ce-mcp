@@ -20,7 +20,7 @@
    - Reference: [`.mcp.json.example`](../.mcp.json.example)
    - Protect it if it contains secrets: `chmod 600 .mcp.json`
 
-3. **Example config**
+3. **Example config** — this mirrors what `configure_mcp.py` writes. On Windows the `command` path is `...\.venv\Scripts\openproject-mcp.exe`; the installer fills in the correct path for your OS automatically.
    ```json
    {
      "mcpServers": {
@@ -44,7 +44,7 @@
            "OPENPROJECT_HIDE_ACTIVITY_FIELDS": "",
            "OPENPROJECT_HIDE_CUSTOM_FIELDS": "",
 
-           "OPENPROJECT_AUTO_CONFIRM_WRITE": "false",
+           "OPENPROJECT_ENABLE_ADMIN_WRITE": "false",
 
            "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
@@ -64,16 +64,29 @@
    }
    ```
 
-4. **Reload:** Restart Claude Code. Press **Cmd+Shift+P** and run "Developer: Reload Window"
+   Other keys (such as `OPENPROJECT_AUTO_CONFIRM_WRITE`) are optional and fall back to safe defaults when omitted — see the [Configuration table](../README.md#configuration) for the full list.
+
+4. **Reload:** Restart Claude Code, or run "Developer: Reload Window" from the command palette (**Cmd+Shift+P** on macOS, **Ctrl+Shift+P** on Windows/Linux).
+
+### Verify
+
+After reloading, confirm the server is live:
+
+- The `openproject` server appears in Claude Code's MCP server list (`/mcp`).
+- Ask Claude to call `list_projects` (or `get_current_user`). A successful call returns your projects (or your account), which confirms the base URL and token work.
+- If nothing appears, check that `command` is the absolute path the installer printed and that `.mcp.json` is in the folder Claude Code opened as the project root.
 
 ---
 
 ## Setup: User-wide
 
-**Alternative:** If you want to share one OpenProject MCP instance across all projects, use `~/.claude.json` (macOS/Linux) or the equivalent location for your OS.
+**Alternative:** If you want to share one OpenProject MCP instance across all projects, use the user-wide config in your home directory.
 
-- File: `~/.claude.json` (user home directory)
-- Security: `chmod 600 ~/.claude.json` (read/write by you only)
+- File:
+  - **Windows:** `%USERPROFILE%\.claude.json`
+  - **macOS:** `~/.claude.json`
+  - **Linux:** `~/.claude.json`
+- Security: `chmod 600 ~/.claude.json` on macOS/Linux; on Windows restrict it to your user via **Properties → Security**.
 
 **Note:** All projects share the same credentials and permissions. Project-scoped setup (above) is the preferred method.
 
@@ -101,7 +114,7 @@
         "OPENPROJECT_HIDE_ACTIVITY_FIELDS": "",
         "OPENPROJECT_HIDE_CUSTOM_FIELDS": "",
 
-        "OPENPROJECT_AUTO_CONFIRM_WRITE": "false",
+        "OPENPROJECT_ENABLE_ADMIN_WRITE": "false",
 
         "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
         "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
@@ -125,6 +138,6 @@
 
 ## Notes
 
-- After changing the config, reload MCP servers: press **Cmd+Shift+P** and run "Developer: Reload Window"
+- After changing the config, reload MCP servers: run "Developer: Reload Window" from the command palette (**Cmd+Shift+P** on macOS, **Ctrl+Shift+P** on Windows/Linux)
 - `OPENPROJECT_ALLOWED_PROJECTS_READ` accepts comma-separated identifiers, names, or glob patterns: `project-one,team-*`. Use `*` for all visible projects
 - `OPENPROJECT_ALLOWED_PROJECTS_WRITE` only narrows scope; it doesn't enable writes. Use the scoped `OPENPROJECT_ENABLE_*_WRITE` flags for the operations you need

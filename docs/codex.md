@@ -20,7 +20,7 @@ You do not need the Codex CLI installed for this setup if you use the IDE extens
    chmod 600 .codex/config.toml
    ```
 
-3. **Example config:**
+3. **Example config:** Copy the `command` path and the `env` values from the `.mcp.json` the installer generated into this TOML layout. On Windows the `command` path is `...\.venv\Scripts\openproject-mcp.exe`; use the exact path the installer printed.
    ```toml
    [mcp_servers.openproject]
    command = "/absolute/path/to/openproject-mcp/.venv/bin/openproject-mcp"
@@ -43,7 +43,7 @@ You do not need the Codex CLI installed for this setup if you use the IDE extens
    OPENPROJECT_HIDE_ACTIVITY_FIELDS = ""
    OPENPROJECT_HIDE_CUSTOM_FIELDS = ""
 
-   OPENPROJECT_AUTO_CONFIRM_WRITE = "false"
+   OPENPROJECT_ENABLE_ADMIN_WRITE = "false"
 
    OPENPROJECT_ENABLE_PROJECT_WRITE = "false"
    OPENPROJECT_ENABLE_MEMBERSHIP_WRITE = "false"
@@ -59,11 +59,14 @@ You do not need the Codex CLI installed for this setup if you use the IDE extens
    OPENPROJECT_LOG_LEVEL = "WARNING"
    ```
 
+   Other keys (such as `OPENPROJECT_AUTO_CONFIRM_WRITE`) are optional and fall back to safe defaults when omitted — see the [Configuration table](../README.md#configuration) for the full list.
+
 4. **Verify in the IDE extension:**
    - trust the project
    - reload the editor window or restart Codex if needed
    - confirm the `openproject` server appears in Codex
    - confirm MCP tools are available in the session
+   - ask Codex to call `list_projects` (or `get_current_user`); a successful reply confirms the base URL and token work
 
 5. **Reload if needed:** If the server doesn't appear immediately in the IDE, restart Codex or reload the editor window
 
@@ -71,10 +74,13 @@ You do not need the Codex CLI installed for this setup if you use the IDE extens
 
 ## Setup: User-wide
 
-**Alternative:** If you want to share one OpenProject MCP instance across all projects, use `~/.codex/config.toml`.
+**Alternative:** If you want to share one OpenProject MCP instance across all projects, use the user-wide `config.toml`.
 
-- File: `~/.codex/config.toml`
-- Security: `chmod 600 ~/.codex/config.toml` (read/write by you only)
+- File:
+  - **Windows:** `%USERPROFILE%\.codex\config.toml`
+  - **macOS:** `~/.codex/config.toml`
+  - **Linux:** `~/.codex/config.toml`
+- Security: `chmod 600 ~/.codex/config.toml` on macOS/Linux; on Windows restrict it to your user via **Properties → Security**.
 
 **Note:** All projects share the same credentials and permissions. Project-scoped setup (above) is the preferred method.
 
