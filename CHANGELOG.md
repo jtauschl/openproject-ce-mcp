@@ -1,9 +1,8 @@
 # Changelog
 
 All notable changes to this project will be documented in this file. Versions
-follow [semantic versioning](https://semver.org). The project has not been
-published as 1.0.0; 0.0.1 is the development baseline and 0.1.0 is the current
-milestone.
+follow [semantic versioning](https://semver.org): 0.0.1 is the development
+baseline and 0.1.0 is the current milestone.
 
 ---
 
@@ -62,8 +61,8 @@ milestone.
 
 ## 0.0.1 (development baseline)
 
-Initial development baseline; never publicly released as 1.0.0. The pre-release
-history is kept below as dated milestones.
+Initial development baseline. The pre-release history is kept below as dated
+milestones.
 
 ### 2026-05-18
 
