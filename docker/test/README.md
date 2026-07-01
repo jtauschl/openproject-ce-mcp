@@ -33,7 +33,10 @@ docker/test/down.sh --purge # also drop volumes
 
 **First boot takes several minutes** (migrations + asset precompile). `up.sh`
 waits on the container healthcheck, not a fixed sleep. Each instance needs
-~1–2 GB RAM; start just one (`up.sh 17`) if memory is tight.
+~1–2 GB RAM, so three all-in-one containers at once can exhaust a small Docker
+VM (a default ~4 GB Colima VM will start marking containers unhealthy). On such
+machines, bring them up and test one at a time — `up.sh 16`, then `up.sh 174`,
+then `up.sh 17` — instead of `up.sh` (all three).
 
 ## What seeding does
 
@@ -60,9 +63,18 @@ e.g. `OPENPROJECT_BASE_URL=http://localhost:8175 OPENPROJECT_API_TOKEN=… OPENP
 ## Known OpenProject issue (not the MCP)
 
 On 17.5.1 with semantic identifiers **active**, OpenProject's own
-`GET /api/v3/work_packages/{id}` single-fetch endpoint returns a 500 for
-work packages that carry a semantic alias (`No route matches action:"show"` in
-the server log). The collection endpoint and the classic mode are unaffected, and
-the MCP surfaces it cleanly as a `[server_error]`. Because of this, run the
-semantic-mode integration checks with awareness of the limitation; the classic
-`op-16-6`/`op-17-4` instances exercise the full suite green.
+`GET /api/v3/work_packages/{id}` single-fetch endpoint returns a 500 for any work
+package that carries a semantic alias — for **both** the numeric id and the
+`tst-N` form (`No route matches action:"show"` in the server log; it builds the
+show route from the eager-loading wrapper instead of the id).
+
+Isolated on a fresh database with exactly one alias, so it is neither a duplicate
+alias artefact nor MCP-side. Confirmed by contrast: a demo work package with no
+alias (`display_id` numeric) returns 200; a seeded WP with an alias returns 500.
+The collection endpoint and classic mode are unaffected, and the MCP surfaces the
+failure cleanly as `[server_error]`.
+
+Consequence: the classic `op-16-6` / `op-17-4` instances run the full integration
+suite green; on the semantic `op-17-5` instance the suite is green in classic
+mode, and the semantic single-fetch path is blocked by this upstream bug (not by
+the client).

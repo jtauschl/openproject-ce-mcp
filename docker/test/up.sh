@@ -4,9 +4,13 @@
 # print copy-paste env blocks for running the integration tests.
 #
 # Usage:
-#   docker/test/up.sh            # both versions (16.6 + 17.5)
+#   docker/test/up.sh            # all three versions (16.6 + 17.4 + 17.5)
 #   docker/test/up.sh 16         # only 16.6
+#   docker/test/up.sh 174        # only 17.4
 #   docker/test/up.sh 17         # only 17.5
+#
+# On a small Docker VM (~4 GB) three all-in-one containers can exhaust memory;
+# bring them up one at a time (16, then 174, then 17) if that happens.
 #
 # First boot takes several minutes (migrations + asset precompile). The script
 # waits on the container healthcheck, not a fixed sleep.
