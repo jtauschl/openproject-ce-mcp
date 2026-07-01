@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import getpass
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -18,6 +19,7 @@ VENV = ROOT / ".venv"
 MCP_JSON = ROOT / ".mcp.json"
 
 _IS_WINDOWS = sys.platform == "win32"
+_IS_MACOS = sys.platform == "darwin"
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -27,6 +29,239 @@ def _venv_binary() -> Path:
     if _IS_WINDOWS:
         return VENV / "Scripts" / "openproject-mcp.exe"
     return VENV / "bin" / "openproject-mcp"
+
+
+# ── global client registration ─────────────────────────────────────────────────
+#
+# The interactive setup can optionally write a *user-wide* (global) config for any
+# MCP client it detects on this machine. Global config means every project sees
+# this OpenProject instance with these permissions — convenient, but broad. The
+# project-scoped setup documented in docs/ is the recommended path; global writing
+# is opt-in per client and defaults to "no".
+
+
+def _home() -> Path:
+    return Path.home()
+
+
+def _vscode_user_mcp_path() -> Path:
+    """User-wide MCP config for VS Code (GitHub Copilot)."""
+    if _IS_WINDOWS:
+        base = Path(os.environ.get("APPDATA", _home() / "AppData" / "Roaming"))
+        return base / "Code" / "User" / "mcp.json"
+    if _IS_MACOS:
+        return _home() / "Library" / "Application Support" / "Code" / "User" / "mcp.json"
+    return _home() / ".config" / "Code" / "User" / "mcp.json"
+
+
+def _claude_desktop_path() -> Path:
+    """User-wide MCP config for the standalone Claude Desktop app."""
+    if _IS_WINDOWS:
+        base = Path(os.environ.get("APPDATA", _home() / "AppData" / "Roaming"))
+        return base / "Claude" / "claude_desktop_config.json"
+    if _IS_MACOS:
+        return _home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+    return _home() / ".config" / "Claude" / "claude_desktop_config.json"
+
+
+def _server_entry(command: str, env: dict[str, str], *, stdio: bool) -> dict:
+    entry: dict[str, object] = {}
+    if stdio:
+        entry["type"] = "stdio"
+    entry["command"] = command
+    entry["env"] = env
+    return entry
+
+
+def _merge_json(existing: str, root_key: str, command: str, env: dict[str, str], *, stdio: bool) -> str:
+    """Insert/replace only the ``openproject`` server under ``root_key``.
+
+    Everything else in the file (other servers, unrelated user settings) is
+    preserved. ``existing`` is the current file text, or "" for a new file.
+    """
+    data: dict = {}
+    if existing.strip():
+        loaded = json.loads(existing)  # may raise; caller surfaces a clear error
+        if isinstance(loaded, dict):
+            data = loaded
+    servers = data.get(root_key)
+    if not isinstance(servers, dict):
+        servers = {}
+    servers["openproject"] = _server_entry(command, env, stdio=stdio)
+    data[root_key] = servers
+    return json.dumps(data, indent=2) + "\n"
+
+
+def _toml_quote(value: str) -> str:
+    """Quote a string for a TOML basic string (escapes backslash and quote)."""
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _codex_block(command: str, env: dict[str, str]) -> str:
+    """The ``[mcp_servers.openproject]`` table as TOML text (no trailing blank)."""
+    lines = ["[mcp_servers.openproject]", f"command = {_toml_quote(command)}", ""]
+    lines.append("[mcp_servers.openproject.env]")
+    for key, val in env.items():
+        lines.append(f"{key} = {_toml_quote(val)}")
+    return "\n".join(lines)
+
+
+def _strip_codex_openproject(existing: str) -> str:
+    """Remove any existing [mcp_servers.openproject] / .env tables from TOML text.
+
+    The stdlib has no TOML writer, so we edit text: drop the openproject tables
+    (and their key/value lines up to the next table header) and keep the rest of
+    the file verbatim. Other tables and top-level keys are untouched.
+
+    Assumes the standard ``[table]`` header form Codex writes; it does not rewrite
+    an openproject server expressed as a dotted/inline table (a form Codex does
+    not emit). Prefix siblings like ``[mcp_servers.openproject2]`` are preserved.
+    """
+    out: list[str] = []
+    skipping = False
+    for line in existing.splitlines():
+        header = line.strip()
+        if header.startswith("["):
+            table = header.strip("[]").strip()
+            skipping = table == "mcp_servers.openproject" or table.startswith(
+                "mcp_servers.openproject."
+            )
+        if not skipping:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _merge_codex_toml(existing: str, command: str, env: dict[str, str]) -> str:
+    """Preserve the rest of the Codex config, replacing only the openproject table."""
+    kept = _strip_codex_openproject(existing).rstrip()
+    block = _codex_block(command, env)
+    if kept:
+        return f"{kept}\n\n{block}\n"
+    return f"{block}\n"
+
+
+class Client:
+    """A registerable MCP client: how to detect it and where its global config lives."""
+
+    def __init__(
+        self,
+        key: str,
+        label: str,
+        target: Path,
+        fmt: str,
+        detect,
+        doc: str,
+        *,
+        root_key: str = "",
+        stdio: bool = False,
+    ) -> None:
+        self.key = key
+        self.label = label
+        self.target = target
+        self.fmt = fmt  # "json" or "toml"
+        self._detect = detect
+        self.doc = doc
+        self.root_key = root_key
+        self.stdio = stdio
+
+    def detected(self) -> bool:
+        return self._detect()
+
+    def merge(self, existing: str, command: str, env: dict[str, str]) -> str:
+        if self.fmt == "toml":
+            return _merge_codex_toml(existing, command, env)
+        return _merge_json(
+            existing, self.root_key, command, env, stdio=self.stdio
+        )
+
+
+def _detect_claude_code() -> bool:
+    return bool(shutil.which("claude")) or (_home() / ".claude.json").exists() or (
+        _home() / ".claude"
+    ).exists()
+
+
+def _detect_claude_desktop() -> bool:
+    return _claude_desktop_path().parent.exists()
+
+
+def _detect_codex() -> bool:
+    return bool(shutil.which("codex")) or (_home() / ".codex").exists()
+
+
+def _detect_vscode() -> bool:
+    return bool(shutil.which("code")) or _vscode_user_mcp_path().parent.parent.exists()
+
+
+def _clients() -> list[Client]:
+    return [
+        Client(
+            "claude-code",
+            "Claude Code (CLI + IDE extension)",
+            _home() / ".claude.json",
+            "json",
+            _detect_claude_code,
+            "docs/claude.md",
+            root_key="mcpServers",
+        ),
+        Client(
+            "claude-desktop",
+            "Claude Desktop app",
+            _claude_desktop_path(),
+            "json",
+            _detect_claude_desktop,
+            "docs/claude-desktop.md",
+            root_key="mcpServers",
+        ),
+        Client(
+            "codex",
+            "Codex (CLI + IDE extension)",
+            _home() / ".codex" / "config.toml",
+            "toml",
+            _detect_codex,
+            "docs/codex.md",
+        ),
+        Client(
+            "vscode",
+            "VS Code (GitHub Copilot)",
+            _vscode_user_mcp_path(),
+            "json",
+            _detect_vscode,
+            "docs/github.md",
+            root_key="servers",
+            stdio=True,
+        ),
+    ]
+
+
+def _write_client_config(client: Client, command: str, env: dict[str, str]) -> bool:
+    """Merge the ``openproject`` server into a client's global config.
+
+    Existing content is preserved — only the ``openproject`` entry is added or
+    replaced. A timestamped backup is taken before any existing file is rewritten.
+    Returns True on success, False if the existing file could not be parsed.
+    """
+    target = client.target
+    existing = ""
+    if target.exists():
+        existing = target.read_text(encoding="utf-8")
+        try:
+            merged = client.merge(existing, command, env)
+        except (json.JSONDecodeError, ValueError) as exc:
+            print(f"  ! {target} exists but could not be parsed ({exc}).")
+            print(f"    Leaving it untouched. Add the server by hand — see {client.doc}.")
+            return False
+        print(f"  · Updating {target} (existing settings are preserved).")
+        _backup(target)
+    else:
+        merged = client.merge("", command, env)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(merged, encoding="utf-8")
+    if not _IS_WINDOWS:
+        target.chmod(0o600)
+    print(f"  ✓ Wrote {target}")
+    return True
 
 
 def _check_python() -> None:
@@ -65,23 +300,21 @@ def _load_existing() -> dict[str, str]:
 
 def _backup(path: Path) -> None:
     ts = datetime.now().strftime("%Y%m%d%H%M%S")
-    dest = path.with_suffix(f".bak.{ts}")
+    # Append to the full name so the original extension is preserved
+    # (config.toml → config.toml.bak.<ts>), not replaced.
+    dest = path.with_name(f"{path.name}.bak.{ts}")
     path.rename(dest)
     print(f"Backed up {path.name} → {dest.name}")
 
 
 def _write_mcp_json(env: dict[str, str]) -> None:
-    config = {
-        "mcpServers": {
-            "openproject": {
-                "command": str(_venv_binary()),
-                "env": env,
-            }
-        }
-    }
+    existing = MCP_JSON.read_text(encoding="utf-8") if MCP_JSON.exists() else ""
     if MCP_JSON.exists():
         _backup(MCP_JSON)
-    MCP_JSON.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    MCP_JSON.write_text(
+        _merge_json(existing, "mcpServers", str(_venv_binary()), env, stdio=False),
+        encoding="utf-8",
+    )
     if not _IS_WINDOWS:
         MCP_JSON.chmod(0o600)
     print(f"Written: {MCP_JSON}")
@@ -120,6 +353,32 @@ def _bool_from_env(env: dict[str, str], key: str, fallback: bool = False) -> boo
     if val in ("false", "0", "no"):
         return False
     return fallback
+
+
+def _offer_global_registration(command: str, env: dict[str, str]) -> None:
+    """Optionally write a user-wide config for each detected MCP client.
+
+    Only clients actually detected on this machine are offered. Each prompt
+    defaults to "no": global registration is broad (all projects, everywhere),
+    and the project-scoped setup in docs/ is the recommended path.
+    """
+    detected = [c for c in _clients() if c.detected()]
+    if not detected:
+        return
+
+    print()
+    print("Found these MCP clients. I can register the server in each one's global")
+    print("config (only the 'openproject' entry is added; existing settings are kept")
+    print("and backed up first). Global registration makes this server available in")
+    print("every project. For per-project permissions, answer no and use docs/ instead.")
+    print()
+
+    for client in detected:
+        if _prompt_bool(
+            f"Register globally for {client.label}? ({client.target})",
+            default=False,
+        ):
+            _write_client_config(client, command, env)
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
@@ -252,21 +511,20 @@ def main() -> None:
 
     print()
     _write_mcp_json(env)
+
+    _offer_global_registration(str(_venv_binary()), env)
+
     print()
-    print("Setup complete — but this is only step 1.")
-    print(f"Binary:      {_venv_binary()}")
-    print(f"Config file: {MCP_JSON}")
+    print("Server installed.")
+    print(f"Binary: {_venv_binary()}")
     print()
-    print("Next: register the server with your MCP client. The config was written")
-    print("inside this install directory, but your client does not look here on its")
-    print("own — a project-scoped client expects .mcp.json in your project root, and")
-    print("a user-wide client expects the server in its own config. Follow the guide")
-    print("for your client (both project-scoped and user-wide setups are shown):")
-    print(f"  - Claude / Claude Code: {ROOT / 'docs' / 'claude.md'}")
-    print(f"  - Codex:                {ROOT / 'docs' / 'codex.md'}")
-    print(f"  - GitHub Copilot:       {ROOT / 'docs' / 'github.md'}")
-    print()
-    print("Then restart the client so it picks up the server.")
+    print("Registered a client above? Restart it and you're done.")
+    print("Otherwise register the server yourself — copy the values from")
+    print(f"{MCP_JSON} into your client's config. Guides (project-scoped, global, verify):")
+    print(f"  - Claude / Claude Code:      {ROOT / 'docs' / 'claude.md'}")
+    print(f"  - Claude Desktop app:        {ROOT / 'docs' / 'claude-desktop.md'}")
+    print(f"  - Codex:                     {ROOT / 'docs' / 'codex.md'}")
+    print(f"  - VS Code / GitHub Copilot:  {ROOT / 'docs' / 'github.md'}")
 
 
 if __name__ == "__main__":
