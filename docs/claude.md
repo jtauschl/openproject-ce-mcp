@@ -10,11 +10,12 @@
 
 ### Steps
 
-1. **Create `.mcp.json` in your project root:**
+1. **Create `.mcp.json` in your project root.** The installer already generated
+   one in its install directory; copy it into your project root, or re-run the
+   interactive setup to create it with your credentials:
    ```bash
    python3 configure_mcp.py
    ```
-   This interactive script creates the config with your credentials.
 
 2. **Or manually: Create `.mcp.json`**
    - Reference: [`.mcp.json.example`](../.mcp.json.example)

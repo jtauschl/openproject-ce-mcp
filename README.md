@@ -83,6 +83,16 @@ All write operations follow a preview-then-confirm pattern by default: call a to
 
 ## Getting started
 
+In short:
+
+1. **Install the server** (the one-liner below).
+2. **Copy the `command` and `env`** from the generated `.mcp.json` into your MCP
+   client's config — or let the installer register a detected client for you.
+3. **Restart your client.**
+4. **Verify** by asking it to call `list_projects`.
+
+The rest of this section covers each step in detail.
+
 ### Requirements
 
 | | |
@@ -145,8 +155,8 @@ curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-mcp/main/get.s
 Same as macOS: clones to `~/openproject-mcp`, binary at
 `~/openproject-mcp/.venv/bin/openproject-mcp`, `DIR=…` overrides the destination.
 
-In all cases the setup then writes a project-local `.mcp.json` and can optionally
-register the server globally with any MCP client it detects (see below).
+In all cases the setup then writes a local `.mcp.json` and can optionally set up
+a detected MCP client for you (see below).
 
 ### Register the server in your MCP client
 
@@ -159,6 +169,10 @@ Setup has two steps:
    is not a second install. Using more than one client (say Claude *and* Codex)?
    Create one config file per client; they sit side by side.
 
+**Which guide do I use?** Use VS Code → the GitHub Copilot guide. Use Claude Code
+→ the Claude guide. Use the Claude desktop app → the Claude Desktop guide. Use
+Cursor or Codex → their own guide. Any other MCP client → the generic note below.
+
 The file, location, and format differ per client — you cannot copy one client's
 config to another verbatim:
 
@@ -167,17 +181,18 @@ config to another verbatim:
 | Claude / Claude Code | `.mcp.json` | `~/.claude.json` | JSON | `mcpServers` |
 | Claude Desktop app | — (global only) | `claude_desktop_config.json` | JSON | `mcpServers` |
 | Codex | `.codex/config.toml` | `~/.codex/config.toml` | TOML | `[mcp_servers.openproject]` |
+| Cursor | `.cursor/mcp.json` | `~/.cursor/mcp.json` | JSON | `mcpServers` |
 | VS Code (GitHub Copilot) | `.vscode/mcp.json` | User `mcp.json` | JSON | `servers` |
 
 > **VS Code users:** the Copilot guide below is your guide — VS Code runs MCP
 > servers through GitHub Copilot in Agent mode.
 
-**The installer can register detected clients for you.** After collecting your
-settings, it offers to add the server to the **user-wide (global)** config of each
-installed client. Global registration makes this server available in every
-project, so each prompt defaults to *no*; only the `openproject` entry is added
-and your existing config is backed up first. For per-project permissions
-(recommended), skip that step and use the project-scoped guide below.
+**The installer can set up a detected client for you.** Before collecting your
+settings, it asks whether to configure a detected client automatically. This adds
+the server to that client's user-wide config, making it available in every
+project. **The default is no** — project-specific config (below) gives finer
+control and is recommended. When you opt in, only the `openproject` entry is added
+and your existing config is backed up first.
 
 To register manually, copy the `command` and `env` values from the installer's
 `.mcp.json` into the file and format your client's guide shows — the values are
@@ -188,10 +203,25 @@ Follow the guide for your client:
 - [Claude / Claude Code](docs/claude.md)
 - [Claude Desktop app](docs/claude-desktop.md)
 - [Codex](docs/codex.md)
+- [Cursor](docs/cursor.md)
 - [VS Code / GitHub Copilot](docs/github.md)
+
+**Any other MCP client** (Windsurf, JetBrains AI Assistant/Junie, Cline,
+Continue, Warp, Zed, …) uses the same pattern: point `command` at the binary from
+the generated `.mcp.json` and copy the `env` values. The root key is almost
+always `mcpServers` (Zed uses `context_servers` with `"source": "custom"`;
+Continue uses YAML with the same fields).
 
 Each guide shows the project-scoped and/or user-wide config, how to reload the
 client, and how to verify the server is picked up.
+
+### Troubleshooting
+
+| Symptom | Likely cause and fix |
+|---|---|
+| Server / tools don't appear | Client not restarted, or the config is in the wrong file. Reload the client and confirm the file, location, and root key match your client's row above. |
+| `[auth_error]` on the first call | Wrong `OPENPROJECT_API_TOKEN` or `OPENPROJECT_BASE_URL`. Re-check both; the token is `opapi-…` and the base URL has no trailing `/api/v3`. |
+| Tools appear but writes fail | Writes are opt-in. Enable the relevant `OPENPROJECT_ENABLE_*_WRITE` flag and make sure the project is in `OPENPROJECT_ALLOWED_PROJECTS_WRITE`. |
 
 **Uninstall**
 
