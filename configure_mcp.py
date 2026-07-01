@@ -235,6 +235,13 @@ def main() -> None:
         "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": str(wp_write).lower(),
         "OPENPROJECT_ENABLE_VERSION_WRITE": str(version_write).lower(),
         "OPENPROJECT_ENABLE_BOARD_WRITE": str(board_write).lower(),
+        # Instance-wide user/group administration. Not prompted for on purpose —
+        # it is a powerful, rarely needed capability. The key is written as false
+        # (preserving any existing value) so it is visible and easy to flip by
+        # hand; see .mcp.json.example and the README for details.
+        "OPENPROJECT_ENABLE_ADMIN_WRITE": str(
+            _bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_WRITE")
+        ).lower(),
         "OPENPROJECT_TIMEOUT": existing.get("OPENPROJECT_TIMEOUT", "12"),
         "OPENPROJECT_VERIFY_SSL": existing.get("OPENPROJECT_VERIFY_SSL", "true"),
         "OPENPROJECT_DEFAULT_PAGE_SIZE": existing.get("OPENPROJECT_DEFAULT_PAGE_SIZE", "20"),

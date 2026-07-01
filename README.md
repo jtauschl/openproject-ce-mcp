@@ -129,6 +129,20 @@ To override the destination:
 DIR=~/tools/openproject-mcp curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-mcp/main/get.sh | sh
 ```
 
+### Register the server in your MCP client
+
+Installing the server is only step one — your MCP client still needs to know
+about it. The `.mcp.json` the installer writes lives in the install directory; a
+project-scoped client expects it in your project root, and a user-wide client
+expects the server in its own config. Follow the guide for your client:
+
+- [Claude / Claude Code](docs/claude.md)
+- [Codex](docs/codex.md)
+- [GitHub Copilot](docs/github.md)
+
+Each guide shows both the project-scoped `.mcp.json` and the user-wide config,
+and how to reload the client so the server is picked up.
+
 **Uninstall**
 
 ```bash
@@ -157,7 +171,7 @@ Access is grouped into five chains: `project`, `membership`, `work_package`, `ve
 | `OPENPROJECT_ENABLE_BOARD_READ` | no | `true` | Boards and views |
 | `OPENPROJECT_HIDE_<ENTITY>_FIELDS` | no | empty | Comma-separated fields to omit from reads and reject on writes; `*` wildcards supported |
 | `OPENPROJECT_HIDE_CUSTOM_FIELDS` | no | empty | Custom field names or keys to omit; `*` wildcards supported |
-| `OPENPROJECT_ENABLE_ADMIN_WRITE` | no | `false` | User and group management (create/update/delete/lock users, create/update/delete groups). Must be set explicitly — not activated by any other write flag. |
+| `OPENPROJECT_ENABLE_ADMIN_WRITE` | no | `false` | User and group management (create/update/delete/lock users, create/update/delete groups). Must be set explicitly — not activated by any other write flag, and not prompted for by `configure_mcp.py`; edit `.mcp.json` by hand to enable it. |
 | `OPENPROJECT_ENABLE_PROJECT_WRITE` | no | `false` | Project create/update/delete, news, documents, grids |
 | `OPENPROJECT_ENABLE_MEMBERSHIP_WRITE` | no | `false` | Project membership create/update/delete |
 | `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE` | no | `false` | Work-package create/update/delete, comments, relations, attachments, time entries |
