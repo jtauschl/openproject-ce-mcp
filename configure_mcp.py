@@ -520,7 +520,11 @@ def _write_mcp_json(env: dict[str, str]) -> None:
 
 def _prompt(label: str, default: str = "") -> str:
     suffix = f" [{default}]" if default else ""
-    value = input(f"{label}{suffix}: ").strip()
+    try:
+        value = input(f"{label}{suffix}: ").strip()
+    except EOFError:
+        print(f"{label}{suffix}: (no input — using default)")
+        return default
     return value if value else default
 
 
@@ -530,12 +534,21 @@ def _prompt_secret(label: str, has_existing: bool = False) -> str:
         return getpass.getpass(f"{label}{hint}: ").strip()
     except (EOFError, OSError):
         # Non-interactive fallback (e.g. piped input in tests)
-        return input(f"{label}{hint}: ").strip()
+        try:
+            return input(f"{label}{hint}: ").strip()
+        except EOFError:
+            return ""
 
 
 def _prompt_bool(label: str, default: bool = False) -> bool:
     suffix = " [Y/n]" if default else " [y/N]"
-    answer = input(f"{label}{suffix}: ").strip().lower()
+    try:
+        answer = input(f"{label}{suffix}: ").strip().lower()
+    except EOFError:
+        # No interactive input (e.g. `curl … | sh` left stdin as the pipe).
+        # Fall back to the default rather than crashing.
+        print(f"{label}{suffix}: (no input — using default)")
+        return default
     if not answer:
         return default
     return answer in ("y", "yes")

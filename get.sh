@@ -51,5 +51,13 @@ if [ ! -f "$DEST/configure_mcp.py" ]; then
 fi
 
 # ── run setup ─────────────────────────────────────────────────────────────────
+# When invoked as `curl … | sh`, this script's stdin is the pipe, not the
+# terminal, so the interactive setup would get EOF on the first prompt. Attach
+# the controlling terminal (/dev/tty) if there is one; otherwise the setup falls
+# back to defaults on its own.
 cd "$DEST"
-exec "$PYTHON_BIN" configure_mcp.py
+if [ -e /dev/tty ] && [ -r /dev/tty ]; then
+  exec "$PYTHON_BIN" configure_mcp.py < /dev/tty
+else
+  exec "$PYTHON_BIN" configure_mcp.py
+fi
