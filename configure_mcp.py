@@ -8,11 +8,21 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+
+# tomllib is stdlib only on Python 3.11+. This installer supports 3.10 (which
+# lacks it) and must stay dependency-free, so import it optionally. When present
+# we use it to *validate* merged TOML before writing; when absent we fall back to
+# the text-level checks in _merge_codex_toml.
+try:
+    import tomllib as _tomllib
+except ModuleNotFoundError:  # Python 3.10
+    _tomllib = None
 
 ROOT = Path(__file__).resolve().parent
 VENV = ROOT / ".venv"
@@ -82,11 +92,22 @@ def _merge_json(existing: str, root_key: str, command: str, env: dict[str, str],
     data: dict = {}
     if existing.strip():
         loaded = json.loads(existing)  # may raise; caller surfaces a clear error
-        if isinstance(loaded, dict):
-            data = loaded
+        if not isinstance(loaded, dict):
+            # Parsed fine but the shape is wrong (list/str/number at top level).
+            # Treat this like a parse failure so the caller leaves the file
+            # untouched instead of us silently discarding the user's data.
+            raise ValueError(
+                f"expected a JSON object at the top level, got {type(loaded).__name__}"
+            )
+        data = loaded
     servers = data.get(root_key)
-    if not isinstance(servers, dict):
+    if servers is None:
         servers = {}
+    elif not isinstance(servers, dict):
+        # e.g. "mcpServers": [] — refuse rather than overwrite the user's value.
+        raise ValueError(
+            f'expected "{root_key}" to be a JSON object, got {type(servers).__name__}'
+        )
     servers["openproject"] = _server_entry(command, env, stdio=stdio)
     data[root_key] = servers
     return json.dumps(data, indent=2) + "\n"
@@ -107,6 +128,31 @@ def _codex_block(command: str, env: dict[str, str]) -> str:
     return "\n".join(lines)
 
 
+# A real TOML table header: a whole line that is just ``[name]`` (or ``[[name]]``),
+# optionally followed by a comment. Crucially this does NOT match a continuation
+# line of a multi-line array value such as ``  ["--flag"],`` — those start with
+# ``[`` but are not headers. Matching only true headers is what keeps multi-line
+# array values inside a table from being mistaken for the end of that table.
+_TOML_HEADER_RE = re.compile(r"^\[\[?[^\]]+\]\]?\s*(#.*)?$")
+
+# The openproject server expressed as a dotted key or inline table at top level,
+# e.g. ``mcp_servers.openproject = { ... }`` or ``mcp_servers.openproject.command
+# = "…"``. Codex does not emit this form, but a hand-edited config might. We can't
+# safely rewrite it with text edits (no TOML writer on 3.10), so we detect it and
+# refuse rather than append a ``[mcp_servers.openproject]`` header that would
+# collide with it ("Cannot declare openproject twice").
+_CODEX_DOTTED_RE = re.compile(r"^mcp_servers\.openproject(\.[^\s=]+)?\s*=")
+
+
+class CodexMergeError(ValueError):
+    """Raised when a Codex config can't be safely merged by text editing.
+
+    Subclasses ValueError so the existing ``except (json.JSONDecodeError,
+    ValueError)`` guard in _write_client_config catches it and leaves the file
+    untouched.
+    """
+
+
 def _strip_codex_openproject(existing: str) -> str:
     """Remove any existing [mcp_servers.openproject] / .env tables from TOML text.
 
@@ -114,16 +160,25 @@ def _strip_codex_openproject(existing: str) -> str:
     (and their key/value lines up to the next table header) and keep the rest of
     the file verbatim. Other tables and top-level keys are untouched.
 
-    Assumes the standard ``[table]`` header form Codex writes; it does not rewrite
-    an openproject server expressed as a dotted/inline table (a form Codex does
-    not emit). Prefix siblings like ``[mcp_servers.openproject2]`` are preserved.
+    Only genuine ``[table]`` header lines start/stop skipping — a multi-line array
+    value whose continuation lines begin with ``[`` (e.g. ``args = [\\n ["x"],\\n]``)
+    does NOT toggle skipping, so such tables survive intact. Prefix siblings like
+    ``[mcp_servers.openproject2]`` are preserved.
+
+    Raises CodexMergeError if openproject is expressed as a dotted key / inline
+    table, which this text approach cannot safely rewrite.
     """
     out: list[str] = []
     skipping = False
     for line in existing.splitlines():
-        header = line.strip()
-        if header.startswith("["):
-            table = header.strip("[]").strip()
+        stripped = line.strip()
+        if _CODEX_DOTTED_RE.match(stripped):
+            raise CodexMergeError(
+                "existing openproject entry uses a dotted key or inline table; "
+                "cannot merge by text edit"
+            )
+        if _TOML_HEADER_RE.match(stripped):
+            table = stripped.lstrip("[").rstrip("]").strip()
             skipping = table == "mcp_servers.openproject" or table.startswith(
                 "mcp_servers.openproject."
             )
@@ -133,12 +188,25 @@ def _strip_codex_openproject(existing: str) -> str:
 
 
 def _merge_codex_toml(existing: str, command: str, env: dict[str, str]) -> str:
-    """Preserve the rest of the Codex config, replacing only the openproject table."""
+    """Preserve the rest of the Codex config, replacing only the openproject table.
+
+    On Python 3.11+ the merged output is parsed with tomllib as a final guard: if
+    it does not round-trip to valid TOML with the expected openproject command,
+    we raise CodexMergeError rather than write a corrupt config. On 3.10 (no
+    tomllib) we rely on the text-level checks in _strip_codex_openproject.
+    """
     kept = _strip_codex_openproject(existing).rstrip()
     block = _codex_block(command, env)
-    if kept:
-        return f"{kept}\n\n{block}\n"
-    return f"{block}\n"
+    merged = f"{kept}\n\n{block}\n" if kept else f"{block}\n"
+    if _tomllib is not None:
+        try:
+            data = _tomllib.loads(merged)
+        except _tomllib.TOMLDecodeError as exc:
+            raise CodexMergeError(f"merged Codex config is not valid TOML ({exc})") from exc
+        server = data.get("mcp_servers", {}).get("openproject", {})
+        if server.get("command") != command:
+            raise CodexMergeError("merged Codex config did not round-trip openproject")
+    return merged
 
 
 class Client:
@@ -176,6 +244,18 @@ class Client:
         )
 
 
+# Detection tradeoff: each heuristic prefers a strong signal (the client's binary
+# on PATH) and falls back to a client-specific marker. We deliberately key the
+# fallbacks off markers the client *owns* (its own dotfile / app-support folder /
+# per-user config dir) rather than broad shared paths, to cut false positives
+# (offering to configure a client that isn't installed) without risking false
+# negatives for a genuinely-installed client. We do NOT tighten all the way down
+# to "the MCP config file already exists", because that would miss an installed
+# client that has simply never registered an MCP server yet — the exact case this
+# installer exists to handle. Registration is opt-in and defaults to No, so a
+# stray false positive only costs one extra "n" at the prompt.
+
+
 def _detect_claude_code() -> bool:
     return bool(shutil.which("claude")) or (_home() / ".claude.json").exists() or (
         _home() / ".claude"
@@ -183,6 +263,10 @@ def _detect_claude_code() -> bool:
 
 
 def _detect_claude_desktop() -> bool:
+    # The app-support "Claude" folder is created by the Desktop app itself, so its
+    # presence is a client-specific marker (not shared with the CLI, which uses
+    # ~/.claude). We check the folder rather than the config file so a freshly
+    # installed app that has never configured MCP is still detected.
     return _claude_desktop_path().parent.exists()
 
 
@@ -191,7 +275,15 @@ def _detect_codex() -> bool:
 
 
 def _detect_vscode() -> bool:
-    return bool(shutil.which("code")) or _vscode_user_mcp_path().parent.parent.exists()
+    # Fall back to the per-user "Code/User" directory (where mcp.json lives), not
+    # the broader "Code" root: "Code/User" is created once the user has actually
+    # run VS Code, which is a tighter signal than the top-level config dir while
+    # still not requiring an existing mcp.json.
+    return bool(shutil.which("code")) or _vscode_user_mcp_path().parent.exists()
+
+
+def _detect_cursor() -> bool:
+    return bool(shutil.which("cursor")) or (_home() / ".cursor").exists()
 
 
 def _clients() -> list[Client]:
@@ -231,6 +323,15 @@ def _clients() -> list[Client]:
             "docs/github.md",
             root_key="servers",
             stdio=True,
+        ),
+        Client(
+            "cursor",
+            "Cursor",
+            _home() / ".cursor" / "mcp.json",
+            "json",
+            _detect_cursor,
+            "docs/cursor.md",
+            root_key="mcpServers",
         ),
     ]
 
@@ -303,6 +404,17 @@ def _backup(path: Path) -> None:
     # Append to the full name so the original extension is preserved
     # (config.toml → config.toml.bak.<ts>), not replaced.
     dest = path.with_name(f"{path.name}.bak.{ts}")
+    # The timestamp has 1-second resolution, so a second backup in the same
+    # second would otherwise clobber the first via rename(). Append a counter
+    # to keep every backup.
+    if dest.exists():
+        counter = 1
+        while True:
+            candidate = path.with_name(f"{path.name}.bak.{ts}.{counter}")
+            if not candidate.exists():
+                dest = candidate
+                break
+            counter += 1
     path.rename(dest)
     print(f"Backed up {path.name} → {dest.name}")
 

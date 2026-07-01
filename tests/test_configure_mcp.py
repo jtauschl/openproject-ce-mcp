@@ -262,3 +262,114 @@ def test_apply_global_registration_writes_chosen(monkeypatch, tmp_path: Path) ->
 def test_apply_global_registration_empty_is_noop(tmp_path: Path) -> None:
     # No clients chosen → nothing written, no error.
     c._apply_global_registration([], CMD, ENV)
+
+
+# ── regression: TOML multi-line array preservation (bug #1) ─────────────────────
+
+
+@_needs_tomllib
+def test_merge_codex_toml_preserves_multiline_array_table() -> None:
+    # A multi-line array value has continuation lines that start with "[". The old
+    # skip logic toggled on any line starting with "[", flipping skipping off
+    # mid-table and leaking orphaned array fragments into the output. The table
+    # (and the openproject block) must both survive as valid TOML.
+    existing = (
+        "[mcp_servers.other]\n"
+        'command = "/bin/other"\n'
+        "args = [\n"
+        '  "--flag",\n'
+        '  "--another",\n'
+        "]\n"
+    )
+    merged = c._merge_codex_toml(existing, CMD, ENV)
+    data = tomllib.loads(merged)
+    assert data["mcp_servers"]["other"]["command"] == "/bin/other"
+    assert data["mcp_servers"]["other"]["args"] == ["--flag", "--another"]
+    assert data["mcp_servers"]["openproject"]["command"] == CMD
+
+
+def test_strip_codex_openproject_keeps_array_continuation_lines() -> None:
+    # Text-level check that runs on 3.10 too: continuation lines beginning with
+    # "[" must not be treated as table headers.
+    existing = "[keep]\nvalues = [\n  [1, 2],\n  [3, 4],\n]\n"
+    kept = c._strip_codex_openproject(existing)
+    assert "values = [" in kept
+    assert "[1, 2]," in kept
+    assert "[3, 4]," in kept
+
+
+# ── regression: dotted / inline openproject refusal (bug #2) ────────────────────
+
+
+def test_merge_codex_toml_refuses_inline_table() -> None:
+    existing = 'mcp_servers.openproject = { command = "/old" }\n'
+    with pytest.raises(c.CodexMergeError):
+        c._merge_codex_toml(existing, CMD, ENV)
+
+
+def test_merge_codex_toml_refuses_dotted_key() -> None:
+    existing = 'mcp_servers.openproject.command = "/old"\n'
+    with pytest.raises(c.CodexMergeError):
+        c._merge_codex_toml(existing, CMD, ENV)
+
+
+def test_write_client_config_skips_dotted_codex(monkeypatch, tmp_path, capsys) -> None:
+    target = tmp_path / "config.toml"
+    original = 'mcp_servers.openproject.command = "/old"\n'
+    target.write_text(original)
+    monkeypatch.setattr(c, "_backup", lambda p: None)
+    assert c._write_client_config(_codex_client(target), CMD, ENV) is False
+    # File left byte-for-byte untouched.
+    assert target.read_text() == original
+    assert "could not be parsed" in capsys.readouterr().out
+
+
+# ── regression: non-dict JSON refusal (bug #4) ──────────────────────────────────
+
+
+def test_merge_json_refuses_non_dict_toplevel() -> None:
+    with pytest.raises(ValueError):
+        c._merge_json("[1, 2, 3]", "mcpServers", CMD, ENV, stdio=False)
+
+
+def test_merge_json_refuses_non_dict_root_key() -> None:
+    with pytest.raises(ValueError):
+        c._merge_json('{"mcpServers": []}', "mcpServers", CMD, ENV, stdio=False)
+
+
+def test_write_client_config_skips_non_dict_json(monkeypatch, tmp_path, capsys) -> None:
+    target = tmp_path / ".claude.json"
+    original = "[1, 2, 3]"
+    target.write_text(original)
+    monkeypatch.setattr(c, "_backup", lambda p: None)
+    assert c._write_client_config(_json_client(target), CMD, ENV) is False
+    # Existing (unexpected-shape) data must not be clobbered.
+    assert target.read_text() == original
+    assert "could not be parsed" in capsys.readouterr().out
+
+
+# ── regression: backup timestamp collision (bug #6) ─────────────────────────────
+
+
+def test_backup_collision_keeps_both(monkeypatch, tmp_path: Path) -> None:
+    # Freeze the timestamp so two backups land in the "same second".
+    class _FixedNow:
+        @staticmethod
+        def now():
+            import datetime as _dt
+
+            return _dt.datetime(2026, 1, 2, 3, 4, 5)
+
+    monkeypatch.setattr(c, "datetime", _FixedNow)
+
+    first = tmp_path / "config.toml"
+    first.write_text("first\n")
+    c._backup(first)
+    # Re-create the same path and back it up again in the same frozen second.
+    first.write_text("second\n")
+    c._backup(first)
+
+    backups = sorted(p.name for p in tmp_path.glob("config.toml.bak.*"))
+    assert len(backups) == 2, f"both backups must be kept, got {backups}"
+    contents = {p.read_text() for p in tmp_path.glob("config.toml.bak.*")}
+    assert contents == {"first\n", "second\n"}
