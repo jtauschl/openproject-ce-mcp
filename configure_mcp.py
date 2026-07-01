@@ -253,10 +253,20 @@ def main() -> None:
     print()
     _write_mcp_json(env)
     print()
-    print("Setup complete.")
-    print(f"Binary:  {_venv_binary()}")
+    print("Setup complete — but this is only step 1.")
+    print(f"Binary:      {_venv_binary()}")
+    print(f"Config file: {MCP_JSON}")
     print()
-    print("Restart your MCP client (e.g. Claude Code) to pick up the new configuration.")
+    print("Next: register the server with your MCP client. The config was written")
+    print("inside this install directory, but your client does not look here on its")
+    print("own — a project-scoped client expects .mcp.json in your project root, and")
+    print("a user-wide client expects the server in its own config. Follow the guide")
+    print("for your client (both project-scoped and user-wide setups are shown):")
+    print(f"  - Claude / Claude Code: {ROOT / 'docs' / 'claude.md'}")
+    print(f"  - Codex:                {ROOT / 'docs' / 'codex.md'}")
+    print(f"  - GitHub Copilot:       {ROOT / 'docs' / 'github.md'}")
+    print()
+    print("Then restart the client so it picks up the server.")
 
 
 if __name__ == "__main__":
