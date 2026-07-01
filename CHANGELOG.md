@@ -62,9 +62,12 @@ milestone.
 
 ## 0.0.1 (development baseline)
 
-## 2026-05-18
+Initial development baseline; never publicly released as 1.0.0. The pre-release
+history is kept below as dated milestones.
 
-### Compatibility
+### 2026-05-18
+
+#### Compatibility
 
 - Verified against OpenProject 17.4. No breaking API changes in 17.4.
 - Work package responses now expose a `display_id` field (`displayId` in the API),
@@ -72,13 +75,13 @@ milestone.
   The numeric `id` remains the canonical identifier for all tool parameters; `display_id`
   is informational and may show a project-prefixed form (e.g. `ABC-42`) once 17.5 is deployed.
 
-### Fixes
+#### Fixes
 
 - Authentication header changed from `Bearer <token>` to `Basic base64(apikey:<token>)`,
   aligning with the OpenProject API documentation. Both formats are accepted by OpenProject;
   this change makes the implementation spec-compliant.
 
-### Bug fixes
+#### Bug fixes
 
 - `list_work_packages`, `list_my_open_work_packages`, `list_versions`, and `list_projects`
   now report `total` and `count` consistently when the read allowlist filters items out
@@ -96,16 +99,16 @@ milestone.
   canonical identifiers at startup, so HAL links that carry only the project id are
   correctly matched against name-based allowlist entries.
 
-### Configuration
+#### Configuration
 
 - `OPENPROJECT_ALLOWED_PROJECTS_READ` now accepts glob patterns in addition to exact
   identifiers and names (e.g. `team-*` matches `team-alpha`, `team-beta`).
 
 ---
 
-## 2026-04-08
+### 2026-04-08
 
-### Tools
+#### Tools
 
 - **Projects** — list, get, create, copy (with background job tracking), update, delete;
   read admin context, project configuration, and lifecycle phase definitions/instances
@@ -144,7 +147,7 @@ milestone.
 - **Actions & capabilities** — list
 - **Text rendering** — render markdown or plain text to HTML via OpenProject API
 
-### Permission model
+#### Permission model
 
 - Scoped read flags per chain: `OPENPROJECT_ENABLE_PROJECT_READ`,
   `OPENPROJECT_ENABLE_WORK_PACKAGE_READ`, `OPENPROJECT_ENABLE_MEMBERSHIP_READ`,
@@ -158,7 +161,7 @@ milestone.
 - Two-layer safety model: MCP env-var gates (ceiling) + OpenProject server-side role
   permissions (final authority); a `403` from OpenProject surfaces as a tool error
 
-### Architecture
+#### Architecture
 
 - Five-module layout: `server.py`, `config.py`, `client.py`, `models.py`, `tools.py`
 - All policy logic (read gates, write gates, project scoping, field hiding) concentrated
@@ -175,13 +178,13 @@ milestone.
   `OPENPROJECT_MAX_RESULTS`
 - Form validation against OpenProject schema endpoints before create/update writes
 
-### Test coverage
+#### Test coverage
 
 - 152 unit tests (httpx mock transport, no network)
 - Integration test suite (`tests/integration/`) against a live OpenProject instance;
   excluded from the default run, opt in with `-m integration`
 
-### Scope
+#### Scope
 
 - Community Edition only — Enterprise features (Placeholder Users, Budgets, Portfolios,
   Programs, Custom Actions, Baseline Comparisons) are not implemented
@@ -189,7 +192,7 @@ milestone.
   not connected)
 - Project lifecycle phases included (read-only; degrades gracefully if unavailable)
 
-### Known API notes
+#### Known API notes
 
 - `GET /api/v3/projects/{id}/wiki_pages` is not implemented in OpenProject v3;
   `list_wiki_pages` is therefore not provided. Individual pages are accessible via
