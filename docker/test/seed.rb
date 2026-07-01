@@ -26,21 +26,43 @@ token = Token::API.create!(user: admin)
 log("API_TOKEN=#{token.plain_value}")
 
 # --- Test project + one work package ------------------------------------------
-project = Project.find_by(identifier: "TST")
+# Identifiers are lowercase; workspace_type is required on 17.x. In semantic mode
+# OpenProject derives the uppercase display prefix (e.g. TST-1) from this.
+project = Project.find_by(identifier: "tst")
 if project.nil?
-  project = Project.create!(name: "TST Test", identifier: "TST", public: false)
-  log("created project TST (id=#{project.id})")
+  attrs = {name: "TST Test", identifier: "tst", public: false}
+  attrs[:workspace_type] = "project" if Project.new.respond_to?(:workspace_type)
+  project = Project.create!(**attrs)
+  log("created project tst (id=#{project.id})")
 else
-  log("project TST already present (id=#{project.id})")
+  log("project tst already present (id=#{project.id})")
+end
+
+# A freshly created project has no modules enabled and no members, so the admin
+# cannot see its work packages via the API. Enable every available project module
+# (work packages, time/costs, news, wiki, boards, backlogs, …) and make the admin
+# a project member with a work-package-capable role.
+all_modules = OpenProject::AccessControl.available_project_modules.map(&:to_s)
+project.enabled_module_names = (project.enabled_module_names | all_modules)
+project.save!
+log("enabled modules: #{project.reload.enabled_module_names.sort.join(', ')}")
+wp_role = Role.givable.find { |r| r.permissions.include?(:view_work_packages) }
+if wp_role
+  member = Member.find_or_initialize_by(project: project, principal: admin)
+  member.roles = [wp_role] if member.roles.empty?
+  member.save!
+  log("admin is a member of tst with role #{wp_role.name}")
 end
 
 if project.work_packages.empty?
   type = project.types.first || Type.first
   status = Status.respond_to?(:default) && Status.default ? Status.default : Status.first
+  priority = (IssuePriority.respond_to?(:default) && IssuePriority.default) || IssuePriority.active.first || IssuePriority.first
   wp = WorkPackage.create!(
     project: project,
     type: type,
     status: status,
+    priority: priority,
     author: admin,
     subject: "Seed work package"
   )
@@ -55,11 +77,12 @@ if ENV["SEED_SEMANTIC"] == "1"
   if defined?(Setting::WorkPackageIdentifier)
     Setting.work_packages_identifier = "semantic"
     log("set work_packages_identifier = semantic")
-    # Re-save existing work packages so semantic ids get allocated where supported.
-    if WorkPackage.first.respond_to?(:display_id)
-      WorkPackage.find_each { |w| w.save }
-      sample = WorkPackage.where(project_id: project.id).first
-      log("sample display_id=#{sample && sample.display_id}")
+    # Allocate semantic ids for existing work packages. Saving is not enough —
+    # OpenProject exposes an explicit allocation method for this.
+    sample_wp = project.work_packages.first
+    if sample_wp && sample_wp.respond_to?(:allocate_and_register_semantic_id)
+      project.work_packages.find_each(&:allocate_and_register_semantic_id)
+      log("sample display_id=#{project.work_packages.first.reload.display_id}")
     end
   else
     log("semantic identifiers not supported on this version — left as classic")

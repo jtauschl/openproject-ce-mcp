@@ -1,6 +1,6 @@
 # Local OpenProject instances for runtime verification of the MCP client across
-# versions. Two all-in-one containers (each bundles PostgreSQL + memcached), so
-# no separate database service is needed.
+# versions. Uses the all-in-one images (NOT the -slim variants) so each container
+# bundles PostgreSQL + memcached and needs no separate database service.
 #
 #   16.6 = classic numeric identifiers (no semantic ids) — backwards-compat path
 #   17.5 = project-based semantic identifiers
@@ -10,7 +10,7 @@
 
 services:
   op-16-6:
-    image: openproject/openproject:16.6-slim
+    image: openproject/openproject:16.6
     ports:
       - "8166:80"
     environment:
@@ -29,7 +29,7 @@ services:
       start_period: 120s
 
   op-17-5:
-    image: openproject/openproject:17.5-slim
+    image: openproject/openproject:17.5
     ports:
       - "8175:80"
     environment:
