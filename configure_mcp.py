@@ -355,30 +355,44 @@ def _bool_from_env(env: dict[str, str], key: str, fallback: bool = False) -> boo
     return fallback
 
 
-def _offer_global_registration(command: str, env: dict[str, str]) -> None:
-    """Optionally write a user-wide config for each detected MCP client.
+def _choose_registration_mode() -> list[Client]:
+    """Ask up front whether to auto-configure any detected client; return the chosen.
 
-    Only clients actually detected on this machine are offered. Each prompt
-    defaults to "no": global registration is broad (all projects, everywhere),
-    and the project-scoped setup in docs/ is the recommended path.
+    Asked before credentials are collected so the user decides the mode first. The
+    default is no — the setup always writes a local config to copy from, and
+    project-specific setup (docs/) is the recommended path. Only clients actually
+    detected on this machine are offered.
     """
     detected = [c for c in _clients() if c.detected()]
     if not detected:
-        return
+        return []
 
     print()
-    print("Found these MCP clients. I can register the server in each one's global")
-    print("config (only the 'openproject' entry is added; existing settings are kept")
-    print("and backed up first). Global registration makes this server available in")
-    print("every project. For per-project permissions, answer no and use docs/ instead.")
-    print()
-
+    print("Detected MCP clients:")
     for client in detected:
-        if _prompt_bool(
-            f"Register globally for {client.label}? ({client.target})",
-            default=False,
-        ):
-            _write_client_config(client, command, env)
+        print(f"  - {client.label}")
+    print()
+    print("The setup always writes a local .mcp.json you can copy into any client")
+    print("(see the guides). It can also set up a detected client for you — adding the")
+    print("server to its config, available in every project (existing settings kept and")
+    print("backed up first).")
+    print()
+    print("No is recommended if you prefer project-specific client config.")
+    if not _prompt_bool("Set up a detected client automatically?", default=False):
+        return []
+
+    chosen = []
+    for client in detected:
+        if _prompt_bool(f"  Set up {client.label} automatically? ({client.target})", default=False):
+            chosen.append(client)
+        else:
+            print(f"    Skipped. Use {client.doc} for project-specific setup.")
+    return chosen
+
+
+def _apply_global_registration(clients: list[Client], command: str, env: dict[str, str]) -> None:
+    for client in clients:
+        _write_client_config(client, command, env)
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
@@ -389,6 +403,9 @@ def main() -> None:
 
     uv = _find_uv()
     _install_deps(uv)
+
+    # Decide the registration mode before collecting credentials.
+    global_clients = _choose_registration_mode()
 
     existing = _load_existing()
 
@@ -406,15 +423,22 @@ def main() -> None:
     if not token:
         print("An API token is required.", file=sys.stderr)
         sys.exit(1)
+    print("  This token is saved in the config file — keep it private and never commit it.")
 
+    print()
+    print("Project scope — comma-separated identifiers, names, or globs (e.g. team-*).")
     read_projects = _prompt(
-        "Readable projects (* for all)",
+        "Readable projects (* = all visible)",
         existing.get("OPENPROJECT_ALLOWED_PROJECTS_READ", "*"),
     )
     write_projects = _prompt(
-        "Writable projects (empty = none, * = all)",
+        "Writable projects (leave empty to disable writes; * = all)",
         existing.get("OPENPROJECT_ALLOWED_PROJECTS_WRITE", ""),
     )
+
+    print()
+    print("Optional field filtering — omit fields from reads. Leave empty unless you")
+    print("need it; just press Enter to skip each.")
     hide_project = _prompt(
         "Hidden project fields (comma-separated)",
         existing.get("OPENPROJECT_HIDE_PROJECT_FIELDS", ""),
@@ -512,7 +536,7 @@ def main() -> None:
     print()
     _write_mcp_json(env)
 
-    _offer_global_registration(str(_venv_binary()), env)
+    _apply_global_registration(global_clients, str(_venv_binary()), env)
 
     print()
     print("Server installed.")

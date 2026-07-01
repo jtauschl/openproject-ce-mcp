@@ -219,35 +219,46 @@ def test_backup_preserves_extension(tmp_path: Path) -> None:
     assert not target.exists()
 
 
-# ── offer flow (non-interactive) ────────────────────────────────────────────────
+# ── registration mode (asked up front, non-interactive) ─────────────────────────
 
 
-def test_offer_global_registration_no_clients_is_noop(
-    monkeypatch, tmp_path: Path, capsys
-) -> None:
+def _answers(monkeypatch, seq: list[str]) -> None:
+    it = iter(seq)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(it, ""))
+
+
+def test_choose_mode_no_clients_returns_empty(monkeypatch, capsys) -> None:
     monkeypatch.setattr(c, "_clients", lambda: [])
-    c._offer_global_registration(CMD, ENV)
-    out = capsys.readouterr().out
-    assert "Detected MCP clients" not in out
+    assert c._choose_registration_mode() == []
+    assert "Detected MCP clients" not in capsys.readouterr().out
 
 
-def test_offer_global_registration_default_no_skips_write(
-    monkeypatch, tmp_path: Path
-) -> None:
-    target = tmp_path / "config.toml"
-    monkeypatch.setattr(c, "_clients", lambda: [_codex_client(target)])
-    # Simulate the user pressing Enter (empty answer → default No).
-    monkeypatch.setattr("builtins.input", lambda _prompt="": "")
-    c._offer_global_registration(CMD, ENV)
-    assert not target.exists(), "default No must not write the client config"
+def test_choose_mode_gate_no_skips_per_client_prompts(monkeypatch, tmp_path: Path) -> None:
+    codex = _codex_client(tmp_path / "config.toml")
+    monkeypatch.setattr(c, "_clients", lambda: [codex])
+    # Only one answer is consumed (the gate); default No → no per-client prompt.
+    _answers(monkeypatch, [""])
+    assert c._choose_registration_mode() == []
 
 
-@_needs_tomllib
-def test_offer_global_registration_yes_writes(monkeypatch, tmp_path: Path) -> None:
-    target = tmp_path / "config.toml"
-    monkeypatch.setattr(c, "_clients", lambda: [_codex_client(target)])
-    monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
-    c._offer_global_registration(CMD, ENV)
+def test_choose_mode_gate_yes_then_per_client(monkeypatch, tmp_path: Path) -> None:
+    codex = _codex_client(tmp_path / "config.toml")
+    monkeypatch.setattr(c, "_clients", lambda: [codex])
+    # Gate yes, then yes for the one client.
+    _answers(monkeypatch, ["y", "y"])
+    chosen = c._choose_registration_mode()
+    assert chosen == [codex]
+
+
+def test_apply_global_registration_writes_chosen(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".claude.json"
+    client = _json_client(target)
+    c._apply_global_registration([client], CMD, ENV)
     assert target.exists()
-    data = tomllib.loads(target.read_text())
-    assert data["mcp_servers"]["openproject"]["env"] == ENV
+    data = json.loads(target.read_text())
+    assert data["mcpServers"]["openproject"]["command"] == CMD
+
+
+def test_apply_global_registration_empty_is_noop(tmp_path: Path) -> None:
+    # No clients chosen → nothing written, no error.
+    c._apply_global_registration([], CMD, ENV)
