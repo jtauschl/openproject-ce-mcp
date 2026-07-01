@@ -225,7 +225,12 @@ client, and how to verify the server is picked up.
 
 **Uninstall**
 
-- **Windows:** remove the install directory (`Remove-Item -Recurse -Force $env:USERPROFILE\openproject-mcp`) and delete the `openproject` entry from any client config you registered it in.
+The uninstaller removes the local environment (`.venv`, caches, the API-source
+clones) and removes the `openproject` entry from any client config you registered
+it in — keeping your other MCP servers and settings, and backing up each edited
+file. Your local `.mcp.json` is left untouched.
+
+- **Windows:** `.\uninstall.ps1` (then remove the install dir if you want: `Remove-Item -Recurse -Force $env:USERPROFILE\openproject-mcp`)
 - **macOS / Linux:** `~/openproject-mcp/uninstall.sh`
 
 ---
@@ -258,6 +263,7 @@ Access is grouped into five chains: `project`, `membership`, `work_package`, `ve
 | `OPENPROJECT_ENABLE_BOARD_WRITE` | no | `false` | Board create/update/delete |
 | `OPENPROJECT_AUTO_CONFIRM_WRITE` | no | `false` | Skip the preview step for all writes |
 | `OPENPROJECT_AUTO_CONFIRM_DELETE` | no | inherits `OPENPROJECT_AUTO_CONFIRM_WRITE` | Skip the preview step for deletes |
+| `OPENPROJECT_ATTACHMENT_ROOT` | no | current working directory | Directory that attachment uploads are confined to. Files outside it are refused, and credential/config files (`.mcp.json`, `.env`, `*.pem`, keys) are refused even inside it, so a tool call cannot exfiltrate local secrets |
 | `OPENPROJECT_TIMEOUT` | no | `12` | Request timeout in seconds |
 | `OPENPROJECT_VERIFY_SSL` | no | `true` | Verify TLS certificates |
 | `OPENPROJECT_DEFAULT_PAGE_SIZE` | no | `20` | Default results per page |

@@ -188,6 +188,8 @@ All list tools are bounded and paginated. They return compact summaries — not 
 | `create_work_package_attachment` | Validate and then upload an attachment to a work package; only writes when called again with `confirm=true` |
 | `delete_attachment` | Validate and then delete an attachment; only deletes when called again with `confirm=true` |
 
+Uploads are confined to `OPENPROJECT_ATTACHMENT_ROOT` (default: the working directory). Files outside it — and credential/config files such as `.mcp.json`, `.env`, or private keys even inside it — are refused, so a tool call cannot exfiltrate local secrets.
+
 ## Versions
 
 | Tool | Description |

@@ -1,10 +1,13 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project will be documented in this file. Versions
+follow [semantic versioning](https://semver.org). The project has not been
+published as 1.0.0; 0.0.1 is the development baseline and 0.1.0 is the current
+milestone.
 
 ---
 
-## 2026-06-30
+## 0.1.0 (unreleased)
 
 ### Compatibility
 
@@ -13,6 +16,8 @@ All notable changes to this project will be documented in this file.
   `Sec-Fetch-Site` applies to session authentication only; this server authenticates
   with an API token (HTTP Basic auth) and is unaffected. The 17.4.1 security fixes
   touch meeting, journal, and baseline endpoints that this server does not use.
+- Verified against OpenProject 16.6 (classic), 17.4 (displayId), and 17.5 (semantic)
+  via the local Docker matrix, plus a source-level API audit across 16.0–17.5.
 
 ### Added
 
@@ -24,8 +29,38 @@ All notable changes to this project will be documented in this file.
   through to the endpoint verbatim, so the behaviour degrades cleanly: on instances
   without semantic identifiers a project-prefixed reference simply yields a 404
   (surfaced as not-found), while numeric ids keep working on every supported version.
+- Relation and parent writes resolve a project-prefixed reference to the numeric id
+  before building the HAL link, since link hrefs are not resolved by `displayId`.
+- Interactive setup can detect installed MCP clients (Claude Code, Claude Desktop,
+  Codex, Cursor, VS Code/Copilot) and register the server in a client's user-wide
+  config. Registration merges rather than overwrites, backing up the existing file.
+- `uninstall.sh` / `uninstall.ps1` and a `configure_mcp.py --uninstall` mode remove
+  the `openproject` entry from client configs (keeping other servers, with backups)
+  and clean up the local environment.
+- `OPENPROJECT_ATTACHMENT_ROOT` confines attachment uploads to a directory (default:
+  the working directory); files outside it, and credential/config files such as
+  `.mcp.json` / `.env` / private keys even inside it, are refused.
+
+### Security
+
+- Attachment uploads can no longer read arbitrary local files, closing a
+  credential-exfiltration path.
+- `list_relations` is gated by the read scope and filtered by the project read
+  allowlist on both linked work packages; `update_relation`, `update_reminder`, and
+  `delete_reminder` apply the project write allowlist; `copy_project` validates its
+  destination; hidden work-package subjects no longer leak through relation tools.
+- `OPENPROJECT_AUTO_CONFIRM_DELETE` now correctly governs the preview step for all
+  destructive deletes.
+
+### Docs
+
+- Onboarding docs reworked: install-once/register-per-client model, per-client
+  config matrix, per-OS paths, verification steps, and gitignore reminders. Added a
+  Cursor guide and a generic "any other MCP client" note.
 
 ---
+
+## 0.0.1 (development baseline)
 
 ## 2026-05-18
 
