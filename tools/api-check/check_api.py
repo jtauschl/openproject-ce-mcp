@@ -19,8 +19,10 @@ Sources come from ``tools/api-check/fetch-sources.sh`` (gitignored clones under
 ``.op-sources/<version>/``). Run that first.
 
 Usage:
-    python tools/api-check/check_api.py            # report + exit code
-    python tools/api-check/check_api.py --verbose  # also list every OK symbol
+    python tools/api-check/check_api.py             # curated symbol presence
+    python tools/api-check/check_api.py --all       # every resource + filter used
+    python tools/api-check/check_api.py --constants # hardcoded enum/constant VALUES
+    python tools/api-check/check_api.py --verbose   # also list every OK entry
 """
 
 from __future__ import annotations
@@ -165,6 +167,114 @@ def _present(version: str, asm: Assumption) -> bool:
         raise
 
 
+# --- Constant / enum checks (values, not just symbol presence) ---
+#
+# The assumptions above verify a symbol EXISTS. These verify that a hardcoded set
+# of VALUES in the client still matches the source — an enum value or payload key
+# that OpenProject renames would pass the existence check yet break at runtime.
+# Each constant names the client's expected set and a regex that extracts the
+# source's set from one file; the client set must be a subset of the source set.
+# Only versions whose source file exists are checked (these models arrived at
+# different releases), so missing files are reported as "n/a", not a failure.
+
+CLIENT_PY = ROOT / "src" / "openproject_mcp" / "client.py"
+
+
+@dataclass(frozen=True)
+class Constant:
+    name: str
+    client_values: frozenset[str]
+    source_file: str  # path under .op-sources/<version>/
+    source_regex: str  # each match group(1) is one source value
+
+
+CONSTANTS: list[Constant] = [
+    Constant(
+        "emoji reactions",
+        frozenset({
+            "thumbs_up", "thumbs_down", "grinning_face_with_smiling_eyes",
+            "confused_face", "heart", "party_popper", "rocket", "eyes",
+        }),
+        "app/models/emoji_reaction.rb",
+        # EMOJI_MAP entries: `    thumbs_up: "..."`
+        r"^\s+([a-z_]+):\s*\"",
+    ),
+    Constant(
+        "version statuses",
+        frozenset({"open", "closed", "locked"}),
+        "app/models/version.rb",
+        # VERSION_STATUSES = %w(open locked closed)
+        r"VERSION_STATUSES\s*=\s*%w\(([^)]*)\)",  # special-cased: split group on spaces
+    ),
+    Constant(
+        "version status operators",
+        frozenset({"o", "c", "l"}),
+        "app/models/queries/operators/versions",  # directory
+        r'set_symbol\s+"([a-z])"',
+    ),
+]
+
+
+def _extract_source_values(version: str, const: Constant) -> set[str] | None:
+    """Return the set of values found in the source, or None if the file is absent."""
+    target = SOURCES / version / const.source_file
+    if not target.exists():
+        return None
+    texts: list[str] = []
+    if target.is_dir():
+        for f in sorted(target.rglob("*.rb")):
+            texts.append(f.read_text(encoding="utf-8", errors="replace"))
+    else:
+        texts.append(target.read_text(encoding="utf-8", errors="replace"))
+    values: set[str] = set()
+    rx = re.compile(const.source_regex, re.MULTILINE)
+    for text in texts:
+        for m in rx.finditer(text):
+            captured = m.group(1)
+            # %w(...) style: one match holds a space-separated list.
+            if " " in captured:
+                values.update(captured.split())
+            else:
+                values.add(captured)
+    return values
+
+
+def run_constants(verbose: bool = False) -> int:
+    header = f"{'constant':<28} " + " ".join(f"{v:<8}" for v in VERSIONS) + " verdict"
+    print(header)
+    print("-" * len(header))
+    failures: list[str] = []
+    for const in CONSTANTS:
+        cells = []
+        verdict = "ok"
+        for v in VERSIONS:
+            source_values = _extract_source_values(v, const)
+            if source_values is None:
+                cells.append(f"{'(n/a)':<8}")
+                continue
+            missing = const.client_values - source_values
+            if not missing:
+                cells.append(f"{'match':<8}")
+            else:
+                cells.append(f"{'DRIFT!':<8}")
+                verdict = "DRIFT"
+                failures.append(
+                    f"{const.name}: {v} — client values not in source: {sorted(missing)}"
+                )
+        if verdict != "ok" or verbose:
+            print(f"{const.name:<28} " + " ".join(cells) + f" {verdict}")
+
+    print()
+    if failures:
+        print(f"FAIL: {len(failures)} constant drift(s):")
+        for fmsg in failures:
+            print(f"  - {fmsg}")
+        return 1
+    print(f"OK: all {len(CONSTANTS)} hardcoded constant sets are a subset of the "
+          f"source across the versions that define them.")
+    return 0
+
+
 # --- Full auto-extracted coverage (every resource + filter the client uses) ---
 
 CLIENT = ROOT / "src" / "openproject_mcp" / "client.py"
@@ -284,6 +394,8 @@ def main() -> int:
                         help="list every checked symbol, not just mismatches")
     parser.add_argument("--all", action="store_true",
                         help="auto-extract and map EVERY resource + filter the client uses")
+    parser.add_argument("--constants", action="store_true",
+                        help="verify hardcoded enum/constant VALUES against the source")
     args = parser.parse_args()
 
     missing_sources = [v for v in VERSIONS if not (SOURCES / v).exists()]
@@ -292,6 +404,8 @@ def main() -> int:
         print("Run: tools/api-check/fetch-sources.sh", file=sys.stderr)
         return 2
 
+    if args.constants:
+        return run_constants(verbose=args.verbose)
     if args.all:
         return run_full_coverage()
 

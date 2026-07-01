@@ -31,12 +31,16 @@ VERSIONS=(
   "17.5:v17.5.1"
 )
 
-# Subtrees that hold the API v3 definitions, representers and query filters.
+# Subtrees that hold the API v3 definitions, representers and query filters,
+# plus the models/representers that define the enums and payload field names the
+# constant check (check_api.py --constants) verifies.
 SPARSE_PATHS=(
   "lib/api"
   "app/models/queries"
   "app/models/work_package"
   "/config/routes.rb"
+  "/app/models/emoji_reaction.rb"   # EMOJI_MAP enum values
+  "/app/models/version.rb"          # VERSION_STATUSES
 )
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
