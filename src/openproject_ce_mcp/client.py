@@ -13,6 +13,7 @@ from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
 
+from . import __version__
 from .config import HIDE_FIELD_ENV_BY_ENTITY, Settings
 from .models import (
     ActionListResult,
@@ -183,7 +184,7 @@ class OpenProjectClient:
             headers={
                 "Accept": "application/hal+json, application/json",
                 "Authorization": f"Basic {__import__('base64').b64encode(f'apikey:{settings.api_token}'.encode()).decode()}",
-                "User-Agent": "openproject-ce-mcp/0.1.0",
+                "User-Agent": f"openproject-ce-mcp/{__version__}",
             },
             timeout=httpx.Timeout(settings.timeout),
             verify=settings.verify_ssl,

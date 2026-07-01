@@ -169,3 +169,64 @@ def test_all_scoped_writes_independent() -> None:
         mcp = create_app(make_settings(**{flag: True}))
         names = _tool_names(mcp)
         assert expected_tool in names, f"{expected_tool} missing when {flag}=True"
+
+
+# ── console entry-point dispatch ───────────────────────────────────────────────
+
+
+def test_main_no_args_runs_server(monkeypatch) -> None:
+    import openproject_ce_mcp.server as srv
+
+    ran = []
+    monkeypatch.setattr(srv, "_run_server", lambda: ran.append(True))
+    monkeypatch.setattr(srv.sys, "argv", ["openproject-ce-mcp"])
+    srv.main()
+    assert ran == [True]
+
+
+def test_main_configure_dispatches_to_setup(monkeypatch) -> None:
+    import openproject_ce_mcp.server as srv
+    import openproject_ce_mcp.setup_cli as setup_cli
+
+    forwarded = []
+    monkeypatch.setattr(setup_cli, "main", lambda argv: forwarded.append(argv))
+    monkeypatch.setattr(srv, "_run_server", lambda: forwarded.append("SERVER"))
+    monkeypatch.setattr(srv.sys, "argv", ["openproject-ce-mcp", "configure", "--local"])
+    srv.main()
+    assert forwarded == [["--local"]]
+
+
+def test_main_unexpected_flag_still_runs_server(monkeypatch) -> None:
+    # A client passing an unknown flag must start the server, not error out.
+    import openproject_ce_mcp.server as srv
+
+    ran = []
+    monkeypatch.setattr(srv, "_run_server", lambda: ran.append(True))
+    monkeypatch.setattr(srv.sys, "argv", ["openproject-ce-mcp", "--some-client-flag"])
+    srv.main()
+    assert ran == [True]
+
+
+def test_main_help_exits_without_server(monkeypatch, capsys) -> None:
+    import openproject_ce_mcp.server as srv
+
+    monkeypatch.setattr(srv, "_run_server", lambda: (_ for _ in ()).throw(AssertionError("server ran")))
+    monkeypatch.setattr(srv.sys, "argv", ["openproject-ce-mcp", "--help"])
+    try:
+        srv.main()
+    except SystemExit as exc:
+        assert exc.code == 0
+    out = capsys.readouterr().out
+    assert "configure" in out and "usage:" in out
+
+
+def test_main_version_prints_version(monkeypatch, capsys) -> None:
+    import openproject_ce_mcp.server as srv
+    from openproject_ce_mcp import __version__
+
+    monkeypatch.setattr(srv.sys, "argv", ["openproject-ce-mcp", "--version"])
+    try:
+        srv.main()
+    except SystemExit as exc:
+        assert exc.code == 0
+    assert __version__ in capsys.readouterr().out

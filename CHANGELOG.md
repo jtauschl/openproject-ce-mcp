@@ -6,7 +6,26 @@ release and 0.0.1 is the development baseline.
 
 ---
 
-## 0.1.1 (unreleased)
+## 0.2.0 (unreleased)
+
+First release published to PyPI. Supersedes the never-released 0.1.1 (its
+package-rename and installer fixes are folded in here).
+
+### Added
+
+- **PyPI distribution.** The package is installable with `pip` / `pipx` /
+  `uv tool install openproject-ce-mcp`. A GitHub Actions workflow publishes to
+  PyPI on a version tag via trusted publishing (OIDC, no stored token).
+- **`openproject-ce-mcp configure` setup command** (plus the
+  `openproject-ce-mcp-setup` alias), shipped in the installed package. It
+  registers the server with detected MCP clients and writes `.mcp.json`. Scope is
+  auto-detected — a project directory gets a local `.mcp.json`, elsewhere the
+  server is registered user-wide — and can be forced with `--local` / `--global`.
+- Top-level CLI: `openproject-ce-mcp --help` / `--version`; running with no
+  arguments still starts the stdio server, unchanged for MCP clients.
+- `check_api.py --constants` verifies hardcoded enum/constant values (emoji
+  reactions, version statuses and their operators) against the OpenProject source
+  across versions, catching a value rename the presence check would miss.
 
 ### Changed
 
@@ -15,18 +34,23 @@ release and 0.0.1 is the development baseline.
   name `openproject-mcp` is taken by an unrelated project; the new name is free
   and states the Community-Edition focus. The MCP server key stays `openproject`,
   so existing client configs do not change.
+- Documentation leads with the PyPI install path; the `curl … | sh` source
+  installer is kept as an alternative. Uninstall is documented per install type.
+- The `User-Agent` header now derives from the package version instead of a
+  hardcoded string.
 
 ### Fixed
 
 - The `curl … | sh` installer no longer crashes with `EOFError` on the first
   prompt: `get.sh` attaches the controlling terminal, and the prompt helpers fall
   back to defaults when stdin is not interactive.
-
-### Added
-
-- `check_api.py --constants` verifies hardcoded enum/constant values (emoji
-  reactions, version statuses and their operators) against the OpenProject source
-  across versions, catching a value rename the presence check would miss.
+- Re-running `configure --global` pre-fills from an existing client registration
+  instead of demanding the base URL and token again.
+- `configure` warns before writing a token-bearing `.mcp.json` into an unrelated
+  project directory, and when the server command cannot be resolved to an absolute
+  path (which would fail for GUI clients that do not inherit the shell `PATH`).
+- The Docker integration-test harness (`docker/test/up.sh`) runs on the Bash 3.2
+  that ships with macOS (no `declare -A`).
 
 ---
 

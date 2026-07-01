@@ -1,7 +1,7 @@
 # Claude
 
 <p align="center">
-  <img src="../img/claude.png" alt="Claude artwork for the Claude MCP guide." width="960">
+  <img src="../img/claude.jpg" alt="Claude artwork for the Claude MCP guide." width="960">
 </p>
 
 ## Setup: Project-scoped (Preferred)
@@ -10,11 +10,10 @@
 
 ### Steps
 
-1. **Create `.mcp.json` in your project root.** The installer already generated
-   one in its install directory; copy it into your project root, or re-run the
+1. **Create `.mcp.json` in your project root.** From that directory, run the
    interactive setup to create it with your credentials:
    ```bash
-   python3 configure_mcp.py
+   openproject-ce-mcp configure
    ```
 
 2. **Or manually: Create `.mcp.json`**
@@ -22,12 +21,12 @@
    - Protect it if it contains secrets: `chmod 600 .mcp.json`
    - **This file holds your API token.** Add `.mcp.json` to your project's `.gitignore` so it is never committed.
 
-3. **Example config** — this mirrors what `configure_mcp.py` writes. On Windows the `command` path is `...\.venv\Scripts\openproject-ce-mcp.exe`; the installer fills in the correct path for your OS automatically.
+3. **Example config** — this mirrors what `openproject-ce-mcp configure` writes. With a PyPI install (uv tool / pipx / pip) the `command` is simply `openproject-ce-mcp` (resolved from your PATH); for a zero-install setup use `"command": "uvx"` with `"args": ["openproject-ce-mcp"]`. A source install instead points at the `.venv` binary (`...\.venv\bin\openproject-ce-mcp`, or `...\.venv\Scripts\openproject-ce-mcp.exe` on Windows).
    ```json
    {
      "mcpServers": {
        "openproject": {
-         "command": "/absolute/path/to/openproject-ce-mcp/.venv/bin/openproject-ce-mcp",
+         "command": "openproject-ce-mcp",
          "env": {
            "OPENPROJECT_BASE_URL": "https://op.example.com",
            "OPENPROJECT_API_TOKEN": "replace-with-your-token",
@@ -76,13 +75,13 @@ After reloading, confirm the server is live:
 
 - The `openproject` server appears in Claude Code's MCP server list (`/mcp`).
 - Ask Claude to call `list_projects` (or `get_current_user`). A successful call returns your projects (or your account), which confirms the base URL and token work.
-- If nothing appears, check that `command` is the absolute path the installer printed and that `.mcp.json` is in the folder Claude Code opened as the project root.
+- If nothing appears, check that `command` is available on PATH (or is the absolute `.venv` path for a source install) and that `.mcp.json` is in the folder Claude Code opened as the project root.
 
 ---
 
 ## Setup: User-wide
 
-**Alternative:** If you want to share one OpenProject MCP instance across all projects, use the user-wide config in your home directory.
+**Alternative:** If you want to share one OpenProject CE MCP instance across all projects, use the user-wide config in your home directory.
 
 - File:
   - **Windows:** `%USERPROFILE%\.claude.json`
@@ -97,7 +96,7 @@ After reloading, confirm the server is live:
 {
   "mcpServers": {
     "openproject": {
-      "command": "/absolute/path/to/openproject-ce-mcp/.venv/bin/openproject-ce-mcp",
+      "command": "openproject-ce-mcp",
       "env": {
         "OPENPROJECT_BASE_URL": "https://op.example.com",
         "OPENPROJECT_API_TOKEN": "replace-with-your-token",

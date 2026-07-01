@@ -1,11 +1,12 @@
-# OpenProject MCP
+# OpenProject CE MCP
 
+[![PyPI](https://img.shields.io/pypi/v/openproject-ce-mcp.svg)](https://pypi.org/project/openproject-ce-mcp/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/protocol-MCP%20stdio-purple.svg)](https://modelcontextprotocol.io)
 
 <p align="center">
-  <img src="img/openproject-ce-mcp-hero.png" alt="Hero image showing a Python terminal and an OpenProject board connected by a structured data stream." width="960">
+  <img src="img/openproject-ce-mcp-hero.jpg" alt="Hero image showing a Python terminal and an OpenProject board connected by a structured data stream." width="960">
 </p>
 
 An MCP server for OpenProject that lets local AI agents read and manage project data through structured, guarded tools.
@@ -98,7 +99,7 @@ The rest of this section covers each step in detail.
 | | |
 |---|---|
 | Python | 3.10 or later |
-| git | required — the installer clones this repository |
+| git | only for the "install from source" path (clones this repository) |
 | OpenProject | Community Edition 16.1 or later (reviewed for compatibility through 17.5), API v3 accessible |
 | OS | macOS 12+, Linux, or Windows 10/11 |
 
@@ -120,52 +121,71 @@ To create a personal token: **My account → Access tokens → + API token**. Co
 
 ### Install
 
-The installer clones the repo, installs dependencies (via `uv` if available, or
-`venv` + `pip` otherwise), and runs the interactive setup. Pick your OS:
+Install from PyPI, then run the interactive setup. Pick whichever installer you
+already use:
 
-#### Windows (PowerShell)
+```bash
+# uv (recommended) — installs the openproject-ce-mcp command onto your PATH
+uv tool install openproject-ce-mcp
+
+# or pipx
+pipx install openproject-ce-mcp
+
+# or pip
+pip install openproject-ce-mcp
+```
+
+Then configure it — this collects your OpenProject URL/token and permissions and
+writes the config:
+
+```bash
+openproject-ce-mcp configure
+```
+
+Run it inside a project directory (a folder with `.git`, `pyproject.toml`, etc.)
+and it writes a project-local `.mcp.json` there. Run it elsewhere and it registers
+the server user-wide with a detected MCP client instead — no `.mcp.json` is written.
+Force either mode with `--local` (always write `.mcp.json` in the current directory)
+or `--global` (always register with a detected client). Global mode needs a client
+it can detect; if none is found it tells you so rather than writing nothing silently.
+
+> **Zero-install run:** with `uv` you can skip installing entirely — point your
+> client's `command` at `uvx` with args `["openproject-ce-mcp"]`. See the
+> per-client guides below.
+
+<details>
+<summary><b>Alternative: install from source</b> (curl one-liner, needs git)</summary>
+
+The source installer clones the repo, installs dependencies (via `uv` if
+available, or `venv` + `pip` otherwise), and runs the same interactive setup.
+
+**Windows (PowerShell)** — clones to `%USERPROFILE%\openproject-ce-mcp`, binary at `...\.venv\Scripts\openproject-ce-mcp.exe`; set `$env:DIR` to override the destination:
 
 ```powershell
 irm https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.ps1 | iex
 ```
 
-Clones to `%USERPROFILE%\openproject-ce-mcp`. The installed binary is
-`...\.venv\Scripts\openproject-ce-mcp.exe`. To override the destination, set
-`$env:DIR` before running.
-
-#### macOS
+**macOS / Linux** — clones to `~/openproject-ce-mcp`, binary at `~/openproject-ce-mcp/.venv/bin/openproject-ce-mcp`; `DIR=…` overrides the destination:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.sh | sh
 ```
 
-Clones to `~/openproject-ce-mcp`. The installed binary is
-`~/openproject-ce-mcp/.venv/bin/openproject-ce-mcp`. To override the destination:
+</details>
 
-```bash
-DIR=~/tools/openproject-ce-mcp curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.sh | sh
-```
-
-#### Linux
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.sh | sh
-```
-
-Same as macOS: clones to `~/openproject-ce-mcp`, binary at
-`~/openproject-ce-mcp/.venv/bin/openproject-ce-mcp`, `DIR=…` overrides the destination.
-
-In all cases the setup then writes a local `.mcp.json` and can optionally set up
-a detected MCP client for you (see below).
+PyPI/source installs use the same setup flow after installation: project
+directories get a local `.mcp.json`; global setup registers a detected client
+directly (see below).
 
 ### Register the server in your MCP client
 
 Setup has two steps:
 
-1. **Install the server once** — the steps above build the `openproject-ce-mcp`
-   binary in `.venv`, regardless of how many clients or projects you use.
+1. **Install the server once** — `uv tool install` / `pipx` / `pip` puts the
+   `openproject-ce-mcp` command on your PATH (source installs build it in `.venv`),
+   regardless of how many clients or projects you use.
 2. **Register it per client** — each client needs its own config file pointing at
-   that binary. Registration only points your client to the installed binary; it
+   that command. Registration only points your client to the installed command; it
    is not a second install. Using more than one client (say Claude *and* Codex)?
    Create one config file per client; they sit side by side.
 
@@ -225,13 +245,32 @@ client, and how to verify the server is picked up.
 
 **Uninstall**
 
-The uninstaller removes the local environment (`.venv`, caches, the API-source
-clones) and removes the `openproject` entry from any client config you registered
-it in — keeping your other MCP servers and settings, and backing up each edited
-file. Your local `.mcp.json` is left untouched.
+First unregister the server from any client config you set up — this removes the
+`openproject` entry from each detected client, keeping your other MCP servers and
+settings and backing up each edited file (your local `.mcp.json` is left untouched):
+
+```bash
+openproject-ce-mcp configure --uninstall   # or: openproject-ce-mcp-setup --uninstall
+```
+
+Then remove the package itself, matching how you installed it:
+
+```bash
+uv tool uninstall openproject-ce-mcp   # or: pipx uninstall openproject-ce-mcp
+                                       # or: pip uninstall openproject-ce-mcp
+```
+
+<details>
+<summary><b>Uninstalling a source install</b></summary>
+
+If you installed from source, `uninstall.sh` / `uninstall.ps1` also remove the
+local environment (`.venv`, caches, the API-source clones) in addition to
+unregistering the client entries:
 
 - **Windows:** `.\uninstall.ps1` (then remove the install dir if you want: `Remove-Item -Recurse -Force $env:USERPROFILE\openproject-ce-mcp`)
 - **macOS / Linux:** `~/openproject-ce-mcp/uninstall.sh`
+
+</details>
 
 ---
 
@@ -255,7 +294,7 @@ Access is grouped into five chains: `project`, `membership`, `work_package`, `ve
 | `OPENPROJECT_ENABLE_BOARD_READ` | no | `true` | Boards and views |
 | `OPENPROJECT_HIDE_<ENTITY>_FIELDS` | no | empty | Comma-separated fields to omit from reads and reject on writes; `*` wildcards supported |
 | `OPENPROJECT_HIDE_CUSTOM_FIELDS` | no | empty | Custom field names or keys to omit; `*` wildcards supported |
-| `OPENPROJECT_ENABLE_ADMIN_WRITE` | no | `false` | User and group management (create/update/delete/lock users, create/update/delete groups). Must be set explicitly — not activated by any other write flag, and not prompted for by `configure_mcp.py`; edit `.mcp.json` by hand to enable it. |
+| `OPENPROJECT_ENABLE_ADMIN_WRITE` | no | `false` | User and group management (create/update/delete/lock users, create/update/delete groups). Must be set explicitly — not activated by any other write flag, and not prompted for by `openproject-ce-mcp configure`; edit `.mcp.json` by hand to enable it. |
 | `OPENPROJECT_ENABLE_PROJECT_WRITE` | no | `false` | Project create/update/delete, news, documents, grids |
 | `OPENPROJECT_ENABLE_MEMBERSHIP_WRITE` | no | `false` | Project membership create/update/delete |
 | `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE` | no | `false` | Work-package create/update/delete, comments, relations, attachments, time entries |
@@ -374,16 +413,19 @@ The MCP server runs as a subprocess. After any code change, restart your MCP cli
 
 ### Releasing
 
-Releases are cut manually — the project is not published to PyPI, and CI does not
-publish anything. Every push and PR runs the test matrix plus a `build` job
-(`uv build` + `uvx twine check dist/*`) so the package always stays buildable.
+The package is published to [PyPI](https://pypi.org/project/openproject-ce-mcp/)
+via GitHub Actions using [trusted publishing](https://docs.pypi.org/trusted-publishers/)
+(OIDC — no API token stored). Pushing a `vX.Y.Z` tag triggers `.github/workflows/publish.yml`,
+which runs the test matrix, builds the sdist + wheel, and uploads them. Every
+push and PR also runs the test matrix plus a `build` job (`uv build` +
+`uvx twine check dist/*`) so the package always stays buildable.
 
 To cut a release:
 
 1. Bump `version` in `pyproject.toml` and update `CHANGELOG.md`.
 2. `uv run pytest` and `uv build` locally (CI enforces both).
-3. Merge to `main`, then tag: `git tag vX.Y.Z && git push --tags`.
-4. Create the GitHub release from the tag; attach the `dist/` artifacts if you
-   want distributable builds.
+3. Merge to `main`, then tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+4. The `publish.yml` workflow builds and uploads to PyPI automatically.
+   Create the GitHub release from the tag for release notes.
 
 ---

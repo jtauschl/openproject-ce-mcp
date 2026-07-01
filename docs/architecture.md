@@ -1,6 +1,6 @@
 # Architecture
 
-OpenProject MCP is intentionally small and flat. The codebase keeps transport, validation, policy checks, OpenProject API access, and MCP exposure in a few narrow layers instead of spreading them across many abstractions.
+OpenProject CE MCP is intentionally small and flat. The codebase keeps transport, validation, policy checks, OpenProject API access, and MCP exposure in a few narrow layers instead of spreading them across many abstractions.
 
 ## Layout
 

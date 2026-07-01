@@ -1,6 +1,6 @@
 # Tool reference
 
-All tools exposed by the OpenProject MCP server.
+All tools exposed by the OpenProject CE MCP server.
 
 All mutating tools follow the same guarded write pattern by default:
 

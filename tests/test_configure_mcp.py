@@ -6,11 +6,12 @@ from pathlib import Path
 
 import pytest
 
-# configure_mcp.py lives at the repo root, not inside the installed package, so it
-# is not importable by name under every pytest runner (e.g. `uv run pytest` does
-# not put the repo root on sys.path). Load it explicitly by file path.
+# The interactive setup lives in the package at src/openproject_ce_mcp/setup_cli.py.
+# Load it explicitly by file path so it resolves the same way under every pytest
+# runner regardless of sys.path (and independent of the root configure_mcp.py shim).
 _SPEC = importlib.util.spec_from_file_location(
-    "configure_mcp", Path(__file__).resolve().parent.parent / "configure_mcp.py"
+    "openproject_ce_mcp_setup_cli",
+    Path(__file__).resolve().parent.parent / "src" / "openproject_ce_mcp" / "setup_cli.py",
 )
 assert _SPEC and _SPEC.loader
 c = importlib.util.module_from_spec(_SPEC)
@@ -433,3 +434,166 @@ def test_remove_client_config_noop_when_no_entry(tmp_path) -> None:
     target.write_text(json.dumps({"mcpServers": {"gh": {"command": "/gh"}}}))
     client = c.Client("claude-code", "Claude Code", target, "json", lambda: True, "docs/claude.md", root_key="mcpServers")
     assert c._remove_client_config(client) is False
+
+
+# ── run mode / command / config-path resolution (installed vs. clone) ───────────
+
+
+def test_installed_mode_true_when_no_repo_markers(monkeypatch, tmp_path: Path) -> None:
+    # Point the repo-root at a bare dir with no pyproject.toml / src tree.
+    monkeypatch.setattr(c, "_REPO_ROOT", tmp_path)
+    assert c._installed_mode() is True
+
+
+def test_installed_mode_false_in_checkout(monkeypatch, tmp_path: Path) -> None:
+    # Simulate a checkout: pyproject.toml at root and this module under src/.
+    (tmp_path / "pyproject.toml").write_text("")
+    pkg = tmp_path / "src" / "openproject_ce_mcp"
+    pkg.mkdir(parents=True)
+    setup_file = pkg / "setup_cli.py"
+    setup_file.write_text("")
+    monkeypatch.setattr(c, "_REPO_ROOT", tmp_path)
+    monkeypatch.setattr(c, "__file__", str(setup_file))
+    assert c._installed_mode() is False
+
+
+def test_server_command_clone_uses_venv() -> None:
+    assert c._server_command(installed=False) == (str(c._venv_binary()), True)
+
+
+def test_server_command_installed_prefers_which(monkeypatch) -> None:
+    monkeypatch.setattr(c.shutil, "which", lambda name: "/usr/local/bin/openproject-ce-mcp")
+    assert c._server_command(installed=True) == ("/usr/local/bin/openproject-ce-mcp", True)
+
+
+def test_server_command_installed_falls_back_to_sibling(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(c.shutil, "which", lambda name: None)
+    monkeypatch.setattr(c, "_IS_WINDOWS", False)
+    launcher = tmp_path / "openproject-ce-mcp-setup"
+    launcher.write_text("")
+    sibling = tmp_path / "openproject-ce-mcp"
+    sibling.write_text("")
+    monkeypatch.setattr(c.sys, "argv", [str(launcher)])
+    # Sibling found next to the launcher → resolved absolute path.
+    assert c._server_command(installed=True) == (str(sibling), True)
+
+
+def test_server_command_installed_last_resort_bare_name(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(c.shutil, "which", lambda name: None)
+    monkeypatch.setattr(c, "_IS_WINDOWS", False)
+    # launcher dir has no sibling binary; argv[0] is an absolute path in a dir
+    # with no server binary → falls through to the bare name, unresolved.
+    monkeypatch.setattr(c.sys, "argv", [str(tmp_path / "openproject-ce-mcp-setup")])
+    assert c._server_command(installed=True) == ("openproject-ce-mcp", False)
+
+
+def test_resolve_mcp_json_clone_uses_repo_root(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(c, "_REPO_ROOT", tmp_path)
+    assert c._resolve_mcp_json(None, installed=False) == tmp_path / ".mcp.json"
+
+
+def test_resolve_mcp_json_installed_project_dir_uses_cwd(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".git").mkdir()
+    assert c._resolve_mcp_json(None, installed=True) == tmp_path / ".mcp.json"
+
+
+def test_resolve_mcp_json_installed_bare_dir_is_global(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)  # no project markers
+    assert c._resolve_mcp_json(None, installed=True) is None
+
+
+def test_resolve_mcp_json_local_forces_cwd(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert c._resolve_mcp_json("local", installed=True) == tmp_path / ".mcp.json"
+
+
+def test_resolve_mcp_json_global_is_none() -> None:
+    assert c._resolve_mcp_json("global", installed=True) is None
+    assert c._resolve_mcp_json("global", installed=False) is None
+
+
+def test_looks_like_project_dir(tmp_path: Path) -> None:
+    assert c._looks_like_project_dir(tmp_path) is False
+    (tmp_path / ".git").mkdir()
+    assert c._looks_like_project_dir(tmp_path) is True
+
+
+def test_install_deps_skipped_when_installed(monkeypatch) -> None:
+    called = []
+    monkeypatch.setattr(c.subprocess, "run", lambda *a, **k: called.append(a))
+    c._install_deps("uv", installed=True)
+    assert called == []
+
+
+def test_doc_locations_installed_are_urls() -> None:
+    docs = c._doc_locations(installed=True)
+    assert all(v.startswith("https://github.com/") for v in docs.values())
+    assert "cursor.md" in docs["Cursor:"]
+
+
+def test_read_client_env_json_roundtrip(tmp_path: Path) -> None:
+    target = tmp_path / ".claude.json"
+    target.write_text(json.dumps({"mcpServers": {"openproject": {"env": {"OPENPROJECT_BASE_URL": "https://op.x"}}}}))
+    client = c.Client("claude-code", "Claude Code", target, "json", lambda: True, "docs/claude.md", root_key="mcpServers")
+    assert c._read_client_env(client) == {"OPENPROJECT_BASE_URL": "https://op.x"}
+
+
+def test_read_client_env_missing_file_returns_empty(tmp_path: Path) -> None:
+    client = c.Client("claude-code", "Claude Code", tmp_path / "nope.json", "json", lambda: True, "docs/claude.md", root_key="mcpServers")
+    assert c._read_client_env(client) == {}
+
+
+def test_existing_from_clients_returns_first_nonempty(tmp_path: Path) -> None:
+    empty = tmp_path / "empty.json"
+    empty.write_text(json.dumps({"mcpServers": {}}))
+    full = tmp_path / "full.json"
+    full.write_text(json.dumps({"mcpServers": {"openproject": {"env": {"OPENPROJECT_API_TOKEN": "t"}}}}))
+    c1 = c.Client("a", "A", empty, "json", lambda: True, "d", root_key="mcpServers")
+    c2 = c.Client("b", "B", full, "json", lambda: True, "d", root_key="mcpServers")
+    assert c._existing_from_clients([c1, c2]) == {"OPENPROJECT_API_TOKEN": "t"}
+
+
+def test_shim_reexports_public_names() -> None:
+    # The root configure_mcp.py shim must re-export main and helpers so get.sh
+    # and any importer keep working.
+    import importlib.util
+
+    shim_path = Path(__file__).resolve().parent.parent / "configure_mcp.py"
+    spec = importlib.util.spec_from_file_location("configure_mcp_shim", shim_path)
+    assert spec and spec.loader
+    shim = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(shim)
+    assert callable(shim.main)
+    assert callable(shim._merge_json)
+
+
+# ── global-scope registration guard (no silent no-op) ──────────────────────────
+
+
+def test_choose_registration_require_no_client_warns(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(c, "_clients", lambda: [])
+    result = c._choose_registration_mode(require=True)
+    assert result == []
+    assert "Nothing was configured" in capsys.readouterr().err
+
+
+def test_choose_registration_no_require_no_client_silent(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(c, "_clients", lambda: [])
+    result = c._choose_registration_mode(require=False)
+    assert result == []
+    assert capsys.readouterr().err == ""
+
+
+def test_abort_if_global_scope_has_no_target() -> None:
+    with pytest.raises(SystemExit) as exc:
+        c._abort_if_nothing_to_write(None, [])
+    assert exc.value.code == 1
+
+
+def test_abort_if_global_scope_has_client_does_not_exit(tmp_path: Path) -> None:
+    c._abort_if_nothing_to_write(None, [_json_client(tmp_path / ".claude.json")])
+
+
+def test_abort_if_local_scope_has_mcp_json_does_not_exit(tmp_path: Path) -> None:
+    c._abort_if_nothing_to_write(tmp_path / ".mcp.json", [])

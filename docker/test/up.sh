@@ -48,10 +48,18 @@ wait_healthy() {
   echo " TIMEOUT"; return 1
 }
 
-declare -A PORT=( [op-16-6]=8166 [op-17-4]=8174 [op-17-5]=8175 )
+port_for() {
+  case "$1" in
+    op-16-6) echo 8166 ;;
+    op-17-4) echo 8174 ;;
+    op-17-5) echo 8175 ;;
+    *) echo "unknown service: $1" >&2; return 2 ;;
+  esac
+}
 
 for entry in "${SEMANTIC[@]}"; do
   svc="${entry%%:*}"; semantic="${entry#*:}"
+  port="$(port_for "$svc")"
   wait_healthy "$svc"
   echo "Seeding $svc (SEED_SEMANTIC=$semantic)…"
   token="$(docker compose exec -T -e SEED_SEMANTIC="$semantic" "$svc" \
@@ -63,8 +71,8 @@ for entry in "${SEMANTIC[@]}"; do
   fi
   cat <<EOF
 
-# --- $svc (port ${PORT[$svc]}) -------------------------------------------------
-OPENPROJECT_BASE_URL=http://localhost:${PORT[$svc]} \\
+# --- $svc (port $port) -------------------------------------------------
+OPENPROJECT_BASE_URL=http://localhost:$port \\
 OPENPROJECT_API_TOKEN=$token \\
 OPENPROJECT_TEST_PROJECT=TST \\
 uv run pytest -m integration -v

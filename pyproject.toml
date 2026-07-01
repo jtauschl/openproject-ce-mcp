@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openproject-ce-mcp"
-version = "0.1.1"
+version = "0.2.0"
 description = "MCP server for OpenProject Community Edition with guarded read/write support."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [
-  { name = "nutrilytics" },
+  { name = "Jürgen Tauschl", email = "juergen@tauschl.de" },
 ]
 keywords = ["openproject", "mcp", "model-context-protocol", "llm", "project-management"]
 classifiers = [
@@ -53,9 +53,28 @@ Repository = "https://github.com/jtauschl/openproject-ce-mcp"
 
 [project.scripts]
 openproject-ce-mcp = "openproject_ce_mcp.server:main"
+openproject-ce-mcp-setup = "openproject_ce_mcp.setup_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/openproject_ce_mcp"]
+
+# Keep the source distribution focused on what a user needs to build, install,
+# configure, and verify the package. Dev-only trees (docker/, tools/api-check/,
+# .github/) are intentionally omitted; they live in the git repo, not on PyPI.
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src",
+  "/tests",
+  "/docs",
+  "/img",
+  "/configure_mcp.py",
+  "/.mcp.json.example",
+  "/README.md",
+  "/CHANGELOG.md",
+  "/LICENSE",
+  "/pyproject.toml",
+  "/uv.lock",
+]
 
 [tool.hatch.build]
 dev-mode-dirs = ["src"]
