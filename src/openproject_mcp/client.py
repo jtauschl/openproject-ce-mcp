@@ -372,7 +372,7 @@ class OpenProjectClient:
         self._ensure_project_write_allowed(project_ref, payload=payload_current)
         project = self.normalize_project(payload_current)
         payload = {"id": project.id, "identifier": project.identifier, "name": project.name}
-        if self._preview_mode(confirm):
+        if self._preview_mode(confirm, delete=True):
             return ProjectWriteResult(
                 action="delete",
                 confirmed=False,
@@ -416,6 +416,9 @@ class OpenProjectClient:
     ) -> ProjectCopyResult:
         source_payload = await self._get(f"projects/{quote(source_project, safe='')}")
         self._ensure_project_write_allowed(source_project, payload=source_payload)
+        # Also validate the destination so a copy cannot create a project outside
+        # the read/write allowlist (the source being allowed is not sufficient).
+        self._ensure_project_write_candidate_allowed(identifier=identifier, name=name)
         project = self.normalize_project(source_payload)
         payload = await self._build_project_write_payload(
             name=name,
@@ -828,7 +831,7 @@ class OpenProjectClient:
             "principal": membership.principal_name,
             "roles": membership.role_names,
         }
-        if self._preview_mode(confirm):
+        if self._preview_mode(confirm, delete=True):
             return MembershipWriteResult(
                 action="delete",
                 confirmed=False,
@@ -1266,7 +1269,7 @@ class OpenProjectClient:
         self._ensure_news_write_payload_allowed(current)
         detail = self.normalize_news_detail(current)
         payload = {"id": detail.id, "title": detail.title}
-        if self._preview_mode(confirm):
+        if self._preview_mode(confirm, delete=True):
             return NewsWriteResult(
                 action="delete",
                 confirmed=False,
@@ -1425,7 +1428,7 @@ class OpenProjectClient:
             "fileName": attachment.file_name,
             "fileSize": attachment.file_size,
         }
-        if self._preview_mode(confirm):
+        if self._preview_mode(confirm, delete=True):
             return AttachmentWriteResult(
                 action="delete",
                 confirmed=False,
@@ -1715,7 +1718,7 @@ class OpenProjectClient:
         self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
         detail = self.normalize_time_entry(current)
         payload = {"id": detail.id, "hours": detail.hours, "spentOn": detail.spent_on}
-        if self._preview_mode(confirm):
+        if self._preview_mode(confirm, delete=True):
             return TimeEntryWriteResult(
                 action="delete",
                 confirmed=False,
@@ -2000,8 +2003,11 @@ class OpenProjectClient:
         due_date: str | None = None,
         confirm: bool = False,
     ) -> WorkPackageWriteResult:
-        parent_work_package_id = self._work_package_ref(parent_work_package_id)
-        parent = await self._get(f"work_packages/{parent_work_package_id}")
+        parent_ref = self._work_package_ref(parent_work_package_id)
+        parent = await self._get(f"work_packages/{parent_ref}")
+        # The parent link needs the numeric id (HAL hrefs don't resolve displayId);
+        # read it back from the fetched parent rather than reusing the semantic ref.
+        parent_numeric_id = int(parent["id"])
         project_id = _id_from_href(parent.get("_links", {}).get("project", {}).get("href"))
         if project_id is None:
             raise OpenProjectServerError("OpenProject work package is missing a project link.")
@@ -2019,7 +2025,7 @@ class OpenProjectClient:
             priority=priority,
             category=category,
             custom_fields=custom_fields,
-            parent_work_package_id=parent_work_package_id,
+            parent_work_package_id=parent_numeric_id,
             start_date=start_date,
             due_date=due_date,
         )
@@ -2056,7 +2062,8 @@ class OpenProjectClient:
     ) -> WorkPackageWriteResult:
         work_package_id = self._work_package_ref(work_package_id)
         if parent_work_package_id is not None:
-            parent_work_package_id = self._work_package_ref(parent_work_package_id)
+            # parent goes into a HAL link href, which resolves only by numeric id.
+            parent_work_package_id = await self._resolve_work_package_id(parent_work_package_id)
         current = await self._get(f"work_packages/{work_package_id}")
         project_id = _id_from_href(current.get("_links", {}).get("project", {}).get("href"))
         if project_id is None:
@@ -2263,12 +2270,14 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> RelationWriteResult:
         work_package_id = self._work_package_ref(work_package_id)
-        related_to_work_package_id = self._work_package_ref(related_to_work_package_id)
+        # The target goes into a HAL link href, which OpenProject resolves only by
+        # numeric id (not displayId), so resolve a semantic ref to its numeric id.
+        related_numeric_id = await self._resolve_work_package_id(related_to_work_package_id)
         work_package = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
         payload: dict[str, Any] = {
             "type": relation_type,
-            "_links": {"to": {"href": self._api_href(f"work_packages/{related_to_work_package_id}")}},
+            "_links": {"to": {"href": self._api_href(f"work_packages/{related_numeric_id}")}},
         }
         if description is not None:
             self._ensure_field_writable("relation", "description")
@@ -2276,7 +2285,8 @@ class OpenProjectClient:
         if lag is not None:
             payload["lag"] = lag
 
-        preview_payload = payload | {"to_work_package_id": related_to_work_package_id}
+        source_numeric_id = await self._resolve_work_package_id(work_package_id)
+        preview_payload = payload | {"to_work_package_id": related_numeric_id}
         if self._preview_mode(confirm):
             return RelationWriteResult(
                 action="create",
@@ -2285,7 +2295,7 @@ class OpenProjectClient:
                 ready=True,
                 message="OpenProject is ready to create this relation. Ask for confirmation, then call again with confirm=true.",
                 relation_id=None,
-                work_package_id=work_package_id,
+                work_package_id=source_numeric_id,
                 payload=preview_payload,
                 validation_errors={},
                 result=None,
@@ -2301,7 +2311,7 @@ class OpenProjectClient:
             ready=True,
             message="Relation created successfully.",
             relation_id=normalized.id,
-            work_package_id=work_package_id,
+            work_package_id=source_numeric_id,
             payload=preview_payload,
             validation_errors={},
             result=normalized,
@@ -2318,7 +2328,7 @@ class OpenProjectClient:
         self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
         detail = self.normalize_work_package_detail(current)
 
-        if self._preview_mode(confirm):
+        if self._preview_mode(confirm, delete=True):
             return WorkPackageWriteResult(
                 action="delete",
                 confirmed=False,
@@ -2375,7 +2385,7 @@ class OpenProjectClient:
             "from_id": normalized.from_id,
             "to_id": normalized.to_id,
         }
-        if self._preview_mode(confirm):
+        if self._preview_mode(confirm, delete=True):
             return RelationWriteResult(
                 action="delete",
                 confirmed=False,
@@ -2573,7 +2583,7 @@ class OpenProjectClient:
         detail = self.normalize_version_detail(current)
         payload = {"id": detail.id, "name": detail.name}
 
-        if self._preview_mode(confirm):
+        if self._preview_mode(confirm, delete=True):
             return VersionWriteResult(
                 action="delete",
                 confirmed=False,
@@ -2791,7 +2801,7 @@ class OpenProjectClient:
         detail = self.normalize_board_detail(current)
         payload = {"id": detail.id, "name": detail.name}
 
-        if self._preview_mode(confirm):
+        if self._preview_mode(confirm, delete=True):
             return BoardWriteResult(
                 action="delete",
                 confirmed=False,
@@ -2957,6 +2967,17 @@ class OpenProjectClient:
             result=result,
         )
 
+    async def _ensure_reminder_project_write_allowed(self, reminder_id: int) -> None:
+        """Apply the project write allowlist to the reminder's work package."""
+        no_read_scope = not self.settings.allowed_projects or _scope_allows_all(self.settings.allowed_projects)
+        if no_read_scope and not self.settings.project_write_scope_configured:
+            return
+        current = await self._get(f"reminders/{reminder_id}")
+        remindable = current.get("_links", {}).get("remindable")
+        if isinstance(remindable, dict) and remindable.get("href"):
+            work_package = await self._get(self._link_to_api_path(remindable["href"]))
+            self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
+
     async def update_reminder(
         self,
         *,
@@ -2965,6 +2986,7 @@ class OpenProjectClient:
         note: str | None = None,
         confirm: bool = False,
     ) -> ReminderWriteResult:
+        await self._ensure_reminder_project_write_allowed(reminder_id)
         payload: dict[str, Any] = {}
         if remind_at is not None:
             payload["remindAt"] = remind_at
@@ -3000,7 +3022,8 @@ class OpenProjectClient:
         )
 
     async def delete_reminder(self, *, reminder_id: int, confirm: bool = False) -> ReminderWriteResult:
-        if self._preview_mode(confirm):
+        await self._ensure_reminder_project_write_allowed(reminder_id)
+        if self._preview_mode(confirm, delete=True):
             return ReminderWriteResult(
                 action="delete",
                 confirmed=False,
@@ -3228,7 +3251,7 @@ class OpenProjectClient:
         work_package_id = self._work_package_ref(work_package_id)
         wp_payload = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(wp_payload.get("_links", {}).get("project"))
-        if self._preview_mode(confirm):
+        if self._preview_mode(confirm, delete=True):
             return WatcherWriteResult(
                 action="remove",
                 confirmed=False,
@@ -3406,7 +3429,7 @@ class OpenProjectClient:
     ) -> UserWriteResult:
         self._ensure_write_enabled("admin")
         payload = {"id": user_id}
-        if self._preview_mode(confirm):
+        if self._preview_mode(confirm, delete=True):
             return UserWriteResult(
                 action="delete",
                 confirmed=False,
@@ -3615,7 +3638,7 @@ class OpenProjectClient:
     ) -> GroupWriteResult:
         self._ensure_write_enabled("admin")
         payload = {"id": group_id}
-        if self._preview_mode(confirm):
+        if self._preview_mode(confirm, delete=True):
             return GroupWriteResult(
                 action="delete",
                 confirmed=False,
@@ -3666,7 +3689,7 @@ class OpenProjectClient:
         links = fl_payload.get("_links", {})
         container_href = links.get("container", {}).get("href") if isinstance(links.get("container"), dict) else None
         work_package_id = _id_from_href(container_href) or 0
-        if self._preview_mode(confirm):
+        if self._preview_mode(confirm, delete=True):
             return FileLinkWriteResult(
                 action="delete",
                 confirmed=False,
@@ -3835,6 +3858,9 @@ class OpenProjectClient:
         auto_hide_popups: bool | None = None,
         confirm: bool = False,
     ) -> UserPreferencesWriteResult:
+        # Self-scoped: only the authenticated token owner's own preferences
+        # (language, timezone, popup behaviour). No project/admin scope applies;
+        # the confirm/preview flow is the guard here.
         body: dict[str, Any] = {}
         if lang is not None:
             body["lang"] = lang
@@ -3871,6 +3897,7 @@ class OpenProjectClient:
 
     async def render_text(self, *, text: str, format: str = "markdown") -> RenderedText:
         """Render plain or markdown text to HTML via the OpenProject API."""
+        self._ensure_read_enabled("work_package")
         endpoint = "render/markdown" if format == "markdown" else "render/plain"
         url = f"{self.settings.base_url}/api/v3/{endpoint}"
         try:
@@ -3950,17 +3977,40 @@ class OpenProjectClient:
         *,
         relation_type: str | None = None,
     ) -> RelationListResult:
-        """List all relations, optionally filtered by type."""
+        """List all relations, optionally filtered by type.
+
+        Gated by the work_package read scope and filtered by the project read
+        allowlist: only relations whose source work package is in an allowed
+        project are returned, so this cannot leak work packages from projects the
+        caller may not read.
+        """
+        self._ensure_read_enabled("work_package")
         params: dict[str, str] = {}
         if relation_type is not None:
             params["filters"] = json.dumps([{"type": {"operator": "=", "values": [relation_type]}}])
         payload = await self._get("relations", params=params or None)
-        results = [
-            self.normalize_relation(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
+        results = []
+        for item in payload.get("_embedded", {}).get("elements", []):
+            if not isinstance(item, dict):
+                continue
+            if not await self._relation_source_allowed(item):
+                continue
+            results.append(self.normalize_relation(item))
         return RelationListResult(count=len(results), results=results)
+
+    async def _relation_source_allowed(self, relation: dict[str, Any]) -> bool:
+        """True if the relation's source work package is in an allowed project."""
+        if not self.settings.allowed_projects or _scope_allows_all(self.settings.allowed_projects):
+            return True
+        source = relation.get("_links", {}).get("from")
+        if not isinstance(source, dict) or not source.get("href"):
+            return False
+        try:
+            work_package = await self._get(self._link_to_api_path(source["href"]))
+            self._ensure_project_link_allowed(work_package.get("_links", {}).get("project"))
+            return True
+        except (PermissionDeniedError, NotFoundError, OpenProjectServerError):
+            return False
 
     async def update_relation(
         self,
@@ -3972,6 +4022,11 @@ class OpenProjectClient:
     ) -> RelationUpdateResult:
         """Update the type or description of an existing relation."""
         current = await self._get(f"relations/{relation_id}")
+        source = current.get("_links", {}).get("from")
+        if not isinstance(source, dict) or not source.get("href"):
+            raise OpenProjectServerError("OpenProject relation is missing its source work package link.")
+        work_package = await self._get(self._link_to_api_path(source["href"]))
+        self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
         existing = self.normalize_relation(current)
         body: dict[str, Any] = {}
         if relation_type is not None:
@@ -4387,14 +4442,19 @@ class OpenProjectClient:
 
     def normalize_relation(self, payload: dict[str, Any]) -> RelationSummary:
         links = payload.get("_links", {})
+        # from_subject/to_subject are the linked work packages' titles, so honor
+        # the work_package subject hide list too — not just the relation entity's.
+        wp_subject_hidden = self._field_hidden("work_package", "subject")
+        from_subject = None if wp_subject_hidden else _link_title(links.get("from"))
+        to_subject = None if wp_subject_hidden else _link_title(links.get("to"))
         return self._apply_hidden_fields("relation", RelationSummary(
             id=int(payload["id"]),
             type=payload.get("type"),
             description=_trim_text(payload.get("description"), limit=SUBJECT_LIMIT),
             from_id=_id_from_href(links.get("from", {}).get("href")),
-            from_subject=_link_title(links.get("from")),
+            from_subject=from_subject,
             to_id=_id_from_href(links.get("to", {}).get("href")),
-            to_subject=_link_title(links.get("to")),
+            to_subject=to_subject,
         ))
 
     def normalize_activity(self, payload: dict[str, Any]) -> ActivitySummary:
@@ -6310,8 +6370,28 @@ class OpenProjectClient:
             self._ensure_project_link_allowed(work_package.get("_links", {}).get("project"))
         return work_package_id
 
+    def _attachment_root(self) -> Path:
+        """The directory attachment uploads are confined to.
+
+        Defaults to the current working directory (where the client launched the
+        server — typically the user's project). OPENPROJECT_ATTACHMENT_ROOT can
+        point it elsewhere. This bounds which local files a caller can upload,
+        so a malicious/confused agent cannot exfiltrate arbitrary host files
+        (e.g. the API token in .mcp.json, SSH keys, /etc/passwd).
+        """
+        configured = self.settings.attachment_root
+        base = Path(configured).expanduser() if configured else Path.cwd()
+        return base.resolve()
+
     def _prepare_attachment_file(self, file_path: str, *, include_bytes: bool) -> dict[str, Any]:
-        path = Path(file_path).expanduser()
+        root = self._attachment_root()
+        # Resolve symlinks and .. so the containment check cannot be defeated.
+        path = Path(file_path).expanduser().resolve()
+        if root not in path.parents and path != root:
+            raise InvalidInputError(
+                f"Attachment file '{file_path}' is outside the allowed attachment directory "
+                f"({root}). Set OPENPROJECT_ATTACHMENT_ROOT to permit another location."
+            )
         if not path.is_file():
             raise InvalidInputError(f"Attachment file '{file_path}' does not exist or is not a file.")
         file_bytes = path.read_bytes() if include_bytes else None
@@ -6546,7 +6626,18 @@ class OpenProjectClient:
         s = str(ref).strip()
         if s.isdigit():
             return int(s)
-        payload = await self._get(f"work_packages/{quote(s, safe='')}")
+        try:
+            payload = await self._get(f"work_packages/{quote(s, safe='')}")
+        except NotFoundError as exc:
+            # A project-prefixed reference only resolves on OpenProject 17.5+ (and
+            # requires the exact, case-sensitive project identifier). Give a hint
+            # instead of a bare "not found" so a too-old instance or a case/prefix
+            # mismatch is distinguishable from a genuinely missing work package.
+            raise NotFoundError(
+                f"Work package '{s}' was not found. Semantic references like 'PROJ-123' "
+                "require OpenProject 17.5+ and the exact project identifier (case-sensitive); "
+                "on older instances use the numeric work-package id."
+            ) from exc
         return int(payload["id"])
 
     async def _resolve_status_id(self, status_ref: str) -> str:

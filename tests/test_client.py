@@ -1350,6 +1350,7 @@ async def test_delete_work_package_auto_confirms_with_write_auto_confirm() -> No
         max_results=100,
         log_level="WARNING",
         auto_confirm_write=True,
+        auto_confirm_delete=True,  # from_env inherits this from auto_confirm_write
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -1575,6 +1576,7 @@ async def test_delete_relation_auto_confirms_with_write_auto_confirm() -> None:
         max_results=100,
         log_level="WARNING",
         auto_confirm_write=True,
+        auto_confirm_delete=True,  # from_env inherits this from auto_confirm_write
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -4304,6 +4306,14 @@ async def test_list_relations_and_update_relation() -> None:
                 },
                 request=request,
             )
+        if request.url.path == "/api/v3/work_packages/1" and request.method == "GET":
+            # update_relation resolves the relation's source work package to apply
+            # the project write allowlist before patching.
+            return httpx.Response(
+                200,
+                json={"id": 1, "subject": "Task A", "_links": {"project": {"title": "Demo"}}},
+                request=request,
+            )
         if request.url.path == "/api/v3/relations/7" and request.method == "PATCH":
             body = json.loads(request.content)
             assert body["description"] == "updated"
@@ -5405,4 +5415,136 @@ async def test_create_time_entry_includes_start_and_end_time() -> None:
     assert result.result.start_time == "2026-07-01T09:00:00Z"
     assert result.result.end_time == "2026-07-01T10:00:00Z"
 
+    await client.aclose()
+
+
+# --- Regression tests for the self-review security + semantic-id fixes ---
+
+
+def _base_settings(**overrides) -> Settings:
+    base = {
+        "base_url": "https://op.example.com",
+        "api_token": "token",
+        "timeout": 12,
+        "verify_ssl": True,
+        "default_page_size": 20,
+        "max_page_size": 50,
+        "max_results": 100,
+        "log_level": "WARNING",
+    }
+    base.update(overrides)
+    return Settings(**base)
+
+
+async def test_attachment_rejects_file_outside_root(tmp_path, monkeypatch) -> None:
+    """A file outside the attachment root is refused (no token/host exfiltration)."""
+    root = tmp_path / "project"
+    root.mkdir()
+    outside = tmp_path / "secret.txt"
+    outside.write_text("api-token-here")
+
+    settings = _base_settings(enable_work_package_write=True, attachment_root=str(root))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
+    with pytest.raises(InvalidInputError, match="outside the allowed attachment directory"):
+        client._prepare_attachment_file(str(outside), include_bytes=True)
+    await client.aclose()
+
+
+async def test_attachment_allows_file_inside_root(tmp_path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    inside = root / "note.txt"
+    inside.write_text("hello")
+    settings = _base_settings(enable_work_package_write=True, attachment_root=str(root))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
+    info = client._prepare_attachment_file(str(inside), include_bytes=True)
+    assert info["file_bytes"] == b"hello"
+    await client.aclose()
+
+
+async def test_list_relations_filters_by_read_allowlist() -> None:
+    """list_relations only returns relations whose source WP is in an allowed project."""
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations" and request.method == "GET":
+            return httpx.Response(200, json={"_embedded": {"elements": [
+                {"id": 1, "type": "blocks", "_links": {
+                    "from": {"href": "/api/v3/work_packages/10"},
+                    "to": {"href": "/api/v3/work_packages/11"}}},
+                {"id": 2, "type": "blocks", "_links": {
+                    "from": {"href": "/api/v3/work_packages/20"},
+                    "to": {"href": "/api/v3/work_packages/21"}}},
+            ]}}, request=request)
+        if request.url.path == "/api/v3/work_packages/10":
+            return httpx.Response(200, json={"id": 10, "_links": {"project": {"title": "allowed"}}}, request=request)
+        if request.url.path == "/api/v3/work_packages/20":
+            return httpx.Response(200, json={"id": 20, "_links": {"project": {"title": "secret"}}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(allowed_projects=("allowed",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.list_relations()
+    # Only the relation whose source WP is in project "allowed" survives.
+    assert result.count == 1
+    assert result.results[0].id == 1
+    await client.aclose()
+
+
+async def test_relation_hides_wp_subject_when_wp_subject_hidden() -> None:
+    """from_subject/to_subject honor the work_package subject hide list."""
+    settings = _base_settings(hidden_fields={"work_package": ("subject",)})
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
+    rel = client.normalize_relation({
+        "id": 5, "type": "blocks",
+        "_links": {
+            "from": {"href": "/api/v3/work_packages/1", "title": "Secret A"},
+            "to": {"href": "/api/v3/work_packages/2", "title": "Secret B"},
+        },
+    })
+    assert rel.from_subject is None
+    assert rel.to_subject is None
+    await client.aclose()
+
+
+async def test_create_relation_resolves_semantic_target_to_numeric() -> None:
+    """A semantic target ref is resolved to a numeric id before the HAL 'to' link."""
+    posted = {}
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/PROJ-20" and request.method == "GET":
+            return httpx.Response(200, json={"id": 20, "_links": {"project": {"title": "Demo"}}}, request=request)
+        if request.url.path == "/api/v3/work_packages/PROJ-10" and request.method == "GET":
+            return httpx.Response(200, json={"id": 10, "_links": {"project": {"title": "Demo"}}}, request=request)
+        if request.url.path == "/api/v3/work_packages/PROJ-10/relations" and request.method == "POST":
+            posted.update(json.loads(request.content))
+            return httpx.Response(201, json={"id": 99, "type": "blocks", "_links": {
+                "from": {"href": "/api/v3/work_packages/10"},
+                "to": {"href": "/api/v3/work_packages/20"}}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_work_package_write=True, auto_confirm_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    await client.create_work_package_relation(
+        work_package_id="PROJ-10", related_to_work_package_id="PROJ-20", relation_type="blocks",
+    )
+    # The 'to' link must carry the numeric id (20), not the semantic ref.
+    assert posted["_links"]["to"]["href"].endswith("/work_packages/20")
+    await client.aclose()
+
+
+async def test_copy_project_checks_destination_allowlist() -> None:
+    """copy_project refuses a destination outside the write allowlist."""
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/src":
+            return httpx.Response(200, json={"id": 1, "identifier": "src", "name": "Source",
+                                             "_links": {"self": {"href": "/api/v3/projects/1"}}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(
+        enable_project_write=True,
+        allowed_projects=("src", "dst-ok"),
+        allowed_write_projects=("src", "dst-ok"),
+        allowed_write_projects_configured=True,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    with pytest.raises(PermissionDeniedError):
+        await client.copy_project(source_project="src", name="Bad", identifier="dst-bad", confirm=True)
     await client.aclose()

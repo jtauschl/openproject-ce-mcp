@@ -81,6 +81,7 @@ class Settings:
     enable_admin_write: bool = False
     auto_confirm_write: bool = False
     auto_confirm_delete: bool = False
+    attachment_root: str = ""
 
     def read_enabled(self, scope: str) -> bool:
         return {
@@ -217,6 +218,7 @@ class Settings:
             minimum=1,
         )
         log_level = _parse_log_level(env.get("OPENPROJECT_LOG_LEVEL"), "OPENPROJECT_LOG_LEVEL", default="WARNING")
+        attachment_root = (env.get("OPENPROJECT_ATTACHMENT_ROOT") or "").strip()
 
         if default_page_size > max_page_size:
             raise ConfigError("OPENPROJECT_DEFAULT_PAGE_SIZE must not exceed OPENPROJECT_MAX_PAGE_SIZE.")
@@ -253,6 +255,7 @@ class Settings:
             enable_admin_write=enable_admin_write,
             auto_confirm_write=auto_confirm_write,
             auto_confirm_delete=auto_confirm_delete,
+            attachment_root=attachment_root,
         )
 
 
