@@ -202,7 +202,7 @@ client, and how to verify the server is picked up.
 
 ## Configuration
 
-`.mcp.json` contains your API token. Treat it like a password — it is gitignored by default.
+Your client config (`.mcp.json`, `.codex/config.toml`, or `.vscode/mcp.json`) contains your API token. Treat it like a password. This repo gitignores `.mcp.json`, but when you place a project-scoped config in your **own** project, add it to that project's `.gitignore` so the token is never committed.
 
 Access is grouped into five chains: `project`, `membership`, `work_package`, `version`, and `board`. Each chain has a read flag and a write flag. Scoped flags control each chain independently.
 

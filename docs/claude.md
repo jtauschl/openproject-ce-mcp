@@ -19,6 +19,7 @@
 2. **Or manually: Create `.mcp.json`**
    - Reference: [`.mcp.json.example`](../.mcp.json.example)
    - Protect it if it contains secrets: `chmod 600 .mcp.json`
+   - **This file holds your API token.** Add `.mcp.json` to your project's `.gitignore` so it is never committed.
 
 3. **Example config** — this mirrors what `configure_mcp.py` writes. On Windows the `command` path is `...\.venv\Scripts\openproject-mcp.exe`; the installer fills in the correct path for your OS automatically.
    ```json

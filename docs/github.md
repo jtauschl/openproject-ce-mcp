@@ -27,6 +27,7 @@ Agent mode**. If you use VS Code, this is your guide.
    ```bash
    chmod 600 .vscode/mcp.json
    ```
+   **This file holds your API token.** Add `.vscode/mcp.json` to your project's `.gitignore` so it is never committed.
 
 3. **Example config:** On Windows the `command` path is `...\.venv\Scripts\openproject-mcp.exe`; use the exact path the installer printed.
    ```json
