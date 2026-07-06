@@ -3070,9 +3070,3 @@ def _validate_positive_int(value: int, *, field_name: str) -> int:
     if value < 1:
         raise ValueError(f"{field_name} must be at least 1.")
     return value
-
-
-def _validate_optional_positive_int(value: int | None, *, field_name: str) -> int | None:
-    if value is None:
-        return None
-    return _validate_positive_int(value, field_name=field_name)

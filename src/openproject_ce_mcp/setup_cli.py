@@ -618,16 +618,6 @@ def _install_deps(uv: str | None, installed: bool) -> None:
         subprocess.run([str(pip), "install", "-e", "."], cwd=_REPO_ROOT, check=True)
 
 
-def _load_existing(mcp_json: Path) -> dict[str, str]:
-    if mcp_json.exists():
-        try:
-            data = json.loads(mcp_json.read_text(encoding="utf-8"))
-            return data.get("mcpServers", {}).get("openproject", {}).get("env", {})
-        except Exception:
-            pass
-    return {}
-
-
 def _read_client_env(client: Client, *, target: Path | None = None) -> dict[str, str]:
     """Read back an already-registered openproject ``env`` from a client config.
 
