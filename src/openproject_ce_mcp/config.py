@@ -273,6 +273,9 @@ def _require_non_empty(value: str | None, name: str) -> str:
     return value.strip()
 
 
+_LOCALHOST_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
 def _parse_base_url(value: str | None) -> str:
     raw_value = _require_non_empty(value, "OPENPROJECT_BASE_URL").rstrip("/")
     parsed = urlparse(raw_value)
@@ -282,6 +285,15 @@ def _parse_base_url(value: str | None) -> str:
         raise ConfigError("OPENPROJECT_BASE_URL must include a hostname.")
     if parsed.query or parsed.fragment:
         raise ConfigError("OPENPROJECT_BASE_URL must not contain query parameters or fragments.")
+    # Warn (don't block) when the API token would travel unencrypted to a remote
+    # host over plain http. Use .hostname so ports and IPv6 brackets don't defeat
+    # the localhost check.
+    if parsed.scheme == "http" and (parsed.hostname or "").lower() not in _LOCALHOST_HOSTS:
+        logging.getLogger(__name__).warning(
+            "OPENPROJECT_BASE_URL uses http:// with a non-local host (%s); the API token "
+            "is sent unencrypted. Use https:// unless this is a trusted local network.",
+            parsed.hostname,
+        )
     return raw_value
 
 

@@ -70,6 +70,8 @@ This MCP server targets **OpenProject Community Edition** only. It does not supp
 
 All write operations follow a preview-then-confirm pattern by default: call a tool once to get a validated preview, then again with `confirm=true` to execute. This can be bypassed globally with `OPENPROJECT_AUTO_CONFIRM_WRITE=true`.
 
+Self-scoped mutations of the current user's own state — notification read state, preferences, and the current user's emoji reactions — execute directly without a preview step. Project-attached reactions still enforce project write scope.
+
 ---
 
 ## How it works

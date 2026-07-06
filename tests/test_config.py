@@ -252,3 +252,35 @@ def test_auto_confirm_delete_can_be_disabled_independently() -> None:
     settings = Settings.from_env(env)
     assert settings.auto_confirm_write is True
     assert settings.auto_confirm_delete is False
+
+
+def test_http_remote_base_url_warns(caplog) -> None:
+    with caplog.at_level("WARNING"):
+        settings = Settings.from_env(
+            {
+                "OPENPROJECT_BASE_URL": "http://op.example.com",
+                "OPENPROJECT_API_TOKEN": "token-value",
+            }
+        )
+    assert settings.base_url == "http://op.example.com"
+    assert any("unencrypted" in record.message for record in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://[::1]:8080",
+        "https://op.example.com",
+    ],
+)
+def test_local_or_https_base_url_does_not_warn(base_url, caplog) -> None:
+    with caplog.at_level("WARNING"):
+        Settings.from_env(
+            {
+                "OPENPROJECT_BASE_URL": base_url,
+                "OPENPROJECT_API_TOKEN": "token-value",
+            }
+        )
+    assert not any("unencrypted" in record.message for record in caplog.records)

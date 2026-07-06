@@ -9,6 +9,8 @@ All mutating tools follow the same guarded write pattern by default:
 
 If `OPENPROJECT_AUTO_CONFIRM_WRITE` is explicitly enabled, the preview step is skipped for all writes, including deletes. `OPENPROJECT_AUTO_CONFIRM_DELETE` controls deletes independently and inherits `OPENPROJECT_AUTO_CONFIRM_WRITE` when unset; set it to require a preview for deletes while auto-confirming other writes, or to skip the preview for deletes only.
 
+Exception: self-scoped mutations of the current user's own state execute directly without a preview step — marking notifications read (`mark_notification_read`, `mark_all_notifications_read`), updating preferences (`update_my_preferences`), and toggling the current user's emoji reactions (`toggle_activity_emoji_reaction`). These touch only the caller's own state; project-attached reactions still enforce project write scope.
+
 All list tools are bounded and paginated. They return compact summaries — not raw OpenProject HAL payloads.
 
 ---
