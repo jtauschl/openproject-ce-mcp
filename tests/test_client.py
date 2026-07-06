@@ -5457,6 +5457,42 @@ async def test_create_time_entry_includes_start_and_end_time() -> None:
     await client.aclose()
 
 
+@pytest.mark.asyncio
+async def test_create_time_entry_entity_link_uses_numeric_id_for_semantic_ref() -> None:
+    """A semantic work-package ref (PROJ-7) must produce a numeric entity href.
+
+    HAL links only resolve by numeric id; passing the displayId form through
+    would build an invalid ``entity`` link.
+    """
+    captured: dict[str, dict] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/PROJ-7" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 7, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/time_entries" and request.method == "POST":
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(201, json={"id": 9, "spentOn": "2026-07-01", "_links": {}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    await client.create_time_entry(
+        work_package_id="PROJ-7",
+        activity=None,
+        hours="PT1H",
+        spent_on="2026-07-01",
+        confirm=True,
+    )
+
+    assert captured["body"]["_links"]["entity"]["href"] == "/api/v3/work_packages/7"
+
+    await client.aclose()
+
+
 # --- Regression tests for the self-review security + semantic-id fixes ---
 
 

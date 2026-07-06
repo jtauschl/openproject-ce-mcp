@@ -1597,6 +1597,9 @@ class OpenProjectClient:
             work_package_id = self._work_package_ref(work_package_id)
         project_name = None
         activity_project_id = None
+        # The entity HAL link needs the numeric id (hrefs don't resolve displayId);
+        # read it back from the fetched work package rather than reusing the ref.
+        work_package_numeric_id = None
         if project is not None:
             project_payload = await self._get_project_payload(project, write=True)
             project_name = _trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT)
@@ -1604,13 +1607,14 @@ class OpenProjectClient:
         if work_package_id is not None:
             work_package_payload = await self._get(f"work_packages/{work_package_id}")
             self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
+            work_package_numeric_id = int(work_package_payload["id"])
             if project_name is None:
                 project_name = _link_title(work_package_payload.get("_links", {}).get("project"))
             if activity_project_id is None:
                 activity_project_id = _id_from_href(work_package_payload.get("_links", {}).get("project", {}).get("href"))
         payload = await self._build_time_entry_write_payload(
             project=project,
-            work_package_id=work_package_id,
+            work_package_id=work_package_numeric_id,
             user=user,
             activity=activity,
             hours=hours,
