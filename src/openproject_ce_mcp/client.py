@@ -4347,7 +4347,12 @@ class OpenProjectClient:
 
     def normalize_group_detail(self, payload: dict[str, Any]) -> GroupDetail:
         summary = self.normalize_group(payload)
-        members = payload.get("_embedded", {}).get("members", {}).get("elements", [])
+        # OpenProject embeds group members as a flat array (associated_resources
+        # :users, as: :members). A collection object with "elements" is not the
+        # real shape, but tolerate it defensively rather than crash on .get().
+        members = payload.get("_embedded", {}).get("members", [])
+        if isinstance(members, dict):
+            members = members.get("elements", [])
         member_names = []
         if isinstance(members, list):
             for item in members:

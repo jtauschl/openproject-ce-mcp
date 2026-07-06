@@ -3991,7 +3991,9 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
                     "name": "Platform Team",
                     "createdAt": "2026-01-01T00:00:00Z",
                     "updatedAt": "2026-01-02T00:00:00Z",
-                    "_embedded": {"members": {"count": 2, "elements": [{"name": "Alice"}, {"name": "Bob"}]}},
+                    # Real API embeds group-detail members as a flat array, not a
+                    # {count, elements} collection object.
+                    "_embedded": {"members": [{"name": "Alice"}, {"name": "Bob"}]},
                     "_links": {
                         "memberships": {"href": "/api/v3/groups/7/memberships"},
                         "update": {"href": "/api/v3/groups/7"},
