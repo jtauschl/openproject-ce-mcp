@@ -3700,6 +3700,15 @@ class OpenProjectClient:
         links = fl_payload.get("_links", {})
         container_href = links.get("container", {}).get("href") if isinstance(links.get("container"), dict) else None
         work_package_id = _id_from_href(container_href) or 0
+        # Enforce the project write allowlist against the container work package,
+        # not just the global write flag. Fail closed when the container cannot be
+        # resolved: _ensure_project_write_link_allowed(None) rejects unless the
+        # write scope is unconfigured / "*".
+        if work_package_id:
+            wp_payload = await self._get(f"work_packages/{work_package_id}")
+            self._ensure_project_write_link_allowed(wp_payload.get("_links", {}).get("project"))
+        else:
+            self._ensure_project_write_link_allowed(None)
         if self._preview_mode(confirm, delete=True):
             return FileLinkWriteResult(
                 action="delete",

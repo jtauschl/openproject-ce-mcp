@@ -5686,3 +5686,77 @@ async def test_copy_project_checks_destination_allowlist() -> None:
     assert result is not None  # reached preview without an allowlist denial
     await client2.aclose()
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_delete_file_link_respects_allowed_write_projects() -> None:
+    """delete_file_link must enforce the project write allowlist via the container WP."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/file_links/5" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 5,
+                    "_links": {
+                        "self": {"href": "/api/v3/file_links/5"},
+                        "container": {"href": "/api/v3/work_packages/9"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/9" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 9, "_links": {"project": {"href": "/api/v3/projects/2", "title": "Other"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_work_package_write=True, allowed_write_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ALLOWED_PROJECTS_WRITE"):
+        await client.delete_file_link(5, confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_delete_file_link_allows_write_project() -> None:
+    """A container WP in an allowed project passes the allowlist and deletes."""
+    deleted: dict[str, bool] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/file_links/5" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 5,
+                    "_links": {
+                        "self": {"href": "/api/v3/file_links/5"},
+                        "container": {"href": "/api/v3/work_packages/9"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/9" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 9, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/file_links/5" and request.method == "DELETE":
+            deleted["done"] = True
+            return httpx.Response(204, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_work_package_write=True, allowed_write_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.delete_file_link(5, confirm=True)
+
+    assert deleted.get("done") is True
+    assert result.confirmed is True
+
+    await client.aclose()
