@@ -5,6 +5,7 @@ on the form it sees — so the same file is meaningful against both a classic
 instance (numeric display_id, e.g. 16.6) and a semantic one (project-prefixed,
 e.g. 17.5 with project-based identifiers). See docker/test/ for spinning up both.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -19,9 +20,7 @@ _SUBJECT = "[integration-test] semantic-id WP"
 async def test_numeric_reference_always_resolves(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    created = await client.create_work_package(
-        project=test_project, type="Task", subject=_SUBJECT, confirm=True
-    )
+    created = await client.create_work_package(project=test_project, type="Task", subject=_SUBJECT, confirm=True)
     assert created.ready, created.validation_errors
     wp_ids.append(created.work_package_id)
 
@@ -33,9 +32,7 @@ async def test_numeric_reference_always_resolves(
 async def test_reference_resolution_matches_instance_mode(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    created = await client.create_work_package(
-        project=test_project, type="Task", subject=_SUBJECT, confirm=True
-    )
+    created = await client.create_work_package(project=test_project, type="Task", subject=_SUBJECT, confirm=True)
     assert created.ready, created.validation_errors
     wp_ids.append(created.work_package_id)
 

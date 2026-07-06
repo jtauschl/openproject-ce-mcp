@@ -1,4 +1,5 @@
 """Integration tests for board read operations."""
+
 from __future__ import annotations
 
 import pytest

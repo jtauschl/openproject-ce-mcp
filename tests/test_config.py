@@ -7,26 +7,26 @@ from openproject_ce_mcp.config import ConfigError, Settings
 
 def test_settings_from_env_loads_and_normalizes_values() -> None:
     settings = Settings.from_env(
-            {
-                "OPENPROJECT_BASE_URL": "https://op.example.com/",
-                "OPENPROJECT_API_TOKEN": "token-value",
-                "OPENPROJECT_ALLOWED_PROJECTS_READ": "mcp-test, openproject-ce-mcp",
-                "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "mcp-test",
-                "OPENPROJECT_ENABLE_PROJECT_READ": "true",
-                "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "false",
-                "OPENPROJECT_HIDE_PROJECT_FIELDS": "description,status_explanation",
-                "OPENPROJECT_HIDE_PRINCIPAL_FIELDS": "*mail,login",
-                "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": "description",
-                "OPENPROJECT_HIDE_ACTIVITY_FIELDS": "comment",
-                "OPENPROJECT_HIDE_CUSTOM_FIELDS": "budget, internal_notes",
-                "OPENPROJECT_ENABLE_PROJECT_WRITE": "true",
-                "OPENPROJECT_TIMEOUT": "15",
-                "OPENPROJECT_VERIFY_SSL": "false",
-                "OPENPROJECT_DEFAULT_PAGE_SIZE": "10",
-                "OPENPROJECT_MAX_PAGE_SIZE": "20",
-                "OPENPROJECT_MAX_RESULTS": "30",
-                "OPENPROJECT_LOG_LEVEL": "info",
-            }
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com/",
+            "OPENPROJECT_API_TOKEN": "token-value",
+            "OPENPROJECT_ALLOWED_PROJECTS_READ": "mcp-test, openproject-ce-mcp",
+            "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "mcp-test",
+            "OPENPROJECT_ENABLE_PROJECT_READ": "true",
+            "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "false",
+            "OPENPROJECT_HIDE_PROJECT_FIELDS": "description,status_explanation",
+            "OPENPROJECT_HIDE_PRINCIPAL_FIELDS": "*mail,login",
+            "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": "description",
+            "OPENPROJECT_HIDE_ACTIVITY_FIELDS": "comment",
+            "OPENPROJECT_HIDE_CUSTOM_FIELDS": "budget, internal_notes",
+            "OPENPROJECT_ENABLE_PROJECT_WRITE": "true",
+            "OPENPROJECT_TIMEOUT": "15",
+            "OPENPROJECT_VERIFY_SSL": "false",
+            "OPENPROJECT_DEFAULT_PAGE_SIZE": "10",
+            "OPENPROJECT_MAX_PAGE_SIZE": "20",
+            "OPENPROJECT_MAX_RESULTS": "30",
+            "OPENPROJECT_LOG_LEVEL": "info",
+        }
     )
 
     assert settings.base_url == "https://op.example.com"
@@ -252,3 +252,35 @@ def test_auto_confirm_delete_can_be_disabled_independently() -> None:
     settings = Settings.from_env(env)
     assert settings.auto_confirm_write is True
     assert settings.auto_confirm_delete is False
+
+
+def test_http_remote_base_url_warns(caplog) -> None:
+    with caplog.at_level("WARNING"):
+        settings = Settings.from_env(
+            {
+                "OPENPROJECT_BASE_URL": "http://op.example.com",
+                "OPENPROJECT_API_TOKEN": "token-value",
+            }
+        )
+    assert settings.base_url == "http://op.example.com"
+    assert any("unencrypted" in record.message for record in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://[::1]:8080",
+        "https://op.example.com",
+    ],
+)
+def test_local_or_https_base_url_does_not_warn(base_url, caplog) -> None:
+    with caplog.at_level("WARNING"):
+        Settings.from_env(
+            {
+                "OPENPROJECT_BASE_URL": base_url,
+                "OPENPROJECT_API_TOKEN": "token-value",
+            }
+        )
+    assert not any("unencrypted" in record.message for record in caplog.records)

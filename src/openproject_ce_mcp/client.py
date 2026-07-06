@@ -268,17 +268,22 @@ class OpenProjectClient:
         project = self.normalize_project(payload)
         form = await self._post(f"projects/{project.id}/form", json_body={"name": project.name})
         schema = form.get("_embedded", {}).get("schema", {})
-        fields = [self._normalize_project_field_schema(key, entry) for key, entry in schema.items() if isinstance(entry, dict)]
+        fields = [
+            self._normalize_project_field_schema(key, entry) for key, entry in schema.items() if isinstance(entry, dict)
+        ]
         status_field = next((field for field in fields if field.key == "status"), None)
         available_statuses = status_field.allowed_values if status_field else []
         available_parent_projects = await self._list_available_parent_projects(project.id, schema=schema)
-        return self._apply_hidden_fields("project_admin_context", ProjectAdminContext(
-            project=project,
-            available_statuses=available_statuses,
-            available_parent_projects=available_parent_projects,
-            fields=fields,
-            project_links=sorted(payload.get("_links", {}).keys()),
-        ))
+        return self._apply_hidden_fields(
+            "project_admin_context",
+            ProjectAdminContext(
+                project=project,
+                available_statuses=available_statuses,
+                available_parent_projects=available_parent_projects,
+                fields=fields,
+                project_links=sorted(payload.get("_links", {}).keys()),
+            ),
+        )
 
     async def get_project_configuration(self, project_ref: str) -> ProjectConfiguration:
         self._ensure_read_enabled("project")
@@ -871,22 +876,32 @@ class OpenProjectClient:
         memberships = await self.list_project_memberships(project_ref)
         my_membership = next((item for item in memberships.results if item.principal_id == current_user.id), None)
         project_links = sorted(project_payload.get("_links", {}).keys())
-        inferred_is_project_admin = any(name.casefold() == "project admin" for name in (my_membership.role_names if my_membership else []))
-        inferred_can_edit_project = "update" in project_links or "updateImmediately" in project_links or inferred_is_project_admin
-        inferred_can_manage_memberships = bool(my_membership and (my_membership.can_update or my_membership.can_update_immediately or inferred_is_project_admin))
-        return self._apply_hidden_fields("project_access", ProjectAccessSummary(
-            project_id=project_summary.id,
-            project_name=project_summary.name,
-            project_identifier=project_summary.identifier,
-            current_user_id=current_user.id,
-            current_user_name=current_user.name,
-            membership=my_membership,
-            project_links=project_links,
-            inferred_is_project_admin=inferred_is_project_admin,
-            inferred_can_edit_project=inferred_can_edit_project,
-            inferred_can_manage_memberships=inferred_can_manage_memberships,
-            inference_basis="Derived from project HATEOAS links and the current user's project membership roles.",
-        ))
+        inferred_is_project_admin = any(
+            name.casefold() == "project admin" for name in (my_membership.role_names if my_membership else [])
+        )
+        inferred_can_edit_project = (
+            "update" in project_links or "updateImmediately" in project_links or inferred_is_project_admin
+        )
+        inferred_can_manage_memberships = bool(
+            my_membership
+            and (my_membership.can_update or my_membership.can_update_immediately or inferred_is_project_admin)
+        )
+        return self._apply_hidden_fields(
+            "project_access",
+            ProjectAccessSummary(
+                project_id=project_summary.id,
+                project_name=project_summary.name,
+                project_identifier=project_summary.identifier,
+                current_user_id=current_user.id,
+                current_user_name=current_user.name,
+                membership=my_membership,
+                project_links=project_links,
+                inferred_is_project_admin=inferred_is_project_admin,
+                inferred_can_edit_project=inferred_can_edit_project,
+                inferred_can_manage_memberships=inferred_can_manage_memberships,
+                inference_basis="Derived from project HATEOAS links and the current user's project membership roles.",
+            ),
+        )
 
     async def get_instance_configuration(self) -> InstanceConfiguration:
         self._ensure_read_enabled("project")
@@ -1133,8 +1148,7 @@ class OpenProjectClient:
             results = [
                 item
                 for item in results
-                if search_key in (item.title or "").casefold()
-                or search_key in (item.summary or "").casefold()
+                if search_key in (item.title or "").casefold() or search_key in (item.summary or "").casefold()
             ]
 
         total = len(results)
@@ -1304,7 +1318,6 @@ class OpenProjectClient:
         self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
         return self.normalize_wiki_page(payload)
 
-
     async def list_categories(self, project_ref: str) -> CategoryListResult:
         self._ensure_read_enabled("project")
         project_payload = await self._get(f"projects/{quote(project_ref, safe='')}")
@@ -1337,9 +1350,7 @@ class OpenProjectClient:
             if isinstance(item, dict)
         ]
         results = [
-            item
-            for item in results
-            if item.container_type == "WorkPackage" and item.container_id == work_package.id
+            item for item in results if item.container_type == "WorkPackage" and item.container_id == work_package.id
         ]
         return AttachmentListResult(count=len(results), results=results)
 
@@ -1386,11 +1397,7 @@ class OpenProjectClient:
             f"work_packages/{work_package_id}/attachments",
             metadata={
                 "fileName": file_info["file_name"],
-                **(
-                    {"description": {"format": "markdown", "raw": description}}
-                    if description is not None
-                    else {}
-                ),
+                **({"description": {"format": "markdown", "raw": description}} if description is not None else {}),
             },
             file_name=file_info["file_name"],
             file_bytes=file_info["file_bytes"],
@@ -1464,11 +1471,7 @@ class OpenProjectClient:
         try:
             payload = await self._get("time_entries/activities")
             elements = payload.get("_embedded", {}).get("elements", [])
-            results = [
-                self.normalize_time_entry_activity(item)
-                for item in elements
-                if isinstance(item, dict)
-            ]
+            results = [self.normalize_time_entry_activity(item) for item in elements if isinstance(item, dict)]
             if results:
                 return TimeEntryActivityListResult(count=len(results), results=results)
         except (NotFoundError, PermissionDeniedError, OpenProjectServerError):
@@ -1549,7 +1552,9 @@ class OpenProjectClient:
             ]
         results = [self.normalize_time_entry(item) for item in raw_entries]
         if work_package_id is not None:
-            results = [item for item in results if item.entity_type == "WorkPackage" and item.entity_id == work_package_id]
+            results = [
+                item for item in results if item.entity_type == "WorkPackage" and item.entity_id == work_package_id
+            ]
         if user_name is not None:
             results = [item for item in results if (item.user or "").casefold() == (user_name or "").casefold()]
         if spent_on_from is not None:
@@ -1597,6 +1602,9 @@ class OpenProjectClient:
             work_package_id = self._work_package_ref(work_package_id)
         project_name = None
         activity_project_id = None
+        # The entity HAL link needs the numeric id (hrefs don't resolve displayId);
+        # read it back from the fetched work package rather than reusing the ref.
+        work_package_numeric_id = None
         if project is not None:
             project_payload = await self._get_project_payload(project, write=True)
             project_name = _trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT)
@@ -1604,13 +1612,16 @@ class OpenProjectClient:
         if work_package_id is not None:
             work_package_payload = await self._get(f"work_packages/{work_package_id}")
             self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
+            work_package_numeric_id = int(work_package_payload["id"])
             if project_name is None:
                 project_name = _link_title(work_package_payload.get("_links", {}).get("project"))
             if activity_project_id is None:
-                activity_project_id = _id_from_href(work_package_payload.get("_links", {}).get("project", {}).get("href"))
+                activity_project_id = _id_from_href(
+                    work_package_payload.get("_links", {}).get("project", {}).get("href")
+                )
         payload = await self._build_time_entry_write_payload(
             project=project,
-            work_package_id=work_package_id,
+            work_package_id=work_package_numeric_id,
             user=user,
             activity=activity,
             hours=hours,
@@ -1760,15 +1771,26 @@ class OpenProjectClient:
         self._ensure_project_allowed(project, payload=project_payload)
         project_id = int(project_payload["id"])
         types_payload = await self._get(f"projects/{project_id}/types")
-        available_types = [self._normalize_option_value(item) for item in types_payload.get("_embedded", {}).get("elements", [])]
+        available_types = [
+            self._normalize_option_value(item) for item in types_payload.get("_embedded", {}).get("elements", [])
+        ]
 
         selected_type_id: int | None = None
         selected_type_name: str | None = None
         fields: list[WorkPackageFieldSchema] = []
         custom_fields: list[WorkPackageFieldSchema] = []
-        available_statuses: list[OptionValue] = [self._normalize_option_value(item) for item in (await self._get("statuses")).get("_embedded", {}).get("elements", [])]
-        available_priorities: list[OptionValue] = [self._normalize_option_value(item) for item in (await self._get("priorities")).get("_embedded", {}).get("elements", [])]
-        available_categories: list[OptionValue] = [self._normalize_option_value(item) for item in (await self._get(f"projects/{project_id}/categories")).get("_embedded", {}).get("elements", [])]
+        available_statuses: list[OptionValue] = [
+            self._normalize_option_value(item)
+            for item in (await self._get("statuses")).get("_embedded", {}).get("elements", [])
+        ]
+        available_priorities: list[OptionValue] = [
+            self._normalize_option_value(item)
+            for item in (await self._get("priorities")).get("_embedded", {}).get("elements", [])
+        ]
+        available_categories: list[OptionValue] = [
+            self._normalize_option_value(item)
+            for item in (await self._get(f"projects/{project_id}/categories")).get("_embedded", {}).get("elements", [])
+        ]
         available_project_phases: list[OptionValue] = []
         versions = await self.list_versions(project=str(project_id), offset=1, limit=self.settings.max_results)
 
@@ -1777,12 +1799,24 @@ class OpenProjectClient:
             selected_type_name = next((item.title for item in available_types if item.id == selected_type_id), type)
             form = await self._post(
                 f"projects/{project_id}/work_packages/form",
-                json_body={"_links": {"type": {"href": self._api_href(f'types/{selected_type_id}')}}},
+                json_body={"_links": {"type": {"href": self._api_href(f"types/{selected_type_id}")}}},
             )
             schema = form.get("_embedded", {}).get("schema", {})
-            fields = [self._normalize_field_schema(key, entry) for key, entry in schema.items() if isinstance(entry, dict) and entry.get("writable") is True]
-            custom_fields = [field for field in fields if field.key.startswith("customField") and not self._custom_field_hidden(field.name, field.key)]
-            fields = [field for field in fields if not (field.key.startswith("customField") and self._custom_field_hidden(field.name, field.key))]
+            fields = [
+                self._normalize_field_schema(key, entry)
+                for key, entry in schema.items()
+                if isinstance(entry, dict) and entry.get("writable") is True
+            ]
+            custom_fields = [
+                field
+                for field in fields
+                if field.key.startswith("customField") and not self._custom_field_hidden(field.name, field.key)
+            ]
+            fields = [
+                field
+                for field in fields
+                if not (field.key.startswith("customField") and self._custom_field_hidden(field.name, field.key))
+            ]
             status_field = next((field for field in fields if field.key == "status"), None)
             priority_field = next((field for field in fields if field.key == "priority"), None)
             category_field = next((field for field in fields if field.key == "category"), None)
@@ -2130,7 +2164,9 @@ class OpenProjectClient:
                     confirm=confirm,
                 )
                 if not result.ready:
-                    item_results.append(BulkWorkPackageItemResult(index=i, success=False, error=result.message, result=result))
+                    item_results.append(
+                        BulkWorkPackageItemResult(index=i, success=False, error=result.message, result=result)
+                    )
                 else:
                     item_results.append(BulkWorkPackageItemResult(index=i, success=True, error=None, result=result))
             except Exception as exc:
@@ -2140,9 +2176,17 @@ class OpenProjectClient:
         failed = len(item_results) - succeeded
         requires_confirmation = not confirm and failed == 0
         if confirm:
-            message = f"{succeeded} of {len(items)} work packages created successfully." if failed == 0 else f"{succeeded} created, {failed} failed."
+            message = (
+                f"{succeeded} of {len(items)} work packages created successfully."
+                if failed == 0
+                else f"{succeeded} created, {failed} failed."
+            )
         else:
-            message = f"Validated {succeeded} of {len(items)} work packages. Call again with confirm=true to create them." if failed == 0 else f"{succeeded} validated, {failed} failed validation."
+            message = (
+                f"Validated {succeeded} of {len(items)} work packages. Call again with confirm=true to create them."
+                if failed == 0
+                else f"{succeeded} validated, {failed} failed validation."
+            )
         return BulkWorkPackageWriteResult(
             action="bulk_create",
             confirmed=confirm and failed == 0,
@@ -2182,7 +2226,9 @@ class OpenProjectClient:
                     confirm=confirm,
                 )
                 if not result.ready:
-                    item_results.append(BulkWorkPackageItemResult(index=i, success=False, error=result.message, result=result))
+                    item_results.append(
+                        BulkWorkPackageItemResult(index=i, success=False, error=result.message, result=result)
+                    )
                 else:
                     item_results.append(BulkWorkPackageItemResult(index=i, success=True, error=None, result=result))
             except Exception as exc:
@@ -2192,9 +2238,17 @@ class OpenProjectClient:
         failed = len(item_results) - succeeded
         requires_confirmation = not confirm and failed == 0
         if confirm:
-            message = f"{succeeded} of {len(items)} work packages updated successfully." if failed == 0 else f"{succeeded} updated, {failed} failed."
+            message = (
+                f"{succeeded} of {len(items)} work packages updated successfully."
+                if failed == 0
+                else f"{succeeded} updated, {failed} failed."
+            )
         else:
-            message = f"Validated {succeeded} of {len(items)} work packages. Call again with confirm=true to update them." if failed == 0 else f"{succeeded} validated, {failed} failed validation."
+            message = (
+                f"Validated {succeeded} of {len(items)} work packages. Call again with confirm=true to update them."
+                if failed == 0
+                else f"{succeeded} validated, {failed} failed validation."
+            )
         return BulkWorkPackageWriteResult(
             action="bulk_update",
             confirmed=confirm and failed == 0,
@@ -2643,11 +2697,7 @@ class OpenProjectClient:
                 },
             )
             raw_queries = payload.get("_embedded", {}).get("elements", [])
-            filtered = [
-                self.normalize_board(item)
-                for item in raw_queries
-                if self._board_payload_allowed(item)
-            ]
+            filtered = [self.normalize_board(item) for item in raw_queries if self._board_payload_allowed(item)]
             if project is not None:
                 filtered = [item for item in filtered if self._board_matches_project(item, project_candidates)]
             if search:
@@ -2843,7 +2893,9 @@ class OpenProjectClient:
         results = [self.normalize_relation(item) for item in payload.get("_embedded", {}).get("elements", [])]
         return RelationListResult(count=len(results), results=results)
 
-    async def get_work_package_activities(self, work_package_id: int | str, *, limit: int | None = None) -> ActivityListResult:
+    async def get_work_package_activities(
+        self, work_package_id: int | str, *, limit: int | None = None
+    ) -> ActivityListResult:
         self._ensure_read_enabled("work_package")
         work_package_id = self._work_package_ref(work_package_id)
         await self.get_work_package(work_package_id)
@@ -2859,8 +2911,14 @@ class OpenProjectClient:
 
     # Valid reactions per the OpenProject API spec.
     EMOJI_REACTIONS = (
-        "thumbs_up", "thumbs_down", "grinning_face_with_smiling_eyes",
-        "confused_face", "heart", "party_popper", "rocket", "eyes",
+        "thumbs_up",
+        "thumbs_down",
+        "grinning_face_with_smiling_eyes",
+        "confused_face",
+        "heart",
+        "party_popper",
+        "rocket",
+        "eyes",
     )
 
     def normalize_emoji_reaction(self, payload: dict[str, Any]) -> EmojiReactionSummary:
@@ -2891,9 +2949,18 @@ class OpenProjectClient:
     async def toggle_activity_emoji_reaction(self, activity_id: int, reaction: str) -> EmojiReactionListResult:
         self._ensure_write_enabled("work_package")
         if reaction not in self.EMOJI_REACTIONS:
-            raise InvalidInputError(
-                f"reaction must be one of: {', '.join(self.EMOJI_REACTIONS)}."
+            raise InvalidInputError(f"reaction must be one of: {', '.join(self.EMOJI_REACTIONS)}.")
+        # Enforce the project write allowlist against the activity's work package.
+        # Fail closed: if the activity has no resolvable workPackage link, refuse
+        # rather than patch an unchecked target.
+        activity = await self._get(f"activities/{activity_id}")
+        wp_ref = _id_from_href(activity.get("_links", {}).get("workPackage", {}).get("href"))
+        if not wp_ref:
+            raise OpenProjectServerError(
+                "OpenProject activity is missing a work package link; cannot verify project write access."
             )
+        wp_payload = await self._get(f"work_packages/{wp_ref}")
+        self._ensure_project_write_link_allowed(wp_payload.get("_links", {}).get("project"))
         # PATCH toggles: adds the reaction if absent, removes it if present, and
         # returns the full reaction collection for the activity afterwards.
         payload = await self._patch(
@@ -2907,14 +2974,17 @@ class OpenProjectClient:
     def normalize_reminder(self, payload: dict[str, Any]) -> ReminderSummary:
         links = payload.get("_links", {})
         creator = payload.get("_embedded", {}).get("creator", {})
-        return self._apply_hidden_fields("reminder", ReminderSummary(
-            id=int(payload["id"]),
-            remind_at=payload.get("remindAt"),
-            note=_trim_text(payload.get("note"), limit=SUBJECT_LIMIT),
-            work_package_id=_id_from_href(links.get("remindable", {}).get("href")),
-            creator=_trim_text(creator.get("name"), limit=SUBJECT_LIMIT) if isinstance(creator, dict) else None,
-            url=self._link_to_web_url(links.get("self", {}).get("href")),
-        ))
+        return self._apply_hidden_fields(
+            "reminder",
+            ReminderSummary(
+                id=int(payload["id"]),
+                remind_at=payload.get("remindAt"),
+                note=_trim_text(payload.get("note"), limit=SUBJECT_LIMIT),
+                work_package_id=_id_from_href(links.get("remindable", {}).get("href")),
+                creator=_trim_text(creator.get("name"), limit=SUBJECT_LIMIT) if isinstance(creator, dict) else None,
+                url=self._link_to_web_url(links.get("self", {}).get("href")),
+            ),
+        )
 
     async def list_reminders(self) -> ReminderListResult:
         self._ensure_read_enabled("work_package")
@@ -3073,8 +3143,7 @@ class OpenProjectClient:
             return await coro
         except NotFoundError as exc:
             raise NotFoundError(
-                f"{feature} requires OpenProject {min_version} or newer; "
-                "this instance appears to be older."
+                f"{feature} requires OpenProject {min_version} or newer; this instance appears to be older."
             ) from exc
 
     async def _set_project_favorite(self, project: str, *, favorite: bool, confirm: bool) -> FavoriteWriteResult:
@@ -3102,12 +3171,14 @@ class OpenProjectClient:
             # _request (not _post, which would try to parse empty JSON).
             await self._run_version_gated(
                 self._request("POST", f"workspaces/{project_id}/favorite", json_body={}),
-                feature="Project favorites", min_version="17.0",
+                feature="Project favorites",
+                min_version="17.0",
             )
         else:
             await self._run_version_gated(
                 self._delete(f"workspaces/{project_id}/favorite"),
-                feature="Project favorites", min_version="17.0",
+                feature="Project favorites",
+                min_version="17.0",
             )
         return FavoriteWriteResult(
             action=action,
@@ -3131,10 +3202,10 @@ class OpenProjectClient:
         return self._apply_hidden_fields(
             "current_user",
             CurrentUser(
-            id=int(payload["id"]),
-            name=payload.get("name"),
-            login=payload.get("login"),
-            url=self._web_url(f"users/{payload['id']}"),
+                id=int(payload["id"]),
+                name=payload.get("name"),
+                login=payload.get("login"),
+                url=self._web_url(f"users/{payload['id']}"),
             ),
         )
 
@@ -3314,13 +3385,17 @@ class OpenProjectClient:
         self._ensure_write_enabled("work_package")
         response = await self._request("POST", f"notifications/{notification_id}/read_ian")
         if response.status_code not in {200, 201, 204}:
-            raise OpenProjectServerError(f"OpenProject mark notification read failed with status {response.status_code}.")
+            raise OpenProjectServerError(
+                f"OpenProject mark notification read failed with status {response.status_code}."
+            )
 
     async def mark_all_notifications_read(self) -> None:
         self._ensure_write_enabled("work_package")
         response = await self._request("POST", "notifications/read_ian")
         if response.status_code not in {200, 201, 204}:
-            raise OpenProjectServerError(f"OpenProject mark all notifications read failed with status {response.status_code}.")
+            raise OpenProjectServerError(
+                f"OpenProject mark all notifications read failed with status {response.status_code}."
+            )
 
     # --- User CRUD ---
 
@@ -3543,9 +3618,7 @@ class OpenProjectClient:
         self._ensure_write_enabled("admin")
         body: dict[str, Any] = {"name": name}
         if user_ids:
-            body["_links"] = {
-                "members": [{"href": self._api_href(f"users/{uid}")} for uid in user_ids]
-            }
+            body["_links"] = {"members": [{"href": self._api_href(f"users/{uid}")} for uid in user_ids]}
         payload_preview = {"name": name, "user_ids": user_ids or []}
         if self._preview_mode(confirm):
             return GroupWriteResult(
@@ -3696,6 +3769,15 @@ class OpenProjectClient:
         links = fl_payload.get("_links", {})
         container_href = links.get("container", {}).get("href") if isinstance(links.get("container"), dict) else None
         work_package_id = _id_from_href(container_href) or 0
+        # Enforce the project write allowlist against the container work package,
+        # not just the global write flag. Fail closed when the container cannot be
+        # resolved: _ensure_project_write_link_allowed(None) rejects unless the
+        # write scope is unconfigured / "*".
+        if work_package_id:
+            wp_payload = await self._get(f"work_packages/{work_package_id}")
+            self._ensure_project_write_link_allowed(wp_payload.get("_links", {}).get("project"))
+        else:
+            self._ensure_project_write_link_allowed(None)
         if self._preview_mode(confirm, delete=True):
             return FileLinkWriteResult(
                 action="delete",
@@ -3782,9 +3864,7 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> GridWriteResult:
         current = await self._get(f"grids/{grid_id}")
-        project_ref = self._project_ref_from_scope_href(
-            current.get("_links", {}).get("scope", {}).get("href")
-        )
+        project_ref = self._project_ref_from_scope_href(current.get("_links", {}).get("scope", {}).get("href"))
         if project_ref is not None:
             await self._get_project_payload(project_ref, write=True)
         payload: dict[str, Any] = {}
@@ -3813,9 +3893,7 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> GridWriteResult:
         current = await self._get(f"grids/{grid_id}")
-        project_ref = self._project_ref_from_scope_href(
-            current.get("_links", {}).get("scope", {}).get("href")
-        )
+        project_ref = self._project_ref_from_scope_href(current.get("_links", {}).get("scope", {}).get("href"))
         if project_ref is not None:
             await self._get_project_payload(project_ref, write=True)
         detail = self.normalize_grid(current)
@@ -4010,9 +4088,7 @@ class OpenProjectClient:
             results.append(self.normalize_relation(item))
         return RelationListResult(count=len(results), results=results)
 
-    async def _relation_endpoints_allowed(
-        self, relation: dict[str, Any], cache: dict[str, bool]
-    ) -> bool:
+    async def _relation_endpoints_allowed(self, relation: dict[str, Any], cache: dict[str, bool]) -> bool:
         """True only if BOTH linked work packages are in an allowed project.
 
         Both ``from`` and ``to`` must pass — otherwise a relation to a work
@@ -4242,89 +4318,102 @@ class OpenProjectClient:
         links = payload.get("_links", {})
         identifier = payload.get("identifier")
         project_path = f"projects/{identifier or payload['id']}"
-        return self._apply_hidden_fields("project", ProjectSummary(
-            id=int(payload["id"]),
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Project {payload['id']}",
-            identifier=identifier,
-            active=payload.get("active"),
-            description=self._visible_formattable_text(payload.get("description"), "project", "description"),
-            url=self._web_url(project_path),
-            public=payload.get("public"),
-            status=_link_title(links.get("status")),
-            status_explanation=self._visible_formattable_text(payload.get("statusExplanation"), "project", "status_explanation"),
-            parent_id=_id_from_href(links.get("parent", {}).get("href")),
-            parent_name=_link_title(links.get("parent")),
-            created_at=payload.get("createdAt"),
-            updated_at=payload.get("updatedAt"),
-            can_update="update" in links or "updateImmediately" in links,
-            can_delete="delete" in links,
-        ))
+        return self._apply_hidden_fields(
+            "project",
+            ProjectSummary(
+                id=int(payload["id"]),
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Project {payload['id']}",
+                identifier=identifier,
+                active=payload.get("active"),
+                description=self._visible_formattable_text(payload.get("description"), "project", "description"),
+                url=self._web_url(project_path),
+                public=payload.get("public"),
+                status=_link_title(links.get("status")),
+                status_explanation=self._visible_formattable_text(
+                    payload.get("statusExplanation"), "project", "status_explanation"
+                ),
+                parent_id=_id_from_href(links.get("parent", {}).get("href")),
+                parent_name=_link_title(links.get("parent")),
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
+                can_update="update" in links or "updateImmediately" in links,
+                can_delete="delete" in links,
+            ),
+        )
 
     def normalize_role(self, payload: dict[str, Any]) -> RoleSummary:
-        return self._apply_hidden_fields("role", RoleSummary(
-            id=int(payload["id"]),
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Role {payload['id']}",
-            url=self._web_url(f"roles/{payload['id']}"),
-        ))
+        return self._apply_hidden_fields(
+            "role",
+            RoleSummary(
+                id=int(payload["id"]),
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Role {payload['id']}",
+                url=self._web_url(f"roles/{payload['id']}"),
+            ),
+        )
 
     def normalize_principal(self, payload: dict[str, Any]) -> PrincipalSummary:
         principal_type = _trim_text(payload.get("_type"), limit=SUBJECT_LIMIT)
         principal_id = int(payload["id"])
         path_prefix = "groups" if principal_type == "Group" else "users"
-        return self._apply_hidden_fields("principal", PrincipalSummary(
-            id=principal_id,
-            type=principal_type,
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Principal {principal_id}",
-            login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
-            email=_trim_text(payload.get("email"), limit=SUBJECT_LIMIT),
-            status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
-            url=self._web_url(f"{path_prefix}/{principal_id}"),
-        ))
+        return self._apply_hidden_fields(
+            "principal",
+            PrincipalSummary(
+                id=principal_id,
+                type=principal_type,
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Principal {principal_id}",
+                login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
+                email=_trim_text(payload.get("email"), limit=SUBJECT_LIMIT),
+                status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
+                url=self._web_url(f"{path_prefix}/{principal_id}"),
+            ),
+        )
 
     def normalize_user(self, payload: dict[str, Any]) -> UserSummary:
         links = payload.get("_links", {})
         avatar_link = links.get("avatar")
-        return self._apply_hidden_fields("user", UserSummary(
-            id=int(payload["id"]),
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT),
-            login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
-            email=_trim_text(payload.get("email"), limit=SUBJECT_LIMIT),
-            status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
-            admin=payload.get("admin"),
-            locked=payload.get("locked"),
-            avatar_url=self._link_to_web_url(avatar_link.get("href")) if isinstance(avatar_link, dict) else None,
-            created_at=payload.get("createdAt"),
-            updated_at=payload.get("updatedAt"),
-            url=self._web_url(f"users/{payload['id']}"),
-        ))
+        return self._apply_hidden_fields(
+            "user",
+            UserSummary(
+                id=int(payload["id"]),
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT),
+                login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
+                email=_trim_text(payload.get("email"), limit=SUBJECT_LIMIT),
+                status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
+                admin=payload.get("admin"),
+                locked=payload.get("locked"),
+                avatar_url=self._link_to_web_url(avatar_link.get("href")) if isinstance(avatar_link, dict) else None,
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
+                url=self._web_url(f"users/{payload['id']}"),
+            ),
+        )
 
     def normalize_user_detail(self, payload: dict[str, Any]) -> UserDetail:
         summary = self.normalize_user(payload)
         links = payload.get("_links", {})
-        groups = [
-            _link_title(item)
-            for item in links.get("groups", [])
-            if isinstance(item, dict) and _link_title(item)
-        ]
+        groups = [_link_title(item) for item in links.get("groups", []) if isinstance(item, dict) and _link_title(item)]
         auth_source = _link_title(links.get("authSource"))
         identity_url = self._link_to_web_url(links.get("showUser", {}).get("href"))
-        return self._apply_hidden_fields("user", UserDetail(
-            id=summary.id,
-            name=summary.name,
-            login=summary.login,
-            email=summary.email,
-            status=summary.status,
-            admin=summary.admin,
-            locked=summary.locked,
-            avatar_url=summary.avatar_url,
-            created_at=summary.created_at,
-            updated_at=summary.updated_at,
-            language=_trim_text(payload.get("language"), limit=SUBJECT_LIMIT),
-            identity_url=identity_url,
-            auth_source=auth_source,
-            groups=groups,
-            url=summary.url,
-        ))
+        return self._apply_hidden_fields(
+            "user",
+            UserDetail(
+                id=summary.id,
+                name=summary.name,
+                login=summary.login,
+                email=summary.email,
+                status=summary.status,
+                admin=summary.admin,
+                locked=summary.locked,
+                avatar_url=summary.avatar_url,
+                created_at=summary.created_at,
+                updated_at=summary.updated_at,
+                language=_trim_text(payload.get("language"), limit=SUBJECT_LIMIT),
+                identity_url=identity_url,
+                auth_source=auth_source,
+                groups=groups,
+                url=summary.url,
+            ),
+        )
 
     def normalize_group(self, payload: dict[str, Any]) -> GroupSummary:
         links = payload.get("_links", {})
@@ -4334,40 +4423,53 @@ class OpenProjectClient:
             member_count = int(members.get("count") or members.get("total") or 0)
         elif isinstance(payload.get("memberships"), list):
             member_count = len(payload.get("memberships", []))
-        return self._apply_hidden_fields("group", GroupSummary(
-            id=int(payload["id"]),
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT),
-            member_count=member_count,
-            created_at=payload.get("createdAt"),
-            updated_at=payload.get("updatedAt"),
-            can_update=bool(links.get("update") or links.get("updateImmediately")),
-            can_delete=bool(links.get("delete")),
-            url=self._web_url(f"groups/{payload['id']}"),
-        ))
+        return self._apply_hidden_fields(
+            "group",
+            GroupSummary(
+                id=int(payload["id"]),
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT),
+                member_count=member_count,
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
+                can_update=bool(links.get("update") or links.get("updateImmediately")),
+                can_delete=bool(links.get("delete")),
+                url=self._web_url(f"groups/{payload['id']}"),
+            ),
+        )
 
     def normalize_group_detail(self, payload: dict[str, Any]) -> GroupDetail:
         summary = self.normalize_group(payload)
-        members = payload.get("_embedded", {}).get("members", {}).get("elements", [])
+        # OpenProject embeds group members as a flat array (associated_resources
+        # :users, as: :members). A collection object with "elements" is not the
+        # real shape, but tolerate it defensively rather than crash on .get().
+        members = payload.get("_embedded", {}).get("members", [])
+        if isinstance(members, dict):
+            members = members.get("elements", [])
         member_names = []
         if isinstance(members, list):
             for item in members:
                 if isinstance(item, dict):
-                    label = _trim_text(item.get("name"), limit=SUBJECT_LIMIT) or _link_title(item.get("_links", {}).get("self"))
+                    label = _trim_text(item.get("name"), limit=SUBJECT_LIMIT) or _link_title(
+                        item.get("_links", {}).get("self")
+                    )
                     if label:
                         member_names.append(label)
         memberships_url = self._link_to_web_url(payload.get("_links", {}).get("memberships", {}).get("href"))
-        return self._apply_hidden_fields("group", GroupDetail(
-            id=summary.id,
-            name=summary.name,
-            member_count=summary.member_count,
-            members=member_names,
-            memberships_url=memberships_url,
-            created_at=summary.created_at,
-            updated_at=summary.updated_at,
-            can_update=summary.can_update,
-            can_delete=summary.can_delete,
-            url=summary.url,
-        ))
+        return self._apply_hidden_fields(
+            "group",
+            GroupDetail(
+                id=summary.id,
+                name=summary.name,
+                member_count=summary.member_count,
+                members=member_names,
+                memberships_url=memberships_url,
+                created_at=summary.created_at,
+                updated_at=summary.updated_at,
+                can_update=summary.can_update,
+                can_delete=summary.can_delete,
+                url=summary.url,
+            ),
+        )
 
     def normalize_action(self, payload: dict[str, Any]) -> ActionSummary:
         links = payload.get("_links", {})
@@ -4378,13 +4480,16 @@ class OpenProjectClient:
         ]
         href = links.get("self", {}).get("href") if isinstance(links.get("self"), dict) else None
         action_id = _slug_from_href(href) or _trim_text(payload.get("id"), limit=SUBJECT_LIMIT) or ""
-        return self._apply_hidden_fields("action", ActionSummary(
-            id=action_id,
-            name=_trim_text(payload.get("name") or links.get("self", {}).get("title"), limit=SUBJECT_LIMIT),
-            description=_trim_text(payload.get("description"), limit=FORMATTABLE_LIMIT),
-            modules=[item for item in modules if item],
-            url=self._link_to_web_url(href),
-        ))
+        return self._apply_hidden_fields(
+            "action",
+            ActionSummary(
+                id=action_id,
+                name=_trim_text(payload.get("name") or links.get("self", {}).get("title"), limit=SUBJECT_LIMIT),
+                description=_trim_text(payload.get("description"), limit=FORMATTABLE_LIMIT),
+                modules=[item for item in modules if item],
+                url=self._link_to_web_url(href),
+            ),
+        )
 
     def normalize_capability(self, payload: dict[str, Any]) -> CapabilitySummary:
         links = payload.get("_links", {})
@@ -4394,83 +4499,107 @@ class OpenProjectClient:
         context_link = links.get("context")
         href = self_link.get("href") if isinstance(self_link, dict) else None
         capability_id = _slug_from_href(href) or _trim_text(payload.get("id"), limit=SUBJECT_LIMIT) or ""
-        return self._apply_hidden_fields("capability", CapabilitySummary(
-            id=capability_id,
-            name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
-            action_id=_slug_from_href(action_link.get("href")) if isinstance(action_link, dict) else None,
-            action_name=_link_title(action_link),
-            principal_id=_id_from_href(principal_link.get("href")) if isinstance(principal_link, dict) else None,
-            principal_name=_link_title(principal_link),
-            context=_link_title(context_link) if isinstance(context_link, dict) else None,
-            url=self._link_to_web_url(href),
-        ))
+        return self._apply_hidden_fields(
+            "capability",
+            CapabilitySummary(
+                id=capability_id,
+                name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
+                action_id=_slug_from_href(action_link.get("href")) if isinstance(action_link, dict) else None,
+                action_name=_link_title(action_link),
+                principal_id=_id_from_href(principal_link.get("href")) if isinstance(principal_link, dict) else None,
+                principal_name=_link_title(principal_link),
+                context=_link_title(context_link) if isinstance(context_link, dict) else None,
+                url=self._link_to_web_url(href),
+            ),
+        )
 
     def normalize_membership(self, payload: dict[str, Any]) -> MembershipSummary:
         links = payload.get("_links", {})
         roles = links.get("roles", [])
-        return self._apply_hidden_fields("membership", MembershipSummary(
-            id=int(payload["id"]),
-            principal_id=_id_from_href(links.get("principal", {}).get("href")),
-            principal_name=_link_title(links.get("principal")),
-            project_id=_id_from_href(links.get("project", {}).get("href")),
-            project_name=_link_title(links.get("project")),
-            role_ids=[role_id for role in roles if isinstance(role, dict) if (role_id := _id_from_href(role.get("href"))) is not None],
-            role_names=[title for role in roles if isinstance(role, dict) if (title := _trim_text(role.get("title"), limit=SUBJECT_LIMIT)) is not None],
-            can_update="update" in links,
-            can_update_immediately="updateImmediately" in links,
-            url=self._web_url(f"memberships/{payload['id']}"),
-        ))
+        return self._apply_hidden_fields(
+            "membership",
+            MembershipSummary(
+                id=int(payload["id"]),
+                principal_id=_id_from_href(links.get("principal", {}).get("href")),
+                principal_name=_link_title(links.get("principal")),
+                project_id=_id_from_href(links.get("project", {}).get("href")),
+                project_name=_link_title(links.get("project")),
+                role_ids=[
+                    role_id
+                    for role in roles
+                    if isinstance(role, dict)
+                    if (role_id := _id_from_href(role.get("href"))) is not None
+                ],
+                role_names=[
+                    title
+                    for role in roles
+                    if isinstance(role, dict)
+                    if (title := _trim_text(role.get("title"), limit=SUBJECT_LIMIT)) is not None
+                ],
+                can_update="update" in links,
+                can_update_immediately="updateImmediately" in links,
+                url=self._web_url(f"memberships/{payload['id']}"),
+            ),
+        )
 
     def normalize_work_package_summary(self, payload: dict[str, Any]) -> WorkPackageSummary:
         links = payload.get("_links", {})
-        description = self._visible_formattable_text(payload.get("description"), "work_package", "description", limit=SUBJECT_LIMIT)
-        return self._apply_hidden_fields("work_package", WorkPackageSummary(
-            id=int(payload["id"]),
-            display_id=payload.get("displayId"),
-            subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Work package {payload['id']}",
-            type=_link_title(links.get("type")),
-            status=_link_title(links.get("status")),
-            priority=_link_title(links.get("priority")),
-            project_phase=_link_title(links.get("projectPhase")),
-            assignee=_link_title(links.get("assignee")),
-            responsible=_link_title(links.get("responsible")),
-            project=_link_title(links.get("project")),
-            version=_link_title(links.get("version")),
-            start_date=payload.get("startDate"),
-            due_date=payload.get("dueDate"),
-            percentage_complete=_percentage_done(payload),
-            description=description,
-            has_description=description is not None,
-            url=self._web_url(f"work_packages/{payload['id']}"),
-        ))
+        description = self._visible_formattable_text(
+            payload.get("description"), "work_package", "description", limit=SUBJECT_LIMIT
+        )
+        return self._apply_hidden_fields(
+            "work_package",
+            WorkPackageSummary(
+                id=int(payload["id"]),
+                display_id=payload.get("displayId"),
+                subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Work package {payload['id']}",
+                type=_link_title(links.get("type")),
+                status=_link_title(links.get("status")),
+                priority=_link_title(links.get("priority")),
+                project_phase=_link_title(links.get("projectPhase")),
+                assignee=_link_title(links.get("assignee")),
+                responsible=_link_title(links.get("responsible")),
+                project=_link_title(links.get("project")),
+                version=_link_title(links.get("version")),
+                start_date=payload.get("startDate"),
+                due_date=payload.get("dueDate"),
+                percentage_complete=_percentage_done(payload),
+                description=description,
+                has_description=description is not None,
+                url=self._web_url(f"work_packages/{payload['id']}"),
+            ),
+        )
 
     def normalize_work_package_detail(self, payload: dict[str, Any]) -> WorkPackageDetail:
         links = payload.get("_links", {})
-        return self._apply_hidden_fields("work_package", WorkPackageDetail(
-            id=int(payload["id"]),
-            display_id=payload.get("displayId"),
-            subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Work package {payload['id']}",
-            type=_link_title(links.get("type")),
-            status=_link_title(links.get("status")),
-            priority=_link_title(links.get("priority")),
-            project_phase=_link_title(links.get("projectPhase")),
-            assignee=_link_title(links.get("assignee")),
-            responsible=_link_title(links.get("responsible")),
-            project=_link_title(links.get("project")),
-            version=_link_title(links.get("version")),
-            parent_id=_id_from_href(links.get("parent", {}).get("href")),
-            # Hierarchy links carry displayId from 17.5 (semantic mode); absent on
-            # older/classic instances, where this stays None.
-            parent_display_id=links.get("parent", {}).get("displayId"),
-            start_date=payload.get("startDate"),
-            due_date=payload.get("dueDate"),
-            percentage_complete=_percentage_done(payload),
-            lock_version=payload.get("lockVersion"),
-            description=self._visible_formattable_text(payload.get("description"), "work_package", "description"),
-            url=self._web_url(f"work_packages/{payload['id']}"),
-            activities_url=self._link_to_web_url(links.get("activities", {}).get("href")),
-            relations_url=self._link_to_web_url(links.get("relations", {}).get("href")),
-        ))
+        return self._apply_hidden_fields(
+            "work_package",
+            WorkPackageDetail(
+                id=int(payload["id"]),
+                display_id=payload.get("displayId"),
+                subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Work package {payload['id']}",
+                type=_link_title(links.get("type")),
+                status=_link_title(links.get("status")),
+                priority=_link_title(links.get("priority")),
+                project_phase=_link_title(links.get("projectPhase")),
+                assignee=_link_title(links.get("assignee")),
+                responsible=_link_title(links.get("responsible")),
+                project=_link_title(links.get("project")),
+                version=_link_title(links.get("version")),
+                parent_id=_id_from_href(links.get("parent", {}).get("href")),
+                # Hierarchy links carry displayId from 17.5 (semantic mode); absent on
+                # older/classic instances, where this stays None.
+                parent_display_id=links.get("parent", {}).get("displayId"),
+                start_date=payload.get("startDate"),
+                due_date=payload.get("dueDate"),
+                percentage_complete=_percentage_done(payload),
+                lock_version=payload.get("lockVersion"),
+                description=self._visible_formattable_text(payload.get("description"), "work_package", "description"),
+                url=self._web_url(f"work_packages/{payload['id']}"),
+                activities_url=self._link_to_web_url(links.get("activities", {}).get("href")),
+                relations_url=self._link_to_web_url(links.get("relations", {}).get("href")),
+            ),
+        )
 
     def normalize_relation(self, payload: dict[str, Any]) -> RelationSummary:
         links = payload.get("_links", {})
@@ -4479,54 +4608,66 @@ class OpenProjectClient:
         wp_subject_hidden = self._field_hidden("work_package", "subject")
         from_subject = None if wp_subject_hidden else _link_title(links.get("from"))
         to_subject = None if wp_subject_hidden else _link_title(links.get("to"))
-        return self._apply_hidden_fields("relation", RelationSummary(
-            id=int(payload["id"]),
-            type=payload.get("type"),
-            description=_trim_text(payload.get("description"), limit=SUBJECT_LIMIT),
-            from_id=_id_from_href(links.get("from", {}).get("href")),
-            from_subject=from_subject,
-            to_id=_id_from_href(links.get("to", {}).get("href")),
-            to_subject=to_subject,
-        ))
+        return self._apply_hidden_fields(
+            "relation",
+            RelationSummary(
+                id=int(payload["id"]),
+                type=payload.get("type"),
+                description=_trim_text(payload.get("description"), limit=SUBJECT_LIMIT),
+                from_id=_id_from_href(links.get("from", {}).get("href")),
+                from_subject=from_subject,
+                to_id=_id_from_href(links.get("to", {}).get("href")),
+                to_subject=to_subject,
+            ),
+        )
 
     def normalize_activity(self, payload: dict[str, Any]) -> ActivitySummary:
         links = payload.get("_links", {})
-        return self._apply_hidden_fields("activity", ActivitySummary(
-            id=int(payload["id"]),
-            type=payload.get("_type"),
-            version=payload.get("version"),
-            user=_link_title(links.get("user")),
-            comment=self._visible_formattable_text(payload.get("comment"), "activity", "comment"),
-            created_at=payload.get("createdAt"),
-        ))
+        return self._apply_hidden_fields(
+            "activity",
+            ActivitySummary(
+                id=int(payload["id"]),
+                type=payload.get("_type"),
+                version=payload.get("version"),
+                user=_link_title(links.get("user")),
+                comment=self._visible_formattable_text(payload.get("comment"), "activity", "comment"),
+                created_at=payload.get("createdAt"),
+            ),
+        )
 
     def normalize_version(self, payload: dict[str, Any]) -> VersionSummary:
         links = payload.get("_links", {})
-        return self._apply_hidden_fields("version", VersionSummary(
-            id=int(payload["id"]),
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Version {payload['id']}",
-            status=payload.get("status"),
-            sharing=payload.get("sharing"),
-            start_date=payload.get("startDate"),
-            end_date=payload.get("endDate"),
-            defining_project=_link_title(links.get("definingProject")),
-            description=_extract_formattable_text(payload.get("description")),
-            url=self._web_url(f"versions/{payload['id']}"),
-        ))
+        return self._apply_hidden_fields(
+            "version",
+            VersionSummary(
+                id=int(payload["id"]),
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Version {payload['id']}",
+                status=payload.get("status"),
+                sharing=payload.get("sharing"),
+                start_date=payload.get("startDate"),
+                end_date=payload.get("endDate"),
+                defining_project=_link_title(links.get("definingProject")),
+                description=_extract_formattable_text(payload.get("description")),
+                url=self._web_url(f"versions/{payload['id']}"),
+            ),
+        )
 
     def normalize_version_detail(self, payload: dict[str, Any]) -> VersionDetail:
         summary = self.normalize_version(payload)
-        return self._apply_hidden_fields("version", VersionDetail(
-            id=summary.id,
-            name=summary.name,
-            status=summary.status,
-            sharing=summary.sharing,
-            start_date=summary.start_date,
-            end_date=summary.end_date,
-            defining_project=summary.defining_project,
-            description=summary.description,
-            url=summary.url,
-        ))
+        return self._apply_hidden_fields(
+            "version",
+            VersionDetail(
+                id=summary.id,
+                name=summary.name,
+                status=summary.status,
+                sharing=summary.sharing,
+                start_date=summary.start_date,
+                end_date=summary.end_date,
+                defining_project=summary.defining_project,
+                description=summary.description,
+                url=summary.url,
+            ),
+        )
 
     def normalize_board(self, payload: dict[str, Any]) -> BoardSummary:
         links = payload.get("_links", {})
@@ -4534,123 +4675,146 @@ class OpenProjectClient:
         filters = payload.get("filters", [])
         if not isinstance(filters, list):
             filters = []
-        return self._apply_hidden_fields("board", BoardSummary(
-            id=int(payload["id"]),
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Board {payload['id']}",
-            project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
-            project=_link_title(project_link),
-            public=bool(payload.get("public")),
-            hidden=bool(payload.get("hidden")),
-            starred=bool(payload.get("starred")),
-            include_subprojects=bool(payload.get("includeSubprojects")),
-            show_hierarchies=bool(payload.get("showHierarchies")),
-            timeline_visible=bool(payload.get("timelineVisible")),
-            filter_count=len(filters),
-            can_update=bool(links.get("update") or links.get("updateImmediately")),
-            can_delete=bool(links.get("delete")),
-            url=self._board_web_url(payload),
-        ))
+        return self._apply_hidden_fields(
+            "board",
+            BoardSummary(
+                id=int(payload["id"]),
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Board {payload['id']}",
+                project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
+                project=_link_title(project_link),
+                public=bool(payload.get("public")),
+                hidden=bool(payload.get("hidden")),
+                starred=bool(payload.get("starred")),
+                include_subprojects=bool(payload.get("includeSubprojects")),
+                show_hierarchies=bool(payload.get("showHierarchies")),
+                timeline_visible=bool(payload.get("timelineVisible")),
+                filter_count=len(filters),
+                can_update=bool(links.get("update") or links.get("updateImmediately")),
+                can_delete=bool(links.get("delete")),
+                url=self._board_web_url(payload),
+            ),
+        )
 
     def normalize_board_detail(self, payload: dict[str, Any]) -> BoardDetail:
         summary = self.normalize_board(payload)
         links = payload.get("_links", {})
-        return self._apply_hidden_fields("board", BoardDetail(
-            id=summary.id,
-            name=summary.name,
-            project_id=summary.project_id,
-            project=summary.project,
-            public=summary.public,
-            hidden=summary.hidden,
-            starred=summary.starred,
-            include_subprojects=summary.include_subprojects,
-            show_hierarchies=summary.show_hierarchies,
-            timeline_visible=summary.timeline_visible,
-            timeline_zoom_level=_trim_text(payload.get("timelineZoomLevel"), limit=SUBJECT_LIMIT),
-            highlighting_mode=_trim_text(payload.get("highlightingMode"), limit=SUBJECT_LIMIT),
-            group_by=self._normalize_query_link_label(links.get("groupBy")),
-            columns=self._normalize_query_link_list(links.get("columns")),
-            sort_by=self._normalize_query_link_list(links.get("sortBy")),
-            highlighted_attributes=self._normalize_query_link_list(links.get("highlightedAttributes")),
-            timestamps=[str(item) for item in payload.get("timestamps", []) if str(item).strip()],
-            filters=[self._normalize_board_filter(item) for item in payload.get("filters", []) if isinstance(item, dict)],
-            created_at=payload.get("createdAt"),
-            updated_at=payload.get("updatedAt"),
-            can_update=summary.can_update,
-            can_delete=summary.can_delete,
-            url=summary.url,
-        ))
+        return self._apply_hidden_fields(
+            "board",
+            BoardDetail(
+                id=summary.id,
+                name=summary.name,
+                project_id=summary.project_id,
+                project=summary.project,
+                public=summary.public,
+                hidden=summary.hidden,
+                starred=summary.starred,
+                include_subprojects=summary.include_subprojects,
+                show_hierarchies=summary.show_hierarchies,
+                timeline_visible=summary.timeline_visible,
+                timeline_zoom_level=_trim_text(payload.get("timelineZoomLevel"), limit=SUBJECT_LIMIT),
+                highlighting_mode=_trim_text(payload.get("highlightingMode"), limit=SUBJECT_LIMIT),
+                group_by=self._normalize_query_link_label(links.get("groupBy")),
+                columns=self._normalize_query_link_list(links.get("columns")),
+                sort_by=self._normalize_query_link_list(links.get("sortBy")),
+                highlighted_attributes=self._normalize_query_link_list(links.get("highlightedAttributes")),
+                timestamps=[str(item) for item in payload.get("timestamps", []) if str(item).strip()],
+                filters=[
+                    self._normalize_board_filter(item) for item in payload.get("filters", []) if isinstance(item, dict)
+                ],
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
+                can_update=summary.can_update,
+                can_delete=summary.can_delete,
+                url=summary.url,
+            ),
+        )
 
     def normalize_view(self, payload: dict[str, Any]) -> ViewSummary:
         links = payload.get("_links", {})
         project_link = links.get("project")
         query_link = links.get("query")
-        return self._apply_hidden_fields("view", ViewSummary(
-            id=int(payload["id"]),
-            type=_trim_text(payload.get("_type"), limit=SUBJECT_LIMIT),
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"View {payload['id']}",
-            project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
-            project=_link_title(project_link),
-            query_id=_id_from_href(query_link.get("href")) if isinstance(query_link, dict) else None,
-            query=_link_title(query_link),
-            public=bool(payload.get("public")),
-            starred=bool(payload.get("starred")),
-            created_at=payload.get("createdAt"),
-            updated_at=payload.get("updatedAt"),
-            url=self._web_url(f"api/v3/views/{payload['id']}"),
-        ))
+        return self._apply_hidden_fields(
+            "view",
+            ViewSummary(
+                id=int(payload["id"]),
+                type=_trim_text(payload.get("_type"), limit=SUBJECT_LIMIT),
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"View {payload['id']}",
+                project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
+                project=_link_title(project_link),
+                query_id=_id_from_href(query_link.get("href")) if isinstance(query_link, dict) else None,
+                query=_link_title(query_link),
+                public=bool(payload.get("public")),
+                starred=bool(payload.get("starred")),
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
+                url=self._web_url(f"api/v3/views/{payload['id']}"),
+            ),
+        )
 
     def normalize_view_detail(self, payload: dict[str, Any]) -> ViewDetail:
         summary = self.normalize_view(payload)
-        return self._apply_hidden_fields("view", ViewDetail(
-            id=summary.id,
-            type=summary.type,
-            name=summary.name,
-            project_id=summary.project_id,
-            project=summary.project,
-            query_id=summary.query_id,
-            query=summary.query,
-            public=summary.public,
-            starred=summary.starred,
-            created_at=summary.created_at,
-            updated_at=summary.updated_at,
-            links=sorted(payload.get("_links", {}).keys()),
-            url=summary.url,
-        ))
+        return self._apply_hidden_fields(
+            "view",
+            ViewDetail(
+                id=summary.id,
+                type=summary.type,
+                name=summary.name,
+                project_id=summary.project_id,
+                project=summary.project,
+                query_id=summary.query_id,
+                query=summary.query,
+                public=summary.public,
+                starred=summary.starred,
+                created_at=summary.created_at,
+                updated_at=summary.updated_at,
+                links=sorted(payload.get("_links", {}).keys()),
+                url=summary.url,
+            ),
+        )
 
     def normalize_query_filter(self, payload: dict[str, Any]) -> QueryFilterSummary:
         links = payload.get("_links", {})
         self_link = links.get("self", {})
         href = self_link.get("href") if isinstance(self_link, dict) else None
         filter_id = _slug_from_href(href) or _trim_text(payload.get("id"), limit=SUBJECT_LIMIT) or ""
-        return self._apply_hidden_fields("query_filter", QueryFilterSummary(
-            id=filter_id,
-            name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
-            url=self._link_to_web_url(href),
-        ))
+        return self._apply_hidden_fields(
+            "query_filter",
+            QueryFilterSummary(
+                id=filter_id,
+                name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
+                url=self._link_to_web_url(href),
+            ),
+        )
 
     def normalize_query_column(self, payload: dict[str, Any]) -> QueryColumnSummary:
         links = payload.get("_links", {})
         self_link = links.get("self", {})
         href = self_link.get("href") if isinstance(self_link, dict) else None
         column_id = _slug_from_href(href) or _trim_text(payload.get("id"), limit=SUBJECT_LIMIT) or ""
-        return self._apply_hidden_fields("query_column", QueryColumnSummary(
-            id=column_id,
-            name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
-            type=_trim_text(payload.get("_type"), limit=SUBJECT_LIMIT),
-            relation_type=_trim_text(payload.get("relationType"), limit=SUBJECT_LIMIT),
-            url=self._link_to_web_url(href),
-        ))
+        return self._apply_hidden_fields(
+            "query_column",
+            QueryColumnSummary(
+                id=column_id,
+                name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
+                type=_trim_text(payload.get("_type"), limit=SUBJECT_LIMIT),
+                relation_type=_trim_text(payload.get("relationType"), limit=SUBJECT_LIMIT),
+                url=self._link_to_web_url(href),
+            ),
+        )
 
     def normalize_query_operator(self, payload: dict[str, Any]) -> QueryOperatorSummary:
         links = payload.get("_links", {})
         self_link = links.get("self", {})
         href = self_link.get("href") if isinstance(self_link, dict) else None
         operator_id = _slug_from_href(href) or _trim_text(payload.get("id"), limit=SUBJECT_LIMIT) or ""
-        return self._apply_hidden_fields("query_operator", QueryOperatorSummary(
-            id=operator_id,
-            name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
-            url=self._link_to_web_url(href),
-        ))
+        return self._apply_hidden_fields(
+            "query_operator",
+            QueryOperatorSummary(
+                id=operator_id,
+                name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
+                url=self._link_to_web_url(href),
+            ),
+        )
 
     def normalize_query_sort_by(self, payload: dict[str, Any]) -> QuerySortBySummary:
         links = payload.get("_links", {})
@@ -4662,13 +4826,16 @@ class OpenProjectClient:
         direction = _trim_text(payload.get("direction"), limit=SUBJECT_LIMIT)
         if direction is None and isinstance(direction_link, dict):
             direction = _trim_text(direction_link.get("title"), limit=SUBJECT_LIMIT)
-        return self._apply_hidden_fields("query_sort_by", QuerySortBySummary(
-            id=sort_by_id,
-            name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
-            column=_link_title(column_link) if isinstance(column_link, dict) else None,
-            direction=direction,
-            url=self._link_to_web_url(href),
-        ))
+        return self._apply_hidden_fields(
+            "query_sort_by",
+            QuerySortBySummary(
+                id=sort_by_id,
+                name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
+                column=_link_title(column_link) if isinstance(column_link, dict) else None,
+                direction=direction,
+                url=self._link_to_web_url(href),
+            ),
+        )
 
     def normalize_query_filter_instance_schema(self, payload: dict[str, Any]) -> QueryFilterInstanceSchemaSummary:
         links = payload.get("_links", {})
@@ -4683,13 +4850,21 @@ class OpenProjectClient:
                     values = dependency.get("dependencies")
                     if isinstance(values, dict):
                         operator_count += len(values)
-        return self._apply_hidden_fields("query_filter_instance_schema", QueryFilterInstanceSchemaSummary(
-            id=schema_id,
-            name=_trim_text(payload.get("name", {}).get("name") if isinstance(payload.get("name"), dict) else payload.get("name"), limit=SUBJECT_LIMIT),
-            filter=_link_title(links.get("filter")),
-            operator_count=operator_count,
-            url=self._link_to_web_url(href),
-        ))
+        return self._apply_hidden_fields(
+            "query_filter_instance_schema",
+            QueryFilterInstanceSchemaSummary(
+                id=schema_id,
+                name=_trim_text(
+                    payload.get("name", {}).get("name")
+                    if isinstance(payload.get("name"), dict)
+                    else payload.get("name"),
+                    limit=SUBJECT_LIMIT,
+                ),
+                filter=_link_title(links.get("filter")),
+                operator_count=operator_count,
+                url=self._link_to_web_url(href),
+            ),
+        )
 
     def normalize_document(self, payload: dict[str, Any]) -> DocumentSummary:
         links = payload.get("_links", {})
@@ -4697,65 +4872,81 @@ class OpenProjectClient:
         attachment_count = 0
         if isinstance(attachments, dict):
             attachment_count = int(attachments.get("count") or attachments.get("total") or 0)
-        return self._apply_hidden_fields("document", DocumentSummary(
-            id=int(payload["id"]),
-            title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or f"Document {payload['id']}",
-            project_id=_id_from_href(links.get("project", {}).get("href")),
-            project=_link_title(links.get("project")),
-            description=self._visible_formattable_text(payload.get("description"), "project", "description", limit=SUBJECT_LIMIT),
-            created_at=payload.get("createdAt"),
-            attachment_count=attachment_count,
-            can_update=bool(links.get("update") or links.get("updateImmediately")),
-            url=self._web_url(f"documents/{payload['id']}"),
-        ))
+        return self._apply_hidden_fields(
+            "document",
+            DocumentSummary(
+                id=int(payload["id"]),
+                title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or f"Document {payload['id']}",
+                project_id=_id_from_href(links.get("project", {}).get("href")),
+                project=_link_title(links.get("project")),
+                description=self._visible_formattable_text(
+                    payload.get("description"), "project", "description", limit=SUBJECT_LIMIT
+                ),
+                created_at=payload.get("createdAt"),
+                attachment_count=attachment_count,
+                can_update=bool(links.get("update") or links.get("updateImmediately")),
+                url=self._web_url(f"documents/{payload['id']}"),
+            ),
+        )
 
     def normalize_document_detail(self, payload: dict[str, Any]) -> DocumentDetail:
         summary = self.normalize_document(payload)
         links = payload.get("_links", {})
-        return self._apply_hidden_fields("document", DocumentDetail(
-            id=summary.id,
-            title=summary.title,
-            project_id=summary.project_id,
-            project=summary.project,
-            description=self._visible_formattable_text(payload.get("description"), "project", "description"),
-            created_at=summary.created_at,
-            attachment_count=summary.attachment_count,
-            attachments_url=self._link_to_web_url(links.get("attachments", {}).get("href")),
-            can_update=summary.can_update,
-            url=summary.url,
-        ))
+        return self._apply_hidden_fields(
+            "document",
+            DocumentDetail(
+                id=summary.id,
+                title=summary.title,
+                project_id=summary.project_id,
+                project=summary.project,
+                description=self._visible_formattable_text(payload.get("description"), "project", "description"),
+                created_at=summary.created_at,
+                attachment_count=summary.attachment_count,
+                attachments_url=self._link_to_web_url(links.get("attachments", {}).get("href")),
+                can_update=summary.can_update,
+                url=summary.url,
+            ),
+        )
 
     def normalize_news(self, payload: dict[str, Any]) -> NewsSummary:
         links = payload.get("_links", {})
-        return self._apply_hidden_fields("news", NewsSummary(
-            id=int(payload["id"]),
-            title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or f"News {payload['id']}",
-            summary=_trim_text(payload.get("summary"), limit=SUBJECT_LIMIT),
-            description=self._visible_formattable_text(payload.get("description"), "project", "description", limit=SUBJECT_LIMIT),
-            project_id=_id_from_href(links.get("project", {}).get("href")),
-            project=_link_title(links.get("project")),
-            author=_link_title(links.get("author")),
-            created_at=payload.get("createdAt"),
-            can_update=bool(links.get("update") or links.get("updateImmediately")),
-            can_delete=bool(links.get("delete")),
-            url=self._web_url(f"news/{payload['id']}"),
-        ))
+        return self._apply_hidden_fields(
+            "news",
+            NewsSummary(
+                id=int(payload["id"]),
+                title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or f"News {payload['id']}",
+                summary=_trim_text(payload.get("summary"), limit=SUBJECT_LIMIT),
+                description=self._visible_formattable_text(
+                    payload.get("description"), "project", "description", limit=SUBJECT_LIMIT
+                ),
+                project_id=_id_from_href(links.get("project", {}).get("href")),
+                project=_link_title(links.get("project")),
+                author=_link_title(links.get("author")),
+                created_at=payload.get("createdAt"),
+                can_update=bool(links.get("update") or links.get("updateImmediately")),
+                can_delete=bool(links.get("delete")),
+                url=self._web_url(f"news/{payload['id']}"),
+            ),
+        )
 
     def normalize_news_detail(self, payload: dict[str, Any]) -> NewsDetail:
         summary = self.normalize_news(payload)
-        return self._apply_hidden_fields("news", NewsDetail(
-            id=summary.id,
-            title=summary.title,
-            summary=summary.summary,
-            description=self._visible_formattable_text(payload.get("description"), "project", "description"),
-            project_id=summary.project_id,
-            project=summary.project,
-            author=summary.author,
-            created_at=summary.created_at,
-            can_update=summary.can_update,
-            can_delete=summary.can_delete,
-            url=summary.url,
-        ))
+        return self._apply_hidden_fields(
+            "news",
+            NewsDetail(
+                id=summary.id,
+                title=summary.title,
+                summary=summary.summary,
+                description=self._visible_formattable_text(payload.get("description"), "project", "description"),
+                project_id=summary.project_id,
+                project=summary.project,
+                author=summary.author,
+                created_at=summary.created_at,
+                can_update=summary.can_update,
+                can_delete=summary.can_delete,
+                url=summary.url,
+            ),
+        )
 
     def normalize_wiki_page(self, payload: dict[str, Any]) -> WikiPageDetail:
         links = payload.get("_links", {})
@@ -4763,36 +4954,50 @@ class OpenProjectClient:
         content: str | None = None
         if isinstance(text_block, dict):
             content = _trim_text(text_block.get("raw"), limit=50_000)
-        return self._apply_hidden_fields("wiki_page", WikiPageDetail(
-            id=int(payload["id"]),
-            title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or f"Wiki page {payload['id']}",
-            project_id=_id_from_href(links.get("project", {}).get("href")),
-            project=_link_title(links.get("project")),
-            content=content,
-            attachments_url=self._link_to_web_url(links.get("attachments", {}).get("href")),
-            url=self._web_url(f"wiki_pages/{payload['id']}"),
-        ))
+        return self._apply_hidden_fields(
+            "wiki_page",
+            WikiPageDetail(
+                id=int(payload["id"]),
+                title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or f"Wiki page {payload['id']}",
+                project_id=_id_from_href(links.get("project", {}).get("href")),
+                project=_link_title(links.get("project")),
+                content=content,
+                attachments_url=self._link_to_web_url(links.get("attachments", {}).get("href")),
+                url=self._web_url(f"wiki_pages/{payload['id']}"),
+            ),
+        )
 
     def normalize_job_status(self, payload: dict[str, Any]) -> JobStatusDetail:
         links = payload.get("_links", {})
         project_link = links.get("project") or links.get("sourceProject")
         resource_link = links.get("createdProject") or links.get("createdResource") or links.get("result")
-        return self._apply_hidden_fields("job_status", JobStatusDetail(
-            id=int(payload["id"]) if payload.get("id") is not None else _id_from_href(links.get("self", {}).get("href")),
-            type=_trim_text(payload.get("_type"), limit=SUBJECT_LIMIT),
-            status=_trim_text(payload.get("status") or payload.get("jobStatus") or payload.get("state"), limit=SUBJECT_LIMIT),
-            message=_trim_text(payload.get("message") or payload.get("error"), limit=FORMATTABLE_LIMIT),
-            created_at=payload.get("createdAt"),
-            updated_at=payload.get("updatedAt"),
-            percentage_complete=payload.get("percentageDone") or payload.get("progress"),
-            project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
-            project=_link_title(project_link),
-            created_resource_type=_trim_text(resource_link.get("type"), limit=SUBJECT_LIMIT) if isinstance(resource_link, dict) else None,
-            created_resource_id=_id_from_href(resource_link.get("href")) if isinstance(resource_link, dict) else None,
-            created_resource_name=_link_title(resource_link),
-            links=sorted(links.keys()),
-            url=self._link_to_web_url(links.get("self", {}).get("href")),
-        ))
+        return self._apply_hidden_fields(
+            "job_status",
+            JobStatusDetail(
+                id=int(payload["id"])
+                if payload.get("id") is not None
+                else _id_from_href(links.get("self", {}).get("href")),
+                type=_trim_text(payload.get("_type"), limit=SUBJECT_LIMIT),
+                status=_trim_text(
+                    payload.get("status") or payload.get("jobStatus") or payload.get("state"), limit=SUBJECT_LIMIT
+                ),
+                message=_trim_text(payload.get("message") or payload.get("error"), limit=FORMATTABLE_LIMIT),
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
+                percentage_complete=payload.get("percentageDone") or payload.get("progress"),
+                project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
+                project=_link_title(project_link),
+                created_resource_type=_trim_text(resource_link.get("type"), limit=SUBJECT_LIMIT)
+                if isinstance(resource_link, dict)
+                else None,
+                created_resource_id=_id_from_href(resource_link.get("href"))
+                if isinstance(resource_link, dict)
+                else None,
+                created_resource_name=_link_title(resource_link),
+                links=sorted(links.keys()),
+                url=self._link_to_web_url(links.get("self", {}).get("href")),
+            ),
+        )
 
     def normalize_category(
         self,
@@ -4802,14 +5007,17 @@ class OpenProjectClient:
         project_name: str | None,
     ) -> CategorySummary:
         category_id = int(payload["id"])
-        return self._apply_hidden_fields("category", CategorySummary(
-            id=category_id,
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Category {category_id}",
-            project_id=project_id,
-            project=project_name,
-            is_default=bool(payload.get("isDefault")),
-            url=self._web_url(f"api/v3/categories/{category_id}"),
-        ))
+        return self._apply_hidden_fields(
+            "category",
+            CategorySummary(
+                id=category_id,
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Category {category_id}",
+                project_id=project_id,
+                project=project_name,
+                is_default=bool(payload.get("isDefault")),
+                url=self._web_url(f"api/v3/categories/{category_id}"),
+            ),
+        )
 
     def normalize_attachment(self, payload: dict[str, Any]) -> AttachmentSummary:
         links = payload.get("_links", {})
@@ -4826,21 +5034,25 @@ class OpenProjectClient:
             download_href = links["downloadLocation"].get("href")
         if not download_href and isinstance(links.get("staticDownloadLocation"), dict):
             download_href = links["staticDownloadLocation"].get("href")
-        return self._apply_hidden_fields("attachment", AttachmentSummary(
-            id=int(payload["id"]),
-            title=_trim_text(payload.get("title") or payload.get("fileName"), limit=SUBJECT_LIMIT) or f"Attachment {payload['id']}",
-            file_name=_trim_text(payload.get("fileName"), limit=SUBJECT_LIMIT),
-            file_size=payload.get("fileSize"),
-            description=_extract_formattable_text(payload.get("description")),
-            content_type=_trim_text(payload.get("contentType"), limit=SUBJECT_LIMIT),
-            status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
-            author=_link_title(links.get("author")),
-            container_type=container_type,
-            container_id=_id_from_href(container_href),
-            created_at=payload.get("createdAt"),
-            download_url=self._link_to_web_url(download_href),
-            url=self._web_url(f"api/v3/attachments/{payload['id']}"),
-        ))
+        return self._apply_hidden_fields(
+            "attachment",
+            AttachmentSummary(
+                id=int(payload["id"]),
+                title=_trim_text(payload.get("title") or payload.get("fileName"), limit=SUBJECT_LIMIT)
+                or f"Attachment {payload['id']}",
+                file_name=_trim_text(payload.get("fileName"), limit=SUBJECT_LIMIT),
+                file_size=payload.get("fileSize"),
+                description=_extract_formattable_text(payload.get("description")),
+                content_type=_trim_text(payload.get("contentType"), limit=SUBJECT_LIMIT),
+                status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
+                author=_link_title(links.get("author")),
+                container_type=container_type,
+                container_id=_id_from_href(container_href),
+                created_at=payload.get("createdAt"),
+                download_url=self._link_to_web_url(download_href),
+                url=self._web_url(f"api/v3/attachments/{payload['id']}"),
+            ),
+        )
 
     def _normalize_board_filter(self, payload: dict[str, Any]) -> BoardFilter:
         links = payload.get("_links", {})
@@ -4881,10 +5093,7 @@ class OpenProjectClient:
 
     def _normalize_query_link_label(self, value: Any) -> str | None:
         if isinstance(value, dict):
-            return (
-                _link_title(value)
-                or _slug_from_href(value.get("href"))
-            )
+            return _link_title(value) or _slug_from_href(value.get("href"))
         return _trim_text(value, limit=SUBJECT_LIMIT)
 
     def _board_web_url(self, payload: dict[str, Any]) -> str:
@@ -4892,24 +5101,27 @@ class OpenProjectClient:
         return urljoin(f"{self.settings.base_url.rstrip('/')}/", f"work_packages?query_id={board_id}")
 
     def normalize_instance_configuration(self, payload: dict[str, Any]) -> InstanceConfiguration:
-        return self._apply_hidden_fields("instance_configuration", InstanceConfiguration(
-            host_name=_trim_text(payload.get("hostName"), limit=SUBJECT_LIMIT),
-            maximum_attachment_file_size=payload.get("maximumAttachmentFileSize"),
-            maximum_api_v3_page_size=payload.get("maximumAPIV3PageSize"),
-            per_page_options=[int(item) for item in payload.get("perPageOptions", []) if isinstance(item, int)],
-            duration_format=_trim_text(payload.get("durationFormat"), limit=SUBJECT_LIMIT),
-            hours_per_day=payload.get("hoursPerDay"),
-            days_per_month=payload.get("daysPerMonth"),
-            active_feature_flags=sorted(
-                str(item) for item in payload.get("activeFeatureFlags", []) if str(item).strip()
+        return self._apply_hidden_fields(
+            "instance_configuration",
+            InstanceConfiguration(
+                host_name=_trim_text(payload.get("hostName"), limit=SUBJECT_LIMIT),
+                maximum_attachment_file_size=payload.get("maximumAttachmentFileSize"),
+                maximum_api_v3_page_size=payload.get("maximumAPIV3PageSize"),
+                per_page_options=[int(item) for item in payload.get("perPageOptions", []) if isinstance(item, int)],
+                duration_format=_trim_text(payload.get("durationFormat"), limit=SUBJECT_LIMIT),
+                hours_per_day=payload.get("hoursPerDay"),
+                days_per_month=payload.get("daysPerMonth"),
+                active_feature_flags=sorted(
+                    str(item) for item in payload.get("activeFeatureFlags", []) if str(item).strip()
+                ),
+                available_features=sorted(
+                    str(item) for item in payload.get("availableFeatures", []) if str(item).strip()
+                ),
+                trialling_features=sorted(
+                    str(item) for item in payload.get("triallingFeatures", []) if str(item).strip()
+                ),
             ),
-            available_features=sorted(
-                str(item) for item in payload.get("availableFeatures", []) if str(item).strip()
-            ),
-            trialling_features=sorted(
-                str(item) for item in payload.get("triallingFeatures", []) if str(item).strip()
-            ),
-        ))
+        )
 
     def normalize_project_configuration(
         self,
@@ -4918,96 +5130,111 @@ class OpenProjectClient:
         project: ProjectSummary,
     ) -> ProjectConfiguration:
         base = self.normalize_instance_configuration(payload)
-        return self._apply_hidden_fields("project_configuration", ProjectConfiguration(
-            project_id=project.id,
-            project_name=project.name,
-            maximum_attachment_file_size=base.maximum_attachment_file_size,
-            maximum_api_v3_page_size=base.maximum_api_v3_page_size,
-            per_page_options=base.per_page_options,
-            duration_format=base.duration_format,
-            hours_per_day=base.hours_per_day,
-            days_per_month=base.days_per_month,
-            active_feature_flags=base.active_feature_flags,
-            available_features=base.available_features,
-            trialling_features=base.trialling_features,
-            enabled_internal_comments=payload.get("enabledInternalComments"),
-            url=self._web_url(f"api/v3/projects/{project.id}/configuration"),
-        ))
+        return self._apply_hidden_fields(
+            "project_configuration",
+            ProjectConfiguration(
+                project_id=project.id,
+                project_name=project.name,
+                maximum_attachment_file_size=base.maximum_attachment_file_size,
+                maximum_api_v3_page_size=base.maximum_api_v3_page_size,
+                per_page_options=base.per_page_options,
+                duration_format=base.duration_format,
+                hours_per_day=base.hours_per_day,
+                days_per_month=base.days_per_month,
+                active_feature_flags=base.active_feature_flags,
+                available_features=base.available_features,
+                trialling_features=base.trialling_features,
+                enabled_internal_comments=payload.get("enabledInternalComments"),
+                url=self._web_url(f"api/v3/projects/{project.id}/configuration"),
+            ),
+        )
 
     def normalize_project_phase_definition(self, payload: dict[str, Any]) -> ProjectPhaseDefinition:
         phase_id = int(payload["id"])
-        return self._apply_hidden_fields("project_phase_definition", ProjectPhaseDefinition(
-            id=phase_id,
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Phase {phase_id}",
-            start_gate=_trim_text(payload.get("startGateName"), limit=SUBJECT_LIMIT),
-            finish_gate=_trim_text(payload.get("finishGateName"), limit=SUBJECT_LIMIT),
-            created_at=payload.get("createdAt"),
-            updated_at=payload.get("updatedAt"),
-            url=self._web_url(f"api/v3/project_phase_definitions/{phase_id}"),
-        ))
+        return self._apply_hidden_fields(
+            "project_phase_definition",
+            ProjectPhaseDefinition(
+                id=phase_id,
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Phase {phase_id}",
+                start_gate=_trim_text(payload.get("startGateName"), limit=SUBJECT_LIMIT),
+                finish_gate=_trim_text(payload.get("finishGateName"), limit=SUBJECT_LIMIT),
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
+                url=self._web_url(f"api/v3/project_phase_definitions/{phase_id}"),
+            ),
+        )
 
     def normalize_project_phase(self, payload: dict[str, Any]) -> ProjectPhase:
         phase_id = int(payload["id"])
         links = payload.get("_links", {})
         phase_definition_link = links.get("projectPhaseDefinition")
-        return self._apply_hidden_fields("project_phase", ProjectPhase(
-            id=phase_id,
-            name=(
-                _trim_text(payload.get("name"), limit=SUBJECT_LIMIT)
-                or _link_title(phase_definition_link)
-                or f"Project phase {phase_id}"
+        return self._apply_hidden_fields(
+            "project_phase",
+            ProjectPhase(
+                id=phase_id,
+                name=(
+                    _trim_text(payload.get("name"), limit=SUBJECT_LIMIT)
+                    or _link_title(phase_definition_link)
+                    or f"Project phase {phase_id}"
+                ),
+                project_id=_id_from_href(links.get("project", {}).get("href")),
+                project=_link_title(links.get("project")),
+                phase_definition_id=_id_from_href(phase_definition_link.get("href"))
+                if isinstance(phase_definition_link, dict)
+                else None,
+                phase_definition=_link_title(phase_definition_link),
+                start_date=payload.get("startDate"),
+                finish_date=payload.get("finishDate"),
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
+                url=self._web_url(f"api/v3/project_phases/{phase_id}"),
             ),
-            project_id=_id_from_href(links.get("project", {}).get("href")),
-            project=_link_title(links.get("project")),
-            phase_definition_id=_id_from_href(phase_definition_link.get("href")) if isinstance(phase_definition_link, dict) else None,
-            phase_definition=_link_title(phase_definition_link),
-            start_date=payload.get("startDate"),
-            finish_date=payload.get("finishDate"),
-            created_at=payload.get("createdAt"),
-            updated_at=payload.get("updatedAt"),
-            url=self._web_url(f"api/v3/project_phases/{phase_id}"),
-        ))
+        )
 
     def normalize_time_entry_activity(self, payload: dict[str, Any]) -> TimeEntryActivitySummary:
         activity_id = int(payload["id"])
         projects = [
-            _link_title(item)
-            for item in payload.get("_links", {}).get("projects", [])
-            if isinstance(item, dict)
+            _link_title(item) for item in payload.get("_links", {}).get("projects", []) if isinstance(item, dict)
         ]
-        return self._apply_hidden_fields("time_entry_activity", TimeEntryActivitySummary(
-            id=activity_id,
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Activity {activity_id}",
-            position=payload.get("position"),
-            is_default=bool(payload.get("default")),
-            projects=[item for item in projects if item],
-            url=self._web_url(f"time_entries/activities/{activity_id}"),
-        ))
+        return self._apply_hidden_fields(
+            "time_entry_activity",
+            TimeEntryActivitySummary(
+                id=activity_id,
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Activity {activity_id}",
+                position=payload.get("position"),
+                is_default=bool(payload.get("default")),
+                projects=[item for item in projects if item],
+                url=self._web_url(f"time_entries/activities/{activity_id}"),
+            ),
+        )
 
     def normalize_time_entry(self, payload: dict[str, Any]) -> TimeEntrySummary:
         links = payload.get("_links", {})
         project_link = links.get("project")
         entity_link = links.get("entity")
-        return self._apply_hidden_fields("time_entry", TimeEntrySummary(
-            id=int(payload["id"]),
-            project=_link_title(project_link),
-            entity_type=_trim_text(payload.get("entityType"), limit=SUBJECT_LIMIT),
-            entity_id=_id_from_href(entity_link.get("href")) if isinstance(entity_link, dict) else None,
-            entity_name=_link_title(entity_link),
-            user=_link_title(links.get("user")),
-            activity=_link_title(links.get("activity")),
-            hours=_trim_text(payload.get("hours"), limit=SUBJECT_LIMIT),
-            spent_on=_trim_text(payload.get("spentOn"), limit=SUBJECT_LIMIT),
-            # Only present when the admin enabled allow_tracking_start_and_end_times;
-            # otherwise absent, so these stay None.
-            start_time=_trim_text(payload.get("startTime"), limit=SUBJECT_LIMIT),
-            end_time=_trim_text(payload.get("endTime"), limit=SUBJECT_LIMIT),
-            ongoing=bool(payload.get("ongoing")),
-            comment=self._visible_formattable_text(payload.get("comment"), "activity", "comment"),
-            created_at=payload.get("createdAt"),
-            updated_at=payload.get("updatedAt"),
-            url=self._web_url(f"time_entries/{payload['id']}"),
-        ))
+        return self._apply_hidden_fields(
+            "time_entry",
+            TimeEntrySummary(
+                id=int(payload["id"]),
+                project=_link_title(project_link),
+                entity_type=_trim_text(payload.get("entityType"), limit=SUBJECT_LIMIT),
+                entity_id=_id_from_href(entity_link.get("href")) if isinstance(entity_link, dict) else None,
+                entity_name=_link_title(entity_link),
+                user=_link_title(links.get("user")),
+                activity=_link_title(links.get("activity")),
+                hours=_trim_text(payload.get("hours"), limit=SUBJECT_LIMIT),
+                spent_on=_trim_text(payload.get("spentOn"), limit=SUBJECT_LIMIT),
+                # Only present when the admin enabled allow_tracking_start_and_end_times;
+                # otherwise absent, so these stay None.
+                start_time=_trim_text(payload.get("startTime"), limit=SUBJECT_LIMIT),
+                end_time=_trim_text(payload.get("endTime"), limit=SUBJECT_LIMIT),
+                ongoing=bool(payload.get("ongoing")),
+                comment=self._visible_formattable_text(payload.get("comment"), "activity", "comment"),
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
+                url=self._web_url(f"time_entries/{payload['id']}"),
+            ),
+        )
 
     def normalize_status(self, payload: dict[str, Any]) -> StatusSummary:
         status_id = int(payload["id"])
@@ -5090,7 +5317,8 @@ class OpenProjectClient:
         storage_name = _link_title(storage_link)
         return FileLinkSummary(
             id=file_link_id,
-            title=_trim_text(payload.get("title") or payload.get("originData", {}).get("name"), limit=SUBJECT_LIMIT) or f"File link {file_link_id}",
+            title=_trim_text(payload.get("title") or payload.get("originData", {}).get("name"), limit=SUBJECT_LIMIT)
+            or f"File link {file_link_id}",
             storage_id=storage_id,
             storage_name=storage_name,
             created_at=payload.get("createdAt"),
@@ -5131,7 +5359,8 @@ class OpenProjectClient:
             attribute_name=payload.get("attribute") or payload.get("attributeName"),
             attribute_caption=payload.get("attributeCaption"),
             help_text=_trim_text(
-                (payload.get("helpText") or {}).get("raw") if isinstance(payload.get("helpText"), dict)
+                (payload.get("helpText") or {}).get("raw")
+                if isinstance(payload.get("helpText"), dict)
                 else payload.get("helpText"),
                 limit=FORMATTABLE_LIMIT,
             ),
@@ -5165,9 +5394,7 @@ class OpenProjectClient:
     def _normalize_field_schema(self, key: str, payload: dict[str, Any]) -> WorkPackageFieldSchema:
         allowed_values = payload.get("_embedded", {}).get("allowedValues", [])
         normalized_allowed_values = [
-            self._normalize_option_value(item)
-            for item in allowed_values
-            if isinstance(item, dict)
+            self._normalize_option_value(item) for item in allowed_values if isinstance(item, dict)
         ]
         return WorkPackageFieldSchema(
             key=key,
@@ -5188,9 +5415,7 @@ class OpenProjectClient:
         embedded_allowed = payload.get("_embedded", {}).get("allowedValues", [])
         if isinstance(embedded_allowed, list):
             normalized_allowed_values.extend(
-                self._normalize_option_value(item)
-                for item in embedded_allowed
-                if isinstance(item, dict)
+                self._normalize_option_value(item) for item in embedded_allowed if isinstance(item, dict)
             )
         link_allowed = payload.get("_links", {}).get("allowedValues", [])
         if isinstance(link_allowed, list):
@@ -5323,7 +5548,9 @@ class OpenProjectClient:
                 links["category"] = {"href": self._resolve_schema_option_href(schema, "category", category)}
             if project_phase is not None:
                 self._ensure_field_writable("work_package", "project_phase")
-                links["projectPhase"] = {"href": self._resolve_schema_option_href(schema, "projectPhase", project_phase)}
+                links["projectPhase"] = {
+                    "href": self._resolve_schema_option_href(schema, "projectPhase", project_phase)
+                }
             if custom_fields:
                 self._apply_custom_fields(payload, links, schema, custom_fields)
         if links:
@@ -5377,7 +5604,9 @@ class OpenProjectClient:
             if not href:
                 continue
             item_id = _id_from_href(href)
-            title = _trim_text(item.get("name") or item.get("_links", {}).get("self", {}).get("title"), limit=SUBJECT_LIMIT)
+            title = _trim_text(
+                item.get("name") or item.get("_links", {}).get("self", {}).get("title"), limit=SUBJECT_LIMIT
+            )
             if normalized.isdigit() and item_id is not None and int(normalized) == item_id:
                 return href
             if title and title.casefold() == normalized.casefold():
@@ -5603,8 +5832,7 @@ class OpenProjectClient:
         if highlighted_attributes is not None:
             self._ensure_field_writable("board", "highlighted_attributes")
             links["highlightedAttributes"] = [
-                {"href": self._resolve_query_reference_href(item, kind="column")}
-                for item in highlighted_attributes
+                {"href": self._resolve_query_reference_href(item, kind="column")} for item in highlighted_attributes
             ]
         if links:
             payload["_links"] = links
@@ -5682,11 +5910,7 @@ class OpenProjectClient:
         schema = form.get("_embedded", {}).get("schema", {})
         activity_field = schema.get("activity", {})
         allowed = activity_field.get("_embedded", {}).get("allowedValues", [])
-        return [
-            self.normalize_time_entry_activity(item)
-            for item in allowed
-            if isinstance(item, dict)
-        ]
+        return [self.normalize_time_entry_activity(item) for item in allowed if isinstance(item, dict)]
 
     async def _finalize_version_write(
         self,
@@ -6103,8 +6327,7 @@ class OpenProjectClient:
         if scope == "admin":
             if not self.settings.enable_admin_write:
                 raise PermissionDeniedError(
-                    "User/group management is disabled. "
-                    "Set OPENPROJECT_ENABLE_ADMIN_WRITE=true to allow it."
+                    "User/group management is disabled. Set OPENPROJECT_ENABLE_ADMIN_WRITE=true to allow it."
                 )
             return
         if self.settings.write_enabled(scope):
@@ -6134,8 +6357,7 @@ class OpenProjectClient:
             "board": "OPENPROJECT_ENABLE_BOARD_READ",
         }.get(scope, "the relevant OPENPROJECT_ENABLE_*_READ flag")
         raise PermissionDeniedError(
-            f"OpenProject {scope.replace('_', ' ')} read support is disabled. "
-            f"Set {scope_env}=true to allow reads."
+            f"OpenProject {scope.replace('_', ' ')} read support is disabled. Set {scope_env}=true to allow reads."
         )
 
     def _ensure_project_allowed(self, project_ref: str, *, payload: dict[str, Any] | None = None) -> None:
@@ -6145,7 +6367,9 @@ class OpenProjectClient:
             return
         candidates = self._project_candidates(project_ref=project_ref, payload=payload)
         if not _scope_matches_candidates(self.settings.allowed_projects, candidates):
-            raise PermissionDeniedError("OpenProject access to this project is disabled by OPENPROJECT_ALLOWED_PROJECTS_READ.")
+            raise PermissionDeniedError(
+                "OpenProject access to this project is disabled by OPENPROJECT_ALLOWED_PROJECTS_READ."
+            )
 
     def _ensure_project_write_allowed(self, project_ref: str, *, payload: dict[str, Any] | None = None) -> None:
         self._ensure_project_allowed(project_ref, payload=payload)
@@ -6165,8 +6389,14 @@ class OpenProjectClient:
 
     def _ensure_project_write_candidate_allowed(self, *, identifier: str | None, name: str | None) -> None:
         candidates = self._project_candidates(identifier=identifier, name=name)
-        if self.settings.allowed_projects and not _scope_allows_all(self.settings.allowed_projects) and not _scope_matches_candidates(self.settings.allowed_projects, candidates):
-            raise PermissionDeniedError("OpenProject access to this project is disabled by OPENPROJECT_ALLOWED_PROJECTS_READ.")
+        if (
+            self.settings.allowed_projects
+            and not _scope_allows_all(self.settings.allowed_projects)
+            and not _scope_matches_candidates(self.settings.allowed_projects, candidates)
+        ):
+            raise PermissionDeniedError(
+                "OpenProject access to this project is disabled by OPENPROJECT_ALLOWED_PROJECTS_READ."
+            )
         if self.settings.project_write_scope_allows_none:
             raise PermissionDeniedError(
                 "OpenProject writes to this project are disabled by OPENPROJECT_ALLOWED_PROJECTS_WRITE."
@@ -6205,7 +6435,9 @@ class OpenProjectClient:
             return
         candidates = self._project_candidates(link=link)
         if not _scope_matches_candidates(self.settings.allowed_projects, candidates):
-            raise PermissionDeniedError("OpenProject access to this project is disabled by OPENPROJECT_ALLOWED_PROJECTS_READ.")
+            raise PermissionDeniedError(
+                "OpenProject access to this project is disabled by OPENPROJECT_ALLOWED_PROJECTS_READ."
+            )
 
     def _ensure_project_write_link_allowed(self, link: Any) -> None:
         self._ensure_project_link_allowed(link)
@@ -6230,7 +6462,9 @@ class OpenProjectClient:
         if _scope_allows_all(self.settings.allowed_projects):
             return
         if not isinstance(project_link, dict):
-            raise PermissionDeniedError("OpenProject access to this board is disabled by OPENPROJECT_ALLOWED_PROJECTS_READ.")
+            raise PermissionDeniedError(
+                "OpenProject access to this board is disabled by OPENPROJECT_ALLOWED_PROJECTS_READ."
+            )
         self._ensure_project_link_allowed(project_link)
 
     def _ensure_board_write_payload_allowed(self, payload: dict[str, Any]) -> None:
@@ -6259,7 +6493,9 @@ class OpenProjectClient:
         if _scope_allows_all(self.settings.allowed_projects):
             return
         if not isinstance(project_link, dict):
-            raise PermissionDeniedError("OpenProject access to this view is disabled by OPENPROJECT_ALLOWED_PROJECTS_READ.")
+            raise PermissionDeniedError(
+                "OpenProject access to this view is disabled by OPENPROJECT_ALLOWED_PROJECTS_READ."
+            )
         self._ensure_project_link_allowed(project_link)
 
     def _view_payload_allowed(self, payload: dict[str, Any]) -> bool:
@@ -6377,8 +6613,8 @@ class OpenProjectClient:
     def _board_matches_project(self, board: BoardSummary, project_refs: set[str]) -> bool:
         return not project_refs.isdisjoint(
             {
-            str(board.project_id).casefold() if board.project_id is not None else "",
-            (board.project or "").casefold(),
+                str(board.project_id).casefold() if board.project_id is not None else "",
+                (board.project or "").casefold(),
             }
         )
 
@@ -6418,9 +6654,15 @@ class OpenProjectClient:
     # Files that must never be uploaded even from inside the attachment root:
     # the config often lives in the server's working directory, so directory
     # containment alone would still expose the API token and other secrets.
-    _ATTACHMENT_DENY_NAMES = frozenset({
-        ".mcp.json", ".env", "credentials", "id_rsa", "id_ed25519",
-    })
+    _ATTACHMENT_DENY_NAMES = frozenset(
+        {
+            ".mcp.json",
+            ".env",
+            "credentials",
+            "id_rsa",
+            "id_ed25519",
+        }
+    )
     _ATTACHMENT_DENY_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
 
     def _is_sensitive_attachment(self, path: Path) -> bool:
@@ -6501,9 +6743,7 @@ class OpenProjectClient:
         if not self._field_hidden(entity, field_name):
             return
         env_name = HIDE_FIELD_ENV_BY_ENTITY.get(entity, "OPENPROJECT_HIDE_FIELDS")
-        raise InvalidInputError(
-            f"OpenProject field '{field_name}' is hidden by {env_name} and cannot be written."
-        )
+        raise InvalidInputError(f"OpenProject field '{field_name}' is hidden by {env_name} and cannot be written.")
 
     def _visible_formattable_text(
         self,
@@ -6581,7 +6821,9 @@ class OpenProjectClient:
         if principal_ref.isdigit():
             return principal_ref
         principals = await self.list_principals(search=principal_ref, offset=1, limit=self.settings.max_results)
-        matches = [str(item.id) for item in principals.results if (item.name or "").casefold() == principal_ref.casefold()]
+        matches = [
+            str(item.id) for item in principals.results if (item.name or "").casefold() == principal_ref.casefold()
+        ]
         if not matches:
             raise InvalidInputError(f"OpenProject principal '{principal_ref}' was not found.")
         if len(matches) > 1:
@@ -6600,7 +6842,9 @@ class OpenProjectClient:
             if normalized.isdigit():
                 hrefs.append(self._api_href(f"roles/{normalized}"))
                 continue
-            matches = [role for role in available_roles.results if (role.name or "").casefold() == normalized.casefold()]
+            matches = [
+                role for role in available_roles.results if (role.name or "").casefold() == normalized.casefold()
+            ]
             if not matches:
                 raise InvalidInputError(f"OpenProject role '{role_ref}' was not found.")
             if len(matches) > 1:
@@ -6622,11 +6866,7 @@ class OpenProjectClient:
             project_id = str(project_payload["id"])
         payload = await self._get(f"projects/{project_id}/types")
         elements = payload.get("_embedded", {}).get("elements", [])
-        matches = [
-            str(item["id"])
-            for item in elements
-            if str(item.get("name", "")).casefold() == type_ref.casefold()
-        ]
+        matches = [str(item["id"]) for item in elements if str(item.get("name", "")).casefold() == type_ref.casefold()]
         if not matches:
             raise InvalidInputError(f"OpenProject type '{type_ref}' was not found in project '{project}'.")
         return matches[0]
@@ -6640,11 +6880,7 @@ class OpenProjectClient:
             project_payload = await self._get(f"projects/{project_ref}")
             project_ref = project_payload.get("identifier") or project_ref
         versions = await self.list_versions(project=project_ref, offset=1, limit=self.settings.max_results)
-        matches = [
-            str(item.id)
-            for item in versions.results
-            if (item.name or "").casefold() == version_ref.casefold()
-        ]
+        matches = [str(item.id) for item in versions.results if (item.name or "").casefold() == version_ref.casefold()]
         if not matches:
             scope = f" in project '{project}'" if project else ""
             raise InvalidInputError(f"OpenProject version '{version_ref}' was not found{scope}.")
@@ -6726,9 +6962,7 @@ class OpenProjectClient:
         else:
             activities = await self.list_time_entry_activities()
         matches = [
-            str(item.id)
-            for item in activities.results
-            if (item.name or "").casefold() == activity_ref.casefold()
+            str(item.id) for item in activities.results if (item.name or "").casefold() == activity_ref.casefold()
         ]
         if not matches:
             raise InvalidInputError(f"OpenProject time entry activity '{activity_ref}' was not found.")
@@ -6746,7 +6980,9 @@ class OpenProjectClient:
         if normalized.startswith("http://") or normalized.startswith("https://"):
             parsed = urlparse(normalized)
             if _origin_from_url(normalized) != self._origin:
-                raise InvalidInputError(f"OpenProject {kind.replace('_', ' ')} references must stay on the same origin.")
+                raise InvalidInputError(
+                    f"OpenProject {kind.replace('_', ' ')} references must stay on the same origin."
+                )
             return parsed.path
 
         if normalized.startswith("/"):

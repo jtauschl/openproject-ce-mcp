@@ -7,13 +7,47 @@ development baseline.
 
 ---
 
-## 0.2.2 (unreleased)
+## 0.2.2 – 2026-07-06
+
+### Security
+
+- **`delete_file_link` now enforces the project write allowlist.** It previously
+  checked only the global `work_package` write flag, so with
+  `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE=true` a file link in a project outside
+  `OPENPROJECT_ALLOWED_PROJECTS_WRITE` could be deleted. It now loads the
+  container work package and enforces the allowlist before deleting, and fails
+  closed when the container cannot be resolved.
+- **`toggle_activity_emoji_reaction` now enforces the project write allowlist.**
+  It patched reactions with no per-project check; it now resolves the activity's
+  work package and enforces the allowlist before the write, failing closed if the
+  activity has no resolvable work-package link.
 
 ### Fixed
 
+- **`get_group()` no longer crashes on real API responses.** Group detail embeds
+  members as a flat array; the client assumed a `{count, elements}` collection and
+  raised `AttributeError` for any group with visible members.
+- **`create_time_entry` builds a valid entity link for semantic work-package
+  references.** A reference like `PROJ-123` was placed in the HAL entity link
+  verbatim; HAL links resolve only by numeric id, so the numeric id is now used.
+- **Validation errors for `responsible` name the correct field.** An invalid
+  `responsible` value previously reported an `assignee` error.
 - `openproject-ce-mcp configure` now exits cleanly on Ctrl+C — it prints
   "Cancelled" and exits with code 130 instead of dumping a `KeyboardInterrupt`
   traceback.
+
+### Changed
+
+- **A remote plain-`http://` base URL now emits a startup warning** that the API
+  token is sent unencrypted. `localhost`/`127.0.0.1`/`::1` are exempt from the
+  warning.
+- Documented that self-scoped writes — marking notifications read, updating your
+  own preferences, and toggling your own emoji reactions — execute directly
+  without a preview step; project-attached reactions still enforce write scope.
+- CI now enforces formatting with `ruff format --check`, and the codebase was run
+  through `ruff format` once.
+- Removed two unused internal helpers (`_validate_optional_positive_int`,
+  `_load_existing`).
 
 ---
 

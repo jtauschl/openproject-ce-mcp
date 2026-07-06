@@ -105,37 +105,38 @@ ASSUMPTIONS: list[Assumption] = [
     Assumption("versions endpoint", "path", "versions", subtree=_PATH_HELPER),
     Assumption("statuses endpoint", "path", "status", subtree=_PATH_HELPER),
     # --- Work-package response fields the resolver / writes depend on ---
-    Assumption("displayId field", "field", "displayId",
-               subtree="lib/api/v3/work_packages",
-               present_from="17.4"),  # introduced in 17.4
+    Assumption(
+        "displayId field", "field", "displayId", subtree="lib/api/v3/work_packages", present_from="17.4"
+    ),  # introduced in 17.4
     # Source uses the Ruby property name (snake_case); the representer renders it
     # as "lockVersion" in JSON.
-    Assumption("lockVersion field", "field", "lock_version",
-               subtree="lib/api/v3/work_packages"),
-    Assumption("semantic identifier model", "field", "semantic_id?",
-               subtree="app/models/work_package",
-               present_from="17.4"),  # model lands in 17.4; setting activates it in 17.5
+    Assumption("lockVersion field", "field", "lock_version", subtree="lib/api/v3/work_packages"),
+    Assumption(
+        "semantic identifier model", "field", "semantic_id?", subtree="app/models/work_package", present_from="17.4"
+    ),  # model lands in 17.4; setting activates it in 17.5
     # --- Query filters the client builds ---
     # Present in both lines. Note: this filter matches subject text and the
     # numeric id, NOT the project-based displayId — which is why resolving a
     # semantic reference via this filter fails (see _resolve_work_package_id).
-    Assumption("subject_or_id filter", "filter", "subject_or_id_filter.rb",
-               subtree=_WP_FILTERS),
+    Assumption("subject_or_id filter", "filter", "subject_or_id_filter.rb", subtree=_WP_FILTERS),
     Assumption("status_id filter", "filter", "status_filter.rb", subtree=_WP_FILTERS),
-    Assumption("involved (relations) filter", "filter", "involved_filter.rb",
-               subtree="app/models/queries/relations/filters"),
+    Assumption(
+        "involved (relations) filter", "filter", "involved_filter.rb", subtree="app/models/queries/relations/filters"
+    ),
     # --- Endpoints/operators behind the CE coverage-expansion tools. Each has a
     # different minimum version, recorded so the matrix flags a tool used on too
     # old an instance. (time-entry start/end lives in the costs module, which is
     # not in the sparse checkout, so it is verified at runtime instead.)
-    Assumption("emoji_reactions endpoint", "path", "emoji_reactions",
-               subtree="lib/api/v3", present_from="16.1"),
-    Assumption("reminders endpoint", "path", "reminders",
-               subtree="lib/api/v3"),  # present since 16.0
-    Assumption("favorites endpoint", "path", "favorites",
-               subtree="lib/api/v3", present_from="16.5"),
-    Assumption("version open status operator", "filter", "open_status.rb",
-               subtree="app/models/queries/operators/versions", present_from="16.4"),
+    Assumption("emoji_reactions endpoint", "path", "emoji_reactions", subtree="lib/api/v3", present_from="16.1"),
+    Assumption("reminders endpoint", "path", "reminders", subtree="lib/api/v3"),  # present since 16.0
+    Assumption("favorites endpoint", "path", "favorites", subtree="lib/api/v3", present_from="16.5"),
+    Assumption(
+        "version open status operator",
+        "filter",
+        "open_status.rb",
+        subtree="app/models/queries/operators/versions",
+        present_from="16.4",
+    ),
 ]
 
 
@@ -150,16 +151,22 @@ def _present(version: str, asm: Assumption) -> bool:
     # file list, so we use a combined approach: ripgrep-free, plain grep.
     try:
         # Content match.
-        content = subprocess.run(
-            ["grep", "-rqF", "--", asm.pattern, str(base)],
-            capture_output=True, check=False,
-        ).returncode == 0
+        content = (
+            subprocess.run(
+                ["grep", "-rqF", "--", asm.pattern, str(base)],
+                capture_output=True,
+                check=False,
+            ).returncode
+            == 0
+        )
         if content:
             return True
         # Filename match (for *_api.rb / directory-name patterns).
         names = subprocess.run(
             ["find", str(base), "-name", f"*{asm.pattern}*"],
-            capture_output=True, text=True, check=False,
+            capture_output=True,
+            text=True,
+            check=False,
         ).stdout.strip()
         return bool(names)
     except FileNotFoundError as exc:  # grep/find missing
@@ -191,10 +198,18 @@ class Constant:
 CONSTANTS: list[Constant] = [
     Constant(
         "emoji reactions",
-        frozenset({
-            "thumbs_up", "thumbs_down", "grinning_face_with_smiling_eyes",
-            "confused_face", "heart", "party_popper", "rocket", "eyes",
-        }),
+        frozenset(
+            {
+                "thumbs_up",
+                "thumbs_down",
+                "grinning_face_with_smiling_eyes",
+                "confused_face",
+                "heart",
+                "party_popper",
+                "rocket",
+                "eyes",
+            }
+        ),
         "app/models/emoji_reaction.rb",
         # EMOJI_MAP entries: `    thumbs_up: "..."`
         r"^\s+([a-z_]+):\s*\"",
@@ -258,9 +273,7 @@ def run_constants(verbose: bool = False) -> int:
             else:
                 cells.append(f"{'DRIFT!':<8}")
                 verdict = "DRIFT"
-                failures.append(
-                    f"{const.name}: {v} — client values not in source: {sorted(missing)}"
-                )
+                failures.append(f"{const.name}: {v} — client values not in source: {sorted(missing)}")
         if verdict != "ok" or verbose:
             print(f"{const.name:<28} " + " ".join(cells) + f" {verdict}")
 
@@ -270,8 +283,10 @@ def run_constants(verbose: bool = False) -> int:
         for fmsg in failures:
             print(f"  - {fmsg}")
         return 1
-    print(f"OK: all {len(CONSTANTS)} hardcoded constant sets are a subset of the "
-          f"source across the versions that define them.")
+    print(
+        f"OK: all {len(CONSTANTS)} hardcoded constant sets are a subset of the "
+        f"source across the versions that define them."
+    )
     return 0
 
 
@@ -283,8 +298,11 @@ CLIENT = ROOT / "src" / "openproject_ce_mcp" / "client.py"
 # the sparse source checkout does not include. They exist in CE but cannot be
 # source-verified here, so they are reported as "module" rather than missing.
 MODULE_RESOURCES = {
-    "grids": "my_page", "documents": "documents", "file_links": "storages",
-    "job_statuses": "job_statuses", "time_entries": "costs",
+    "grids": "my_page",
+    "documents": "documents",
+    "file_links": "storages",
+    "job_statuses": "job_statuses",
+    "time_entries": "costs",
 }
 # Path-helper / directory names that differ from the client's path segment.
 RESOURCE_ALIASES = {"statuses": "status", "my_preferences": "user_preferences"}
@@ -294,7 +312,9 @@ RESOURCE_SKIP = {"api", "v3"}
 # Client filter keys whose source filter file is named differently, and keys
 # that are query parameters rather than registered filters (skip those).
 FILTER_ALIASES = {
-    "status_id": "status", "project_id": "project", "assignee": "assigned_to",
+    "status_id": "status",
+    "project_id": "project",
+    "assignee": "assigned_to",
 }
 FILTER_SKIP = {"date", "scope", "context"}  # query params / matchers, not filter files
 
@@ -327,12 +347,15 @@ def _resource_present(version: str, resource: str) -> bool:
         return True
     helper = api / "utilities" / "path_helper.rb"
     if helper.exists():
-        hit = subprocess.run(["grep", "-qE", rf"\b{name}\b", str(helper)],
-                             capture_output=True, check=False).returncode == 0
+        hit = (
+            subprocess.run(["grep", "-qE", rf"\b{name}\b", str(helper)], capture_output=True, check=False).returncode
+            == 0
+        )
         if hit:
             return True
-    found = subprocess.run(["find", str(api), "-name", f"*{name}*"],
-                           capture_output=True, text=True, check=False).stdout.strip()
+    found = subprocess.run(
+        ["find", str(api), "-name", f"*{name}*"], capture_output=True, text=True, check=False
+    ).stdout.strip()
     return bool(found)
 
 
@@ -342,8 +365,9 @@ def _filter_present(version: str, filter_key: str) -> bool:
         return False
     name = FILTER_ALIASES.get(filter_key, filter_key)
     # Filters are <name>_filter.rb files (allow plural dir layouts).
-    found = subprocess.run(["find", str(qroot), "-name", f"{name}_filter.rb"],
-                           capture_output=True, text=True, check=False).stdout.strip()
+    found = subprocess.run(
+        ["find", str(qroot), "-name", f"{name}_filter.rb"], capture_output=True, text=True, check=False
+    ).stdout.strip()
     return bool(found)
 
 
@@ -375,8 +399,7 @@ def run_full_coverage() -> int:
 
     print()
     module_only = [n for n, k, c in rows if c and c[0] == "module"]
-    print(f"{len(resources)} resources + {len(filters)} filters checked across "
-          f"{VERSIONS[0]}..{VERSIONS[-1]}.")
+    print(f"{len(resources)} resources + {len(filters)} filters checked across {VERSIONS[0]}..{VERSIONS[-1]}.")
     if module_only:
         print(f"module-only (not source-verifiable, CE): {', '.join(module_only)}")
     if introduced_late:
@@ -390,12 +413,13 @@ def run_full_coverage() -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verbose", action="store_true",
-                        help="list every checked symbol, not just mismatches")
-    parser.add_argument("--all", action="store_true",
-                        help="auto-extract and map EVERY resource + filter the client uses")
-    parser.add_argument("--constants", action="store_true",
-                        help="verify hardcoded enum/constant VALUES against the source")
+    parser.add_argument("--verbose", action="store_true", help="list every checked symbol, not just mismatches")
+    parser.add_argument(
+        "--all", action="store_true", help="auto-extract and map EVERY resource + filter the client uses"
+    )
+    parser.add_argument(
+        "--constants", action="store_true", help="verify hardcoded enum/constant VALUES against the source"
+    )
     args = parser.parse_args()
 
     missing_sources = [v for v in VERSIONS if not (SOURCES / v).exists()]
@@ -438,14 +462,11 @@ def main() -> int:
         print(f"FAIL: {len(unexpected)} unexpected API difference(s):")
         for u in unexpected:
             print(f"  - {u}")
-        print("\nIf a difference is intentional, update the `expect` field of the "
-              "assumption in check_api.py.")
+        print("\nIf a difference is intentional, update the `expect` field of the assumption in check_api.py.")
         return 1
 
-    print(f"OK: all {len(ASSUMPTIONS)} API assumptions match the expected "
-          f"presence across {', '.join(VERSIONS)}.")
-    print("Note: this is a symbol-existence check, not a behaviour proof — see "
-          "docker/test/ for runtime verification.")
+    print(f"OK: all {len(ASSUMPTIONS)} API assumptions match the expected presence across {', '.join(VERSIONS)}.")
+    print("Note: this is a symbol-existence check, not a behaviour proof — see docker/test/ for runtime verification.")
     return 0
 
 

@@ -1,4 +1,5 @@
 """Integration tests for project read operations."""
+
 from __future__ import annotations
 
 import pytest
@@ -47,7 +48,6 @@ async def test_list_categories(client: OpenProjectClient, test_project: str) -> 
 async def test_get_my_project_access(client: OpenProjectClient, test_project: str) -> None:
     access = await client.get_my_project_access(test_project)
     assert access is not None
-
 
 
 async def test_list_principals(client: OpenProjectClient) -> None:

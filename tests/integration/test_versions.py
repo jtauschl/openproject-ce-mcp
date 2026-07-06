@@ -1,4 +1,5 @@
 """Integration tests for version CRUD operations."""
+
 from __future__ import annotations
 
 import uuid

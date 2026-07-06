@@ -15,6 +15,7 @@ Required environment variables:
     OPENPROJECT_API_TOKEN      API token with admin access
     OPENPROJECT_TEST_PROJECT   DISPOSABLE project identifier to use (default: mcp-test)
 """
+
 from __future__ import annotations
 
 import os
@@ -85,6 +86,7 @@ def test_project() -> str:
 # ---------------------------------------------------------------------------
 # Cleanup helpers for write tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 async def wp_ids(client: OpenProjectClient):

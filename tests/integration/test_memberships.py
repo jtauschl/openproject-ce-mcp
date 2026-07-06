@@ -1,4 +1,5 @@
 """Integration tests for membership and user read operations."""
+
 from __future__ import annotations
 
 import pytest

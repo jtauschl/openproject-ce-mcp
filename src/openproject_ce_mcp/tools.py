@@ -120,7 +120,9 @@ PROJECT_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 # A project-based work package reference: a project identifier followed by "-<number>"
 # (e.g. PROJ-123). The numeric form is handled separately before this pattern applies.
 WORK_PACKAGE_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}-\d+$")
-RELATION_TYPE_RE = re.compile(r"^(relates|duplicates|duplicated|blocks|blocked|precedes|follows|includes|partof|requires|required)$")
+RELATION_TYPE_RE = re.compile(
+    r"^(relates|duplicates|duplicated|blocks|blocked|precedes|follows|includes|partof|requires|required)$"
+)
 
 
 def register_tools(mcp: FastMCP, settings: Settings) -> None:
@@ -304,9 +306,7 @@ async def list_projects(
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
-    return await _run_tool(
-        client.list_projects(search=safe_search, offset=safe_offset, limit=safe_limit)
-    )
+    return await _run_tool(client.list_projects(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
 async def get_project(
@@ -357,7 +357,9 @@ async def create_project(
     safe_identifier = _validate_project_identifier(identifier)
     safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
-    safe_status_explanation = _validate_optional_text(status_explanation, field_name="status_explanation", max_length=10_000)
+    safe_status_explanation = _validate_optional_text(
+        status_explanation, field_name="status_explanation", max_length=10_000
+    )
     safe_parent = _validate_optional_project_ref(parent)
     return await _run_tool(
         client.create_project(
@@ -394,7 +396,9 @@ async def copy_project(
     safe_identifier = _validate_project_identifier(identifier)
     safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
-    safe_status_explanation = _validate_optional_text(status_explanation, field_name="status_explanation", max_length=10_000)
+    safe_status_explanation = _validate_optional_text(
+        status_explanation, field_name="status_explanation", max_length=10_000
+    )
     safe_parent = _validate_optional_project_ref(parent)
     return await _run_tool(
         client.copy_project(
@@ -442,9 +446,23 @@ async def update_project(
     safe_identifier = _validate_optional_project_identifier(identifier)
     safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
-    safe_status_explanation = _validate_optional_text(status_explanation, field_name="status_explanation", max_length=10_000)
+    safe_status_explanation = _validate_optional_text(
+        status_explanation, field_name="status_explanation", max_length=10_000
+    )
     safe_parent = _validate_optional_project_ref(parent)
-    if not any(value is not None for value in (safe_name, safe_identifier, safe_description, public, active, safe_status, safe_status_explanation, safe_parent)):
+    if not any(
+        value is not None
+        for value in (
+            safe_name,
+            safe_identifier,
+            safe_description,
+            public,
+            active,
+            safe_status,
+            safe_status_explanation,
+            safe_parent,
+        )
+    ):
         raise ValueError("At least one field to update is required.")
     return await _run_tool(
         client.update_project(
@@ -669,7 +687,9 @@ async def create_membership(
     safe_project = _validate_project_ref(project)
     safe_principal = _validate_required_query(principal, field_name="principal", max_length=255)
     safe_roles = _validate_required_string_list(roles, field_name="roles", max_items=20, item_max_length=100)
-    safe_notification_message = _validate_optional_text(notification_message, field_name="notification_message", max_length=10_000)
+    safe_notification_message = _validate_optional_text(
+        notification_message, field_name="notification_message", max_length=10_000
+    )
     return await _run_tool(
         client.create_membership(
             project=safe_project,
@@ -692,7 +712,9 @@ async def update_membership(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(membership_id, field_name="membership_id")
     safe_roles = _validate_required_string_list(roles, field_name="roles", max_items=20, item_max_length=100)
-    safe_notification_message = _validate_optional_text(notification_message, field_name="notification_message", max_length=10_000)
+    safe_notification_message = _validate_optional_text(
+        notification_message, field_name="notification_message", max_length=10_000
+    )
     return await _run_tool(
         client.update_membership(
             membership_id=safe_id,
@@ -943,8 +965,6 @@ async def get_wiki_page(
     return await _run_tool(client.get_wiki_page(safe_id))
 
 
-
-
 async def list_categories(
     ctx: Context,
     project: str,
@@ -1098,7 +1118,7 @@ async def create_work_package(
     safe_version = _validate_optional_query(version, field_name="version", max_length=100)
     safe_project_phase = _validate_optional_query(project_phase, field_name="project_phase", max_length=100)
     safe_assignee = _validate_optional_user_ref(assignee)
-    safe_responsible = _validate_optional_user_ref(responsible)
+    safe_responsible = _validate_optional_user_ref(responsible, field_name="responsible")
     safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
     safe_category = _validate_optional_query(category, field_name="category", max_length=100)
     safe_custom_fields = _validate_optional_custom_fields(custom_fields)
@@ -1157,7 +1177,7 @@ async def update_work_package(
     safe_project_phase = _validate_optional_query(project_phase, field_name="project_phase", max_length=100)
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
     safe_assignee = _validate_optional_user_ref(assignee)
-    safe_responsible = _validate_optional_user_ref(responsible)
+    safe_responsible = _validate_optional_user_ref(responsible, field_name="responsible")
     safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
     safe_category = _validate_optional_query(category, field_name="category", max_length=100)
     safe_custom_fields = _validate_optional_custom_fields(custom_fields)
@@ -1239,22 +1259,34 @@ async def bulk_create_work_packages(
             raise ValueError(f"items[{i}].type is required.")
         if not subject:
             raise ValueError(f"items[{i}].subject is required.")
-        safe_items.append({
-            "project": _validate_project_ref(str(project)),
-            "type": _validate_required_query(str(type_), field_name=f"items[{i}].type", max_length=100),
-            "subject": _validate_required_query(str(subject), field_name=f"items[{i}].subject", max_length=255),
-            "description": _validate_optional_text(item.get("description"), field_name=f"items[{i}].description", max_length=10_000),
-            "version": _validate_optional_query(item.get("version"), field_name=f"items[{i}].version", max_length=100),
-            "project_phase": _validate_optional_query(item.get("project_phase"), field_name=f"items[{i}].project_phase", max_length=100),
-            "assignee": _validate_optional_user_ref(item.get("assignee")),
-            "responsible": _validate_optional_user_ref(item.get("responsible")),
-            "priority": _validate_optional_query(item.get("priority"), field_name=f"items[{i}].priority", max_length=100),
-            "category": _validate_optional_query(item.get("category"), field_name=f"items[{i}].category", max_length=100),
-            "custom_fields": _validate_optional_custom_fields(item.get("custom_fields")),
-            "parent_work_package_id": safe_parent_work_package_id,
-            "start_date": _validate_optional_date(item.get("start_date"), field_name=f"items[{i}].start_date"),
-            "due_date": _validate_optional_date(item.get("due_date"), field_name=f"items[{i}].due_date"),
-        })
+        safe_items.append(
+            {
+                "project": _validate_project_ref(str(project)),
+                "type": _validate_required_query(str(type_), field_name=f"items[{i}].type", max_length=100),
+                "subject": _validate_required_query(str(subject), field_name=f"items[{i}].subject", max_length=255),
+                "description": _validate_optional_text(
+                    item.get("description"), field_name=f"items[{i}].description", max_length=10_000
+                ),
+                "version": _validate_optional_query(
+                    item.get("version"), field_name=f"items[{i}].version", max_length=100
+                ),
+                "project_phase": _validate_optional_query(
+                    item.get("project_phase"), field_name=f"items[{i}].project_phase", max_length=100
+                ),
+                "assignee": _validate_optional_user_ref(item.get("assignee")),
+                "responsible": _validate_optional_user_ref(item.get("responsible"), field_name="responsible"),
+                "priority": _validate_optional_query(
+                    item.get("priority"), field_name=f"items[{i}].priority", max_length=100
+                ),
+                "category": _validate_optional_query(
+                    item.get("category"), field_name=f"items[{i}].category", max_length=100
+                ),
+                "custom_fields": _validate_optional_custom_fields(item.get("custom_fields")),
+                "parent_work_package_id": safe_parent_work_package_id,
+                "start_date": _validate_optional_date(item.get("start_date"), field_name=f"items[{i}].start_date"),
+                "due_date": _validate_optional_date(item.get("due_date"), field_name=f"items[{i}].due_date"),
+            }
+        )
     return await _run_tool(client.bulk_create_work_packages(items=safe_items, confirm=confirm))
 
 
@@ -1286,15 +1318,23 @@ async def bulk_update_work_packages(
             raise ValueError(f"items[{i}].work_package_id is required.")
         safe_id = _validate_positive_int(wp_id, field_name=f"items[{i}].work_package_id")
         safe_subject = _validate_optional_query(item.get("subject"), field_name=f"items[{i}].subject", max_length=255)
-        safe_description = _validate_optional_text(item.get("description"), field_name=f"items[{i}].description", max_length=10_000)
+        safe_description = _validate_optional_text(
+            item.get("description"), field_name=f"items[{i}].description", max_length=10_000
+        )
         safe_type = _validate_optional_query(item.get("type"), field_name=f"items[{i}].type", max_length=100)
         safe_version = _validate_optional_query(item.get("version"), field_name=f"items[{i}].version", max_length=100)
-        safe_project_phase = _validate_optional_query(item.get("project_phase"), field_name=f"items[{i}].project_phase", max_length=100)
+        safe_project_phase = _validate_optional_query(
+            item.get("project_phase"), field_name=f"items[{i}].project_phase", max_length=100
+        )
         safe_status = _validate_optional_query(item.get("status"), field_name=f"items[{i}].status", max_length=100)
         safe_assignee = _validate_optional_user_ref(item.get("assignee"))
-        safe_responsible = _validate_optional_user_ref(item.get("responsible"))
-        safe_priority = _validate_optional_query(item.get("priority"), field_name=f"items[{i}].priority", max_length=100)
-        safe_category = _validate_optional_query(item.get("category"), field_name=f"items[{i}].category", max_length=100)
+        safe_responsible = _validate_optional_user_ref(item.get("responsible"), field_name="responsible")
+        safe_priority = _validate_optional_query(
+            item.get("priority"), field_name=f"items[{i}].priority", max_length=100
+        )
+        safe_category = _validate_optional_query(
+            item.get("category"), field_name=f"items[{i}].category", max_length=100
+        )
         safe_custom_fields = _validate_optional_custom_fields(item.get("custom_fields"))
         safe_parent_work_package_id = (
             _validate_positive_int(item.get("parent_work_package_id"), field_name=f"items[{i}].parent_work_package_id")
@@ -1303,30 +1343,45 @@ async def bulk_update_work_packages(
         )
         safe_start_date = _validate_optional_date(item.get("start_date"), field_name=f"items[{i}].start_date")
         safe_due_date = _validate_optional_date(item.get("due_date"), field_name=f"items[{i}].due_date")
-        if not any(v is not None for v in (
-            safe_subject, safe_description, safe_type, safe_version, safe_project_phase,
-            safe_status, safe_assignee, safe_responsible, safe_priority, safe_category,
-            safe_custom_fields, safe_start_date, safe_due_date,
-            safe_parent_work_package_id,
-        )):
+        if not any(
+            v is not None
+            for v in (
+                safe_subject,
+                safe_description,
+                safe_type,
+                safe_version,
+                safe_project_phase,
+                safe_status,
+                safe_assignee,
+                safe_responsible,
+                safe_priority,
+                safe_category,
+                safe_custom_fields,
+                safe_start_date,
+                safe_due_date,
+                safe_parent_work_package_id,
+            )
+        ):
             raise ValueError(f"items[{i}]: at least one field to update is required.")
-        safe_items.append({
-            "work_package_id": safe_id,
-            "subject": safe_subject,
-            "description": safe_description,
-            "type": safe_type,
-            "version": safe_version,
-            "project_phase": safe_project_phase,
-            "status": safe_status,
-            "assignee": safe_assignee,
-            "responsible": safe_responsible,
-            "priority": safe_priority,
-            "category": safe_category,
-            "custom_fields": safe_custom_fields,
-            "parent_work_package_id": safe_parent_work_package_id,
-            "start_date": safe_start_date,
-            "due_date": safe_due_date,
-        })
+        safe_items.append(
+            {
+                "work_package_id": safe_id,
+                "subject": safe_subject,
+                "description": safe_description,
+                "type": safe_type,
+                "version": safe_version,
+                "project_phase": safe_project_phase,
+                "status": safe_status,
+                "assignee": safe_assignee,
+                "responsible": safe_responsible,
+                "priority": safe_priority,
+                "category": safe_category,
+                "custom_fields": safe_custom_fields,
+                "parent_work_package_id": safe_parent_work_package_id,
+                "start_date": safe_start_date,
+                "due_date": safe_due_date,
+            }
+        )
     return await _run_tool(client.bulk_update_work_packages(items=safe_items, confirm=confirm))
 
 
@@ -1375,7 +1430,7 @@ async def create_subtask(
     safe_version = _validate_optional_query(version, field_name="version", max_length=100)
     safe_project_phase = _validate_optional_query(project_phase, field_name="project_phase", max_length=100)
     safe_assignee = _validate_optional_user_ref(assignee)
-    safe_responsible = _validate_optional_user_ref(responsible)
+    safe_responsible = _validate_optional_user_ref(responsible, field_name="responsible")
     safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
     safe_category = _validate_optional_query(category, field_name="category", max_length=100)
     safe_custom_fields = _validate_optional_custom_fields(custom_fields)
@@ -1569,7 +1624,10 @@ async def update_version(
         field_name="sharing",
         allowed_values={"none", "descendants", "hierarchy", "tree"},
     )
-    if not any(value is not None for value in (safe_name, safe_description, safe_start_date, safe_end_date, safe_status, safe_sharing)):
+    if not any(
+        value is not None
+        for value in (safe_name, safe_description, safe_start_date, safe_end_date, safe_status, safe_sharing)
+    ):
         raise ValueError("At least one field to update is required.")
     return await _run_tool(
         client.update_version(
@@ -1943,7 +2001,16 @@ async def update_time_entry(
     safe_comment = _validate_optional_text(comment, field_name="comment", max_length=10_000)
     if not any(
         value is not None
-        for value in (safe_user, safe_activity, safe_hours, safe_spent_on, safe_start_time, safe_end_time, safe_comment, ongoing)
+        for value in (
+            safe_user,
+            safe_activity,
+            safe_hours,
+            safe_spent_on,
+            safe_start_time,
+            safe_end_time,
+            safe_comment,
+            ongoing,
+        )
     ):
         raise ValueError("At least one field to update is required.")
     return await _run_tool(
@@ -2375,7 +2442,9 @@ async def update_group(
     if all(v is None for v in (safe_name, add_user_ids, remove_user_ids)):
         raise ValueError("At least one field must be provided to update.")
     return await _run_tool(
-        client.update_group(safe_id, name=safe_name, add_user_ids=add_user_ids, remove_user_ids=remove_user_ids, confirm=confirm)
+        client.update_group(
+            safe_id, name=safe_name, add_user_ids=add_user_ids, remove_user_ids=remove_user_ids, confirm=confirm
+        )
     )
 
 
@@ -2446,7 +2515,9 @@ async def create_grid(
     if not safe_scope.startswith("/"):
         raise ValueError("scope must start with '/'.")
     safe_row_count = _validate_positive_int(row_count, field_name="row_count") if row_count is not None else None
-    safe_column_count = _validate_positive_int(column_count, field_name="column_count") if column_count is not None else None
+    safe_column_count = (
+        _validate_positive_int(column_count, field_name="column_count") if column_count is not None else None
+    )
     return await _run_tool(
         client.create_grid(
             name=safe_name,
@@ -2474,7 +2545,9 @@ async def update_grid(
     safe_id = _validate_positive_int(grid_id, field_name="grid_id")
     safe_name = _validate_optional_query(name, field_name="name", max_length=255)
     safe_row_count = _validate_positive_int(row_count, field_name="row_count") if row_count is not None else None
-    safe_column_count = _validate_positive_int(column_count, field_name="column_count") if column_count is not None else None
+    safe_column_count = (
+        _validate_positive_int(column_count, field_name="column_count") if column_count is not None else None
+    )
     if safe_name is None and safe_row_count is None and safe_column_count is None:
         raise ValueError("At least one field to update is required.")
     return await _run_tool(
@@ -2658,6 +2731,7 @@ def _categorize_tool_errors(fn):
     catches those and tags them [validation_error] too, so an agent sees a
     consistent, machine-readable category for every tool failure.
     """
+
     @functools.wraps(fn)
     async def wrapper(*args, **kwargs):
         try:
@@ -2775,9 +2849,7 @@ def _validate_work_package_ref(value: str, *, field_name: str = "work_package_id
         _validate_positive_int(int(normalized), field_name=field_name)
         return normalized
     if not WORK_PACKAGE_REF_RE.fullmatch(normalized):
-        raise ValueError(
-            f"{field_name} must be a positive integer id or a work package reference (e.g. PROJ-123)."
-        )
+        raise ValueError(f"{field_name} must be a positive integer id or a work package reference (e.g. PROJ-123).")
     return normalized
 
 
@@ -2787,7 +2859,7 @@ def _validate_optional_work_package_ref(value: str | None, *, field_name: str = 
     return _validate_work_package_ref(value, field_name=field_name)
 
 
-def _validate_optional_user_ref(value: str | None) -> str | None:
+def _validate_optional_user_ref(value: str | None, field_name: str = "assignee") -> str | None:
     if value is None:
         return None
     normalized = " ".join(value.split())
@@ -2796,9 +2868,9 @@ def _validate_optional_user_ref(value: str | None) -> str | None:
     if normalized.casefold() == "me":
         return "me"
     if normalized.isdigit():
-        _validate_positive_int(int(normalized), field_name="assignee")
+        _validate_positive_int(int(normalized), field_name=field_name)
         return normalized
-    raise ValueError("assignee must be a positive integer user id or 'me'.")
+    raise ValueError(f"{field_name} must be a positive integer user id or 'me'.")
 
 
 def _validate_optional_user_or_principal_ref(value: str | None) -> str | None:
@@ -2998,9 +3070,3 @@ def _validate_positive_int(value: int, *, field_name: str) -> int:
     if value < 1:
         raise ValueError(f"{field_name} must be at least 1.")
     return value
-
-
-def _validate_optional_positive_int(value: int | None, *, field_name: str) -> int | None:
-    if value is None:
-        return None
-    return _validate_positive_int(value, field_name=field_name)

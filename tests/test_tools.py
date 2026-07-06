@@ -9,6 +9,7 @@ import pytest
 from openproject_ce_mcp.client import OpenProjectClient
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.tools import (
+    _validate_optional_user_ref,
     _validate_optional_work_package_ref,
     _validate_work_package_ref,
     add_project_favorite,
@@ -305,6 +306,18 @@ async def test_update_work_package_tool_requires_at_least_one_field() -> None:
 
     with pytest.raises(ValueError, match="At least one field"):
         await update_work_package(FakeContext(StubClient()), 42)  # type: ignore[arg-type]
+
+
+def test_validate_optional_user_ref_reports_the_given_field_name() -> None:
+    # An invalid value must name the field the caller actually passed, so the
+    # error for a bad `responsible` does not mislead the caller to fix `assignee`.
+    with pytest.raises(ValueError, match="assignee must be a positive integer"):
+        _validate_optional_user_ref("bob")
+    with pytest.raises(ValueError, match="responsible must be a positive integer"):
+        _validate_optional_user_ref("bob", field_name="responsible")
+    with pytest.raises(ValueError, match="responsible must be at least 1"):
+        _validate_optional_user_ref("0", field_name="responsible")
+    assert _validate_optional_user_ref("me", field_name="responsible") == "me"
 
 
 @pytest.mark.asyncio
@@ -790,8 +803,13 @@ async def test_time_entry_tools_pass_expected_arguments() -> None:
 
     with pytest.raises(ValueError, match="start_time must be an ISO 8601 date-time"):
         await create_time_entry(
-            ctx, project="demo", activity="Development", hours="PT1H",
-            spent_on="2026-03-20", start_time="09:00", confirm=False,
+            ctx,
+            project="demo",
+            activity="Development",
+            hours="PT1H",
+            spent_on="2026-03-20",
+            start_time="09:00",
+            confirm=False,
         )
 
 
@@ -941,9 +959,7 @@ async def test_reminder_tools_pass_expected_arguments() -> None:
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
     listed = await list_reminders(ctx)
-    created = await create_work_package_reminder(
-        ctx, "PROJ-1", "2026-12-01T09:00:00Z", note="hi", confirm=True
-    )
+    created = await create_work_package_reminder(ctx, "PROJ-1", "2026-12-01T09:00:00Z", note="hi", confirm=True)
     updated = await update_reminder(ctx, 5, note="changed", confirm=True)
     deleted = await delete_reminder(ctx, 5, confirm=True)
 
@@ -1049,7 +1065,9 @@ async def test_user_crud_tools_pass_expected_arguments() -> None:
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
-    created = await create_user(ctx, login="jdoe", email="jdoe@example.com", firstname="John", lastname="Doe", confirm=False)
+    created = await create_user(
+        ctx, login="jdoe", email="jdoe@example.com", firstname="John", lastname="Doe", confirm=False
+    )
     updated = await update_user(ctx, 5, email="new@example.com", confirm=True)
     deleted = await delete_user(ctx, 5, confirm=True)
     locked = await lock_user(ctx, 5, confirm=True)
@@ -1251,7 +1269,6 @@ async def test_list_notifications_returns_normalized_results() -> None:
 
 
 @pytest.mark.asyncio
-
 @pytest.mark.asyncio
 async def test_bulk_create_work_packages_tool_validates_required_fields() -> None:
     class StubClient:
@@ -1284,12 +1301,27 @@ async def test_bulk_create_work_packages_tool_passes_validated_items() -> None:
     class StubClient:
         async def bulk_create_work_packages(self, **kwargs):
             received.extend(kwargs["items"])
-            return {"action": "bulk_create", "total": len(kwargs["items"]), "succeeded": len(kwargs["items"]), "failed": 0, "confirmed": kwargs["confirm"], "requires_confirmation": not kwargs["confirm"], "message": "ok", "items": []}
+            return {
+                "action": "bulk_create",
+                "total": len(kwargs["items"]),
+                "succeeded": len(kwargs["items"]),
+                "failed": 0,
+                "confirmed": kwargs["confirm"],
+                "requires_confirmation": not kwargs["confirm"],
+                "message": "ok",
+                "items": [],
+            }
 
     await bulk_create_work_packages(
         FakeContext(StubClient()),  # type: ignore[arg-type]
         items=[
-            {"project": "demo", "type": "Task", "subject": "WP 1", "start_date": "2026-01-01", "parent_work_package_id": 7},
+            {
+                "project": "demo",
+                "type": "Task",
+                "subject": "WP 1",
+                "start_date": "2026-01-01",
+                "parent_work_package_id": 7,
+            },
             {"project": "demo", "type": "Feature", "subject": "WP 2"},
         ],
         confirm=False,
@@ -1332,7 +1364,16 @@ async def test_bulk_update_work_packages_tool_passes_validated_items() -> None:
     class StubClient:
         async def bulk_update_work_packages(self, **kwargs):
             received.extend(kwargs["items"])
-            return {"action": "bulk_update", "total": len(kwargs["items"]), "succeeded": len(kwargs["items"]), "failed": 0, "confirmed": kwargs["confirm"], "requires_confirmation": not kwargs["confirm"], "message": "ok", "items": []}
+            return {
+                "action": "bulk_update",
+                "total": len(kwargs["items"]),
+                "succeeded": len(kwargs["items"]),
+                "failed": 0,
+                "confirmed": kwargs["confirm"],
+                "requires_confirmation": not kwargs["confirm"],
+                "message": "ok",
+                "items": [],
+            }
 
     await bulk_update_work_packages(
         FakeContext(StubClient()),  # type: ignore[arg-type]

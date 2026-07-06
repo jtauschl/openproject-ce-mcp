@@ -120,7 +120,9 @@ class Settings:
         env = environ or os.environ
         base_url = _parse_base_url(env.get("OPENPROJECT_BASE_URL"))
         api_token = _require_non_empty(env.get("OPENPROJECT_API_TOKEN"), "OPENPROJECT_API_TOKEN")
-        allowed_projects = _parse_csv(env.get("OPENPROJECT_ALLOWED_PROJECTS_READ") or env.get("OPENPROJECT_ALLOWED_PROJECTS"))
+        allowed_projects = _parse_csv(
+            env.get("OPENPROJECT_ALLOWED_PROJECTS_READ") or env.get("OPENPROJECT_ALLOWED_PROJECTS")
+        )
         allowed_write_projects_configured = "OPENPROJECT_ALLOWED_PROJECTS_WRITE" in env
         allowed_write_projects = _parse_csv(env.get("OPENPROJECT_ALLOWED_PROJECTS_WRITE"))
         enable_work_package_read = _parse_bool(
@@ -273,6 +275,9 @@ def _require_non_empty(value: str | None, name: str) -> str:
     return value.strip()
 
 
+_LOCALHOST_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
 def _parse_base_url(value: str | None) -> str:
     raw_value = _require_non_empty(value, "OPENPROJECT_BASE_URL").rstrip("/")
     parsed = urlparse(raw_value)
@@ -282,6 +287,15 @@ def _parse_base_url(value: str | None) -> str:
         raise ConfigError("OPENPROJECT_BASE_URL must include a hostname.")
     if parsed.query or parsed.fragment:
         raise ConfigError("OPENPROJECT_BASE_URL must not contain query parameters or fragments.")
+    # Warn (don't block) when the API token would travel unencrypted to a remote
+    # host over plain http. Use .hostname so ports and IPv6 brackets don't defeat
+    # the localhost check.
+    if parsed.scheme == "http" and (parsed.hostname or "").lower() not in _LOCALHOST_HOSTS:
+        logging.getLogger(__name__).warning(
+            "OPENPROJECT_BASE_URL uses http:// with a non-local host (%s); the API token "
+            "is sent unencrypted. Use https:// unless this is a trusted local network.",
+            parsed.hostname,
+        )
     return raw_value
 
 

@@ -12,6 +12,7 @@
 # namespace, and a renamed/removed symbol raises a clear AttributeError here rather
 # than silently vanishing.
 """Run the interactive setup from a source checkout: python3 configure_mcp.py"""
+
 import sys
 from pathlib import Path
 
