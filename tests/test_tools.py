@@ -9,6 +9,7 @@ import pytest
 from openproject_ce_mcp.client import OpenProjectClient
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.tools import (
+    _validate_optional_user_ref,
     _validate_optional_work_package_ref,
     _validate_work_package_ref,
     add_project_favorite,
@@ -305,6 +306,18 @@ async def test_update_work_package_tool_requires_at_least_one_field() -> None:
 
     with pytest.raises(ValueError, match="At least one field"):
         await update_work_package(FakeContext(StubClient()), 42)  # type: ignore[arg-type]
+
+
+def test_validate_optional_user_ref_reports_the_given_field_name() -> None:
+    # An invalid value must name the field the caller actually passed, so the
+    # error for a bad `responsible` does not mislead the caller to fix `assignee`.
+    with pytest.raises(ValueError, match="assignee must be a positive integer"):
+        _validate_optional_user_ref("bob")
+    with pytest.raises(ValueError, match="responsible must be a positive integer"):
+        _validate_optional_user_ref("bob", field_name="responsible")
+    with pytest.raises(ValueError, match="responsible must be at least 1"):
+        _validate_optional_user_ref("0", field_name="responsible")
+    assert _validate_optional_user_ref("me", field_name="responsible") == "me"
 
 
 @pytest.mark.asyncio

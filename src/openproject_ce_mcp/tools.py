@@ -1118,7 +1118,7 @@ async def create_work_package(
     safe_version = _validate_optional_query(version, field_name="version", max_length=100)
     safe_project_phase = _validate_optional_query(project_phase, field_name="project_phase", max_length=100)
     safe_assignee = _validate_optional_user_ref(assignee)
-    safe_responsible = _validate_optional_user_ref(responsible)
+    safe_responsible = _validate_optional_user_ref(responsible, field_name="responsible")
     safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
     safe_category = _validate_optional_query(category, field_name="category", max_length=100)
     safe_custom_fields = _validate_optional_custom_fields(custom_fields)
@@ -1177,7 +1177,7 @@ async def update_work_package(
     safe_project_phase = _validate_optional_query(project_phase, field_name="project_phase", max_length=100)
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
     safe_assignee = _validate_optional_user_ref(assignee)
-    safe_responsible = _validate_optional_user_ref(responsible)
+    safe_responsible = _validate_optional_user_ref(responsible, field_name="responsible")
     safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
     safe_category = _validate_optional_query(category, field_name="category", max_length=100)
     safe_custom_fields = _validate_optional_custom_fields(custom_fields)
@@ -1274,7 +1274,7 @@ async def bulk_create_work_packages(
                     item.get("project_phase"), field_name=f"items[{i}].project_phase", max_length=100
                 ),
                 "assignee": _validate_optional_user_ref(item.get("assignee")),
-                "responsible": _validate_optional_user_ref(item.get("responsible")),
+                "responsible": _validate_optional_user_ref(item.get("responsible"), field_name="responsible"),
                 "priority": _validate_optional_query(
                     item.get("priority"), field_name=f"items[{i}].priority", max_length=100
                 ),
@@ -1328,7 +1328,7 @@ async def bulk_update_work_packages(
         )
         safe_status = _validate_optional_query(item.get("status"), field_name=f"items[{i}].status", max_length=100)
         safe_assignee = _validate_optional_user_ref(item.get("assignee"))
-        safe_responsible = _validate_optional_user_ref(item.get("responsible"))
+        safe_responsible = _validate_optional_user_ref(item.get("responsible"), field_name="responsible")
         safe_priority = _validate_optional_query(
             item.get("priority"), field_name=f"items[{i}].priority", max_length=100
         )
@@ -1430,7 +1430,7 @@ async def create_subtask(
     safe_version = _validate_optional_query(version, field_name="version", max_length=100)
     safe_project_phase = _validate_optional_query(project_phase, field_name="project_phase", max_length=100)
     safe_assignee = _validate_optional_user_ref(assignee)
-    safe_responsible = _validate_optional_user_ref(responsible)
+    safe_responsible = _validate_optional_user_ref(responsible, field_name="responsible")
     safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
     safe_category = _validate_optional_query(category, field_name="category", max_length=100)
     safe_custom_fields = _validate_optional_custom_fields(custom_fields)
@@ -2859,7 +2859,7 @@ def _validate_optional_work_package_ref(value: str | None, *, field_name: str = 
     return _validate_work_package_ref(value, field_name=field_name)
 
 
-def _validate_optional_user_ref(value: str | None) -> str | None:
+def _validate_optional_user_ref(value: str | None, field_name: str = "assignee") -> str | None:
     if value is None:
         return None
     normalized = " ".join(value.split())
@@ -2868,9 +2868,9 @@ def _validate_optional_user_ref(value: str | None) -> str | None:
     if normalized.casefold() == "me":
         return "me"
     if normalized.isdigit():
-        _validate_positive_int(int(normalized), field_name="assignee")
+        _validate_positive_int(int(normalized), field_name=field_name)
         return normalized
-    raise ValueError("assignee must be a positive integer user id or 'me'.")
+    raise ValueError(f"{field_name} must be a positive integer user id or 'me'.")
 
 
 def _validate_optional_user_or_principal_ref(value: str | None) -> str | None:
