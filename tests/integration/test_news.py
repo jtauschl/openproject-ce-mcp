@@ -1,4 +1,5 @@
 """Integration tests for news CRUD operations."""
+
 from __future__ import annotations
 
 import uuid
@@ -16,9 +17,7 @@ async def test_list_news(client: OpenProjectClient, test_project: str) -> None:
     assert result.count >= 0
 
 
-async def test_create_get_update_delete_news(
-    client: OpenProjectClient, test_project: str, news_ids: list[int]
-) -> None:
+async def test_create_get_update_delete_news(client: OpenProjectClient, test_project: str, news_ids: list[int]) -> None:
     title = f"[integration-test] {uuid.uuid4().hex[:8]}"
 
     # Create

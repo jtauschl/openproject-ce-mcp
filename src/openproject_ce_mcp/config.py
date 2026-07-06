@@ -120,7 +120,9 @@ class Settings:
         env = environ or os.environ
         base_url = _parse_base_url(env.get("OPENPROJECT_BASE_URL"))
         api_token = _require_non_empty(env.get("OPENPROJECT_API_TOKEN"), "OPENPROJECT_API_TOKEN")
-        allowed_projects = _parse_csv(env.get("OPENPROJECT_ALLOWED_PROJECTS_READ") or env.get("OPENPROJECT_ALLOWED_PROJECTS"))
+        allowed_projects = _parse_csv(
+            env.get("OPENPROJECT_ALLOWED_PROJECTS_READ") or env.get("OPENPROJECT_ALLOWED_PROJECTS")
+        )
         allowed_write_projects_configured = "OPENPROJECT_ALLOWED_PROJECTS_WRITE" in env
         allowed_write_projects = _parse_csv(env.get("OPENPROJECT_ALLOWED_PROJECTS_WRITE"))
         enable_work_package_read = _parse_bool(

@@ -1,4 +1,5 @@
 """Integration tests for work package CRUD operations."""
+
 from __future__ import annotations
 
 import pytest
@@ -64,9 +65,7 @@ async def test_create_get_update_delete_work_package(
     wp_ids.remove(wp_id)  # already deleted, don't try again in fixture
 
 
-async def test_create_subtask(
-    client: OpenProjectClient, test_project: str, wp_ids: list[int]
-) -> None:
+async def test_create_subtask(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
     # Create parent
     parent = await client.create_work_package(
         project=test_project,
@@ -91,9 +90,7 @@ async def test_create_subtask(
     assert wp.subject
 
 
-async def test_add_work_package_comment(
-    client: OpenProjectClient, test_project: str, wp_ids: list[int]
-) -> None:
+async def test_add_work_package_comment(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
     result = await client.create_work_package(
         project=test_project,
         type="Task",
@@ -114,9 +111,7 @@ async def test_add_work_package_comment(
     assert activities.count > 0
 
 
-async def test_bulk_create_work_packages(
-    client: OpenProjectClient, test_project: str, wp_ids: list[int]
-) -> None:
+async def test_bulk_create_work_packages(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
     items = [
         {"project": test_project, "type": "Task", "subject": f"{_SUBJECT_BULK} 1"},
         {"project": test_project, "type": "Task", "subject": f"{_SUBJECT_BULK} 2"},
@@ -131,9 +126,7 @@ async def test_bulk_create_work_packages(
     assert result.succeeded >= 1  # at least one should succeed
 
 
-async def test_list_work_package_watchers(
-    client: OpenProjectClient, test_project: str, wp_ids: list[int]
-) -> None:
+async def test_list_work_package_watchers(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
     result = await client.create_work_package(
         project=test_project,
         type="Task",

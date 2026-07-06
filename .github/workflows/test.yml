@@ -22,6 +22,9 @@ jobs:
       - name: Run Ruff
         run: uv run ruff check .
 
+      - name: Check formatting
+        run: uv run ruff format --check .
+
   test:
     runs-on: ${{ matrix.os }}
     strategy:

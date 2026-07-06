@@ -576,7 +576,9 @@ async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
         hide_work_package_fields=("description",),
         hide_activity_fields=("comment",),
     )
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)))
+    client = OpenProjectClient(
+        settings, transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request))
+    )
 
     visible_project = client.normalize_project(
         {
@@ -630,7 +632,9 @@ async def test_chain_specific_read_flags_restrict_membership_reads_with_global_r
         log_level="WARNING",
         enable_membership_read=False,
     )
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}, request=r)))
+    client = OpenProjectClient(
+        settings, transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}, request=r))
+    )
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_MEMBERSHIP_READ"):
         await client.list_roles()
@@ -704,7 +708,11 @@ async def test_hidden_document_field_is_rejected_on_write() -> None:
         if request.url.path == "/api/v3/documents/5" and request.method == "GET":
             return httpx.Response(
                 200,
-                json={"id": 5, "title": "Architecture", "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                json={
+                    "id": 5,
+                    "title": "Architecture",
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
                 request=request,
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
@@ -1370,12 +1378,17 @@ async def test_delete_work_package_auto_confirms_with_write_auto_confirm() -> No
 @pytest.mark.asyncio
 async def test_delete_previews_when_only_write_auto_confirm_set() -> None:
     """auto_confirm_write alone must NOT auto-confirm a delete (delete has its own flag)."""
+
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
             return httpx.Response(
                 200,
-                json={"id": 42, "subject": "Keep me", "lockVersion": 1,
-                      "_links": {"project": {"title": "Demo"}, "status": {"title": "New"}, "type": {"title": "Task"}}},
+                json={
+                    "id": 42,
+                    "subject": "Keep me",
+                    "lockVersion": 1,
+                    "_links": {"project": {"title": "Demo"}, "status": {"title": "New"}, "type": {"title": "Task"}},
+                },
                 request=request,
             )
         # A DELETE reaching the server would mean the guard failed.
@@ -1750,7 +1763,11 @@ async def test_get_project_work_package_context_returns_schema_and_metadata() ->
                                 "location": "_links",
                                 "_embedded": {
                                     "allowedValues": [
-                                        {"id": 1, "name": "New", "_links": {"self": {"href": "/api/v3/statuses/1", "title": "New"}}}
+                                        {
+                                            "id": 1,
+                                            "name": "New",
+                                            "_links": {"self": {"href": "/api/v3/statuses/1", "title": "New"}},
+                                        }
                                     ]
                                 },
                             },
@@ -1770,7 +1787,13 @@ async def test_get_project_work_package_context_returns_schema_and_metadata() ->
                                 "location": "_links",
                                 "_embedded": {
                                     "allowedValues": [
-                                        {"id": 5, "name": "Executing", "_links": {"self": {"href": "/api/v3/project_phases/5", "title": "Executing"}}}
+                                        {
+                                            "id": 5,
+                                            "name": "Executing",
+                                            "_links": {
+                                                "self": {"href": "/api/v3/project_phases/5", "title": "Executing"}
+                                            },
+                                        }
                                     ]
                                 },
                             },
@@ -1814,8 +1837,16 @@ async def test_list_roles_and_project_memberships_and_my_access() -> None:
                 json={
                     "_embedded": {
                         "elements": [
-                            {"id": 8, "name": "Project admin", "_links": {"self": {"href": "/api/v3/roles/8", "title": "Project admin"}}},
-                            {"id": 6, "name": "Member", "_links": {"self": {"href": "/api/v3/roles/6", "title": "Member"}}},
+                            {
+                                "id": 8,
+                                "name": "Project admin",
+                                "_links": {"self": {"href": "/api/v3/roles/8", "title": "Project admin"}},
+                            },
+                            {
+                                "id": 6,
+                                "name": "Member",
+                                "_links": {"self": {"href": "/api/v3/roles/6", "title": "Member"}},
+                            },
                         ]
                     }
                 },
@@ -1837,7 +1868,9 @@ async def test_list_roles_and_project_memberships_and_my_access() -> None:
                     "identifier": "demo",
                     "_links": {
                         "self": {"href": "/api/v3/projects/1", "title": "Demo"},
-                        "memberships": {"href": "/api/v3/memberships?filters=%5B%7B%22project%22%3A%7B%22operator%22%3A%22%3D%22%2C%22values%22%3A%5B%221%22%5D%7D%7D%5D"},
+                        "memberships": {
+                            "href": "/api/v3/memberships?filters=%5B%7B%22project%22%3A%7B%22operator%22%3A%22%3D%22%2C%22values%22%3A%5B%221%22%5D%7D%7D%5D"
+                        },
                         "update": {"href": "/api/v3/projects/1/form", "method": "post"},
                     },
                 },
@@ -2318,8 +2351,12 @@ async def test_job_status_documents_news_and_wiki() -> None:
     document_updated = await client.update_document(document_id=5, title="Architecture Updated", confirm=True)
     news_list = await client.list_news(project="demo", search="release")
     news_detail = await client.get_news(7)
-    news_preview = await client.create_news(project="demo", title="Fresh Update", summary="Ready", description="Detailed body", confirm=False)
-    news_created = await client.create_news(project="demo", title="Fresh Update", summary="Ready", description="Detailed body", confirm=True)
+    news_preview = await client.create_news(
+        project="demo", title="Fresh Update", summary="Ready", description="Detailed body", confirm=False
+    )
+    news_created = await client.create_news(
+        project="demo", title="Fresh Update", summary="Ready", description="Detailed body", confirm=True
+    )
     news_updated = await client.update_news(news_id=7, summary="Sprint 8.1 is out", confirm=True)
     news_deleted = await client.delete_news(news_id=7, confirm=True)
     wiki_page = await client.get_wiki_page(9)
@@ -2599,7 +2636,10 @@ async def test_list_time_entry_activities_paginates_project_fallback() -> None:
                 ]
             return httpx.Response(
                 200,
-                json={"_type": "Form", "_embedded": {"schema": {"activity": {"_embedded": {"allowedValues": allowed_values}}}}},
+                json={
+                    "_type": "Form",
+                    "_embedded": {"schema": {"activity": {"_embedded": {"allowedValues": allowed_values}}}},
+                },
                 request=request,
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
@@ -2725,7 +2765,10 @@ async def test_list_time_entry_activities_skips_projects_without_form_access() -
                                                 "id": 3,
                                                 "name": "Development",
                                                 "_links": {
-                                                    "self": {"href": "/api/v3/time_entries/activities/3", "title": "Development"},
+                                                    "self": {
+                                                        "href": "/api/v3/time_entries/activities/3",
+                                                        "title": "Development",
+                                                    },
                                                     "projects": [{"href": "/api/v3/projects/6", "title": "Demo"}],
                                                 },
                                             }
@@ -2993,7 +3036,10 @@ async def test_create_time_entry_resolves_activity_from_project_form_context() -
                                             "id": 3,
                                             "name": "Development",
                                             "_links": {
-                                                "self": {"href": "/api/v3/time_entries/activities/3", "title": "Development"},
+                                                "self": {
+                                                    "href": "/api/v3/time_entries/activities/3",
+                                                    "title": "Development",
+                                                },
                                                 "projects": [{"href": "/api/v3/projects/6", "title": "Demo"}],
                                             },
                                         }
@@ -3612,7 +3658,12 @@ async def test_board_crud_uses_query_form_endpoints_and_project_filtering() -> N
                     "_embedded": {
                         "elements": [
                             query_payload(query_id=12, name="Sprint Board"),
-                            query_payload(query_id=13, name="Other Board", project_title="Other", project_href="/api/v3/projects/9"),
+                            query_payload(
+                                query_id=13,
+                                name="Other Board",
+                                project_title="Other",
+                                project_href="/api/v3/projects/9",
+                            ),
                         ]
                     },
                 },
@@ -3841,7 +3892,11 @@ async def test_create_work_package_resolves_schema_backed_fields_and_custom_fiel
                                     "location": "_links",
                                     "_embedded": {
                                         "allowedValues": [
-                                            {"id": 9, "name": "High", "_links": {"self": {"href": "/api/v3/priorities/9", "title": "High"}}}
+                                            {
+                                                "id": 9,
+                                                "name": "High",
+                                                "_links": {"self": {"href": "/api/v3/priorities/9", "title": "High"}},
+                                            }
                                         ]
                                     },
                                 },
@@ -3854,7 +3909,13 @@ async def test_create_work_package_resolves_schema_backed_fields_and_custom_fiel
                                     "location": "_links",
                                     "_embedded": {
                                         "allowedValues": [
-                                            {"id": 5, "name": "Executing", "_links": {"self": {"href": "/api/v3/project_phases/5", "title": "Executing"}}}
+                                            {
+                                                "id": 5,
+                                                "name": "Executing",
+                                                "_links": {
+                                                    "self": {"href": "/api/v3/project_phases/5", "title": "Executing"}
+                                                },
+                                            }
                                         ]
                                     },
                                 },
@@ -3874,7 +3935,13 @@ async def test_create_work_package_resolves_schema_backed_fields_and_custom_fiel
                                     "location": "_links",
                                     "_embedded": {
                                         "allowedValues": [
-                                            {"id": 20, "name": "iOS", "_links": {"self": {"href": "/api/v3/custom_options/20", "title": "iOS"}}}
+                                            {
+                                                "id": 20,
+                                                "name": "iOS",
+                                                "_links": {
+                                                    "self": {"href": "/api/v3/custom_options/20", "title": "iOS"}
+                                                },
+                                            }
                                         ]
                                     },
                                 },
@@ -3977,7 +4044,10 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
                                 "createdAt": "2026-01-01T00:00:00Z",
                                 "updatedAt": "2026-01-02T00:00:00Z",
                                 "_embedded": {"members": {"count": 2}},
-                                "_links": {"update": {"href": "/api/v3/groups/7"}, "delete": {"href": "/api/v3/groups/7"}},
+                                "_links": {
+                                    "update": {"href": "/api/v3/groups/7"},
+                                    "delete": {"href": "/api/v3/groups/7"},
+                                },
                             }
                         ]
                     },
@@ -4035,7 +4105,18 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
         if request.url.path == "/api/v3/actions":
             return httpx.Response(
                 200,
-                json={"total": 1, "_embedded": {"elements": [{"name": "update", "description": "Update resource", "_links": {"self": {"href": "/api/v3/actions/update"}}}]}},
+                json={
+                    "total": 1,
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "name": "update",
+                                "description": "Update resource",
+                                "_links": {"self": {"href": "/api/v3/actions/update"}},
+                            }
+                        ]
+                    },
+                },
                 request=request,
             )
         if request.url.path == "/api/v3/capabilities":
@@ -4081,7 +4162,14 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
         if request.url.path in {"/api/v3/queries/sort_bys/subject%3Aasc", "/api/v3/queries/sort_bys/subject:asc"}:
             return httpx.Response(
                 200,
-                json={"name": "Subject asc", "direction": "asc", "_links": {"self": {"href": "/api/v3/queries/sort_bys/subject:asc"}, "column": {"title": "Subject"}}},
+                json={
+                    "name": "Subject asc",
+                    "direction": "asc",
+                    "_links": {
+                        "self": {"href": "/api/v3/queries/sort_bys/subject:asc"},
+                        "column": {"title": "Subject"},
+                    },
+                },
                 request=request,
             )
         if request.url.path == "/api/v3/queries/filter_instance_schemas":
@@ -4091,7 +4179,10 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
                     "_embedded": {
                         "elements": [
                             {
-                                "_links": {"self": {"href": "/api/v3/queries/filter_instance_schemas/assignee"}, "filter": {"title": "Assignee"}},
+                                "_links": {
+                                    "self": {"href": "/api/v3/queries/filter_instance_schemas/assignee"},
+                                    "filter": {"title": "Assignee"},
+                                },
                                 "_dependencies": [{"dependencies": {"=": {}, "!": {}}}],
                             }
                         ]
@@ -4193,6 +4284,7 @@ async def test_user_preferences_get_and_update() -> None:
 @pytest.mark.asyncio
 async def test_update_my_preferences_needs_no_write_gate() -> None:
     """update_my_preferences has no write gate — it works without any write flags."""
+
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/my_preferences" and request.method == "PATCH":
             return httpx.Response(200, json={"_type": "UserPreferences"}, request=request)
@@ -4469,9 +4561,7 @@ async def test_create_project_rejects_validation_error() -> None:
                     "_embedded": {
                         "schema": {},
                         "payload": {},
-                        "validationErrors": {
-                            "identifier": {"message": "Identifier has already been taken."}
-                        },
+                        "validationErrors": {"identifier": {"message": "Identifier has already been taken."}},
                     }
                 },
                 request=request,
@@ -4750,7 +4840,11 @@ async def test_update_grid_preview_mode() -> None:
         if request.url.path == "/api/v3/grids/55" and request.method == "GET":
             return httpx.Response(200, json=_make_grid_payload(), request=request)
         if request.url.path == "/api/v3/projects/demo":
-            return httpx.Response(200, json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}}, request=request)
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
         if request.url.path == "/api/v3/grids/55/form":
             body = json.loads(request.content)
             return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
@@ -4772,10 +4866,23 @@ async def test_update_grid_executes_with_confirm() -> None:
         if request.url.path == "/api/v3/grids/55" and request.method == "GET":
             return httpx.Response(200, json=_make_grid_payload(), request=request)
         if request.url.path == "/api/v3/projects/demo":
-            return httpx.Response(200, json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}}, request=request)
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
         if request.url.path == "/api/v3/grids/55/form":
             body = json.loads(request.content)
-            return httpx.Response(200, json={"_embedded": {"payload": {**body, "_links": {"scope": {"href": "/projects/demo"}}}, "validationErrors": {}}}, request=request)
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "payload": {**body, "_links": {"scope": {"href": "/projects/demo"}}},
+                        "validationErrors": {},
+                    }
+                },
+                request=request,
+            )
         if request.url.path == "/api/v3/grids/55" and request.method == "PATCH":
             return httpx.Response(200, json={**_make_grid_payload(), "name": "Renamed Grid"}, request=request)
         raise AssertionError(f"Unexpected: {request.method} {request.url}")
@@ -4795,7 +4902,11 @@ async def test_delete_grid_preview_mode() -> None:
         if request.url.path == "/api/v3/grids/55" and request.method == "GET":
             return httpx.Response(200, json=_make_grid_payload(), request=request)
         if request.url.path == "/api/v3/projects/demo":
-            return httpx.Response(200, json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}}, request=request)
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
         raise AssertionError(f"Unexpected: {request.method} {request.url}")
 
     client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
@@ -4816,7 +4927,11 @@ async def test_delete_grid_executes_with_confirm() -> None:
         if request.url.path == "/api/v3/grids/55" and request.method == "GET":
             return httpx.Response(200, json=_make_grid_payload(), request=request)
         if request.url.path == "/api/v3/projects/demo":
-            return httpx.Response(200, json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}}, request=request)
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
         if request.url.path == "/api/v3/grids/55" and request.method == "DELETE":
             deleted["called"] = True
             return httpx.Response(204, request=request)
@@ -4966,7 +5081,10 @@ async def test_bulk_create_work_packages_partial_failure() -> None:
             if body.get("subject") == "Bad WP":
                 return httpx.Response(
                     200,
-                    json={"_type": "Form", "_embedded": {"payload": body, "validationErrors": {"subject": {"message": "too short"}}}},
+                    json={
+                        "_type": "Form",
+                        "_embedded": {"payload": body, "validationErrors": {"subject": {"message": "too short"}}},
+                    },
                     request=request,
                 )
             return _make_wp_form_response(request, body)
@@ -4997,10 +5115,13 @@ async def test_bulk_update_work_packages_preview_mode() -> None:
             return httpx.Response(
                 200,
                 json={
-                    "id": 10, "subject": "Old 10", "lockVersion": 1,
+                    "id": 10,
+                    "subject": "Old 10",
+                    "lockVersion": 1,
                     "_links": {
                         "project": {"title": "Demo", "href": "/api/v3/projects/1"},
-                        "status": {"title": "New"}, "type": {"title": "Task"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
                         "activities": {"href": "/api/v3/work_packages/10/activities"},
                         "relations": {"href": "/api/v3/work_packages/10/relations"},
                     },
@@ -5011,10 +5132,13 @@ async def test_bulk_update_work_packages_preview_mode() -> None:
             return httpx.Response(
                 200,
                 json={
-                    "id": 20, "subject": "Old 20", "lockVersion": 2,
+                    "id": 20,
+                    "subject": "Old 20",
+                    "lockVersion": 2,
                     "_links": {
                         "project": {"title": "Demo", "href": "/api/v3/projects/1"},
-                        "status": {"title": "New"}, "type": {"title": "Task"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
                         "activities": {"href": "/api/v3/work_packages/20/activities"},
                         "relations": {"href": "/api/v3/work_packages/20/relations"},
                     },
@@ -5025,7 +5149,9 @@ async def test_bulk_update_work_packages_preview_mode() -> None:
             body = json.loads(request.content)
             return _make_wp_form_response(request, body)
         if request.url.path == "/api/v3/statuses":
-            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 5, "name": "In progress"}]}}, request=request)
+            return httpx.Response(
+                200, json={"_embedded": {"elements": [{"id": 5, "name": "In progress"}]}}, request=request
+            )
         raise AssertionError(f"Unexpected: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
@@ -5055,10 +5181,13 @@ async def test_bulk_update_work_packages_continues_after_partial_failure() -> No
             return httpx.Response(
                 200,
                 json={
-                    "id": 20, "subject": "Old 20", "lockVersion": 1,
+                    "id": 20,
+                    "subject": "Old 20",
+                    "lockVersion": 1,
                     "_links": {
                         "project": {"title": "Demo", "href": "/api/v3/projects/1"},
-                        "status": {"title": "New"}, "type": {"title": "Task"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
                         "activities": {"href": "/api/v3/work_packages/20/activities"},
                         "relations": {"href": "/api/v3/work_packages/20/relations"},
                     },
@@ -5490,8 +5619,13 @@ async def test_create_time_entry_includes_start_and_end_time() -> None:
             captured["body"] = json.loads(request.content)
             return httpx.Response(
                 201,
-                json={"id": 9, "spentOn": "2026-07-01", "startTime": "2026-07-01T09:00:00Z",
-                      "endTime": "2026-07-01T10:00:00Z", "_links": {}},
+                json={
+                    "id": 9,
+                    "spentOn": "2026-07-01",
+                    "startTime": "2026-07-01T09:00:00Z",
+                    "endTime": "2026-07-01T10:00:00Z",
+                    "_links": {},
+                },
                 request=request,
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
@@ -5638,17 +5772,40 @@ async def test_list_relations_filters_by_read_allowlist_both_sides() -> None:
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/relations" and request.method == "GET":
-            return httpx.Response(200, json={"_embedded": {"elements": [
-                {"id": 1, "type": "blocks", "_links": {
-                    "from": {"href": "/api/v3/work_packages/10"},
-                    "to": {"href": "/api/v3/work_packages/11"}}},
-                {"id": 2, "type": "blocks", "_links": {
-                    "from": {"href": "/api/v3/work_packages/20"},
-                    "to": {"href": "/api/v3/work_packages/10"}}},
-                {"id": 3, "type": "blocks", "_links": {
-                    "from": {"href": "/api/v3/work_packages/30"},
-                    "to": {"href": "/api/v3/work_packages/31"}}},
-            ]}}, request=request)
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 1,
+                                "type": "blocks",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/10"},
+                                    "to": {"href": "/api/v3/work_packages/11"},
+                                },
+                            },
+                            {
+                                "id": 2,
+                                "type": "blocks",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/20"},
+                                    "to": {"href": "/api/v3/work_packages/10"},
+                                },
+                            },
+                            {
+                                "id": 3,
+                                "type": "blocks",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/30"},
+                                    "to": {"href": "/api/v3/work_packages/31"},
+                                },
+                            },
+                        ]
+                    }
+                },
+                request=request,
+            )
         m = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
         if m:
             wp = int(m.group(1))
@@ -5671,13 +5828,16 @@ async def test_relation_hides_wp_subject_when_wp_subject_hidden() -> None:
     """from_subject/to_subject honor the work_package subject hide list."""
     settings = _base_settings(hidden_fields={"work_package": ("subject",)})
     client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
-    rel = client.normalize_relation({
-        "id": 5, "type": "blocks",
-        "_links": {
-            "from": {"href": "/api/v3/work_packages/1", "title": "Secret A"},
-            "to": {"href": "/api/v3/work_packages/2", "title": "Secret B"},
-        },
-    })
+    rel = client.normalize_relation(
+        {
+            "id": 5,
+            "type": "blocks",
+            "_links": {
+                "from": {"href": "/api/v3/work_packages/1", "title": "Secret A"},
+                "to": {"href": "/api/v3/work_packages/2", "title": "Secret B"},
+            },
+        }
+    )
     assert rel.from_subject is None
     assert rel.to_subject is None
     await client.aclose()
@@ -5686,6 +5846,7 @@ async def test_relation_hides_wp_subject_when_wp_subject_hidden() -> None:
 async def test_create_relation_resolves_semantic_target_to_numeric() -> None:
     """A semantic target ref is resolved to a numeric id before the HAL 'to' link."""
     posted = {}
+
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/PROJ-20" and request.method == "GET":
             return httpx.Response(200, json={"id": 20, "_links": {"project": {"title": "Demo"}}}, request=request)
@@ -5693,15 +5854,26 @@ async def test_create_relation_resolves_semantic_target_to_numeric() -> None:
             return httpx.Response(200, json={"id": 10, "_links": {"project": {"title": "Demo"}}}, request=request)
         if request.url.path == "/api/v3/work_packages/PROJ-10/relations" and request.method == "POST":
             posted.update(json.loads(request.content))
-            return httpx.Response(201, json={"id": 99, "type": "blocks", "_links": {
-                "from": {"href": "/api/v3/work_packages/10"},
-                "to": {"href": "/api/v3/work_packages/20"}}}, request=request)
+            return httpx.Response(
+                201,
+                json={
+                    "id": 99,
+                    "type": "blocks",
+                    "_links": {
+                        "from": {"href": "/api/v3/work_packages/10"},
+                        "to": {"href": "/api/v3/work_packages/20"},
+                    },
+                },
+                request=request,
+            )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(enable_work_package_write=True, auto_confirm_write=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     await client.create_work_package_relation(
-        work_package_id="PROJ-10", related_to_work_package_id="PROJ-20", relation_type="blocks",
+        work_package_id="PROJ-10",
+        related_to_work_package_id="PROJ-20",
+        relation_type="blocks",
     )
     # The 'to' link must carry the numeric id (20), not the semantic ref.
     assert posted["_links"]["to"]["href"].endswith("/work_packages/20")
@@ -5710,10 +5882,19 @@ async def test_create_relation_resolves_semantic_target_to_numeric() -> None:
 
 async def test_copy_project_checks_destination_allowlist() -> None:
     """copy_project refuses a destination outside the write allowlist."""
+
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/src":
-            return httpx.Response(200, json={"id": 1, "identifier": "src", "name": "Source",
-                                             "_links": {"self": {"href": "/api/v3/projects/1"}}}, request=request)
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "identifier": "src",
+                    "name": "Source",
+                    "_links": {"self": {"href": "/api/v3/projects/1"}},
+                },
+                request=request,
+            )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(
@@ -5732,8 +5913,16 @@ async def test_copy_project_checks_destination_allowlist() -> None:
     # proceeds to the copy/form request, which the handler serves).
     async def handler_ok(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/src":
-            return httpx.Response(200, json={"id": 1, "identifier": "src", "name": "Source",
-                                             "_links": {"self": {"href": "/api/v3/projects/1"}}}, request=request)
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "identifier": "src",
+                    "name": "Source",
+                    "_links": {"self": {"href": "/api/v3/projects/1"}},
+                },
+                request=request,
+            )
         if request.url.path == "/api/v3/projects/form" and request.method == "POST":
             return httpx.Response(200, json={"_embedded": {"payload": {}, "validationErrors": {}}}, request=request)
         if request.url.path.endswith("/copy/form") and request.method == "POST":

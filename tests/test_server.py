@@ -1,4 +1,5 @@
 """Tests for dynamic tool registration in create_app()."""
+
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.server import create_app
 
@@ -142,13 +143,15 @@ def test_enable_admin_write_adds_user_group_tools() -> None:
 
 def test_admin_tools_absent_without_enable_admin_write() -> None:
     """All project-scoped write flags enabled — admin tools must still be absent."""
-    mcp = create_app(make_settings(
-        enable_project_write=True,
-        enable_work_package_write=True,
-        enable_membership_write=True,
-        enable_version_write=True,
-        enable_board_write=True,
-    ))
+    mcp = create_app(
+        make_settings(
+            enable_project_write=True,
+            enable_work_package_write=True,
+            enable_membership_write=True,
+            enable_version_write=True,
+            enable_board_write=True,
+        )
+    )
     names = _tool_names(mcp)
     assert "create_user" not in names
     assert "delete_user" not in names

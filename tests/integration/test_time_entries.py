@@ -1,4 +1,5 @@
 """Integration tests for time entry CRUD operations."""
+
 from __future__ import annotations
 
 import datetime

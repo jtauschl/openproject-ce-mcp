@@ -1,4 +1,5 @@
 """Integration tests for stateless metadata endpoints."""
+
 from __future__ import annotations
 
 import json

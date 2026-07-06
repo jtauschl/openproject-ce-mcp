@@ -1,4 +1,5 @@
 """Parity test: every tool registered in register_tools() must appear in docs/tools.md."""
+
 import ast
 import re
 from pathlib import Path
@@ -44,9 +45,8 @@ def test_all_registered_tools_are_documented() -> None:
     documented = _documented_tool_names()
 
     missing = registered - documented
-    assert not missing, (
-        "Tools registered in register_tools() but missing from docs/tools.md:\n"
-        + "\n".join(f"  - {name}" for name in sorted(missing))
+    assert not missing, "Tools registered in register_tools() but missing from docs/tools.md:\n" + "\n".join(
+        f"  - {name}" for name in sorted(missing)
     )
 
 
@@ -55,7 +55,6 @@ def test_no_extra_tools_documented() -> None:
     documented = _documented_tool_names()
 
     extra = documented - registered
-    assert not extra, (
-        "Tools in docs/tools.md but not registered in register_tools():\n"
-        + "\n".join(f"  - {name}" for name in sorted(extra))
+    assert not extra, "Tools in docs/tools.md but not registered in register_tools():\n" + "\n".join(
+        f"  - {name}" for name in sorted(extra)
     )

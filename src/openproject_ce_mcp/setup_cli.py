@@ -16,6 +16,7 @@ Runs in two modes:
   ``uv``/pip, the command points at ``.venv/bin/openproject-ce-mcp``, and
   ``.mcp.json`` lands in the repo root. This preserves the get.sh behaviour.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -200,18 +201,14 @@ def _merge_json(existing: str, root_key: str, command: str, env: dict[str, str],
             # Parsed fine but the shape is wrong (list/str/number at top level).
             # Treat this like a parse failure so the caller leaves the file
             # untouched instead of us silently discarding the user's data.
-            raise ValueError(
-                f"expected a JSON object at the top level, got {type(loaded).__name__}"
-            )
+            raise ValueError(f"expected a JSON object at the top level, got {type(loaded).__name__}")
         data = loaded
     servers = data.get(root_key)
     if servers is None:
         servers = {}
     elif not isinstance(servers, dict):
         # e.g. "mcpServers": [] — refuse rather than overwrite the user's value.
-        raise ValueError(
-            f'expected "{root_key}" to be a JSON object, got {type(servers).__name__}'
-        )
+        raise ValueError(f'expected "{root_key}" to be a JSON object, got {type(servers).__name__}')
     servers["openproject"] = _server_entry(command, env, stdio=stdio)
     data[root_key] = servers
     return json.dumps(data, indent=2) + "\n"
@@ -282,14 +279,11 @@ def _strip_codex_openproject(existing: str) -> str:
         stripped = line.strip()
         if _CODEX_DOTTED_RE.match(stripped):
             raise CodexMergeError(
-                "existing openproject entry uses a dotted key or inline table; "
-                "cannot merge by text edit"
+                "existing openproject entry uses a dotted key or inline table; cannot merge by text edit"
             )
         if _TOML_HEADER_RE.match(stripped):
             table = stripped.lstrip("[").rstrip("]").strip()
-            skipping = table == "mcp_servers.openproject" or table.startswith(
-                "mcp_servers.openproject."
-            )
+            skipping = table == "mcp_servers.openproject" or table.startswith("mcp_servers.openproject.")
         if not skipping:
             out.append(line)
     return "\n".join(out)
@@ -363,9 +357,7 @@ class Client:
         # shape is written to either the global or the project-local target.
         if self.fmt == "toml":
             return _merge_codex_toml(existing, command, env)
-        return _merge_json(
-            existing, self.root_key, command, env, stdio=self.stdio
-        )
+        return _merge_json(existing, self.root_key, command, env, stdio=self.stdio)
 
 
 # Detection tradeoff: each heuristic prefers a strong signal (the client's binary
@@ -381,9 +373,7 @@ class Client:
 
 
 def _detect_claude_code() -> bool:
-    return bool(shutil.which("claude")) or (_home() / ".claude.json").exists() or (
-        _home() / ".claude"
-    ).exists()
+    return bool(shutil.which("claude")) or (_home() / ".claude.json").exists() or (_home() / ".claude").exists()
 
 
 def _detect_claude_desktop() -> bool:
@@ -474,9 +464,7 @@ def _clients() -> list[Client]:
     ]
 
 
-def _write_client_config(
-    client: Client, command: str, env: dict[str, str], *, target: Path | None = None
-) -> bool:
+def _write_client_config(client: Client, command: str, env: dict[str, str], *, target: Path | None = None) -> bool:
     """Merge the ``openproject`` server into a client config at ``target``.
 
     ``target`` defaults to the client's global config; pass ``client.project_target``
@@ -593,9 +581,7 @@ def _run_uninstall() -> None:
     removed_global = _clean("global", [(c, c.target) for c in clients])
     print()
     print(f"Project-local (this directory: {Path.cwd()}):")
-    removed_project = _clean(
-        "project", [(c, c.project_target) for c in clients if c.project_target is not None]
-    )
+    removed_project = _clean("project", [(c, c.project_target) for c in clients if c.project_target is not None])
 
     print()
     if not (removed_global or removed_project):
@@ -795,9 +781,7 @@ def _choose_targets(clients: list[Client]) -> tuple[list[Client], list[Client]]:
             # Default yes if this client is detected; also default yes for Claude
             # Code when nothing else project-capable is detected, so a user standing
             # in a project doesn't end up with nothing written.
-            default = client.key in detected_keys or (
-                client.key == "claude-code" and not detected_project
-            )
+            default = client.key in detected_keys or (client.key == "claude-code" and not detected_project)
             if _prompt_bool(f"  Configure {client.label}? ({client.project_target})", default=default):
                 project_clients.append(client)
 
@@ -903,9 +887,9 @@ def _run_configure(argv: list[str] | None = None) -> None:
     # Field-wise prefill: global targets first (low priority), then project targets
     # in cwd (override only keys they define), so a partial project config doesn't
     # discard a complete global entry's token.
-    prefill_pairs: list[tuple[Client, Path | None]] = [
-        (c, c.target) for c in global_clients
-    ] + [(c, c.project_target) for c in project_clients]
+    prefill_pairs: list[tuple[Client, Path | None]] = [(c, c.target) for c in global_clients] + [
+        (c, c.project_target) for c in project_clients
+    ]
     existing = _merge_prefill(prefill_pairs)
 
     print()
@@ -1021,9 +1005,7 @@ def _run_configure(argv: list[str] | None = None) -> None:
         # it is a powerful, rarely needed capability. The key is written as false
         # (preserving any existing value) so it is visible and easy to flip by
         # hand; see .mcp.json.example and the README for details.
-        "OPENPROJECT_ENABLE_ADMIN_WRITE": str(
-            _bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_WRITE")
-        ).lower(),
+        "OPENPROJECT_ENABLE_ADMIN_WRITE": str(_bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_WRITE")).lower(),
         "OPENPROJECT_TIMEOUT": existing.get("OPENPROJECT_TIMEOUT", "12"),
         "OPENPROJECT_VERIFY_SSL": existing.get("OPENPROJECT_VERIFY_SSL", "true"),
         "OPENPROJECT_DEFAULT_PAGE_SIZE": existing.get("OPENPROJECT_DEFAULT_PAGE_SIZE", "20"),

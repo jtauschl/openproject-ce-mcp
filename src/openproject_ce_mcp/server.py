@@ -52,9 +52,7 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
         epilog="Run 'openproject-ce-mcp configure --help' for setup options.",
     )
-    parser.add_argument(
-        "-V", "--version", action="version", version=f"openproject-ce-mcp {__version__}"
-    )
+    parser.add_argument("-V", "--version", action="version", version=f"openproject-ce-mcp {__version__}")
     sub = parser.add_subparsers(dest="command", metavar="{configure}")
     sub.add_parser(
         "configure",
