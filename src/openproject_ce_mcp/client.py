@@ -2898,6 +2898,17 @@ class OpenProjectClient:
             raise InvalidInputError(
                 f"reaction must be one of: {', '.join(self.EMOJI_REACTIONS)}."
             )
+        # Enforce the project write allowlist against the activity's work package.
+        # Fail closed: if the activity has no resolvable workPackage link, refuse
+        # rather than patch an unchecked target.
+        activity = await self._get(f"activities/{activity_id}")
+        wp_ref = _id_from_href(activity.get("_links", {}).get("workPackage", {}).get("href"))
+        if not wp_ref:
+            raise OpenProjectServerError(
+                "OpenProject activity is missing a work package link; cannot verify project write access."
+            )
+        wp_payload = await self._get(f"work_packages/{wp_ref}")
+        self._ensure_project_write_link_allowed(wp_payload.get("_links", {}).get("project"))
         # PATCH toggles: adds the reaction if absent, removes it if present, and
         # returns the full reaction collection for the activity afterwards.
         payload = await self._patch(

@@ -11,6 +11,7 @@ from openproject_ce_mcp.client import (
     InvalidInputError,
     NotFoundError,
     OpenProjectClient,
+    OpenProjectServerError,
     PermissionDeniedError,
     _extract_formattable_text,
 )
@@ -5214,6 +5215,18 @@ def _write_enabled_settings() -> Settings:
 @pytest.mark.asyncio
 async def test_toggle_activity_emoji_reaction_patches_and_normalizes() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/activities/1988" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 1988, "_links": {"workPackage": {"href": "/api/v3/work_packages/42"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
         if request.url.path == "/api/v3/activities/1988/emoji_reactions" and request.method == "PATCH":
             assert json.loads(request.content) == {"reaction": "heart"}
             return httpx.Response(
@@ -5258,6 +5271,53 @@ async def test_toggle_activity_emoji_reaction_rejects_invalid_reaction() -> None
 
     with pytest.raises(InvalidInputError, match="reaction must be one of"):
         await client.toggle_activity_emoji_reaction(1988, "banana")
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_toggle_activity_emoji_reaction_respects_allowed_write_projects() -> None:
+    """The toggle enforces the project write allowlist via the activity's work package."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/activities/1988" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 1988, "_links": {"workPackage": {"href": "/api/v3/work_packages/9"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/9" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 9, "_links": {"project": {"href": "/api/v3/projects/2", "title": "Other"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_work_package_write=True, allowed_write_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ALLOWED_PROJECTS_WRITE"):
+        await client.toggle_activity_emoji_reaction(1988, "heart")
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_toggle_activity_emoji_reaction_fails_closed_without_work_package_link() -> None:
+    """An activity with no workPackage link is refused; no PATCH is issued."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/activities/1988" and request.method == "GET":
+            return httpx.Response(200, json={"id": 1988, "_links": {}}, request=request)
+        if request.method == "PATCH":
+            raise AssertionError("PATCH must not be issued when the activity has no work package link")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(OpenProjectServerError, match="missing a work package link"):
+        await client.toggle_activity_emoji_reaction(1988, "heart")
 
     await client.aclose()
 
