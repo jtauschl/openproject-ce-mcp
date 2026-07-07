@@ -1,5 +1,9 @@
 """Tests for dynamic tool registration in create_app()."""
 
+import pytest
+
+import openproject_ce_mcp.server as server
+from openproject_ce_mcp import __version__
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.server import create_app
 
@@ -172,6 +176,57 @@ def test_all_scoped_writes_independent() -> None:
         mcp = create_app(make_settings(**{flag: True}))
         names = _tool_names(mcp)
         assert expected_tool in names, f"{expected_tool} missing when {flag}=True"
+
+
+# ── server instructions & handshake metadata ──────────────────────────────────
+
+
+def test_instructions_state_ce_reality() -> None:
+    """The initialize handshake carries the CE guidance the agent needs up front."""
+    mcp = create_app(make_settings())
+    instructions = mcp._mcp_server.instructions or ""
+    assert "Community Edition" in instructions
+    # The two hard limits we most want the agent to know:
+    assert "do not attempt" in instructions.lower() or "not creatable" in instructions.lower()
+    assert "list_capabilities" in instructions
+
+
+def test_serverinfo_version_is_our_version() -> None:
+    """serverInfo.version (MCP MUST) reports our package version, not the SDK default."""
+    mcp = create_app(make_settings())
+    assert mcp._mcp_server.version == __version__
+
+
+@pytest.mark.allow_feature_flag_fetch
+def test_fetch_active_feature_flags_swallows_errors(monkeypatch) -> None:
+    """A failing instance fetch returns None instead of raising — startup stays safe."""
+
+    async def _boom(self):
+        raise RuntimeError("instance unreachable")
+
+    monkeypatch.setattr(server.OpenProjectClient, "get_instance_configuration", _boom)
+    assert server._fetch_active_feature_flags(make_settings()) is None
+
+
+def test_instructions_fall_back_to_static_without_flags() -> None:
+    """With no reachable flags (autouse offline stub) instructions are exactly the static text."""
+    mcp = create_app(make_settings())
+    assert mcp._mcp_server.instructions == server.CE_INSTRUCTIONS
+
+
+@pytest.mark.allow_feature_flag_fetch
+def test_instructions_include_live_feature_flags(monkeypatch) -> None:
+    """When the instance is reachable, its active feature flags are appended."""
+    monkeypatch.setattr(
+        server,
+        "_fetch_active_feature_flags",
+        lambda settings: ["boardView", "teamPlannerModuleActive"],
+    )
+    mcp = create_app(make_settings())
+    instructions = mcp._mcp_server.instructions or ""
+    assert "Active feature flags on this instance" in instructions
+    assert "boardView" in instructions
+    assert "teamPlannerModuleActive" in instructions
 
 
 # ── console entry-point dispatch ───────────────────────────────────────────────

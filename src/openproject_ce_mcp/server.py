@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import logging
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -12,6 +14,72 @@ from . import __version__
 from .client import OpenProjectClient
 from .config import Settings, configure_logging
 from .tools import register_tools
+
+# Server instructions surfaced to the connecting agent in the MCP `initialize`
+# response. This is the canonical, spec-standard channel (optional since protocol
+# 2024-11-05) for telling the agent up front what this server is and where its
+# hard limits are — so it does not waste turns attempting operations the API
+# structurally cannot do. Kept as Markdown, short and actionable.
+CE_INSTRUCTIONS = """\
+# OpenProject Community Edition MCP
+
+This server wraps a single **OpenProject Community Edition (CE)** instance over its
+REST API v3. Community Edition, not Enterprise — plan accordingly.
+
+## Not creatable or modifiable via the API (do not attempt)
+
+Work-package **types**, **statuses**, **workflows**, enabled **modules**, and
+custom-field **definitions** are configured only in the OpenProject web admin UI.
+The REST API exposes no writable endpoint for them (`POST /api/v3/types` → 404),
+and this is not a permission issue — an admin token gets 404 too. Read them with
+`list_types` / `list_statuses`, but do not try to create or change them here.
+
+## Enterprise-only features are absent
+
+Portfolios, Programs, Placeholder Users, Budgets, Custom Actions, and Baseline
+Comparisons are Enterprise Edition features and are not available on this instance.
+
+## Capabilities: what the tools say, not what `list_capabilities` says
+
+`list_capabilities` / `get_instance_configuration` report OpenProject's own
+per-user *action grants* and feature flags — they are informational and are **not**
+the source of truth for what you can do here. A missing capability does **not** mean
+an operation is impossible: e.g. deleting a work package is not listed as a
+capability yet the `delete_work_package` tool works. **The registered MCP tools are
+the authority** — if a tool exists it is allowed; if it does not, it is not.
+"""
+
+
+def _fetch_active_feature_flags(settings: Settings) -> list[str] | None:
+    """Best-effort, one-shot fetch of the instance's active feature flags.
+
+    Returns the flags, or ``None`` if the instance cannot be reached / read. Must
+    never block or crash server start — same fault-tolerant philosophy as
+    ``OpenProjectClient.initialize`` (which swallows startup errors).
+    """
+
+    async def _run() -> list[str] | None:
+        client = OpenProjectClient(settings)
+        try:
+            config = await client.get_instance_configuration()
+            return list(config.active_feature_flags)
+        finally:
+            await client.aclose()
+
+    try:
+        return asyncio.run(_run())
+    except Exception:  # noqa: BLE001 — never let handshake enrichment break startup
+        logging.getLogger(__name__).debug("instance configuration fetch failed", exc_info=True)
+        return None
+
+
+def _build_instructions(settings: Settings) -> str:
+    """Static CE guidance, enriched with the instance's live feature flags when reachable."""
+    flags = _fetch_active_feature_flags(settings)
+    if not flags:
+        return CE_INSTRUCTIONS
+    flag_list = ", ".join(sorted(flags))
+    return f"{CE_INSTRUCTIONS}\n## Active feature flags on this instance\n\n{flag_list}\n"
 
 
 @dataclass(slots=True)
@@ -31,7 +99,22 @@ def create_app(settings: Settings) -> FastMCP:
         finally:
             await client.aclose()
 
-    mcp = FastMCP("OpenProject CE MCP", json_response=True, lifespan=app_lifespan)
+    # The feature-flag fetch must happen before FastMCP construction: `instructions`
+    # is passed to the constructor and injected into the initialize response, while
+    # `app_lifespan` only runs later on client connect — too late to shape it.
+    instructions = _build_instructions(settings)
+
+    mcp = FastMCP(
+        "OpenProject CE MCP",
+        instructions=instructions,
+        json_response=True,
+        lifespan=app_lifespan,
+    )
+    # serverInfo.version (MCP MUST): FastMCP has no `version` constructor kwarg, so
+    # set it on the low-level server. Without this the handshake reports the SDK's
+    # own version instead of ours. Read at `initialize`, so setting it here is early
+    # enough.
+    mcp._mcp_server.version = __version__
     register_tools(mcp, settings)
     return mcp
 

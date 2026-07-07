@@ -2199,7 +2199,11 @@ async def get_current_user(ctx: Context) -> CurrentUser:
 
 
 async def list_statuses(ctx: Context) -> StatusListResult:
-    """List all available work package statuses."""
+    """List all available work package statuses.
+
+    Read-only: statuses cannot be created or modified via the OpenProject API
+    (Community Edition); configure them in the web admin UI.
+    """
     client = _client_from_context(ctx)
     return await _run_tool(client.list_statuses())
 
@@ -2228,7 +2232,11 @@ async def list_types(
     ctx: Context,
     project: str | None = None,
 ) -> TypeListResult:
-    """List all available work package types, optionally filtered by project."""
+    """List all available work package types, optionally filtered by project.
+
+    Read-only: types cannot be created or modified via the OpenProject API
+    (Community Edition); configure them in the web admin UI.
+    """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     return await _run_tool(client.list_types(project=safe_project))
