@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openproject-ce-mcp"
-version = "0.2.2"
+version = "0.2.3"
 description = "MCP server for OpenProject Community Edition with guarded read/write support."
 readme = "README.md"
 license = { file = "LICENSE" }
