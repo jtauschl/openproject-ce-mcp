@@ -90,6 +90,54 @@ async def test_create_subtask(client: OpenProjectClient, test_project: str, wp_i
     assert wp.subject
 
 
+async def test_create_reparent_and_unparent_work_package(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    from openproject_ce_mcp.client import CLEAR_PARENT
+
+    # Two candidate parents plus one child.
+    parent_a = await client.create_work_package(
+        project=test_project, type="Task", subject=f"{_SUBJECT} parent A", confirm=True
+    )
+    assert parent_a.ready
+    wp_ids.append(parent_a.work_package_id)
+    parent_b = await client.create_work_package(
+        project=test_project, type="Task", subject=f"{_SUBJECT} parent B", confirm=True
+    )
+    assert parent_b.ready
+    wp_ids.append(parent_b.work_package_id)
+
+    # Create directly under parent A.
+    child = await client.create_work_package(
+        project=test_project,
+        type="Task",
+        subject=f"{_SUBJECT} reparent child",
+        parent_work_package_id=parent_a.work_package_id,
+        confirm=True,
+    )
+    assert child.ready, child.validation_errors
+    wp_ids.append(child.work_package_id)
+    assert (await client.get_work_package(child.work_package_id)).parent_id == parent_a.work_package_id
+
+    # Re-parent to B.
+    reparent = await client.update_work_package(
+        work_package_id=child.work_package_id,
+        parent_work_package_id=parent_b.work_package_id,
+        confirm=True,
+    )
+    assert reparent.ready, reparent.validation_errors
+    assert (await client.get_work_package(child.work_package_id)).parent_id == parent_b.work_package_id
+
+    # Un-parent (make top-level).
+    unparent = await client.update_work_package(
+        work_package_id=child.work_package_id,
+        parent_work_package_id=CLEAR_PARENT,
+        confirm=True,
+    )
+    assert unparent.ready, unparent.validation_errors
+    assert (await client.get_work_package(child.work_package_id)).parent_id is None
+
+
 async def test_add_work_package_comment(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
     result = await client.create_work_package(
         project=test_project,

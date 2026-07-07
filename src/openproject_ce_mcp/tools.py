@@ -7,6 +7,7 @@ from typing import Any, cast
 from mcp.server.fastmcp import Context, FastMCP
 
 from .client import (
+    CLEAR_PARENT,
     AuthenticationError,
     InvalidInputError,
     NotFoundError,
@@ -1101,6 +1102,7 @@ async def create_work_package(
     priority: str | None = None,
     category: str | None = None,
     custom_fields: dict[str, Any] | None = None,
+    parent: str | None = None,
     start_date: str | None = None,
     due_date: str | None = None,
     confirm: bool = False,
@@ -1108,7 +1110,7 @@ async def create_work_package(
     """Prepare or create a work package.
 
     The tool validates the payload first. Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
-    assignee accepts a numeric user id or 'me'.
+    assignee accepts a numeric user id or 'me'. parent accepts a numeric id or a project-prefixed reference like PROJ-123 to nest the new work package under a parent.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
@@ -1122,6 +1124,7 @@ async def create_work_package(
     safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
     safe_category = _validate_optional_query(category, field_name="category", max_length=100)
     safe_custom_fields = _validate_optional_custom_fields(custom_fields)
+    safe_parent = _validate_optional_work_package_ref(parent, field_name="parent")
     safe_start_date = _validate_optional_date(start_date, field_name="start_date")
     safe_due_date = _validate_optional_date(due_date, field_name="due_date")
     return await _run_tool(
@@ -1137,6 +1140,7 @@ async def create_work_package(
             priority=safe_priority,
             category=safe_category,
             custom_fields=safe_custom_fields,
+            parent_work_package_id=safe_parent,
             start_date=safe_start_date,
             due_date=safe_due_date,
             confirm=confirm,
@@ -1158,6 +1162,7 @@ async def update_work_package(
     priority: str | None = None,
     category: str | None = None,
     custom_fields: dict[str, Any] | None = None,
+    parent: str | None = None,
     start_date: str | None = None,
     due_date: str | None = None,
     confirm: bool = False,
@@ -1166,7 +1171,7 @@ async def update_work_package(
 
     The tool validates the patch first. Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
     work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
-    assignee accepts a numeric user id or 'me'. Omitted fields stay unchanged.
+    assignee accepts a numeric user id or 'me'. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. Omitted fields stay unchanged.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -1181,6 +1186,13 @@ async def update_work_package(
     safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
     safe_category = _validate_optional_query(category, field_name="category", max_length=100)
     safe_custom_fields = _validate_optional_custom_fields(custom_fields)
+    # parent: 'none' (any case) clears the parent (top-level); otherwise a work package ref.
+    if parent is None:
+        safe_parent: int | str | object | None = None
+    elif parent.strip().lower() == "none":
+        safe_parent = CLEAR_PARENT
+    else:
+        safe_parent = _validate_work_package_ref(parent, field_name="parent")
     safe_start_date = _validate_optional_date(start_date, field_name="start_date")
     safe_due_date = _validate_optional_date(due_date, field_name="due_date")
     if not any(
@@ -1197,6 +1209,7 @@ async def update_work_package(
             safe_priority,
             safe_category,
             safe_custom_fields,
+            safe_parent,
             safe_start_date,
             safe_due_date,
         )
@@ -1216,6 +1229,7 @@ async def update_work_package(
             priority=safe_priority,
             category=safe_category,
             custom_fields=safe_custom_fields,
+            parent_work_package_id=safe_parent,
             start_date=safe_start_date,
             due_date=safe_due_date,
             confirm=confirm,

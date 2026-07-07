@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from openproject_ce_mcp.client import (
+    CLEAR_PARENT,
     AuthenticationError,
     InvalidInputError,
     NotFoundError,
@@ -1229,6 +1230,199 @@ async def test_update_work_package_schema_probe_includes_lock_version() -> None:
     assert result.confirmed is True
     assert result.result is not None
     assert result.result.priority == "High"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_reparents_via_parent_link() -> None:
+    # Re-parenting sends _links.parent as a numeric HAL href on the normal PATCH.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "Child",
+                    "lockVersion": 4,
+                    "_links": {
+                        "project": {"title": "Demo", "href": "/api/v3/projects/1"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Feature"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            assert body["_links"]["parent"]["href"] == "/api/v3/work_packages/7"
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body["_links"]["parent"]["href"] == "/api/v3/work_packages/7"
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "Child",
+                    "lockVersion": 5,
+                    "_links": {
+                        "project": {"title": "Demo"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Feature"},
+                        "parent": {"href": "/api/v3/work_packages/7", "title": "Parent"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = make_settings()
+    settings = Settings(
+        base_url=settings.base_url,
+        api_token=settings.api_token,
+        enable_work_package_write=True,
+        timeout=settings.timeout,
+        verify_ssl=settings.verify_ssl,
+        default_page_size=settings.default_page_size,
+        max_page_size=settings.max_page_size,
+        max_results=settings.max_results,
+        log_level=settings.log_level,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.update_work_package(
+        work_package_id=42,
+        parent_work_package_id=7,
+        confirm=True,
+    )
+
+    assert result.confirmed is True
+    assert result.result is not None
+    assert result.result.parent_id == 7
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_unparents_with_null_href_through_schema_probe() -> None:
+    # Un-parenting (CLEAR_PARENT) must send _links.parent = {"href": None}, and it must
+    # survive the schema probe that fires when a schema-resolved field (priority) is
+    # also set -- i.e. every form POST carries the null parent href without failing.
+    form_calls = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal form_calls
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "Child",
+                    "lockVersion": 4,
+                    "_links": {
+                        "project": {"title": "Demo", "href": "/api/v3/projects/1"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Feature"},
+                        "parent": {"href": "/api/v3/work_packages/7", "title": "Parent"},
+                        "priority": {"title": "Normal"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            # The un-parent link rides along on every form POST, including the probe.
+            assert "parent" in body["_links"]
+            assert body["_links"]["parent"]["href"] is None
+            form_calls += 1
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Form",
+                    "_embedded": {
+                        "schema": {
+                            "priority": {
+                                "name": "Priority",
+                                "type": "Priority",
+                                "required": True,
+                                "writable": True,
+                                "location": "_links",
+                                "_embedded": {
+                                    "allowedValues": [
+                                        {
+                                            "id": 9,
+                                            "name": "High",
+                                            "_links": {"self": {"href": "/api/v3/priorities/9", "title": "High"}},
+                                        }
+                                    ]
+                                },
+                            },
+                        },
+                        "payload": body,
+                        "validationErrors": {},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body["_links"]["parent"]["href"] is None
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "Child",
+                    "lockVersion": 5,
+                    "_links": {
+                        "project": {"title": "Demo"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Feature"},
+                        "parent": {"href": None},
+                        "priority": {"title": "High"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = make_settings()
+    settings = Settings(
+        base_url=settings.base_url,
+        api_token=settings.api_token,
+        enable_work_package_write=True,
+        timeout=settings.timeout,
+        verify_ssl=settings.verify_ssl,
+        default_page_size=settings.default_page_size,
+        max_page_size=settings.max_page_size,
+        max_results=settings.max_results,
+        log_level=settings.log_level,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.update_work_package(
+        work_package_id=42,
+        parent_work_package_id=CLEAR_PARENT,
+        priority="High",
+        confirm=True,
+    )
+
+    assert form_calls >= 2
+    assert result.confirmed is True
+    assert result.result is not None
+    assert result.result.parent_id is None
 
     await client.aclose()
 

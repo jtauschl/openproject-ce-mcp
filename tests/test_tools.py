@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from openproject_ce_mcp.client import OpenProjectClient
+from openproject_ce_mcp.client import CLEAR_PARENT, OpenProjectClient
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.tools import (
     _validate_optional_user_ref,
@@ -335,6 +335,74 @@ async def test_update_work_package_tool_passes_project_phase() -> None:
 
     assert result["work_package_id"] == "42"
     assert result["project_phase"] == "Executing"
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_tool_passes_parent_ref() -> None:
+    class StubClient:
+        async def update_work_package(self, **kwargs):
+            return kwargs
+
+    result = await update_work_package(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        "42",
+        parent="PROJ-7",
+        confirm=False,
+    )
+
+    assert result["parent_work_package_id"] == "PROJ-7"
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_tool_maps_none_to_clear_parent_sentinel() -> None:
+    class StubClient:
+        async def update_work_package(self, **kwargs):
+            return kwargs
+
+    result = await update_work_package(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        "42",
+        parent="none",
+        confirm=False,
+    )
+
+    # 'none' (un-parent) must reach the client as the sentinel, not the string "none".
+    assert result["parent_work_package_id"] is CLEAR_PARENT
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_tool_parent_alone_satisfies_field_requirement() -> None:
+    # Clearing the parent is a real change: it must not trip "at least one field".
+    class StubClient:
+        async def update_work_package(self, **kwargs):
+            return kwargs
+
+    result = await update_work_package(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        "42",
+        parent="none",
+        confirm=False,
+    )
+
+    assert result["parent_work_package_id"] is CLEAR_PARENT
+
+
+@pytest.mark.asyncio
+async def test_create_work_package_tool_passes_parent_ref() -> None:
+    class StubClient:
+        async def create_work_package(self, **kwargs):
+            return kwargs
+
+    result = await create_work_package(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        project="PROJ",
+        type="Task",
+        subject="child",
+        parent="PROJ-7",
+        confirm=False,
+    )
+
+    assert result["parent_work_package_id"] == "PROJ-7"
 
 
 @pytest.mark.asyncio

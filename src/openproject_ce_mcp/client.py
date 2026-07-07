@@ -142,6 +142,12 @@ LOGGER = logging.getLogger(__name__)
 FORMATTABLE_LIMIT = 1_200
 SUBJECT_LIMIT = 255
 
+# Sentinel for update_work_package: distinguishes "clear the parent" (make the work
+# package top-level via _links.parent = {"href": null}) from "leave unchanged" (None).
+# A dedicated object avoids colliding with numeric ids or the _resolve_work_package_id
+# path, and cannot be confused with any valid parent reference.
+CLEAR_PARENT = object()
+
 
 class OpenProjectError(Exception):
     """Base error for safe OpenProject failures."""
@@ -1987,7 +1993,7 @@ class OpenProjectClient:
         priority: str | None = None,
         category: str | None = None,
         custom_fields: dict[str, Any] | None = None,
-        parent_work_package_id: int | None = None,
+        parent_work_package_id: int | str | None = None,
         start_date: str | None = None,
         due_date: str | None = None,
         confirm: bool = False,
@@ -1995,6 +2001,9 @@ class OpenProjectClient:
         project_payload = await self._get(f"projects/{quote(project, safe='')}")
         self._ensure_project_write_allowed(project, payload=project_payload)
         project_id = str(project_payload["id"])
+        if parent_work_package_id is not None:
+            # parent goes into a HAL link href, which resolves only by numeric id.
+            parent_work_package_id = await self._resolve_work_package_id(parent_work_package_id)
         payload = await self._build_write_payload(
             project=project_id,
             type=type,
@@ -2090,14 +2099,15 @@ class OpenProjectClient:
         priority: str | None = None,
         category: str | None = None,
         custom_fields: dict[str, Any] | None = None,
-        parent_work_package_id: int | str | None = None,
+        parent_work_package_id: int | str | object | None = None,
         start_date: str | None = None,
         due_date: str | None = None,
         confirm: bool = False,
     ) -> WorkPackageWriteResult:
         work_package_id = self._work_package_ref(work_package_id)
-        if parent_work_package_id is not None:
+        if parent_work_package_id is not None and parent_work_package_id is not CLEAR_PARENT:
             # parent goes into a HAL link href, which resolves only by numeric id.
+            # CLEAR_PARENT is a sentinel (un-parent) and must pass through unresolved.
             parent_work_package_id = await self._resolve_work_package_id(parent_work_package_id)
         current = await self._get(f"work_packages/{work_package_id}")
         project_id = _id_from_href(current.get("_links", {}).get("project", {}).get("href"))
@@ -5472,14 +5482,14 @@ class OpenProjectClient:
         priority: str | None = None,
         category: str | None = None,
         custom_fields: dict[str, Any] | None = None,
-        parent_work_package_id: int | None = None,
+        parent_work_package_id: int | object | None = None,
         start_date: str | None = None,
         due_date: str | None = None,
         work_package_id: int | None = None,
         lock_version: int | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {}
-        links: dict[str, dict[str, str]] = {}
+        links: dict[str, dict[str, str | None]] = {}
 
         if custom_fields:
             for raw_key in custom_fields:
@@ -5513,7 +5523,10 @@ class OpenProjectClient:
             self._ensure_field_writable("work_package", "assignee")
             assignee_id = await self._resolve_assignee_id(assignee)
             links["assignee"] = {"href": self._api_href(f"users/{assignee_id}")}
-        if parent_work_package_id is not None:
+        if parent_work_package_id is CLEAR_PARENT:
+            self._ensure_field_writable("work_package", "parent")
+            links["parent"] = {"href": None}
+        elif parent_work_package_id is not None:
             self._ensure_field_writable("work_package", "parent")
             links["parent"] = {"href": self._api_href(f"work_packages/{parent_work_package_id}")}
 
