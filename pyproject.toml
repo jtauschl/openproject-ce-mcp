@@ -85,6 +85,7 @@ asyncio_mode = "auto"
 addopts = "-m 'not integration'"
 markers = [
     "integration: tests against a live OpenProject instance (requires env vars)",
+    "allow_feature_flag_fetch: opt out of the offline feature-flag stub in conftest",
 ]
 
 [tool.ruff]
