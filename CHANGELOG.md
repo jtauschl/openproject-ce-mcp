@@ -7,6 +7,30 @@ development baseline.
 
 ---
 
+## 0.2.3 – 2026-07-07
+
+### Fixed
+
+- **`create_work_package_attachment` no longer fails with a 500 on every upload.**
+  The `metadata` multipart part was sent with a filename (`name="metadata";
+  filename="metadata"`), so OpenProject's parser treated it as an uploaded file
+  instead of a JSON field and returned `no implicit conversion of
+  ActiveSupport::HashWithIndifferentAccess into String`. The part is now sent
+  without a filename, as the API expects.
+- **`serverInfo.version` in the MCP `initialize` handshake now reports the package
+  version** instead of the SDK's own version. FastMCP has no `version` constructor
+  argument, so it is set on the low-level server.
+
+### Added
+
+- **CE server instructions in the `initialize` response.** The server now tells a
+  connecting agent up front that types/statuses/workflows/modules are not
+  creatable through the API and that `list_capabilities` is not the source of
+  truth for what the tools allow, enriched at startup with the instance's live
+  active feature flags (best-effort; never blocks server start).
+
+---
+
 ## 0.2.2 – 2026-07-06
 
 ### Security
