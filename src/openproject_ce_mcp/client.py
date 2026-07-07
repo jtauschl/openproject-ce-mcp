@@ -4210,7 +4210,12 @@ class OpenProjectClient:
             "POST",
             path,
             files={
-                "metadata": ("metadata", json.dumps(metadata), "application/json"),
+                # The metadata part must be a plain form field, NOT a file part: it
+                # carries no filename in its Content-Disposition. If a filename is set,
+                # Rails' multipart parser treats it as an uploaded file (a Hash with a
+                # tempfile) instead of a JSON string, and OpenProject 500s with
+                # "no implicit conversion of HashWithIndifferentAccess into String".
+                "metadata": (None, json.dumps(metadata), "application/json"),
                 "file": (file_name, file_bytes, content_type),
             },
         )

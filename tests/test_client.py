@@ -3558,6 +3558,10 @@ async def test_views_categories_and_attachments() -> None:
             assert request.headers["content-type"].startswith("multipart/form-data")
             body = request.content
             assert b'name="metadata"' in body
+            # Regression: the metadata part must NOT carry a filename, or Rails treats
+            # it as an uploaded file (Hash) instead of a JSON string and OpenProject
+            # 500s ("no implicit conversion of HashWithIndifferentAccess into String").
+            assert b'name="metadata"; filename=' not in body
             assert b'"fileName": "spec.md"' in body
             assert b'name="file"; filename="spec.md"' in body
             return httpx.Response(
