@@ -134,16 +134,23 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
     # Register a tool with error-categorization applied, so every failure reaches
     # the agent with a stable [category] prefix.
     #
-    # Tools that return a *ListResult or *WriteResult are routed through _to_payload
-    # for context reduction (OPM-65/66/71/72): payload is dropped on confirmed
-    # writes, count/truncated on lists, hidden keys entirely, and `select` trims
-    # rows. Those tools are registered with structured_output=False so FastMCP does
-    # not build a fixed dataclass output schema — it serializes the trimmed dict we
-    # return verbatim, letting us omit keys. Detection is by return annotation, so
-    # no per-tool tagging is needed and it cannot drift. Tool bodies are unchanged;
-    # they still return their dataclass, which the wrapper trims.
+    # Tools that return a list/write/bulk result are routed through _to_payload for
+    # context reduction (OPM-65/66/71): payload is dropped on confirmed writes,
+    # count/truncated on lists, and `select` trims rows. Those tools are registered
+    # with structured_output=False so FastMCP does not build a fixed dataclass
+    # output schema — it serializes the trimmed dict we return verbatim, letting us
+    # omit keys. Detection is by the result model's fields, so no per-tool tagging
+    # is needed and it cannot drift. Tool bodies are unchanged; they still return
+    # their dataclass, which the wrapper trims.
+    #
+    # When any hide-field config is active, every dataclass-returning tool is
+    # trimmed too, so single-entity reads (get_*) can drop hidden keys entirely
+    # rather than emit them as null (OPM-72). This only widens schema loss when the
+    # operator opted into hiding.
+    hide_active = bool(settings.hidden_fields)
+
     def tool(fn):
-        if not _returns_trimmable(fn):
+        if not (_returns_trimmable(fn) or (hide_active and _returns_dataclass(fn))):
             return mcp.tool()(_categorize_tool_errors(fn))
 
         wrapped = _categorize_tool_errors(fn)
@@ -2803,24 +2810,34 @@ async def _run_tool(awaitable):
         raise RuntimeError(_prefix(category, str(exc))) from exc
 
 
+def _return_model(fn: Any) -> type | None:
+    """Resolve a tool's return-annotation to its dataclass model, or None.
+
+    ``from __future__ import annotations`` makes the return annotation a string, so
+    we resolve it against this module's namespace (where the models are imported).
+    """
+    ann = fn.__annotations__.get("return")
+    model = globals().get(ann) if isinstance(ann, str) else ann
+    return model if is_dataclass(model) else None
+
+
+def _returns_dataclass(fn: Any) -> bool:
+    """True if the tool returns a dataclass result (so it can be serialized/trimmed)."""
+    return _return_model(fn) is not None
+
+
 def _returns_trimmable(fn: Any) -> bool:
     """True if a tool returns a result the context-reduction seam should trim.
 
     A result is trimmable when its model carries a field the seam acts on:
     ``results`` (list results → count/truncated drop + select), ``payload`` (write
     results → payload drop on confirm), or ``items`` (bulk results, whose nested
-    per-item write results carry their own payload to drop). ``from __future__
-    import annotations`` makes the return annotation a string; we resolve it against
-    this module's namespace and inspect the dataclass fields, so detection is
-    precise and cannot drift from suffix conventions (e.g. RelationUpdateResult,
-    ProjectCopyResult carry payload but are not named *WriteResult).
+    per-item write results carry their own payload to drop). Detection inspects the
+    model's fields, so it cannot drift from suffix conventions (e.g.
+    RelationUpdateResult, ProjectCopyResult carry payload but are not *WriteResult).
     """
-    ann = fn.__annotations__.get("return")
-    if isinstance(ann, str):
-        model = globals().get(ann)
-    else:
-        model = ann
-    if model is None or not is_dataclass(model):
+    model = _return_model(fn)
+    if model is None:
         return False
     names = {f.name for f in dataclass_fields(model)}
     return bool(names & {"results", "payload", "items"})

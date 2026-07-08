@@ -5,7 +5,7 @@ import logging
 import mimetypes
 from collections.abc import Awaitable
 from dataclasses import fields as dataclass_fields
-from dataclasses import is_dataclass, replace
+from dataclasses import is_dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any
@@ -6868,23 +6868,24 @@ class OpenProjectClient:
             f"OpenProject custom field '{field_name}' is hidden by OPENPROJECT_HIDE_CUSTOM_FIELDS and cannot be written."
         )
 
-    def _hidden_placeholder(self, value: Any) -> Any:
-        if isinstance(value, list):
-            return []
-        if isinstance(value, dict):
-            return {}
-        return None
-
     def _apply_hidden_fields(self, entity: str, value: Any) -> Any:
+        """Tag a result dataclass with the field names hidden for its entity.
+
+        The names are stamped as a private ``_hidden_keys`` attribute (not a
+        dataclass field, so it never appears in the schema/output). The
+        serialization seam (tools._to_payload) reads it and drops those keys
+        entirely from the response — hidden fields cost neither their key name nor
+        a null value (OPM-72). Stamping is possible because the response dataclasses
+        are not frozen.
+        """
         if not is_dataclass(value):
             return value
-        replacements: dict[str, Any] = {}
-        for field_def in dataclass_fields(value):
-            if self._field_hidden(entity, field_def.name):
-                replacements[field_def.name] = self._hidden_placeholder(getattr(value, field_def.name))
-        if not replacements:
-            return value
-        return replace(value, **replacements)
+        hidden = frozenset(
+            field_def.name for field_def in dataclass_fields(value) if self._field_hidden(entity, field_def.name)
+        )
+        if hidden:
+            value._hidden_keys = hidden
+        return value
 
     def _api_href(self, relative_path: str) -> str:
         return f"/{self._api_prefix.lstrip('/')}{relative_path.lstrip('/')}"

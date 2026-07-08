@@ -21,6 +21,7 @@ from openproject_ce_mcp.client import (
     _trim_text_with_meta,
 )
 from openproject_ce_mcp.config import Settings
+from openproject_ce_mcp.tools import _to_payload
 
 
 def make_settings() -> Settings:
@@ -668,10 +669,17 @@ async def test_hidden_fields_support_wildcards_for_principal_reads() -> None:
         {"id": 5, "_type": "User", "name": "Alice", "login": "alice", "email": "alice@example.com"}
     )
 
-    assert principal.name is None
-    assert principal.email is None
-    assert principal.url is None
+    # OPM-72: hidden fields are tagged (not nulled). The wildcard patterns match
+    # name/email/url; the values remain on the dataclass, and the serialization seam
+    # removes exactly these keys from the response.
+    assert principal._hidden_keys == frozenset({"name", "email", "url"})
+    assert principal.name == "Alice"  # value preserved on the dataclass
     assert principal.login == "alice"
+    serialized = _to_payload(principal)
+    assert "name" not in serialized
+    assert "email" not in serialized
+    assert "url" not in serialized
+    assert serialized["login"] == "alice"
 
     await client.aclose()
 

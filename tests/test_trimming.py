@@ -239,3 +239,17 @@ def test_list_tools_expose_select_param() -> None:
     tools = _tools(create_app(_make_settings()))
     for name in ["list_work_packages", "search_work_packages", "list_projects", "list_users"]:
         assert "select" in json.dumps(tools[name].parameters), name
+
+
+# ── OPM-72: single-entity reads are trimmed only when hide-fields are active ──
+
+
+def test_single_entity_read_keeps_schema_without_hide_config() -> None:
+    tools = _tools(create_app(_make_settings()))
+    assert tools["get_work_package"].output_schema is not None
+
+
+def test_single_entity_read_trimmed_when_hide_config_active() -> None:
+    tools = _tools(create_app(_make_settings(hidden_fields={"work_package": ("percentage_complete",)})))
+    # With hiding on, get_* results must be trimmable (dict output) to drop keys.
+    assert tools["get_work_package"].output_schema is None
