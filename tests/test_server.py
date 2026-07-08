@@ -197,6 +197,24 @@ def test_serverinfo_version_is_our_version() -> None:
     assert mcp._mcp_server.version == __version__
 
 
+def test_create_app_applies_log_level(monkeypatch) -> None:
+    """OPENPROJECT_LOG_LEVEL takes effect: create_app forces the root level so
+    FastMCP's default INFO does not leak SDK request logs (OPM-62)."""
+    import logging
+
+    root = logging.getLogger()
+    original_level = root.level
+    # Simulate a handler already installed at INFO (as FastMCP does on construction),
+    # which makes basicConfig a no-op — the exact condition of the bug.
+    root.setLevel(logging.INFO)
+    try:
+        create_app(make_settings(log_level="WARNING"))
+        assert root.getEffectiveLevel() == logging.WARNING
+        assert not logging.getLogger("mcp.server.lowlevel.server").isEnabledFor(logging.INFO)
+    finally:
+        root.setLevel(original_level)
+
+
 @pytest.mark.allow_feature_flag_fetch
 def test_fetch_active_feature_flags_swallows_errors(monkeypatch) -> None:
     """A failing instance fetch returns None instead of raising — startup stays safe."""

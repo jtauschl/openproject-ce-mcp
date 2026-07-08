@@ -104,17 +104,26 @@ def create_app(settings: Settings) -> FastMCP:
     # `app_lifespan` only runs later on client connect — too late to shape it.
     instructions = _build_instructions(settings)
 
+    # log_level MUST be passed here: FastMCP.__init__ runs configure_logging() with
+    # its own default (INFO) and installs a stderr handler, so omitting it lets the
+    # SDK win the race and our OPENPROJECT_LOG_LEVEL never takes effect (OPM-62).
     mcp = FastMCP(
         "OpenProject CE MCP",
         instructions=instructions,
         json_response=True,
         lifespan=app_lifespan,
+        log_level=settings.log_level,
     )
     # serverInfo.version (MCP MUST): FastMCP has no `version` constructor kwarg, so
     # set it on the low-level server. Without this the handshake reports the SDK's
     # own version instead of ours. Read at `initialize`, so setting it here is early
     # enough.
     mcp._mcp_server.version = __version__
+    # Force the root logger level explicitly. basicConfig (used by both FastMCP and
+    # our configure_logging) is a no-op once a handler exists, so an explicit
+    # setLevel is what actually holds the configured level regardless of install
+    # order — this is the real fix for OPM-62.
+    logging.getLogger().setLevel(getattr(logging, settings.log_level))
     register_tools(mcp, settings)
     return mcp
 

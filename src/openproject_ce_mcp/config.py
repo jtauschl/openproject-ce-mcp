@@ -290,6 +290,9 @@ def configure_logging(level: str) -> None:
         level=numeric_level,
         format="%(levelname)s %(name)s %(message)s",
     )
+    # basicConfig is a no-op once a handler is already installed (e.g. by FastMCP),
+    # so set the level explicitly to make it actually take effect (OPM-62).
+    logging.getLogger().setLevel(numeric_level)
 
 
 def _require_non_empty(value: str | None, name: str) -> str:

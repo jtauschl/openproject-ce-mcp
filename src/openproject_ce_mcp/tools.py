@@ -1269,10 +1269,8 @@ async def bulk_create_work_packages(
         project = item.get("project")
         type_ = item.get("type")
         subject = item.get("subject")
-        safe_parent_work_package_id = (
-            _validate_positive_int(item.get("parent_work_package_id"), field_name=f"items[{i}].parent_work_package_id")
-            if item.get("parent_work_package_id") is not None
-            else None
+        safe_parent_work_package_id = _validate_optional_work_package_ref(
+            item.get("parent_work_package_id"), field_name=f"items[{i}].parent_work_package_id"
         )
         if not project:
             raise ValueError(f"items[{i}].project is required.")
@@ -1337,7 +1335,7 @@ async def bulk_update_work_packages(
         wp_id = item.get("work_package_id")
         if wp_id is None:
             raise ValueError(f"items[{i}].work_package_id is required.")
-        safe_id = _validate_positive_int(wp_id, field_name=f"items[{i}].work_package_id")
+        safe_id = _validate_work_package_ref(wp_id, field_name=f"items[{i}].work_package_id")
         safe_subject = _validate_optional_query(item.get("subject"), field_name=f"items[{i}].subject", max_length=255)
         safe_description = _validate_optional_text(
             item.get("description"), field_name=f"items[{i}].description", max_length=10_000
@@ -1357,10 +1355,8 @@ async def bulk_update_work_packages(
             item.get("category"), field_name=f"items[{i}].category", max_length=100
         )
         safe_custom_fields = _validate_optional_custom_fields(item.get("custom_fields"))
-        safe_parent_work_package_id = (
-            _validate_positive_int(item.get("parent_work_package_id"), field_name=f"items[{i}].parent_work_package_id")
-            if item.get("parent_work_package_id") is not None
-            else None
+        safe_parent_work_package_id = _validate_optional_work_package_ref(
+            item.get("parent_work_package_id"), field_name=f"items[{i}].parent_work_package_id"
         )
         safe_start_date = _validate_optional_date(item.get("start_date"), field_name=f"items[{i}].start_date")
         safe_due_date = _validate_optional_date(item.get("due_date"), field_name=f"items[{i}].due_date")
@@ -2993,6 +2989,11 @@ def _validate_relation_type(value: str) -> str:
 def _validate_optional_non_negative_int(value: int | None, *, field_name: str) -> int | None:
     if value is None:
         return None
+    # Type-safe: MCP args arrive as JSON, so a wrong type (e.g. "5", True) must
+    # yield a clean ValueError, not a raw TypeError from the comparison (OPM-76).
+    # bool is an int subclass, so reject it explicitly.
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{field_name} must be an integer.")
     if value < 0:
         raise ValueError(f"{field_name} must be at least 0.")
     return value
@@ -3121,6 +3122,11 @@ def _validate_offset(offset: int) -> int:
 
 
 def _validate_positive_int(value: int, *, field_name: str) -> int:
+    # Type-safe: MCP args arrive as JSON, so a wrong type (e.g. "5", None, True)
+    # must yield a clean ValueError, not a raw TypeError from the comparison
+    # (OPM-76). bool is an int subclass, so reject it explicitly.
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{field_name} must be an integer.")
     if value < 1:
         raise ValueError(f"{field_name} must be at least 1.")
     return value

@@ -9,8 +9,10 @@ import pytest
 from openproject_ce_mcp.client import CLEAR_PARENT, OpenProjectClient
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.tools import (
+    _validate_optional_non_negative_int,
     _validate_optional_user_ref,
     _validate_optional_work_package_ref,
+    _validate_positive_int,
     _validate_work_package_ref,
     add_project_favorite,
     add_work_package_comment,
@@ -1399,7 +1401,8 @@ async def test_bulk_create_work_packages_tool_passes_validated_items() -> None:
     assert received[0]["project"] == "demo"
     assert received[0]["subject"] == "WP 1"
     assert received[0]["start_date"] == "2026-01-01"
-    assert received[0]["parent_work_package_id"] == 7
+    # Normalized to a string ref by _validate_optional_work_package_ref (OPM-76).
+    assert received[0]["parent_work_package_id"] == "7"
     assert received[1]["type"] == "Feature"
 
 
@@ -1418,7 +1421,7 @@ async def test_bulk_update_work_packages_tool_validates_required_fields() -> Non
     with pytest.raises(ValueError, match=r"items\[0\]: at least one field to update is required"):
         await bulk_update_work_packages(FakeContext(StubClient()), items=[{"work_package_id": 1}])  # type: ignore[arg-type]
 
-    with pytest.raises(ValueError, match=r"items\[0\].parent_work_package_id must be at least 1"):
+    with pytest.raises(ValueError, match="positive integer id or a work package reference"):
         await bulk_update_work_packages(  # type: ignore[arg-type]
             FakeContext(StubClient()),
             items=[{"work_package_id": 1, "parent_work_package_id": -1}],
@@ -1453,10 +1456,12 @@ async def test_bulk_update_work_packages_tool_passes_validated_items() -> None:
     )
 
     assert len(received) == 2
-    assert received[0]["work_package_id"] == 10
+    # Ids normalized to string refs by _validate_work_package_ref (OPM-76).
+    assert received[0]["work_package_id"] == "10"
     assert received[0]["subject"] == "New title"
     assert received[0]["status"] == "In progress"
-    assert received[0]["parent_work_package_id"] == 30
+    assert received[0]["parent_work_package_id"] == "30"
+    assert received[1]["work_package_id"] == "20"
     assert received[1]["due_date"] == "2026-12-31"
 
 
@@ -1478,6 +1483,76 @@ def test_validate_work_package_ref_rejects_invalid() -> None:
     with pytest.raises(ValueError, match="positive integer id or a work package reference"):
         # A project identifier without a "-<number>" suffix is not a work package ref.
         _validate_work_package_ref("PROJ")
+
+
+def test_validate_positive_int_is_type_safe() -> None:
+    # A wrong JSON type must raise a clean ValueError, not a raw TypeError (OPM-76).
+    for bad in ("5", "abc", None, True, False, 1.5):
+        with pytest.raises(ValueError, match="must be an integer"):
+            _validate_positive_int(bad, field_name="x")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="must be at least 1"):
+        _validate_positive_int(0, field_name="x")
+    assert _validate_positive_int(5, field_name="x") == 5
+
+
+def test_validate_optional_non_negative_int_is_type_safe() -> None:
+    assert _validate_optional_non_negative_int(None, field_name="x") is None
+    for bad in ("0", "abc", True, 1.5):
+        with pytest.raises(ValueError, match="must be an integer"):
+            _validate_optional_non_negative_int(bad, field_name="x")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="must be at least 0"):
+        _validate_optional_non_negative_int(-1, field_name="x")
+    assert _validate_optional_non_negative_int(0, field_name="x") == 0
+
+
+@pytest.mark.asyncio
+async def test_bulk_work_packages_accept_semantic_refs() -> None:
+    received: dict = {}
+
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            received["update"] = kwargs["items"]
+            return {
+                "action": "bulk_update",
+                "total": len(kwargs["items"]),
+                "succeeded": len(kwargs["items"]),
+                "failed": 0,
+                "confirmed": kwargs["confirm"],
+                "requires_confirmation": not kwargs["confirm"],
+                "message": "ok",
+                "items": [],
+            }
+
+        async def bulk_create_work_packages(self, **kwargs):
+            received["create"] = kwargs["items"]
+            return {
+                "action": "bulk_create",
+                "total": len(kwargs["items"]),
+                "succeeded": len(kwargs["items"]),
+                "failed": 0,
+                "confirmed": kwargs["confirm"],
+                "requires_confirmation": not kwargs["confirm"],
+                "message": "ok",
+                "items": [],
+            }
+
+    # A project-prefixed ref must be accepted by the bulk tools, not only the
+    # single-item tools (OPM-76): previously it failed the whole batch with a raw
+    # TypeError from the int validator.
+    await bulk_update_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        items=[{"work_package_id": "OPM-61", "subject": "X", "parent_work_package_id": "OPM-7"}],
+        confirm=True,
+    )
+    assert received["update"][0]["work_package_id"] == "OPM-61"
+    assert received["update"][0]["parent_work_package_id"] == "OPM-7"
+
+    await bulk_create_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        items=[{"project": "demo", "type": "Task", "subject": "X", "parent_work_package_id": "OPM-7"}],
+        confirm=True,
+    )
+    assert received["create"][0]["parent_work_package_id"] == "OPM-7"
     with pytest.raises(ValueError, match="must be at least 1"):
         _validate_work_package_ref("0")
 
