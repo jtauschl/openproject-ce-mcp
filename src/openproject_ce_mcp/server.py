@@ -47,6 +47,24 @@ the source of truth for what you can do here. A missing capability does **not** 
 an operation is impossible: e.g. deleting a work package is not listed as a
 capability yet the `delete_work_package` tool works. **The registered MCP tools are
 the authority** — if a tool exists it is allowed; if it does not, it is not.
+
+## Trimmed responses and field selection
+
+List and write results are trimmed for context economy: list results omit the
+derivable `count`/`truncated` fields, and a confirmed write omits the echoed
+request `payload` (its normalized `result` carries the same information). To read
+only the fields you need, pass `select` (a list of field names) to
+`list_work_packages` / `search_work_packages` / `list_projects` / `list_users`;
+an invalid name returns the allowed set.
+
+## Some metadata tools are opt-in
+
+A set of rarely-needed metadata/reference tools (the `get_query_*` schema tools,
+`render_text`, `get_custom_option`, `list_help_texts` / `get_help_text`,
+`list_working_days` / `list_non_working_days`) is gated behind
+`OPENPROJECT_ENABLE_METADATA_TOOLS=true` to keep them out of the default tool set.
+If one is not registered, it is intentionally disabled here, not missing — enabling
+that flag exposes them.
 """
 
 

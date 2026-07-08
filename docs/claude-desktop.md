@@ -64,6 +64,7 @@ permissions, use Claude Code — see [claude.md](claude.md)).
            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
            "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
            "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
+           "OPENPROJECT_ENABLE_METADATA_TOOLS": "false",
 
            "OPENPROJECT_TIMEOUT": "12",
            "OPENPROJECT_VERIFY_SSL": "true",

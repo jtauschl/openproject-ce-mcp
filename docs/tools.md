@@ -13,6 +13,10 @@ Exception: self-scoped mutations of the current user's own state execute directl
 
 All list tools are bounded and paginated. They return compact summaries — not raw OpenProject HAL payloads.
 
+Responses are trimmed for context economy: list results omit the derivable `count`/`truncated` fields, and a confirmed write omits the echoed request `payload` (its normalized `result` carries the same data). `list_work_packages`, `search_work_packages`, `list_projects` and `list_users` accept an optional `select` (a list of field names) to return only the fields you need per row; an invalid name returns the allowed set for that row type.
+
+A subset of rarely-used metadata tools — the `get_query_*` schema tools, `render_text`, `get_custom_option`, `list_help_texts`/`get_help_text`, `list_working_days`/`list_non_working_days` — is **opt-in**: they are registered only when `OPENPROJECT_ENABLE_METADATA_TOOLS=true`, to keep them out of the default tool set and save context.
+
 ---
 
 ## Projects

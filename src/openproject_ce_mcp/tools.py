@@ -340,7 +340,9 @@ async def list_projects(
 ) -> ProjectListResult:
     """List visible projects with optional name or identifier search.
 
-    select restricts each result row to the given ProjectSummary fields.
+    select restricts each result row to the given fields (e.g. ["id", "name",
+    "identifier"]); an invalid name returns the allowed set. Common fields: id,
+    name, identifier, active, public, status, parent_name, created_at, updated_at.
     """
     client = _client_from_context(ctx)
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)
@@ -561,7 +563,9 @@ async def list_users(
 ) -> UserListResult:
     """List users visible to the current token.
 
-    select restricts each result row to the given UserSummary fields.
+    select restricts each result row to the given fields (e.g. ["id", "name",
+    "login"]); an invalid name returns the allowed set. Common fields: id, name,
+    login, email, status, admin, created_at, updated_at.
     """
     client = _client_from_context(ctx)
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)
@@ -1061,7 +1065,10 @@ async def search_work_packages(
     Set status to restrict results to a specific OpenProject status.
     Set open_only=true to return only open work packages.
     Set assignee_me=true to return only work packages assigned to the current user.
-    select restricts each result row to the given WorkPackageSummary fields.
+    select restricts each result row to the given fields (e.g. ["id", "subject",
+    "status"]); an invalid name returns the allowed set. Common fields: id,
+    display_id, subject, type, status, priority, assignee, project, version,
+    start_date, due_date, description.
     """
     client = _client_from_context(ctx)
     safe_query = _validate_required_query(query, field_name="query", max_length=120)
@@ -1100,7 +1107,10 @@ async def list_work_packages(
 
     version_status filters by the status of a work package's assigned version:
     one of 'open', 'closed', or 'locked'.
-    select restricts each result row to the given WorkPackageSummary fields.
+    select restricts each result row to the given fields (e.g. ["id", "subject",
+    "status"]); an invalid name returns the allowed set. Common fields: id,
+    display_id, subject, type, status, priority, assignee, project, version,
+    start_date, due_date, description.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)

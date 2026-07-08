@@ -97,6 +97,7 @@ The model has two independent layers:
 
 - scoped `OPENPROJECT_ENABLE_*_READ`
 - scoped `OPENPROJECT_ENABLE_*_WRITE` / `OPENPROJECT_ENABLE_ADMIN_WRITE`
+- `OPENPROJECT_ENABLE_METADATA_TOOLS` (opt-in exposure of rarely-used metadata tools)
 - `OPENPROJECT_ALLOWED_PROJECTS_READ` / `OPENPROJECT_ALLOWED_PROJECTS_WRITE`
 - `OPENPROJECT_HIDE_<ENTITY>_FIELDS` / `OPENPROJECT_HIDE_CUSTOM_FIELDS`
 - preview-by-default writes unless auto-confirm is explicitly enabled
@@ -114,7 +115,7 @@ Important properties of the current model:
 - hidden fields are masked on reads and rejected on writes
 - destructive operations still use the same project-scope checks as non-destructive writes
 - instance-global admin operations (user/group management) require explicit `OPENPROJECT_ENABLE_ADMIN_WRITE=true` — never activated by project-scoped write flags
-- all other metadata tools (statuses, types, priorities, notifications, …) are always available and not gated by any read flag
+- most metadata tools (statuses, types, priorities, notifications, …) are always available and not gated by any read flag; a rarely-used subset (query schema tools, `render_text`, `get_custom_option`, help texts, working days) is gated off by default behind `OPENPROJECT_ENABLE_METADATA_TOOLS` to save context
 
 ## Supported scope (Community Edition)
 

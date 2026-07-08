@@ -82,6 +82,28 @@ Self-scoped mutations of the current user's own state — notification read stat
 - Project scope is enforced server-side: the MCP only exposes what the configured allowlists permit
 - Responses are bounded and paginated — compact summaries, not raw HAL payloads
 
+### Context efficiency
+
+A core reason to use this MCP instead of calling the OpenProject REST API directly:
+it returns agent-shaped, context-frugal responses. The raw v3 API answers a list
+request with full HAL payloads — every element carries ~21 top-level fields plus
+~46 `_links`. The MCP returns a compact summary per row, drops derivable and
+duplicated fields, and lets the agent request only the fields it needs.
+
+Measured against the same three real work packages (token ≈ bytes/4):
+
+| Response | Tokens | vs. raw API |
+|---|---:|---:|
+| Raw OpenProject REST API v3 (HAL) | ~10,500 | baseline |
+| `list_work_packages` (MCP) | ~700 | **−93%** |
+| `list_work_packages` with `select` (5 fields) | ~130 | **−98%** |
+
+The tool set itself is trimmed too: on a fully write-enabled deployment the MCP's
+`tools/list` payload dropped from ~60k to ~24k tokens (−60%) per request, mainly
+by not emitting redundant output schemas. Rarely-used metadata tools are gated off
+by default (`OPENPROJECT_ENABLE_METADATA_TOOLS`), and confirmed writes drop the
+echoed request `payload`.
+
 ---
 
 ## Getting started
@@ -319,6 +341,7 @@ Access is grouped into five chains: `project`, `membership`, `work_package`, `ve
 | `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE` | no | `false` | Work-package create/update/delete, comments, relations, attachments, time entries |
 | `OPENPROJECT_ENABLE_VERSION_WRITE` | no | `false` | Version create/update/delete |
 | `OPENPROJECT_ENABLE_BOARD_WRITE` | no | `false` | Board create/update/delete |
+| `OPENPROJECT_ENABLE_METADATA_TOOLS` | no | `false` | Expose the rarely-used metadata/reference tools (`get_query_*` schema tools, `render_text`, `get_custom_option`, `list_help_texts`/`get_help_text`, `list_working_days`/`list_non_working_days`). Off by default to keep them out of the tool set and save context; they stay reachable once enabled |
 | `OPENPROJECT_AUTO_CONFIRM_WRITE` | no | `false` | Skip the preview step for all writes |
 | `OPENPROJECT_AUTO_CONFIRM_DELETE` | no | inherits `OPENPROJECT_AUTO_CONFIRM_WRITE` | Skip the preview step for deletes |
 | `OPENPROJECT_ATTACHMENT_ROOT` | no | current working directory | Directory that attachment uploads are confined to. Files outside it are refused, and credential/config files (`.mcp.json`, `.env`, `*.pem`, keys) are refused even inside it, so a tool call cannot exfiltrate local secrets |
@@ -339,6 +362,12 @@ Supported entities for `OPENPROJECT_HIDE_<ENTITY>_FIELDS`: `project`, `membershi
 ## Tools
 
 Tools are grouped by area: projects, memberships, users, groups, work packages, versions, boards, time entries, wiki, news, documents, notifications, grids, and more.
+
+List and search tools accept a `select` parameter to return only the fields you
+need per row, and responses are trimmed for context economy (list results drop
+the derivable `count`/`truncated`; a confirmed write drops the echoed request
+`payload`). A handful of rarely-used metadata tools are gated behind
+`OPENPROJECT_ENABLE_METADATA_TOOLS` (see Configuration).
 
 See the full [tool reference](docs/tools.md) for descriptions of every tool.
 

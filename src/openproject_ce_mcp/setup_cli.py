@@ -996,6 +996,11 @@ def _run_configure(argv: list[str] | None = None) -> None:
         # (preserving any existing value) so it is visible and easy to flip by
         # hand; see .mcp.json.example and the README for details.
         "OPENPROJECT_ENABLE_ADMIN_WRITE": str(_bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_WRITE")).lower(),
+        # Rarely-used metadata/reference tools (query schema, render_text, help
+        # texts, working days, custom options). Gated off by default to keep them
+        # out of the tool set and save context; written as false (preserving any
+        # existing value) so it is visible and easy to flip by hand.
+        "OPENPROJECT_ENABLE_METADATA_TOOLS": str(_bool_from_env(existing, "OPENPROJECT_ENABLE_METADATA_TOOLS")).lower(),
         "OPENPROJECT_TIMEOUT": existing.get("OPENPROJECT_TIMEOUT", "12"),
         "OPENPROJECT_VERIFY_SSL": existing.get("OPENPROJECT_VERIFY_SSL", "true"),
         "OPENPROJECT_DEFAULT_PAGE_SIZE": existing.get("OPENPROJECT_DEFAULT_PAGE_SIZE", "10"),

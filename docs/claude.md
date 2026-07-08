@@ -52,6 +52,7 @@
            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
            "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
            "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
+           "OPENPROJECT_ENABLE_METADATA_TOOLS": "false",
 
            "OPENPROJECT_TIMEOUT": "12",
            "OPENPROJECT_VERIFY_SSL": "true",
@@ -123,6 +124,7 @@ After reloading, confirm the server is live:
         "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
         "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
         "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
+        "OPENPROJECT_ENABLE_METADATA_TOOLS": "false",
 
         "OPENPROJECT_TIMEOUT": "12",
         "OPENPROJECT_VERIFY_SSL": "true",
