@@ -105,6 +105,7 @@ from .models import (
     RenderedText,
     RoleListResult,
     RoleSummary,
+    SortCriterion,
     StatusListResult,
     StatusSummary,
     TimeEntryActivityListResult,
@@ -153,6 +154,12 @@ LOGGER = logging.getLogger(__name__)
 # (settings.text_limit, default 500) — see normalize_work_package_summary.
 FORMATTABLE_LIMIT = 1_200
 SUBJECT_LIMIT = 255
+
+# Array truncation limits for work package hierarchy and activity details
+WORK_PACKAGE_CHILDREN_LIMIT = 50
+WORK_PACKAGE_ANCESTORS_LIMIT = 20
+ACTIVITY_DETAILS_LIMIT = 20
+BATCH_READ_MAX_IDS = 100
 
 # Sentinel for update_work_package: distinguishes "clear the parent" (make the work
 # package top-level via _links.parent = {"href": null}) from "leave unchanged" (None).
@@ -1884,7 +1891,7 @@ class OpenProjectClient:
         status: str | None = None,
         open_only: bool = False,
         assignee_me: bool = False,
-        sort_by: list[tuple[str, str]] | None = None,
+        sort_by: list[SortCriterion] | None = None,
         group_by: str | None = None,
         offset: int = 1,
         limit: int | None = None,
@@ -1924,7 +1931,7 @@ class OpenProjectClient:
         open_only: bool = False,
         assignee_me: bool = False,
         has_description: bool | None = None,
-        sort_by: list[tuple[str, str]] | None = None,
+        sort_by: list[SortCriterion] | None = None,
         group_by: str | None = None,
         offset: int = 1,
         limit: int | None = None,
@@ -1977,7 +1984,7 @@ class OpenProjectClient:
         filters: list[dict[str, Any]],
         offset: int,
         limit: int,
-        sort_by: list[tuple[str, str]] | None = None,
+        sort_by: list[SortCriterion] | None = None,
         group_by: str | None = None,
     ) -> WorkPackageListResult:
         params = {
@@ -1988,9 +1995,9 @@ class OpenProjectClient:
 
         # Add sortBy as JSON array if provided
         # Format: [["field", "direction"], ...] e.g. [["status", "desc"], ["priority", "asc"]]
-        # sort_by is already validated and parsed to tuples by tool layer
+        # sort_by is already validated and parsed to SortCriterion by tool layer
         if sort_by:
-            sort_criteria = [[field, direction] for field, direction in sort_by]
+            sort_criteria = [[criterion.field, criterion.direction] for criterion in sort_by]
             params["sortBy"] = json.dumps(sort_criteria, separators=(",", ":"))
 
         # Add groupBy as simple field name string if provided
@@ -2047,8 +2054,8 @@ class OpenProjectClient:
         # Validation and deduplication is done by tool layer
         if not ids:
             raise ValueError("ids list cannot be empty")
-        if len(ids) > 100:
-            raise ValueError(f"Maximum 100 work packages per batch (got {len(ids)})")
+        if len(ids) > BATCH_READ_MAX_IDS:
+            raise ValueError(f"Maximum {BATCH_READ_MAX_IDS} work packages per batch (got {len(ids)})")
 
         # Create parallel fetch tasks
         async def fetch_one(id: int | str) -> tuple[int | str, WorkPackageDetail | None, str | None]:
@@ -2088,10 +2095,20 @@ class OpenProjectClient:
                     )
                 )
 
+        # Build user-facing summary message
+        if failed == 0:
+            message = f"Successfully fetched all {succeeded} work packages."
+        elif succeeded == 0:
+            message = f"Failed to fetch all {failed} work packages."
+        else:
+            message = f"Fetched {succeeded} work packages successfully, {failed} failed."
+
         return BatchWorkPackageReadResult(
+            action="batch_read",
             total=len(ids),
             succeeded=succeeded,
             failed=failed,
+            message=message,
             results=items,
         )
 
@@ -4758,9 +4775,9 @@ class OpenProjectClient:
         if children_raw:
             children = [
                 {"href": c.get("href"), "title": c.get("title"), "display_id": c.get("displayId")}
-                for c in children_raw[:50]
+                for c in children_raw[:WORK_PACKAGE_CHILDREN_LIMIT]
             ]
-            children_truncated = len(children_raw) > 50
+            children_truncated = len(children_raw) > WORK_PACKAGE_CHILDREN_LIMIT
 
         ancestors_raw = links.get("ancestors", [])
         ancestors = None
@@ -4768,9 +4785,9 @@ class OpenProjectClient:
         if ancestors_raw:
             ancestors = [
                 {"href": a.get("href"), "title": a.get("title"), "display_id": a.get("displayId")}
-                for a in ancestors_raw[:20]
+                for a in ancestors_raw[:WORK_PACKAGE_ANCESTORS_LIMIT]
             ]
-            ancestors_truncated = len(ancestors_raw) > 20
+            ancestors_truncated = len(ancestors_raw) > WORK_PACKAGE_ANCESTORS_LIMIT
 
         return self._apply_hidden_fields(
             "work_package",
@@ -4852,8 +4869,8 @@ class OpenProjectClient:
         details = None
         details_truncated = False
         if details_raw:
-            details = details_raw[:20]
-            details_truncated = len(details_raw) > 20
+            details = details_raw[:ACTIVITY_DETAILS_LIMIT]
+            details_truncated = len(details_raw) > ACTIVITY_DETAILS_LIMIT
 
         return self._apply_hidden_fields(
             "activity",

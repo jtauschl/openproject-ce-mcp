@@ -10,6 +10,7 @@ from typing import Any, cast
 from mcp.server.fastmcp import Context, FastMCP
 
 from .client import (
+    BATCH_READ_MAX_IDS,
     CLEAR,
     CLEAR_PARENT,
     CLEAR_VERSION,
@@ -92,6 +93,7 @@ from .models import (
     ReminderWriteResult,
     RenderedText,
     RoleListResult,
+    SortCriterion,
     StatusListResult,
     StatusSummary,
     TimeEntryActivityListResult,
@@ -1227,8 +1229,8 @@ async def get_work_packages(
             seen.add(normalized)
             unique_ids.append(safe_id)
 
-    if len(unique_ids) > 100:
-        raise ValueError(f"Maximum 100 unique work packages per batch (got {len(unique_ids)})")
+    if len(unique_ids) > BATCH_READ_MAX_IDS:
+        raise ValueError(f"Maximum {BATCH_READ_MAX_IDS} unique work packages per batch (got {len(unique_ids)})")
 
     safe_text_limit = _validate_optional_text_limit(text_limit)
 
@@ -3379,10 +3381,11 @@ def _validate_optional_string_list(
     return normalized
 
 
-def _validate_sort_by(values: list[str] | None) -> list[tuple[str, str]] | None:
-    """Validate and parse sort_by list into list of (field, direction) tuples.
+def _validate_sort_by(values: list[str] | None) -> list[SortCriterion] | None:
+    """Validate and parse sort_by list into list of SortCriterion objects.
 
-    Validates format and parses each item. Returns None if input is None.
+    Validates format, field name pattern, and parses each item.
+    Returns None if input is None.
     Raises ValueError if any item is invalid.
     """
     if values is None:
@@ -3412,7 +3415,14 @@ def _validate_sort_by(values: list[str] | None) -> list[tuple[str, str]] | None:
             field = item
             direction = "asc"
 
-        result.append((field, direction))
+        # Validate field name pattern (alphanumeric + underscore + dot for custom fields)
+        if not field.replace("_", "").replace(".", "").isalnum():
+            raise ValueError(
+                f"sort_by[{i}]: field name '{field}' contains invalid characters "
+                "(only alphanumeric, underscore, and dot allowed)"
+            )
+
+        result.append(SortCriterion(field=field, direction=direction))
 
     return result if result else None
 

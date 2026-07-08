@@ -1,7 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
+
+
+class SortCriterion(NamedTuple):
+    """A validated sort criterion with field name and direction.
+
+    Used to ensure type safety between tool validation and client execution.
+    """
+
+    field: str
+    direction: str  # "asc" or "desc"
 
 
 @dataclass
@@ -526,9 +536,11 @@ class BatchWorkPackageReadItemResult:
 class BatchWorkPackageReadResult:
     """Result of batch read operation, mirroring BulkWorkPackageWriteResult pattern."""
 
+    action: str  # Always "batch_read"
     total: int
     succeeded: int
     failed: int
+    message: str  # User-facing summary
     results: list[BatchWorkPackageReadItemResult]
 
 
