@@ -17,7 +17,7 @@ from .client import (
     PermissionDeniedError,
     TransportError,
 )
-from .config import Settings
+from .config import TEXT_LIMIT_MAX, Settings
 from .models import (
     ActionListResult,
     ActivityListResult,
@@ -1079,14 +1079,21 @@ async def list_work_packages(
 async def get_work_package(
     ctx: Context,
     work_package_id: int | str,
+    text_limit: int | None = None,
 ) -> WorkPackageDetail:
-    """Get a compact work package summary by id.
+    """Get a work package by id, including its full description.
 
     Accepts a numeric id or a project-prefixed reference like PROJ-123.
+
+    The description is returned in full by default (single work packages are not
+    truncated). Pass ``text_limit`` to cap it at that many characters; when the
+    text is cut, ``description_truncated`` is true and ``description_length``
+    reports the real length.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.get_work_package(safe_id))
+    safe_text_limit = _validate_optional_text_limit(text_limit)
+    return await _run_tool(client.get_work_package(safe_id, text_limit=safe_text_limit))
 
 
 async def create_work_package(
@@ -2071,15 +2078,26 @@ async def get_work_package_activities(
     ctx: Context,
     work_package_id: int | str,
     limit: int | None = None,
+    text_limit: int | None = None,
 ) -> ActivityListResult:
     """Get the activity log for a work package, most recent first.
 
     Accepts a numeric id or a project-prefixed reference like PROJ-123.
+
+    Comments are capped by default to keep the log compact; pass ``text_limit``
+    to widen (or ``0``-based semantics via a larger value) the per-comment cap.
+    When a comment is cut, ``comment_truncated`` is true and ``comment_length``
+    reports its real length.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
     safe_limit = _validate_limit(limit)
-    return await _run_tool(client.get_work_package_activities(safe_id, limit=safe_limit))
+    safe_text_limit = _validate_optional_text_limit(text_limit)
+    # Unset text_limit → keep the client's compact default cap for the activity
+    # log (not the uncapped single-WP behavior). Only override when set.
+    if safe_text_limit is None:
+        return await _run_tool(client.get_work_package_activities(safe_id, limit=safe_limit))
+    return await _run_tool(client.get_work_package_activities(safe_id, limit=safe_limit, text_limit=safe_text_limit))
 
 
 async def list_work_package_reactions(
@@ -2978,6 +2996,20 @@ def _validate_optional_non_negative_int(value: int | None, *, field_name: str) -
     if value < 0:
         raise ValueError(f"{field_name} must be at least 0.")
     return value
+
+
+def _validate_optional_text_limit(value: int | None) -> int | None:
+    """Validate an explicit ``text_limit`` override.
+
+    ``None`` means "no cap" (the default for a single work package). An explicit
+    value must be a non-negative int; TEXT_LIMIT_MAX is a sanity ceiling that
+    guards against typos like ``text_limit=99999999`` — it never applies to the
+    uncapped default path.
+    """
+    limit = _validate_optional_non_negative_int(value, field_name="text_limit")
+    if limit is not None and limit > TEXT_LIMIT_MAX:
+        raise ValueError(f"text_limit must not exceed {TEXT_LIMIT_MAX}.")
+    return limit
 
 
 def _validate_required_string_list(

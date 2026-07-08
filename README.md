@@ -324,9 +324,10 @@ Access is grouped into five chains: `project`, `membership`, `work_package`, `ve
 | `OPENPROJECT_ATTACHMENT_ROOT` | no | current working directory | Directory that attachment uploads are confined to. Files outside it are refused, and credential/config files (`.mcp.json`, `.env`, `*.pem`, keys) are refused even inside it, so a tool call cannot exfiltrate local secrets |
 | `OPENPROJECT_TIMEOUT` | no | `12` | Request timeout in seconds |
 | `OPENPROJECT_VERIFY_SSL` | no | `true` | Verify TLS certificates |
-| `OPENPROJECT_DEFAULT_PAGE_SIZE` | no | `20` | Default results per page |
+| `OPENPROJECT_DEFAULT_PAGE_SIZE` | no | `10` | Default results per page (kept small to bound list context; raise if you want more rows per call) |
 | `OPENPROJECT_MAX_PAGE_SIZE` | no | `50` | Hard cap on results per request |
 | `OPENPROJECT_MAX_RESULTS` | no | `100` | Hard cap on total results returned by a tool |
+| `OPENPROJECT_TEXT_LIMIT` | no | `500` | Char cap for the description preview in list/search results (context protection across many rows). Single-item reads (`get_work_package`, `get_work_package_activities`) return full text regardless; a per-call `text_limit` overrides this |
 | `OPENPROJECT_LOG_LEVEL` | no | `WARNING` | `CRITICAL`, `ERROR`, `WARNING`, or `INFO` |
 
 Supported entities for `OPENPROJECT_HIDE_<ENTITY>_FIELDS`: `project`, `membership`, `role`, `principal`, `user`, `group`, `project_access`, `project_admin_context`, `project_configuration`, `action`, `capability`, `job_status`, `project_phase_definition`, `project_phase`, `view`, `query_filter`, `query_column`, `query_operator`, `query_sort_by`, `query_filter_instance_schema`, `document`, `news`, `wiki_page`, `category`, `attachment`, `time_entry_activity`, `time_entry`, `work_package`, `relation`, `activity`, `reminder`, `version`, `board`, `current_user`, `instance_configuration`.

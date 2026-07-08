@@ -15,6 +15,10 @@ from openproject_ce_mcp.client import (
     OpenProjectServerError,
     PermissionDeniedError,
     _extract_formattable_text,
+    _extract_formattable_text_with_meta,
+    _normalize_text,
+    _trim_text,
+    _trim_text_with_meta,
 )
 from openproject_ce_mcp.config import Settings
 
@@ -5426,6 +5430,211 @@ def test_extract_formattable_text_trims_large_payloads() -> None:
     assert trimmed is not None
     assert len(trimmed) <= 1200
     assert trimmed.endswith("…")
+
+
+def test_trim_text_with_meta_reports_truncation_invariant() -> None:
+    long = "a" * 2000
+
+    text, truncated, length = _trim_text_with_meta(long, limit=1200)
+
+    assert truncated is True
+    assert length == 2000
+    assert len(text) <= 1200
+    assert text.endswith("…")
+    # Invariant: truncated iff full_length exceeds the limit.
+    assert truncated == (length > 1200)
+
+
+def test_trim_text_with_meta_no_limit_returns_full_text() -> None:
+    long = "b" * 5000
+
+    text, truncated, length = _trim_text_with_meta(long, limit=None)
+
+    assert text == long
+    assert truncated is False
+    assert length == 5000
+
+
+def test_trim_text_with_meta_empty_and_none() -> None:
+    assert _trim_text_with_meta(None, limit=100) == (None, False, None)
+    assert _trim_text_with_meta("   ", limit=100) == (None, False, None)
+
+
+def test_normalize_text_preserve_newlines_keeps_structure() -> None:
+    raw = "Line one\r\n\r\n\r\n\r\nLine two\t\twith   tabs   \n   \n"
+
+    out = _normalize_text(raw, preserve_newlines=True)
+
+    # CRLF normalized, ≥3 blank lines capped to 2, inline whitespace collapsed,
+    # trailing blank lines stripped.
+    assert out == "Line one\n\nLine two with tabs"
+
+
+def test_normalize_text_default_collapses_newlines() -> None:
+    raw = "Line one\n\nLine two"
+
+    assert _normalize_text(raw, preserve_newlines=False) == "Line one Line two"
+
+
+def test_extract_formattable_text_with_meta_preserves_newlines_uncapped() -> None:
+    value = {"raw": "Para one\n\nPara two", "html": "<p>ignored</p>"}
+
+    text, truncated, length = _extract_formattable_text_with_meta(value, limit=None, preserve_newlines=True)
+
+    assert text == "Para one\n\nPara two"
+    assert truncated is False
+    assert length == len("Para one\n\nPara two")
+
+
+def _wp_detail_payload_with_description(wp_id: int, display_id: str, description_raw: str) -> dict:
+    payload = _wp_detail_payload(wp_id, display_id)
+    payload["description"] = {"raw": description_raw, "html": "<p>ignored</p>"}
+    return payload
+
+
+@pytest.mark.asyncio
+async def test_get_work_package_returns_full_description_by_default() -> None:
+    long_desc = "word " * 400 + "END"  # well over 1200 chars
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_wp_detail_payload_with_description(42, "42", long_desc),
+            request=request,
+        )
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    detail = await client.get_work_package("42")
+
+    assert detail.description is not None
+    assert detail.description.endswith("END")  # not cut
+    assert "…" not in detail.description
+    assert detail.description_truncated is False
+    assert detail.description_length == len(detail.description)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_work_package_text_limit_caps_and_flags() -> None:
+    long_desc = "a" * 2000
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_wp_detail_payload_with_description(42, "42", long_desc),
+            request=request,
+        )
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    detail = await client.get_work_package("42", text_limit=200)
+
+    assert detail.description is not None
+    assert len(detail.description) <= 200
+    assert detail.description.endswith("…")
+    assert detail.description_truncated is True
+    assert detail.description_length == 2000
+    # Invariant.
+    assert detail.description_truncated == (detail.description_length > 200)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_work_package_preserves_paragraphs() -> None:
+    structured = "First paragraph.\n\nSecond paragraph.\n\n- item one\n- item two"
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_wp_detail_payload_with_description(42, "42", structured),
+            request=request,
+        )
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    detail = await client.get_work_package("42")
+
+    assert detail.description == structured  # newlines/list preserved
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_summary_sets_truncation_flag_and_stays_single_line() -> None:
+    long_desc = "x" * 900  # over the default list-preview cap (settings.text_limit=500)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "total": 1,
+                "_embedded": {
+                    "elements": [
+                        {
+                            "id": 7,
+                            "subject": "Sample",
+                            "description": {"raw": long_desc},
+                            "_links": {"status": {"title": "New"}, "project": {"title": "Demo"}},
+                        }
+                    ]
+                },
+            },
+            request=request,
+        )
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.list_work_packages()
+    summary = result.results[0]
+
+    assert summary.description is not None
+    assert len(summary.description) <= 500
+    assert summary.description_truncated is True
+    assert summary.description_length == 900
+
+    await client.aclose()
+
+
+def test_trim_text_still_collapses_newlines_for_single_line_fields() -> None:
+    # Regression: _trim_text (subjects, titles, error messages) must stay single-line.
+    assert _trim_text("Name\nwith\nnewlines", limit=255) == "Name with newlines"
+
+
+def test_normalize_activity_returns_full_comment_by_default() -> None:
+    # Activities of a single WP are one item's content, not a multi-row list, so
+    # comments come back in full by default (no cap) — like get_work_package.
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    long_comment = "c" * 3000
+
+    activity = client.normalize_activity(
+        {"id": 7, "_type": "Activity", "comment": {"raw": long_comment}, "_links": {"user": {"title": "Bot"}}}
+    )
+
+    assert activity.comment is not None
+    assert len(activity.comment) == 3000
+    assert "…" not in activity.comment
+    assert activity.comment_truncated is False
+    assert activity.comment_length == 3000
+
+
+def test_summary_cap_follows_text_limit_setting() -> None:
+    # OPENPROJECT_TEXT_LIMIT (settings.text_limit) drives the list-preview cap.
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), text_limit=100)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    summary = client.normalize_work_package_summary(
+        {"id": 7, "subject": "Sample", "description": {"raw": "y" * 900}, "_links": {"project": {"title": "Demo"}}}
+    )
+
+    assert summary.description is not None
+    assert len(summary.description) <= 100
+    assert summary.description_truncated is True
+    assert summary.description_length == 900
 
 
 def _wp_detail_payload(wp_id: int, display_id: str) -> dict:

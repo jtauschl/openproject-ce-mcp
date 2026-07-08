@@ -384,6 +384,8 @@ class WorkPackageSummary:
     description: str | None
     has_description: bool
     url: str
+    description_truncated: bool = False
+    description_length: int | None = None
 
 
 @dataclass
@@ -409,6 +411,8 @@ class WorkPackageDetail:
     url: str
     activities_url: str | None
     relations_url: str | None
+    description_truncated: bool = False
+    description_length: int | None = None
 
 
 @dataclass
@@ -948,6 +952,8 @@ class ActivitySummary:
     user: str | None
     comment: str | None
     created_at: str | None
+    comment_truncated: bool = False
+    comment_length: int | None = None
 
 
 @dataclass

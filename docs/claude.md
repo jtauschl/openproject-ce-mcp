@@ -55,9 +55,10 @@
 
            "OPENPROJECT_TIMEOUT": "12",
            "OPENPROJECT_VERIFY_SSL": "true",
-           "OPENPROJECT_DEFAULT_PAGE_SIZE": "20",
+           "OPENPROJECT_DEFAULT_PAGE_SIZE": "10",
            "OPENPROJECT_MAX_PAGE_SIZE": "50",
            "OPENPROJECT_MAX_RESULTS": "100",
+           "OPENPROJECT_TEXT_LIMIT": "500",
            "OPENPROJECT_LOG_LEVEL": "WARNING"
          }
        }
@@ -125,9 +126,10 @@ After reloading, confirm the server is live:
 
         "OPENPROJECT_TIMEOUT": "12",
         "OPENPROJECT_VERIFY_SSL": "true",
-        "OPENPROJECT_DEFAULT_PAGE_SIZE": "20",
+        "OPENPROJECT_DEFAULT_PAGE_SIZE": "10",
         "OPENPROJECT_MAX_PAGE_SIZE": "50",
         "OPENPROJECT_MAX_RESULTS": "100",
+        "OPENPROJECT_TEXT_LIMIT": "500",
         "OPENPROJECT_LOG_LEVEL": "WARNING"
       }
     }

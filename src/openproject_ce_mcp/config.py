@@ -11,6 +11,16 @@ class ConfigError(ValueError):
     """Raised when environment configuration is missing or invalid."""
 
 
+# Cap for a work-package description shown in list/summary results — a per-row
+# preview so a multi-row list stays scannable without flooding the agent's context
+# window. Single-item reads (get_work_package, get_work_package_activities) are NOT
+# capped by default. ``OPENPROJECT_TEXT_LIMIT`` overrides this default; a per-call
+# ``text_limit`` overrides that. TEXT_LIMIT_MAX is an absolute sanity ceiling that
+# no explicit ``text_limit`` may exceed.
+DEFAULT_TEXT_LIMIT = 500
+TEXT_LIMIT_MAX = 50_000
+
+
 HIDE_FIELD_ENV_BY_ENTITY: dict[str, str] = {
     "project": "OPENPROJECT_HIDE_PROJECT_FIELDS",
     "membership": "OPENPROJECT_HIDE_MEMBERSHIP_FIELDS",
@@ -60,6 +70,7 @@ class Settings:
     max_page_size: int
     max_results: int
     log_level: str
+    text_limit: int = DEFAULT_TEXT_LIMIT
     allowed_projects: tuple[str, ...] = ()
     allowed_write_projects: tuple[str, ...] = ()
     allowed_write_projects_configured: bool = False
@@ -204,7 +215,10 @@ class Settings:
         default_page_size = _parse_int(
             env.get("OPENPROJECT_DEFAULT_PAGE_SIZE"),
             "OPENPROJECT_DEFAULT_PAGE_SIZE",
-            default=20,
+            # 10, not 20: measured OPM lists are ~44% description bytes, so page size
+            # is the strongest lever on list context. 10 halves it while still showing
+            # a useful chunk on one call; raise OPENPROJECT_DEFAULT_PAGE_SIZE if needed.
+            default=10,
             minimum=1,
         )
         max_page_size = _parse_int(
@@ -220,6 +234,14 @@ class Settings:
             minimum=1,
         )
         log_level = _parse_log_level(env.get("OPENPROJECT_LOG_LEVEL"), "OPENPROJECT_LOG_LEVEL", default="WARNING")
+        text_limit = _parse_int(
+            env.get("OPENPROJECT_TEXT_LIMIT"),
+            "OPENPROJECT_TEXT_LIMIT",
+            default=DEFAULT_TEXT_LIMIT,
+            minimum=1,
+        )
+        if text_limit > TEXT_LIMIT_MAX:
+            raise ConfigError(f"OPENPROJECT_TEXT_LIMIT must not exceed {TEXT_LIMIT_MAX}.")
         attachment_root = (env.get("OPENPROJECT_ATTACHMENT_ROOT") or "").strip()
 
         if default_page_size > max_page_size:
@@ -236,6 +258,7 @@ class Settings:
             max_page_size=max_page_size,
             max_results=max_results,
             log_level=log_level,
+            text_limit=text_limit,
             allowed_projects=allowed_projects,
             allowed_write_projects=allowed_write_projects,
             allowed_write_projects_configured=allowed_write_projects_configured,

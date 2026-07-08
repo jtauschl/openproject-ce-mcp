@@ -139,6 +139,15 @@ from .models import (
 
 LOGGER = logging.getLogger(__name__)
 
+# Text caps below trim formattable fields (descriptions, comments) *before* they
+# are serialized back to the MCP client. They exist to protect the AGENT'S CONTEXT
+# WINDOW — not to save memory or bandwidth: the full text has already been fetched
+# from OpenProject and lives in this process; trimming only bounds how much lands
+# in the model's limited read context. Single-item reads (get_work_package,
+# get_work_package_activities) return their full text because one item is cheap;
+# only list/search results are capped, because many rows at full length flood the
+# context. That list-preview cap is configurable via OPENPROJECT_TEXT_LIMIT
+# (settings.text_limit, default 500) — see normalize_work_package_summary.
 FORMATTABLE_LIMIT = 1_200
 SUBJECT_LIMIT = 255
 
@@ -1972,12 +1981,14 @@ class OpenProjectClient:
             results=results,
         )
 
-    async def get_work_package(self, work_package_id: int | str) -> WorkPackageDetail:
+    async def get_work_package(self, work_package_id: int | str, *, text_limit: int | None = None) -> WorkPackageDetail:
         self._ensure_read_enabled("work_package")
         work_package_id = self._work_package_ref(work_package_id)
         payload = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
-        return self.normalize_work_package_detail(payload)
+        # Default (text_limit=None) returns the full description uncapped: opening
+        # a single work package means you want to read/edit it, so nothing is cut.
+        return self.normalize_work_package_detail(payload, text_limit=text_limit)
 
     async def create_work_package(
         self,
@@ -2904,17 +2915,22 @@ class OpenProjectClient:
         return RelationListResult(count=len(results), results=results)
 
     async def get_work_package_activities(
-        self, work_package_id: int | str, *, limit: int | None = None
+        self, work_package_id: int | str, *, limit: int | None = None, text_limit: int | None = None
     ) -> ActivityListResult:
         self._ensure_read_enabled("work_package")
         work_package_id = self._work_package_ref(work_package_id)
-        await self.get_work_package(work_package_id)
+        # Existence/access check only — the result is discarded, so cap its text
+        # (do NOT forward text_limit here, which could pull a large description).
+        await self.get_work_package(work_package_id, text_limit=SUBJECT_LIMIT)
         effective_limit = self._resolve_limit(limit)
         payload = await self._get(f"work_packages/{work_package_id}/activities")
         elements = payload.get("_embedded", {}).get("elements", [])
-        # Return most recent first, bounded
+        # Return most recent first, bounded. Comments come back in full by default
+        # (text_limit=None): the activities of a single work package are one item's
+        # content, not a multi-row list, so there is no context-flood risk — same
+        # rationale as get_work_package. text_limit stays as an opt-in cap.
         elements = elements[-effective_limit:]
-        results = [self.normalize_activity(item) for item in reversed(elements)]
+        results = [self.normalize_activity(item, text_limit=text_limit) for item in reversed(elements)]
         return ActivityListResult(count=len(results), results=results)
 
     # --- Emoji reactions (on work-package comment activities) ---
@@ -4559,8 +4575,12 @@ class OpenProjectClient:
 
     def normalize_work_package_summary(self, payload: dict[str, Any]) -> WorkPackageSummary:
         links = payload.get("_links", {})
-        description = self._visible_formattable_text(
-            payload.get("description"), "work_package", "description", limit=SUBJECT_LIMIT
+        # Summaries stay single-line, capped at settings.text_limit (OPENPROJECT_TEXT_LIMIT,
+        # default 500) — a one-paragraph preview for list context. Not SUBJECT_LIMIT, which
+        # is the subject field limit, and not the full text, which would flood the context
+        # across many rows.
+        description, truncated, length = self._visible_formattable_text_with_meta(
+            payload.get("description"), "work_package", "description", limit=self.settings.text_limit
         )
         return self._apply_hidden_fields(
             "work_package",
@@ -4582,11 +4602,26 @@ class OpenProjectClient:
                 description=description,
                 has_description=description is not None,
                 url=self._web_url(f"work_packages/{payload['id']}"),
+                description_truncated=truncated,
+                description_length=length,
             ),
         )
 
-    def normalize_work_package_detail(self, payload: dict[str, Any]) -> WorkPackageDetail:
+    def normalize_work_package_detail(
+        self, payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT
+    ) -> WorkPackageDetail:
         links = payload.get("_links", {})
+        # ``text_limit=None`` returns the full description uncapped (single-WP
+        # path); the FORMATTABLE_LIMIT default keeps the delete-preview and
+        # create/update-response callers capped as before. Newlines preserved so
+        # paragraph/list structure survives.
+        description, truncated, length = self._visible_formattable_text_with_meta(
+            payload.get("description"),
+            "work_package",
+            "description",
+            limit=text_limit,
+            preserve_newlines=True,
+        )
         return self._apply_hidden_fields(
             "work_package",
             WorkPackageDetail(
@@ -4609,10 +4644,12 @@ class OpenProjectClient:
                 due_date=payload.get("dueDate"),
                 percentage_complete=_percentage_done(payload),
                 lock_version=payload.get("lockVersion"),
-                description=self._visible_formattable_text(payload.get("description"), "work_package", "description"),
+                description=description,
                 url=self._web_url(f"work_packages/{payload['id']}"),
                 activities_url=self._link_to_web_url(links.get("activities", {}).get("href")),
                 relations_url=self._link_to_web_url(links.get("relations", {}).get("href")),
+                description_truncated=truncated,
+                description_length=length,
             ),
         )
 
@@ -4636,8 +4673,15 @@ class OpenProjectClient:
             ),
         )
 
-    def normalize_activity(self, payload: dict[str, Any]) -> ActivitySummary:
+    def normalize_activity(self, payload: dict[str, Any], *, text_limit: int | None = None) -> ActivitySummary:
         links = payload.get("_links", {})
+        comment, truncated, length = self._visible_formattable_text_with_meta(
+            payload.get("comment"),
+            "activity",
+            "comment",
+            limit=text_limit,
+            preserve_newlines=True,
+        )
         return self._apply_hidden_fields(
             "activity",
             ActivitySummary(
@@ -4645,8 +4689,10 @@ class OpenProjectClient:
                 type=payload.get("_type"),
                 version=payload.get("version"),
                 user=_link_title(links.get("user")),
-                comment=self._visible_formattable_text(payload.get("comment"), "activity", "comment"),
+                comment=comment,
                 created_at=payload.get("createdAt"),
+                comment_truncated=truncated,
+                comment_length=length,
             ),
         )
 
@@ -6775,6 +6821,25 @@ class OpenProjectClient:
             return None
         return _extract_formattable_text(value, limit=limit)
 
+    def _visible_formattable_text_with_meta(
+        self,
+        value: Any,
+        entity: str,
+        field_name: str,
+        *,
+        limit: int | None = FORMATTABLE_LIMIT,
+        preserve_newlines: bool = False,
+    ) -> tuple[str | None, bool, int | None]:
+        """Hide-aware formattable text plus ``(text, truncated, full_length)``.
+
+        ``limit=None`` returns the full text uncapped. When the field is hidden,
+        returns ``(None, False, None)`` — a hidden field is not "truncated", it
+        is simply absent.
+        """
+        if self._field_hidden(entity, field_name):
+            return None, False, None
+        return _extract_formattable_text_with_meta(value, limit=limit, preserve_newlines=preserve_newlines)
+
     def _custom_field_hidden(self, field_name: str, key: str) -> bool:
         patterns = tuple(self.settings.hide_custom_fields)
         if not patterns:
@@ -7048,10 +7113,80 @@ def _trim_text(value: Any, *, limit: int) -> str | None:
     return text[: limit - 1].rstrip() + "…"
 
 
+def _normalize_text(value: Any, *, preserve_newlines: bool) -> str:
+    """Normalize whitespace before trimming.
+
+    Default (``preserve_newlines=False``): collapse all whitespace/newlines to
+    single spaces — the historic behavior for single-line fields (subjects,
+    titles, error messages).
+
+    ``preserve_newlines=True``: keep paragraph/list structure. CRLF→LF, collapse
+    inline whitespace per line, strip trailing whitespace per line, strip leading
+    and trailing blank lines, and collapse any run of blank lines to a single
+    blank line (one visible paragraph break, i.e. ``\\n\\n``).
+    """
+    if not preserve_newlines:
+        return " ".join(str(value).split())
+    lines = str(value).replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    normalized: list[str] = []
+    blank_run = 0
+    for line in lines:
+        stripped = " ".join(line.split())
+        if stripped:
+            blank_run = 0
+            normalized.append(stripped)
+        else:
+            blank_run += 1
+            if blank_run <= 1:
+                normalized.append("")
+    # Strip leading/trailing blank lines.
+    while normalized and normalized[0] == "":
+        normalized.pop(0)
+    while normalized and normalized[-1] == "":
+        normalized.pop()
+    return "\n".join(normalized)
+
+
+def _trim_text_with_meta(
+    value: Any, *, limit: int | None, preserve_newlines: bool = False
+) -> tuple[str | None, bool, int | None]:
+    """Trim ``value`` to ``limit`` and report truncation metadata.
+
+    ``limit=None`` means *no cap* — return the full text (never truncated). This
+    is the single-work-package path, where the caller wants everything.
+
+    Returns ``(text, truncated, full_length)`` where ``full_length`` is the
+    character count of the normalized text *before* trimming, so the invariant
+    ``truncated == (limit is not None and full_length > limit)`` holds and
+    callers can tell how much was cut. ``text``/``full_length`` are ``None`` when
+    there is no content.
+    """
+    if value is None:
+        return None, False, None
+    text = _normalize_text(value, preserve_newlines=preserve_newlines)
+    if not text:
+        return None, False, None
+    full_length = len(text)
+    if limit is None or full_length <= limit:
+        return text, False, full_length
+    return text[: limit - 1].rstrip() + "…", True, full_length
+
+
 def _extract_formattable_text(value: Any, *, limit: int = FORMATTABLE_LIMIT) -> str | None:
     if isinstance(value, dict):
         return _trim_text(value.get("raw") or value.get("html"), limit=limit)
     return _trim_text(value, limit=limit)
+
+
+def _extract_formattable_text_with_meta(
+    value: Any, *, limit: int | None = FORMATTABLE_LIMIT, preserve_newlines: bool = False
+) -> tuple[str | None, bool, int | None]:
+    """Like ``_extract_formattable_text`` but reports truncation metadata.
+
+    ``limit=None`` returns the full text uncapped.
+    """
+    raw = value.get("raw") or value.get("html") if isinstance(value, dict) else value
+    return _trim_text_with_meta(raw, limit=limit, preserve_newlines=preserve_newlines)
 
 
 def _link_title(link: Any) -> str | None:

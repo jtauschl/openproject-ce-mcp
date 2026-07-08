@@ -998,9 +998,10 @@ def _run_configure(argv: list[str] | None = None) -> None:
         "OPENPROJECT_ENABLE_ADMIN_WRITE": str(_bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_WRITE")).lower(),
         "OPENPROJECT_TIMEOUT": existing.get("OPENPROJECT_TIMEOUT", "12"),
         "OPENPROJECT_VERIFY_SSL": existing.get("OPENPROJECT_VERIFY_SSL", "true"),
-        "OPENPROJECT_DEFAULT_PAGE_SIZE": existing.get("OPENPROJECT_DEFAULT_PAGE_SIZE", "20"),
+        "OPENPROJECT_DEFAULT_PAGE_SIZE": existing.get("OPENPROJECT_DEFAULT_PAGE_SIZE", "10"),
         "OPENPROJECT_MAX_PAGE_SIZE": existing.get("OPENPROJECT_MAX_PAGE_SIZE", "50"),
         "OPENPROJECT_MAX_RESULTS": existing.get("OPENPROJECT_MAX_RESULTS", "100"),
+        "OPENPROJECT_TEXT_LIMIT": existing.get("OPENPROJECT_TEXT_LIMIT", "500"),
         "OPENPROJECT_LOG_LEVEL": existing.get("OPENPROJECT_LOG_LEVEL", "WARNING"),
     }
 
