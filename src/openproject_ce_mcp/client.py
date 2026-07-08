@@ -157,6 +157,11 @@ SUBJECT_LIMIT = 255
 # path, and cannot be confused with any valid parent reference.
 CLEAR_PARENT = object()
 
+# Sentinel for create/update_work_package: distinguishes "clear the version"
+# (unassign via _links.version = {"href": null}) from "leave unchanged" (None). Same
+# rationale as CLEAR_PARENT — it must bypass version-name resolution.
+CLEAR_VERSION = object()
+
 
 class OpenProjectError(Exception):
     """Base error for safe OpenProject failures."""
@@ -1997,7 +2002,7 @@ class OpenProjectClient:
         type: str,
         subject: str,
         description: str | None = None,
-        version: str | None = None,
+        version: str | object | None = None,
         project_phase: str | None = None,
         assignee: str | None = None,
         responsible: str | None = None,
@@ -2047,7 +2052,7 @@ class OpenProjectClient:
         type: str,
         subject: str,
         description: str | None = None,
-        version: str | None = None,
+        version: str | object | None = None,
         project_phase: str | None = None,
         assignee: str | None = None,
         responsible: str | None = None,
@@ -2102,7 +2107,7 @@ class OpenProjectClient:
         subject: str | None = None,
         description: str | None = None,
         type: str | None = None,
-        version: str | None = None,
+        version: str | object | None = None,
         project_phase: str | None = None,
         status: str | None = None,
         assignee: str | None = None,
@@ -5525,7 +5530,7 @@ class OpenProjectClient:
         type: str | None = None,
         subject: str | None = None,
         description: str | None = None,
-        version: str | None = None,
+        version: str | object | None = None,
         project_phase: str | None = None,
         status: str | None = None,
         assignee: str | None = None,
@@ -5562,7 +5567,10 @@ class OpenProjectClient:
             self._ensure_field_writable("work_package", "type")
             type_id = await self._resolve_type_id(type, project=project)
             links["type"] = {"href": self._api_href(f"types/{type_id}")}
-        if version is not None:
+        if version is CLEAR_VERSION:
+            self._ensure_field_writable("work_package", "version")
+            links["version"] = {"href": None}
+        elif version is not None:
             self._ensure_field_writable("work_package", "version")
             version_id = await self._resolve_version_id(version, project=project)
             links["version"] = {"href": self._api_href(f"versions/{version_id}")}

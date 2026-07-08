@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from openproject_ce_mcp.client import CLEAR_PARENT, OpenProjectClient
+from openproject_ce_mcp.client import CLEAR_PARENT, CLEAR_VERSION, OpenProjectClient
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.tools import (
     _validate_optional_non_negative_int,
@@ -387,6 +387,57 @@ async def test_update_work_package_tool_parent_alone_satisfies_field_requirement
     )
 
     assert result["parent_work_package_id"] is CLEAR_PARENT
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_tool_maps_none_to_clear_version_sentinel() -> None:
+    class StubClient:
+        async def update_work_package(self, **kwargs):
+            return kwargs
+
+    result = await update_work_package(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        "42",
+        version="none",
+        confirm=False,
+    )
+
+    # 'none' (unassign version) must reach the client as the sentinel, not the string "none".
+    assert result["version"] is CLEAR_VERSION
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_tool_version_alone_satisfies_field_requirement() -> None:
+    # Clearing the version is a real change: it must not trip "at least one field".
+    class StubClient:
+        async def update_work_package(self, **kwargs):
+            return kwargs
+
+    result = await update_work_package(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        "42",
+        version="none",
+        confirm=False,
+    )
+
+    assert result["version"] is CLEAR_VERSION
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_tool_passes_real_version_name() -> None:
+    class StubClient:
+        async def update_work_package(self, **kwargs):
+            return kwargs
+
+    result = await update_work_package(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        "42",
+        version="0.3.0",
+        confirm=False,
+    )
+
+    # A real version name passes through unchanged (not the sentinel).
+    assert result["version"] == "0.3.0"
 
 
 @pytest.mark.asyncio

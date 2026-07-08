@@ -8,6 +8,7 @@ import pytest
 
 from openproject_ce_mcp.client import (
     CLEAR_PARENT,
+    CLEAR_VERSION,
     AuthenticationError,
     InvalidInputError,
     NotFoundError,
@@ -1435,6 +1436,87 @@ async def test_update_work_package_unparents_with_null_href_through_schema_probe
     assert result.confirmed is True
     assert result.result is not None
     assert result.result.parent_id is None
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_clears_version_with_null_href() -> None:
+    # CLEAR_VERSION must send _links.version = {"href": None} on the PATCH, unassigning
+    # the version, and must not try to resolve "none" as a version name.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 3,
+                    "_links": {
+                        "project": {"title": "Demo", "href": "/api/v3/projects/1"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "version": {"href": "/api/v3/versions/15", "title": "Backlog"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            assert body["_links"]["version"]["href"] is None
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Form",
+                    "_embedded": {"schema": {}, "payload": body, "validationErrors": {}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body["_links"]["version"]["href"] is None
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 4,
+                    "_links": {
+                        "project": {"title": "Demo"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "version": {"href": None},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = make_settings()
+    settings = Settings(
+        base_url=settings.base_url,
+        api_token=settings.api_token,
+        enable_work_package_write=True,
+        timeout=settings.timeout,
+        verify_ssl=settings.verify_ssl,
+        default_page_size=settings.default_page_size,
+        max_page_size=settings.max_page_size,
+        max_results=settings.max_results,
+        log_level=settings.log_level,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.update_work_package(
+        work_package_id=42,
+        version=CLEAR_VERSION,
+        confirm=True,
+    )
+
+    assert result.confirmed is True
+    assert result.result is not None
+    assert result.result.version is None
 
     await client.aclose()
 

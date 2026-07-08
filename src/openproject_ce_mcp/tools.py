@@ -10,6 +10,7 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from .client import (
     CLEAR_PARENT,
+    CLEAR_VERSION,
     AuthenticationError,
     InvalidInputError,
     NotFoundError,
@@ -1239,14 +1240,15 @@ async def update_work_package(
 
     The tool validates the patch first. Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
     work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
-    assignee accepts a numeric user id or 'me'. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. Omitted fields stay unchanged.
+    assignee accepts a numeric user id or 'me'. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. Omitted fields stay unchanged.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
     safe_subject = _validate_optional_query(subject, field_name="subject", max_length=255)
     safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
     safe_type = _validate_optional_query(type, field_name="type", max_length=100)
-    safe_version = _validate_optional_query(version, field_name="version", max_length=100)
+    # version: 'none' (any case) clears the assigned version; otherwise a version name/id.
+    safe_version = _validate_optional_version(version)
     safe_project_phase = _validate_optional_query(project_phase, field_name="project_phase", max_length=100)
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
     safe_assignee = _validate_optional_user_ref(assignee)
@@ -2980,6 +2982,19 @@ def _validate_optional_query(value: str | None, *, field_name: str, max_length: 
     if len(normalized) > max_length:
         raise ValueError(f"{field_name} must be at most {max_length} characters.")
     return normalized
+
+
+def _validate_optional_version(value: str | None) -> str | object | None:
+    """Validate a version argument, mapping 'none' (any case) to CLEAR_VERSION.
+
+    Returns None to leave the version unchanged, CLEAR_VERSION to unassign it, or
+    the validated version name/id. Mirrors the parent 'none' un-parenting sentinel.
+    """
+    if value is None:
+        return None
+    if value.strip().lower() == "none":
+        return CLEAR_VERSION
+    return _validate_optional_query(value, field_name="version", max_length=100)
 
 
 def _validate_optional_text(value: str | None, *, field_name: str, max_length: int) -> str | None:
