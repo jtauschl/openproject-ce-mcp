@@ -162,6 +162,13 @@ CLEAR_PARENT = object()
 # rationale as CLEAR_PARENT — it must bypass version-name resolution.
 CLEAR_VERSION = object()
 
+# Generic "clear this association" sentinel for the remaining nullable HAL-link
+# fields (assignee, responsible, category, project_phase on work packages; parent on
+# projects). Distinguishes "unassign via _links.<field> = {"href": null}" from
+# "leave unchanged" (None). parent/version keep their own sentinels above for
+# historical reasons; new clearable fields share this one.
+CLEAR = object()
+
 
 class OpenProjectError(Exception):
     """Base error for safe OpenProject failures."""
@@ -323,7 +330,7 @@ class OpenProjectClient:
         active: bool | None = None,
         status: str | None = None,
         status_explanation: str | None = None,
-        parent: str | None = None,
+        parent: str | object | None = None,
         confirm: bool = False,
     ) -> ProjectWriteResult:
         self._ensure_project_write_candidate_allowed(identifier=identifier, name=name)
@@ -359,7 +366,7 @@ class OpenProjectClient:
         active: bool | None = None,
         status: str | None = None,
         status_explanation: str | None = None,
-        parent: str | None = None,
+        parent: str | object | None = None,
         confirm: bool = False,
     ) -> ProjectWriteResult:
         current = await self._get(f"projects/{quote(project_ref, safe='')}")
@@ -437,7 +444,7 @@ class OpenProjectClient:
         active: bool | None = None,
         status: str | None = None,
         status_explanation: str | None = None,
-        parent: str | None = None,
+        parent: str | object | None = None,
         confirm: bool = False,
     ) -> ProjectCopyResult:
         source_payload = await self._get(f"projects/{quote(source_project, safe='')}")
@@ -2003,11 +2010,11 @@ class OpenProjectClient:
         subject: str,
         description: str | None = None,
         version: str | object | None = None,
-        project_phase: str | None = None,
-        assignee: str | None = None,
-        responsible: str | None = None,
+        project_phase: str | object | None = None,
+        assignee: str | object | None = None,
+        responsible: str | object | None = None,
         priority: str | None = None,
-        category: str | None = None,
+        category: str | object | None = None,
         custom_fields: dict[str, Any] | None = None,
         parent_work_package_id: int | str | None = None,
         start_date: str | None = None,
@@ -2053,11 +2060,11 @@ class OpenProjectClient:
         subject: str,
         description: str | None = None,
         version: str | object | None = None,
-        project_phase: str | None = None,
-        assignee: str | None = None,
-        responsible: str | None = None,
+        project_phase: str | object | None = None,
+        assignee: str | object | None = None,
+        responsible: str | object | None = None,
         priority: str | None = None,
-        category: str | None = None,
+        category: str | object | None = None,
         custom_fields: dict[str, Any] | None = None,
         start_date: str | None = None,
         due_date: str | None = None,
@@ -2108,12 +2115,12 @@ class OpenProjectClient:
         description: str | None = None,
         type: str | None = None,
         version: str | object | None = None,
-        project_phase: str | None = None,
+        project_phase: str | object | None = None,
         status: str | None = None,
-        assignee: str | None = None,
-        responsible: str | None = None,
+        assignee: str | object | None = None,
+        responsible: str | object | None = None,
         priority: str | None = None,
-        category: str | None = None,
+        category: str | object | None = None,
         custom_fields: dict[str, Any] | None = None,
         parent_work_package_id: int | str | object | None = None,
         start_date: str | None = None,
@@ -5531,12 +5538,12 @@ class OpenProjectClient:
         subject: str | None = None,
         description: str | None = None,
         version: str | object | None = None,
-        project_phase: str | None = None,
+        project_phase: str | object | None = None,
         status: str | None = None,
-        assignee: str | None = None,
-        responsible: str | None = None,
+        assignee: str | object | None = None,
+        responsible: str | object | None = None,
         priority: str | None = None,
-        category: str | None = None,
+        category: str | object | None = None,
         custom_fields: dict[str, Any] | None = None,
         parent_work_package_id: int | object | None = None,
         start_date: str | None = None,
@@ -5578,7 +5585,10 @@ class OpenProjectClient:
             self._ensure_field_writable("work_package", "status")
             status_id = await self._resolve_status_id(status)
             links["status"] = {"href": self._api_href(f"statuses/{status_id}")}
-        if assignee is not None:
+        if assignee is CLEAR:
+            self._ensure_field_writable("work_package", "assignee")
+            links["assignee"] = {"href": None}
+        elif assignee is not None:
             self._ensure_field_writable("work_package", "assignee")
             assignee_id = await self._resolve_assignee_id(assignee)
             links["assignee"] = {"href": self._api_href(f"users/{assignee_id}")}
@@ -5589,8 +5599,20 @@ class OpenProjectClient:
             self._ensure_field_writable("work_package", "parent")
             links["parent"] = {"href": self._api_href(f"work_packages/{parent_work_package_id}")}
 
+        # Clear (CLEAR sentinel) the schema-backed fields directly — a null href needs
+        # no schema-option resolution, and must not trigger the schema probe below.
+        if responsible is CLEAR:
+            self._ensure_field_writable("work_package", "responsible")
+            links["responsible"] = {"href": None}
+        if category is CLEAR:
+            self._ensure_field_writable("work_package", "category")
+            links["category"] = {"href": None}
+        if project_phase is CLEAR:
+            self._ensure_field_writable("work_package", "project_phase")
+            links["projectPhase"] = {"href": None}
+
         schema_needs = any(
-            value is not None
+            value is not None and value is not CLEAR
             for value in (
                 responsible,
                 priority,
@@ -5609,16 +5631,16 @@ class OpenProjectClient:
                 draft_payload=payload,
                 lock_version=lock_version,
             )
-            if responsible is not None:
+            if responsible is not None and responsible is not CLEAR:
                 self._ensure_field_writable("work_package", "responsible")
                 links["responsible"] = {"href": self._resolve_schema_option_href(schema, "responsible", responsible)}
             if priority is not None:
                 self._ensure_field_writable("work_package", "priority")
                 links["priority"] = {"href": self._resolve_schema_option_href(schema, "priority", priority)}
-            if category is not None:
+            if category is not None and category is not CLEAR:
                 self._ensure_field_writable("work_package", "category")
                 links["category"] = {"href": self._resolve_schema_option_href(schema, "category", category)}
-            if project_phase is not None:
+            if project_phase is not None and project_phase is not CLEAR:
                 self._ensure_field_writable("work_package", "project_phase")
                 links["projectPhase"] = {
                     "href": self._resolve_schema_option_href(schema, "projectPhase", project_phase)
@@ -6192,7 +6214,7 @@ class OpenProjectClient:
         active: bool | None,
         status: str | None,
         status_explanation: str | None,
-        parent: str | None,
+        parent: str | object | None,
         project_id: int | None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {}
@@ -6220,7 +6242,10 @@ class OpenProjectClient:
         if status is not None:
             self._ensure_field_writable("project", "status")
             links["status"] = {"href": self._resolve_project_status_href(schema, status)}
-        if parent is not None:
+        if parent is CLEAR:
+            self._ensure_field_writable("project", "parent")
+            links["parent"] = {"href": None}
+        elif parent is not None:
             self._ensure_field_writable("project", "parent")
             parent_id = await self._resolve_project_id(parent)
             links["parent"] = {"href": self._api_href(f"projects/{parent_id}")}

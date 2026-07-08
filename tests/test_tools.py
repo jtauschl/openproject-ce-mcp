@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from openproject_ce_mcp.client import CLEAR_PARENT, CLEAR_VERSION, OpenProjectClient
+from openproject_ce_mcp.client import CLEAR, CLEAR_PARENT, CLEAR_VERSION, OpenProjectClient
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.tools import (
     _validate_optional_non_negative_int,
@@ -101,6 +101,7 @@ from openproject_ce_mcp.tools import (
     update_grid,
     update_group,
     update_news,
+    update_project,
     update_reminder,
     update_time_entry,
     update_user,
@@ -421,6 +422,58 @@ async def test_update_work_package_tool_version_alone_satisfies_field_requiremen
     )
 
     assert result["version"] is CLEAR_VERSION
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["assignee", "responsible", "category", "project_phase"])
+async def test_update_work_package_tool_maps_none_to_clear_sentinel(field) -> None:
+    # 'none' on a nullable association field must reach the client as the CLEAR
+    # sentinel (unassign), not the literal string "none".
+    class StubClient:
+        async def update_work_package(self, **kwargs):
+            return kwargs
+
+    result = await update_work_package(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        "42",
+        **{field: "none"},
+        confirm=False,
+    )
+
+    assert result[field] is CLEAR
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_tool_clear_field_satisfies_field_requirement() -> None:
+    # Clearing assignee alone is a real change: it must not trip "at least one field".
+    class StubClient:
+        async def update_work_package(self, **kwargs):
+            return kwargs
+
+    result = await update_work_package(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        "42",
+        assignee="none",
+        confirm=False,
+    )
+
+    assert result["assignee"] is CLEAR
+
+
+@pytest.mark.asyncio
+async def test_update_project_tool_maps_none_parent_to_clear_sentinel() -> None:
+    class StubClient:
+        async def update_project(self, **kwargs):
+            return kwargs
+
+    result = await update_project(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        "demo",
+        parent="none",
+        confirm=False,
+    )
+
+    assert result["parent"] is CLEAR
 
 
 @pytest.mark.asyncio

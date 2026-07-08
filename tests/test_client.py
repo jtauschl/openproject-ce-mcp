@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from openproject_ce_mcp.client import (
+    CLEAR,
     CLEAR_PARENT,
     CLEAR_VERSION,
     AuthenticationError,
@@ -1518,6 +1519,155 @@ async def test_update_work_package_clears_version_with_null_href() -> None:
     assert result.result is not None
     assert result.result.version is None
 
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_clears_assignee_with_null_href() -> None:
+    # CLEAR on the direct-path field (assignee) must send _links.assignee = {"href": None}
+    # and must not resolve "none" as a user id.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 2,
+                    "_links": {
+                        "project": {"title": "Demo", "href": "/api/v3/projects/1"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "assignee": {"href": "/api/v3/users/9", "title": "Bob"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            assert body["_links"]["assignee"]["href"] is None
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"schema": {}, "payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body["_links"]["assignee"]["href"] is None
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 3,
+                    "_links": {
+                        "project": {"title": "Demo"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "assignee": {"href": None},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = make_settings()
+    settings = Settings(
+        base_url=settings.base_url,
+        api_token=settings.api_token,
+        enable_work_package_write=True,
+        timeout=settings.timeout,
+        verify_ssl=settings.verify_ssl,
+        default_page_size=settings.default_page_size,
+        max_page_size=settings.max_page_size,
+        max_results=settings.max_results,
+        log_level=settings.log_level,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.update_work_package(work_package_id=42, assignee=CLEAR, confirm=True)
+
+    assert result.confirmed is True
+    assert result.result is not None
+    assert result.result.assignee is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_clears_category_with_null_href() -> None:
+    # CLEAR on a schema-backed field (category) must send _links.category = {"href": None}.
+    # A null href needs no schema-option resolution — the "none" string is never resolved.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 2,
+                    "_links": {
+                        "project": {"title": "Demo", "href": "/api/v3/projects/1"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "category": {"href": "/api/v3/categories/3", "title": "Bugs"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            assert body["_links"]["category"]["href"] is None
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"schema": {}, "payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body["_links"]["category"]["href"] is None
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 3,
+                    "_links": {
+                        "project": {"title": "Demo"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "category": {"href": None},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = make_settings()
+    settings = Settings(
+        base_url=settings.base_url,
+        api_token=settings.api_token,
+        enable_work_package_write=True,
+        timeout=settings.timeout,
+        verify_ssl=settings.verify_ssl,
+        default_page_size=settings.default_page_size,
+        max_page_size=settings.max_page_size,
+        max_results=settings.max_results,
+        log_level=settings.log_level,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.update_work_package(work_package_id=42, category=CLEAR, confirm=True)
+
+    assert result.confirmed is True
     await client.aclose()
 
 

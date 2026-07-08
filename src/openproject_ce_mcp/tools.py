@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import re
+from collections.abc import Callable
 from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass
 from typing import Any, cast
@@ -9,6 +10,7 @@ from typing import Any, cast
 from mcp.server.fastmcp import Context, FastMCP
 
 from .client import (
+    CLEAR,
     CLEAR_PARENT,
     CLEAR_VERSION,
     AuthenticationError,
@@ -483,7 +485,10 @@ async def update_project(
     parent: str | None = None,
     confirm: bool = False,
 ) -> ProjectWriteResult:
-    """Prepare or update a project."""
+    """Prepare or update a project.
+
+    Pass 'none' to parent to make the project top-level (remove its parent).
+    """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
     safe_name = _validate_optional_query(name, field_name="name", max_length=255)
@@ -493,7 +498,8 @@ async def update_project(
     safe_status_explanation = _validate_optional_text(
         status_explanation, field_name="status_explanation", max_length=10_000
     )
-    safe_parent = _validate_optional_project_ref(parent)
+    # parent: 'none' (any case) makes the project top-level; otherwise a project ref.
+    safe_parent = _clearable(parent, lambda v: _validate_optional_project_ref(v))
     if not any(
         value is not None
         for value in (
@@ -1240,7 +1246,7 @@ async def update_work_package(
 
     The tool validates the patch first. Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
     work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
-    assignee accepts a numeric user id or 'me'. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. Omitted fields stay unchanged.
+    assignee accepts a numeric user id or 'me'. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -1249,12 +1255,16 @@ async def update_work_package(
     safe_type = _validate_optional_query(type, field_name="type", max_length=100)
     # version: 'none' (any case) clears the assigned version; otherwise a version name/id.
     safe_version = _validate_optional_version(version)
-    safe_project_phase = _validate_optional_query(project_phase, field_name="project_phase", max_length=100)
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
-    safe_assignee = _validate_optional_user_ref(assignee)
-    safe_responsible = _validate_optional_user_ref(responsible, field_name="responsible")
+    # assignee/responsible/category/project_phase: 'none' (any case) unassigns the
+    # field; otherwise the normal validation applies.
+    safe_assignee = _clearable(assignee, lambda v: _validate_optional_user_ref(v))
+    safe_responsible = _clearable(responsible, lambda v: _validate_optional_user_ref(v, field_name="responsible"))
+    safe_category = _clearable(category, lambda v: _validate_optional_query(v, field_name="category", max_length=100))
+    safe_project_phase = _clearable(
+        project_phase, lambda v: _validate_optional_query(v, field_name="project_phase", max_length=100)
+    )
     safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
-    safe_category = _validate_optional_query(category, field_name="category", max_length=100)
     safe_custom_fields = _validate_optional_custom_fields(custom_fields)
     # parent: 'none' (any case) clears the parent (top-level); otherwise a work package ref.
     if parent is None:
@@ -2995,6 +3005,20 @@ def _validate_optional_version(value: str | None) -> str | object | None:
     if value.strip().lower() == "none":
         return CLEAR_VERSION
     return _validate_optional_query(value, field_name="version", max_length=100)
+
+
+def _clearable(value: str | None, validate: Callable[[str], Any]) -> str | object | None:
+    """Map a nullable association argument to a clear sentinel or a validated value.
+
+    Returns None (leave unchanged), CLEAR (unassign, for 'none' in any case), or the
+    result of ``validate(value)``. Shared by the fields that support clearing via
+    'none' (assignee, responsible, category, project_phase, project parent).
+    """
+    if value is None:
+        return None
+    if value.strip().lower() == "none":
+        return CLEAR
+    return validate(value)
 
 
 def _validate_optional_text(value: str | None, *, field_name: str, max_length: int) -> str | None:
