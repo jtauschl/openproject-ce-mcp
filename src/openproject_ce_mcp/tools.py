@@ -1092,7 +1092,7 @@ async def search_work_packages(
     safe_query = _validate_required_query(query, field_name="query", max_length=120)
     safe_project = _validate_optional_project_ref(project)
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
-    safe_sort_by = _validate_optional_string_list(sort_by, field_name="sort_by", max_items=20, item_max_length=120)
+    safe_sort_by = _validate_sort_by(sort_by)
     safe_group_by = _validate_optional_query(group_by, field_name="group_by", max_length=120)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
@@ -1153,7 +1153,7 @@ async def list_work_packages(
     safe_version_status = _validate_optional_choice(
         version_status, field_name="version_status", allowed_values={"open", "closed", "locked"}
     )
-    safe_sort_by = _validate_optional_string_list(sort_by, field_name="sort_by", max_items=20, item_max_length=120)
+    safe_sort_by = _validate_sort_by(sort_by)
     safe_group_by = _validate_optional_query(group_by, field_name="group_by", max_length=120)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
@@ -1211,18 +1211,28 @@ async def get_work_packages(
     """
     client = _client_from_context(ctx)
 
-    # Validate each ID
+    # Validate input
     if not isinstance(ids, list):
         raise ValueError("ids must be a list")
     if not ids:
         raise ValueError("ids list cannot be empty")
-    if len(ids) > 100:
-        raise ValueError(f"Maximum 100 work packages per batch (got {len(ids)})")
 
-    safe_ids = [_validate_work_package_ref(id) for id in ids]
+    # Validate and deduplicate while preserving order
+    seen = set()
+    unique_ids = []
+    for id in ids:
+        safe_id = _validate_work_package_ref(id)
+        normalized = str(safe_id)
+        if normalized not in seen:
+            seen.add(normalized)
+            unique_ids.append(safe_id)
+
+    if len(unique_ids) > 100:
+        raise ValueError(f"Maximum 100 unique work packages per batch (got {len(unique_ids)})")
+
     safe_text_limit = _validate_optional_text_limit(text_limit)
 
-    return await _run_tool(client.get_work_packages(ids=safe_ids, text_limit=safe_text_limit))
+    return await _run_tool(client.get_work_packages(ids=unique_ids, text_limit=safe_text_limit))
 
 
 async def create_work_package(
@@ -3367,6 +3377,44 @@ def _validate_optional_string_list(
         item = _validate_required_query(str(value), field_name=field_name, max_length=item_max_length)
         normalized.append(item)
     return normalized
+
+
+def _validate_sort_by(values: list[str] | None) -> list[tuple[str, str]] | None:
+    """Validate and parse sort_by list into list of (field, direction) tuples.
+
+    Validates format and parses each item. Returns None if input is None.
+    Raises ValueError if any item is invalid.
+    """
+    if values is None:
+        return None
+    if not isinstance(values, list):
+        raise ValueError("sort_by must be a list of strings")
+
+    result = []
+    for i, item in enumerate(values):
+        if not isinstance(item, str):
+            raise ValueError(f"sort_by[{i}] must be a string, got {type(item).__name__}")
+
+        item = item.strip()
+        if not item:
+            raise ValueError(f"sort_by[{i}] cannot be empty")
+
+        if ":" in item:
+            parts = item.split(":", 1)
+            field = parts[0].strip()
+            direction = parts[1].strip().lower()
+
+            if not field:
+                raise ValueError(f"sort_by[{i}]: field name cannot be empty")
+            if direction not in ("asc", "desc"):
+                raise ValueError(f"sort_by[{i}]: direction must be 'asc' or 'desc', got '{direction}'")
+        else:
+            field = item
+            direction = "asc"
+
+        result.append((field, direction))
+
+    return result if result else None
 
 
 def _validate_optional_filter_list(value: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:

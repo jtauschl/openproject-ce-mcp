@@ -1884,7 +1884,7 @@ class OpenProjectClient:
         status: str | None = None,
         open_only: bool = False,
         assignee_me: bool = False,
-        sort_by: list[str] | None = None,
+        sort_by: list[tuple[str, str]] | None = None,
         group_by: str | None = None,
         offset: int = 1,
         limit: int | None = None,
@@ -1924,7 +1924,7 @@ class OpenProjectClient:
         open_only: bool = False,
         assignee_me: bool = False,
         has_description: bool | None = None,
-        sort_by: list[str] | None = None,
+        sort_by: list[tuple[str, str]] | None = None,
         group_by: str | None = None,
         offset: int = 1,
         limit: int | None = None,
@@ -1977,7 +1977,7 @@ class OpenProjectClient:
         filters: list[dict[str, Any]],
         offset: int,
         limit: int,
-        sort_by: list[str] | None = None,
+        sort_by: list[tuple[str, str]] | None = None,
         group_by: str | None = None,
     ) -> WorkPackageListResult:
         params = {
@@ -1988,17 +1988,15 @@ class OpenProjectClient:
 
         # Add sortBy as JSON array if provided
         # Format: [["field", "direction"], ...] e.g. [["status", "desc"], ["priority", "asc"]]
-        if sort_by is not None and sort_by:
-            # Parse and build sort criteria
-            sort_criteria = []
-            for item in sort_by:
-                field, direction = _validate_sort_by_item(item)
-                sort_criteria.append([field, direction])
+        # sort_by is already validated and parsed to tuples by tool layer
+        if sort_by:
+            sort_criteria = [[field, direction] for field, direction in sort_by]
             params["sortBy"] = json.dumps(sort_criteria, separators=(",", ":"))
 
         # Add groupBy as simple field name string if provided
-        if group_by is not None:
-            params["groupBy"] = group_by.strip()
+        # group_by is already validated and normalized by tool layer
+        if group_by:
+            params["groupBy"] = group_by
 
         payload = await self._get("work_packages", params=params)
         raw_items = [
@@ -2046,30 +2044,23 @@ class OpenProjectClient:
         Raises:
             ValueError: If ids list is empty or exceeds 100 items
         """
+        # Validation and deduplication is done by tool layer
         if not ids:
             raise ValueError("ids list cannot be empty")
         if len(ids) > 100:
             raise ValueError(f"Maximum 100 work packages per batch (got {len(ids)})")
-
-        # Deduplicate while preserving order
-        seen = set()
-        unique_ids = []
-        for id in ids:
-            normalized = str(id)
-            if normalized not in seen:
-                seen.add(normalized)
-                unique_ids.append(id)
 
         # Create parallel fetch tasks
         async def fetch_one(id: int | str) -> tuple[int | str, WorkPackageDetail | None, str | None]:
             try:
                 wp = await self.get_work_package(id, text_limit=text_limit)
                 return (id, wp, None)
-            except Exception as e:
+            except (OpenProjectError, InvalidInputError, httpx.HTTPError) as e:
+                # Catch expected API errors, not system exceptions like CancelledError
                 return (id, None, str(e))
 
-        # Execute in parallel - return_exceptions=True not needed since fetch_one catches all
-        results = await asyncio.gather(*[fetch_one(id) for id in unique_ids])
+        # Execute in parallel
+        results = await asyncio.gather(*[fetch_one(id) for id in ids])
 
         # Build result items
         items = []
@@ -2098,7 +2089,7 @@ class OpenProjectClient:
                 )
 
         return BatchWorkPackageReadResult(
-            total=len(unique_ids),
+            total=len(ids),
             succeeded=succeeded,
             failed=failed,
             results=items,
@@ -7298,32 +7289,6 @@ class OpenProjectClient:
 
 def _json_param(value: list[dict[str, Any]]) -> str:
     return json.dumps(value, separators=(",", ":"))
-
-
-def _validate_sort_by_item(item: str) -> tuple[str, str]:
-    """Validate and parse sort_by item into (field, direction).
-
-    Accepts formats:
-    - "field:asc" or "field:desc"
-    - "field" (defaults to "asc")
-
-    Returns:
-        Tuple of (field, direction)
-    """
-    if ":" in item:
-        field, direction = item.split(":", 1)
-        field = field.strip()
-        direction = direction.strip().lower()
-        if direction not in ("asc", "desc"):
-            raise ValueError(f"sort_by direction must be 'asc' or 'desc', got '{direction}'")
-    else:
-        field = item.strip()
-        direction = "asc"
-
-    if not field:
-        raise ValueError("sort_by field name cannot be empty")
-
-    return (field, direction)
 
 
 def _origin_from_url(url: str) -> str:
