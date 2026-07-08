@@ -392,6 +392,11 @@ class WorkPackageSummary:
     remaining_time: str | None = None
     derived_remaining_time: str | None = None
     duration: str | None = None
+    parent_id: int | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    author: str | None = None
+    category: str | None = None
 
 
 @dataclass

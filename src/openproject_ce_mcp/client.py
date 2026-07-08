@@ -4634,6 +4634,11 @@ class OpenProjectClient:
                 remaining_time=payload.get("remainingTime"),
                 derived_remaining_time=payload.get("derivedRemainingTime"),
                 duration=payload.get("duration"),
+                parent_id=_id_from_href(links.get("parent", {}).get("href")),
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
+                author=_link_title(links.get("author")),
+                category=_link_title(links.get("category")),
             ),
         )
 
