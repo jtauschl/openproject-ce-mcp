@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import functools
 import re
+from dataclasses import fields as dataclass_fields
+from dataclasses import is_dataclass
 from typing import Any, cast
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -98,6 +100,7 @@ from .models import (
     UserListResult,
     UserPreferences,
     UserPreferencesWriteResult,
+    UserSummary,
     UserWriteResult,
     VersionDetail,
     VersionListResult,
@@ -110,6 +113,7 @@ from .models import (
     WorkingDayListResult,
     WorkPackageDetail,
     WorkPackageListResult,
+    WorkPackageSummary,
     WorkPackageWriteResult,
 )
 
@@ -129,8 +133,27 @@ RELATION_TYPE_RE = re.compile(
 def register_tools(mcp: FastMCP, settings: Settings) -> None:
     # Register a tool with error-categorization applied, so every failure reaches
     # the agent with a stable [category] prefix.
+    #
+    # Tools that return a *ListResult or *WriteResult are routed through _to_payload
+    # for context reduction (OPM-65/66/71/72): payload is dropped on confirmed
+    # writes, count/truncated on lists, hidden keys entirely, and `select` trims
+    # rows. Those tools are registered with structured_output=False so FastMCP does
+    # not build a fixed dataclass output schema — it serializes the trimmed dict we
+    # return verbatim, letting us omit keys. Detection is by return annotation, so
+    # no per-tool tagging is needed and it cannot drift. Tool bodies are unchanged;
+    # they still return their dataclass, which the wrapper trims.
     def tool(fn):
-        return mcp.tool()(_categorize_tool_errors(fn))
+        if not _returns_trimmable(fn):
+            return mcp.tool()(_categorize_tool_errors(fn))
+
+        wrapped = _categorize_tool_errors(fn)
+
+        @functools.wraps(wrapped)
+        async def trimming(*args, **kwargs):
+            select = _normalize_select(kwargs.get("select"))
+            return _to_payload(await wrapped(*args, **kwargs), select=select)
+
+        return mcp.tool(structured_output=False)(trimming)
 
     # Always-available read tools
     tool(get_current_user)
@@ -306,12 +329,17 @@ async def list_projects(
     search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> ProjectListResult:
-    """List visible projects with optional name or identifier search."""
+    """List visible projects with optional name or identifier search.
+
+    select restricts each result row to the given ProjectSummary fields.
+    """
     client = _client_from_context(ctx)
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=ProjectSummary)
     return await _run_tool(client.list_projects(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
@@ -522,12 +550,17 @@ async def list_users(
     search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> UserListResult:
-    """List users visible to the current token."""
+    """List users visible to the current token.
+
+    select restricts each result row to the given UserSummary fields.
+    """
     client = _client_from_context(ctx)
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=UserSummary)
     return await _run_tool(client.list_users(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
@@ -1014,12 +1047,14 @@ async def search_work_packages(
     assignee_me: bool = False,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> WorkPackageListResult:
     """Search work packages by free text, optionally scoped to a project.
 
     Set status to restrict results to a specific OpenProject status.
     Set open_only=true to return only open work packages.
     Set assignee_me=true to return only work packages assigned to the current user.
+    select restricts each result row to the given WorkPackageSummary fields.
     """
     client = _client_from_context(ctx)
     safe_query = _validate_required_query(query, field_name="query", max_length=120)
@@ -1027,6 +1062,7 @@ async def search_work_packages(
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=WorkPackageSummary)
     return await _run_tool(
         client.search_work_packages(
             query=safe_query,
@@ -1051,11 +1087,13 @@ async def list_work_packages(
     has_description: bool | None = None,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> WorkPackageListResult:
     """List work packages with structured filters and no free-text query requirement.
 
     version_status filters by the status of a work package's assigned version:
     one of 'open', 'closed', or 'locked'.
+    select restricts each result row to the given WorkPackageSummary fields.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -1066,6 +1104,7 @@ async def list_work_packages(
     )
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=WorkPackageSummary)
     return await _run_tool(
         client.list_work_packages(
             project=safe_project,
@@ -2762,6 +2801,128 @@ async def _run_tool(awaitable):
             "openproject_error",
         )
         raise RuntimeError(_prefix(category, str(exc))) from exc
+
+
+def _returns_trimmable(fn: Any) -> bool:
+    """True if a tool returns a result the context-reduction seam should trim.
+
+    A result is trimmable when its model carries a field the seam acts on:
+    ``results`` (list results → count/truncated drop + select), ``payload`` (write
+    results → payload drop on confirm), or ``items`` (bulk results, whose nested
+    per-item write results carry their own payload to drop). ``from __future__
+    import annotations`` makes the return annotation a string; we resolve it against
+    this module's namespace and inspect the dataclass fields, so detection is
+    precise and cannot drift from suffix conventions (e.g. RelationUpdateResult,
+    ProjectCopyResult carry payload but are not named *WriteResult).
+    """
+    ann = fn.__annotations__.get("return")
+    if isinstance(ann, str):
+        model = globals().get(ann)
+    else:
+        model = ann
+    if model is None or not is_dataclass(model):
+        return False
+    names = {f.name for f in dataclass_fields(model)}
+    return bool(names & {"results", "payload", "items"})
+
+
+def _to_payload(value: Any, *, select: frozenset[str] | None = None) -> Any:
+    """Serialize a tool result to a trimmed plain dict for context reduction.
+
+    Recursively turns dataclass instances into dicts while applying structural
+    omissions that would otherwise cost fixed context on every call:
+
+    - **payload** (OPM-66): dropped from a write result once ``confirmed`` is true
+      (the success case), since the normalized ``result`` already carries the same
+      information. It stays on preview/validation-error results, where the agent
+      still needs it. Applied recursively, so nested bulk items are trimmed too.
+    - **count / truncated** (OPM-71): dropped from list results — both are derivable
+      (``count == len(results)``, ``truncated == next_offset is not None``).
+    - **hidden keys** (OPM-72): removed entirely (not nulled) when the client tagged
+      the instance with ``_hidden_keys``.
+
+    ``select`` (OPM-65) is applied to the top-level ``results`` rows only, keeping
+    just the requested fields per row.
+
+    Non-dataclass values pass through unchanged, so tools (and test stubs) that
+    already return plain dicts are untouched.
+    """
+    if is_dataclass(value) and not isinstance(value, type):
+        drop_payload = getattr(value, "confirmed", None) is True and _has_field(value, "payload")
+        is_list_result = _has_field(value, "results")
+        hidden = getattr(value, "_hidden_keys", ())
+        out: dict[str, Any] = {}
+        for f in dataclass_fields(value):
+            name = f.name
+            if name in hidden:
+                continue
+            if name == "payload" and drop_payload:
+                continue
+            if is_list_result and name in ("count", "truncated"):
+                continue
+            child = getattr(value, name)
+            if is_list_result and name == "results" and select is not None:
+                out[name] = [_select_fields(row, select) for row in child]
+            else:
+                out[name] = _to_payload(child)
+        return out
+    if isinstance(value, list):
+        return [_to_payload(item) for item in value]
+    if isinstance(value, tuple):
+        return [_to_payload(item) for item in value]
+    if isinstance(value, dict):
+        return {k: _to_payload(v) for k, v in value.items()}
+    return value
+
+
+def _has_field(value: Any, name: str) -> bool:
+    return any(f.name == name for f in dataclass_fields(value))
+
+
+def _select_fields(row: Any, select: frozenset[str]) -> Any:
+    """Keep only the selected fields of a result row (dataclass), still trimmed."""
+    if not is_dataclass(row) or isinstance(row, type):
+        return _to_payload(row)
+    hidden = getattr(row, "_hidden_keys", ())
+    return {
+        f.name: _to_payload(getattr(row, f.name))
+        for f in dataclass_fields(row)
+        if f.name in select and f.name not in hidden
+    }
+
+
+def _validate_select(select: list[str] | None, *, row_type: type) -> list[str] | None:
+    """Validate a field-selection list against a result-row dataclass.
+
+    Called in the tool body so invalid field names raise [validation_error] before
+    the client call. Returns the cleaned list (or None). The trimming wrapper reads
+    the same ``select`` kwarg and applies it after the result resolves.
+    """
+    if select is None:
+        return None
+    valid = {f.name for f in dataclass_fields(row_type)}
+    chosen: list[str] = []
+    for raw in select:
+        name = str(raw).strip()
+        if name not in valid:
+            allowed = ", ".join(sorted(valid))
+            raise ValueError(f"select field '{name}' is not a valid {row_type.__name__} field. Allowed: {allowed}.")
+        if name not in chosen:
+            chosen.append(name)
+    if not chosen:
+        raise ValueError("select must contain at least one field name.")
+    return chosen
+
+
+def _normalize_select(select: Any) -> frozenset[str] | None:
+    """Turn a raw ``select`` kwarg into a field set for the trimming wrapper.
+
+    Validation already happened in the tool body (_validate_select); here we only
+    normalize the shape. Returns None when no usable selection is present.
+    """
+    if not select:
+        return None
+    return frozenset(str(name).strip() for name in select if str(name).strip())
 
 
 def _categorize_tool_errors(fn):
