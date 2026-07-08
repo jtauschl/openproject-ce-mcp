@@ -57,6 +57,14 @@ only the fields you need, pass `select` (a list of field names) to
 `list_work_packages` / `search_work_packages` / `list_projects` / `list_users`;
 an invalid name returns the allowed set.
 
+## Clearing an assigned field
+
+On `update_work_package` and `update_project`, pass the string `"none"` to unassign
+a nullable association rather than change it: work-package `assignee`, `responsible`,
+`version`, `parent`, `category`, `project_phase`, and project `parent`. Omitting a
+field leaves it unchanged; `"none"` explicitly clears it. Required fields (type,
+status, subject, project) cannot be cleared.
+
 ## Some metadata tools are opt-in
 
 A set of rarely-needed metadata/reference tools (the `get_query_*` schema tools,

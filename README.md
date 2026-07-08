@@ -366,7 +366,9 @@ Tools are grouped by area: projects, memberships, users, groups, work packages, 
 List and search tools accept a `select` parameter to return only the fields you
 need per row, and responses are trimmed for context economy (list results drop
 the derivable `count`/`truncated`; a confirmed write drops the echoed request
-`payload`). A handful of rarely-used metadata tools are gated behind
+`payload`). On `update_work_package` / `update_project`, pass `"none"` to clear a
+nullable field (assignee, responsible, version, parent, category, project_phase).
+A handful of rarely-used metadata tools are gated behind
 `OPENPROJECT_ENABLE_METADATA_TOOLS` (see Configuration).
 
 See the full [tool reference](docs/tools.md) for descriptions of every tool.
