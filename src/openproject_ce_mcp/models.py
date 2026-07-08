@@ -513,6 +513,26 @@ class WorkPackageListResult:
 
 
 @dataclass
+class BatchWorkPackageReadItemResult:
+    """Single item result from batch read operation."""
+
+    id: int | str
+    success: bool
+    work_package: WorkPackageDetail | None
+    error: str | None
+
+
+@dataclass
+class BatchWorkPackageReadResult:
+    """Result of batch read operation, mirroring BulkWorkPackageWriteResult pattern."""
+
+    total: int
+    succeeded: int
+    failed: int
+    results: list[BatchWorkPackageReadItemResult]
+
+
+@dataclass
 class VersionSummary:
     id: int
     name: str

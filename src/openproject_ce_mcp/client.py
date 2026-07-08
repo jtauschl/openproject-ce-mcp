@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import mimetypes
@@ -24,6 +25,8 @@ from .models import (
     AttachmentListResult,
     AttachmentSummary,
     AttachmentWriteResult,
+    BatchWorkPackageReadItemResult,
+    BatchWorkPackageReadResult,
     BoardDetail,
     BoardFilter,
     BoardListResult,
@@ -2001,6 +2004,82 @@ class OpenProjectClient:
         # Default (text_limit=None) returns the full description uncapped: opening
         # a single work package means you want to read/edit it, so nothing is cut.
         return self.normalize_work_package_detail(payload, text_limit=text_limit)
+
+    async def get_work_packages(
+        self,
+        *,
+        ids: list[int | str],
+        text_limit: int | None = None,
+    ) -> BatchWorkPackageReadResult:
+        """Fetch multiple work packages in parallel.
+
+        Args:
+            ids: List of work package IDs (numeric or PROJ-123 format)
+            text_limit: Optional description truncation limit
+
+        Returns:
+            BatchWorkPackageReadResult with per-item success/failure tracking
+
+        Raises:
+            ValueError: If ids list is empty or exceeds 100 items
+        """
+        if not ids:
+            raise ValueError("ids list cannot be empty")
+        if len(ids) > 100:
+            raise ValueError(f"Maximum 100 work packages per batch (got {len(ids)})")
+
+        # Deduplicate while preserving order
+        seen = set()
+        unique_ids = []
+        for id in ids:
+            normalized = str(id)
+            if normalized not in seen:
+                seen.add(normalized)
+                unique_ids.append(id)
+
+        # Create parallel fetch tasks
+        async def fetch_one(id: int | str) -> tuple[int | str, WorkPackageDetail | None, str | None]:
+            try:
+                wp = await self.get_work_package(id, text_limit=text_limit)
+                return (id, wp, None)
+            except Exception as e:
+                return (id, None, str(e))
+
+        # Execute in parallel - return_exceptions=True not needed since fetch_one catches all
+        results = await asyncio.gather(*[fetch_one(id) for id in unique_ids])
+
+        # Build result items
+        items = []
+        succeeded = 0
+        failed = 0
+        for input_id, work_package, error in results:
+            if work_package is not None:
+                succeeded += 1
+                items.append(
+                    BatchWorkPackageReadItemResult(
+                        id=input_id,
+                        success=True,
+                        work_package=work_package,
+                        error=None,
+                    )
+                )
+            else:
+                failed += 1
+                items.append(
+                    BatchWorkPackageReadItemResult(
+                        id=input_id,
+                        success=False,
+                        work_package=None,
+                        error=error,
+                    )
+                )
+
+        return BatchWorkPackageReadResult(
+            total=len(unique_ids),
+            succeeded=succeeded,
+            failed=failed,
+            results=items,
+        )
 
     async def create_work_package(
         self,

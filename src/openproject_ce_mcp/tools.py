@@ -30,6 +30,7 @@ from .models import (
     AttachmentListResult,
     AttachmentSummary,
     AttachmentWriteResult,
+    BatchWorkPackageReadResult,
     BoardDetail,
     BoardListResult,
     BoardWriteResult,
@@ -213,6 +214,7 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
         tool(list_work_packages)
         tool(search_work_packages)
         tool(get_work_package)
+        tool(get_work_packages)
         tool(list_my_open_work_packages)
         tool(get_work_package_activities)
         tool(list_work_package_reactions)
@@ -1164,6 +1166,36 @@ async def get_work_package(
     safe_id = _validate_work_package_ref(work_package_id)
     safe_text_limit = _validate_optional_text_limit(text_limit)
     return await _run_tool(client.get_work_package(safe_id, text_limit=safe_text_limit))
+
+
+async def get_work_packages(
+    ctx: Context,
+    ids: list[int | str],
+    text_limit: int | None = None,
+) -> BatchWorkPackageReadResult:
+    """Get multiple work packages by ID in a single batch call.
+
+    Fetches work packages in parallel and returns per-item results.
+    Failed fetches are reported individually without stopping the batch.
+    Maximum 100 IDs per batch.
+
+    ids accepts numeric ids or project-prefixed references like PROJ-123.
+    Duplicate IDs are automatically deduplicated.
+    """
+    client = _client_from_context(ctx)
+
+    # Validate each ID
+    if not isinstance(ids, list):
+        raise ValueError("ids must be a list")
+    if not ids:
+        raise ValueError("ids list cannot be empty")
+    if len(ids) > 100:
+        raise ValueError(f"Maximum 100 work packages per batch (got {len(ids)})")
+
+    safe_ids = [_validate_work_package_ref(id) for id in ids]
+    safe_text_limit = _validate_optional_text_limit(text_limit)
+
+    return await _run_tool(client.get_work_packages(ids=safe_ids, text_limit=safe_text_limit))
 
 
 async def create_work_package(
