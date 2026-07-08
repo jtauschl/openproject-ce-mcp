@@ -138,12 +138,6 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
     tool(list_actions)
     tool(list_capabilities)
     tool(get_job_status)
-    tool(get_query_filter)
-    tool(get_query_column)
-    tool(get_query_operator)
-    tool(get_query_sort_by)
-    tool(list_query_filter_instance_schemas)
-    tool(get_query_filter_instance_schema)
     tool(list_statuses)
     tool(get_status)
     tool(list_priorities)
@@ -153,12 +147,6 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
     tool(list_notifications)
     tool(get_my_preferences)
     tool(update_my_preferences)
-    tool(render_text)
-    tool(list_help_texts)
-    tool(get_help_text)
-    tool(list_working_days)
-    tool(list_non_working_days)
-    tool(get_custom_option)
     tool(list_documents)
     tool(get_document)
     tool(list_news)
@@ -294,6 +282,23 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
         tool(create_group)
         tool(update_group)
         tool(delete_group)
+
+    # Rarely-used metadata/reference tools, opt-in to keep them out of the default
+    # tool set (their schemas + docstrings are the largest fixed context cost).
+    # Enable with OPENPROJECT_ENABLE_METADATA_TOOLS=1.
+    if settings.enable_metadata_tools:
+        tool(get_query_filter)
+        tool(get_query_column)
+        tool(get_query_operator)
+        tool(get_query_sort_by)
+        tool(list_query_filter_instance_schemas)
+        tool(get_query_filter_instance_schema)
+        tool(render_text)
+        tool(list_help_texts)
+        tool(get_help_text)
+        tool(list_working_days)
+        tool(list_non_working_days)
+        tool(get_custom_option)
 
 
 async def list_projects(

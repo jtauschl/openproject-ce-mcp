@@ -90,6 +90,7 @@ class Settings:
     enable_version_write: bool = False
     enable_board_write: bool = False
     enable_admin_write: bool = False
+    enable_metadata_tools: bool = False
     auto_confirm_write: bool = False
     auto_confirm_delete: bool = False
     attachment_root: str = ""
@@ -200,6 +201,11 @@ class Settings:
             "OPENPROJECT_ENABLE_ADMIN_WRITE",
             default=False,
         )
+        enable_metadata_tools = _parse_bool(
+            env.get("OPENPROJECT_ENABLE_METADATA_TOOLS"),
+            "OPENPROJECT_ENABLE_METADATA_TOOLS",
+            default=False,
+        )
         auto_confirm_write = _parse_bool(
             env.get("OPENPROJECT_AUTO_CONFIRM_WRITE"),
             "OPENPROJECT_AUTO_CONFIRM_WRITE",
@@ -278,6 +284,7 @@ class Settings:
             enable_version_write=enable_version_write,
             enable_board_write=enable_board_write,
             enable_admin_write=enable_admin_write,
+            enable_metadata_tools=enable_metadata_tools,
             auto_confirm_write=auto_confirm_write,
             auto_confirm_delete=auto_confirm_delete,
             attachment_root=attachment_root,

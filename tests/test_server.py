@@ -163,6 +163,35 @@ def test_admin_tools_absent_without_enable_admin_write() -> None:
     assert "delete_group" not in names
 
 
+_METADATA_TOOLS = {
+    "get_query_filter",
+    "get_query_column",
+    "get_query_operator",
+    "get_query_sort_by",
+    "list_query_filter_instance_schemas",
+    "get_query_filter_instance_schema",
+    "render_text",
+    "list_help_texts",
+    "get_help_text",
+    "list_working_days",
+    "list_non_working_days",
+    "get_custom_option",
+}
+
+
+def test_metadata_tools_absent_by_default() -> None:
+    """Rarely-used metadata tools stay out of the default set to save context."""
+    mcp = create_app(make_settings())
+    names = _tool_names(mcp)
+    assert _METADATA_TOOLS.isdisjoint(names), _METADATA_TOOLS & names
+
+
+def test_enable_metadata_tools_adds_them() -> None:
+    mcp = create_app(make_settings(enable_metadata_tools=True))
+    names = _tool_names(mcp)
+    assert _METADATA_TOOLS <= names, _METADATA_TOOLS - names
+
+
 def test_all_scoped_writes_independent() -> None:
     """Each scoped write flag activates exactly its own tools."""
     for flag, expected_tool in [
