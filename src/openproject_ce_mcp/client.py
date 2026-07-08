@@ -1884,6 +1884,8 @@ class OpenProjectClient:
         status: str | None = None,
         open_only: bool = False,
         assignee_me: bool = False,
+        sort_by: list[str] | None = None,
+        group_by: str | None = None,
         offset: int = 1,
         limit: int | None = None,
     ) -> WorkPackageListResult:
@@ -1908,6 +1910,8 @@ class OpenProjectClient:
             filters=filters,
             offset=offset,
             limit=effective_limit,
+            sort_by=sort_by,
+            group_by=group_by,
         )
 
     async def list_work_packages(
@@ -1920,6 +1924,8 @@ class OpenProjectClient:
         open_only: bool = False,
         assignee_me: bool = False,
         has_description: bool | None = None,
+        sort_by: list[str] | None = None,
+        group_by: str | None = None,
         offset: int = 1,
         limit: int | None = None,
     ) -> WorkPackageListResult:
@@ -1960,6 +1966,8 @@ class OpenProjectClient:
             filters=filters,
             offset=offset,
             limit=effective_limit,
+            sort_by=sort_by,
+            group_by=group_by,
         )
 
     async def _list_work_package_collection(
@@ -1969,15 +1977,30 @@ class OpenProjectClient:
         filters: list[dict[str, Any]],
         offset: int,
         limit: int,
+        sort_by: list[str] | None = None,
+        group_by: str | None = None,
     ) -> WorkPackageListResult:
-        payload = await self._get(
-            "work_packages",
-            params={
-                "offset": str(offset),
-                "pageSize": str(limit),
-                "filters": _json_param(filters),
-            },
-        )
+        params = {
+            "offset": str(offset),
+            "pageSize": str(limit),
+            "filters": _json_param(filters),
+        }
+
+        # Add sortBy as JSON array if provided
+        # Format: [["field", "direction"], ...] e.g. [["status", "desc"], ["priority", "asc"]]
+        if sort_by is not None and sort_by:
+            # Parse and build sort criteria
+            sort_criteria = []
+            for item in sort_by:
+                field, direction = _validate_sort_by_item(item)
+                sort_criteria.append([field, direction])
+            params["sortBy"] = json.dumps(sort_criteria, separators=(",", ":"))
+
+        # Add groupBy as simple field name string if provided
+        if group_by is not None:
+            params["groupBy"] = group_by.strip()
+
+        payload = await self._get("work_packages", params=params)
         raw_items = [
             item
             for item in payload.get("_embedded", {}).get("elements", [])
@@ -7275,6 +7298,32 @@ class OpenProjectClient:
 
 def _json_param(value: list[dict[str, Any]]) -> str:
     return json.dumps(value, separators=(",", ":"))
+
+
+def _validate_sort_by_item(item: str) -> tuple[str, str]:
+    """Validate and parse sort_by item into (field, direction).
+
+    Accepts formats:
+    - "field:asc" or "field:desc"
+    - "field" (defaults to "asc")
+
+    Returns:
+        Tuple of (field, direction)
+    """
+    if ":" in item:
+        field, direction = item.split(":", 1)
+        field = field.strip()
+        direction = direction.strip().lower()
+        if direction not in ("asc", "desc"):
+            raise ValueError(f"sort_by direction must be 'asc' or 'desc', got '{direction}'")
+    else:
+        field = item.strip()
+        direction = "asc"
+
+    if not field:
+        raise ValueError("sort_by field name cannot be empty")
+
+    return (field, direction)
 
 
 def _origin_from_url(url: str) -> str:

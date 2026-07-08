@@ -1065,6 +1065,8 @@ async def search_work_packages(
     status: str | None = None,
     open_only: bool = False,
     assignee_me: bool = False,
+    sort_by: list[str] | None = None,
+    group_by: str | None = None,
     offset: int = 1,
     limit: int | None = None,
     select: list[str] | None = None,
@@ -1074,6 +1076,12 @@ async def search_work_packages(
     Set status to restrict results to a specific OpenProject status.
     Set open_only=true to return only open work packages.
     Set assignee_me=true to return only work packages assigned to the current user.
+
+    sort_by accepts a list of sort criteria in format "field:direction"
+    (e.g., ["status:desc", "priority:asc"]). Direction defaults to "asc" if omitted.
+
+    group_by accepts a field name to group results by (e.g., "status", "assignee").
+
     select restricts each result row to the given fields (e.g. ["id", "subject",
     "status"]); an invalid name returns the allowed set. Common fields: id,
     display_id, subject, type, status, priority, assignee, project, version,
@@ -1084,6 +1092,8 @@ async def search_work_packages(
     safe_query = _validate_required_query(query, field_name="query", max_length=120)
     safe_project = _validate_optional_project_ref(project)
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
+    safe_sort_by = _validate_optional_string_list(sort_by, field_name="sort_by", max_items=20, item_max_length=120)
+    safe_group_by = _validate_optional_query(group_by, field_name="group_by", max_length=120)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=WorkPackageSummary)
@@ -1094,6 +1104,8 @@ async def search_work_packages(
             status=safe_status,
             open_only=open_only,
             assignee_me=assignee_me,
+            sort_by=safe_sort_by,
+            group_by=safe_group_by,
             offset=safe_offset,
             limit=safe_limit,
         )
@@ -1109,6 +1121,8 @@ async def list_work_packages(
     open_only: bool = False,
     assignee_me: bool = False,
     has_description: bool | None = None,
+    sort_by: list[str] | None = None,
+    group_by: str | None = None,
     offset: int = 1,
     limit: int | None = None,
     select: list[str] | None = None,
@@ -1117,6 +1131,15 @@ async def list_work_packages(
 
     version_status filters by the status of a work package's assigned version:
     one of 'open', 'closed', or 'locked'.
+
+    sort_by accepts a list of sort criteria in format "field:direction"
+    (e.g., ["status:desc", "priority:asc"]). Direction defaults to "asc" if omitted.
+    Common sortable fields: id, subject, status, priority, type, assignee, author,
+    created_at, updated_at, start_date, due_date.
+
+    group_by accepts a field name to group results by (e.g., "status", "assignee").
+    Common groupable fields: status, priority, type, assignee, author, version, category.
+
     select restricts each result row to the given fields (e.g. ["id", "subject",
     "status"]); an invalid name returns the allowed set. Common fields: id,
     display_id, subject, type, status, priority, assignee, project, version,
@@ -1130,6 +1153,8 @@ async def list_work_packages(
     safe_version_status = _validate_optional_choice(
         version_status, field_name="version_status", allowed_values={"open", "closed", "locked"}
     )
+    safe_sort_by = _validate_optional_string_list(sort_by, field_name="sort_by", max_items=20, item_max_length=120)
+    safe_group_by = _validate_optional_query(group_by, field_name="group_by", max_length=120)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=WorkPackageSummary)
@@ -1142,6 +1167,8 @@ async def list_work_packages(
             open_only=open_only,
             assignee_me=assignee_me,
             has_description=has_description,
+            sort_by=safe_sort_by,
+            group_by=safe_group_by,
             offset=safe_offset,
             limit=safe_limit,
         )
