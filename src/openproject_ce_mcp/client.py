@@ -2019,6 +2019,9 @@ class OpenProjectClient:
         parent_work_package_id: int | str | None = None,
         start_date: str | None = None,
         due_date: str | None = None,
+        estimated_time: str | None = None,
+        remaining_time: str | None = None,
+        duration: str | None = None,
         confirm: bool = False,
     ) -> WorkPackageWriteResult:
         project_payload = await self._get(f"projects/{quote(project, safe='')}")
@@ -2042,6 +2045,9 @@ class OpenProjectClient:
             parent_work_package_id=parent_work_package_id,
             start_date=start_date,
             due_date=due_date,
+            estimated_time=estimated_time,
+            remaining_time=remaining_time,
+            duration=duration,
         )
         form = await self._post(f"projects/{project_id}/work_packages/form", json_body=payload)
         return await self._finalize_work_package_write(
@@ -2125,6 +2131,9 @@ class OpenProjectClient:
         parent_work_package_id: int | str | object | None = None,
         start_date: str | None = None,
         due_date: str | None = None,
+        estimated_time: str | None = None,
+        remaining_time: str | None = None,
+        duration: str | None = None,
         confirm: bool = False,
     ) -> WorkPackageWriteResult:
         work_package_id = self._work_package_ref(work_package_id)
@@ -2155,6 +2164,9 @@ class OpenProjectClient:
             parent_work_package_id=parent_work_package_id,
             start_date=start_date,
             due_date=due_date,
+            estimated_time=estimated_time,
+            remaining_time=remaining_time,
+            duration=duration,
             work_package_id=work_package_id,
             lock_version=lock_version,
         )
@@ -4616,6 +4628,12 @@ class OpenProjectClient:
                 url=self._web_url(f"work_packages/{payload['id']}"),
                 description_truncated=truncated,
                 description_length=length,
+                estimated_time=payload.get("estimatedTime"),
+                derived_estimated_time=payload.get("derivedEstimatedTime"),
+                spent_time=payload.get("spentTime"),
+                remaining_time=payload.get("remainingTime"),
+                derived_remaining_time=payload.get("derivedRemainingTime"),
+                duration=payload.get("duration"),
             ),
         )
 
@@ -4634,6 +4652,28 @@ class OpenProjectClient:
             limit=text_limit,
             preserve_newlines=True,
         )
+
+        # Hierarchy arrays with limits
+        children_raw = links.get("children", [])
+        children = None
+        children_truncated = False
+        if children_raw:
+            children = [
+                {"href": c.get("href"), "title": c.get("title"), "display_id": c.get("displayId")}
+                for c in children_raw[:50]
+            ]
+            children_truncated = len(children_raw) > 50
+
+        ancestors_raw = links.get("ancestors", [])
+        ancestors = None
+        ancestors_truncated = False
+        if ancestors_raw:
+            ancestors = [
+                {"href": a.get("href"), "title": a.get("title"), "display_id": a.get("displayId")}
+                for a in ancestors_raw[:20]
+            ]
+            ancestors_truncated = len(ancestors_raw) > 20
+
         return self._apply_hidden_fields(
             "work_package",
             WorkPackageDetail(
@@ -4662,6 +4702,20 @@ class OpenProjectClient:
                 relations_url=self._link_to_web_url(links.get("relations", {}).get("href")),
                 description_truncated=truncated,
                 description_length=length,
+                estimated_time=payload.get("estimatedTime"),
+                derived_estimated_time=payload.get("derivedEstimatedTime"),
+                spent_time=payload.get("spentTime"),
+                remaining_time=payload.get("remainingTime"),
+                derived_remaining_time=payload.get("derivedRemainingTime"),
+                duration=payload.get("duration"),
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
+                author=_link_title(links.get("author")),
+                category=_link_title(links.get("category")),
+                children=children,
+                children_truncated=children_truncated,
+                ancestors=ancestors,
+                ancestors_truncated=ancestors_truncated,
             ),
         )
 
@@ -4694,6 +4748,15 @@ class OpenProjectClient:
             limit=text_limit,
             preserve_newlines=True,
         )
+
+        # Details array with limit
+        details_raw = payload.get("details", [])
+        details = None
+        details_truncated = False
+        if details_raw:
+            details = details_raw[:20]
+            details_truncated = len(details_raw) > 20
+
         return self._apply_hidden_fields(
             "activity",
             ActivitySummary(
@@ -4705,6 +4768,8 @@ class OpenProjectClient:
                 created_at=payload.get("createdAt"),
                 comment_truncated=truncated,
                 comment_length=length,
+                details=details,
+                details_truncated=details_truncated,
             ),
         )
 
@@ -5548,6 +5613,9 @@ class OpenProjectClient:
         parent_work_package_id: int | object | None = None,
         start_date: str | None = None,
         due_date: str | None = None,
+        estimated_time: str | None = None,
+        remaining_time: str | None = None,
+        duration: str | None = None,
         work_package_id: int | None = None,
         lock_version: int | None = None,
     ) -> dict[str, Any]:
@@ -5570,6 +5638,15 @@ class OpenProjectClient:
         if due_date is not None:
             self._ensure_field_writable("work_package", "due_date")
             payload["dueDate"] = due_date
+        if estimated_time is not None:
+            self._ensure_field_writable("work_package", "estimated_time")
+            payload["estimatedTime"] = estimated_time
+        if remaining_time is not None:
+            self._ensure_field_writable("work_package", "remaining_time")
+            payload["remainingTime"] = remaining_time
+        if duration is not None:
+            self._ensure_field_writable("work_package", "duration")
+            payload["duration"] = duration
         if type is not None:
             self._ensure_field_writable("work_package", "type")
             type_id = await self._resolve_type_id(type, project=project)

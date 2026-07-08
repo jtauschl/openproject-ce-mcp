@@ -386,6 +386,12 @@ class WorkPackageSummary:
     url: str
     description_truncated: bool = False
     description_length: int | None = None
+    estimated_time: str | None = None
+    derived_estimated_time: str | None = None
+    spent_time: str | None = None
+    remaining_time: str | None = None
+    derived_remaining_time: str | None = None
+    duration: str | None = None
 
 
 @dataclass
@@ -413,6 +419,20 @@ class WorkPackageDetail:
     relations_url: str | None
     description_truncated: bool = False
     description_length: int | None = None
+    estimated_time: str | None = None
+    derived_estimated_time: str | None = None
+    spent_time: str | None = None
+    remaining_time: str | None = None
+    derived_remaining_time: str | None = None
+    duration: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    author: str | None = None
+    category: str | None = None
+    children: list[dict[str, str]] | None = None
+    children_truncated: bool = False
+    ancestors: list[dict[str, str]] | None = None
+    ancestors_truncated: bool = False
 
 
 @dataclass
@@ -954,6 +974,8 @@ class ActivitySummary:
     created_at: str | None
     comment_truncated: bool = False
     comment_length: int | None = None
+    details: list[dict[str, Any]] | None = None
+    details_truncated: bool = False
 
 
 @dataclass

@@ -1075,7 +1075,8 @@ async def search_work_packages(
     select restricts each result row to the given fields (e.g. ["id", "subject",
     "status"]); an invalid name returns the allowed set. Common fields: id,
     display_id, subject, type, status, priority, assignee, project, version,
-    start_date, due_date, description.
+    parent_id, start_date, due_date, estimated_time, spent_time, created_at,
+    updated_at, author, category, description.
     """
     client = _client_from_context(ctx)
     safe_query = _validate_required_query(query, field_name="query", max_length=120)
@@ -1117,7 +1118,8 @@ async def list_work_packages(
     select restricts each result row to the given fields (e.g. ["id", "subject",
     "status"]); an invalid name returns the allowed set. Common fields: id,
     display_id, subject, type, status, priority, assignee, project, version,
-    start_date, due_date, description.
+    parent_id, start_date, due_date, estimated_time, spent_time, created_at,
+    updated_at, author, category, description.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -1180,12 +1182,16 @@ async def create_work_package(
     parent: str | None = None,
     start_date: str | None = None,
     due_date: str | None = None,
+    estimated_time: str | None = None,
+    remaining_time: str | None = None,
+    duration: str | None = None,
     confirm: bool = False,
 ) -> WorkPackageWriteResult:
     """Prepare or create a work package.
 
     The tool validates the payload first. Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
     assignee accepts a numeric user id or 'me'. parent accepts a numeric id or a project-prefixed reference like PROJ-123 to nest the new work package under a parent.
+    estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'PT30M' for 30 minutes). Day-based formats like 'P1D' are not supported by OpenProject.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
@@ -1202,6 +1208,9 @@ async def create_work_package(
     safe_parent = _validate_optional_work_package_ref(parent, field_name="parent")
     safe_start_date = _validate_optional_date(start_date, field_name="start_date")
     safe_due_date = _validate_optional_date(due_date, field_name="due_date")
+    safe_estimated_time = _validate_optional_duration(estimated_time, field_name="estimated_time")
+    safe_remaining_time = _validate_optional_duration(remaining_time, field_name="remaining_time")
+    safe_duration = _validate_optional_duration(duration, field_name="duration")
     return await _run_tool(
         client.create_work_package(
             project=safe_project,
@@ -1218,6 +1227,9 @@ async def create_work_package(
             parent_work_package_id=safe_parent,
             start_date=safe_start_date,
             due_date=safe_due_date,
+            estimated_time=safe_estimated_time,
+            remaining_time=safe_remaining_time,
+            duration=safe_duration,
             confirm=confirm,
         )
     )
@@ -1240,6 +1252,9 @@ async def update_work_package(
     parent: str | None = None,
     start_date: str | None = None,
     due_date: str | None = None,
+    estimated_time: str | None = None,
+    remaining_time: str | None = None,
+    duration: str | None = None,
     confirm: bool = False,
 ) -> WorkPackageWriteResult:
     """Prepare or update a work package.
@@ -1247,6 +1262,7 @@ async def update_work_package(
     The tool validates the patch first. Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
     work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
     assignee accepts a numeric user id or 'me'. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
+    estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours) or None to leave unchanged. Day-based formats like 'P1D' are not supported by OpenProject.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -1275,6 +1291,9 @@ async def update_work_package(
         safe_parent = _validate_work_package_ref(parent, field_name="parent")
     safe_start_date = _validate_optional_date(start_date, field_name="start_date")
     safe_due_date = _validate_optional_date(due_date, field_name="due_date")
+    safe_estimated_time = _validate_optional_duration(estimated_time, field_name="estimated_time")
+    safe_remaining_time = _validate_optional_duration(remaining_time, field_name="remaining_time")
+    safe_duration = _validate_optional_duration(duration, field_name="duration")
     if not any(
         value is not None
         for value in (
@@ -1292,6 +1311,9 @@ async def update_work_package(
             safe_parent,
             safe_start_date,
             safe_due_date,
+            safe_estimated_time,
+            safe_remaining_time,
+            safe_duration,
         )
     ):
         raise ValueError("At least one field to update is required.")
@@ -1312,6 +1334,9 @@ async def update_work_package(
             parent_work_package_id=safe_parent,
             start_date=safe_start_date,
             due_date=safe_due_date,
+            estimated_time=safe_estimated_time,
+            remaining_time=safe_remaining_time,
+            duration=safe_duration,
             confirm=confirm,
         )
     )
