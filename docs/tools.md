@@ -163,6 +163,7 @@ A subset of rarely-used metadata tools — the `get_query_*` schema tools, `rend
 | `list_work_packages` | List work packages with structured filters such as `project`, `type`, `version`, `version_status` (open/closed/locked), and `has_description` |
 | `search_work_packages` | Search work packages by free-text query; optional `project`, `status`, `open_only`, and `assignee_me` filters |
 | `get_work_package` | Fetch a detailed work package summary by id or `displayId` reference |
+| `get_work_packages` | Fetch multiple work packages by ID in parallel (max 100 IDs per batch) |
 | `create_work_package` | Validate and then create a work package; only writes when called again with `confirm=true` |
 | `create_subtask` | Validate and then create a child work package below an existing parent; only writes when called again with `confirm=true` |
 | `update_work_package` | Validate and then update a work package; only writes when called again with `confirm=true` |
