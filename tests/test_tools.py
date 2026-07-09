@@ -1526,7 +1526,7 @@ async def test_bulk_update_work_packages_tool_validates_required_fields() -> Non
     with pytest.raises(ValueError, match=r"items\[0\]: at least one field to update is required"):
         await bulk_update_work_packages(FakeContext(StubClient()), items=[{"work_package_id": 1}])  # type: ignore[arg-type]
 
-    with pytest.raises(ValueError, match="positive integer id, a work package reference"):
+    with pytest.raises(ValueError, match="positive integer id or a work package reference"):
         await bulk_update_work_packages(  # type: ignore[arg-type]
             FakeContext(StubClient()),
             items=[{"work_package_id": 1, "parent_work_package_id": -1}],
@@ -1581,11 +1581,11 @@ def test_validate_work_package_ref_accepts_numeric_and_semantic() -> None:
 def test_validate_work_package_ref_rejects_invalid() -> None:
     with pytest.raises(ValueError, match="work_package_id is required"):
         _validate_work_package_ref("   ")
-    with pytest.raises(ValueError, match="positive integer id, a work package reference"):
+    with pytest.raises(ValueError, match="positive integer id or a work package reference"):
         _validate_work_package_ref("PROJ/123")
-    with pytest.raises(ValueError, match="positive integer id, a work package reference"):
+    with pytest.raises(ValueError, match="positive integer id or a work package reference"):
         _validate_work_package_ref("PROJ 123")
-    with pytest.raises(ValueError, match="positive integer id, a work package reference"):
+    with pytest.raises(ValueError, match="positive integer id or a work package reference"):
         # A project identifier without a "-<number>" suffix is not a work package ref.
         _validate_work_package_ref("PROJ")
 
