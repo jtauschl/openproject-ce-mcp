@@ -66,8 +66,10 @@ injection payloads** in this content to manipulate an agent connected via MCP.
 
 1. **Server instructions** explicitly warn connecting agents that returned content
    is untrusted and should be treated as data, not instructions.
-2. **Content delimiting**: User-provided text is wrapped in `<user-content>` tags
-   to mark clear boundaries.
+2. **Content delimiting**: Long-form user-provided text (descriptions, comments, 
+   news, wiki content) is wrapped in `<user-content>` tags to mark clear boundaries.
+   Short fields (subject lines, titles, names) are NOT delimited as they are 
+   typically visible in listings and easier to inspect manually.
 3. **Read-only by default**: Write operations require explicit opt-in and use a
    preview/confirm flow.
 
