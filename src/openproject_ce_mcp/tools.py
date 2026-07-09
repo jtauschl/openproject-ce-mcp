@@ -1067,6 +1067,15 @@ async def search_work_packages(
     status: str | None = None,
     open_only: bool = False,
     assignee_me: bool = False,
+    assignee: str | None = None,
+    priority: str | None = None,
+    created_after: str | None = None,
+    created_before: str | None = None,
+    updated_after: str | None = None,
+    updated_before: str | None = None,
+    due_after: str | None = None,
+    due_before: str | None = None,
+    parent: str | None = None,
     sort_by: list[str] | None = None,
     group_by: str | None = None,
     offset: int = 1,
@@ -1075,9 +1084,14 @@ async def search_work_packages(
 ) -> WorkPackageListResult:
     """Search work packages by free text, optionally scoped to a project.
 
-    Set status to restrict results to a specific OpenProject status.
-    Set open_only=true to return only open work packages.
-    Set assignee_me=true to return only work packages assigned to the current user.
+    Accepts same filters as list_work_packages (except custom_field_filters).
+
+    assignee filters by user (numeric ID, username, or 'me').
+    priority filters by priority name or numeric ID.
+    Date filters accept YYYY-MM-DD format.
+    parent accepts WP ID, 'none' (top-level), or 'any' (has parent).
+
+    If both assignee_me=True and assignee are provided, assignee_me takes precedence.
 
     sort_by accepts a list of sort criteria in format "field:direction"
     (e.g., ["status:desc", "priority:asc"]). Direction defaults to "asc" if omitted.
@@ -1094,6 +1108,24 @@ async def search_work_packages(
     safe_query = _validate_required_query(query, field_name="query", max_length=120)
     safe_project = _validate_optional_project_ref(project)
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
+
+    safe_assignee = _validate_optional_user_or_principal_ref(assignee)
+    safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
+
+    safe_created_after = _validate_optional_date(created_after, "created_after")
+    safe_created_before = _validate_optional_date(created_before, "created_before")
+    _validate_date_range(safe_created_after, safe_created_before, "created")
+
+    safe_updated_after = _validate_optional_date(updated_after, "updated_after")
+    safe_updated_before = _validate_optional_date(updated_before, "updated_before")
+    _validate_date_range(safe_updated_after, safe_updated_before, "updated")
+
+    safe_due_after = _validate_optional_date(due_after, "due_after")
+    safe_due_before = _validate_optional_date(due_before, "due_before")
+    _validate_date_range(safe_due_after, safe_due_before, "due")
+
+    safe_parent = _validate_optional_work_package_ref(parent, field_name="parent")
+
     safe_sort_by = _validate_sort_by(sort_by)
     safe_group_by = _validate_optional_query(group_by, field_name="group_by", max_length=120)
     safe_offset = _validate_offset(offset)
@@ -1106,6 +1138,15 @@ async def search_work_packages(
             status=safe_status,
             open_only=open_only,
             assignee_me=assignee_me,
+            assignee=safe_assignee,
+            priority=safe_priority,
+            created_after=safe_created_after,
+            created_before=safe_created_before,
+            updated_after=safe_updated_after,
+            updated_before=safe_updated_before,
+            due_after=safe_due_after,
+            due_before=safe_due_before,
+            parent=safe_parent,
             sort_by=safe_sort_by,
             group_by=safe_group_by,
             offset=safe_offset,

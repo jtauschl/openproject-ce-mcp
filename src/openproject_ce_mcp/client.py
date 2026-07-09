@@ -1907,6 +1907,15 @@ class OpenProjectClient:
         status: str | None = None,
         open_only: bool = False,
         assignee_me: bool = False,
+        assignee: str | None = None,
+        priority: str | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
+        updated_after: str | None = None,
+        updated_before: str | None = None,
+        due_after: str | None = None,
+        due_before: str | None = None,
+        parent: str | None = None,
         sort_by: list[SortCriterion] | None = None,
         group_by: str | None = None,
         offset: int = 1,
@@ -1928,6 +1937,44 @@ class OpenProjectClient:
         if assignee_me:
             current_user = await self.get_current_user()
             filters.append({"assignee": {"operator": "=", "values": [str(current_user.id)]}})
+
+        # New filters (subset from list_work_packages, no custom_field_filters)
+        if assignee_me and assignee:
+            assignee = None
+
+        if assignee:
+            assignee_id = await self._resolve_principal_id(assignee)
+            filters.append({"assignee": {"operator": "=", "values": [assignee_id]}})
+
+        if priority:
+            priority_id = await self._resolve_priority_id(priority)
+            filters.append({"priority": {"operator": "=", "values": [priority_id]}})
+
+        if created_after:
+            filters.append({"created_at": {"operator": ">d", "values": [created_after]}})
+        if created_before:
+            filters.append({"created_at": {"operator": "<d", "values": [created_before]}})
+
+        if updated_after:
+            filters.append({"updated_at": {"operator": ">d", "values": [updated_after]}})
+        if updated_before:
+            filters.append({"updated_at": {"operator": "<d", "values": [updated_before]}})
+
+        if due_after:
+            filters.append({"due_date": {"operator": ">d", "values": [due_after]}})
+        if due_before:
+            filters.append({"due_date": {"operator": "<d", "values": [due_before]}})
+
+        if parent is not None:
+            parent_lower = parent.casefold()
+            if parent_lower == "none":
+                filters.append({"parent": {"operator": "!*", "values": []}})
+            elif parent_lower == "any":
+                filters.append({"parent": {"operator": "*", "values": []}})
+            else:
+                parent_id = await self._resolve_work_package_id(parent)
+                filters.append({"parent": {"operator": "=", "values": [str(parent_id)]}})
+
         return await self._list_work_package_collection(
             project_id=project_id,
             filters=filters,
