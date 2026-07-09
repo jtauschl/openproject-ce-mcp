@@ -94,6 +94,9 @@ class Settings:
     auto_confirm_write: bool = False
     auto_confirm_delete: bool = False
     attachment_root: str = ""
+    max_retries: int = 3
+    retry_base_delay: float = 1.0
+    retry_max_delay: float = 60.0
 
     def read_enabled(self, scope: str) -> bool:
         return {
@@ -249,6 +252,24 @@ class Settings:
         if text_limit > TEXT_LIMIT_MAX:
             raise ConfigError(f"OPENPROJECT_TEXT_LIMIT must not exceed {TEXT_LIMIT_MAX}.")
         attachment_root = (env.get("OPENPROJECT_ATTACHMENT_ROOT") or "").strip()
+        max_retries = _parse_int(
+            env.get("OPENPROJECT_MAX_RETRIES"),
+            "OPENPROJECT_MAX_RETRIES",
+            default=3,
+            minimum=0,
+        )
+        retry_base_delay = _parse_float(
+            env.get("OPENPROJECT_RETRY_BASE_DELAY"),
+            "OPENPROJECT_RETRY_BASE_DELAY",
+            default=1.0,
+            minimum=0.0,
+        )
+        retry_max_delay = _parse_float(
+            env.get("OPENPROJECT_RETRY_MAX_DELAY"),
+            "OPENPROJECT_RETRY_MAX_DELAY",
+            default=60.0,
+            minimum=0.0,
+        )
 
         if default_page_size > max_page_size:
             raise ConfigError("OPENPROJECT_DEFAULT_PAGE_SIZE must not exceed OPENPROJECT_MAX_PAGE_SIZE.")
@@ -288,6 +309,9 @@ class Settings:
             auto_confirm_write=auto_confirm_write,
             auto_confirm_delete=auto_confirm_delete,
             attachment_root=attachment_root,
+            max_retries=max_retries,
+            retry_base_delay=retry_base_delay,
+            retry_max_delay=retry_max_delay,
         )
 
 

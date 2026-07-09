@@ -216,6 +216,20 @@ class OpenProjectClient:
         self._origin = _origin_from_url(settings.base_url)
         self._api_prefix = urlparse(settings.api_base_url).path.rstrip("/") + "/"
         self._project_id_to_identifier: dict[int, str] = {}
+
+        # Wrap transport with retry logic if max_retries > 0
+        if settings.max_retries > 0:
+            from .retry_transport import RetryTransport
+
+            # If no transport provided, use default httpx transport
+            base_transport = transport or httpx.AsyncHTTPTransport()
+            transport = RetryTransport(
+                wrapped_transport=base_transport,
+                max_retries=settings.max_retries,
+                base_delay=settings.retry_base_delay,
+                max_delay=settings.retry_max_delay,
+            )
+
         self._http = httpx.AsyncClient(
             base_url=f"{settings.api_base_url.rstrip('/')}/",
             headers={
