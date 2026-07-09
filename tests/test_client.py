@@ -926,8 +926,9 @@ async def test_list_work_packages_resolves_type_and_version_filters() -> None:
             filters = json.loads(request.url.params.get("filters", "[]"))
             filter_keys = [list(f.keys())[0] for f in filters]
             assert "project_id" in filter_keys
-            assert "type" in filter_keys
-            assert "version" in filter_keys
+            # Changed to type_id/version_id per source verification (OPM-51)
+            assert "type_id" in filter_keys
+            assert "version_id" in filter_keys
             return httpx.Response(
                 200,
                 json={
@@ -6256,9 +6257,10 @@ async def test_list_work_packages_version_status_builds_filter() -> None:
     await client.list_work_packages(version_status="closed")
 
     filters = json.loads(captured["filters"])
-    version_filter = next(f for f in filters if "version" in f)
-    assert version_filter["version"]["operator"] == "c"
-    assert version_filter["version"]["values"] == []
+    # Changed to version_id per source verification (OPM-51)
+    version_filter = next(f for f in filters if "version_id" in f)
+    assert version_filter["version_id"]["operator"] == "c"
+    assert version_filter["version_id"]["values"] == []
 
     await client.aclose()
 
@@ -7047,5 +7049,160 @@ async def test_search_work_packages_date_filters() -> None:
     updated_filter = next(f for f in filters if "updated_at" in f)
     assert updated_filter["updated_at"]["operator"] == "=d"
     assert updated_filter["updated_at"]["values"] == ["2024-07-09"]
+
+    await client.aclose()
+
+
+# ============================================================================
+# OPM-51: Payload-Shape Contract Tests
+# ============================================================================
+# These tests verify that our filter keys and payload assumptions match
+# the actual OpenProject source code definitions, preventing regressions.
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_type_filter_uses_correct_key() -> None:
+    """Verify type filter uses type_id key per source definition (OPM-51).
+
+    OpenProject CE 17.5 app/models/queries/work_packages/filter/type_filter.rb
+    defines: def self.key → :type_id
+
+    This test ensures we use the official filter key as defined in the source.
+    """
+    captured: dict[str, str] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Project",
+                    "id": 1,
+                    "name": "Demo",
+                    "identifier": "demo",
+                    "_links": {"types": {"href": "/api/v3/projects/1/types"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(
+                200,
+                json={"_embedded": {"elements": [{"id": 1, "name": "Task"}]}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages":
+            captured["filters"] = request.url.params.get("filters", "")
+            return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    await client.list_work_packages(type="Task", project="demo")
+
+    filters = json.loads(captured["filters"])
+    # Must use "type_id" not "type"
+    assert any("type_id" in f for f in filters), "type_id filter key not found"
+    assert not any("type" in f and "type_id" not in f for f in filters), "Found deprecated 'type' key"
+
+    type_filter = next(f for f in filters if "type_id" in f)
+    assert type_filter["type_id"]["operator"] == "="
+    assert len(type_filter["type_id"]["values"]) == 1
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_version_filter_uses_correct_key() -> None:
+    """Verify version filter uses version_id key per source definition (OPM-51).
+
+    OpenProject CE 17.5 app/models/queries/work_packages/filter/version_filter.rb
+    defines: def self.key → :version_id
+
+    Both the equality filter (version="v1.0") and status filter (version_status="open")
+    use version_id as the filter key.
+    """
+    captured_calls: list[dict[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Project",
+                    "id": 1,
+                    "name": "Demo",
+                    "identifier": "demo",
+                    "_links": {"versions": {"href": "/api/v3/projects/demo/versions"}},
+                },
+                request=request,
+            )
+        if "/versions" in request.url.path:
+            return httpx.Response(
+                200,
+                json={"total": 1, "_embedded": {"elements": [{"id": 5, "name": "v1.0", "_links": {}}]}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages":
+            captured_calls.append({"filters": request.url.params.get("filters", "")})
+            return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    # Test 1: version equality filter
+    await client.list_work_packages(version="v1.0", project="demo")
+    filters_eq = json.loads(captured_calls[0]["filters"])
+    assert any("version_id" in f for f in filters_eq), "version_id filter key not found (equality)"
+    assert not any("version" in f and "version_id" not in f for f in filters_eq), "Found deprecated 'version' key"
+
+    # Test 2: version status filter
+    captured_calls.clear()
+    await client.list_work_packages(version_status="open")
+    filters_status = json.loads(captured_calls[0]["filters"])
+    assert any("version_id" in f for f in filters_status), "version_id filter key not found (status)"
+
+    version_filter = next(f for f in filters_status if "version_id" in f)
+    assert version_filter["version_id"]["operator"] == "o"  # open status
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_group_members_is_flat_array() -> None:
+    """Verify group detail members render as flat array (OPM-51).
+
+    OpenProject CE 17.5 lib/api/v3/groups/group_representer.rb uses
+    associated_resources :users, as: :members
+
+    The API returns _embedded.members as a flat array of user objects.
+    Our normalize_group_detail correctly extracts member names from this structure.
+    """
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/groups/7":
+            # Real API shape: _embedded.members is a BARE ARRAY
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Group",
+                    "id": 7,
+                    "name": "Developers",
+                    "_embedded": {
+                        "members": [  # THIS IS AN ARRAY, not {count, elements}
+                            {"id": 1, "name": "Alice", "_type": "User"},
+                            {"id": 2, "name": "Bob", "_type": "User"},
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    group = await client.get_group(7)
+
+    # Our normalization must correctly extract members from the bare array
+    # The critical assertion: members is a list of names, not a dict with {count, elements}
+    assert isinstance(group.members, list), "members should be a list"
+    assert group.members == ["Alice", "Bob"], "Failed to parse member names from flat array"
 
     await client.aclose()

@@ -2032,15 +2032,21 @@ class OpenProjectClient:
             filters.append({"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}})
         if type:
             type_id = await self._resolve_type_id(type, project=project)
-            filters.append({"type": {"operator": "=", "values": [type_id]}})
+            # Use official filter key per source (type_filter.rb:def self.key → :type_id)
+            # PropertyNameConverter tolerates "type" but may break in future versions
+            filters.append({"type_id": {"operator": "=", "values": [type_id]}})
         if version:
             version_id = await self._resolve_version_id(version, project=project)
-            filters.append({"version": {"operator": "=", "values": [version_id]}})
+            # Use official filter key per source (version_filter.rb:def self.key → :version_id)
+            # PropertyNameConverter tolerates "version" but may break in future versions
+            filters.append({"version_id": {"operator": "=", "values": [version_id]}})
         if version_status:
             # Filter by the status of a work package's assigned version. The
-            # version filter supports operators o/c/l for open/closed/locked.
+            # version filter supports operators o/c/l for open/closed/locked
+            # (custom operators in VersionFilter beyond base :list_optional strategy).
             status_operator = {"open": "o", "closed": "c", "locked": "l"}[version_status]
-            filters.append({"version": {"operator": status_operator, "values": []}})
+            # Use official filter key per source (version_filter.rb:def self.key → :version_id)
+            filters.append({"version_id": {"operator": status_operator, "values": []}})
 
         # Extended filters (OPM-67)
         # assignee_me takes precedence for backward compatibility
