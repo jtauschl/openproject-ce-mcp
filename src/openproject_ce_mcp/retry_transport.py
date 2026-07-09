@@ -57,8 +57,9 @@ class RetryTransport(httpx.AsyncBaseTransport):
             httpx.HTTPStatusError: For non-retryable errors or after max retries
             httpx.HTTPError: For transport errors after max retries
         """
-        # Only retry idempotent methods (PATCH is idempotent for JSON:API merge semantics)
-        if request.method not in {"GET", "HEAD", "OPTIONS", "PUT", "PATCH"}:
+        # Only retry idempotent methods. PATCH is NOT retried because OpenProject
+        # has at least one PATCH endpoint (emoji reactions) that is a toggle.
+        if request.method not in {"GET", "HEAD", "OPTIONS", "PUT"}:
             return await self._transport.handle_async_request(request)
 
         attempt = 0
@@ -74,6 +75,9 @@ class RetryTransport(httpx.AsyncBaseTransport):
                 # Check if we should retry
                 if attempt >= self._max_retries:
                     return response
+
+                # Close response before retry to free connection pool slot
+                await response.aclose()
 
                 # Calculate delay and retry
                 delay = self._calculate_delay(attempt, response)

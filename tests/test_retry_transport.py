@@ -98,9 +98,27 @@ async def test_non_idempotent_method_not_retried():
 
 
 @pytest.mark.asyncio
+async def test_patch_not_retried():
+    """PATCH requests should not be retried (OpenProject has toggle endpoints)."""
+    mock_transport = AsyncMock(spec=httpx.AsyncBaseTransport)
+    mock_transport.handle_async_request.return_value = httpx.Response(
+        503, request=httpx.Request("PATCH", "http://test")
+    )
+
+    retry_transport = RetryTransport(mock_transport, max_retries=3)
+    request = httpx.Request("PATCH", "http://test/api")
+
+    response = await retry_transport.handle_async_request(request)
+
+    # PATCH should not retry (even on 503)
+    assert response.status_code == 503
+    assert mock_transport.handle_async_request.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_idempotent_methods_retried():
-    """GET, HEAD, OPTIONS, PUT, PATCH should be retried."""
-    for method in ["GET", "HEAD", "OPTIONS", "PUT", "PATCH"]:
+    """GET, HEAD, OPTIONS, PUT should be retried."""
+    for method in ["GET", "HEAD", "OPTIONS", "PUT"]:
         mock_transport = AsyncMock(spec=httpx.AsyncBaseTransport)
         mock_transport.handle_async_request.side_effect = [
             httpx.Response(503, request=httpx.Request(method, "http://test")),
@@ -306,3 +324,34 @@ async def test_network_io_errors_retried():
 
         assert response.status_code == 200
         assert mock_transport.handle_async_request.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_retryable_response_closed_before_retry():
+    """Retryable responses should be closed before waiting for retry."""
+    mock_transport = AsyncMock(spec=httpx.AsyncBaseTransport)
+
+    # Track if response was closed
+    close_called = False
+
+    async def mock_aclose():
+        nonlocal close_called
+        close_called = True
+
+    # First call returns 503 with trackable aclose, second returns 200
+    response_503 = httpx.Response(503, request=httpx.Request("GET", "http://test"))
+    response_503.aclose = mock_aclose
+
+    mock_transport.handle_async_request.side_effect = [
+        response_503,
+        httpx.Response(200, request=httpx.Request("GET", "http://test")),
+    ]
+
+    retry_transport = RetryTransport(mock_transport, max_retries=3, base_delay=0.01)
+    request = httpx.Request("GET", "http://test/api")
+
+    response = await retry_transport.handle_async_request(request)
+
+    assert response.status_code == 200
+    assert mock_transport.handle_async_request.call_count == 2
+    assert close_called, "Response should have been closed before retry"
