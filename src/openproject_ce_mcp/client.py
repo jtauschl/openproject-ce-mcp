@@ -1929,16 +1929,16 @@ class OpenProjectClient:
             filters.append({"status_id": {"operator": "o", "values": []}})
         if assignee_me:
             current_user = await self.get_current_user()
-            filters.append({"assignee": {"operator": "=", "values": [str(current_user.id)]}})
+            filters.append({"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}})
 
         # Extended filters (same as list_work_packages)
         if assignee and not assignee_me:
             assignee_id = await self._resolve_principal_id(assignee)
-            filters.append({"assignee": {"operator": "=", "values": [assignee_id]}})
+            filters.append({"assigned_to_id": {"operator": "=", "values": [assignee_id]}})
 
         if priority:
             priority_id = await self._resolve_priority_id(priority)
-            filters.append({"priority": {"operator": "=", "values": [priority_id]}})
+            filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
 
         return await self._list_work_package_collection(
             project_id=project_id,
@@ -1985,7 +1985,7 @@ class OpenProjectClient:
             filters.append({"status_id": {"operator": "o", "values": []}})
         if assignee_me:
             current_user = await self.get_current_user()
-            filters.append({"assignee": {"operator": "=", "values": [str(current_user.id)]}})
+            filters.append({"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}})
         if type:
             type_id = await self._resolve_type_id(type, project=project)
             filters.append({"type": {"operator": "=", "values": [type_id]}})
@@ -2004,7 +2004,7 @@ class OpenProjectClient:
         # assignee_me takes precedence for backward compatibility
         if assignee and not assignee_me:
             assignee_id = await self._resolve_principal_id(assignee)
-            filters.append({"assignee": {"operator": "=", "values": [assignee_id]}})
+            filters.append({"assigned_to_id": {"operator": "=", "values": [assignee_id]}})
 
         if status:
             status_id = await self._resolve_status_id(status)
@@ -2012,7 +2012,7 @@ class OpenProjectClient:
 
         if priority:
             priority_id = await self._resolve_priority_id(priority)
-            filters.append({"priority": {"operator": "=", "values": [priority_id]}})
+            filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
 
         return await self._list_work_package_collection(
             project_id=project_id,
@@ -2687,7 +2687,7 @@ class OpenProjectClient:
                 "pageSize": str(effective_limit),
                 "filters": _json_param(
                     [
-                        {"assignee": {"operator": "=", "values": [str(current_user.id)]}},
+                        {"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}},
                         {"status_id": {"operator": "o", "values": []}},
                     ]
                 ),
