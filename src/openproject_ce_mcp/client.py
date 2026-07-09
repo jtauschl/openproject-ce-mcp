@@ -221,14 +221,16 @@ class OpenProjectClient:
         if settings.max_retries > 0:
             from .retry_transport import RetryTransport
 
-            # If no transport provided, use default httpx transport
-            base_transport = transport or httpx.AsyncHTTPTransport()
-            transport = RetryTransport(
-                wrapped_transport=base_transport,
-                max_retries=settings.max_retries,
-                base_delay=settings.retry_base_delay,
-                max_delay=settings.retry_max_delay,
-            )
+            # Don't double-wrap if user already provided RetryTransport
+            if not isinstance(transport, RetryTransport):
+                # If no transport provided, use default httpx transport
+                base_transport = transport or httpx.AsyncHTTPTransport()
+                transport = RetryTransport(
+                    wrapped_transport=base_transport,
+                    max_retries=settings.max_retries,
+                    base_delay=settings.retry_base_delay,
+                    max_delay=settings.retry_max_delay,
+                )
 
         self._http = httpx.AsyncClient(
             base_url=f"{settings.api_base_url.rstrip('/')}/",

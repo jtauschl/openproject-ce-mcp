@@ -258,6 +258,8 @@ class Settings:
             default=3,
             minimum=0,
         )
+        if max_retries > 10:
+            raise ConfigError("OPENPROJECT_MAX_RETRIES must not exceed 10.")
         retry_base_delay = _parse_float(
             env.get("OPENPROJECT_RETRY_BASE_DELAY"),
             "OPENPROJECT_RETRY_BASE_DELAY",
@@ -270,6 +272,8 @@ class Settings:
             default=60.0,
             minimum=0.0,
         )
+        if retry_max_delay < retry_base_delay:
+            raise ConfigError("OPENPROJECT_RETRY_MAX_DELAY must be >= OPENPROJECT_RETRY_BASE_DELAY.")
 
         if default_page_size > max_page_size:
             raise ConfigError("OPENPROJECT_DEFAULT_PAGE_SIZE must not exceed OPENPROJECT_MAX_PAGE_SIZE.")

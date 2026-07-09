@@ -284,3 +284,38 @@ def test_local_or_https_base_url_does_not_warn(base_url, caplog) -> None:
             }
         )
     assert not any("unencrypted" in record.message for record in caplog.records)
+
+
+def test_max_retries_exceeds_limit() -> None:
+    with pytest.raises(ConfigError, match="OPENPROJECT_MAX_RETRIES must not exceed 10"):
+        Settings.from_env(
+            {
+                "OPENPROJECT_BASE_URL": "https://op.example.com",
+                "OPENPROJECT_API_TOKEN": "token-value",
+                "OPENPROJECT_MAX_RETRIES": "11",
+            }
+        )
+
+
+def test_retry_max_delay_less_than_base_delay() -> None:
+    with pytest.raises(ConfigError, match="OPENPROJECT_RETRY_MAX_DELAY must be >= OPENPROJECT_RETRY_BASE_DELAY"):
+        Settings.from_env(
+            {
+                "OPENPROJECT_BASE_URL": "https://op.example.com",
+                "OPENPROJECT_API_TOKEN": "token-value",
+                "OPENPROJECT_RETRY_BASE_DELAY": "10.0",
+                "OPENPROJECT_RETRY_MAX_DELAY": "5.0",
+            }
+        )
+
+
+def test_retry_settings_valid_defaults() -> None:
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+        }
+    )
+    assert settings.max_retries == 3
+    assert settings.retry_base_delay == 1.0
+    assert settings.retry_max_delay == 60.0

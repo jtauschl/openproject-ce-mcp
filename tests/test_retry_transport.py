@@ -99,8 +99,8 @@ async def test_non_idempotent_method_not_retried():
 
 @pytest.mark.asyncio
 async def test_idempotent_methods_retried():
-    """GET, HEAD, OPTIONS, PUT should be retried."""
-    for method in ["GET", "HEAD", "OPTIONS", "PUT"]:
+    """GET, HEAD, OPTIONS, PUT, PATCH should be retried."""
+    for method in ["GET", "HEAD", "OPTIONS", "PUT", "PATCH"]:
         mock_transport = AsyncMock(spec=httpx.AsyncBaseTransport)
         mock_transport.handle_async_request.side_effect = [
             httpx.Response(503, request=httpx.Request(method, "http://test")),
@@ -276,3 +276,33 @@ async def test_zero_retries_disables_retry():
     # Should not retry
     assert response.status_code == 503
     assert mock_transport.handle_async_request.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_jitter_respects_max_delay():
+    """Jitter should not violate max_delay contract."""
+    retry_transport = RetryTransport(None, max_retries=10, base_delay=100.0, max_delay=60.0)
+
+    # Test many iterations to catch jitter violations
+    for _ in range(100):
+        delay = retry_transport._calculate_delay(50, None)
+        assert delay <= 60.0, f"Jitter produced {delay}s > max_delay 60.0s"
+
+
+@pytest.mark.asyncio
+async def test_network_io_errors_retried():
+    """ReadError and WriteError should trigger retry."""
+    for error_class in [httpx.ReadError, httpx.WriteError]:
+        mock_transport = AsyncMock(spec=httpx.AsyncBaseTransport)
+        mock_transport.handle_async_request.side_effect = [
+            error_class("Network I/O error"),
+            httpx.Response(200, request=httpx.Request("GET", "http://test")),
+        ]
+
+        retry_transport = RetryTransport(mock_transport, max_retries=3, base_delay=0.01)
+        request = httpx.Request("GET", "http://test/api")
+
+        response = await retry_transport.handle_async_request(request)
+
+        assert response.status_code == 200
+        assert mock_transport.handle_async_request.call_count == 2

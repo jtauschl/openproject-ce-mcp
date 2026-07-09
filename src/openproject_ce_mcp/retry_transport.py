@@ -57,11 +57,10 @@ class RetryTransport(httpx.AsyncBaseTransport):
             httpx.HTTPStatusError: For non-retryable errors or after max retries
             httpx.HTTPError: For transport errors after max retries
         """
-        # Only retry idempotent methods
-        if request.method not in {"GET", "HEAD", "OPTIONS", "PUT"}:
+        # Only retry idempotent methods (PATCH is idempotent for JSON:API merge semantics)
+        if request.method not in {"GET", "HEAD", "OPTIONS", "PUT", "PATCH"}:
             return await self._transport.handle_async_request(request)
 
-        last_exception: Exception | None = None
         attempt = 0
 
         while attempt <= self._max_retries:
@@ -79,7 +78,7 @@ class RetryTransport(httpx.AsyncBaseTransport):
                 # Calculate delay and retry
                 delay = self._calculate_delay(attempt, response)
                 LOGGER.info(
-                    "Retrying request (attempt %d/%d) after %.1fs: %s %s (status %d)",
+                    "Retrying request (retry %d/%d) after %.1fs: %s %s (status %d)",
                     attempt + 1,
                     self._max_retries,
                     delay,
@@ -90,10 +89,8 @@ class RetryTransport(httpx.AsyncBaseTransport):
                 await asyncio.sleep(delay)
                 attempt += 1
 
-            except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadTimeout) as exc:
+            except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError, httpx.WriteError) as exc:
                 # Transport errors are retryable
-                last_exception = exc
-
                 if attempt >= self._max_retries:
                     LOGGER.warning(
                         "Max retries (%d) exceeded for %s %s: %s",
@@ -106,7 +103,7 @@ class RetryTransport(httpx.AsyncBaseTransport):
 
                 delay = self._calculate_delay(attempt, None)
                 LOGGER.info(
-                    "Retrying request after transport error (attempt %d/%d) after %.1fs: %s %s",
+                    "Retrying request after transport error (retry %d/%d) after %.1fs: %s %s",
                     attempt + 1,
                     self._max_retries,
                     delay,
@@ -116,12 +113,8 @@ class RetryTransport(httpx.AsyncBaseTransport):
                 await asyncio.sleep(delay)
                 attempt += 1
 
-        # Should not reach here, but if we do, raise the last exception
-        if last_exception:
-            raise last_exception
-
-        # Fallback: make one final attempt
-        return await self._transport.handle_async_request(request)
+        # Loop guarantees we return or raise before this point
+        raise AssertionError("Unreachable: retry loop exited without return/raise")
 
     def _is_retryable_status(self, status_code: int) -> bool:
         """Check if a status code should trigger a retry.
@@ -152,13 +145,14 @@ class RetryTransport(httpx.AsyncBaseTransport):
                 if delay is not None:
                     return min(delay, self._max_delay)
 
-        # Exponential backoff: base_delay * 2^attempt
-        delay = self._base_delay * (2**attempt)
-        delay = min(delay, self._max_delay)
+        # Exponential backoff: base_delay * 2^attempt, capped at 2^20 to prevent overflow
+        delay = self._base_delay * min(2**attempt, 2**20)
 
         # Add jitter: ±20%
         jitter = delay * random.uniform(0.8, 1.2)
-        return jitter
+
+        # Cap AFTER jitter to respect max_delay contract
+        return min(jitter, self._max_delay)
 
     def _parse_retry_after(self, value: str) -> float | None:
         """Parse Retry-After header value.
