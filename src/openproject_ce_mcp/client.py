@@ -1947,6 +1947,17 @@ class OpenProjectClient:
         open_only: bool = False,
         assignee_me: bool = False,
         has_description: bool | None = None,
+        assignee: str | None = None,
+        status: str | None = None,
+        priority: str | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
+        updated_after: str | None = None,
+        updated_before: str | None = None,
+        due_after: str | None = None,
+        due_before: str | None = None,
+        parent: str | None = None,
+        custom_field_filters: dict[str, Any] | None = None,
         sort_by: list[SortCriterion] | None = None,
         group_by: str | None = None,
         offset: int = 1,
@@ -1984,6 +1995,73 @@ class OpenProjectClient:
             filters.append({"version": {"operator": status_operator, "values": []}})
         if has_description is not None:
             filters.append({"description": {"operator": "*" if has_description else "!*", "values": []}})
+
+        # New filters (OPM-67)
+        if assignee_me and assignee:
+            assignee = None  # assignee_me takes precedence
+
+        if assignee:
+            assignee_id = await self._resolve_principal_id(assignee)
+            filters.append({"assignee": {"operator": "=", "values": [assignee_id]}})
+
+        if status:
+            status_id = await self._resolve_status_id(status)
+            filters.append({"status_id": {"operator": "=", "values": [status_id]}})
+
+        if priority:
+            priority_id = await self._resolve_priority_id(priority)
+            filters.append({"priority": {"operator": "=", "values": [priority_id]}})
+
+        if created_after:
+            filters.append({"created_at": {"operator": ">d", "values": [created_after]}})
+        if created_before:
+            filters.append({"created_at": {"operator": "<d", "values": [created_before]}})
+
+        if updated_after:
+            filters.append({"updated_at": {"operator": ">d", "values": [updated_after]}})
+        if updated_before:
+            filters.append({"updated_at": {"operator": "<d", "values": [updated_before]}})
+
+        if due_after:
+            filters.append({"due_date": {"operator": ">d", "values": [due_after]}})
+        if due_before:
+            filters.append({"due_date": {"operator": "<d", "values": [due_before]}})
+
+        if parent is not None:
+            parent_lower = parent.casefold()
+            if parent_lower == "none":
+                filters.append({"parent": {"operator": "!*", "values": []}})
+            elif parent_lower == "any":
+                filters.append({"parent": {"operator": "*", "values": []}})
+            else:
+                parent_id = await self._resolve_work_package_id(parent)
+                filters.append({"parent": {"operator": "=", "values": [str(parent_id)]}})
+
+        if custom_field_filters:
+            for field_name, filter_spec in custom_field_filters.items():
+                custom_key = await self._resolve_custom_field_filter_key(field_name, project_id)
+
+                if isinstance(filter_spec, dict):
+                    operator = filter_spec.get("operator", "=")
+                    if "values" in filter_spec:
+                        values = filter_spec["values"]
+                        if not isinstance(values, list):
+                            values = [values]
+                    elif "value" in filter_spec:
+                        values = [filter_spec["value"]]
+                    elif operator in {"*", "!*"}:
+                        values = []
+                    else:
+                        raise InvalidInputError(
+                            f"Custom field filter '{field_name}' with operator '{operator}' "
+                            "must have 'value' or 'values' key"
+                        )
+                else:
+                    operator = "="
+                    values = [filter_spec]
+
+                filters.append({custom_key: {"operator": operator, "values": values}})
+
         return await self._list_work_package_collection(
             project_id=project_id,
             filters=filters,
@@ -5923,6 +6001,67 @@ class OpenProjectClient:
                 return href
         raise InvalidInputError(f"OpenProject value '{raw_value}' is not allowed for field '{key}'.")
 
+    async def _resolve_custom_field_filter_key(self, field_name: str, project_id: int | None) -> str:
+        """Map custom field name to customFieldXXX key for filtering.
+
+        WARNING: Resolving by name requires fetching form schemas for all types in the
+        project (multiple API calls). Use customFieldXXX format when possible.
+        """
+        normalized = field_name.strip()
+
+        # Fast path: already customFieldXXX format
+        if normalized.lower().startswith("customfield"):
+            field_id = normalized[11:]
+            if field_id.isdigit():
+                return f"customField{field_id}"
+
+        # Resolve by name - requires project
+        if not project_id:
+            raise InvalidInputError(
+                f"Cannot resolve custom field '{field_name}' by name without project filter. "
+                "Use customFieldXXX format or add project parameter."
+            )
+
+        # Fetch all types in project to collect custom field definitions
+        types_payload = await self._get(f"projects/{project_id}/types")
+        type_elements = types_payload.get("_embedded", {}).get("elements", [])
+
+        # Scan all types' form schemas to find custom fields
+        custom_field_map = {}  # name -> customFieldXXX key
+        for type_elem in type_elements:
+            type_id = type_elem.get("id")
+            if not type_id:
+                continue
+
+            # Fetch form schema for this type
+            try:
+                schema_payload = await self._get(
+                    f"projects/{project_id}/work_packages/form",
+                    params={"filters": _json_param([{"type": {"operator": "=", "values": [str(type_id)]}}])},
+                )
+                schema = schema_payload.get("_embedded", {}).get("schema", {})
+
+                # Extract custom fields from this type's schema
+                for key, field in schema.items():
+                    if key.startswith("customField") and isinstance(field, dict):
+                        field_name_in_schema = field.get("name", "").strip()
+                        # Store first occurrence (types may share custom fields)
+                        if field_name_in_schema and field_name_in_schema.casefold() not in custom_field_map:
+                            custom_field_map[field_name_in_schema.casefold()] = key
+            except Exception:
+                # Skip types that fail to fetch
+                continue
+
+        # Look up the field name
+        matched_key = custom_field_map.get(normalized.casefold())
+        if matched_key:
+            return matched_key
+
+        raise InvalidInputError(
+            f"Custom field '{field_name}' not found in any work package type in this project. "
+            "Available fields can be discovered via get_project or use customFieldXXX format."
+        )
+
     def _apply_custom_fields(
         self,
         payload: dict[str, Any],
@@ -7274,6 +7413,20 @@ class OpenProjectClient:
         ]
         if not matches:
             raise InvalidInputError(f"OpenProject status '{status_ref}' was not found.")
+        return matches[0]
+
+    async def _resolve_priority_id(self, priority_ref: str) -> str:
+        """Resolve priority name or ID to numeric ID."""
+        if priority_ref.isdigit():
+            return priority_ref
+        payload = await self._get("priorities")
+        matches = [
+            str(item["id"])
+            for item in payload.get("_embedded", {}).get("elements", [])
+            if str(item.get("name", "")).casefold() == priority_ref.casefold()
+        ]
+        if not matches:
+            raise InvalidInputError(f"OpenProject priority '{priority_ref}' was not found.")
         return matches[0]
 
     async def _resolve_assignee_id(self, assignee_ref: str) -> str:

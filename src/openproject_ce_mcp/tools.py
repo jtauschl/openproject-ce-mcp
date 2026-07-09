@@ -1123,6 +1123,17 @@ async def list_work_packages(
     open_only: bool = False,
     assignee_me: bool = False,
     has_description: bool | None = None,
+    assignee: str | None = None,
+    status: str | None = None,
+    priority: str | None = None,
+    created_after: str | None = None,
+    created_before: str | None = None,
+    updated_after: str | None = None,
+    updated_before: str | None = None,
+    due_after: str | None = None,
+    due_before: str | None = None,
+    parent: str | None = None,
+    custom_field_filters: dict[str, Any] | None = None,
     sort_by: list[str] | None = None,
     group_by: str | None = None,
     offset: int = 1,
@@ -1133,6 +1144,31 @@ async def list_work_packages(
 
     version_status filters by the status of a work package's assigned version:
     one of 'open', 'closed', or 'locked'.
+
+    assignee filters by user (numeric ID, username, or 'me').
+
+    status filters by status name or numeric ID (case-insensitive).
+
+    priority filters by priority name or numeric ID (case-insensitive).
+
+    created_after/created_before filter by creation date (YYYY-MM-DD format).
+    updated_after/updated_before filter by last update date.
+    due_after/due_before filter by due date.
+
+    parent filters by parent work package:
+    - Numeric ID or PROJ-123 for specific parent
+    - 'none' for top-level work packages (no parent)
+    - 'any' for work packages with any parent
+
+    custom_field_filters accepts a dictionary mapping field names to values or filter specs:
+    - Simple: {"Sprint": "2024-Q1"} for equality
+    - Complex: {"Description": {"operator": "~", "value": "urgent"}} for pattern
+    - Operators: = (equals), ~ (contains), * (has value), !* (no value)
+    Performance note: Filtering by custom field name requires project parameter and
+    triggers O(N) API calls where N = number of work package types.
+
+    If both assignee_me=True and assignee are provided, assignee_me takes precedence.
+    status and open_only can be combined (AND logic).
 
     sort_by accepts a list of sort criteria in format "field:direction"
     (e.g., ["status:desc", "priority:asc"]). Direction defaults to "asc" if omitted.
@@ -1155,6 +1191,26 @@ async def list_work_packages(
     safe_version_status = _validate_optional_choice(
         version_status, field_name="version_status", allowed_values={"open", "closed", "locked"}
     )
+
+    safe_assignee = _validate_optional_user_or_principal_ref(assignee)
+    safe_status = _validate_optional_query(status, field_name="status", max_length=100)
+    safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
+
+    safe_created_after = _validate_optional_date(created_after, "created_after")
+    safe_created_before = _validate_optional_date(created_before, "created_before")
+    _validate_date_range(safe_created_after, safe_created_before, "created")
+
+    safe_updated_after = _validate_optional_date(updated_after, "updated_after")
+    safe_updated_before = _validate_optional_date(updated_before, "updated_before")
+    _validate_date_range(safe_updated_after, safe_updated_before, "updated")
+
+    safe_due_after = _validate_optional_date(due_after, "due_after")
+    safe_due_before = _validate_optional_date(due_before, "due_before")
+    _validate_date_range(safe_due_after, safe_due_before, "due")
+
+    safe_parent = _validate_optional_work_package_ref(parent, field_name="parent")
+    safe_custom_field_filters = _validate_optional_custom_field_filters(custom_field_filters)
+
     safe_sort_by = _validate_sort_by(sort_by)
     safe_group_by = _validate_optional_query(group_by, field_name="group_by", max_length=120)
     safe_offset = _validate_offset(offset)
@@ -1169,6 +1225,17 @@ async def list_work_packages(
             open_only=open_only,
             assignee_me=assignee_me,
             has_description=has_description,
+            assignee=safe_assignee,
+            status=safe_status,
+            priority=safe_priority,
+            created_after=safe_created_after,
+            created_before=safe_created_before,
+            updated_after=safe_updated_after,
+            updated_before=safe_updated_before,
+            due_after=safe_due_after,
+            due_before=safe_due_before,
+            parent=safe_parent,
+            custom_field_filters=safe_custom_field_filters,
             sort_by=safe_sort_by,
             group_by=safe_group_by,
             offset=safe_offset,
@@ -3209,11 +3276,19 @@ def _validate_work_package_ref(value: str, *, field_name: str = "work_package_id
     normalized = " ".join(str(value).split())
     if not normalized:
         raise ValueError(f"{field_name} is required.")
+
+    # Allow special values for parent filter
+    if field_name == "parent" and normalized.casefold() in {"none", "any"}:
+        return normalized
+
     if normalized.isdigit():
         _validate_positive_int(int(normalized), field_name=field_name)
         return normalized
     if not WORK_PACKAGE_REF_RE.fullmatch(normalized):
-        raise ValueError(f"{field_name} must be a positive integer id or a work package reference (e.g. PROJ-123).")
+        raise ValueError(
+            f"{field_name} must be a positive integer id, a work package reference (e.g. PROJ-123), "
+            f"or (for parent) 'none'/'any'."
+        )
     return normalized
 
 
@@ -3325,6 +3400,82 @@ def _validate_optional_non_negative_int(value: int | None, *, field_name: str) -
     if value < 0:
         raise ValueError(f"{field_name} must be at least 0.")
     return value
+
+
+def _validate_optional_date(value: str | None, field_name: str) -> str | None:
+    """Validate ISO 8601 date (YYYY-MM-DD) and return normalized string."""
+    if value is None:
+        return None
+    import datetime
+
+    normalized = value.strip()
+    try:
+        datetime.date.fromisoformat(normalized)
+        return normalized
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be YYYY-MM-DD format") from exc
+
+
+def _validate_date_range(after: str | None, before: str | None, prefix: str) -> None:
+    """Ensure after <= before for already-validated ISO date strings."""
+    if after and before:
+        import datetime
+
+        after_date = datetime.date.fromisoformat(after)
+        before_date = datetime.date.fromisoformat(before)
+        if after_date > before_date:
+            raise ValueError(f"{prefix}_after ({after}) must not be later than {prefix}_before ({before})")
+
+
+def _validate_optional_custom_field_filters(value: dict | None) -> dict | None:
+    """Validate custom field filter dictionary."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("custom_field_filters must be an object mapping field names to filter specs")
+    if len(value) > 20:
+        raise ValueError("custom_field_filters must contain at most 20 entries")
+
+    normalized = {}
+    for k, v in value.items():
+        key = str(k).strip()
+        if not key:
+            raise ValueError("custom_field_filters keys must not be empty")
+        if len(key) > 120:
+            raise ValueError(f"custom_field_filters key '{key}' exceeds 120 characters")
+
+        if isinstance(v, dict):
+            if "operator" not in v:
+                raise ValueError(f"custom_field_filters['{key}'] object must have 'operator' key")
+
+            operator = str(v["operator"]).strip()
+            allowed_operators = {"=", "~", "*", "!*"}
+            if operator not in allowed_operators:
+                raise ValueError(
+                    f"custom_field_filters['{key}'] operator must be one of: "
+                    f"{', '.join(sorted(allowed_operators))} (got '{operator}')"
+                )
+
+            has_value = "value" in v
+            has_values = "values" in v
+
+            if has_value and has_values:
+                raise ValueError(f"custom_field_filters['{key}'] cannot have both 'value' and 'values' keys")
+
+            if operator not in {"*", "!*"} and not has_value and not has_values:
+                raise ValueError(
+                    f"custom_field_filters['{key}'] with operator '{operator}' must have 'value' or 'values' key"
+                )
+
+            normalized[key] = {
+                "operator": operator,
+                "value": v.get("value"),
+                "values": v.get("values"),
+            }
+        else:
+            normalized[key] = v
+
+    return normalized
 
 
 def _validate_optional_text_limit(value: int | None) -> int | None:
