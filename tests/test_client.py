@@ -928,7 +928,6 @@ async def test_list_work_packages_resolves_type_and_version_filters() -> None:
             assert "project_id" in filter_keys
             assert "type" in filter_keys
             assert "version" in filter_keys
-            assert "description" in filter_keys
             return httpx.Response(
                 200,
                 json={
@@ -960,7 +959,6 @@ async def test_list_work_packages_resolves_type_and_version_filters() -> None:
         project="demo",
         type="Feature",
         version="v1",
-        has_description=True,
     )
 
     assert result.count == 1
@@ -6892,5 +6890,162 @@ async def test_work_package_subject_not_delimited():
 
     # But description SHOULD have delimiters
     assert summary.description.startswith("<user-content>")
+
+    await client.aclose()
+
+
+# OPM-81: Date filter tests
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_created_on_validates_format() -> None:
+    """Test that created_on rejects invalid date formats."""
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: None))
+
+    with pytest.raises(InvalidInputError, match="YYYY-MM-DD format"):
+        await client.list_work_packages(created_on="2024/01/15")
+
+    with pytest.raises(InvalidInputError, match="YYYY-MM-DD format"):
+        await client.list_work_packages(created_on="15-01-2024")
+
+    with pytest.raises(InvalidInputError, match="YYYY-MM-DD format"):
+        await client.list_work_packages(created_on="2024-13-01")
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_created_between_validates_range() -> None:
+    """Test that created_between validates start <= end."""
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: None))
+
+    with pytest.raises(InvalidInputError, match="start date must be <= end date"):
+        await client.list_work_packages(created_between=["2024-12-31", "2024-01-01"])
+
+    with pytest.raises(InvalidInputError, match="exactly 2 dates"):
+        await client.list_work_packages(created_between=["2024-01-01"])
+
+    with pytest.raises(InvalidInputError, match="exactly 2 dates"):
+        await client.list_work_packages(created_between=["2024-01-01", "2024-01-31", "2024-02-01"])
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_rejects_both_on_and_between() -> None:
+    """Test mutual exclusivity of _on and _between filters."""
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: None))
+
+    with pytest.raises(InvalidInputError, match="Cannot specify both created_on and created_between"):
+        await client.list_work_packages(created_on="2024-01-15", created_between=["2024-01-01", "2024-01-31"])
+
+    with pytest.raises(InvalidInputError, match="Cannot specify both updated_on and updated_between"):
+        await client.list_work_packages(updated_on="2024-01-15", updated_between=["2024-01-01", "2024-01-31"])
+
+    with pytest.raises(InvalidInputError, match="Cannot specify both due_on and due_between"):
+        await client.list_work_packages(due_on="2024-01-15", due_between=["2024-01-01", "2024-01-31"])
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_created_on_builds_filter() -> None:
+    """Test that created_on generates correct API filter."""
+    captured: dict[str, str] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages" and request.method == "GET":
+            captured["filters"] = request.url.params.get("filters", "")
+            return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    await client.list_work_packages(created_on="2024-01-15")
+
+    filters = json.loads(captured["filters"])
+    created_filter = next(f for f in filters if "created_at" in f)
+    assert created_filter["created_at"]["operator"] == "=d"
+    assert created_filter["created_at"]["values"] == ["2024-01-15"]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_created_between_builds_filter() -> None:
+    """Test that created_between generates correct API filter."""
+    captured: dict[str, str] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages" and request.method == "GET":
+            captured["filters"] = request.url.params.get("filters", "")
+            return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    await client.list_work_packages(created_between=["2024-01-01", "2024-01-31"])
+
+    filters = json.loads(captured["filters"])
+    created_filter = next(f for f in filters if "created_at" in f)
+    assert created_filter["created_at"]["operator"] == "<>d"
+    assert created_filter["created_at"]["values"] == ["2024-01-01", "2024-01-31"]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_multiple_date_filters() -> None:
+    """Test combining multiple date filters."""
+    captured: dict[str, str] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages" and request.method == "GET":
+            captured["filters"] = request.url.params.get("filters", "")
+            return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    await client.list_work_packages(
+        created_between=["2024-01-01", "2024-01-31"], updated_on="2024-01-15", due_on="2024-02-01"
+    )
+
+    filters = json.loads(captured["filters"])
+    assert len([f for f in filters if "created_at" in f]) == 1
+    assert len([f for f in filters if "updated_at" in f]) == 1
+    assert len([f for f in filters if "due_date" in f]) == 1
+
+    created_filter = next(f for f in filters if "created_at" in f)
+    assert created_filter["created_at"]["operator"] == "<>d"
+
+    updated_filter = next(f for f in filters if "updated_at" in f)
+    assert updated_filter["updated_at"]["operator"] == "=d"
+
+    due_filter = next(f for f in filters if "due_date" in f)
+    assert due_filter["due_date"]["operator"] == "=d"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_search_work_packages_date_filters() -> None:
+    """Test that search_work_packages also supports date filters."""
+    captured: dict[str, str] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages" and request.method == "GET":
+            captured["filters"] = request.url.params.get("filters", "")
+            return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    await client.search_work_packages(query="test", updated_on="2024-07-09")
+
+    filters = json.loads(captured["filters"])
+    # Should have both subject_or_id filter and updated_at filter
+    assert any("subject_or_id" in f for f in filters)
+    assert any("updated_at" in f for f in filters)
+
+    updated_filter = next(f for f in filters if "updated_at" in f)
+    assert updated_filter["updated_at"]["operator"] == "=d"
+    assert updated_filter["updated_at"]["values"] == ["2024-07-09"]
 
     await client.aclose()

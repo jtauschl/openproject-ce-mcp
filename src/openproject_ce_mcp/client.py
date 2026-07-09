@@ -1909,6 +1909,12 @@ class OpenProjectClient:
         assignee_me: bool = False,
         assignee: str | None = None,
         priority: str | None = None,
+        created_on: str | None = None,
+        created_between: list[str] | None = None,
+        updated_on: str | None = None,
+        updated_between: list[str] | None = None,
+        due_on: str | None = None,
+        due_between: list[str] | None = None,
         sort_by: list[SortCriterion] | None = None,
         group_by: str | None = None,
         offset: int = 1,
@@ -1940,6 +1946,39 @@ class OpenProjectClient:
             priority_id = await self._resolve_priority_id(priority)
             filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
 
+        # Date filters (OPM-81)
+        # Mutual exclusivity: can't use both _on and _between for same field
+        if created_on and created_between:
+            raise InvalidInputError("Cannot specify both created_on and created_between")
+        if updated_on and updated_between:
+            raise InvalidInputError("Cannot specify both updated_on and updated_between")
+        if due_on and due_between:
+            raise InvalidInputError("Cannot specify both due_on and due_between")
+
+        if created_on:
+            validated = self._validate_date_format(created_on, "created_on")
+            filters.append({"created_at": {"operator": "=d", "values": [validated]}})
+
+        if created_between:
+            validated = self._validate_date_range(created_between, "created_between")
+            filters.append({"created_at": {"operator": "<>d", "values": validated}})
+
+        if updated_on:
+            validated = self._validate_date_format(updated_on, "updated_on")
+            filters.append({"updated_at": {"operator": "=d", "values": [validated]}})
+
+        if updated_between:
+            validated = self._validate_date_range(updated_between, "updated_between")
+            filters.append({"updated_at": {"operator": "<>d", "values": validated}})
+
+        if due_on:
+            validated = self._validate_date_format(due_on, "due_on")
+            filters.append({"due_date": {"operator": "=d", "values": [validated]}})
+
+        if due_between:
+            validated = self._validate_date_range(due_between, "due_between")
+            filters.append({"due_date": {"operator": "<>d", "values": validated}})
+
         return await self._list_work_package_collection(
             project_id=project_id,
             filters=filters,
@@ -1958,10 +1997,15 @@ class OpenProjectClient:
         version_status: str | None = None,
         open_only: bool = False,
         assignee_me: bool = False,
-        has_description: bool | None = None,
         assignee: str | None = None,
         status: str | None = None,
         priority: str | None = None,
+        created_on: str | None = None,
+        created_between: list[str] | None = None,
+        updated_on: str | None = None,
+        updated_between: list[str] | None = None,
+        due_on: str | None = None,
+        due_between: list[str] | None = None,
         sort_by: list[SortCriterion] | None = None,
         group_by: str | None = None,
         offset: int = 1,
@@ -1997,8 +2041,6 @@ class OpenProjectClient:
             # version filter supports operators o/c/l for open/closed/locked.
             status_operator = {"open": "o", "closed": "c", "locked": "l"}[version_status]
             filters.append({"version": {"operator": status_operator, "values": []}})
-        if has_description is not None:
-            filters.append({"description": {"operator": "*" if has_description else "!*", "values": []}})
 
         # Extended filters (OPM-67)
         # assignee_me takes precedence for backward compatibility
@@ -2013,6 +2055,39 @@ class OpenProjectClient:
         if priority:
             priority_id = await self._resolve_priority_id(priority)
             filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
+
+        # Date filters (OPM-81)
+        # Mutual exclusivity: can't use both _on and _between for same field
+        if created_on and created_between:
+            raise InvalidInputError("Cannot specify both created_on and created_between")
+        if updated_on and updated_between:
+            raise InvalidInputError("Cannot specify both updated_on and updated_between")
+        if due_on and due_between:
+            raise InvalidInputError("Cannot specify both due_on and due_between")
+
+        if created_on:
+            validated = self._validate_date_format(created_on, "created_on")
+            filters.append({"created_at": {"operator": "=d", "values": [validated]}})
+
+        if created_between:
+            validated = self._validate_date_range(created_between, "created_between")
+            filters.append({"created_at": {"operator": "<>d", "values": validated}})
+
+        if updated_on:
+            validated = self._validate_date_format(updated_on, "updated_on")
+            filters.append({"updated_at": {"operator": "=d", "values": [validated]}})
+
+        if updated_between:
+            validated = self._validate_date_range(updated_between, "updated_between")
+            filters.append({"updated_at": {"operator": "<>d", "values": validated}})
+
+        if due_on:
+            validated = self._validate_date_format(due_on, "due_on")
+            filters.append({"due_date": {"operator": "=d", "values": [validated]}})
+
+        if due_between:
+            validated = self._validate_date_range(due_between, "due_between")
+            filters.append({"due_date": {"operator": "<>d", "values": validated}})
 
         return await self._list_work_package_collection(
             project_id=project_id,
@@ -7318,6 +7393,27 @@ class OpenProjectClient:
         if not matches:
             raise InvalidInputError(f"OpenProject priority '{priority_ref}' was not found.")
         return matches[0]
+
+    def _validate_date_format(self, date_str: str, field_name: str) -> str:
+        """Validate ISO 8601 date format (YYYY-MM-DD)."""
+        import datetime
+
+        normalized = date_str.strip()
+        try:
+            datetime.date.fromisoformat(normalized)
+            return normalized
+        except ValueError as exc:
+            raise InvalidInputError(f"{field_name} must be in YYYY-MM-DD format: {exc}") from exc
+
+    def _validate_date_range(self, dates: list[str], field_name: str) -> list[str]:
+        """Validate date range has exactly 2 dates with start <= end."""
+        if len(dates) != 2:
+            raise InvalidInputError(f"{field_name} must contain exactly 2 dates [start, end], got {len(dates)}")
+        start = self._validate_date_format(dates[0], f"{field_name}[0]")
+        end = self._validate_date_format(dates[1], f"{field_name}[1]")
+        if start > end:
+            raise InvalidInputError(f"{field_name}: start date must be <= end date ({start} > {end})")
+        return [start, end]
 
     async def _resolve_assignee_id(self, assignee_ref: str) -> str:
         if assignee_ref.casefold() == "me":

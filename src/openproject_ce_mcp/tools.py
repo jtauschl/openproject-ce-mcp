@@ -1069,6 +1069,12 @@ async def search_work_packages(
     assignee_me: bool = False,
     assignee: str | None = None,
     priority: str | None = None,
+    created_on: str | None = None,
+    created_between: list[str] | None = None,
+    updated_on: str | None = None,
+    updated_between: list[str] | None = None,
+    due_on: str | None = None,
+    due_between: list[str] | None = None,
     sort_by: list[str] | None = None,
     group_by: str | None = None,
     offset: int = 1,
@@ -1084,6 +1090,11 @@ async def search_work_packages(
     assignee filters by any user (username, id, or "me"). assignee_me takes precedence.
 
     priority filters by priority name or numeric ID (case-insensitive).
+
+    Date filters accept YYYY-MM-DD format:
+    - created_on/updated_on/due_on: exact date match
+    - created_between/updated_between/due_between: inclusive date range [start, end]
+    Cannot specify both _on and _between for the same field.
 
     sort_by accepts a list of sort criteria in format "field:direction"
     (e.g., ["status:desc", "priority:asc"]). Direction defaults to "asc" if omitted.
@@ -1102,6 +1113,12 @@ async def search_work_packages(
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
     safe_assignee = _validate_optional_user_or_principal_ref(assignee)
     safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
+    safe_created_on = _validate_optional_date(created_on, "created_on")
+    safe_created_between = _validate_optional_date_range(created_between, "created_between")
+    safe_updated_on = _validate_optional_date(updated_on, "updated_on")
+    safe_updated_between = _validate_optional_date_range(updated_between, "updated_between")
+    safe_due_on = _validate_optional_date(due_on, "due_on")
+    safe_due_between = _validate_optional_date_range(due_between, "due_between")
     safe_sort_by = _validate_sort_by(sort_by)
     safe_group_by = _validate_optional_query(group_by, field_name="group_by", max_length=120)
     safe_offset = _validate_offset(offset)
@@ -1116,6 +1133,12 @@ async def search_work_packages(
             assignee_me=assignee_me,
             assignee=safe_assignee,
             priority=safe_priority,
+            created_on=safe_created_on,
+            created_between=safe_created_between,
+            updated_on=safe_updated_on,
+            updated_between=safe_updated_between,
+            due_on=safe_due_on,
+            due_between=safe_due_between,
             sort_by=safe_sort_by,
             group_by=safe_group_by,
             offset=safe_offset,
@@ -1132,10 +1155,15 @@ async def list_work_packages(
     version_status: str | None = None,
     open_only: bool = False,
     assignee_me: bool = False,
-    has_description: bool | None = None,
     assignee: str | None = None,
     status: str | None = None,
     priority: str | None = None,
+    created_on: str | None = None,
+    created_between: list[str] | None = None,
+    updated_on: str | None = None,
+    updated_between: list[str] | None = None,
+    due_on: str | None = None,
+    due_between: list[str] | None = None,
     sort_by: list[str] | None = None,
     group_by: str | None = None,
     offset: int = 1,
@@ -1150,6 +1178,11 @@ async def list_work_packages(
     assignee filters by any user (username, id, or "me"). assignee_me takes precedence.
 
     status/priority filter by name or numeric ID (case-insensitive).
+
+    Date filters accept YYYY-MM-DD format:
+    - created_on/updated_on/due_on: exact date match
+    - created_between/updated_between/due_between: inclusive date range [start, end]
+    Cannot specify both _on and _between for the same field.
 
     sort_by accepts a list of sort criteria in format "field:direction"
     (e.g., ["status:desc", "priority:asc"]). Direction defaults to "asc" if omitted.
@@ -1175,6 +1208,12 @@ async def list_work_packages(
     safe_assignee = _validate_optional_user_or_principal_ref(assignee)
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
     safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
+    safe_created_on = _validate_optional_date(created_on, "created_on")
+    safe_created_between = _validate_optional_date_range(created_between, "created_between")
+    safe_updated_on = _validate_optional_date(updated_on, "updated_on")
+    safe_updated_between = _validate_optional_date_range(updated_between, "updated_between")
+    safe_due_on = _validate_optional_date(due_on, "due_on")
+    safe_due_between = _validate_optional_date_range(due_between, "due_between")
     safe_sort_by = _validate_sort_by(sort_by)
     safe_group_by = _validate_optional_query(group_by, field_name="group_by", max_length=120)
     safe_offset = _validate_offset(offset)
@@ -1188,10 +1227,15 @@ async def list_work_packages(
             version_status=safe_version_status,
             open_only=open_only,
             assignee_me=assignee_me,
-            has_description=has_description,
             assignee=safe_assignee,
             status=safe_status,
             priority=safe_priority,
+            created_on=safe_created_on,
+            created_between=safe_created_between,
+            updated_on=safe_updated_on,
+            updated_between=safe_updated_between,
+            due_on=safe_due_on,
+            due_between=safe_due_between,
             sort_by=safe_sort_by,
             group_by=safe_group_by,
             offset=safe_offset,
@@ -3373,6 +3417,28 @@ def _validate_date_range(after: str | None, before: str | None, prefix: str) -> 
         before_date = datetime.date.fromisoformat(before)
         if after_date > before_date:
             raise ValueError(f"{prefix}_after ({after}) must not be later than {prefix}_before ({before})")
+
+
+def _validate_optional_date_range(dates: list[str] | None, field_name: str) -> list[str] | None:
+    """Validate optional date range [start, end] in YYYY-MM-DD format."""
+    if dates is None:
+        return None
+    if not isinstance(dates, list):
+        raise ValueError(f"{field_name} must be a list of 2 dates")
+    if len(dates) != 2:
+        raise ValueError(f"{field_name} must contain exactly 2 dates [start, end]")
+
+    # Validate each date using existing validator
+    start = _validate_optional_date(dates[0], f"{field_name}[0]")
+    end = _validate_optional_date(dates[1], f"{field_name}[1]")
+
+    if start is None or end is None:
+        raise ValueError(f"{field_name} dates cannot be empty")
+
+    # Validate range using existing helper
+    _validate_date_range(after=start, before=end, prefix=field_name)
+
+    return [start, end]
 
 
 def _validate_optional_text_limit(value: int | None) -> int | None:
