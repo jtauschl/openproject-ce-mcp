@@ -1067,6 +1067,8 @@ async def search_work_packages(
     status: str | None = None,
     open_only: bool = False,
     assignee_me: bool = False,
+    assignee: str | None = None,
+    priority: str | None = None,
     sort_by: list[str] | None = None,
     group_by: str | None = None,
     offset: int = 1,
@@ -1078,6 +1080,10 @@ async def search_work_packages(
     Set status to restrict results to a specific OpenProject status.
     Set open_only=true to return only open work packages.
     Set assignee_me=true to return only work packages assigned to the current user.
+
+    assignee filters by any user (username, id, or "me"). assignee_me takes precedence.
+
+    priority filters by priority name or numeric ID (case-insensitive).
 
     sort_by accepts a list of sort criteria in format "field:direction"
     (e.g., ["status:desc", "priority:asc"]). Direction defaults to "asc" if omitted.
@@ -1094,6 +1100,8 @@ async def search_work_packages(
     safe_query = _validate_required_query(query, field_name="query", max_length=120)
     safe_project = _validate_optional_project_ref(project)
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
+    safe_assignee = _validate_optional_user_or_principal_ref(assignee)
+    safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
     safe_sort_by = _validate_sort_by(sort_by)
     safe_group_by = _validate_optional_query(group_by, field_name="group_by", max_length=120)
     safe_offset = _validate_offset(offset)
@@ -1106,6 +1114,8 @@ async def search_work_packages(
             status=safe_status,
             open_only=open_only,
             assignee_me=assignee_me,
+            assignee=safe_assignee,
+            priority=safe_priority,
             sort_by=safe_sort_by,
             group_by=safe_group_by,
             offset=safe_offset,
@@ -1123,6 +1133,9 @@ async def list_work_packages(
     open_only: bool = False,
     assignee_me: bool = False,
     has_description: bool | None = None,
+    assignee: str | None = None,
+    status: str | None = None,
+    priority: str | None = None,
     sort_by: list[str] | None = None,
     group_by: str | None = None,
     offset: int = 1,
@@ -1133,6 +1146,10 @@ async def list_work_packages(
 
     version_status filters by the status of a work package's assigned version:
     one of 'open', 'closed', or 'locked'.
+
+    assignee filters by any user (username, id, or "me"). assignee_me takes precedence.
+
+    status/priority filter by name or numeric ID (case-insensitive).
 
     sort_by accepts a list of sort criteria in format "field:direction"
     (e.g., ["status:desc", "priority:asc"]). Direction defaults to "asc" if omitted.
@@ -1155,6 +1172,9 @@ async def list_work_packages(
     safe_version_status = _validate_optional_choice(
         version_status, field_name="version_status", allowed_values={"open", "closed", "locked"}
     )
+    safe_assignee = _validate_optional_user_or_principal_ref(assignee)
+    safe_status = _validate_optional_query(status, field_name="status", max_length=100)
+    safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
     safe_sort_by = _validate_sort_by(sort_by)
     safe_group_by = _validate_optional_query(group_by, field_name="group_by", max_length=120)
     safe_offset = _validate_offset(offset)
@@ -1169,6 +1189,9 @@ async def list_work_packages(
             open_only=open_only,
             assignee_me=assignee_me,
             has_description=has_description,
+            assignee=safe_assignee,
+            status=safe_status,
+            priority=safe_priority,
             sort_by=safe_sort_by,
             group_by=safe_group_by,
             offset=safe_offset,
@@ -3325,6 +3348,31 @@ def _validate_optional_non_negative_int(value: int | None, *, field_name: str) -
     if value < 0:
         raise ValueError(f"{field_name} must be at least 0.")
     return value
+
+
+def _validate_optional_date(value: str | None, field_name: str) -> str | None:
+    """Validate ISO 8601 date (YYYY-MM-DD)."""
+    if value is None:
+        return None
+    import datetime
+
+    normalized = value.strip()
+    try:
+        datetime.date.fromisoformat(normalized)
+        return normalized
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be YYYY-MM-DD format") from exc
+
+
+def _validate_date_range(after: str | None, before: str | None, prefix: str) -> None:
+    """Ensure after <= before for already-validated ISO date strings."""
+    if after and before:
+        import datetime
+
+        after_date = datetime.date.fromisoformat(after)
+        before_date = datetime.date.fromisoformat(before)
+        if after_date > before_date:
+            raise ValueError(f"{prefix}_after ({after}) must not be later than {prefix}_before ({before})")
 
 
 def _validate_optional_text_limit(value: int | None) -> int | None:

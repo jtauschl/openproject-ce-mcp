@@ -1907,6 +1907,8 @@ class OpenProjectClient:
         status: str | None = None,
         open_only: bool = False,
         assignee_me: bool = False,
+        assignee: str | None = None,
+        priority: str | None = None,
         sort_by: list[SortCriterion] | None = None,
         group_by: str | None = None,
         offset: int = 1,
@@ -1928,6 +1930,16 @@ class OpenProjectClient:
         if assignee_me:
             current_user = await self.get_current_user()
             filters.append({"assignee": {"operator": "=", "values": [str(current_user.id)]}})
+
+        # Extended filters (same as list_work_packages)
+        if assignee and not assignee_me:
+            assignee_id = await self._resolve_principal_id(assignee)
+            filters.append({"assignee": {"operator": "=", "values": [assignee_id]}})
+
+        if priority:
+            priority_id = await self._resolve_priority_id(priority)
+            filters.append({"priority": {"operator": "=", "values": [priority_id]}})
+
         return await self._list_work_package_collection(
             project_id=project_id,
             filters=filters,
@@ -1947,6 +1959,9 @@ class OpenProjectClient:
         open_only: bool = False,
         assignee_me: bool = False,
         has_description: bool | None = None,
+        assignee: str | None = None,
+        status: str | None = None,
+        priority: str | None = None,
         sort_by: list[SortCriterion] | None = None,
         group_by: str | None = None,
         offset: int = 1,
@@ -1984,6 +1999,21 @@ class OpenProjectClient:
             filters.append({"version": {"operator": status_operator, "values": []}})
         if has_description is not None:
             filters.append({"description": {"operator": "*" if has_description else "!*", "values": []}})
+
+        # Extended filters (OPM-67)
+        # assignee_me takes precedence for backward compatibility
+        if assignee and not assignee_me:
+            assignee_id = await self._resolve_principal_id(assignee)
+            filters.append({"assignee": {"operator": "=", "values": [assignee_id]}})
+
+        if status:
+            status_id = await self._resolve_status_id(status)
+            filters.append({"status_id": {"operator": "=", "values": [status_id]}})
+
+        if priority:
+            priority_id = await self._resolve_priority_id(priority)
+            filters.append({"priority": {"operator": "=", "values": [priority_id]}})
+
         return await self._list_work_package_collection(
             project_id=project_id,
             filters=filters,
@@ -7274,6 +7304,19 @@ class OpenProjectClient:
         ]
         if not matches:
             raise InvalidInputError(f"OpenProject status '{status_ref}' was not found.")
+        return matches[0]
+
+    async def _resolve_priority_id(self, priority_ref: str) -> str:
+        if priority_ref.isdigit():
+            return priority_ref
+        payload = await self._get("priorities")
+        matches = [
+            str(item["id"])
+            for item in payload.get("_embedded", {}).get("elements", [])
+            if str(item.get("name", "")).casefold() == priority_ref.casefold()
+        ]
+        if not matches:
+            raise InvalidInputError(f"OpenProject priority '{priority_ref}' was not found.")
         return matches[0]
 
     async def _resolve_assignee_id(self, assignee_ref: str) -> str:
