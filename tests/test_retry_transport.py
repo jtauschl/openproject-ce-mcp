@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
+from email.utils import formatdate
 from unittest.mock import AsyncMock
 
 import httpx
@@ -153,7 +153,7 @@ async def test_non_retryable_status_not_retried():
 
 
 @pytest.mark.asyncio
-async def test_retry_after_header_seconds():
+async def test_retry_after_header_seconds(monkeypatch):
     """Should honor Retry-After header with seconds."""
     mock_transport = AsyncMock(spec=httpx.AsyncBaseTransport)
     # First call returns 429 with Retry-After, second returns 200
@@ -165,26 +165,26 @@ async def test_retry_after_header_seconds():
 
     retry_transport = RetryTransport(mock_transport, max_retries=3)
     request = httpx.Request("GET", "http://test/api")
+    sleep_delays = []
 
-    start = asyncio.get_event_loop().time()
+    async def fake_sleep(delay):
+        sleep_delays.append(delay)
+
+    monkeypatch.setattr("openproject_ce_mcp.retry_transport.asyncio.sleep", fake_sleep)
+
     response = await retry_transport.handle_async_request(request)
-    elapsed = asyncio.get_event_loop().time() - start
 
     assert response.status_code == 200
-    # Should wait at least 0.01 seconds (Retry-After value)
-    assert elapsed >= 0.01
+    assert sleep_delays == [0.01]
 
 
 @pytest.mark.asyncio
-async def test_retry_after_header_http_date():
+async def test_retry_after_header_http_date(monkeypatch):
     """Should honor Retry-After header with HTTP-date format."""
-    import time
-    from email.utils import formatdate
-
     mock_transport = AsyncMock(spec=httpx.AsyncBaseTransport)
 
-    # Create a date 0.1 seconds in the future (more buffer for slow systems)
-    retry_time = time.time() + 0.1
+    fixed_now = 1_700_000_000.0
+    retry_time = fixed_now + 2.0
     retry_date = formatdate(retry_time, usegmt=True)
 
     response_429 = httpx.Response(429, headers={"Retry-After": retry_date}, request=httpx.Request("GET", "http://test"))
@@ -195,12 +195,18 @@ async def test_retry_after_header_http_date():
 
     retry_transport = RetryTransport(mock_transport, max_retries=3)
     request = httpx.Request("GET", "http://test/api")
+    sleep_delays = []
+
+    async def fake_sleep(delay):
+        sleep_delays.append(delay)
+
+    monkeypatch.setattr("openproject_ce_mcp.retry_transport.time.time", lambda: fixed_now)
+    monkeypatch.setattr("openproject_ce_mcp.retry_transport.asyncio.sleep", fake_sleep)
 
     response = await retry_transport.handle_async_request(request)
 
     assert response.status_code == 200
-    # Should have waited (even if date parsing is slightly off, should at least try)
-    assert mock_transport.handle_async_request.call_count == 2
+    assert sleep_delays == [2.0]
 
 
 @pytest.mark.asyncio
@@ -240,7 +246,7 @@ async def test_transport_error_max_retries():
 
 
 @pytest.mark.asyncio
-async def test_exponential_backoff_calculation():
+async def test_exponential_backoff_calculation(monkeypatch):
     """Should use exponential backoff with jitter."""
     mock_transport = AsyncMock(spec=httpx.AsyncBaseTransport)
     # Return 503 three times, then 200
@@ -253,31 +259,42 @@ async def test_exponential_backoff_calculation():
 
     retry_transport = RetryTransport(mock_transport, max_retries=3, base_delay=0.01, max_delay=1.0)
     request = httpx.Request("GET", "http://test/api")
+    sleep_delays = []
+    jitter_bounds = []
 
-    start = asyncio.get_event_loop().time()
+    async def fake_sleep(delay):
+        sleep_delays.append(delay)
+
+    def fake_uniform(lower, upper):
+        jitter_bounds.append((lower, upper))
+        return 1.0
+
+    monkeypatch.setattr("openproject_ce_mcp.retry_transport.random.uniform", fake_uniform)
+    monkeypatch.setattr("openproject_ce_mcp.retry_transport.asyncio.sleep", fake_sleep)
+
     response = await retry_transport.handle_async_request(request)
-    elapsed = asyncio.get_event_loop().time() - start
 
     assert response.status_code == 200
     # With base_delay=0.01, attempts should wait roughly:
     # 0.01 * 2^0 = 0.01s (with jitter ±20%)
     # 0.01 * 2^1 = 0.02s (with jitter ±20%)
     # 0.01 * 2^2 = 0.04s (with jitter ±20%)
-    # Total minimum ~0.05s (accounting for jitter reducing to 0.8x)
-    assert elapsed >= 0.04  # Conservative check with jitter
+    assert sleep_delays == [0.01, 0.02, 0.04]
+    assert jitter_bounds == [(0.8, 1.2), (0.8, 1.2), (0.8, 1.2)]
 
 
 @pytest.mark.asyncio
-async def test_max_delay_cap():
+async def test_max_delay_cap(monkeypatch):
     """Delay should not exceed max_delay."""
     retry_transport = RetryTransport(None, max_retries=10, base_delay=10.0, max_delay=0.05)
+    monkeypatch.setattr("openproject_ce_mcp.retry_transport.random.uniform", lambda _lower, _upper: 1.2)
 
     # Calculate delay for attempt 5 (should be capped at max_delay)
     delay = retry_transport._calculate_delay(5, None)
 
     # With base_delay=10 and attempt=5: 10 * 2^5 = 320s
-    # But capped at max_delay=0.05, with jitter ±20%
-    assert delay <= 0.06  # max_delay * 1.2 (jitter)
+    # Jitter is applied, then the result is capped at max_delay=0.05.
+    assert delay == 0.05
 
 
 @pytest.mark.asyncio
