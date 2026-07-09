@@ -7206,3 +7206,254 @@ async def test_group_members_is_flat_array() -> None:
     assert group.members == ["Alice", "Bob"], "Failed to parse member names from flat array"
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_emoji_reaction_toggle_uses_activity_work_package_link_shape() -> None:
+    """Verify activity -> workPackage link shape before toggling reactions (OPM-51).
+
+    OpenProject returns the owning work package as _links.workPackage.href on the
+    activity. The client must follow that link to enforce project write scope
+    before issuing the PATCH toggle.
+    """
+    requests: list[tuple[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.method, request.url.path))
+        if request.url.path == "/api/v3/activities/1988" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 1988, "_links": {"workPackage": {"href": "/api/v3/work_packages/42"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/activities/1988/emoji_reactions" and request.method == "PATCH":
+            assert json.loads(request.content) == {"reaction": "heart"}
+            return httpx.Response(200, json={"_embedded": {"elements": []}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.toggle_activity_emoji_reaction(1988, "heart")
+
+    assert result.count == 0
+    assert requests == [
+        ("GET", "/api/v3/activities/1988"),
+        ("GET", "/api/v3/work_packages/42"),
+        ("PATCH", "/api/v3/activities/1988/emoji_reactions"),
+    ]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_file_link_delete_uses_container_work_package_link_shape() -> None:
+    """Verify file-link container link shape before deleting (OPM-51).
+
+    OpenProject file links expose the attached work package via
+    _links.container.href. The client must resolve that container work package
+    and enforce project write scope before DELETE.
+    """
+    requests: list[tuple[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.method, request.url.path))
+        if request.url.path == "/api/v3/file_links/5" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 5,
+                    "_links": {
+                        "self": {"href": "/api/v3/file_links/5"},
+                        "container": {"href": "/api/v3/work_packages/9"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/9" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 9, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/file_links/5" and request.method == "DELETE":
+            return httpx.Response(204, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_work_package_write=True, allowed_write_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.delete_file_link(5, confirm=True)
+
+    assert result.work_package_id == 9
+    assert result.confirmed is True
+    assert requests == [
+        ("GET", "/api/v3/file_links/5"),
+        ("GET", "/api/v3/work_packages/9"),
+        ("DELETE", "/api/v3/file_links/5"),
+    ]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_time_entry_semantic_work_package_ref_uses_numeric_entity_href_shape() -> None:
+    """Verify semantic WP refs become numeric HAL entity hrefs (OPM-51)."""
+    captured: dict[str, dict] = {}
+    requests: list[tuple[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.method, request.url.path))
+        if request.url.path == "/api/v3/work_packages/PROJ-7" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 7, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/time_entries" and request.method == "POST":
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(201, json={"id": 9, "spentOn": "2026-07-01", "_links": {}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    await client.create_time_entry(
+        work_package_id="PROJ-7",
+        activity=None,
+        hours="PT1H",
+        spent_on="2026-07-01",
+        confirm=True,
+    )
+
+    assert captured["body"]["_links"]["entity"]["href"] == "/api/v3/work_packages/7"
+    assert requests == [
+        ("GET", "/api/v3/work_packages/PROJ-7"),
+        ("POST", "/api/v3/time_entries"),
+    ]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_work_package_relations_use_canonical_involved_filter_shape() -> None:
+    """Verify relation reads use GET /relations with involved filter (OPM-51)."""
+    captured: dict[str, str] = {}
+    requests: list[tuple[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.method, request.url.path))
+        if request.url.path == "/api/v3/work_packages/PROJ-7" and request.method == "GET":
+            return httpx.Response(200, json=_wp_detail_payload(55, "PROJ-7"), request=request)
+        if request.url.path == "/api/v3/work_packages/55" and request.method == "GET":
+            return httpx.Response(200, json=_wp_detail_payload(55, "PROJ-7"), request=request)
+        if request.url.path == "/api/v3/relations" and request.method == "GET":
+            captured["filters"] = request.url.params.get("filters", "")
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 12,
+                                "type": "relates",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/55", "title": "A"},
+                                    "to": {"href": "/api/v3/work_packages/56", "title": "B"},
+                                },
+                            }
+                        ]
+                    }
+                },
+                request=request,
+            )
+        if "/relations" in request.url.path:
+            raise AssertionError("Deprecated work_packages/{id}/relations endpoint must not be used")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.get_work_package_relations("PROJ-7")
+
+    filters = json.loads(captured["filters"])
+    assert filters == [{"involved": {"operator": "=", "values": ["55"]}}]
+    assert result.count == 1
+    assert result.results[0].id == 12
+    assert requests == [
+        ("GET", "/api/v3/work_packages/PROJ-7"),
+        ("GET", "/api/v3/work_packages/55"),
+        ("GET", "/api/v3/relations"),
+    ]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_global_relations_allowlist_checks_from_and_to_link_shapes() -> None:
+    """Verify global relation listing validates both endpoint links (OPM-51)."""
+    work_package_projects = {10: "demo", 11: "demo", 20: "other", 30: "demo", 31: "other"}
+    fetched_work_packages: list[int] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 1,
+                                "type": "blocks",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/10"},
+                                    "to": {"href": "/api/v3/work_packages/11"},
+                                },
+                            },
+                            {
+                                "id": 2,
+                                "type": "blocks",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/20"},
+                                    "to": {"href": "/api/v3/work_packages/10"},
+                                },
+                            },
+                            {
+                                "id": 3,
+                                "type": "blocks",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/30"},
+                                    "to": {"href": "/api/v3/work_packages/31"},
+                                },
+                            },
+                        ]
+                    }
+                },
+                request=request,
+            )
+        match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if match:
+            work_package_id = int(match.group(1))
+            fetched_work_packages.append(work_package_id)
+            return httpx.Response(
+                200,
+                json={
+                    "id": work_package_id,
+                    "_links": {"project": {"title": work_package_projects[work_package_id]}},
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(allowed_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_relations()
+
+    assert [relation.id for relation in result.results] == [1]
+    assert fetched_work_packages == [10, 11, 20, 30, 31]
+
+    await client.aclose()
