@@ -58,6 +58,7 @@ from openproject_ce_mcp.tools import (
     get_project_phase,
     get_project_phase_definition,
     get_project_work_package_context,
+    get_sprint,
     get_status,
     get_time_entry,
     get_type,
@@ -74,9 +75,11 @@ from openproject_ce_mcp.tools import (
     list_priorities,
     list_project_memberships,
     list_project_phase_definitions,
+    list_project_sprints,
     list_projects,
     list_reminders,
     list_roles,
+    list_sprints,
     list_statuses,
     list_time_entries,
     list_time_entry_activities,
@@ -804,6 +807,29 @@ async def test_version_tools_pass_expected_arguments() -> None:
     assert updated["confirm"] is True
     assert deleted["version_id"] == 7
     assert deleted["confirm"] is True
+
+
+@pytest.mark.asyncio
+async def test_sprint_tools_pass_expected_arguments() -> None:
+    class StubClient:
+        async def list_sprints(self, **kwargs):
+            return kwargs
+
+        async def list_project_sprints(self, project, **kwargs):
+            return {"project": project, **kwargs}
+
+        async def get_sprint(self, sprint_id):
+            return {"sprint_id": sprint_id}
+
+    ctx = FakeContext(StubClient())  # type: ignore[arg-type]
+
+    listed = await list_sprints(ctx, offset=2, limit=5)
+    project_listed = await list_project_sprints(ctx, project="demo", offset=3, limit=4)
+    detail = await get_sprint(ctx, 7)
+
+    assert listed == {"offset": 2, "limit": 5}
+    assert project_listed == {"project": "demo", "offset": 3, "limit": 4}
+    assert detail["sprint_id"] == 7
 
 
 @pytest.mark.asyncio

@@ -106,6 +106,9 @@ from .models import (
     RoleListResult,
     RoleSummary,
     SortCriterion,
+    SprintDetail,
+    SprintListResult,
+    SprintSummary,
     StatusListResult,
     StatusSummary,
     TimeEntryActivityListResult,
@@ -2860,6 +2863,82 @@ class OpenProjectClient:
         self._ensure_project_link_allowed(payload.get("_links", {}).get("definingProject"))
         return self.normalize_version_detail(payload)
 
+    async def list_sprints(
+        self,
+        *,
+        offset: int = 1,
+        limit: int | None = None,
+    ) -> SprintListResult:
+        self._ensure_read_enabled("project")
+        effective_limit = self._resolve_limit(limit)
+        params: dict[str, str] = {"offset": str(offset), "pageSize": str(effective_limit)}
+        try:
+            payload = await self._get("sprints", params=params)
+        except NotFoundError as exc:
+            raise NotFoundError(
+                "OpenProject sprints require the Backlogs module and OpenProject 17.3 or newer."
+            ) from exc
+        raw_items = [
+            item
+            for item in payload.get("_embedded", {}).get("elements", [])
+            if isinstance(item, dict) and self._sprint_payload_allowed(item)
+        ]
+        results = [self.normalize_sprint(item) for item in raw_items]
+        server_total = int(payload.get("total", len(results)))
+        total = len(results)
+        return SprintListResult(
+            offset=offset,
+            limit=effective_limit,
+            total=total,
+            count=total,
+            next_offset=_next_offset(offset, effective_limit, server_total),
+            truncated=server_total > offset * effective_limit,
+            results=results,
+        )
+
+    async def list_project_sprints(
+        self,
+        project: str,
+        *,
+        offset: int = 1,
+        limit: int | None = None,
+    ) -> SprintListResult:
+        self._ensure_read_enabled("project")
+        project_payload = await self._get_project_payload(project)
+        project_id = int(project_payload["id"])
+        effective_limit = self._resolve_limit(limit)
+        params: dict[str, str] = {"offset": str(offset), "pageSize": str(effective_limit)}
+        try:
+            payload = await self._get(f"projects/{project_id}/sprints", params=params)
+        except NotFoundError as exc:
+            raise NotFoundError(
+                "OpenProject project sprints require the Backlogs module and OpenProject 17.3 or newer."
+            ) from exc
+        raw_items = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+        results = [self.normalize_sprint(item) for item in raw_items]
+        server_total = int(payload.get("total", len(results)))
+        total = len(results)
+        return SprintListResult(
+            offset=offset,
+            limit=effective_limit,
+            total=total,
+            count=total,
+            next_offset=_next_offset(offset, effective_limit, server_total),
+            truncated=server_total > offset * effective_limit,
+            results=results,
+        )
+
+    async def get_sprint(self, sprint_id: int) -> SprintDetail:
+        self._ensure_read_enabled("project")
+        try:
+            payload = await self._get(f"sprints/{sprint_id}")
+        except NotFoundError as exc:
+            raise NotFoundError(
+                "OpenProject sprint not found, or the Backlogs module / sprint API is unavailable."
+            ) from exc
+        self._ensure_sprint_workspace_allowed(payload)
+        return self.normalize_sprint_detail(payload)
+
     async def create_version(
         self,
         *,
@@ -5074,6 +5153,42 @@ class OpenProjectClient:
             ),
         )
 
+    def normalize_sprint(self, payload: dict[str, Any]) -> SprintSummary:
+        links = payload.get("_links", {})
+        status_link = links.get("status")
+        workspace_link = self._sprint_workspace_link(payload)
+        return SprintSummary(
+            id=int(payload["id"]),
+            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Sprint {payload['id']}",
+            status=_link_title(status_link),
+            status_href=status_link.get("href") if isinstance(status_link, dict) else None,
+            start_date=payload.get("startDate"),
+            finish_date=payload.get("finishDate"),
+            defining_workspace_id=_id_from_href(workspace_link.get("href"))
+            if isinstance(workspace_link, dict)
+            else None,
+            defining_workspace=_link_title(workspace_link),
+            created_at=payload.get("createdAt"),
+            updated_at=payload.get("updatedAt"),
+            url=self._web_url(f"sprints/{payload['id']}"),
+        )
+
+    def normalize_sprint_detail(self, payload: dict[str, Any]) -> SprintDetail:
+        summary = self.normalize_sprint(payload)
+        return SprintDetail(
+            id=summary.id,
+            name=summary.name,
+            status=summary.status,
+            status_href=summary.status_href,
+            start_date=summary.start_date,
+            finish_date=summary.finish_date,
+            defining_workspace_id=summary.defining_workspace_id,
+            defining_workspace=summary.defining_workspace,
+            created_at=summary.created_at,
+            updated_at=summary.updated_at,
+            url=summary.url,
+        )
+
     def normalize_board(self, payload: dict[str, Any]) -> BoardSummary:
         links = payload.get("_links", {})
         project_link = links.get("project")
@@ -6805,6 +6920,32 @@ class OpenProjectClient:
         raise PermissionDeniedError(
             f"OpenProject {scope.replace('_', ' ')} read support is disabled. Set {scope_env}=true to allow reads."
         )
+
+    def _sprint_payload_allowed(self, payload: dict[str, Any]) -> bool:
+        try:
+            self._ensure_sprint_workspace_allowed(payload)
+            return True
+        except PermissionDeniedError:
+            return False
+
+    def _ensure_sprint_workspace_allowed(self, payload: dict[str, Any]) -> None:
+        embedded = payload.get("_embedded", {}).get("definingWorkspace")
+        if isinstance(embedded, dict):
+            self._ensure_project_allowed(str(embedded.get("id", "")), payload=embedded)
+            return
+        self._ensure_project_link_allowed(self._sprint_workspace_link(payload))
+
+    def _sprint_workspace_link(self, payload: dict[str, Any]) -> Any:
+        links = payload.get("_links", {})
+        link = links.get("definingWorkspace")
+        if isinstance(link, dict):
+            return link
+        embedded = payload.get("_embedded", {}).get("definingWorkspace")
+        if isinstance(embedded, dict):
+            self_link = embedded.get("_links", {}).get("self")
+            if isinstance(self_link, dict):
+                return {**self_link, "title": self_link.get("title") or embedded.get("name")}
+        return None
 
     def _ensure_project_allowed(self, project_ref: str, *, payload: dict[str, Any] | None = None) -> None:
         if not self.settings.allowed_projects:

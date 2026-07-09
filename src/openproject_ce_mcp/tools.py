@@ -94,6 +94,8 @@ from .models import (
     RenderedText,
     RoleListResult,
     SortCriterion,
+    SprintDetail,
+    SprintListResult,
     StatusListResult,
     StatusSummary,
     TimeEntryActivityListResult,
@@ -210,6 +212,9 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
         tool(get_project_configuration)
         tool(get_project_work_package_context)
         tool(get_my_project_access)
+        tool(list_sprints)
+        tool(list_project_sprints)
+        tool(get_sprint)
 
     # Scoped read: work_package
     if settings.read_enabled("work_package"):
@@ -370,6 +375,45 @@ async def get_project(
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
     return await _run_tool(client.get_project(safe_project))
+
+
+async def list_sprints(
+    ctx: Context,
+    offset: int = 1,
+    limit: int | None = None,
+) -> SprintListResult:
+    """List Backlogs sprints visible to the current token.
+
+    Requires the OpenProject Backlogs module; unavailable instances return a clear not-found message.
+    """
+    client = _client_from_context(ctx)
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    return await _run_tool(client.list_sprints(offset=safe_offset, limit=safe_limit))
+
+
+async def list_project_sprints(
+    ctx: Context,
+    project: str,
+    offset: int = 1,
+    limit: int | None = None,
+) -> SprintListResult:
+    """List Backlogs sprints for a project by id or identifier."""
+    client = _client_from_context(ctx)
+    safe_project = _validate_project_ref(project)
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    return await _run_tool(client.list_project_sprints(safe_project, offset=safe_offset, limit=safe_limit))
+
+
+async def get_sprint(
+    ctx: Context,
+    sprint_id: int,
+) -> SprintDetail:
+    """Get a Backlogs sprint by id."""
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(sprint_id, field_name="sprint_id")
+    return await _run_tool(client.get_sprint(safe_id))
 
 
 async def get_project_admin_context(

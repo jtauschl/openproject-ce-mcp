@@ -34,6 +34,9 @@ def test_defaults_contain_read_tools() -> None:
     assert "list_work_packages" in names
     assert "list_boards" in names
     assert "list_versions" in names
+    assert "list_sprints" in names
+    assert "list_project_sprints" in names
+    assert "get_sprint" in names
     assert "list_project_memberships" in names
 
 
@@ -59,6 +62,9 @@ def test_enable_project_read_false_removes_project_tools() -> None:
     names = _tool_names(mcp)
     assert "list_projects" not in names
     assert "get_project" not in names
+    assert "list_sprints" not in names
+    assert "list_project_sprints" not in names
+    assert "get_sprint" not in names
     # Other scopes remain active
     assert "list_work_packages" in names
     assert "list_boards" in names

@@ -39,6 +39,11 @@ SOURCES = ROOT / ".op-sources"
 CLIENT = ROOT / "src" / "openproject_ce_mcp" / "client.py"
 COVERAGE_MD = Path(__file__).resolve().parent / "COVERAGE.md"
 SOURCE_VERSION = "17.5"  # inventory reference
+DOCUMENTED_RESOURCES = {
+    # Backlogs lives outside the sparse API source checkout but is documented in
+    # the public OpenProject API and exposed on CE instances with Backlogs enabled.
+    "sprints",
+}
 
 # Curated classification of resources that are NOT plain top-level CRUD the
 # client should cover. Anything not listed and not client-used and present in
@@ -69,6 +74,7 @@ CLASSIFICATION: dict[str, str] = {
     "custom_actions": "subresource",
     "emoji_reactions": "subresource",
     # enterprise / feature-flagged (confirmed via live CE probe + source guards)
+    "placeholder_users": "enterprise",
     "portfolios": "enterprise",
     "programs": "enterprise",
     "backups": "enterprise",
@@ -80,7 +86,9 @@ def _source_resources() -> list[str]:
     base = SOURCES / SOURCE_VERSION / "lib" / "api" / "v3"
     if not base.exists():
         return []
-    return sorted(p.name for p in base.iterdir() if p.is_dir())
+    resources = {p.name for p in base.iterdir() if p.is_dir()}
+    resources.update(DOCUMENTED_RESOURCES)
+    return sorted(resources)
 
 
 def _client_resources() -> set[str]:

@@ -29,6 +29,9 @@ A subset of rarely-used metadata tools — the `get_query_*` schema tools, `rend
 | `get_project` | Fetch a compact project summary by id or identifier |
 | `get_project_admin_context` | Return project admin metadata such as lifecycle statuses, parent project options, and writable fields |
 | `get_project_configuration` | Return project-scoped configuration such as internal comment support |
+| `list_sprints` | List Backlogs sprints visible to the current token (requires Backlogs/OpenProject 17.3+) |
+| `list_project_sprints` | List Backlogs sprints for a project by id or identifier |
+| `get_sprint` | Fetch a Backlogs sprint by id |
 | `create_project` | Validate and then create a project; only writes when called again with `confirm=true` |
 | `copy_project` | Validate and then copy an existing project into a new project; only starts the copy job when called again with `confirm=true` |
 | `get_job_status` | Fetch the current status of a background job such as project copy |

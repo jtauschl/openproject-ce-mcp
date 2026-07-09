@@ -596,6 +596,47 @@ class VersionListResult:
 
 
 @dataclass
+class SprintSummary:
+    id: int
+    name: str
+    status: str | None
+    status_href: str | None
+    start_date: str | None
+    finish_date: str | None
+    defining_workspace_id: int | None
+    defining_workspace: str | None
+    created_at: str | None
+    updated_at: str | None
+    url: str
+
+
+@dataclass
+class SprintDetail:
+    id: int
+    name: str
+    status: str | None
+    status_href: str | None
+    start_date: str | None
+    finish_date: str | None
+    defining_workspace_id: int | None
+    defining_workspace: str | None
+    created_at: str | None
+    updated_at: str | None
+    url: str
+
+
+@dataclass
+class SprintListResult:
+    offset: int
+    limit: int
+    total: int
+    count: int
+    next_offset: int | None
+    truncated: bool
+    results: list[SprintSummary]
+
+
+@dataclass
 class BoardFilter:
     key: str | None
     name: str | None

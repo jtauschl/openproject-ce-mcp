@@ -28,7 +28,7 @@ memberships                yes     200    covered
 news                       yes     200    covered
 notifications              yes     200    covered
 oauth                      —       404    subresource?
-placeholder_users          —       200    GAP (CE)
+placeholder_users          —       200    enterprise
 portfolios                 —       200    enterprise
 posts                      —       404    subresource?
 principals                 yes     200    covered
@@ -45,6 +45,7 @@ repositories               —       404    enterprise
 roles                      yes     200    covered
 schemas                    —       404    internal
 shares                     —       200    subresource
+sprints                    yes     200    covered
 statuses                   yes     200    covered
 string_objects             —       400    internal
 types                      yes     200    covered
@@ -61,9 +62,9 @@ wiki_pages                 yes     404    covered
 work_packages              yes     200    covered
 workspaces                 yes     200    covered
 
-Summary: GAP (CE)=1, covered=29, enterprise=4, internal=7, subresource=6, subresource?=6
+Summary: covered=30, enterprise=5, internal=7, subresource=6, subresource?=6
 ```
 
 ## Genuine CE gaps
 
-- `placeholder_users`
+_None — every plain top-level CE resource is covered._

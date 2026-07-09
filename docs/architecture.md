@@ -147,6 +147,7 @@ The MCP targets OpenProject **Community Edition** only. The following feature ar
 - Projects, memberships, roles, principals, project admin context, project configuration
 - Work packages, statuses, priorities, types, categories (read), relations, subtasks, attachments, watchers, activities
 - Versions, boards/queries, views
+- Backlogs sprints (read-only; requires the Backlogs module)
 - News, documents (read/update only), wiki pages (single-page fetch only — no list endpoint in OpenProject v3)
 - Time entries, Nextcloud file links (CE feature, degrades gracefully)
 - Users, groups, user preferences, notifications

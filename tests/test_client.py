@@ -7209,6 +7209,148 @@ async def test_group_members_is_flat_array() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_sprints_normalizes_backlogs_collection() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/sprints" and request.method == "GET":
+            assert request.url.params["offset"] == "1"
+            assert request.url.params["pageSize"] == "20"
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Collection",
+                    "total": 1,
+                    "count": 1,
+                    "pageSize": 20,
+                    "offset": 1,
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "_type": "Sprint",
+                                "id": 1,
+                                "name": "0.3.0 Release Finalization",
+                                "startDate": None,
+                                "finishDate": "2026-07-10",
+                                "createdAt": "2026-07-09T18:56:07Z",
+                                "updatedAt": "2026-07-09T18:57:01Z",
+                                "_links": {
+                                    "self": {"href": "/api/v3/sprints/1", "title": "0.3.0 Release Finalization"},
+                                    "status": {
+                                        "href": "urn:openproject-org:api:v3:sprints:status:in_planning",
+                                        "title": "In Planning",
+                                    },
+                                    "definingWorkspace": {"href": "/api/v3/projects/7", "title": "Demo"},
+                                },
+                            }
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    result = await client.list_sprints()
+
+    assert result.total == 1
+    assert result.results[0].id == 1
+    assert result.results[0].name == "0.3.0 Release Finalization"
+    assert result.results[0].status == "In Planning"
+    assert result.results[0].status_href == "urn:openproject-org:api:v3:sprints:status:in_planning"
+    assert result.results[0].finish_date == "2026-07-10"
+    assert result.results[0].defining_workspace_id == 7
+    assert result.results[0].defining_workspace == "Demo"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_project_sprints_resolves_project_and_allows_empty_collection() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 7, "identifier": "demo", "name": "Demo", "active": True},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/7/sprints" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Collection", "total": 0, "count": 0, "pageSize": 20, "offset": 1, "_embedded": {}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    result = await client.list_project_sprints("demo")
+
+    assert result.total == 0
+    assert result.count == 0
+    assert result.results == []
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_sprint_normalizes_detail() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/sprints/1" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Sprint",
+                    "id": 1,
+                    "name": "0.3.0 Release Finalization",
+                    "startDate": "2026-07-09",
+                    "finishDate": "2026-07-10",
+                    "createdAt": "2026-07-09T18:56:07Z",
+                    "updatedAt": "2026-07-09T18:57:01Z",
+                    "_embedded": {
+                        "definingWorkspace": {
+                            "_type": "Project",
+                            "id": 7,
+                            "identifier": "demo",
+                            "name": "Demo",
+                            "_links": {"self": {"href": "/api/v3/projects/7", "title": "Demo"}},
+                        }
+                    },
+                    "_links": {
+                        "status": {
+                            "href": "urn:openproject-org:api:v3:sprints:status:in_planning",
+                            "title": "In Planning",
+                        },
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    sprint = await client.get_sprint(1)
+
+    assert sprint.id == 1
+    assert sprint.start_date == "2026-07-09"
+    assert sprint.finish_date == "2026-07-10"
+    assert sprint.defining_workspace_id == 7
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_sprints_translates_missing_backlogs_module() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/sprints" and request.method == "GET":
+            return httpx.Response(404, json={"message": "Not found"}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(NotFoundError, match="Backlogs module"):
+        await client.list_sprints()
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_emoji_reaction_toggle_uses_activity_work_package_link_shape() -> None:
     """Verify activity -> workPackage link shape before toggling reactions (OPM-51).
 

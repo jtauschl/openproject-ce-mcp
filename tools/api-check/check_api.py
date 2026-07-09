@@ -302,6 +302,7 @@ MODULE_RESOURCES = {
     "documents": "documents",
     "file_links": "storages",
     "job_statuses": "job_statuses",
+    "sprints": "backlogs",
     "time_entries": "costs",
 }
 # Path-helper / directory names that differ from the client's path segment.
