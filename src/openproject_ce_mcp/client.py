@@ -282,27 +282,47 @@ class OpenProjectClient:
         filters: list[dict[str, Any]] = []
         if search:
             filters.append({"name_and_identifier": {"operator": "~", "values": [search]}})
-        payload = await self._get(
-            "projects",
-            params={
-                "offset": str(offset),
-                "pageSize": str(effective_limit),
-                "filters": _json_param(filters),
-            },
-        )
-        raw_projects = payload.get("_embedded", {}).get("elements", [])
-        projects = [project for project in raw_projects if project.get("_type") == "Project"]
-        projects = [project for project in projects if self._project_payload_allowed(project)]
-        results = [self.normalize_project(project) for project in projects]
-        server_total = int(payload.get("total", len(results)))
+
+        # OPM-82: Fetch multiple pages if needed to collect `limit` allowed projects
+        results: list[ProjectSummary] = []
+        server_offset = offset
+        server_page_size = self.settings.max_page_size
+
+        while len(results) < effective_limit:
+            payload = await self._get(
+                "projects",
+                params={
+                    "offset": str(server_offset),
+                    "pageSize": str(server_page_size),
+                    "filters": _json_param(filters),
+                },
+            )
+            raw_projects = payload.get("_embedded", {}).get("elements", [])
+            if not raw_projects:
+                break  # No more results from API
+
+            projects = [p for p in raw_projects if p.get("_type") == "Project"]
+            projects = [p for p in projects if self._project_payload_allowed(p)]
+            results.extend(self.normalize_project(p) for p in projects)
+
+            server_total = int(payload.get("total", 0))
+            server_offset += server_page_size
+
+            # Stop if we've fetched all available projects from the server
+            if server_offset > server_total:
+                break
+
+        # Trim to requested limit
+        results = results[:effective_limit]
         total = len(results)
+
         return ProjectListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=total,
-            next_offset=_next_offset(offset, effective_limit, server_total),
-            truncated=server_total > offset * effective_limit,
+            next_offset=offset + 1 if total == effective_limit else None,
+            truncated=False,  # We fetched until limit or exhausted
             results=results,
         )
 
