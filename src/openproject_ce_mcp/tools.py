@@ -363,7 +363,10 @@ async def get_project(
     ctx: Context,
     project: str,
 ) -> ProjectSummary:
-    """Get a compact project summary by id or identifier."""
+    """Get a compact project summary by id or identifier.
+
+    project: numeric id (e.g., 7) or identifier (e.g., "opm-openproject-ce-mcp"), not display name.
+    """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
     return await _run_tool(client.get_project(safe_project))
@@ -1098,8 +1101,11 @@ async def search_work_packages(
 
     sort_by accepts a list of sort criteria in format "field:direction"
     (e.g., ["status:desc", "priority:asc"]). Direction defaults to "asc" if omitted.
+    Common sortable fields: id, subject, status, priority, type, assignee, author,
+    created_at, updated_at, start_date, due_date.
 
     group_by accepts a field name to group results by (e.g., "status", "assignee").
+    Common groupable fields: status, priority, type, assignee, author, version, category.
 
     select restricts each result row to the given fields (e.g. ["id", "subject",
     "status"]); an invalid name returns the allowed set. Common fields: id,
@@ -1251,7 +1257,8 @@ async def get_work_package(
 ) -> WorkPackageDetail:
     """Get a work package by id, including its full description.
 
-    Accepts a numeric id or a project-prefixed reference like PROJ-123.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"),
+    not UI display number (e.g., 51).
 
     The description is returned in full by default (single work packages are not
     truncated). Pass ``text_limit`` to cap it at that many characters; when the
@@ -1275,8 +1282,8 @@ async def get_work_packages(
     Failed fetches are reported individually without stopping the batch.
     Maximum 100 IDs per batch.
 
-    ids accepts numeric ids or project-prefixed references like PROJ-123.
-    Duplicate IDs are automatically deduplicated.
+    ids: internal ids (e.g., 952) or display_ids (e.g., "OPM-51"),
+    not UI display numbers. Duplicate IDs are automatically deduplicated.
     """
     client = _client_from_context(ctx)
 
@@ -1328,7 +1335,7 @@ async def create_work_package(
     """Prepare or create a work package.
 
     The tool validates the payload first. Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
-    assignee accepts a numeric user id or 'me'. parent accepts a numeric id or a project-prefixed reference like PROJ-123 to nest the new work package under a parent.
+    assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number to nest the new work package under a parent.
     estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'PT30M' for 30 minutes). Day-based formats like 'P1D' are not supported by OpenProject.
     """
     client = _client_from_context(ctx)
@@ -1398,8 +1405,8 @@ async def update_work_package(
     """Prepare or update a work package.
 
     The tool validates the patch first. Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
-    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
-    assignee accepts a numeric user id or 'me'. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
     estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours) or None to leave unchanged. Day-based formats like 'P1D' are not supported by OpenProject.
     """
     client = _client_from_context(ctx)
@@ -1646,7 +1653,7 @@ async def delete_work_package(
     """Prepare or delete a work package.
 
     The tool previews the target first. Set confirm=true to delete, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
-    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -1673,7 +1680,7 @@ async def create_subtask(
     """Prepare or create a subtask under an existing work package.
 
     The tool validates the payload first. Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
-    parent_work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    parent_work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_parent_id = _validate_work_package_ref(parent_work_package_id, field_name="parent_work_package_id")
@@ -1720,7 +1727,7 @@ async def add_work_package_comment(
     """Prepare or add a comment to a work package.
 
     The tool only writes when confirm=true. notify=false avoids change emails by default.
-    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -1747,8 +1754,8 @@ async def create_work_package_relation(
 ) -> RelationWriteResult:
     """Prepare or create a relation between work packages.
 
-    Both work_package_id and related_to_work_package_id accept a numeric id or a
-    project-prefixed reference like PROJ-123.
+    Both work_package_id and related_to_work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    relation_type: relates, duplicates, duplicated, blocks, blocked, precedes, follows, includes, partof, requires, required.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2076,7 +2083,7 @@ async def list_work_package_attachments(
 ) -> AttachmentListResult:
     """List attachments on a work package.
 
-    Accepts a numeric id or a project-prefixed reference like PROJ-123.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2102,7 +2109,7 @@ async def create_work_package_attachment(
 ) -> AttachmentWriteResult:
     """Prepare or upload an attachment to a work package.
 
-    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_work_package_id = _validate_work_package_ref(work_package_id)
@@ -2147,7 +2154,7 @@ async def list_time_entries(
 ) -> TimeEntryListResult:
     """List time entries with optional project, work package, user, and date filters.
 
-    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -2196,7 +2203,7 @@ async def create_time_entry(
 ) -> TimeEntryWriteResult:
     """Prepare or create a time entry.
 
-    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     start_time/end_time are ISO 8601 date-times and require the instance setting
     "allow tracking of start and end times"; they are ignored otherwise.
     """
@@ -2299,7 +2306,7 @@ async def get_work_package_relations(
 ) -> RelationListResult:
     """Get all relations for a work package (blocks, relates to, duplicates, etc.).
 
-    Accepts a numeric id or a project-prefixed reference like PROJ-123.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2314,7 +2321,7 @@ async def get_work_package_activities(
 ) -> ActivityListResult:
     """Get the activity log for a work package, most recent first.
 
-    Accepts a numeric id or a project-prefixed reference like PROJ-123.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
 
     Comments are capped by default to keep the log compact; pass ``text_limit``
     to widen (or ``0``-based semantics via a larger value) the per-comment cap.
@@ -2338,7 +2345,7 @@ async def list_work_package_reactions(
 ) -> EmojiReactionListResult:
     """List emoji reactions across a work package's comment activities.
 
-    Accepts a numeric id or a project-prefixed reference like PROJ-123.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2379,7 +2386,7 @@ async def create_work_package_reminder(
 
     `remind_at` is an ISO 8601 date-time (e.g. 2026-12-01T09:00:00Z). Only one
     active reminder per work package is allowed; creating a second one fails.
-    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2435,7 +2442,7 @@ async def add_project_favorite(
 ) -> FavoriteWriteResult:
     """Prepare or mark a project as a favorite; only writes when called again with confirm=true.
 
-    project accepts a numeric id or a project identifier.
+    project: numeric id (e.g., 7) or identifier (e.g., "opm-openproject-ce-mcp"), not display name.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
@@ -2449,7 +2456,7 @@ async def remove_project_favorite(
 ) -> FavoriteWriteResult:
     """Prepare or remove a project from favorites; only writes when called again with confirm=true.
 
-    project accepts a numeric id or a project identifier.
+    project: numeric id (e.g., 7) or identifier (e.g., "opm-openproject-ce-mcp"), not display name.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
@@ -2519,7 +2526,7 @@ async def list_work_package_watchers(
 ) -> WatcherListResult:
     """List watchers of a work package.
 
-    Accepts a numeric id or a project-prefixed reference like PROJ-123.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2534,7 +2541,7 @@ async def add_work_package_watcher(
 ) -> WatcherWriteResult:
     """Prepare or add a watcher to a work package.
 
-    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_wp_id = _validate_work_package_ref(work_package_id)
@@ -2550,7 +2557,7 @@ async def remove_work_package_watcher(
 ) -> WatcherWriteResult:
     """Prepare or remove a watcher from a work package.
 
-    work_package_id accepts a numeric id or a project-prefixed reference like PROJ-123.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_wp_id = _validate_work_package_ref(work_package_id)
@@ -2737,7 +2744,7 @@ async def list_work_package_file_links(
 ) -> FileLinkListResult:
     """List Nextcloud file links attached to a work package (Community Edition).
 
-    Accepts a numeric id or a project-prefixed reference like PROJ-123.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -3259,7 +3266,9 @@ def _validate_project_ref(value: str) -> str:
         _validate_positive_int(int(normalized), field_name="project")
         return normalized
     if not PROJECT_REF_RE.fullmatch(normalized):
-        raise ValueError("project must be a positive integer id or a valid project identifier.")
+        raise ValueError(
+            "project: numeric id (e.g., 7) or identifier (e.g., 'opm-openproject-ce-mcp'), not display name. Call list_projects."
+        )
     return normalized
 
 
@@ -3280,7 +3289,10 @@ def _validate_work_package_ref(value: str, *, field_name: str = "work_package_id
         _validate_positive_int(int(normalized), field_name=field_name)
         return normalized
     if not WORK_PACKAGE_REF_RE.fullmatch(normalized):
-        raise ValueError(f"{field_name} must be a positive integer id or a work package reference (e.g. PROJ-123).")
+        raise ValueError(
+            f"{field_name}: use internal id (e.g., 952) or display_id (e.g., 'OPM-51'), "
+            f"not UI display number (e.g., 51)."
+        )
     return normalized
 
 
@@ -3301,7 +3313,7 @@ def _validate_optional_user_ref(value: str | None, field_name: str = "assignee")
     if normalized.isdigit():
         _validate_positive_int(int(normalized), field_name=field_name)
         return normalized
-    raise ValueError(f"{field_name} must be a positive integer user id or 'me'.")
+    raise ValueError(f"{field_name}: 'me' or numeric user id (e.g., 42). Call list_users to find ids.")
 
 
 def _validate_optional_user_or_principal_ref(value: str | None) -> str | None:

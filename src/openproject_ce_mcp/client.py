@@ -2202,7 +2202,9 @@ class OpenProjectClient:
         if not ids:
             raise ValueError("ids list cannot be empty")
         if len(ids) > BATCH_READ_MAX_IDS:
-            raise ValueError(f"Maximum {BATCH_READ_MAX_IDS} work packages per batch (got {len(ids)})")
+            raise ValueError(
+                f"Maximum {BATCH_READ_MAX_IDS} work packages per batch (got {len(ids)}). Split into multiple calls."
+            )
 
         # Create parallel fetch tasks
         async def fetch_one(id: int | str) -> tuple[int | str, WorkPackageDetail | None, str | None]:
