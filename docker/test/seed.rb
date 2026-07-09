@@ -26,15 +26,16 @@ token = Token::API.create!(user: admin)
 log("API_TOKEN=#{token.plain_value}")
 
 # --- Test project + one work package ------------------------------------------
-# Semantic mode (17.5+) requires uppercase identifiers; classic mode accepts both.
-# Always use uppercase so the script is idempotent across semantic/classic mode.
-target_identifier = "TST"
-project = Project.find_by(identifier: target_identifier) || Project.find_by(identifier: target_identifier.downcase)
+# Semantic mode (17.5+) requires uppercase identifiers; classic mode accepts lowercase.
+# Create with the appropriate case, but tolerate finding either for idempotence.
+semantic_mode = ENV["SEED_SEMANTIC"] == "1"
+base_identifier = semantic_mode ? "TST" : "tst"
+project = Project.find_by(identifier: base_identifier) || Project.find_by(identifier: base_identifier.swapcase)
 if project.nil?
-  attrs = {name: "TST Test", identifier: target_identifier, public: false}
+  attrs = {name: "TST Test", identifier: base_identifier, public: false}
   attrs[:workspace_type] = "project" if Project.new.respond_to?(:workspace_type)
   project = Project.create!(**attrs)
-  log("created project #{target_identifier} (id=#{project.id})")
+  log("created project #{base_identifier} (id=#{project.id})")
 else
   log("project #{project.identifier} already present (id=#{project.id})")
 end
@@ -81,12 +82,12 @@ if ENV["SEED_SEMANTIC"] == "1"
   if defined?(Setting::WorkPackageIdentifier)
     Setting.work_packages_identifier = "semantic"
     log("set work_packages_identifier = semantic")
-    # Ensure identifier is uppercase (it already is, from creation above, but check
-    # for idempotence if an old lowercase project exists).
-    if project.identifier != target_identifier
+    # Ensure identifier is uppercase for semantic mode (it already is if created above,
+    # but handle idempotence if an old lowercase project exists).
+    if project.identifier != base_identifier
       # Skip the unique validation by updating directly — old "tst" conflicts with
       # new "TST" on case-insensitive DBs; update_column bypasses that.
-      project.update_column(:identifier, target_identifier)
+      project.update_column(:identifier, base_identifier)
       log("uppercased identifier to #{project.reload.identifier} for semantic mode")
     end
     # Allocate semantic ids for existing work packages. Saving is not enough —

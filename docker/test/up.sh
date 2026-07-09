@@ -69,12 +69,14 @@ for entry in "${SEMANTIC[@]}"; do
     echo "WARNING: could not capture API token for $svc — check seed output above." >&2
     continue
   fi
+  # Project identifier matches seed.rb: uppercase in semantic mode, lowercase otherwise
+  test_project="$( [ "$semantic" = "1" ] && echo "TST" || echo "tst" )"
   cat <<EOF
 
 # --- $svc (port $port) -------------------------------------------------
 OPENPROJECT_BASE_URL=http://localhost:$port \\
 OPENPROJECT_API_TOKEN=$token \\
-OPENPROJECT_TEST_PROJECT=TST \\
+OPENPROJECT_TEST_PROJECT=$test_project \\
 uv run pytest -m integration -v
 EOF
 done
