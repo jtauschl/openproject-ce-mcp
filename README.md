@@ -462,7 +462,7 @@ Five files, no deep abstractions:
 
 `client.py` is intentionally large: all policy-sensitive logic (read gates, write gates, project scoping, field hiding) lives in one place to make it easier to audit.
 
-See [docs/architecture.md](docs/architecture.md) for request flow details and the safety model.
+See [docs/architecture.md](docs/architecture.md) for request flow details, naming conventions, and the safety model.
 
 ---
 

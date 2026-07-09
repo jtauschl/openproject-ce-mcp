@@ -251,19 +251,19 @@ class OpenProjectClient:
         try:
             payload = await self._get("projects", params={"pageSize": "500"})
             for item in payload.get("_embedded", {}).get("elements", []):
-                proj_id = item.get("id")
-                proj_identifier = item.get("identifier")
-                proj_name = item.get("name") or ""
-                if not isinstance(proj_id, int) or not isinstance(proj_identifier, str):
+                project_id = item.get("id")
+                project_identifier = item.get("identifier")
+                project_name = item.get("name") or ""
+                if not isinstance(project_id, int) or not isinstance(project_identifier, str):
                     continue
                 candidates: set[str] = {
-                    proj_identifier.casefold(),
-                    str(proj_id),
-                    proj_name.casefold(),
-                    proj_name.casefold().replace(" ", "-"),
+                    project_identifier.casefold(),
+                    str(project_id),
+                    project_name.casefold(),
+                    project_name.casefold().replace(" ", "-"),
                 }
                 if _scope_matches_candidates(self.settings.allowed_projects, candidates):
-                    self._project_id_to_identifier[proj_id] = proj_identifier
+                    self._project_id_to_identifier[project_id] = project_identifier
         except Exception:
             pass
 
@@ -2207,16 +2207,16 @@ class OpenProjectClient:
             )
 
         # Create parallel fetch tasks
-        async def fetch_one(id: int | str) -> tuple[int | str, WorkPackageDetail | None, str | None]:
+        async def fetch_one(work_package_ref: int | str) -> tuple[int | str, WorkPackageDetail | None, str | None]:
             try:
-                wp = await self.get_work_package(id, text_limit=text_limit)
-                return (id, wp, None)
+                work_package = await self.get_work_package(work_package_ref, text_limit=text_limit)
+                return (work_package_ref, work_package, None)
             except (OpenProjectError, InvalidInputError, httpx.HTTPError) as e:
                 # Catch expected API errors, not system exceptions like CancelledError
-                return (id, None, str(e))
+                return (work_package_ref, None, str(e))
 
         # Execute in parallel
-        results = await asyncio.gather(*[fetch_one(id) for id in ids])
+        results = await asyncio.gather(*[fetch_one(work_package_ref) for work_package_ref in ids])
 
         # Build result items
         items = []
@@ -3263,13 +3263,13 @@ class OpenProjectClient:
         # Fail closed: if the activity has no resolvable workPackage link, refuse
         # rather than patch an unchecked target.
         activity = await self._get(f"activities/{activity_id}")
-        wp_ref = _id_from_href(activity.get("_links", {}).get("workPackage", {}).get("href"))
-        if not wp_ref:
+        work_package_ref = _id_from_href(activity.get("_links", {}).get("workPackage", {}).get("href"))
+        if not work_package_ref:
             raise OpenProjectServerError(
                 "OpenProject activity is missing a work package link; cannot verify project write access."
             )
-        wp_payload = await self._get(f"work_packages/{wp_ref}")
-        self._ensure_project_write_link_allowed(wp_payload.get("_links", {}).get("project"))
+        work_package_payload = await self._get(f"work_packages/{work_package_ref}")
+        self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
         # PATCH toggles: adds the reaction if absent, removes it if present, and
         # returns the full reaction collection for the activity afterwards.
         payload = await self._patch(
@@ -3313,8 +3313,8 @@ class OpenProjectClient:
         note: str | None = None,
         confirm: bool = False,
     ) -> ReminderWriteResult:
-        wp_ref = self._work_package_ref(work_package_id)
-        current = await self._get(f"work_packages/{wp_ref}")
+        work_package_ref = self._work_package_ref(work_package_id)
+        current = await self._get(f"work_packages/{work_package_ref}")
         self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
         payload: dict[str, Any] = {"remindAt": remind_at}
         if note is not None:
@@ -3334,7 +3334,7 @@ class OpenProjectClient:
         self._ensure_write_enabled("work_package")
         # One active reminder per work package/user: a second create returns 409,
         # surfaced as InvalidInputError with the API's "update or delete" message.
-        response = await self._post(f"work_packages/{wp_ref}/reminders", json_body=payload)
+        response = await self._post(f"work_packages/{work_package_ref}/reminders", json_body=payload)
         result = self.normalize_reminder(response)
         return ReminderWriteResult(
             action="create",
@@ -3594,8 +3594,8 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> WatcherWriteResult:
         work_package_id = self._work_package_ref(work_package_id)
-        wp_payload = await self._get(f"work_packages/{work_package_id}")
-        self._ensure_project_write_link_allowed(wp_payload.get("_links", {}).get("project"))
+        work_package_payload = await self._get(f"work_packages/{work_package_id}")
+        self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
         if self._preview_mode(confirm):
             user_payload = await self._get(f"users/{user_id}")
             watcher = self.normalize_watcher(user_payload)
@@ -3636,8 +3636,8 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> WatcherWriteResult:
         work_package_id = self._work_package_ref(work_package_id)
-        wp_payload = await self._get(f"work_packages/{work_package_id}")
-        self._ensure_project_write_link_allowed(wp_payload.get("_links", {}).get("project"))
+        work_package_payload = await self._get(f"work_packages/{work_package_id}")
+        self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
         if self._preview_mode(confirm, delete=True):
             return WatcherWriteResult(
                 action="remove",
@@ -4083,8 +4083,8 @@ class OpenProjectClient:
         # resolved: _ensure_project_write_link_allowed(None) rejects unless the
         # write scope is unconfigured / "*".
         if work_package_id:
-            wp_payload = await self._get(f"work_packages/{work_package_id}")
-            self._ensure_project_write_link_allowed(wp_payload.get("_links", {}).get("project"))
+            work_package_payload = await self._get(f"work_packages/{work_package_id}")
+            self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
         else:
             self._ensure_project_write_link_allowed(None)
         if self._preview_mode(confirm, delete=True):
@@ -7379,18 +7379,18 @@ class OpenProjectClient:
         resolved by fetching the work package — the path endpoint accepts the semantic
         form on OpenProject 17.5+ — and reading back its numeric ``id``.
         """
-        s = str(ref).strip()
-        if s.isdigit():
-            return int(s)
+        reference = str(ref).strip()
+        if reference.isdigit():
+            return int(reference)
         try:
-            payload = await self._get(f"work_packages/{quote(s, safe='')}")
+            payload = await self._get(f"work_packages/{quote(reference, safe='')}")
         except NotFoundError as exc:
             # A project-prefixed reference only resolves on OpenProject 17.5+ (and
             # requires the exact, case-sensitive project identifier). Give a hint
             # instead of a bare "not found" so a too-old instance or a case/prefix
             # mismatch is distinguishable from a genuinely missing work package.
             raise NotFoundError(
-                f"Work package '{s}' was not found. Semantic references like 'PROJ-123' "
+                f"Work package '{reference}' was not found. Semantic references like 'PROJ-123' "
                 "require OpenProject 17.5+ and the exact project identifier (case-sensitive); "
                 "on older instances use the numeric work-package id."
             ) from exc

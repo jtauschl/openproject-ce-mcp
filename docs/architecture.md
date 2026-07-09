@@ -57,6 +57,29 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
+## Naming conventions
+
+The code intentionally mirrors OpenProject source names at the API boundary. Do not
+rename OpenProject concepts into more generic MCP names when the spelling comes
+from the REST API, HAL links, query filters, or documented payload fields.
+
+- Work package text is `subject`, not `title`.
+- News and document text is `title`, because those resources use title fields.
+- Time-entry dates use `spent_on`, matching the OpenProject payload.
+- OpenProject timestamps keep `*_at`; calendar-only fields keep `*_date`.
+- Query filters use the source-defined filter keys such as `type_id`,
+  `version_id`, `assigned_to_id`, `status_id`, `priority_id`, `project_id`, and
+  `subject_or_id`.
+- HAL slug identifiers such as action, capability, query column, query operator,
+  and sort-by ids stay strings. Database primary keys use numeric `*_id` names.
+- MCP tool parameters use simple user-facing names (`project`, `version`,
+  `work_package_id`). Internal helper names may use `*_ref` when the value can be
+  a numeric id or a semantic/name reference, and `*_id` only when the value is
+  known to be numeric.
+
+This keeps the implementation source-conformant while still making internal
+resolution steps explicit.
+
 ## Request flow
 
 Typical read flow:

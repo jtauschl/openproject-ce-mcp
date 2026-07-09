@@ -1296,8 +1296,8 @@ async def get_work_packages(
     # Validate and deduplicate while preserving order
     seen = set()
     unique_ids = []
-    for id in ids:
-        safe_id = _validate_work_package_ref(id)
+    for raw_id in ids:
+        safe_id = _validate_work_package_ref(raw_id)
         normalized = str(safe_id)
         if normalized not in seen:
             seen.add(normalized)
@@ -1575,10 +1575,10 @@ async def bulk_update_work_packages(
     for i, item in enumerate(items):
         if not isinstance(item, dict):
             raise ValueError(f"items[{i}] must be an object.")
-        wp_id = item.get("work_package_id")
-        if wp_id is None:
+        work_package_id = item.get("work_package_id")
+        if work_package_id is None:
             raise ValueError(f"items[{i}].work_package_id is required.")
-        safe_id = _validate_work_package_ref(wp_id, field_name=f"items[{i}].work_package_id")
+        safe_id = _validate_work_package_ref(work_package_id, field_name=f"items[{i}].work_package_id")
         safe_subject = _validate_optional_query(item.get("subject"), field_name=f"items[{i}].subject", max_length=255)
         safe_description = _validate_optional_text(
             item.get("description"), field_name=f"items[{i}].description", max_length=10_000
