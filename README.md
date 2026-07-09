@@ -315,6 +315,55 @@ unregistering the client entries:
 
 ---
 
+## Troubleshooting
+
+If the OpenProject MCP server doesn't appear in your MCP client after installation and configuration, run the built-in diagnostic command:
+
+```bash
+openproject-ce-mcp doctor
+```
+
+The `doctor` command checks your complete MCP setup and reports what's working and what needs fixing:
+
+1. **Binary and version** — verifies the installed package and resolved binary path
+2. **Client configs** — discovers MCP client configurations (Claude Code, Claude Desktop, VS Code, Codex, Cursor)
+3. **Config parsing** — validates that your client configs are readable and contain a valid `openproject` entry
+4. **Environment** — loads and validates `OPENPROJECT_*` environment variables from your client config or shell
+5. **API connectivity** — tests your base URL and API token with a live connection to OpenProject
+6. **Tool registration** — previews which MCP tools will be registered based on your read/write permissions
+
+Example output:
+
+```
+Running OpenProject MCP diagnostics...
+
+[OK] Binary: /usr/local/bin/openproject-ce-mcp (v0.2.2)
+[OK] Clients: 2 configs found
+  - Claude Code (global, detected): ~/.claude.json
+  - Claude Desktop (global, detected): ~/Library/.../claude_desktop_config.json
+[OK] Config parsing: all openproject entries valid
+[OK] Environment: loaded from client configs
+[OK] API: connected (Your Name)
+[OK] Tools: 127 registered
+  create_work_package, list_projects, update_work_package, ...
+
+Restart needed for:
+  - Claude Desktop: quit and reopen (window reload not enough)
+
+All checks passed.
+```
+
+If a check fails, doctor prints a `[FAIL]` message with details and suggestions. Common issues:
+
+- **Missing env vars**: Add `OPENPROJECT_BASE_URL` and `OPENPROJECT_API_TOKEN` to your client config's `env` section
+- **Auth failure**: Check that your API token is valid (regenerate it in OpenProject if needed)
+- **Cannot connect**: Verify your base URL is correct and the OpenProject instance is reachable
+- **No configs found**: Run `openproject-ce-mcp configure` to register the server with your MCP clients
+
+**Exit codes**: `0` = all checks passed, `1` = one or more checks failed
+
+---
+
 ## Configuration
 
 Your client config (`.mcp.json`, `.codex/config.toml`, or `.vscode/mcp.json`) contains your API token. Treat it like a password. This repo gitignores `.mcp.json`, but when you place a project-scoped config in your **own** project, add it to that project's `.gitignore` so the token is never committed.

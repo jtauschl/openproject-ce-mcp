@@ -335,3 +335,23 @@ def test_main_version_prints_version(monkeypatch, capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     assert __version__ in capsys.readouterr().out
+
+
+def test_main_doctor_help_prints_help_not_runs_checks(monkeypatch, capsys) -> None:
+    """Regression test: doctor --help should show help, not run diagnostics."""
+    import openproject_ce_mcp.server as srv
+
+    monkeypatch.setattr(srv.sys, "argv", ["openproject-ce-mcp", "doctor", "--help"])
+    try:
+        srv.main()
+    except SystemExit as exc:
+        assert exc.code == 0
+
+    out = capsys.readouterr().out
+    # Should show argparse help for doctor subcommand
+    assert "usage:" in out
+    assert "doctor" in out
+    # Should NOT run actual diagnostics
+    assert "Running OpenProject MCP diagnostics" not in out
+    assert "[OK]" not in out
+    assert "[FAIL]" not in out

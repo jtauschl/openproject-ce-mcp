@@ -182,14 +182,18 @@ def _build_parser() -> argparse.ArgumentParser:
             "reads its configuration from OPENPROJECT_* environment variables "
             "(see the README)."
         ),
-        epilog="Run 'openproject-ce-mcp configure --help' for setup options.",
+        epilog="Run 'openproject-ce-mcp doctor' to diagnose setup issues, or 'openproject-ce-mcp configure --help' for setup options.",
     )
     parser.add_argument("-V", "--version", action="version", version=f"openproject-ce-mcp {__version__}")
-    sub = parser.add_subparsers(dest="command", metavar="{configure}")
+    sub = parser.add_subparsers(dest="command", metavar="{configure,doctor}")
     sub.add_parser(
         "configure",
         add_help=False,  # forwarded verbatim to the setup CLI, which owns --help
         help="Register the server with your MCP clients and write .mcp.json.",
+    )
+    sub.add_parser(
+        "doctor",
+        help="Diagnose MCP setup and connectivity issues.",
     )
     return parser
 
@@ -232,6 +236,14 @@ def main() -> None:
 
         setup_main(sys.argv[2:])
         return
+
+    if arg == "doctor":
+        # Let argparse handle --help for doctor subcommand
+        if "--help" in sys.argv[2:] or "-h" in sys.argv[2:]:
+            parser.parse_args(sys.argv[1:])
+        from .doctor import run_doctor
+
+        sys.exit(run_doctor())
 
     # --help / --version: let argparse render and exit.
     parser.parse_args(sys.argv[1:])
