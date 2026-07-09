@@ -275,7 +275,8 @@ async def test_list_work_packages_returns_version_and_description_flags() -> Non
 
     assert result.count == 1
     assert result.results[0].version == "Q2"
-    assert result.results[0].description == "Sync Apple Health data"
+    # Description includes <user-content> tags
+    assert result.results[0].description == "<user-content>Sync Apple Health data</user-content>"
     assert result.results[0].has_description is True
 
     await client.aclose()

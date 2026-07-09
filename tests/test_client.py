@@ -966,7 +966,7 @@ async def test_list_work_packages_resolves_type_and_version_filters() -> None:
     assert result.count == 1
     assert result.results[0].type == "Feature"
     assert result.results[0].version == "v1"
-    assert result.results[0].description == "Sync steps and calories"
+    assert result.results[0].description == "<user-content>Sync steps and calories</user-content>"
     assert result.results[0].has_description is True
 
     await client.aclose()
@@ -1947,7 +1947,7 @@ async def test_add_work_package_comment_writes_after_confirmation_when_enabled()
 
     assert result.confirmed is True
     assert result.result is not None
-    assert result.result.comment == "Please verify on staging."
+    assert result.result.comment == "<user-content>Please verify on staging.</user-content>"
 
     await client.aclose()
 
@@ -5748,10 +5748,12 @@ async def test_get_work_package_returns_full_description_by_default() -> None:
     detail = await client.get_work_package("42")
 
     assert detail.description is not None
-    assert detail.description.endswith("END")  # not cut
+    assert detail.description.endswith("END</user-content>")  # not cut, includes delimiter
+    assert detail.description.startswith("<user-content>")
     assert "…" not in detail.description
     assert detail.description_truncated is False
-    assert detail.description_length == len(detail.description)
+    # description_length is the original length without delimiters
+    assert detail.description_length + 29 == len(detail.description)  # +29 for <user-content> tags
 
     await client.aclose()
 
@@ -5772,8 +5774,10 @@ async def test_get_work_package_text_limit_caps_and_flags() -> None:
     detail = await client.get_work_package("42", text_limit=200)
 
     assert detail.description is not None
-    assert len(detail.description) <= 200
-    assert detail.description.endswith("…")
+    # Description includes <user-content> tags (29 chars), so limit is 200 + 29 = 229
+    assert len(detail.description) <= 229
+    assert detail.description.startswith("<user-content>")
+    assert detail.description.endswith("…</user-content>")
     assert detail.description_truncated is True
     assert detail.description_length == 2000
     # Invariant.
@@ -5797,7 +5801,8 @@ async def test_get_work_package_preserves_paragraphs() -> None:
 
     detail = await client.get_work_package("42")
 
-    assert detail.description == structured  # newlines/list preserved
+    # newlines/list preserved, but wrapped in delimiters
+    assert detail.description == f"<user-content>{structured}</user-content>"
 
     await client.aclose()
 
@@ -5831,7 +5836,10 @@ async def test_summary_sets_truncation_flag_and_stays_single_line() -> None:
     summary = result.results[0]
 
     assert summary.description is not None
-    assert len(summary.description) <= 500
+    # Description includes <user-content> tags (30 chars), so limit is 500 + 30 = 530
+    assert len(summary.description) <= 530
+    assert summary.description.startswith("<user-content>")
+    assert summary.description.endswith("</user-content>")
     assert summary.description_truncated is True
     assert summary.description_length == 900
 
@@ -5854,7 +5862,10 @@ def test_normalize_activity_returns_full_comment_by_default() -> None:
     )
 
     assert activity.comment is not None
-    assert len(activity.comment) == 3000
+    # Comment includes <user-content> tags (29 chars total for opening + closing)
+    assert len(activity.comment) == 3029
+    assert activity.comment.startswith("<user-content>")
+    assert activity.comment.endswith("</user-content>")
     assert "…" not in activity.comment
     assert activity.comment_truncated is False
     assert activity.comment_length == 3000
@@ -5872,7 +5883,10 @@ def test_summary_cap_follows_text_limit_setting() -> None:
     )
 
     assert summary.description is not None
-    assert len(summary.description) <= 100
+    # Description includes <user-content> tags (30 chars), so limit is 100 + 30 = 130
+    assert len(summary.description) <= 130
+    assert summary.description.startswith("<user-content>")
+    assert summary.description.endswith("</user-content>")
     assert summary.description_truncated is True
     assert summary.description_length == 900
 
@@ -6654,5 +6668,159 @@ async def test_delete_file_link_allows_write_project() -> None:
 
     assert deleted.get("done") is True
     assert result.confirmed is True
+
+    await client.aclose()
+
+
+# OPM-74: User content delimiting tests
+
+
+def test_delimit_user_content_wraps_non_empty_text():
+    from openproject_ce_mcp.client import _delimit_user_content
+
+    result = _delimit_user_content("This is user content")
+    assert result == "<user-content>This is user content</user-content>"
+
+
+def test_delimit_user_content_preserves_none():
+    from openproject_ce_mcp.client import _delimit_user_content
+
+    result = _delimit_user_content(None)
+    assert result is None
+
+
+def test_delimit_user_content_preserves_empty_string():
+    from openproject_ce_mcp.client import _delimit_user_content
+
+    result = _delimit_user_content("")
+    assert result == ""
+
+
+def test_delimit_user_content_preserves_whitespace_only():
+    from openproject_ce_mcp.client import _delimit_user_content
+
+    result = _delimit_user_content("   ")
+    assert result == "   "
+
+
+@pytest.mark.asyncio
+async def test_work_package_summary_description_delimited():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "id": 123,
+                "subject": "Test WP",
+                "description": {"format": "markdown", "raw": "User description here"},
+                "_links": {
+                    "type": {"href": "/api/v3/types/1", "title": "Task"},
+                    "status": {"href": "/api/v3/statuses/1", "title": "New"},
+                    "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+                },
+            },
+            request=request,
+        )
+
+    settings = _base_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    summary = client.normalize_work_package_summary(
+        {
+            "id": 123,
+            "subject": "Test WP",
+            "description": {"format": "markdown", "raw": "User description here"},
+            "_links": {
+                "type": {"href": "/api/v3/types/1", "title": "Task"},
+                "status": {"href": "/api/v3/statuses/1", "title": "New"},
+                "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+            },
+        }
+    )
+
+    assert summary.description == "<user-content>User description here</user-content>"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_work_package_detail_description_delimited():
+    settings = _base_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    detail = client.normalize_work_package_detail(
+        {
+            "id": 456,
+            "subject": "Detailed WP",
+            "description": {"format": "markdown", "raw": "Detailed user content"},
+            "_links": {
+                "type": {"href": "/api/v3/types/1", "title": "Task"},
+                "status": {"href": "/api/v3/statuses/1", "title": "New"},
+                "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+            },
+        }
+    )
+
+    assert detail.description == "<user-content>Detailed user content</user-content>"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_activity_comment_delimited():
+    settings = _base_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    activity = client.normalize_activity(
+        {
+            "id": 789,
+            "_type": "Activity::Comment",
+            "comment": {"format": "markdown", "raw": "User comment text"},
+            "_links": {"user": {"href": "/api/v3/users/1", "title": "John Doe"}},
+        }
+    )
+
+    assert activity.comment == "<user-content>User comment text</user-content>"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_news_description_delimited():
+    settings = _base_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    news = client.normalize_news(
+        {
+            "id": 10,
+            "title": "News Title",
+            "summary": "Short summary",
+            "description": {"format": "markdown", "raw": "News description content"},
+            "_links": {
+                "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+                "author": {"href": "/api/v3/users/1", "title": "Admin"},
+            },
+        }
+    )
+
+    assert news.description == "<user-content>News description content</user-content>"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_wiki_page_content_delimited():
+    settings = _base_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    wiki_page = client.normalize_wiki_page(
+        {
+            "id": 20,
+            "title": "Wiki Page",
+            "text": {"format": "markdown", "raw": "Wiki page content"},
+            "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+        }
+    )
+
+    assert wiki_page.content == "<user-content>Wiki page content</user-content>"
 
     await client.aclose()

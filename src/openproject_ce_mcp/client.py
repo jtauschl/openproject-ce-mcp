@@ -4716,6 +4716,7 @@ class OpenProjectClient:
         description, truncated, length = self._visible_formattable_text_with_meta(
             payload.get("description"), "work_package", "description", limit=self.settings.text_limit
         )
+        description = _delimit_user_content(description)
         return self._apply_hidden_fields(
             "work_package",
             WorkPackageSummary(
@@ -4767,6 +4768,7 @@ class OpenProjectClient:
             limit=text_limit,
             preserve_newlines=True,
         )
+        description = _delimit_user_content(description)
 
         # Hierarchy arrays with limits
         children_raw = links.get("children", [])
@@ -4863,6 +4865,7 @@ class OpenProjectClient:
             limit=text_limit,
             preserve_newlines=True,
         )
+        comment = _delimit_user_content(comment)
 
         # Details array with limit
         details_raw = payload.get("details", [])
@@ -5163,15 +5166,17 @@ class OpenProjectClient:
 
     def normalize_news(self, payload: dict[str, Any]) -> NewsSummary:
         links = payload.get("_links", {})
+        description = self._visible_formattable_text(
+            payload.get("description"), "project", "description", limit=SUBJECT_LIMIT
+        )
+        description = _delimit_user_content(description)
         return self._apply_hidden_fields(
             "news",
             NewsSummary(
                 id=int(payload["id"]),
                 title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or f"News {payload['id']}",
                 summary=_trim_text(payload.get("summary"), limit=SUBJECT_LIMIT),
-                description=self._visible_formattable_text(
-                    payload.get("description"), "project", "description", limit=SUBJECT_LIMIT
-                ),
+                description=description,
                 project_id=_id_from_href(links.get("project", {}).get("href")),
                 project=_link_title(links.get("project")),
                 author=_link_title(links.get("author")),
@@ -5184,13 +5189,15 @@ class OpenProjectClient:
 
     def normalize_news_detail(self, payload: dict[str, Any]) -> NewsDetail:
         summary = self.normalize_news(payload)
+        description = self._visible_formattable_text(payload.get("description"), "project", "description")
+        description = _delimit_user_content(description)
         return self._apply_hidden_fields(
             "news",
             NewsDetail(
                 id=summary.id,
                 title=summary.title,
                 summary=summary.summary,
-                description=self._visible_formattable_text(payload.get("description"), "project", "description"),
+                description=description,
                 project_id=summary.project_id,
                 project=summary.project,
                 author=summary.author,
@@ -5207,6 +5214,7 @@ class OpenProjectClient:
         content: str | None = None
         if isinstance(text_block, dict):
             content = _trim_text(text_block.get("raw"), limit=50_000)
+        content = _delimit_user_content(content)
         return self._apply_hidden_fields(
             "wiki_page",
             WikiPageDetail(
@@ -7306,6 +7314,13 @@ class OpenProjectClient:
 
 def _json_param(value: list[dict[str, Any]]) -> str:
     return json.dumps(value, separators=(",", ":"))
+
+
+def _delimit_user_content(text: str | None) -> str | None:
+    """Wrap user-provided text in boundary markers for prompt injection safety."""
+    if text is None or not text.strip():
+        return text
+    return f"<user-content>{text}</user-content>"
 
 
 def _origin_from_url(url: str) -> str:

@@ -55,3 +55,31 @@ depends on configuration; the most relevant controls are:
   base URL emits a startup warning because the token would be sent unencrypted.
 
 See the README's configuration and security sections for the full flag reference.
+
+## Prompt injection risk
+
+This server returns user-authored text (work-package descriptions, comments, news,
+wiki content) from the OpenProject instance. **Malicious users could embed prompt
+injection payloads** in this content to manipulate an agent connected via MCP.
+
+### Mitigations
+
+1. **Server instructions** explicitly warn connecting agents that returned content
+   is untrusted and should be treated as data, not instructions.
+2. **Content delimiting**: User-provided text is wrapped in `<user-content>` tags
+   to mark clear boundaries.
+3. **Read-only by default**: Write operations require explicit opt-in and use a
+   preview/confirm flow.
+
+### Limitations
+
+These mitigations reduce risk but **cannot eliminate it**. A sufficiently
+sophisticated prompt injection could still influence an agent's behavior. Deploy
+this server only if you trust:
+
+- The OpenProject instance administrators to moderate malicious content
+- The connecting agent to handle untrusted input responsibly
+- Your MCP client to enforce permission boundaries
+
+If your threat model cannot accept this risk, disable the relevant read scopes
+(`OPENPROJECT_ENABLE_WORK_PACKAGE_READ=false` etc.).
