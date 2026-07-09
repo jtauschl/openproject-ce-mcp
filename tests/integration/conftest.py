@@ -71,13 +71,15 @@ def _integration_settings() -> Settings | None:
 
 
 @pytest.fixture
-def client():
+async def client():
     settings = _integration_settings()
     if settings is None:
         pytest.skip("OPENPROJECT_BASE_URL / OPENPROJECT_API_TOKEN not set")
     # Fail fast before handing out a write-enabled client aimed at a protected project.
     _resolve_test_project()
-    return OpenProjectClient(settings)
+    client_instance = OpenProjectClient(settings)
+    await client_instance.initialize()
+    return client_instance
 
 
 @pytest.fixture

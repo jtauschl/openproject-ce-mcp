@@ -7,7 +7,7 @@ import mimetypes
 from collections.abc import Awaitable
 from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass
-from fnmatch import fnmatchcase
+from fnmatch import fnmatch, fnmatchcase
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote, urljoin, urlparse
@@ -7666,6 +7666,7 @@ def _scope_matches_candidates(scope: tuple[str, ...], candidates: set[str]) -> b
         if not pattern:
             continue
         for candidate in normalized_candidates:
-            if fnmatchcase(candidate, pattern):
+            # fnmatch is case-insensitive (not fnmatchcase) since both are casefolded
+            if fnmatch(candidate, pattern):
                 return True
     return False
