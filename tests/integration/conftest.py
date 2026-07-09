@@ -47,6 +47,7 @@ def _resolve_test_project() -> str:
 def _integration_settings() -> Settings | None:
     base_url = os.environ.get("OPENPROJECT_BASE_URL")
     api_token = os.environ.get("OPENPROJECT_API_TOKEN")
+    test_project = os.environ.get("OPENPROJECT_TEST_PROJECT", "mcp-test").strip()
     if not base_url or not api_token:
         return None
     return Settings(
@@ -59,6 +60,7 @@ def _integration_settings() -> Settings | None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
+        allowed_projects=(test_project,),
         enable_admin_write=True,
         enable_project_write=True,
         enable_work_package_write=True,
