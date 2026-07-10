@@ -2914,7 +2914,11 @@ class OpenProjectClient:
             raise NotFoundError(
                 "OpenProject project sprints require the Backlogs module and OpenProject 17.3 or newer."
             ) from exc
-        raw_items = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+        raw_items = [
+            item
+            for item in payload.get("_embedded", {}).get("elements", [])
+            if isinstance(item, dict) and self._sprint_payload_allowed(item)
+        ]
         results = [self.normalize_sprint(item) for item in raw_items]
         server_total = int(payload.get("total", len(results)))
         total = len(results)

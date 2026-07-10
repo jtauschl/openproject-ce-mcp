@@ -7291,6 +7291,81 @@ async def test_list_project_sprints_resolves_project_and_allows_empty_collection
 
 
 @pytest.mark.asyncio
+async def test_list_project_sprints_filters_sprints_outside_allowed_projects() -> None:
+    # OPM-98: a sprint shared into an allowed project can still be *defined* by a
+    # different, disallowed project. list_project_sprints must filter those out the
+    # same way list_sprints already does via _sprint_payload_allowed.
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), allowed_projects=("demo",))
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 7, "identifier": "demo", "name": "Demo", "active": True},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/7/sprints" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Collection",
+                    "total": 2,
+                    "count": 2,
+                    "pageSize": 20,
+                    "offset": 1,
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "_type": "Sprint",
+                                "id": 1,
+                                "name": "Owned by demo",
+                                "_embedded": {
+                                    "definingWorkspace": {
+                                        "_type": "Project",
+                                        "id": 7,
+                                        "identifier": "demo",
+                                        "name": "Demo",
+                                        "_links": {"self": {"href": "/api/v3/projects/7", "title": "Demo"}},
+                                    }
+                                },
+                                "_links": {},
+                            },
+                            {
+                                "_type": "Sprint",
+                                "id": 2,
+                                "name": "Shared from secret-project",
+                                "_embedded": {
+                                    "definingWorkspace": {
+                                        "_type": "Project",
+                                        "id": 99,
+                                        "identifier": "secret-project",
+                                        "name": "Secret Project",
+                                        "_links": {"self": {"href": "/api/v3/projects/99", "title": "Secret Project"}},
+                                    }
+                                },
+                                "_links": {},
+                            },
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.list_project_sprints("demo")
+
+    assert result.total == 1
+    assert result.count == 1
+    assert [s.id for s in result.results] == [1]
+    assert result.results[0].defining_workspace == "Demo"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_get_sprint_normalizes_detail() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/sprints/1" and request.method == "GET":
