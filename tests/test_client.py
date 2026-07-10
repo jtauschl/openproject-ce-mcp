@@ -3641,6 +3641,84 @@ async def test_list_projects_reports_filtered_total_when_allowlist_drops_items()
 
 
 @pytest.mark.asyncio
+async def test_list_projects_walks_multiple_server_pages_when_allowlist_thins_first_page() -> None:
+    # OPM-100 regression test: page 1 (server pageSize=2) has zero allowed projects,
+    # page 2 has the one allowed project. The old code advanced server_offset by a
+    # full page SIZE (not by 1 page) and compared it to the item total, so it gave
+    # up after page 1 even though page 2 held the match. offset/pageSize below mirror
+    # real OpenProject 1-based-page semantics.
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), max_page_size=2, allowed_projects=("demo",))
+
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects":
+            page = request.url.params["offset"]
+            requested_offsets.append(page)
+            assert request.url.params["pageSize"] == "2"
+            if page == "1":
+                return httpx.Response(
+                    200,
+                    json={
+                        "total": 3,
+                        "_embedded": {
+                            "elements": [
+                                {
+                                    "_type": "Project",
+                                    "id": 6,
+                                    "name": "Other",
+                                    "identifier": "other",
+                                    "_links": {"self": {"href": "/api/v3/projects/6", "title": "Other"}},
+                                },
+                                {
+                                    "_type": "Project",
+                                    "id": 7,
+                                    "name": "Another",
+                                    "identifier": "another",
+                                    "_links": {"self": {"href": "/api/v3/projects/7", "title": "Another"}},
+                                },
+                            ]
+                        },
+                    },
+                    request=request,
+                )
+            if page == "2":
+                return httpx.Response(
+                    200,
+                    json={
+                        "total": 3,
+                        "_embedded": {
+                            "elements": [
+                                {
+                                    "_type": "Project",
+                                    "id": 8,
+                                    "name": "Demo",
+                                    "identifier": "demo",
+                                    "_links": {"self": {"href": "/api/v3/projects/8", "title": "Demo"}},
+                                },
+                            ]
+                        },
+                    },
+                    request=request,
+                )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_projects()
+
+    assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
+    assert result.count == 1
+    assert result.results[0].identifier == "demo"
+    assert result.truncated is False
+    assert result.next_offset is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_create_time_entry_resolves_activity_from_project_form_context() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/demo":

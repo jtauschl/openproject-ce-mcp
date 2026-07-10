@@ -290,6 +290,7 @@ class OpenProjectClient:
         results: list[ProjectSummary] = []
         server_offset = offset
         server_page_size = self.settings.max_page_size
+        exhausted = False
 
         while len(results) < effective_limit:
             payload = await self._get(
@@ -302,6 +303,7 @@ class OpenProjectClient:
             )
             raw_projects = payload.get("_embedded", {}).get("elements", [])
             if not raw_projects:
+                exhausted = True
                 break  # No more results from API
 
             projects = [p for p in raw_projects if p.get("_type") == "Project"]
@@ -309,13 +311,17 @@ class OpenProjectClient:
             results.extend(self.normalize_project(p) for p in projects)
 
             server_total = int(payload.get("total", 0))
-            server_offset += server_page_size
-
-            # Stop if we've fetched all available projects from the server
-            if server_offset > server_total:
+            # OPM-100: server_offset is a 1-based page number (matching _next_offset's
+            # convention), advanced by one page — not by a full page size, and not
+            # compared directly against an item count.
+            if _next_offset(server_offset, server_page_size, server_total) is None:
+                exhausted = True
                 break
+            server_offset += 1
 
-        # Trim to requested limit
+        # Trim to requested limit. truncated reflects why the loop stopped: hitting
+        # the requested limit (there may be more) vs. the server genuinely running out.
+        truncated = not exhausted
         results = results[:effective_limit]
         total = len(results)
 
@@ -324,8 +330,8 @@ class OpenProjectClient:
             limit=effective_limit,
             total=total,
             count=total,
-            next_offset=offset + 1 if total == effective_limit else None,
-            truncated=False,  # We fetched until limit or exhausted
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
             results=results,
         )
 
