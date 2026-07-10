@@ -7209,6 +7209,41 @@ async def test_group_members_is_flat_array() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hidden_sprint_fields_are_tagged_and_dropped_from_payload() -> None:
+    # OPM-101: sprints support OPENPROJECT_HIDE_SPRINT_FIELDS like every other entity.
+    client = OpenProjectClient(
+        _base_settings(hidden_fields={"sprint": ("defining_workspace",)}),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+
+    sprint = client.normalize_sprint(
+        {
+            "_type": "Sprint",
+            "id": 1,
+            "name": "Cleanup",
+            "_embedded": {
+                "definingWorkspace": {
+                    "_type": "Project",
+                    "id": 7,
+                    "identifier": "demo",
+                    "name": "Demo",
+                    "_links": {"self": {"href": "/api/v3/projects/7", "title": "Demo"}},
+                }
+            },
+            "_links": {},
+        }
+    )
+
+    assert sprint._hidden_keys == frozenset({"defining_workspace"})
+    assert sprint.defining_workspace == "Demo"  # value preserved on the dataclass
+    serialized = _to_payload(sprint)
+    assert "defining_workspace" not in serialized
+    assert serialized["name"] == "Cleanup"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_sprints_normalizes_backlogs_collection() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/sprints" and request.method == "GET":

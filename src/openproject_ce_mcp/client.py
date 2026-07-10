@@ -5161,36 +5161,42 @@ class OpenProjectClient:
         links = payload.get("_links", {})
         status_link = links.get("status")
         workspace_link = self._sprint_workspace_link(payload)
-        return SprintSummary(
-            id=int(payload["id"]),
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Sprint {payload['id']}",
-            status=_link_title(status_link),
-            status_href=status_link.get("href") if isinstance(status_link, dict) else None,
-            start_date=payload.get("startDate"),
-            finish_date=payload.get("finishDate"),
-            defining_workspace_id=_id_from_href(workspace_link.get("href"))
-            if isinstance(workspace_link, dict)
-            else None,
-            defining_workspace=_link_title(workspace_link),
-            created_at=payload.get("createdAt"),
-            updated_at=payload.get("updatedAt"),
-            url=self._web_url(f"sprints/{payload['id']}"),
+        return self._apply_hidden_fields(
+            "sprint",
+            SprintSummary(
+                id=int(payload["id"]),
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Sprint {payload['id']}",
+                status=_link_title(status_link),
+                status_href=status_link.get("href") if isinstance(status_link, dict) else None,
+                start_date=payload.get("startDate"),
+                finish_date=payload.get("finishDate"),
+                defining_workspace_id=_id_from_href(workspace_link.get("href"))
+                if isinstance(workspace_link, dict)
+                else None,
+                defining_workspace=_link_title(workspace_link),
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
+                url=self._web_url(f"sprints/{payload['id']}"),
+            ),
         )
 
     def normalize_sprint_detail(self, payload: dict[str, Any]) -> SprintDetail:
         summary = self.normalize_sprint(payload)
-        return SprintDetail(
-            id=summary.id,
-            name=summary.name,
-            status=summary.status,
-            status_href=summary.status_href,
-            start_date=summary.start_date,
-            finish_date=summary.finish_date,
-            defining_workspace_id=summary.defining_workspace_id,
-            defining_workspace=summary.defining_workspace,
-            created_at=summary.created_at,
-            updated_at=summary.updated_at,
-            url=summary.url,
+        return self._apply_hidden_fields(
+            "sprint",
+            SprintDetail(
+                id=summary.id,
+                name=summary.name,
+                status=summary.status,
+                status_href=summary.status_href,
+                start_date=summary.start_date,
+                finish_date=summary.finish_date,
+                defining_workspace_id=summary.defining_workspace_id,
+                defining_workspace=summary.defining_workspace,
+                created_at=summary.created_at,
+                updated_at=summary.updated_at,
+                url=summary.url,
+            ),
         )
 
     def normalize_board(self, payload: dict[str, Any]) -> BoardSummary:
