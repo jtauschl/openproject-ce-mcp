@@ -195,7 +195,12 @@ verification, not just as a tooling health check.
 - **Artifact content check** — inspect both distribution formats' file
   listings for anything that shouldn't ship (local configs, gitignored
   caches, backups, tokens, the build-output directory itself nested
-  inside). The broader-inclusion format gets the closer look.
+  inside) **and** confirm everything that should be there for the package
+  to actually work is included (source modules, package metadata, license,
+  entry points). This is what will be uploaded to the package registry
+  (PyPI for this project) — get the file list right here, before the tag
+  push makes it irreversible. The broader-inclusion format gets the closer
+  look.
 - **Dependency/lock sanity** — confirm the lockfile matches the manifest,
   with no drift from this release's dependency changes.
 - **Minimum-supported-version note** — confirm the manifest's stated minimum
@@ -261,6 +266,12 @@ verification, not just as a tooling health check.
   3. Commit locally — no push without a separate explicit go-ahead.
   4. **Tag exactness** — before tagging, confirm the current commit hash is
      exactly the one that passed this review, not any later local change.
-  5. Report back. Tagging/pushing (which may trigger a publish workflow)
-     and closing the tracker version remain further steps requiring their
-     own explicit confirmation, after the release commit is reviewed.
+  5. Report back. Tagging/pushing remains a further step requiring its own
+     explicit confirmation, after the release commit is reviewed — for this
+     project, pushing a `vX.Y.Z` tag triggers `.github/workflows/publish.yml`,
+     which publishes to PyPI via trusted publishing. A PyPI release cannot be
+     un-published once uploaded (see the rollback note above), so this is the
+     one genuinely irreversible step in the whole process — confirm the
+     artifact content check (section 9) and the tag-exactness check (step 4)
+     both passed before giving that go-ahead. Closing the tracker version is
+     a separate step after the publish succeeds.
