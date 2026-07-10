@@ -353,7 +353,7 @@ Example output:
 ```
 Running OpenProject MCP diagnostics...
 
-[OK] Binary: /usr/local/bin/openproject-ce-mcp (v0.2.2)
+[OK] Binary: /usr/local/bin/openproject-ce-mcp (v0.3.0)
 [OK] Clients: 2 configs found
   - Claude Code (global, detected): ~/.claude.json
   - Claude Desktop (global, detected): ~/Library/.../claude_desktop_config.json
@@ -515,13 +515,16 @@ The server communicates over stdio and is compatible with any MCP client. Client
 
 ## Architecture
 
-Five files, no deep abstractions:
+A few narrow modules, no deep abstractions:
 
 - `config.py` — environment parsing and safe defaults
 - `client.py` — HTTP access, policy checks, HAL normalization, preview/confirm writes
+- `retry_transport.py` — HTTP retry with backoff for transient failures
 - `models.py` — compact dataclasses returned to MCP clients
 - `tools.py` — validated MCP tool handlers
 - `server.py` — FastMCP lifecycle wiring
+- `setup_cli.py` — the interactive `configure` command
+- `doctor.py` — the `doctor` diagnostics command
 
 `client.py` is intentionally large: all policy-sensitive logic (read gates, write gates, project scoping, field hiding) lives in one place to make it easier to audit.
 

@@ -6,11 +6,14 @@ OpenProject CE MCP is intentionally small and flat. The codebase keeps transport
 
 ```text
 src/openproject_ce_mcp/
-├── config.py    environment loading, validation, and safe defaults
-├── client.py    OpenProject API client: auth, timeouts, pagination, normalization, error mapping
-├── models.py    compact dataclasses returned to MCP clients
-├── tools.py     validated MCP tool handlers
-└── server.py    FastMCP server bootstrap and lifecycle management
+├── config.py            environment loading, validation, and safe defaults
+├── client.py             OpenProject API client: auth, timeouts, pagination, normalization, error mapping
+├── retry_transport.py    HTTP retry with backoff for transient failures
+├── models.py             compact dataclasses returned to MCP clients
+├── tools.py              validated MCP tool handlers
+├── server.py             FastMCP server bootstrap and lifecycle management
+├── setup_cli.py          the interactive `configure` command
+└── doctor.py             the `doctor` diagnostics command
 ```
 
 ## Layers
