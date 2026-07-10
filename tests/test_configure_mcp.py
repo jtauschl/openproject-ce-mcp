@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -213,6 +214,79 @@ def test_backup_preserves_extension(tmp_path: Path) -> None:
     assert not target.exists()
 
 
+def test_backup_chmods_backup_on_posix(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(c, "_IS_WINDOWS", False)
+    target = tmp_path / "config.toml"
+    target.write_text("x = 1\n")
+    target.chmod(0o644)
+
+    c._backup(target)
+
+    backup = next(tmp_path.glob("config.toml.bak.*"))
+    assert backup.stat().st_mode & 0o777 == 0o600
+
+
+def test_git_warning_noops_when_git_missing(monkeypatch, tmp_path: Path, capsys) -> None:
+    def _missing_git(*_args, **_kwargs):
+        raise OSError("git not found")
+
+    monkeypatch.setattr(c.subprocess, "run", _missing_git)
+
+    c._git_warning_for_unignored_file(tmp_path / ".mcp.json")
+
+    assert capsys.readouterr().out == ""
+
+
+def test_git_warning_noops_outside_git_repo(monkeypatch, tmp_path: Path, capsys) -> None:
+    def _run(cmd, **_kwargs):
+        assert "rev-parse" in cmd
+        return subprocess.CompletedProcess(cmd, 128, stdout="", stderr="not a repo")
+
+    monkeypatch.setattr(c.subprocess, "run", _run)
+
+    c._git_warning_for_unignored_file(tmp_path / ".mcp.json")
+
+    assert capsys.readouterr().out == ""
+
+
+def test_git_warning_noops_when_file_is_ignored(monkeypatch, tmp_path: Path, capsys) -> None:
+    calls = []
+
+    def _run(cmd, **_kwargs):
+        calls.append(cmd)
+        if "rev-parse" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout="true\n", stderr="")
+        if "check-ignore" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        raise AssertionError(cmd)
+
+    monkeypatch.setattr(c.subprocess, "run", _run)
+
+    c._git_warning_for_unignored_file(tmp_path / ".mcp.json")
+
+    assert any("check-ignore" in cmd for cmd in calls)
+    assert capsys.readouterr().out == ""
+
+
+def test_git_warning_prints_when_file_is_not_ignored(monkeypatch, tmp_path: Path, capsys) -> None:
+    def _run(cmd, **_kwargs):
+        if "rev-parse" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout="true\n", stderr="")
+        if "check-ignore" in cmd:
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
+        raise AssertionError(cmd)
+
+    monkeypatch.setattr(c.subprocess, "run", _run)
+
+    target = tmp_path / ".mcp.json"
+    c._git_warning_for_unignored_file(target)
+
+    out = capsys.readouterr().out
+    assert str(target) in out
+    assert "not ignored" in out
+    assert ".gitignore" in out
+
+
 # ── registration mode (asked up front, non-interactive) ─────────────────────────
 
 
@@ -225,25 +299,30 @@ def test_choose_targets_both_gates_no(monkeypatch, tmp_path: Path) -> None:
     codex = _codex_client(tmp_path / "config.toml", project_target=tmp_path / ".codex" / "config.toml")
     # global gate no, project gate no → nothing.
     _answers(monkeypatch, ["", ""])
-    assert c._choose_targets([codex]) == ([], [])
+    assert c._choose_targets([codex]) == ([], [], [], [])
 
 
 def test_choose_targets_global_only(monkeypatch, tmp_path: Path) -> None:
     codex = _codex_client(tmp_path / "config.toml", project_target=tmp_path / ".codex" / "config.toml")
-    # global gate yes, per-client yes; project gate no.
-    _answers(monkeypatch, ["y", "y", ""])
-    global_clients, project_clients = c._choose_targets([codex])
+    # global gate yes, per-client yes; project gate is skipped because scopes are
+    # configured in separate runs.
+    _answers(monkeypatch, ["y", "y"])
+    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([codex])
     assert global_clients == [codex]
     assert project_clients == []
+    assert remove_global_clients == []
+    assert remove_project_clients == []
 
 
 def test_choose_targets_project_only(monkeypatch, tmp_path: Path) -> None:
     codex = _codex_client(tmp_path / "config.toml", project_target=tmp_path / ".codex" / "config.toml")
     # global gate no; project gate yes, per-client yes.
     _answers(monkeypatch, ["", "y", "y"])
-    global_clients, project_clients = c._choose_targets([codex])
+    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([codex])
     assert global_clients == []
     assert project_clients == [codex]
+    assert remove_global_clients == []
+    assert remove_project_clients == []
 
 
 def test_choose_targets_project_offers_undetected(monkeypatch, tmp_path: Path) -> None:
@@ -251,9 +330,11 @@ def test_choose_targets_project_offers_undetected(monkeypatch, tmp_path: Path) -
     # answer y anyway → it is selected. It is NOT offered in the global gate.
     codex = _codex_client(tmp_path / "config.toml", detect=False, project_target=tmp_path / ".codex" / "config.toml")
     _answers(monkeypatch, ["y", "y"])  # project gate yes (global gate skipped: no detected), per-client yes
-    global_clients, project_clients = c._choose_targets([codex])
+    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([codex])
     assert global_clients == []
     assert project_clients == [codex]
+    assert remove_global_clients == []
+    assert remove_project_clients == []
 
 
 def test_choose_targets_claude_code_default_yes_when_alone(monkeypatch, tmp_path: Path) -> None:
@@ -261,8 +342,70 @@ def test_choose_targets_claude_code_default_yes_when_alone(monkeypatch, tmp_path
     # so pressing Enter selects it.
     claude = _json_client(tmp_path / ".claude.json", detect=False, project_target=tmp_path / ".mcp.json")
     _answers(monkeypatch, ["y", ""])  # project gate yes, then Enter (default y) for claude
-    global_clients, project_clients = c._choose_targets([claude])
+    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([claude])
     assert project_clients == [claude]
+    assert global_clients == []
+    assert remove_global_clients == []
+    assert remove_project_clients == []
+
+
+def test_choose_targets_offers_global_removal_when_global_gate_no(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".claude.json"
+    target.write_text(json.dumps({"mcpServers": {"openproject": {"env": ENV}}}))
+    claude = _json_client(target, project_target=tmp_path / ".mcp.json")
+
+    _answers(monkeypatch, ["n", "y", "n"])
+    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([claude])
+
+    assert global_clients == []
+    assert project_clients == []
+    assert remove_global_clients == [claude]
+    assert remove_project_clients == []
+
+
+def test_choose_targets_offers_project_removal_when_project_gate_no(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".mcp.json"
+    target.write_text(json.dumps({"mcpServers": {"openproject": {"env": ENV}}}))
+    claude = _json_client(tmp_path / ".claude.json", detect=False, project_target=target)
+
+    _answers(monkeypatch, ["n", "y"])
+    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([claude])
+
+    assert global_clients == []
+    assert project_clients == []
+    assert remove_global_clients == []
+    assert remove_project_clients == [claude]
+
+
+def test_choose_targets_global_config_can_remove_existing_project(monkeypatch, tmp_path: Path) -> None:
+    project_target = tmp_path / ".mcp.json"
+    project_target.write_text(json.dumps({"mcpServers": {"openproject": {"env": ENV}}}))
+    claude = _json_client(tmp_path / ".claude.json", project_target=project_target)
+
+    _answers(monkeypatch, ["y", "y", "y"])
+    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([claude])
+
+    assert global_clients == [claude]
+    assert project_clients == []
+    assert remove_global_clients == []
+    assert remove_project_clients == [claude]
+
+
+def test_has_openproject_config_detects_json_entry_without_env(tmp_path: Path) -> None:
+    target = tmp_path / ".mcp.json"
+    target.write_text(json.dumps({"mcpServers": {"openproject": {"command": "old"}}}))
+    claude = _json_client(tmp_path / ".claude.json", project_target=target)
+
+    assert c._has_openproject_config(claude, target) is True
+
+
+def test_has_openproject_config_detects_codex_toml_without_tomllib(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / "config.toml"
+    target.write_text('[mcp_servers.openproject]\ncommand = "old"\n')
+    codex = _codex_client(tmp_path / "global.toml", project_target=target)
+    monkeypatch.setattr(c, "_tomllib", None)
+
+    assert c._has_openproject_config(codex, target) is True
 
 
 def test_apply_global_registration_writes_chosen(monkeypatch, tmp_path: Path) -> None:
@@ -500,24 +643,39 @@ def test_server_command_installed_last_resort_bare_name(monkeypatch, tmp_path: P
     assert c._server_command(installed=True) == ("openproject-ce-mcp", False)
 
 
-def test_resolve_mcp_json_clone_uses_repo_root(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(c, "_REPO_ROOT", tmp_path)
+def test_resolve_mcp_json_clone_uses_launch_directory(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PWD", str(tmp_path))
     assert c._resolve_mcp_json(None, installed=False) == tmp_path / ".mcp.json"
+
+
+def test_project_cwd_prefers_pwd_for_uv_directory(monkeypatch, tmp_path: Path) -> None:
+    launch_dir = tmp_path / "launch"
+    repo_dir = tmp_path / "repo"
+    launch_dir.mkdir()
+    repo_dir.mkdir()
+    monkeypatch.chdir(repo_dir)
+    monkeypatch.setenv("PWD", str(launch_dir))
+    assert c._project_cwd() == launch_dir
+    assert c._resolve_mcp_json("local", installed=False) == launch_dir / ".mcp.json"
 
 
 def test_resolve_mcp_json_installed_project_dir_uses_cwd(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PWD", str(tmp_path))
     (tmp_path / ".git").mkdir()
     assert c._resolve_mcp_json(None, installed=True) == tmp_path / ".mcp.json"
 
 
 def test_resolve_mcp_json_installed_bare_dir_is_global(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)  # no project markers
+    monkeypatch.setenv("PWD", str(tmp_path))
     assert c._resolve_mcp_json(None, installed=True) is None
 
 
 def test_resolve_mcp_json_local_forces_cwd(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PWD", str(tmp_path))
     assert c._resolve_mcp_json("local", installed=True) == tmp_path / ".mcp.json"
 
 
@@ -629,9 +787,11 @@ def test_choose_targets_no_detected_skips_global_gate(monkeypatch, tmp_path: Pat
     codex = _codex_client(tmp_path / "config.toml", detect=False, project_target=tmp_path / ".codex" / "config.toml")
     # Only the project gate consumes an answer here (global gate skipped). Say no.
     _answers(monkeypatch, [""])
-    global_clients, project_clients = c._choose_targets([codex])
+    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([codex])
     assert global_clients == []
     assert project_clients == []
+    assert remove_global_clients == []
+    assert remove_project_clients == []
 
 
 # ── project-local writes preserve other MCP servers (the "github exists" case) ──
@@ -744,6 +904,7 @@ def _run_main(monkeypatch, tmp_path: Path, clients, answers: list[str], secret: 
     monkeypatch.setattr(c, "_server_command", lambda installed: ("openproject-ce-mcp", True))
     monkeypatch.setattr(c, "_clients", lambda: clients)
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PWD", str(tmp_path))
     it = iter(answers)
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(it, ""))
     monkeypatch.setattr(c.getpass, "getpass", lambda _prompt="": secret)
@@ -753,8 +914,8 @@ def _run_main(monkeypatch, tmp_path: Path, clients, answers: list[str], secret: 
 def test_main_global_only_writes_no_mcp_json(monkeypatch, tmp_path: Path) -> None:
     gtarget = tmp_path / ".claude.json"
     claude = _json_client(gtarget, project_target=tmp_path / ".mcp.json")
-    # global gate y, per-client y; project gate n; then all creds default (Enter).
-    _run_main(monkeypatch, tmp_path, [claude], ["y", "y", "n"] + [""] * 30)
+    # global gate y, per-client y; project gate is skipped; then creds default.
+    _run_main(monkeypatch, tmp_path, [claude], ["y", "y"] + [""] * 30)
     assert gtarget.exists(), "global claude config should be written"
     assert not (tmp_path / ".mcp.json").exists(), "no project .mcp.json for global-only"
 
@@ -803,6 +964,103 @@ def test_main_neither_aborts_before_token(monkeypatch, tmp_path: Path) -> None:
     assert not (tmp_path / ".mcp.json").exists()
 
 
+def test_main_neither_aborts_before_token_in_clone_mode(monkeypatch, tmp_path: Path) -> None:
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+    token_asked = {"v": False}
+
+    def _boom(_prompt=""):
+        token_asked["v"] = True
+        return "opapi-x"
+
+    monkeypatch.setattr(c, "_check_python", lambda: None)
+    monkeypatch.setattr(c, "_installed_mode", lambda: False)
+    monkeypatch.setattr(c, "_find_uv", lambda: "uv")
+    monkeypatch.setattr(c, "_install_deps", lambda *a, **k: None)
+    monkeypatch.setattr(c, "_server_command", lambda installed: ("openproject-ce-mcp", True))
+    monkeypatch.setattr(c, "_clients", lambda: [claude])
+    monkeypatch.chdir(tmp_path)
+    it = iter(["n", "n"])  # both gates no
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(it, ""))
+    monkeypatch.setattr(c.getpass, "getpass", _boom)
+    with pytest.raises(SystemExit) as exc:
+        c.main([])
+    assert exc.value.code == 1
+    assert token_asked["v"] is False, "must abort before asking for the token"
+    assert not (tmp_path / ".mcp.json").exists()
+
+
+def test_main_can_remove_existing_global_without_collecting_credentials(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".claude.json"
+    target.write_text(json.dumps({"mcpServers": {"openproject": {"command": "old", "env": ENV}}}))
+    claude = _json_client(target, project_target=tmp_path / ".mcp.json")
+    token_asked = {"v": False}
+
+    def _boom(_prompt=""):
+        token_asked["v"] = True
+        return "opapi-x"
+
+    monkeypatch.setattr(c, "_check_python", lambda: None)
+    monkeypatch.setattr(c, "_installed_mode", lambda: True)
+    monkeypatch.setattr(c, "_install_deps", lambda *a, **k: None)
+    monkeypatch.setattr(c, "_server_command", lambda installed: ("openproject-ce-mcp", True))
+    monkeypatch.setattr(c, "_clients", lambda: [claude])
+    monkeypatch.chdir(tmp_path)
+    it = iter(["n", "y", "n"])  # no global config, remove existing global, no project config
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(it, ""))
+    monkeypatch.setattr(c.getpass, "getpass", _boom)
+
+    c.main([])
+
+    assert token_asked["v"] is False, "removal-only flow must not ask for credentials"
+    data = json.loads(target.read_text())
+    assert "mcpServers" not in data
+
+
+def test_main_project_prefill_does_not_use_global_values(monkeypatch, tmp_path: Path) -> None:
+    global_target = tmp_path / ".claude.json"
+    project_target = tmp_path / ".mcp.json"
+    global_target.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "openproject": {
+                        "command": "old",
+                        "env": {
+                            "OPENPROJECT_BASE_URL": "https://global.example.com",
+                            "OPENPROJECT_API_TOKEN": "global-token",
+                        },
+                    }
+                }
+            }
+        )
+    )
+    project_target.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "openproject": {
+                        "command": "old",
+                        "env": {
+                            "OPENPROJECT_BASE_URL": "https://project.example.com",
+                            "OPENPROJECT_API_TOKEN": "project-token",
+                        },
+                    }
+                }
+            }
+        )
+    )
+    claude = _json_client(global_target, project_target=project_target)
+
+    # Skip global, keep existing global, configure project. Empty base/token keep
+    # the selected project's values, not the global ones.
+    _run_main(monkeypatch, tmp_path, [claude], ["n", "n", "y", "y"] + [""] * 12, secret="")
+
+    data = json.loads(project_target.read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert env["OPENPROJECT_BASE_URL"] == "https://project.example.com"
+    assert env["OPENPROJECT_API_TOKEN"] == "project-token"
+
+
 def test_main_project_non_claude_writes_generic_mcp_json(monkeypatch, tmp_path: Path) -> None:
     # Project scope with ONLY a non-Claude client (codex) → generic .mcp.json IS written.
     codex = _codex_client(tmp_path / "g.toml", project_target=tmp_path / ".codex" / "config.toml")
@@ -820,6 +1078,233 @@ def test_main_project_claude_no_duplicate_mcp_json(monkeypatch, tmp_path: Path) 
     # exactly one .mcp.json, no stray backup from a second write
     backups = list(tmp_path.glob(".mcp.json.bak.*"))
     assert backups == [], "Claude Code project write must not double-write .mcp.json"
+
+
+def test_main_basic_setup_writes_auto_confirm_and_safe_advanced_defaults(monkeypatch, tmp_path: Path) -> None:
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+    # global n, project y, claude y, base/default scopes, write access default
+    # false, advanced default false.
+    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y"] + [""] * 12)
+
+    data = json.loads((tmp_path / ".mcp.json").read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert env["OPENPROJECT_AUTO_CONFIRM_WRITE"] == "false"
+    assert env["OPENPROJECT_AUTO_CONFIRM_DELETE"] == "false"
+    assert env["OPENPROJECT_ENABLE_METADATA_TOOLS"] == "false"
+    assert env["OPENPROJECT_ATTACHMENT_ROOT"] == ""
+    assert env["OPENPROJECT_MAX_RETRIES"] == "3"
+    assert env["OPENPROJECT_RETRY_BASE_DELAY"] == "1.0"
+    assert env["OPENPROJECT_RETRY_MAX_DELAY"] == "60.0"
+
+
+def test_main_write_access_no_disables_write_flags(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".mcp.json"
+    target.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "openproject": {
+                        "command": "old",
+                        "env": {
+                            "OPENPROJECT_BASE_URL": "https://old.example.com",
+                            "OPENPROJECT_API_TOKEN": "old-token",
+                            "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "TST",
+                            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
+                            "OPENPROJECT_ENABLE_PROJECT_WRITE": "true",
+                            "OPENPROJECT_AUTO_CONFIRM_WRITE": "true",
+                            "OPENPROJECT_AUTO_CONFIRM_DELETE": "true",
+                        },
+                    }
+                }
+            }
+        )
+    )
+    claude = _json_client(tmp_path / ".claude.json", project_target=target)
+    # The explicit write-access answer disables project-scoped writes. The next
+    # answer is consumed by the advanced gate; write flags are not prompted.
+    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y", "", "*", "n", "n"], secret="")
+
+    data = json.loads(target.read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert env["OPENPROJECT_ALLOWED_PROJECTS_WRITE"] == ""
+    assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "false"
+    assert env["OPENPROJECT_ENABLE_PROJECT_WRITE"] == "false"
+    assert env["OPENPROJECT_ENABLE_MEMBERSHIP_WRITE"] == "false"
+    assert env["OPENPROJECT_ENABLE_VERSION_WRITE"] == "false"
+    assert env["OPENPROJECT_ENABLE_BOARD_WRITE"] == "false"
+    assert env["OPENPROJECT_AUTO_CONFIRM_WRITE"] == "false"
+    assert env["OPENPROJECT_AUTO_CONFIRM_DELETE"] == "false"
+
+
+def test_main_write_access_enter_keeps_existing_scope(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".mcp.json"
+    target.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "openproject": {
+                        "command": "old",
+                        "env": {
+                            "OPENPROJECT_BASE_URL": "https://old.example.com",
+                            "OPENPROJECT_API_TOKEN": "old-token",
+                            "OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM, TST",
+                            "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "TST",
+                            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
+                            "OPENPROJECT_AUTO_CONFIRM_WRITE": "true",
+                        },
+                    }
+                }
+            }
+        )
+    )
+    claude = _json_client(tmp_path / ".claude.json", project_target=target)
+    _run_main(
+        monkeypatch,
+        tmp_path,
+        [claude],
+        ["n", "y", "y", "", "", "", "", "", "", "", "", "", "", "", "n"],
+        secret="",
+    )
+
+    data = json.loads(target.read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert env["OPENPROJECT_ALLOWED_PROJECTS_READ"] == "OPM, TST"
+    assert env["OPENPROJECT_ALLOWED_PROJECTS_WRITE"] == "TST"
+    assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "true"
+    assert env["OPENPROJECT_AUTO_CONFIRM_WRITE"] == "true"
+
+
+def test_main_write_access_yes_defaults_write_controls_on(monkeypatch, tmp_path: Path) -> None:
+    # Write-group flags (project/membership/work_package/version/board) still
+    # default on unprompted once write access is enabled. Auto-confirm is no
+    # longer bundled into that default-on set (OPM-87): it gets its own explicit
+    # basic-path prompt and defaults to False, matching "remain opt-in".
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+
+    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y", "", "OPM, TST", "y", "TST", "n", "n"])
+
+    data = json.loads((tmp_path / ".mcp.json").read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert env["OPENPROJECT_ALLOWED_PROJECTS_READ"] == "OPM, TST"
+    assert env["OPENPROJECT_ALLOWED_PROJECTS_WRITE"] == "TST"
+    assert env["OPENPROJECT_ENABLE_PROJECT_WRITE"] == "true"
+    assert env["OPENPROJECT_ENABLE_MEMBERSHIP_WRITE"] == "true"
+    assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "true"
+    assert env["OPENPROJECT_ENABLE_VERSION_WRITE"] == "true"
+    assert env["OPENPROJECT_ENABLE_BOARD_WRITE"] == "true"
+    assert env["OPENPROJECT_AUTO_CONFIRM_WRITE"] == "false"
+    assert env["OPENPROJECT_AUTO_CONFIRM_DELETE"] == "false"
+
+
+def test_main_write_access_yes_auto_confirm_prompt_can_opt_in(monkeypatch, tmp_path: Path) -> None:
+    # Answering "y" to the new explicit auto-confirm prompt opts in; delete
+    # follows the same answer by default (no separate delete prompt in the
+    # basic path — matches config.py's own auto_confirm_delete-inherits-write
+    # default).
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+
+    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y", "", "OPM, TST", "y", "TST", "y", "n"])
+
+    data = json.loads((tmp_path / ".mcp.json").read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert env["OPENPROJECT_AUTO_CONFIRM_WRITE"] == "true"
+    assert env["OPENPROJECT_AUTO_CONFIRM_DELETE"] == "true"
+
+
+def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".mcp.json"
+    target.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "openproject": {
+                        "command": "old",
+                        "env": {
+                            "OPENPROJECT_BASE_URL": "https://old.example.com",
+                            "OPENPROJECT_API_TOKEN": "old-token",
+                            "OPENPROJECT_HIDE_PROJECT_FIELDS": "description",
+                            "OPENPROJECT_ENABLE_METADATA_TOOLS": "true",
+                            "OPENPROJECT_ATTACHMENT_ROOT": "/tmp/uploads",
+                            "OPENPROJECT_MAX_RETRIES": "7",
+                            "OPENPROJECT_RETRY_BASE_DELAY": "2.5",
+                            "OPENPROJECT_RETRY_MAX_DELAY": "30",
+                        },
+                    }
+                }
+            }
+        )
+    )
+    claude = _json_client(tmp_path / ".claude.json", project_target=target)
+
+    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y"] + [""] * 12, secret="")
+
+    data = json.loads(target.read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert env["OPENPROJECT_HIDE_PROJECT_FIELDS"] == "description"
+    assert env["OPENPROJECT_ENABLE_METADATA_TOOLS"] == "true"
+    assert env["OPENPROJECT_ATTACHMENT_ROOT"] == "/tmp/uploads"
+    assert env["OPENPROJECT_MAX_RETRIES"] == "7"
+    assert env["OPENPROJECT_RETRY_BASE_DELAY"] == "2.5"
+    assert env["OPENPROJECT_RETRY_MAX_DELAY"] == "30"
+
+
+def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: Path) -> None:
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+    answers = [
+        "n",  # no global
+        "y",  # project
+        "y",  # claude
+        "",  # base url default
+        "OPM",  # readable projects
+        "y",  # enable write access
+        "TST",  # writable projects
+        "n",  # basic-path auto-confirm writes prompt (overridden below in advanced)
+        "y",  # advanced
+        "",  # project reads
+        "",  # membership reads
+        "",  # work-package reads
+        "",  # version reads
+        "",  # board reads
+        "y",  # work-package writes
+        "n",  # project writes
+        "n",  # membership writes
+        "n",  # version writes
+        "n",  # board writes
+        "y",  # auto-confirm writes
+        "n",  # auto-confirm deletes
+        "status_explanation",  # hidden project fields
+        "description",  # hidden work-package fields
+        "comment",  # hidden activity fields
+        "budget",  # hidden custom fields
+        "n",  # admin writes
+        "y",  # metadata tools
+        "/tmp/uploads",  # attachment root
+        "5",  # default page size
+        "25",  # max page size
+        "50",  # max results
+        "250",  # text limit
+        "20",  # timeout
+        "y",  # verify ssl
+        "4",  # max retries
+        "0.5",  # retry base
+        "10",  # retry max
+        "INFO",  # log level
+    ]
+    _run_main(monkeypatch, tmp_path, [claude], answers)
+
+    data = json.loads((tmp_path / ".mcp.json").read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert env["OPENPROJECT_ALLOWED_PROJECTS_READ"] == "OPM"
+    assert env["OPENPROJECT_ALLOWED_PROJECTS_WRITE"] == "TST"
+    assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "true"
+    assert env["OPENPROJECT_AUTO_CONFIRM_WRITE"] == "true"
+    assert env["OPENPROJECT_AUTO_CONFIRM_DELETE"] == "false"
+    assert env["OPENPROJECT_HIDE_PROJECT_FIELDS"] == "status_explanation"
+    assert env["OPENPROJECT_ENABLE_METADATA_TOOLS"] == "true"
+    assert env["OPENPROJECT_ATTACHMENT_ROOT"] == "/tmp/uploads"
+    assert env["OPENPROJECT_DEFAULT_PAGE_SIZE"] == "5"
+    assert env["OPENPROJECT_MAX_RETRIES"] == "4"
+    assert env["OPENPROJECT_RETRY_BASE_DELAY"] == "0.5"
 
 
 def test_main_ctrl_c_exits_130_no_traceback(monkeypatch, capsys) -> None:

@@ -110,11 +110,10 @@ echoed request `payload`.
 
 In short:
 
-1. **Install the server** (the one-liner below).
-2. **Copy the `command` and `env`** from the generated `.mcp.json` into your MCP
-   client's config — or let the installer register a detected client for you.
+1. **Install the server from PyPI** with `uv`.
+2. **Run `openproject-ce-mcp configure`** and let it write your MCP client config.
 3. **Restart your client.**
-4. **Verify** by asking it to call `list_projects`.
+4. **Verify** by asking it to call `get_current_user` or `list_projects`.
 
 The rest of this section covers each step in detail.
 
@@ -145,28 +144,23 @@ To create a personal token: **My account → Access tokens → + API token**. Co
 
 ### Install
 
-Install from PyPI, then run the interactive setup. Pick whichever installer you
-already use:
+Install from PyPI with `uv`, then run the interactive setup:
 
 ```bash
-# uv (recommended) — installs the openproject-ce-mcp command onto your PATH
 uv tool install openproject-ce-mcp
-
-# or pipx
-pipx install openproject-ce-mcp
-
-# or pip
-pip install openproject-ce-mcp
-```
-
-Then configure it — this collects your OpenProject URL/token and permissions and
-writes the config:
-
-```bash
 openproject-ce-mcp configure
+openproject-ce-mcp --version
 ```
 
-It asks two independent questions:
+`configure` collects your OpenProject URL, API token, project scope, and whether
+project-scoped writes should be enabled. It can write supported client configs
+for you.
+
+Project-scoped configuration is recommended for most users: the OpenProject MCP
+is available only in the current project/workspace. Choose global configuration
+only if you intentionally want the same OpenProject server available everywhere.
+
+The setup asks where to write the config before it asks for credentials:
 
 1. **Configure globally (user-wide)?** — registers the server in a detected
    client's user-wide config (e.g. `~/.claude.json`), available in every project.
@@ -176,14 +170,51 @@ It asks two independent questions:
    detected. A generic `.mcp.json` you can copy values from is written too (unless
    you selected Claude Code, whose project config *is* `.mcp.json`).
 
-Choose one or both; choosing neither aborts without writing anything (before it
-even asks for your token). Existing entries for other MCP servers are kept and
-each edited file is backed up first. After it writes, it tells you how to
-(re)load each client so the server actually starts.
+Configure either global or project-scoped in one run. Run `configure` again if
+you intentionally want both scopes with separate settings. If a deselected scope
+already has an OpenProject entry, setup asks whether to remove it; it never
+silently deletes it. Choosing neither aborts before it asks for your token,
+unless you only chose to remove existing entries. Existing entries for other MCP
+servers are kept and each edited file is backed up first. After it writes, it
+tells you how to (re)load each client so the server actually starts.
 
-> **Zero-install run:** with `uv` you can skip installing entirely — point your
-> client's `command` at `uvx` with args `["openproject-ce-mcp"]`. See the
-> per-client guides below.
+Restart your MCP client after installation or configuration, then ask it to call
+`get_current_user` or `list_projects`.
+
+### Update
+
+Upgrade the installed PyPI package, then restart your MCP client:
+
+```bash
+uv tool install --upgrade openproject-ce-mcp
+openproject-ce-mcp --version
+```
+
+If you installed with another tool:
+
+```bash
+pipx upgrade openproject-ce-mcp
+# or
+pip install --upgrade openproject-ce-mcp
+```
+
+No config rewrite is usually needed after an update. Re-run
+`openproject-ce-mcp configure` only when you want to change client targets,
+project scope, write access, or advanced settings.
+
+### Advanced install alternatives
+
+Use these when `uv tool install` is not the right fit for your environment:
+
+```bash
+pipx install openproject-ce-mcp
+pip install openproject-ce-mcp
+```
+
+With `uv`, you can also skip installing entirely and point your client's
+`command` at `uvx` with args `["openproject-ce-mcp"]`. Treat this as an advanced
+client-config option; the normal path is to install once and let `configure`
+write the client config.
 
 <details>
 <summary><b>Alternative: install from source</b> (curl one-liner, needs git)</summary>
@@ -209,17 +240,15 @@ PyPI/source installs use the same setup flow after installation: project
 directories get a local `.mcp.json`; global setup registers a detected client
 directly (see below).
 
-### Register the server in your MCP client
+### Client registration reference
 
-Setup has two steps:
+`openproject-ce-mcp configure` writes supported client configs for you. Use this
+section only when you need to inspect the file layout or register the server by
+hand.
 
-1. **Install the server once** — `uv tool install` / `pipx` / `pip` puts the
-   `openproject-ce-mcp` command on your PATH (source installs build it in `.venv`),
-   regardless of how many clients or projects you use.
-2. **Register it per client** — each client needs its own config file pointing at
-   that command. Registration only points your client to the installed command; it
-   is not a second install. Using more than one client (say Claude *and* Codex)?
-   Create one config file per client; they sit side by side.
+Registration only points your client to the installed command; it is not a
+second install. Using more than one client (say Claude and Codex)? Create one
+config file per client; they sit side by side.
 
 **Which guide do I use?** Use VS Code → the GitHub Copilot guide. Use Claude Code
 → the Claude guide. Use the Claude desktop app → the Claude Desktop guide. Use
@@ -239,22 +268,9 @@ config to another verbatim:
 > **VS Code users:** the Copilot guide below is your guide — VS Code runs MCP
 > servers through GitHub Copilot in Agent mode.
 
-**`openproject-ce-mcp configure` can write these files for you.** Before
-collecting your settings it asks two independent questions:
-
-- **Configure globally (user-wide)?** — adds the server to a detected client's
-  user-wide config, available in every project.
-- **Configure project-scoped (this directory)?** — writes config files into the
-  current directory for every supported client (offered whether or not the client
-  is detected), plus a generic `.mcp.json` you can copy from.
-
-Choose one or both; choosing neither aborts without writing anything. Only the
-`openproject` entry is written; existing entries for other MCP servers are kept
-and each edited file is backed up first.
-
-To register manually instead, copy the `command` and `env` values from the
-generated `.mcp.json` into the file and format your client's guide shows — the
-values are identical across clients.
+To register manually, copy the `command` and `env` values from the generated
+`.mcp.json` into the file and format your client's guide shows. The values are
+identical across clients.
 
 Follow the guide for your client:
 
@@ -279,7 +295,7 @@ client, and how to verify the server is picked up.
 |---|---|
 | Server / tools don't appear | Client not restarted, or the config is in the wrong file. Reload the client and confirm the file, location, and root key match your client's row above. |
 | `[auth_error]` on the first call | Wrong `OPENPROJECT_API_TOKEN` or `OPENPROJECT_BASE_URL`. Re-check both; the token is `opapi-…` and the base URL has no trailing `/api/v3`. |
-| Tools appear but writes fail | Writes are opt-in. Enable the relevant `OPENPROJECT_ENABLE_*_WRITE` flag and make sure the project is in `OPENPROJECT_ALLOWED_PROJECTS_WRITE`. |
+| Tools appear but writes fail | Writes are opt-in. Enable write access, make sure the project is in `OPENPROJECT_ALLOWED_PROJECTS_WRITE`, and check the corresponding write-group flag such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`. |
 
 **Uninstall**
 
@@ -368,38 +384,85 @@ If a check fails, doctor prints a `[FAIL]` message with details and suggestions.
 
 Your client config (`.mcp.json`, `.codex/config.toml`, or `.vscode/mcp.json`) contains your API token. Treat it like a password. This repo gitignores `.mcp.json`, but when you place a project-scoped config in your **own** project, add it to that project's `.gitignore` so the token is never committed.
 
-Access is grouped into five chains: `project`, `membership`, `work_package`, `version`, and `board`. Each chain has a read flag and a write flag. Scoped flags control each chain independently.
+`openproject-ce-mcp configure` writes a complete config. The basic path asks for
+connection, project scope, whether project-scoped writes should be enabled, and
+— only if writes are enabled — whether to skip the write-preview step
+(auto-confirm), which defaults to off. Detailed per-chain read/write groups,
+field filtering, and runtime settings are behind the "Configure advanced
+options?" prompt; if you skip it while reconfiguring, existing advanced values
+are preserved.
+
+### Connection
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `OPENPROJECT_BASE_URL` | yes | — | Base URL of your OpenProject instance, e.g. `https://op.example.com` |
 | `OPENPROJECT_API_TOKEN` | yes | — | Personal API token |
+
+### Project Scope
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
 | `OPENPROJECT_ALLOWED_PROJECTS_READ` | no | `*` | Readable projects; comma-separated identifiers, names, or glob patterns (e.g. `my-project,team-*`); `*` allows all visible projects |
 | `OPENPROJECT_ALLOWED_PROJECTS_WRITE` | no | empty | Writable projects; empty disables all project-scoped writes; always intersected with read scope |
-| `OPENPROJECT_ALLOWED_PROJECTS` | no | — | Backward-compatible alias for `OPENPROJECT_ALLOWED_PROJECTS_READ` |
+| `OPENPROJECT_ALLOWED_PROJECTS` | no | — | Deprecated alias for `OPENPROJECT_ALLOWED_PROJECTS_READ`; still honored (with a startup warning) if `_READ` is unset, but will be removed in a future release — rename it |
+
+### Tool Groups
+
+Access is grouped into five chains: `project`, `membership`, `work_package`,
+`version`, and `board`. Each chain has a read flag and a write flag. Read flags
+default on. Write flags only matter when `OPENPROJECT_ALLOWED_PROJECTS_WRITE`
+is not empty; enabling write access in the basic setup turns the normal
+project-scoped write groups on by default, and Advanced setup can narrow them.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
 | `OPENPROJECT_ENABLE_PROJECT_READ` | no | `true` | Projects, documents, news, wiki, lifecycle |
 | `OPENPROJECT_ENABLE_WORK_PACKAGE_READ` | no | `true` | Work packages, relations, attachments, time entries |
 | `OPENPROJECT_ENABLE_MEMBERSHIP_READ` | no | `true` | Memberships, roles, principals |
 | `OPENPROJECT_ENABLE_VERSION_READ` | no | `true` | Versions |
 | `OPENPROJECT_ENABLE_BOARD_READ` | no | `true` | Boards and views |
-| `OPENPROJECT_HIDE_<ENTITY>_FIELDS` | no | empty | Comma-separated fields to omit from reads and reject on writes; `*` wildcards supported |
-| `OPENPROJECT_HIDE_CUSTOM_FIELDS` | no | empty | Custom field names or keys to omit; `*` wildcards supported |
-| `OPENPROJECT_ENABLE_ADMIN_WRITE` | no | `false` | User and group management (create/update/delete/lock users, create/update/delete groups). Must be set explicitly — not activated by any other write flag, and not prompted for by `openproject-ce-mcp configure`; edit `.mcp.json` by hand to enable it. |
 | `OPENPROJECT_ENABLE_PROJECT_WRITE` | no | `false` | Project create/update/delete, news, documents, grids |
 | `OPENPROJECT_ENABLE_MEMBERSHIP_WRITE` | no | `false` | Project membership create/update/delete |
 | `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE` | no | `false` | Work-package create/update/delete, comments, relations, attachments, time entries |
 | `OPENPROJECT_ENABLE_VERSION_WRITE` | no | `false` | Version create/update/delete |
 | `OPENPROJECT_ENABLE_BOARD_WRITE` | no | `false` | Board create/update/delete |
+
+### Confirmation Behavior
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `OPENPROJECT_AUTO_CONFIRM_WRITE` | no | `false` | Skip the preview step for writes |
+| `OPENPROJECT_AUTO_CONFIRM_DELETE` | no | `false` in generated configs; inherits `OPENPROJECT_AUTO_CONFIRM_WRITE` if omitted | Skip the preview step for deletes |
+
+### Token / Context Budget
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
 | `OPENPROJECT_ENABLE_METADATA_TOOLS` | no | `false` | Expose the rarely-used metadata/reference tools (`get_query_*` schema tools, `render_text`, `get_custom_option`, `list_help_texts`/`get_help_text`, `list_working_days`/`list_non_working_days`). Off by default to keep them out of the tool set and save context; they stay reachable once enabled |
-| `OPENPROJECT_AUTO_CONFIRM_WRITE` | no | `false` | Skip the preview step for all writes |
-| `OPENPROJECT_AUTO_CONFIRM_DELETE` | no | inherits `OPENPROJECT_AUTO_CONFIRM_WRITE` | Skip the preview step for deletes |
-| `OPENPROJECT_ATTACHMENT_ROOT` | no | current working directory | Directory that attachment uploads are confined to. Files outside it are refused, and credential/config files (`.mcp.json`, `.env`, `*.pem`, keys) are refused even inside it, so a tool call cannot exfiltrate local secrets |
-| `OPENPROJECT_TIMEOUT` | no | `12` | Request timeout in seconds |
-| `OPENPROJECT_VERIFY_SSL` | no | `true` | Verify TLS certificates |
 | `OPENPROJECT_DEFAULT_PAGE_SIZE` | no | `10` | Default results per page (kept small to bound list context; raise if you want more rows per call) |
 | `OPENPROJECT_MAX_PAGE_SIZE` | no | `50` | Hard cap on results per request |
 | `OPENPROJECT_MAX_RESULTS` | no | `100` | Hard cap on total results returned by a tool |
 | `OPENPROJECT_TEXT_LIMIT` | no | `500` | Char cap for the description preview in list/search results (context protection across many rows). Single-item reads (`get_work_package`, `get_work_package_activities`) return full text regardless; a per-call `text_limit` overrides this |
+
+### Security / Privacy
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `OPENPROJECT_HIDE_<ENTITY>_FIELDS` | no | empty | Comma-separated fields to omit from reads and reject on writes; `*` wildcards supported |
+| `OPENPROJECT_HIDE_CUSTOM_FIELDS` | no | empty | Custom field names or keys to omit; `*` wildcards supported |
+| `OPENPROJECT_ATTACHMENT_ROOT` | no | current working directory | Directory that attachment uploads are confined to. Files outside it are refused, and credential/config files (`.mcp.json`, `.env`, `*.pem`, keys) are refused even inside it, so a tool call cannot exfiltrate local secrets |
+| `OPENPROJECT_ENABLE_ADMIN_WRITE` | no | `false` | User and group management (create/update/delete/lock users, create/update/delete groups). Must be set explicitly and is not activated by any project-scoped write flag |
+
+### Network / Runtime
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `OPENPROJECT_TIMEOUT` | no | `12` | Request timeout in seconds |
+| `OPENPROJECT_VERIFY_SSL` | no | `true` | Verify TLS certificates |
+| `OPENPROJECT_MAX_RETRIES` | no | `3` | Retries for 429/5xx responses |
+| `OPENPROJECT_RETRY_BASE_DELAY` | no | `1.0` | Initial retry delay in seconds |
+| `OPENPROJECT_RETRY_MAX_DELAY` | no | `60.0` | Maximum retry delay in seconds |
 | `OPENPROJECT_LOG_LEVEL` | no | `WARNING` | `CRITICAL`, `ERROR`, `WARNING`, or `INFO` |
 
 Supported entities for `OPENPROJECT_HIDE_<ENTITY>_FIELDS`: `project`, `membership`, `role`, `principal`, `user`, `group`, `project_access`, `project_admin_context`, `project_configuration`, `action`, `capability`, `job_status`, `project_phase_definition`, `project_phase`, `view`, `query_filter`, `query_column`, `query_operator`, `query_sort_by`, `query_filter_instance_schema`, `document`, `news`, `wiki_page`, `category`, `attachment`, `time_entry_activity`, `time_entry`, `work_package`, `relation`, `activity`, `reminder`, `version`, `board`, `current_user`, `instance_configuration`.

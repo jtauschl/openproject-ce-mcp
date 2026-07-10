@@ -135,6 +135,12 @@ class Settings:
         env = environ or os.environ
         base_url = _parse_base_url(env.get("OPENPROJECT_BASE_URL"))
         api_token = _require_non_empty(env.get("OPENPROJECT_API_TOKEN"), "OPENPROJECT_API_TOKEN")
+        if "OPENPROJECT_ALLOWED_PROJECTS_READ" not in env and "OPENPROJECT_ALLOWED_PROJECTS" in env:
+            logging.getLogger(__name__).warning(
+                "OPENPROJECT_ALLOWED_PROJECTS is deprecated; rename it to "
+                "OPENPROJECT_ALLOWED_PROJECTS_READ. Falling back to it for now, but this "
+                "alias will be removed in a future release."
+            )
         allowed_projects = _parse_csv(
             env.get("OPENPROJECT_ALLOWED_PROJECTS_READ") or env.get("OPENPROJECT_ALLOWED_PROJECTS")
         )

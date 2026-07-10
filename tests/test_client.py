@@ -6567,7 +6567,7 @@ async def test_copy_project_checks_destination_allowlist() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     # The source "src" is allowed, so a PermissionDeniedError here can only come
     # from the destination identifier "dst-bad" being outside the allowlist.
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ALLOWED_PROJECTS"):
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ALLOWED_PROJECTS_READ"):
         await client.copy_project(source_project="src", name="Bad", identifier="dst-bad", confirm=True)
 
     # Positive control: an allowed destination passes the allowlist stage (it then

@@ -63,7 +63,10 @@ def test_settings_from_env_rejects_invalid_relationships() -> None:
         )
 
 
-def test_settings_from_env_keeps_legacy_allowed_projects_as_read_alias() -> None:
+def test_settings_from_env_falls_back_to_deprecated_allowed_projects_alias() -> None:
+    # OPM-99: OPENPROJECT_ALLOWED_PROJECTS (no _READ suffix) must still restrict
+    # read access for existing deployments — silently ignoring it would fail open
+    # (empty allow-list means unrestricted access, see _ensure_project_allowed).
     settings = Settings.from_env(
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
@@ -252,6 +255,33 @@ def test_auto_confirm_delete_can_be_disabled_independently() -> None:
     settings = Settings.from_env(env)
     assert settings.auto_confirm_write is True
     assert settings.auto_confirm_delete is False
+
+
+def test_allowed_projects_alias_falls_back_and_warns(caplog) -> None:
+    with caplog.at_level("WARNING"):
+        settings = Settings.from_env(
+            {
+                "OPENPROJECT_BASE_URL": "https://op.example.com",
+                "OPENPROJECT_API_TOKEN": "token-value",
+                "OPENPROJECT_ALLOWED_PROJECTS": "legacy-project",
+            }
+        )
+    assert settings.allowed_projects == ("legacy-project",)
+    assert any("OPENPROJECT_ALLOWED_PROJECTS is deprecated" in record.message for record in caplog.records)
+
+
+def test_allowed_projects_read_takes_precedence_over_alias(caplog) -> None:
+    with caplog.at_level("WARNING"):
+        settings = Settings.from_env(
+            {
+                "OPENPROJECT_BASE_URL": "https://op.example.com",
+                "OPENPROJECT_API_TOKEN": "token-value",
+                "OPENPROJECT_ALLOWED_PROJECTS_READ": "current-project",
+                "OPENPROJECT_ALLOWED_PROJECTS": "legacy-project",
+            }
+        )
+    assert settings.allowed_projects == ("current-project",)
+    assert not any("deprecated" in record.message for record in caplog.records)
 
 
 def test_http_remote_base_url_warns(caplog) -> None:

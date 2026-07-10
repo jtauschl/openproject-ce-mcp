@@ -25,6 +25,7 @@ htmlcov/
 .claude/
 .codex/
 .vscode/
+.cursor/
 .DS_Store
 CONTINUE.md
 

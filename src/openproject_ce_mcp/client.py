@@ -6899,7 +6899,7 @@ class OpenProjectClient:
             "membership": "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE",
             "version": "OPENPROJECT_ENABLE_VERSION_WRITE",
             "board": "OPENPROJECT_ENABLE_BOARD_WRITE",
-        }.get(scope, "the relevant OPENPROJECT_ENABLE_*_WRITE flag")
+        }.get(scope, "the corresponding write-group setting")
         raise PermissionDeniedError(
             f"OpenProject {scope.replace('_', ' ')} write support is disabled. "
             f"Set {scope_env}=true to allow confirmed writes."
@@ -7329,8 +7329,9 @@ class OpenProjectClient:
     def _ensure_field_writable(self, entity: str, field_name: str) -> None:
         if not self._field_hidden(entity, field_name):
             return
-        env_name = HIDE_FIELD_ENV_BY_ENTITY.get(entity, "OPENPROJECT_HIDE_FIELDS")
-        raise InvalidInputError(f"OpenProject field '{field_name}' is hidden by {env_name} and cannot be written.")
+        env_name = HIDE_FIELD_ENV_BY_ENTITY.get(entity)
+        source = env_name if env_name else "the configured hidden-field settings"
+        raise InvalidInputError(f"OpenProject field '{field_name}' is hidden by {source} and cannot be written.")
 
     def _visible_formattable_text(
         self,

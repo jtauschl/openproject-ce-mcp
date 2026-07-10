@@ -119,7 +119,7 @@ The model has two independent layers:
 **Layer 1 — MCP server gates** (env var flags, checked before any HTTP call):
 
 - scoped `OPENPROJECT_ENABLE_*_READ`
-- scoped `OPENPROJECT_ENABLE_*_WRITE` / `OPENPROJECT_ENABLE_ADMIN_WRITE`
+- scoped write-group flags such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`, plus `OPENPROJECT_ENABLE_ADMIN_WRITE`
 - `OPENPROJECT_ENABLE_METADATA_TOOLS` (opt-in exposure of rarely-used metadata tools)
 - `OPENPROJECT_ALLOWED_PROJECTS_READ` / `OPENPROJECT_ALLOWED_PROJECTS_WRITE`
 - `OPENPROJECT_HIDE_<ENTITY>_FIELDS` / `OPENPROJECT_HIDE_CUSTOM_FIELDS`

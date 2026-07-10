@@ -112,5 +112,5 @@ codex mcp add openproject \
 - Protect `~/.codex/config.toml` if it contains secrets: `chmod 600 ~/.codex/config.toml`
 - Protect `.codex/config.toml` if it contains secrets: `chmod 600 .codex/config.toml`
 - `OPENPROJECT_ALLOWED_PROJECTS_READ` accepts comma-separated identifiers, names, or glob patterns: `project-one,team-*`. Use `*` for all visible projects
-- `OPENPROJECT_ALLOWED_PROJECTS_WRITE` only narrows scope; it doesn't enable writes. Use the scoped `OPENPROJECT_ENABLE_*_WRITE` flags for the operations you need
+- `OPENPROJECT_ALLOWED_PROJECTS_WRITE` only narrows scope; it doesn't enable writes by itself. Enable the corresponding write group, such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`, for the operations you need
 - If you use `codex mcp add`, prefer `--env KEY=VALUE` for server variables. Plain shell `export`s are session-scoped and are not written into the saved MCP entry

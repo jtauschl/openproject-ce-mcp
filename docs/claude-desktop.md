@@ -102,4 +102,4 @@ permissions, use Claude Code — see [claude.md](claude.md)).
   configured the server in Claude Desktop and want it in Claude Code too, you can
   import it with `claude mcp add-from-claude-desktop`.
 - `OPENPROJECT_ALLOWED_PROJECTS_READ` accepts comma-separated identifiers, names, or glob patterns: `project-one,team-*`. Use `*` for all visible projects.
-- `OPENPROJECT_ALLOWED_PROJECTS_WRITE` only narrows scope; it doesn't enable writes. Use the scoped `OPENPROJECT_ENABLE_*_WRITE` flags for the operations you need.
+- `OPENPROJECT_ALLOWED_PROJECTS_WRITE` only narrows scope; it doesn't enable writes by itself. Enable the corresponding write group, such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`, for the operations you need.

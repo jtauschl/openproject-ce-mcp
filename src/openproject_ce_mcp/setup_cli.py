@@ -14,7 +14,7 @@ Runs in two modes:
   directory (project-local) or a global client config.
 * **clone** — running from a source checkout. Dependencies are installed with
   ``uv``/pip, the command points at ``.venv/bin/openproject-ce-mcp``, and
-  ``.mcp.json`` lands in the repo root. This preserves the get.sh behaviour.
+  project-scoped config lands in the launch directory.
 """
 
 from __future__ import annotations
@@ -79,25 +79,41 @@ def _looks_like_project_dir(path: Path) -> bool:
     return any((path / m).exists() for m in markers)
 
 
+def _project_cwd() -> Path:
+    """Directory the user launched configure from, used for project-scoped files.
+
+    ``uv run --directory <repo> ...`` changes the process cwd to the repo so it
+    can resolve the project, but keeps PWD pointing at the user's shell
+    directory. For project-scoped MCP config, that launch directory is the least
+    surprising target.
+    """
+    pwd = os.environ.get("PWD")
+    if pwd:
+        path = Path(pwd)
+        if path.is_absolute() and path.is_dir():
+            return path
+    return Path.cwd()
+
+
 def _resolve_mcp_json(scope: str | None, installed: bool) -> Path | None:
     """Resolve where the project-local ``.mcp.json`` goes, or ``None`` for global.
 
     This owns the whole scope policy in one place:
 
     * ``scope="global"`` → ``None`` (no project file; register clients instead),
-    * ``scope="local"`` → current directory,
-    * ``scope=None`` (auto) → clone mode writes to the repo root (historical
-      behaviour); installed mode writes a local file only when the current
-      directory looks like a project, otherwise ``None`` (global registration).
+    * ``scope="local"`` → launch directory,
+    * ``scope=None`` (auto) → source/clone mode writes to the launch directory;
+      installed mode writes a local file only when the launch directory looks
+      like a project, otherwise ``None`` (global registration).
     """
     if scope == "global":
         return None
     if scope == "local":
-        return Path.cwd() / ".mcp.json"
+        return _project_cwd() / ".mcp.json"
     if not installed:
-        return _REPO_ROOT / ".mcp.json"
-    if _looks_like_project_dir(Path.cwd()):
-        return Path.cwd() / ".mcp.json"
+        return _project_cwd() / ".mcp.json"
+    if _looks_like_project_dir(_project_cwd()):
+        return _project_cwd() / ".mcp.json"
     return None
 
 
@@ -401,10 +417,9 @@ def _detect_cursor() -> bool:
 
 
 def _clients() -> list[Client]:
-    # project_target is cwd-relative so it honours the directory the user runs in.
-    # Claude Code's project file (.mcp.json) may be overridden to the repo root in
-    # clone mode by main() (see _resolve_mcp_json); the default here is the cwd.
-    cwd = Path.cwd()
+    # project_target is launch-directory-relative so it honours the directory the
+    # user ran configure from, even under `uv run --directory <repo>`.
+    cwd = _project_cwd()
     return [
         Client(
             "claude-code",
@@ -494,6 +509,8 @@ def _write_client_config(client: Client, command: str, env: dict[str, str], *, t
     if not _IS_WINDOWS:
         target.chmod(0o600)
     print(f"  ✓ Wrote {target}")
+    _git_warning_for_unignored_file(target)
+    _git_warning_for_unignored_file(target.with_name(f"{target.name}.bak.example"))
     return True
 
 
@@ -660,7 +677,44 @@ def _backup(path: Path) -> None:
                 break
             counter += 1
     path.rename(dest)
+    if not _IS_WINDOWS:
+        dest.chmod(0o600)
     print(f"Backed up {path.name} → {dest.name}")
+
+
+def _nearest_existing_parent(path: Path) -> Path:
+    current = path if path.is_dir() else path.parent
+    while not current.exists() and current != current.parent:
+        current = current.parent
+    return current
+
+
+def _git_warning_for_unignored_file(path: Path) -> None:
+    """Warn when a project-scoped credential file would be tracked by Git."""
+    anchor = _nearest_existing_parent(path)
+    try:
+        in_work_tree = subprocess.run(
+            ["git", "-C", str(anchor), "rev-parse", "--is-inside-work-tree"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return
+    if in_work_tree.returncode != 0 or in_work_tree.stdout.strip() != "true":
+        return
+
+    ignored = subprocess.run(
+        ["git", "-C", str(anchor), "check-ignore", "-q", str(path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if ignored.returncode == 0:
+        return
+
+    print(f"  ! {path} is inside a Git repository but is not ignored.")
+    print("    It contains credentials; add it and its backups to .gitignore before committing.")
 
 
 def _write_mcp_json(env: dict[str, str], mcp_json: Path, command: str) -> None:
@@ -681,6 +735,8 @@ def _write_mcp_json(env: dict[str, str], mcp_json: Path, command: str) -> None:
     if not _IS_WINDOWS:
         mcp_json.chmod(0o600)
     print(f"Written: {mcp_json}")
+    _git_warning_for_unignored_file(mcp_json)
+    _git_warning_for_unignored_file(mcp_json.with_name(f"{mcp_json.name}.bak.example"))
 
 
 # ── prompts ───────────────────────────────────────────────────────────────────
@@ -731,12 +787,37 @@ def _bool_from_env(env: dict[str, str], key: str, fallback: bool = False) -> boo
     return fallback
 
 
-def _choose_targets(clients: list[Client]) -> tuple[list[Client], list[Client]]:
+def _has_openproject_config(client: Client, target: Path | None) -> bool:
+    target = target if target is not None else client.target
+    if target is None or not target.exists():
+        return False
+    try:
+        text = target.read_text(encoding="utf-8")
+        if client.fmt == "toml":
+            for line in text.splitlines():
+                stripped = line.strip()
+                if _CODEX_DOTTED_RE.match(stripped):
+                    return True
+                if _TOML_HEADER_RE.match(stripped):
+                    table = stripped.lstrip("[").rstrip("]").strip()
+                    if table == "mcp_servers.openproject" or table.startswith("mcp_servers.openproject."):
+                        return True
+            return False
+        data = json.loads(text)
+        servers = data.get(client.root_key) if isinstance(data, dict) else None
+        return isinstance(servers, dict) and "openproject" in servers
+    except Exception:
+        return False
+
+
+def _choose_targets(clients: list[Client]) -> tuple[list[Client], list[Client], list[Client], list[Client]]:
     """Two independent gates deciding WHERE to configure the server.
 
-    Returns ``(global_clients, project_clients)``. The gates run before any
-    credentials are collected so the user decides the targets first, and CONFIGURE
-    (not install) is the wording throughout.
+    Returns ``(global_clients, project_clients, remove_global_clients,
+    remove_project_clients)``. The gates run before any credentials are collected
+    so the user decides the targets first, and CONFIGURE (not install) is the
+    wording throughout. Deselected scopes with an existing openproject entry ask
+    whether that entry should be removed.
 
     * Gate 1 (global / user-wide) offers only DETECTED clients — a user-wide config
       for a client that isn't installed makes no sense.
@@ -744,6 +825,8 @@ def _choose_targets(clients: list[Client]) -> tuple[list[Client], list[Client]]:
       set), detected or not: a fresh IDE setup can want ``.codex/config.toml`` even
       when the ``codex`` CLI isn't on PATH yet. Detection only sets the default
       answer (detected → yes), never the availability.
+    * Configuring both scopes in one run is intentionally not offered. Run
+      configure twice if you want separate global and project-scoped entries.
     """
     detected = [c for c in clients if c.detected()]
     project_capable = [c for c in clients if c.project_target is not None]
@@ -756,12 +839,35 @@ def _choose_targets(clients: list[Client]) -> tuple[list[Client], list[Client]]:
         print()
 
     global_clients: list[Client] = []
+    remove_global_clients: list[Client] = []
+    project_clients: list[Client] = []
+    remove_project_clients: list[Client] = []
     if detected and _prompt_bool("Configure globally (user-wide)?", default=False):
         for client in detected:
             if _prompt_bool(f"  Configure {client.label}? ({client.target})", default=True):
                 global_clients.append(client)
+            elif _has_openproject_config(client, client.target) and _prompt_bool(
+                f"  Remove existing global {client.label} OpenProject config?",
+                default=False,
+            ):
+                remove_global_clients.append(client)
+    else:
+        for client in detected:
+            if _has_openproject_config(client, client.target) and _prompt_bool(
+                f"Remove existing global {client.label} OpenProject config?",
+                default=False,
+            ):
+                remove_global_clients.append(client)
 
-    project_clients: list[Client] = []
+    if global_clients:
+        for client in project_capable:
+            if _has_openproject_config(client, client.project_target) and _prompt_bool(
+                f"Remove existing project-scoped {client.label} OpenProject config?",
+                default=False,
+            ):
+                remove_project_clients.append(client)
+        return global_clients, project_clients, remove_global_clients, remove_project_clients
+
     detected_keys = {c.key for c in detected}
     detected_project = [c for c in project_capable if c.key in detected_keys]
     if _prompt_bool("Configure project-scoped (this directory)?", default=False):
@@ -774,8 +880,20 @@ def _choose_targets(clients: list[Client]) -> tuple[list[Client], list[Client]]:
             default = client.key in detected_keys or (client.key == "claude-code" and not detected_project)
             if _prompt_bool(f"  Configure {client.label}? ({client.project_target})", default=default):
                 project_clients.append(client)
+            elif _has_openproject_config(client, client.project_target) and _prompt_bool(
+                f"  Remove existing project-scoped {client.label} OpenProject config?",
+                default=False,
+            ):
+                remove_project_clients.append(client)
+    else:
+        for client in project_capable:
+            if _has_openproject_config(client, client.project_target) and _prompt_bool(
+                f"Remove existing project-scoped {client.label} OpenProject config?",
+                default=False,
+            ):
+                remove_project_clients.append(client)
 
-    return global_clients, project_clients
+    return global_clients, project_clients, remove_global_clients, remove_project_clients
 
 
 def _apply_registration(clients: list[Client], command: str, env: dict[str, str], *, scope: str) -> None:
@@ -849,24 +967,34 @@ def _run_configure(argv: list[str] | None = None) -> None:
     command, command_resolved = _server_command(installed)
 
     clients = _clients()
-    # Clone mode writes Claude Code's project .mcp.json to the repo root, not cwd
-    # (historical behaviour); reflect that on the client's project_target.
-    if not installed:
-        for client in clients:
-            if client.key == "claude-code":
-                client.project_target = _resolve_mcp_json(None, installed=False)
 
     # Two independent gates decide WHERE to configure — before collecting creds.
-    global_clients, project_clients = _choose_targets(clients)
+    global_clients, project_clients, remove_global_clients, remove_project_clients = _choose_targets(clients)
 
-    # A generic .mcp.json copy-source is written when project scope is chosen (or
-    # in a clone/source setup), NOT for a purely global configuration. If Claude
+    # A generic .mcp.json copy-source is written when project scope is chosen,
+    # NOT for a purely global configuration. If Claude
     # Code is among the project clients, its project_target IS .mcp.json, so we
     # write it once via _write_client_config and skip the generic write.
     claude_code_project = any(c.key == "claude-code" for c in project_clients)
-    write_generic_mcp_json = (bool(project_clients) or not installed) and not claude_code_project
+    write_generic_mcp_json = bool(project_clients) and not claude_code_project
 
+    if remove_global_clients:
+        print()
+        print("Removing deselected user-wide (global) config:")
+        for client in remove_global_clients:
+            _remove_client_config(client, target=client.target)
+    if remove_project_clients:
+        print()
+        print("Removing deselected project-scoped config:")
+        for client in remove_project_clients:
+            _remove_client_config(client, target=client.project_target)
+
+    removed_any = bool(remove_global_clients or remove_project_clients)
     if not global_clients and not project_clients and not write_generic_mcp_json:
+        if removed_any:
+            print()
+            print("No targets selected to configure. Removed selected OpenProject entries.")
+            return
         print(
             "\nNothing selected to configure. Re-run and choose a global and/or "
             "project-scoped target (see the guides).",
@@ -874,11 +1002,12 @@ def _run_configure(argv: list[str] | None = None) -> None:
         )
         sys.exit(1)
 
-    # Field-wise prefill: global targets first (low priority), then project targets
-    # in cwd (override only keys they define), so a partial project config doesn't
-    # discard a complete global entry's token.
-    prefill_pairs: list[tuple[Client, Path | None]] = [(c, c.target) for c in global_clients] + [
-        (c, c.project_target) for c in project_clients
+    # Field-wise prefill from the selected scope only. Project-scoped values never
+    # silently override global values, and global values never leak into a local
+    # config.
+    selected_prefill_clients = project_clients if project_clients else global_clients
+    prefill_pairs: list[tuple[Client, Path | None]] = [
+        (c, c.project_target if project_clients else c.target) for c in selected_prefill_clients
     ]
     existing = _merge_prefill(prefill_pairs)
 
@@ -904,73 +1033,134 @@ def _run_configure(argv: list[str] | None = None) -> None:
         "Readable projects (* = all visible)",
         existing.get("OPENPROJECT_ALLOWED_PROJECTS_READ", "*"),
     )
-    write_projects = _prompt(
-        "Writable projects (leave empty to disable writes; * = all readable projects)",
-        existing.get("OPENPROJECT_ALLOWED_PROJECTS_WRITE", ""),
-    )
+    existing_write_projects = existing.get("OPENPROJECT_ALLOWED_PROJECTS_WRITE", "").strip()
+    write_access = _prompt_bool("Enable write access?", bool(existing_write_projects))
+    if write_access:
+        write_projects_default = existing_write_projects or read_projects
+        write_projects = _prompt(
+            "Writable projects (subset of readable)",
+            write_projects_default,
+        )
+        wp_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", True)
+        project_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_WRITE", True)
+        membership_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", True)
+        version_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_WRITE", True)
+        board_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_WRITE", True)
+        auto_confirm_write = _prompt_bool(
+            "Skip the preview step for writes? (not recommended — writes execute immediately without a preview)",
+            _bool_from_env(existing, "OPENPROJECT_AUTO_CONFIRM_WRITE", False),
+        )
+        auto_confirm_delete = _bool_from_env(existing, "OPENPROJECT_AUTO_CONFIRM_DELETE", auto_confirm_write)
+    else:
+        write_projects = ""
+        print("Write access disabled — project-scoped writes are disabled.")
+        wp_write = False
+        project_write = False
+        membership_write = False
+        version_write = False
+        board_write = False
+        auto_confirm_write = False
+        auto_confirm_delete = False
 
     print()
-    print("Optional field filtering — omit fields from reads. Leave empty unless you")
-    print("need it; just press Enter to skip each.")
-    hide_project = _prompt(
-        "Hidden project fields (comma-separated)",
-        existing.get("OPENPROJECT_HIDE_PROJECT_FIELDS", ""),
-    )
-    hide_wp = _prompt(
-        "Hidden work-package fields (comma-separated)",
-        existing.get("OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS", ""),
-    )
-    hide_activity = _prompt(
-        "Hidden activity fields (comma-separated)",
-        existing.get("OPENPROJECT_HIDE_ACTIVITY_FIELDS", ""),
-    )
-    hide_custom = _prompt(
-        "Hidden custom fields (comma-separated)",
-        existing.get("OPENPROJECT_HIDE_CUSTOM_FIELDS", ""),
-    )
+    advanced = _prompt_bool("Configure advanced options?", False)
 
-    print()
+    project_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_READ", True)
+    membership_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_READ", True)
+    work_package_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_READ", True)
+    version_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_READ", True)
+    board_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_READ", True)
+    hide_project = existing.get("OPENPROJECT_HIDE_PROJECT_FIELDS", "")
+    hide_wp = existing.get("OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS", "")
+    hide_activity = existing.get("OPENPROJECT_HIDE_ACTIVITY_FIELDS", "")
+    hide_custom = existing.get("OPENPROJECT_HIDE_CUSTOM_FIELDS", "")
+    admin_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_WRITE")
+    metadata_tools = _bool_from_env(existing, "OPENPROJECT_ENABLE_METADATA_TOOLS")
+    timeout = existing.get("OPENPROJECT_TIMEOUT", "12")
+    verify_ssl = existing.get("OPENPROJECT_VERIFY_SSL", "true")
+    default_page_size = existing.get("OPENPROJECT_DEFAULT_PAGE_SIZE", "10")
+    max_page_size = existing.get("OPENPROJECT_MAX_PAGE_SIZE", "50")
+    max_results = existing.get("OPENPROJECT_MAX_RESULTS", "100")
+    text_limit = existing.get("OPENPROJECT_TEXT_LIMIT", "500")
+    log_level = existing.get("OPENPROJECT_LOG_LEVEL", "WARNING")
+    attachment_root = existing.get("OPENPROJECT_ATTACHMENT_ROOT", "")
+    max_retries = existing.get("OPENPROJECT_MAX_RETRIES", "3")
+    retry_base_delay = existing.get("OPENPROJECT_RETRY_BASE_DELAY", "1.0")
+    retry_max_delay = existing.get("OPENPROJECT_RETRY_MAX_DELAY", "60.0")
 
-    project_read = _prompt_bool(
-        "Enable project reads?",
-        _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_READ", True),
-    )
-    membership_read = _prompt_bool(
-        "Enable membership reads (memberships, roles, principals)?",
-        _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_READ", True),
-    )
-    work_package_read = _prompt_bool(
-        "Enable work-package reads (work packages, activities, relations, attachments, time entries)?",
-        _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_READ", True),
-    )
-    version_read = _prompt_bool(
-        "Enable version reads?",
-        _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_READ", True),
-    )
-    board_read = _prompt_bool(
-        "Enable board reads?",
-        _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_READ", True),
-    )
-    wp_write = _prompt_bool(
-        "Enable work-package writes (create/update/delete, comments, relations, attachments, time entries)?",
-        _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"),
-    )
-    project_write = _prompt_bool(
-        "Enable project writes (create/update/delete)?",
-        _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_WRITE"),
-    )
-    membership_write = _prompt_bool(
-        "Enable membership writes (create/update/delete)?",
-        _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE"),
-    )
-    version_write = _prompt_bool(
-        "Enable version writes (create/update/delete)?",
-        _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_WRITE"),
-    )
-    board_write = _prompt_bool(
-        "Enable board writes (create/update/delete)?",
-        _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_WRITE"),
-    )
+    if advanced:
+        print()
+        print("Read tool groups — defaults are usually right for first-time setup.")
+        project_read = _prompt_bool("Enable project reads?", project_read)
+        membership_read = _prompt_bool(
+            "Enable membership reads (memberships, roles, principals)?",
+            membership_read,
+        )
+        work_package_read = _prompt_bool(
+            "Enable work-package reads (work packages, activities, relations, attachments, time entries)?",
+            work_package_read,
+        )
+        version_read = _prompt_bool("Enable version reads?", version_read)
+        board_read = _prompt_bool("Enable board reads?", board_read)
+
+        if write_access:
+            print()
+            print("Write controls — OpenProject permissions and the writable project scope still apply.")
+            wp_write = _prompt_bool(
+                "Enable work-package writes (create/update/delete, comments, relations, attachments, time entries)?",
+                wp_write,
+            )
+            project_write = _prompt_bool(
+                "Enable project writes (create/update/delete)?",
+                project_write,
+            )
+            membership_write = _prompt_bool(
+                "Enable membership writes (create/update/delete)?",
+                membership_write,
+            )
+            version_write = _prompt_bool(
+                "Enable version writes (create/update/delete)?",
+                version_write,
+            )
+            board_write = _prompt_bool(
+                "Enable board writes (create/update/delete)?",
+                board_write,
+            )
+            auto_confirm_write = _prompt_bool(
+                "Auto-confirm writes without preview?",
+                auto_confirm_write,
+            )
+            auto_confirm_delete = _prompt_bool(
+                "Auto-confirm deletes without preview?",
+                auto_confirm_delete,
+            )
+
+        print()
+        print("Optional field filtering — omit fields from reads. Leave empty unless you need it.")
+        hide_project = _prompt("Hidden project fields (comma-separated)", hide_project)
+        hide_wp = _prompt("Hidden work-package fields (comma-separated)", hide_wp)
+        hide_activity = _prompt("Hidden activity fields (comma-separated)", hide_activity)
+        hide_custom = _prompt("Hidden custom fields (comma-separated)", hide_custom)
+
+        print()
+        print("Advanced tool exposure and runtime settings.")
+        admin_write = _prompt_bool("Enable admin writes (users/groups)?", admin_write)
+        metadata_tools = _prompt_bool("Enable rarely-used metadata tools?", metadata_tools)
+        attachment_root = _prompt("Attachment upload root (empty = current working directory)", attachment_root)
+        default_page_size = _prompt("Default page size", default_page_size)
+        max_page_size = _prompt("Max page size", max_page_size)
+        max_results = _prompt("Max total results", max_results)
+        text_limit = _prompt("List text preview char limit", text_limit)
+        timeout = _prompt("Request timeout seconds", timeout)
+        verify_ssl = (
+            "true"
+            if _prompt_bool("Verify TLS certificates?", _bool_from_env({"v": verify_ssl}, "v", True))
+            else "false"
+        )
+        max_retries = _prompt("Max retries for 429/5xx responses", max_retries)
+        retry_base_delay = _prompt("Retry base delay seconds", retry_base_delay)
+        retry_max_delay = _prompt("Retry max delay seconds", retry_max_delay)
+        log_level = _prompt("Log level", log_level)
 
     env: dict[str, str] = {
         "OPENPROJECT_BASE_URL": base_url,
@@ -991,23 +1181,21 @@ def _run_configure(argv: list[str] | None = None) -> None:
         "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": str(wp_write).lower(),
         "OPENPROJECT_ENABLE_VERSION_WRITE": str(version_write).lower(),
         "OPENPROJECT_ENABLE_BOARD_WRITE": str(board_write).lower(),
-        # Instance-wide user/group administration. Not prompted for on purpose —
-        # it is a powerful, rarely needed capability. The key is written as false
-        # (preserving any existing value) so it is visible and easy to flip by
-        # hand; see .mcp.json.example and the README for details.
-        "OPENPROJECT_ENABLE_ADMIN_WRITE": str(_bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_WRITE")).lower(),
-        # Rarely-used metadata/reference tools (query schema, render_text, help
-        # texts, working days, custom options). Gated off by default to keep them
-        # out of the tool set and save context; written as false (preserving any
-        # existing value) so it is visible and easy to flip by hand.
-        "OPENPROJECT_ENABLE_METADATA_TOOLS": str(_bool_from_env(existing, "OPENPROJECT_ENABLE_METADATA_TOOLS")).lower(),
-        "OPENPROJECT_TIMEOUT": existing.get("OPENPROJECT_TIMEOUT", "12"),
-        "OPENPROJECT_VERIFY_SSL": existing.get("OPENPROJECT_VERIFY_SSL", "true"),
-        "OPENPROJECT_DEFAULT_PAGE_SIZE": existing.get("OPENPROJECT_DEFAULT_PAGE_SIZE", "10"),
-        "OPENPROJECT_MAX_PAGE_SIZE": existing.get("OPENPROJECT_MAX_PAGE_SIZE", "50"),
-        "OPENPROJECT_MAX_RESULTS": existing.get("OPENPROJECT_MAX_RESULTS", "100"),
-        "OPENPROJECT_TEXT_LIMIT": existing.get("OPENPROJECT_TEXT_LIMIT", "500"),
-        "OPENPROJECT_LOG_LEVEL": existing.get("OPENPROJECT_LOG_LEVEL", "WARNING"),
+        "OPENPROJECT_AUTO_CONFIRM_WRITE": str(auto_confirm_write).lower(),
+        "OPENPROJECT_AUTO_CONFIRM_DELETE": str(auto_confirm_delete).lower(),
+        "OPENPROJECT_ENABLE_ADMIN_WRITE": str(admin_write).lower(),
+        "OPENPROJECT_ENABLE_METADATA_TOOLS": str(metadata_tools).lower(),
+        "OPENPROJECT_ATTACHMENT_ROOT": attachment_root,
+        "OPENPROJECT_TIMEOUT": timeout,
+        "OPENPROJECT_VERIFY_SSL": verify_ssl,
+        "OPENPROJECT_DEFAULT_PAGE_SIZE": default_page_size,
+        "OPENPROJECT_MAX_PAGE_SIZE": max_page_size,
+        "OPENPROJECT_MAX_RESULTS": max_results,
+        "OPENPROJECT_TEXT_LIMIT": text_limit,
+        "OPENPROJECT_MAX_RETRIES": max_retries,
+        "OPENPROJECT_RETRY_BASE_DELAY": retry_base_delay,
+        "OPENPROJECT_RETRY_MAX_DELAY": retry_max_delay,
+        "OPENPROJECT_LOG_LEVEL": log_level,
     }
 
     print()
@@ -1017,8 +1205,8 @@ def _run_configure(argv: list[str] | None = None) -> None:
     if project_clients:
         print("Configuring project-scoped (this directory):")
         _apply_registration(project_clients, command, env, scope="project")
-    # Generic copy-source .mcp.json: only when project scope was chosen (or clone),
-    # and not already covered by Claude Code's project write.
+    # Generic copy-source .mcp.json: only when project scope was chosen and not
+    # already covered by Claude Code's project write.
     if write_generic_mcp_json:
         generic = _resolve_mcp_json("local", installed) if installed else _resolve_mcp_json(None, installed=False)
         _write_mcp_json(env, generic, command)
