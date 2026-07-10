@@ -7824,7 +7824,9 @@ async def test_list_sprints_normalizes_backlogs_collection() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/sprints" and request.method == "GET":
             assert request.url.params["offset"] == "1"
-            assert request.url.params["pageSize"] == "20"
+            # OPM-108: fetches up to settings.max_results (not the caller's limit) in one
+            # request, then paginates the filtered survivors in memory.
+            assert request.url.params["pageSize"] == "100"
             return httpx.Response(
                 200,
                 json={
@@ -7972,6 +7974,235 @@ async def test_list_project_sprints_filters_sprints_outside_allowed_projects() -
     assert result.count == 1
     assert [s.id for s in result.results] == [1]
     assert result.results[0].defining_workspace == "Demo"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_versions_global_backfills_after_allowlist_filter() -> None:
+    # OPM-108: the global endpoint has no project filter, so results are filtered
+    # client-side against the allowlist. Fetching only one page sized to the caller's
+    # limit could return a page that looks sparser than reality once filtered. This
+    # returns 6 raw items (3 allowed, 3 disallowed, interleaved) with limit=2 — under the
+    # old pageSize=limit logic the server would only ever have been asked for 2 raw items
+    # at a time and could easily return 0-2 allowed ones; the fix fetches all 6 in one
+    # request (pageSize=settings.max_results) and paginates the 3 filtered survivors.
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), allowed_projects=("demo",))
+
+    def version_item(item_id: int, allowed: bool) -> dict:
+        title = "Demo" if allowed else "Secret Project"
+        return {
+            "id": item_id,
+            "name": f"v{item_id}",
+            "_links": {"definingProject": {"href": f"/api/v3/projects/{item_id}", "title": title}},
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/versions" and request.method == "GET":
+            assert request.url.params["offset"] == "1"
+            assert request.url.params["pageSize"] == "100"
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            version_item(1, allowed=False),
+                            version_item(2, allowed=True),
+                            version_item(3, allowed=False),
+                            version_item(4, allowed=True),
+                            version_item(5, allowed=False),
+                            version_item(6, allowed=True),
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    page = await client.list_versions(limit=2)
+
+    assert [v.id for v in page.results] == [2, 4]
+    assert page.count == 2
+    assert page.total == 3
+    assert page.truncated is True
+    assert page.next_offset == 2
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_versions_project_scoped_uses_exact_server_pagination() -> None:
+    # Unlike the global branch above, the project-scoped branch does no client-side
+    # filtering at all (access to the project is already verified), so it keeps exact
+    # server-side pagination with the caller's own limit as pageSize — this must not be
+    # unified with the global branch's fetch-all-and-slice pattern, since no allowlist
+    # filtering happens here that could produce a sparse page.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 7, "identifier": "demo", "name": "Demo", "active": True},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/7/versions" and request.method == "GET":
+            assert request.url.params["offset"] == "1"
+            assert request.url.params["pageSize"] == "2"
+            return httpx.Response(
+                200,
+                json={
+                    "total": 5,
+                    "_embedded": {
+                        "elements": [
+                            {"id": 1, "name": "v1", "_links": {}},
+                            {"id": 2, "name": "v2", "_links": {}},
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    page = await client.list_versions(project="demo", limit=2)
+
+    assert [v.id for v in page.results] == [1, 2]
+    assert page.total == 2
+    assert page.truncated is True
+    assert page.next_offset == 2
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_sprints_backfills_after_allowlist_filter() -> None:
+    # OPM-108: same fix as list_versions above, applied to the always-filtered
+    # list_sprints (sprints can be shared cross-project via Backlogs sharing).
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), allowed_projects=("demo",))
+
+    def sprint_item(item_id: int, allowed: bool) -> dict:
+        workspace_id = 7 if allowed else 99
+        workspace_identifier = "demo" if allowed else "secret-project"
+        workspace_name = "Demo" if allowed else "Secret Project"
+        return {
+            "_type": "Sprint",
+            "id": item_id,
+            "name": f"Sprint {item_id}",
+            "_embedded": {
+                "definingWorkspace": {
+                    "_type": "Project",
+                    "id": workspace_id,
+                    "identifier": workspace_identifier,
+                    "name": workspace_name,
+                    "_links": {"self": {"href": f"/api/v3/projects/{workspace_id}", "title": workspace_name}},
+                }
+            },
+            "_links": {},
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/sprints" and request.method == "GET":
+            assert request.url.params["offset"] == "1"
+            assert request.url.params["pageSize"] == "100"
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            sprint_item(1, allowed=False),
+                            sprint_item(2, allowed=True),
+                            sprint_item(3, allowed=False),
+                            sprint_item(4, allowed=True),
+                            sprint_item(5, allowed=False),
+                            sprint_item(6, allowed=True),
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    page = await client.list_sprints(limit=2)
+
+    assert [s.id for s in page.results] == [2, 4]
+    assert page.count == 2
+    assert page.total == 3
+    assert page.truncated is True
+    assert page.next_offset == 2
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_project_sprints_backfills_after_allowlist_filter() -> None:
+    # OPM-108: same fix as above, applied to list_project_sprints — still filtered
+    # client-side despite being project-scoped, because a sprint shared into this
+    # project can be *defined* by a different, possibly disallowed project (OPM-98).
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), allowed_projects=("demo",))
+
+    def sprint_item(item_id: int, allowed: bool) -> dict:
+        workspace_id = 7 if allowed else 99
+        workspace_identifier = "demo" if allowed else "secret-project"
+        workspace_name = "Demo" if allowed else "Secret Project"
+        return {
+            "_type": "Sprint",
+            "id": item_id,
+            "name": f"Sprint {item_id}",
+            "_embedded": {
+                "definingWorkspace": {
+                    "_type": "Project",
+                    "id": workspace_id,
+                    "identifier": workspace_identifier,
+                    "name": workspace_name,
+                    "_links": {"self": {"href": f"/api/v3/projects/{workspace_id}", "title": workspace_name}},
+                }
+            },
+            "_links": {},
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 7, "identifier": "demo", "name": "Demo", "active": True},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/7/sprints" and request.method == "GET":
+            assert request.url.params["offset"] == "1"
+            assert request.url.params["pageSize"] == "100"
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            sprint_item(1, allowed=False),
+                            sprint_item(2, allowed=True),
+                            sprint_item(3, allowed=False),
+                            sprint_item(4, allowed=True),
+                            sprint_item(5, allowed=False),
+                            sprint_item(6, allowed=True),
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    page = await client.list_project_sprints("demo", limit=2)
+
+    assert [s.id for s in page.results] == [2, 4]
+    assert page.count == 2
+    assert page.total == 3
+    assert page.truncated is True
+    assert page.next_offset == 2
 
     await client.aclose()
 

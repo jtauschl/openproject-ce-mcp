@@ -2857,35 +2857,60 @@ class OpenProjectClient:
     ) -> VersionListResult:
         self._ensure_read_enabled("version")
         effective_limit = self._resolve_limit(limit)
-        params: dict[str, str] = {"offset": str(offset), "pageSize": str(effective_limit)}
-        project_already_verified = False
         if project:
             # GET /api/v3/versions has no project filter; use the project-scoped endpoint.
             # Access to the project is verified by _get_project_payload, so per-item
             # allowlist checks are redundant and would fail because the definingProject
-            # link only carries the title (display name), not the identifier.
+            # link only carries the title (display name), not the identifier. No client-side
+            # filtering happens here, so exact server-side pagination is safe.
             project_payload = await self._get_project_payload(project)
             project_id = int(project_payload["id"])
+            params = {"offset": str(offset), "pageSize": str(effective_limit)}
             payload = await self._get(f"projects/{project_id}/versions", params=params)
-            project_already_verified = True
-        else:
-            payload = await self._get("versions", params=params)
-        raw_items = [
-            item
+            results = [
+                self.normalize_version(item)
+                for item in payload.get("_embedded", {}).get("elements", [])
+                if isinstance(item, dict)
+            ]
+            server_total = int(payload.get("total", len(results)))
+            total = len(results)
+            return VersionListResult(
+                offset=offset,
+                limit=effective_limit,
+                total=total,
+                count=total,
+                next_offset=_next_offset(offset, effective_limit, server_total),
+                truncated=server_total > offset * effective_limit,
+                results=results,
+            )
+
+        # OPM-108: the global endpoint has no project filter, so results are filtered
+        # client-side against OPENPROJECT_ALLOWED_PROJECTS_READ. A single page sized to the
+        # caller's limit could look sparser than reality after filtering; fetch up to
+        # settings.max_results in one request and paginate the filtered survivors in memory
+        # instead (same pattern as list_views/list_documents). Bounded by max_results — not a
+        # full multi-page walk across every server page.
+        payload = await self._get(
+            "versions",
+            params={"offset": "1", "pageSize": str(self.settings.max_results)},
+        )
+        results = [
+            self.normalize_version(item)
             for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and (project_already_verified or self._version_payload_allowed(item))
+            if isinstance(item, dict) and self._version_payload_allowed(item)
         ]
-        results = [self.normalize_version(item) for item in raw_items]
-        server_total = int(payload.get("total", len(results)))
         total = len(results)
+        start = (offset - 1) * effective_limit
+        end = start + effective_limit
+        page = results[start:end]
         return VersionListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=total,
-            next_offset=_next_offset(offset, effective_limit, server_total),
-            truncated=server_total > offset * effective_limit,
-            results=results,
+            count=len(page),
+            next_offset=offset + 1 if end < total else None,
+            truncated=end < total,
+            results=page,
         )
 
     async def get_version(self, version_id: int) -> VersionDetail:
@@ -2902,29 +2927,37 @@ class OpenProjectClient:
     ) -> SprintListResult:
         self._ensure_read_enabled("project")
         effective_limit = self._resolve_limit(limit)
-        params: dict[str, str] = {"offset": str(offset), "pageSize": str(effective_limit)}
+        # OPM-108: results are always filtered client-side against the allowlist (sprints can
+        # be shared cross-project via Backlogs sharing). Fetch up to settings.max_results in
+        # one request and paginate the filtered survivors in memory, same pattern as
+        # list_views/list_documents, so a restrictive allowlist can't produce a sparse page.
+        # Bounded by max_results — not a full multi-page walk across every server page.
         try:
-            payload = await self._get("sprints", params=params)
+            payload = await self._get(
+                "sprints",
+                params={"offset": "1", "pageSize": str(self.settings.max_results)},
+            )
         except NotFoundError as exc:
             raise NotFoundError(
                 "OpenProject sprints require the Backlogs module and OpenProject 17.3 or newer."
             ) from exc
-        raw_items = [
-            item
+        results = [
+            self.normalize_sprint(item)
             for item in payload.get("_embedded", {}).get("elements", [])
             if isinstance(item, dict) and self._sprint_payload_allowed(item)
         ]
-        results = [self.normalize_sprint(item) for item in raw_items]
-        server_total = int(payload.get("total", len(results)))
         total = len(results)
+        start = (offset - 1) * effective_limit
+        end = start + effective_limit
+        page = results[start:end]
         return SprintListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=total,
-            next_offset=_next_offset(offset, effective_limit, server_total),
-            truncated=server_total > offset * effective_limit,
-            results=results,
+            count=len(page),
+            next_offset=offset + 1 if end < total else None,
+            truncated=end < total,
+            results=page,
         )
 
     async def list_project_sprints(
@@ -2938,29 +2971,38 @@ class OpenProjectClient:
         project_payload = await self._get_project_payload(project)
         project_id = int(project_payload["id"])
         effective_limit = self._resolve_limit(limit)
-        params: dict[str, str] = {"offset": str(offset), "pageSize": str(effective_limit)}
+        # OPM-108: even though this is project-scoped, results are still filtered client-side
+        # (a sprint shared into this project can be *defined* by a different, possibly
+        # disallowed project — OPM-98). Fetch up to settings.max_results in one request and
+        # paginate the filtered survivors in memory, same pattern as list_views/list_documents,
+        # so a restrictive allowlist can't produce a sparse page. Bounded by max_results — not
+        # a full multi-page walk across every server page.
         try:
-            payload = await self._get(f"projects/{project_id}/sprints", params=params)
+            payload = await self._get(
+                f"projects/{project_id}/sprints",
+                params={"offset": "1", "pageSize": str(self.settings.max_results)},
+            )
         except NotFoundError as exc:
             raise NotFoundError(
                 "OpenProject project sprints require the Backlogs module and OpenProject 17.3 or newer."
             ) from exc
-        raw_items = [
-            item
+        results = [
+            self.normalize_sprint(item)
             for item in payload.get("_embedded", {}).get("elements", [])
             if isinstance(item, dict) and self._sprint_payload_allowed(item)
         ]
-        results = [self.normalize_sprint(item) for item in raw_items]
-        server_total = int(payload.get("total", len(results)))
         total = len(results)
+        start = (offset - 1) * effective_limit
+        end = start + effective_limit
+        page = results[start:end]
         return SprintListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=total,
-            next_offset=_next_offset(offset, effective_limit, server_total),
-            truncated=server_total > offset * effective_limit,
-            results=results,
+            count=len(page),
+            next_offset=offset + 1 if end < total else None,
+            truncated=end < total,
+            results=page,
         )
 
     async def get_sprint(self, sprint_id: int) -> SprintDetail:
