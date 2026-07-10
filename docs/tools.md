@@ -17,6 +17,8 @@ All list tools are bounded and paginated. They return compact summaries — not 
 
 Responses are trimmed for context economy: list results omit the derivable `count`/`truncated` fields, and a confirmed write omits the echoed request `payload` (its normalized `result` carries the same data). `list_work_packages`, `search_work_packages`, `list_projects` and `list_users` accept an optional `select` (a list of field names) to return only the fields you need per row; an invalid name returns the allowed set for that row type.
 
+Beyond the obvious fields, work packages also carry scheduling/derived state (`schedule_manually`, `ignore_non_working_days`, `derived_start_date`, `derived_due_date`, `percentage_done`, `derived_percentage_done`, `readonly`); versions and memberships carry `created_at`/`updated_at`; users carry `firstname`/`lastname`; categories carry `default_assignee`/`default_assignee_id`; projects carry `favorited`; Backlogs sprints carry `status_href`, `finish_date`, `defining_workspace`/`defining_workspace_id`, and `created_at`/`updated_at`. Any of these can be hidden per entity via the matching `OPENPROJECT_HIDE_<ENTITY>_FIELDS` environment variable — see the [Configuration table](../README.md#configuration).
+
 A subset of rarely-used metadata tools — the `get_query_*` schema tools, `render_text`, `get_custom_option`, `list_help_texts`/`get_help_text`, `list_working_days`/`list_non_working_days` — is **opt-in**: they are registered only when `OPENPROJECT_ENABLE_METADATA_TOOLS=true`, to keep them out of the default tool set and save context.
 
 ---
