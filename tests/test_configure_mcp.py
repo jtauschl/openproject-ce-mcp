@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -214,6 +215,10 @@ def test_backup_preserves_extension(tmp_path: Path) -> None:
     assert not target.exists()
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows does not honor POSIX chmod bits, even when _IS_WINDOWS is forced False",
+)
 def test_backup_chmods_backup_on_posix(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(c, "_IS_WINDOWS", False)
     target = tmp_path / "config.toml"
