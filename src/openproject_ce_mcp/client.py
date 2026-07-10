@@ -4967,6 +4967,8 @@ class OpenProjectClient:
                 can_update="update" in links,
                 can_update_immediately="updateImmediately" in links,
                 url=self._web_url(f"memberships/{payload['id']}"),
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
             ),
         )
 
@@ -5184,6 +5186,8 @@ class OpenProjectClient:
                 defining_project=_link_title(links.get("definingProject")),
                 description=_extract_formattable_text(payload.get("description")),
                 url=self._web_url(f"versions/{payload['id']}"),
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
             ),
         )
 
@@ -5201,6 +5205,8 @@ class OpenProjectClient:
                 defining_project=summary.defining_project,
                 description=summary.description,
                 url=summary.url,
+                created_at=summary.created_at,
+                updated_at=summary.updated_at,
             ),
         )
 

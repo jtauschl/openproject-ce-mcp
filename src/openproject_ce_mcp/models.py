@@ -69,6 +69,8 @@ class MembershipSummary:
     can_update: bool
     can_update_immediately: bool
     url: str
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 @dataclass
@@ -571,6 +573,8 @@ class VersionSummary:
     defining_project: str | None
     description: str | None
     url: str
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 @dataclass
@@ -584,6 +588,8 @@ class VersionDetail:
     defining_project: str | None
     description: str | None
     url: str
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 @dataclass

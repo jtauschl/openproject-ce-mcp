@@ -7670,6 +7670,66 @@ async def test_hidden_type_fields_are_tagged_and_dropped_from_payload() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hidden_version_fields_are_tagged_and_dropped_from_payload() -> None:
+    # OPM-89: createdAt/updatedAt added to VersionSummary/Detail, respecting the
+    # existing OPENPROJECT_HIDE_VERSION_FIELDS wiring.
+    client = OpenProjectClient(
+        _base_settings(hidden_fields={"version": ("updated_at",)}),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+
+    payload = {
+        "id": 1,
+        "name": "1.0",
+        "status": "open",
+        "sharing": "none",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "updatedAt": "2026-06-01T00:00:00Z",
+        "_links": {},
+    }
+
+    summary = client.normalize_version(payload)
+    assert summary._hidden_keys == frozenset({"updated_at"})
+    assert summary.updated_at == "2026-06-01T00:00:00Z"  # preserved on the dataclass
+    assert summary.created_at == "2026-01-01T00:00:00Z"
+    serialized = _to_payload(summary)
+    assert "updated_at" not in serialized
+
+    detail = client.normalize_version_detail(payload)
+    assert detail._hidden_keys == frozenset({"updated_at"})
+    assert detail.created_at == "2026-01-01T00:00:00Z"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() -> None:
+    # OPM-89: createdAt/updatedAt added to MembershipSummary, respecting the
+    # existing OPENPROJECT_HIDE_MEMBERSHIP_FIELDS wiring.
+    client = OpenProjectClient(
+        _base_settings(hidden_fields={"membership": ("created_at",)}),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+
+    membership = client.normalize_membership(
+        {
+            "id": 1,
+            "createdAt": "2026-01-01T00:00:00Z",
+            "updatedAt": "2026-06-01T00:00:00Z",
+            "_links": {},
+        }
+    )
+
+    assert membership._hidden_keys == frozenset({"created_at"})
+    assert membership.created_at == "2026-01-01T00:00:00Z"  # preserved on the dataclass
+    assert membership.updated_at == "2026-06-01T00:00:00Z"
+    serialized = _to_payload(membership)
+    assert "created_at" not in serialized
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_sprints_normalizes_backlogs_collection() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/sprints" and request.method == "GET":
