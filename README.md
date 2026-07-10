@@ -591,17 +591,9 @@ The MCP server runs as a subprocess. After any code change, restart your MCP cli
 
 The package is published to [PyPI](https://pypi.org/project/openproject-ce-mcp/)
 via GitHub Actions using [trusted publishing](https://docs.pypi.org/trusted-publishers/)
-(OIDC — no API token stored). Pushing a `vX.Y.Z` tag triggers `.github/workflows/publish.yml`,
-which runs the test matrix, builds the sdist + wheel, and uploads them. Every
-push and PR also runs the test matrix plus a `build` job (`uv build` +
-`uvx twine check dist/*`) so the package always stays buildable.
-
-To cut a release:
-
-1. Bump `version` in `pyproject.toml` and update `CHANGELOG.md`.
-2. `uv run pytest` and `uv build` locally (CI enforces both).
-3. Merge to `main`, then tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-4. The `publish.yml` workflow builds and uploads to PyPI automatically.
-   Create the GitHub release from the tag for release notes.
+(OIDC — no API token stored), triggered by pushing a `vX.Y.Z` tag. Every push
+and PR also runs the test matrix plus a `build` job (`uv build` +
+`uvx twine check dist/*`) so the package always stays buildable. See
+[RELEASE.md](RELEASE.md) for the maintainer release process.
 
 ---
