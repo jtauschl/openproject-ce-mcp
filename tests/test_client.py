@@ -7759,6 +7759,38 @@ async def test_hidden_user_fields_are_tagged_and_dropped_from_payload() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hidden_category_fields_are_tagged_and_dropped_from_payload() -> None:
+    # OPM-89: defaultAssignee exposed as a HAL-link pair (id/name), same pattern as
+    # parent_id/parent_name on Project. Respects existing OPENPROJECT_HIDE_CATEGORY_FIELDS.
+    client = OpenProjectClient(
+        _base_settings(hidden_fields={"category": ("default_assignee",)}),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+
+    category = client.normalize_category(
+        {
+            "id": 1,
+            "name": "Bugs",
+            "isDefault": False,
+            "_links": {
+                "defaultAssignee": {"href": "/api/v3/users/9", "title": "Ada Lovelace"},
+            },
+        },
+        project_id=7,
+        project_name="Demo",
+    )
+
+    assert category._hidden_keys == frozenset({"default_assignee"})
+    assert category.default_assignee == "Ada Lovelace"  # preserved on the dataclass
+    assert category.default_assignee_id == 9
+    serialized = _to_payload(category)
+    assert "default_assignee" not in serialized
+    assert serialized["default_assignee_id"] == 9
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_sprints_normalizes_backlogs_collection() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/sprints" and request.method == "GET":

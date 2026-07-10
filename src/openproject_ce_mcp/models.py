@@ -839,6 +839,8 @@ class CategorySummary:
     project: str | None
     is_default: bool
     url: str
+    default_assignee_id: int | None = None
+    default_assignee: str | None = None
 
 
 @dataclass

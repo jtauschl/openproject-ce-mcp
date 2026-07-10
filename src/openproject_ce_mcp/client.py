@@ -5599,6 +5599,8 @@ class OpenProjectClient:
         project_name: str | None,
     ) -> CategorySummary:
         category_id = int(payload["id"])
+        links = payload.get("_links", {})
+        default_assignee_link = links.get("defaultAssignee")
         return self._apply_hidden_fields(
             "category",
             CategorySummary(
@@ -5608,6 +5610,10 @@ class OpenProjectClient:
                 project=project_name,
                 is_default=bool(payload.get("isDefault")),
                 url=self._web_url(f"api/v3/categories/{category_id}"),
+                default_assignee_id=_id_from_href(
+                    default_assignee_link.get("href") if isinstance(default_assignee_link, dict) else None
+                ),
+                default_assignee=_link_title(default_assignee_link),
             ),
         )
 
