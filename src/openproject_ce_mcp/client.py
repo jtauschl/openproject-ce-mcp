@@ -2383,6 +2383,7 @@ class OpenProjectClient:
         description: str | None = None,
         type: str | None = None,
         version: str | object | None = None,
+        sprint: str | object | None = None,
         project_phase: str | object | None = None,
         status: str | None = None,
         assignee: str | object | None = None,
@@ -2416,6 +2417,7 @@ class OpenProjectClient:
             subject=subject,
             description=description,
             version=version,
+            sprint=sprint,
             project_phase=project_phase,
             status=status,
             assignee=assignee,
@@ -4963,6 +4965,7 @@ class OpenProjectClient:
                 responsible=_link_title(links.get("responsible")),
                 project=_link_title(links.get("project")),
                 version=_link_title(links.get("version")),
+                sprint=_link_title(links.get("sprint")),
                 start_date=payload.get("startDate"),
                 due_date=payload.get("dueDate"),
                 percentage_complete=_percentage_done(payload),
@@ -5037,6 +5040,7 @@ class OpenProjectClient:
                 responsible=_link_title(links.get("responsible")),
                 project=_link_title(links.get("project")),
                 version=_link_title(links.get("version")),
+                sprint=_link_title(links.get("sprint")),
                 parent_id=_id_from_href(links.get("parent", {}).get("href")),
                 # Hierarchy links carry displayId from 17.5 (semantic mode); absent on
                 # older/classic instances, where this stays None.
@@ -6000,6 +6004,7 @@ class OpenProjectClient:
         subject: str | None = None,
         description: str | None = None,
         version: str | object | None = None,
+        sprint: str | object | None = None,
         project_phase: str | object | None = None,
         status: str | None = None,
         assignee: str | object | None = None,
@@ -6055,6 +6060,13 @@ class OpenProjectClient:
             self._ensure_field_writable("work_package", "version")
             version_id = await self._resolve_version_id(version, project=project)
             links["version"] = {"href": self._api_href(f"versions/{version_id}")}
+        if sprint is CLEAR:
+            self._ensure_field_writable("work_package", "sprint")
+            links["sprint"] = {"href": None}
+        elif sprint is not None:
+            self._ensure_field_writable("work_package", "sprint")
+            sprint_id = await self._resolve_sprint_id(sprint, project=project)
+            links["sprint"] = {"href": self._api_href(f"sprints/{sprint_id}")}
         if status is not None:
             self._ensure_field_writable("work_package", "status")
             status_id = await self._resolve_status_id(status)
@@ -7505,6 +7517,20 @@ class OpenProjectClient:
         if len(matches) > 1:
             raise InvalidInputError(
                 f"OpenProject version '{version_ref}' is ambiguous without a more specific filter. Pass a numeric version id."
+            )
+        return matches[0]
+
+    async def _resolve_sprint_id(self, sprint_ref: str, *, project: str) -> str:
+        if sprint_ref.isdigit():
+            return sprint_ref
+
+        sprints = await self.list_project_sprints(project, offset=1, limit=self.settings.max_results)
+        matches = [str(item.id) for item in sprints.results if (item.name or "").casefold() == sprint_ref.casefold()]
+        if not matches:
+            raise InvalidInputError(f"OpenProject sprint '{sprint_ref}' was not found in project '{project}'.")
+        if len(matches) > 1:
+            raise InvalidInputError(
+                f"OpenProject sprint '{sprint_ref}' is ambiguous without a more specific filter. Pass a numeric sprint id."
             )
         return matches[0]
 

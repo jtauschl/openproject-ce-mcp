@@ -1522,6 +1522,198 @@ async def test_update_work_package_clears_version_with_null_href() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_work_package_clears_sprint_with_null_href() -> None:
+    # OPM-104: sprint uses the generic CLEAR sentinel (not a new CLEAR_SPRINT), and
+    # must send _links.sprint = {"href": None} without trying to resolve "none".
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 3,
+                    "_links": {
+                        "project": {"title": "Demo", "href": "/api/v3/projects/1"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "sprint": {"href": "/api/v3/sprints/1", "title": "Cleanup"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            assert body["_links"]["sprint"]["href"] is None
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Form",
+                    "_embedded": {"schema": {}, "payload": body, "validationErrors": {}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body["_links"]["sprint"]["href"] is None
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 4,
+                    "_links": {
+                        "project": {"title": "Demo"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "sprint": {"href": None},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        enable_work_package_write=True,
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.update_work_package(
+        work_package_id=42,
+        sprint=CLEAR,
+        confirm=True,
+    )
+
+    assert result.confirmed is True
+    assert result.result is not None
+    assert result.result.sprint is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_resolves_sprint_by_name() -> None:
+    # OPM-104: a sprint name resolves to an id via list_project_sprints (the
+    # work package's own project), mirroring how _resolve_version_id resolves
+    # version names via list_versions.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 3,
+                    "_links": {
+                        "project": {"title": "Demo", "href": "/api/v3/projects/7"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/7" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 7, "identifier": "demo", "name": "Demo", "active": True},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/7/sprints" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Collection",
+                    "total": 1,
+                    "count": 1,
+                    "pageSize": 100,
+                    "offset": 1,
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "_type": "Sprint",
+                                "id": 1,
+                                "name": "Cleanup",
+                                "_links": {},
+                            }
+                        ]
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            assert body["_links"]["sprint"]["href"] == "/api/v3/sprints/1"
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Form",
+                    "_embedded": {"schema": {}, "payload": body, "validationErrors": {}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body["_links"]["sprint"]["href"] == "/api/v3/sprints/1"
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 4,
+                    "_links": {
+                        "project": {"title": "Demo"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "sprint": {"href": "/api/v3/sprints/1", "title": "Cleanup"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        enable_work_package_write=True,
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.update_work_package(
+        work_package_id=42,
+        sprint="Cleanup",
+        confirm=True,
+    )
+
+    assert result.confirmed is True
+    assert result.result is not None
+    assert result.result.sprint == "Cleanup"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_update_work_package_clears_assignee_with_null_href() -> None:
     # CLEAR on the direct-path field (assignee) must send _links.assignee = {"href": None}
     # and must not resolve "none" as a user id.

@@ -429,7 +429,7 @@ async def test_update_work_package_tool_version_alone_satisfies_field_requiremen
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("field", ["assignee", "responsible", "category", "project_phase"])
+@pytest.mark.parametrize("field", ["assignee", "responsible", "category", "project_phase", "sprint"])
 async def test_update_work_package_tool_maps_none_to_clear_sentinel(field) -> None:
     # 'none' on a nullable association field must reach the client as the CLEAR
     # sentinel (unassign), not the literal string "none".
@@ -495,6 +495,23 @@ async def test_update_work_package_tool_passes_real_version_name() -> None:
 
     # A real version name passes through unchanged (not the sentinel).
     assert result["version"] == "0.3.0"
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_tool_passes_real_sprint_name() -> None:
+    class StubClient:
+        async def update_work_package(self, **kwargs):
+            return kwargs
+
+    result = await update_work_package(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        "42",
+        sprint="Cleanup",
+        confirm=False,
+    )
+
+    # A real sprint name passes through unchanged (not the sentinel).
+    assert result["sprint"] == "Cleanup"
 
 
 @pytest.mark.asyncio

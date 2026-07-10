@@ -1431,6 +1431,7 @@ async def update_work_package(
     description: str | None = None,
     type: str | None = None,
     version: str | None = None,
+    sprint: str | None = None,
     project_phase: str | None = None,
     status: str | None = None,
     assignee: str | None = None,
@@ -1450,7 +1451,7 @@ async def update_work_package(
 
     The tool validates the patch first. Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
     work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
-    assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
+    assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
     estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours) or None to leave unchanged. Day-based formats like 'P1D' are not supported by OpenProject.
     """
     client = _client_from_context(ctx)
@@ -1460,6 +1461,8 @@ async def update_work_package(
     safe_type = _validate_optional_query(type, field_name="type", max_length=100)
     # version: 'none' (any case) clears the assigned version; otherwise a version name/id.
     safe_version = _validate_optional_version(version)
+    # sprint: 'none' (any case) clears the assigned sprint; otherwise a sprint name/id.
+    safe_sprint = _clearable(sprint, lambda v: _validate_optional_query(v, field_name="sprint", max_length=100))
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
     # assignee/responsible/category/project_phase: 'none' (any case) unassigns the
     # field; otherwise the normal validation applies.
@@ -1490,6 +1493,7 @@ async def update_work_package(
             safe_description,
             safe_type,
             safe_version,
+            safe_sprint,
             safe_project_phase,
             safe_status,
             safe_assignee,
@@ -1513,6 +1517,7 @@ async def update_work_package(
             description=safe_description,
             type=safe_type,
             version=safe_version,
+            sprint=safe_sprint,
             project_phase=safe_project_phase,
             status=safe_status,
             assignee=safe_assignee,

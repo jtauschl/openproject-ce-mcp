@@ -388,6 +388,7 @@ class WorkPackageSummary:
     responsible: str | None
     project: str | None
     version: str | None
+    sprint: str | None
     start_date: str | None
     due_date: str | None
     percentage_complete: int | None
@@ -422,6 +423,7 @@ class WorkPackageDetail:
     responsible: str | None
     project: str | None
     version: str | None
+    sprint: str | None
     parent_id: int | None
     parent_display_id: str | None
     start_date: str | None

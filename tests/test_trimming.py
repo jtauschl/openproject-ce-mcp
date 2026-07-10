@@ -43,6 +43,7 @@ def _wp_summary(**overrides) -> m.WorkPackageSummary:
         "responsible": None,
         "project": "OPM",
         "version": None,
+        "sprint": None,
         "start_date": None,
         "due_date": None,
         "percentage_complete": None,
