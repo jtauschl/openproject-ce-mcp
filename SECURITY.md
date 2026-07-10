@@ -39,10 +39,12 @@ available it will be released to PyPI and noted in the
 This server is a guarded bridge to the OpenProject REST API. Its security posture
 depends on configuration; the most relevant controls are:
 
-- **Read/write are disabled by default** and enabled per resource scope via
-  `OPENPROJECT_ENABLE_*` flags. The global read flag is a master kill-switch
-  (AND-semantics); write scopes are always intersected with read scope, so a
-  project must be readable before it can be written.
+- **Read is enabled by default per resource scope** (`project`, `work_package`,
+  `membership`, `version`, `board`); each scope's `OPENPROJECT_ENABLE_*_READ`
+  flag can disable it individually. **Write is disabled by default** for every
+  scope and requires its own `OPENPROJECT_ENABLE_*_WRITE` opt-in; write scopes
+  are always intersected with read scope, so a project must be readable before
+  it can be written.
 - **Project allowlists** (`OPENPROJECT_ALLOWED_PROJECTS_READ` /
   `_WRITE`) restrict every operation to the named projects.
 - **Admin writes** (user/group/membership management) require the separate
