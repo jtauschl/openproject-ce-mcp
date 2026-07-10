@@ -58,6 +58,7 @@ HIDE_FIELD_ENV_BY_ENTITY: dict[str, str] = {
     "board": "OPENPROJECT_HIDE_BOARD_FIELDS",
     "current_user": "OPENPROJECT_HIDE_CURRENT_USER_FIELDS",
     "instance_configuration": "OPENPROJECT_HIDE_INSTANCE_CONFIGURATION_FIELDS",
+    "status": "OPENPROJECT_HIDE_STATUS_FIELDS",
 }
 
 

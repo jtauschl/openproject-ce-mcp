@@ -7604,6 +7604,40 @@ async def test_hidden_work_package_scheduling_fields_are_tagged_and_dropped_from
 
 
 @pytest.mark.asyncio
+async def test_hidden_status_fields_are_tagged_and_dropped_from_payload() -> None:
+    # OPM-89: status gains OPENPROJECT_HIDE_STATUS_FIELDS support (previously status
+    # had no hide-field wiring at all, unlike every other entity).
+    client = OpenProjectClient(
+        _base_settings(hidden_fields={"status": ("default_done_ratio",)}),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+
+    status = client.normalize_status(
+        {
+            "id": 1,
+            "name": "In progress",
+            "isDefault": False,
+            "isClosed": False,
+            "color": "#1A67A3",
+            "position": 2,
+            "isReadonly": False,
+            "defaultDoneRatio": 30,
+            "excludedFromTotals": False,
+        }
+    )
+
+    assert status._hidden_keys == frozenset({"default_done_ratio"})
+    assert status.default_done_ratio == 30  # value preserved on the dataclass
+    assert status.is_readonly is False
+    assert status.excluded_from_totals is False
+    serialized = _to_payload(status)
+    assert "default_done_ratio" not in serialized
+    assert serialized["name"] == "In progress"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_sprints_normalizes_backlogs_collection() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/sprints" and request.method == "GET":

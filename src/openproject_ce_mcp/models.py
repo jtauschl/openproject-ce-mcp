@@ -1160,6 +1160,9 @@ class StatusSummary:
     color: str | None
     position: int | None
     url: str
+    is_readonly: bool | None = None
+    default_done_ratio: int | None = None
+    excluded_from_totals: bool | None = None
 
 
 @dataclass

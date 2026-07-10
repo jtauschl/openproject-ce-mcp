@@ -5820,14 +5820,20 @@ class OpenProjectClient:
 
     def normalize_status(self, payload: dict[str, Any]) -> StatusSummary:
         status_id = int(payload["id"])
-        return StatusSummary(
-            id=status_id,
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Status {status_id}",
-            is_default=bool(payload.get("isDefault")),
-            is_closed=bool(payload.get("isClosed")),
-            color=_trim_text(payload.get("color"), limit=SUBJECT_LIMIT),
-            position=payload.get("position"),
-            url=self._api_href(f"statuses/{status_id}"),
+        return self._apply_hidden_fields(
+            "status",
+            StatusSummary(
+                id=status_id,
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Status {status_id}",
+                is_default=bool(payload.get("isDefault")),
+                is_closed=bool(payload.get("isClosed")),
+                color=_trim_text(payload.get("color"), limit=SUBJECT_LIMIT),
+                position=payload.get("position"),
+                url=self._api_href(f"statuses/{status_id}"),
+                is_readonly=payload.get("isReadonly"),
+                default_done_ratio=payload.get("defaultDoneRatio"),
+                excluded_from_totals=payload.get("excludedFromTotals"),
+            ),
         )
 
     def normalize_priority(self, payload: dict[str, Any]) -> PrioritySummary:
