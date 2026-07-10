@@ -90,19 +90,26 @@ request with full HAL payloads — every element carries ~21 top-level fields pl
 ~46 `_links`. The MCP returns a compact summary per row, drops derivable and
 duplicated fields, and lets the agent request only the fields it needs.
 
-Measured against the same three real work packages (token ≈ bytes/4):
+Measured against the same three representative work packages (token ≈
+bytes/4), reproducible with `tools/measure-context.py` against a local
+Docker test instance:
 
 | Response | Tokens | vs. raw API |
 |---|---:|---:|
-| Raw OpenProject REST API v3 (HAL) | ~10,500 | baseline |
-| `list_work_packages` (MCP) | ~700 | **−93%** |
-| `list_work_packages` with `select` (5 fields) | ~130 | **−98%** |
+| Raw OpenProject REST API v3 (HAL) | ~7,900 | baseline |
+| `list_work_packages` (MCP) | ~1,050 | **−87%** |
+| `list_work_packages` with `select` (5 fields) | ~120 | **−98%** |
 
-The tool set itself is trimmed too: on a fully write-enabled deployment the MCP's
-`tools/list` payload dropped from ~60k to ~24k tokens (−60%) per request, mainly
-by not emitting redundant output schemas. Rarely-used metadata tools are gated off
-by default (`OPENPROJECT_ENABLE_METADATA_TOOLS`), and confirmed writes drop the
-echoed request `payload`.
+The tool set itself is trimmed too, mainly by not emitting redundant output
+schemas: on a fully write-enabled deployment (all write scopes on, metadata
+tools off — the default), the `tools/list` payload is currently ~30k tokens,
+down from an unoptimized ~60k baseline (**−50%**). Read-only deployments (no
+write scopes enabled) pay a smaller ~19k. Rarely-used metadata tools are
+gated off by default (`OPENPROJECT_ENABLE_METADATA_TOOLS`), and confirmed
+writes drop the echoed request `payload`. Run `python tools/measure-context.py`
+to reproduce all of these numbers (the tool-catalog part needs no live
+instance; the response-size table needs a local Docker test instance — see
+the script's docstring).
 
 ---
 
