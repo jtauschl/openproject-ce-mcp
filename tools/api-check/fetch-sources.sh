@@ -29,6 +29,7 @@ VERSIONS=(
   "17.3:v17.3.4"
   "17.4:v17.4.1"
   "17.5:v17.5.1"
+  "17.6:v17.6.0"
 )
 
 # Subtrees that hold the API v3 definitions, representers and query filters,
@@ -41,6 +42,7 @@ SPARSE_PATHS=(
   "/config/routes.rb"
   "/app/models/emoji_reaction.rb"   # EMOJI_MAP enum values
   "/app/models/version.rb"          # VERSION_STATUSES
+  "modules/backlogs"                # Sprint model/representers (17.6+, see OPM-102)
 )
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
