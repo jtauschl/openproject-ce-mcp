@@ -7560,6 +7560,50 @@ async def test_hidden_sprint_fields_are_tagged_and_dropped_from_payload() -> Non
 
 
 @pytest.mark.asyncio
+async def test_hidden_work_package_scheduling_fields_are_tagged_and_dropped_from_payload() -> None:
+    # OPM-89: scheduling/derived fields (scheduleManually, ignoreNonWorkingDays,
+    # derivedStartDate, derivedDueDate, percentageDone, derivedPercentageDone, readonly)
+    # respect OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS like every other work_package field.
+    client = OpenProjectClient(
+        _base_settings(hidden_fields={"work_package": ("schedule_manually",)}),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+
+    payload = {
+        "id": 1,
+        "subject": "Plan sprint",
+        "scheduleManually": True,
+        "ignoreNonWorkingDays": False,
+        "derivedStartDate": "2026-07-01",
+        "derivedDueDate": "2026-07-15",
+        "percentageDone": 40,
+        "derivedPercentageDone": 55,
+        "readonly": False,
+        "_links": {},
+    }
+
+    summary = client.normalize_work_package_summary(payload)
+    assert summary._hidden_keys == frozenset({"schedule_manually"})
+    assert summary.schedule_manually is True  # value preserved on the dataclass
+    assert summary.ignore_non_working_days is False
+    assert summary.derived_start_date == "2026-07-01"
+    assert summary.derived_due_date == "2026-07-15"
+    assert summary.percentage_done == 40
+    assert summary.derived_percentage_done == 55
+    assert summary.readonly is False
+    serialized = _to_payload(summary)
+    assert "schedule_manually" not in serialized
+    assert serialized["derived_due_date"] == "2026-07-15"
+
+    detail = client.normalize_work_package_detail(payload, text_limit=None)
+    assert detail._hidden_keys == frozenset({"schedule_manually"})
+    assert detail.derived_percentage_done == 55
+    assert detail.readonly is False
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_sprints_normalizes_backlogs_collection() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/sprints" and request.method == "GET":

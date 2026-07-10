@@ -5014,6 +5014,13 @@ class OpenProjectClient:
                 updated_at=payload.get("updatedAt"),
                 author=_link_title(links.get("author")),
                 category=_link_title(links.get("category")),
+                schedule_manually=payload.get("scheduleManually"),
+                ignore_non_working_days=payload.get("ignoreNonWorkingDays"),
+                derived_start_date=payload.get("derivedStartDate"),
+                derived_due_date=payload.get("derivedDueDate"),
+                percentage_done=payload.get("percentageDone"),
+                derived_percentage_done=payload.get("derivedPercentageDone"),
+                readonly=payload.get("readonly"),
             ),
         )
 
@@ -5098,6 +5105,13 @@ class OpenProjectClient:
                 children_truncated=children_truncated,
                 ancestors=ancestors,
                 ancestors_truncated=ancestors_truncated,
+                schedule_manually=payload.get("scheduleManually"),
+                ignore_non_working_days=payload.get("ignoreNonWorkingDays"),
+                derived_start_date=payload.get("derivedStartDate"),
+                derived_due_date=payload.get("derivedDueDate"),
+                percentage_done=payload.get("percentageDone"),
+                derived_percentage_done=payload.get("derivedPercentageDone"),
+                readonly=payload.get("readonly"),
             ),
         )
 

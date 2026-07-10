@@ -408,6 +408,13 @@ class WorkPackageSummary:
     updated_at: str | None = None
     author: str | None = None
     category: str | None = None
+    schedule_manually: bool | None = None
+    ignore_non_working_days: bool | None = None
+    derived_start_date: str | None = None
+    derived_due_date: str | None = None
+    percentage_done: int | None = None
+    derived_percentage_done: int | None = None
+    readonly: bool | None = None
 
 
 @dataclass
@@ -450,6 +457,13 @@ class WorkPackageDetail:
     children_truncated: bool = False
     ancestors: list[dict[str, str]] | None = None
     ancestors_truncated: bool = False
+    schedule_manually: bool | None = None
+    ignore_non_working_days: bool | None = None
+    derived_start_date: str | None = None
+    derived_due_date: str | None = None
+    percentage_done: int | None = None
+    derived_percentage_done: int | None = None
+    readonly: bool | None = None
 
 
 @dataclass

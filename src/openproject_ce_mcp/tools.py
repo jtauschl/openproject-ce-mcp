@@ -1155,7 +1155,9 @@ async def search_work_packages(
     "status"]); an invalid name returns the allowed set. Common fields: id,
     display_id, subject, type, status, priority, assignee, project, version,
     parent_id, start_date, due_date, estimated_time, spent_time, created_at,
-    updated_at, author, category, description.
+    updated_at, author, category, description, schedule_manually,
+    derived_start_date, derived_due_date, percentage_done, derived_percentage_done,
+    readonly, ignore_non_working_days.
     """
     client = _client_from_context(ctx)
     safe_query = _validate_required_query(query, field_name="query", max_length=120)
@@ -1246,7 +1248,9 @@ async def list_work_packages(
     "status"]); an invalid name returns the allowed set. Common fields: id,
     display_id, subject, type, status, priority, assignee, project, version,
     parent_id, start_date, due_date, estimated_time, spent_time, created_at,
-    updated_at, author, category, description.
+    updated_at, author, category, description, schedule_manually,
+    derived_start_date, derived_due_date, percentage_done, derived_percentage_done,
+    readonly, ignore_non_working_days.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
