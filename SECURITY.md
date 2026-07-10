@@ -47,9 +47,22 @@ depends on configuration; the most relevant controls are:
   `_WRITE`) restrict every operation to the named projects.
 - **Admin writes** (user/group/membership management) require the separate
   `OPENPROJECT_ENABLE_ADMIN_WRITE` opt-in.
-- **Write operations use a preview/confirm flow** by default; self-scoped
-  mutations (your own notifications, preferences, emoji reactions) execute
-  directly.
+- **Write operations use a preview/confirm flow** by default: call a tool once
+  to get a validated preview, then again with `confirm=true` to execute.
+  `OPENPROJECT_AUTO_CONFIRM_WRITE` (and `OPENPROJECT_AUTO_CONFIRM_DELETE` for
+  deletes) skips the preview step globally — an operator convenience for
+  trusted, automated setups that trades away the confirmation checkpoint, so
+  it is off by default.
+- **Self-scoped mutations execute directly** without a preview step: the
+  current user's own notification read state, preferences, and emoji
+  reactions. Skipping the preview step does not skip the project write
+  allowlist — an emoji reaction is resolved to its activity's linked work
+  package and checked against that project's write scope, rejected if the
+  link can't be resolved.
+- **Attachment uploads are confined** to `OPENPROJECT_ATTACHMENT_ROOT`
+  (defaults to the current working directory): files outside it are refused,
+  and credential/config files (`.mcp.json`, `.env`, `*.pem`, keys) are refused
+  even inside it, so an attachment tool call cannot exfiltrate local secrets.
 - **The API token is a secret.** Store it only in a local, git-ignored config
   (e.g. `.mcp.json`, mode `600`) — never commit it. A remote plain-`http://`
   base URL emits a startup warning because the token would be sent unencrypted.
