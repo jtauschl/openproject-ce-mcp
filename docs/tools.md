@@ -11,7 +11,7 @@ If `OPENPROJECT_AUTO_CONFIRM_WRITE` is explicitly enabled, the preview step is s
 
 Exception: self-scoped mutations of the current user's own state execute directly without a preview step — marking notifications read (`mark_notification_read`, `mark_all_notifications_read`), updating preferences (`update_my_preferences`), and toggling the current user's emoji reactions (`toggle_activity_emoji_reaction`). These touch only the caller's own state; project-attached reactions still enforce project write scope.
 
-Clearing a field: on `update_work_package` and `update_project`, pass the string `"none"` to unassign a nullable association instead of changing it — work-package `assignee`, `responsible`, `version`, `parent`, `category`, `project_phase`, and project `parent`. Omitting a field leaves it unchanged; `"none"` clears it. Required fields (type, status, subject, project) cannot be cleared.
+Clearing a field: on `update_work_package` and `update_project`, pass the string `"none"` to unassign a nullable association instead of changing it — work-package `assignee`, `responsible`, `version`, `sprint`, `parent`, `category`, `project_phase`, and project `parent`. Omitting a field leaves it unchanged; `"none"` clears it. Required fields (type, status, subject, project) cannot be cleared.
 
 All list tools are bounded and paginated. They return compact summaries — not raw OpenProject HAL payloads.
 

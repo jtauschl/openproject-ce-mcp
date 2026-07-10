@@ -479,7 +479,7 @@ List and search tools accept a `select` parameter to return only the fields you
 need per row, and responses are trimmed for context economy (list results drop
 the derivable `count`/`truncated`; a confirmed write drops the echoed request
 `payload`). On `update_work_package` / `update_project`, pass `"none"` to clear a
-nullable field (assignee, responsible, version, parent, category, project_phase).
+nullable field (assignee, responsible, version, sprint, parent, category, project_phase).
 A handful of rarely-used metadata tools are gated behind
 `OPENPROJECT_ENABLE_METADATA_TOOLS` (see Configuration).
 
