@@ -109,12 +109,11 @@ def test_settings_from_env_treats_explicit_empty_write_scope_as_configured() -> 
     assert settings.project_write_scope_allows_none is True
 
 
-def test_settings_from_env_per_scope_read_flags_restrict_when_global_read_enabled() -> None:
+def test_settings_from_env_per_scope_read_flag_disables_independently_of_default() -> None:
     settings = Settings.from_env(
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
             "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_ENABLE_READ": "true",
             "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "false",
         }
     )
@@ -138,13 +137,12 @@ def test_settings_from_env_scoped_read_flags_disable_chains_independently() -> N
     assert settings.read_enabled("membership") is True  # not disabled
 
 
-def test_settings_from_env_scoped_write_flag_enables_chain_when_global_write_disabled() -> None:
-    # writes default to disabled; scoped flags selectively opt individual chains in
+def test_settings_from_env_scoped_write_flag_enables_one_scope_independently() -> None:
+    # writes default to disabled; a scoped flag opts one chain in without affecting others
     settings = Settings.from_env(
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
             "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_ENABLE_WRITE": "false",
             "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
         }
     )
@@ -154,12 +152,11 @@ def test_settings_from_env_scoped_write_flag_enables_chain_when_global_write_dis
     assert settings.write_enabled("membership") is False
 
 
-def test_settings_from_env_global_write_false_disables_all_scopes() -> None:
+def test_settings_from_env_write_scopes_default_to_disabled() -> None:
     settings = Settings.from_env(
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
             "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_ENABLE_WRITE": "false",
         }
     )
 
