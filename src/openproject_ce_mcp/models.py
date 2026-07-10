@@ -31,6 +31,7 @@ class ProjectSummary:
     updated_at: str | None = None
     can_update: bool = False
     can_delete: bool = False
+    favorited: bool | None = None
 
 
 @dataclass

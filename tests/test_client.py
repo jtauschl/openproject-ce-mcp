@@ -7791,6 +7791,35 @@ async def test_hidden_category_fields_are_tagged_and_dropped_from_payload() -> N
 
 
 @pytest.mark.asyncio
+async def test_hidden_project_favorited_field_is_tagged_and_dropped_from_payload() -> None:
+    # OPM-89: favorited exposed as a per-token read field on ProjectSummary. Not a
+    # write-behavior change — add_project_favorite/remove_project_favorite already
+    # own the write side. Respects existing OPENPROJECT_HIDE_PROJECT_FIELDS wiring.
+    client = OpenProjectClient(
+        _base_settings(hidden_fields={"project": ("favorited",)}),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+
+    project = client.normalize_project(
+        {
+            "id": 1,
+            "name": "Demo",
+            "identifier": "demo",
+            "favorited": True,
+            "_links": {},
+        }
+    )
+
+    assert project._hidden_keys == frozenset({"favorited"})
+    assert project.favorited is True  # preserved on the dataclass
+    serialized = _to_payload(project)
+    assert "favorited" not in serialized
+    assert serialized["name"] == "Demo"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_sprints_normalizes_backlogs_collection() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/sprints" and request.method == "GET":

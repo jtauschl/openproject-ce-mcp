@@ -4766,6 +4766,7 @@ class OpenProjectClient:
                 updated_at=payload.get("updatedAt"),
                 can_update="update" in links or "updateImmediately" in links,
                 can_delete="delete" in links,
+                favorited=payload.get("favorited"),
             ),
         )
 
