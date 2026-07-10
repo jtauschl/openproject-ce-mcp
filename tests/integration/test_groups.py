@@ -8,6 +8,8 @@ never against a real, actively-used OpenProject instance.
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 from openproject_ce_mcp.client import OpenProjectClient
@@ -17,8 +19,9 @@ pytestmark = pytest.mark.integration
 
 async def test_get_group_normalizes_visible_members_admin(client: OpenProjectClient, group_ids: list[int]) -> None:
     me = await client.get_current_user()
+    name = f"[integration-test] {uuid.uuid4().hex[:8]}"
 
-    create_result = await client.create_group(name="MCP integration test group", user_ids=[me.id], confirm=True)
+    create_result = await client.create_group(name=name, user_ids=[me.id], confirm=True)
     assert create_result.ready, create_result.validation_errors
     group_id = create_result.group_id
     assert group_id is not None
