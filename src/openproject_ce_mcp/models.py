@@ -190,6 +190,8 @@ class UserSummary:
     created_at: str | None
     updated_at: str | None
     url: str
+    firstname: str | None = None
+    lastname: str | None = None
 
 
 @dataclass
@@ -209,6 +211,8 @@ class UserDetail:
     auth_source: str | None
     groups: list[str]
     url: str
+    firstname: str | None = None
+    lastname: str | None = None
 
 
 @dataclass

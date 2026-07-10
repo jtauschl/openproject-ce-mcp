@@ -4813,6 +4813,8 @@ class OpenProjectClient:
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
                 url=self._web_url(f"users/{payload['id']}"),
+                firstname=_trim_text(payload.get("firstName"), limit=SUBJECT_LIMIT),
+                lastname=_trim_text(payload.get("lastName"), limit=SUBJECT_LIMIT),
             ),
         )
 
@@ -4840,6 +4842,8 @@ class OpenProjectClient:
                 auth_source=auth_source,
                 groups=groups,
                 url=summary.url,
+                firstname=summary.firstname,
+                lastname=summary.lastname,
             ),
         )
 

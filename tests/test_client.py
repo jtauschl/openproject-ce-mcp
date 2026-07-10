@@ -7730,6 +7730,35 @@ async def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() ->
 
 
 @pytest.mark.asyncio
+async def test_hidden_user_fields_are_tagged_and_dropped_from_payload() -> None:
+    # OPM-89: firstName/lastName exposed as read fields, echoing what create_user/
+    # update_user already write. Respects existing OPENPROJECT_HIDE_USER_FIELDS wiring.
+    client = OpenProjectClient(
+        _base_settings(hidden_fields={"user": ("firstname",)}),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+
+    user = client.normalize_user(
+        {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "firstName": "Ada",
+            "lastName": "Lovelace",
+            "_links": {},
+        }
+    )
+
+    assert user._hidden_keys == frozenset({"firstname"})
+    assert user.firstname == "Ada"  # preserved on the dataclass
+    assert user.lastname == "Lovelace"
+    serialized = _to_payload(user)
+    assert "firstname" not in serialized
+    assert serialized["lastname"] == "Lovelace"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_sprints_normalizes_backlogs_collection() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/sprints" and request.method == "GET":
