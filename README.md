@@ -465,7 +465,7 @@ project-scoped write groups on by default, and Advanced setup can narrow them.
 | `OPENPROJECT_RETRY_MAX_DELAY` | no | `60.0` | Maximum retry delay in seconds |
 | `OPENPROJECT_LOG_LEVEL` | no | `WARNING` | `CRITICAL`, `ERROR`, `WARNING`, or `INFO` |
 
-Supported entities for `OPENPROJECT_HIDE_<ENTITY>_FIELDS`: `project`, `membership`, `role`, `principal`, `user`, `group`, `project_access`, `project_admin_context`, `project_configuration`, `action`, `capability`, `job_status`, `project_phase_definition`, `project_phase`, `view`, `query_filter`, `query_column`, `query_operator`, `query_sort_by`, `query_filter_instance_schema`, `document`, `news`, `wiki_page`, `category`, `attachment`, `time_entry_activity`, `time_entry`, `work_package`, `relation`, `activity`, `reminder`, `version`, `sprint`, `board`, `current_user`, `instance_configuration`, `status`.
+Supported entities for `OPENPROJECT_HIDE_<ENTITY>_FIELDS`: `project`, `membership`, `role`, `principal`, `user`, `group`, `project_access`, `project_admin_context`, `project_configuration`, `action`, `capability`, `job_status`, `project_phase_definition`, `project_phase`, `view`, `query_filter`, `query_column`, `query_operator`, `query_sort_by`, `query_filter_instance_schema`, `document`, `news`, `wiki_page`, `category`, `attachment`, `time_entry_activity`, `time_entry`, `work_package`, `relation`, `activity`, `reminder`, `version`, `sprint`, `board`, `current_user`, `instance_configuration`, `status`, `type`.
 
 **Never share your API token** in chat messages, screenshots, or log output. If a token has been exposed, revoke it immediately in **My account → Access tokens** and create a new one.
 

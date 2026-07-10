@@ -1196,6 +1196,8 @@ class TypeSummary:
     is_default: bool
     is_milestone: bool
     url: str
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 @dataclass

@@ -5849,14 +5849,19 @@ class OpenProjectClient:
 
     def normalize_type(self, payload: dict[str, Any]) -> TypeSummary:
         type_id = int(payload["id"])
-        return TypeSummary(
-            id=type_id,
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Type {type_id}",
-            color=_trim_text(payload.get("color"), limit=SUBJECT_LIMIT),
-            position=payload.get("position"),
-            is_default=bool(payload.get("isDefault")),
-            is_milestone=bool(payload.get("isMilestone")),
-            url=self._web_url(f"types/{type_id}"),
+        return self._apply_hidden_fields(
+            "type",
+            TypeSummary(
+                id=type_id,
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Type {type_id}",
+                color=_trim_text(payload.get("color"), limit=SUBJECT_LIMIT),
+                position=payload.get("position"),
+                is_default=bool(payload.get("isDefault")),
+                is_milestone=bool(payload.get("isMilestone")),
+                url=self._web_url(f"types/{type_id}"),
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
+            ),
         )
 
     def normalize_watcher(self, payload: dict[str, Any]) -> WatcherSummary:

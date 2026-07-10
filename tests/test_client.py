@@ -7638,6 +7638,38 @@ async def test_hidden_status_fields_are_tagged_and_dropped_from_payload() -> Non
 
 
 @pytest.mark.asyncio
+async def test_hidden_type_fields_are_tagged_and_dropped_from_payload() -> None:
+    # OPM-89: type gains OPENPROJECT_HIDE_TYPE_FIELDS support (previously type
+    # had no hide-field wiring at all, unlike every other entity).
+    client = OpenProjectClient(
+        _base_settings(hidden_fields={"type": ("updated_at",)}),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+
+    work_package_type = client.normalize_type(
+        {
+            "id": 1,
+            "name": "Task",
+            "color": "#1A67A3",
+            "position": 1,
+            "isDefault": True,
+            "isMilestone": False,
+            "createdAt": "2026-01-01T00:00:00Z",
+            "updatedAt": "2026-06-01T00:00:00Z",
+        }
+    )
+
+    assert work_package_type._hidden_keys == frozenset({"updated_at"})
+    assert work_package_type.updated_at == "2026-06-01T00:00:00Z"  # preserved on the dataclass
+    assert work_package_type.created_at == "2026-01-01T00:00:00Z"
+    serialized = _to_payload(work_package_type)
+    assert "updated_at" not in serialized
+    assert serialized["name"] == "Task"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_sprints_normalizes_backlogs_collection() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/sprints" and request.method == "GET":
