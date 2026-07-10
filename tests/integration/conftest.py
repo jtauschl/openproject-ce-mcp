@@ -18,6 +18,7 @@ Required environment variables:
 
 from __future__ import annotations
 
+import dataclasses
 import os
 
 import pytest
@@ -87,6 +88,30 @@ def test_project() -> str:
     return _resolve_test_project()
 
 
+@pytest.fixture
+async def denied_client():
+    """A client scoped to deny writes to ``test_project`` while still allowing reads.
+
+    Read stays scoped to ``test_project`` so a live HAL link resolving to that
+    project passes the read-allowlist gate every write-allowlist check runs
+    first; only the write allowlist is configured to a literal, non-matching
+    identifier, so PermissionDeniedError comes from the write-scope check the
+    test is actually meant to exercise, not the unrelated read gate.
+    """
+    settings = _integration_settings()
+    if settings is None:
+        pytest.skip("OPENPROJECT_BASE_URL / OPENPROJECT_API_TOKEN not set")
+    _resolve_test_project()
+    denied_settings = dataclasses.replace(
+        settings,
+        allowed_write_projects=("no-such-project-for-integration-tests",),
+        allowed_write_projects_configured=True,
+    )
+    client_instance = OpenProjectClient(denied_settings)
+    await client_instance.initialize()
+    return client_instance
+
+
 # ---------------------------------------------------------------------------
 # Cleanup helpers for write tests
 # ---------------------------------------------------------------------------
@@ -133,5 +158,21 @@ async def time_entry_ids(client: OpenProjectClient):
     for te_id in created:
         try:
             await client.delete_time_entry(time_entry_id=te_id, confirm=True)
+        except Exception:
+            pass
+
+
+@pytest.fixture
+async def group_ids(client: OpenProjectClient):
+    """Yields a list to append created group IDs; deletes them all after the test.
+
+    Groups are instance-wide, not project-scoped — unlike every other cleanup
+    fixture here, cleanup touches state outside ``test_project``.
+    """
+    created: list[int] = []
+    yield created
+    for group_id in created:
+        try:
+            await client.delete_group(group_id=group_id, confirm=True)
         except Exception:
             pass
