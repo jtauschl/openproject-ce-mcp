@@ -10,18 +10,15 @@
 
 ### Steps
 
-1. **Create `.mcp.json` in your project root.** From that directory, run the
-   interactive setup to create it with your credentials:
+1. **Create `.mcp.json` in your project root**
+
+2. **Protect it if it contains secrets:**
    ```bash
-   openproject-ce-mcp configure
+   chmod 600 .mcp.json
    ```
+   **This file holds your API token.** Add `.mcp.json` to your project's `.gitignore` so it is never committed.
 
-2. **Or manually: Create `.mcp.json`**
-   - Reference: [`.mcp.json.example`](../.mcp.json.example)
-   - Protect it if it contains secrets: `chmod 600 .mcp.json`
-   - **This file holds your API token.** Add `.mcp.json` to your project's `.gitignore` so it is never committed.
-
-3. **Example config** — this mirrors what `openproject-ce-mcp configure` writes. With a PyPI install (uv tool / pipx / pip) the `command` is simply `openproject-ce-mcp` (resolved from your PATH); for a zero-install setup use `"command": "uvx"` with `"args": ["openproject-ce-mcp"]`. A source install instead points at the `.venv` binary (`...\.venv\bin\openproject-ce-mcp`, or `...\.venv\Scripts\openproject-ce-mcp.exe` on Windows).
+3. **Let the wizard write `.mcp.json` for you.** The easiest path is to run `openproject-ce-mcp configure`, answer the project-scoped gate, and select Claude Code — it writes `.mcp.json` for you. The example below (also mirrored at [`.mcp.json.example`](../.mcp.json.example)) is for creating it manually. With a PyPI install (uv tool / pipx / pip) the `command` is simply `openproject-ce-mcp` (resolved from your PATH); for a zero-install setup use `"command": "uvx"` with `"args": ["openproject-ce-mcp"]`. A source install instead points at the `.venv` binary (`...\.venv\bin\openproject-ce-mcp`, or `...\.venv\Scripts\openproject-ce-mcp.exe` on Windows).
    ```json
    {
      "mcpServers": {
