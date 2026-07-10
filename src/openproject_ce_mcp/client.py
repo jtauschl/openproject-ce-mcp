@@ -286,9 +286,18 @@ class OpenProjectClient:
         if search:
             filters.append({"name_and_identifier": {"operator": "~", "values": [search]}})
 
-        # OPM-82: Fetch multiple pages if needed to collect `limit` allowed projects
+        # OPM-82: fetch multiple pages if needed to collect `limit` allowed projects.
+        # OPM-107: `offset` paginates in units of `effective_limit`, which can differ
+        # from the server's own page size (`max_page_size`) — the two spaces can't be
+        # conflated into one server-side offset. So every call re-scans from server
+        # page 1, skipping the first `(offset - 1) * effective_limit` already-seen
+        # allowed matches before collecting the next `effective_limit` — this trades
+        # some redundant server calls on deep pagination for correctness (no allowed
+        # project is ever silently skipped or duplicated across calls).
+        skip_count = (offset - 1) * effective_limit
+        skipped = 0
         results: list[ProjectSummary] = []
-        server_offset = offset
+        server_offset = 1
         server_page_size = self.settings.max_page_size
         exhausted = False
 
@@ -308,10 +317,25 @@ class OpenProjectClient:
 
             projects = [p for p in raw_projects if p.get("_type") == "Project"]
             projects = [p for p in projects if self._project_payload_allowed(p)]
-            results.extend(self.normalize_project(p) for p in projects)
+            hit_limit_mid_page = False
+            for project in projects:
+                if skipped < skip_count:
+                    skipped += 1
+                    continue
+                results.append(self.normalize_project(project))
+                if len(results) >= effective_limit:
+                    hit_limit_mid_page = True
+                    break
+
+            if hit_limit_mid_page:
+                # This page had more allowed matches than needed — stop without
+                # checking server exhaustion: we already know there's at least one
+                # more allowed project waiting (the rest of this page), so treating
+                # this as "exhausted" would wrongly hide it from a follow-up call.
+                break
 
             server_total = int(payload.get("total", 0))
-            # OPM-100: server_offset is a 1-based page number (matching _next_offset's
+            # server_offset is a 1-based page number (matching _next_offset's
             # convention), advanced by one page — not by a full page size, and not
             # compared directly against an item count.
             if _next_offset(server_offset, server_page_size, server_total) is None:
@@ -319,10 +343,9 @@ class OpenProjectClient:
                 break
             server_offset += 1
 
-        # Trim to requested limit. truncated reflects why the loop stopped: hitting
-        # the requested limit (there may be more) vs. the server genuinely running out.
+        # truncated reflects why the loop stopped: hitting the requested limit (there
+        # may be more) vs. the server genuinely running out.
         truncated = not exhausted
-        results = results[:effective_limit]
         total = len(results)
 
         return ProjectListResult(

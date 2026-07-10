@@ -3719,6 +3719,52 @@ async def test_list_projects_walks_multiple_server_pages_when_allowlist_thins_fi
 
 
 @pytest.mark.asyncio
+async def test_list_projects_cross_call_pagination_does_not_skip_or_duplicate() -> None:
+    # OPM-107: a single raw server page (max_page_size=50, well above the 3 allowed
+    # projects below) yields more allowed matches (3) than effective_limit (2) needs.
+    # offset=1 must stop mid-page and report truncated=True/next_offset=2 without
+    # discarding the leftover match; offset=2 must resume exactly at that leftover
+    # match via a fresh scan, not skip it or repeat what offset=1 already returned.
+    all_projects = [
+        {
+            "_type": "Project",
+            "id": i,
+            "name": f"P{i}",
+            "identifier": f"p{i}",
+            "_links": {"self": {"href": f"/api/v3/projects/{i}", "title": f"P{i}"}},
+        }
+        for i in (1, 2, 3)
+    ]
+
+    def make_handler():
+        async def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/api/v3/projects":
+                assert request.url.params["offset"] == "1"  # single page covers all 3
+                return httpx.Response(200, json={"total": 3, "_embedded": {"elements": all_projects}}, request=request)
+            raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+        return handler
+
+    client_page1 = OpenProjectClient(make_settings(), transport=httpx.MockTransport(make_handler()))
+    first = await client_page1.list_projects(limit=2, offset=1)
+    await client_page1.aclose()
+
+    client_page2 = OpenProjectClient(make_settings(), transport=httpx.MockTransport(make_handler()))
+    second = await client_page2.list_projects(limit=2, offset=2)
+    await client_page2.aclose()
+
+    first_ids = [p.identifier for p in first.results]
+    second_ids = [p.identifier for p in second.results]
+    assert first_ids == ["p1", "p2"]
+    assert second_ids == ["p3"], f"offset=2 must resume at p3, not skip or repeat; got {second_ids}"
+    assert set(first_ids) & set(second_ids) == set(), "no project should appear on both pages"
+    assert first.truncated is True
+    assert first.next_offset == 2
+    assert second.truncated is False
+    assert second.next_offset is None
+
+
+@pytest.mark.asyncio
 async def test_create_time_entry_resolves_activity_from_project_form_context() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/demo":
