@@ -119,8 +119,6 @@ class Settings:
     enable_board_write: bool = False
     enable_admin_write: bool = False
     enable_metadata_tools: bool = False
-    auto_confirm_write: bool = False
-    auto_confirm_delete: bool = False
     attachment_root: str = ""
     max_retries: int = 3
     retry_base_delay: float = 1.0
@@ -237,16 +235,6 @@ class Settings:
             "OPENPROJECT_ENABLE_METADATA_TOOLS",
             default=False,
         )
-        auto_confirm_write = _parse_bool(
-            env.get("OPENPROJECT_AUTO_CONFIRM_WRITE"),
-            "OPENPROJECT_AUTO_CONFIRM_WRITE",
-            default=False,
-        )
-        auto_confirm_delete = _parse_bool(
-            env.get("OPENPROJECT_AUTO_CONFIRM_DELETE"),
-            "OPENPROJECT_AUTO_CONFIRM_DELETE",
-            default=auto_confirm_write,  # inherit from auto_confirm_write if not set
-        )
         timeout = _parse_float(env.get("OPENPROJECT_TIMEOUT"), "OPENPROJECT_TIMEOUT", default=12.0, minimum=1.0)
         verify_ssl = _parse_bool(env.get("OPENPROJECT_VERIFY_SSL"), "OPENPROJECT_VERIFY_SSL", default=True)
         default_page_size = _parse_int(
@@ -338,8 +326,6 @@ class Settings:
             enable_board_write=enable_board_write,
             enable_admin_write=enable_admin_write,
             enable_metadata_tools=enable_metadata_tools,
-            auto_confirm_write=auto_confirm_write,
-            auto_confirm_delete=auto_confirm_delete,
             attachment_root=attachment_root,
             max_retries=max_retries,
             retry_base_delay=retry_base_delay,

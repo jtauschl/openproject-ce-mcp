@@ -325,6 +325,120 @@ async def test_delete_membership_allows_identifier_write_scope() -> None:
     await client.aclose()
 
 
+def _membership_settings() -> Settings:
+    return Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        allowed_projects=("demo-id",),
+        allowed_write_projects=("demo-id",),
+        enable_membership_write=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_membership_returns_preview_when_not_confirmed() -> None:
+    """Characterization test (OPM-124 prerequisite): update_membership's
+    preview/commit shape had no dedicated test before the _finalize_write
+    refactor — this locks in its identity fields (membership_id, project)
+    and preview message before the generic helper replaces the hand-written
+    _finalize_membership_write body."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/memberships/3" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 3,
+                    "_links": {
+                        "project": {"href": "/api/v3/projects/demo-id", "title": "Demo"},
+                        "principal": {"href": "/api/v3/users/5", "title": "Alice"},
+                        "roles": [{"href": "/api/v3/roles/2", "title": "Developer"}],
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/roles":
+            return httpx.Response(200, json={"_embedded": {"elements": []}}, request=request)
+        if request.url.path == "/api/v3/memberships/3/form" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={"_embedded": {"payload": {"_links": {"roles": [{"href": "/api/v3/roles/2"}]}}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_membership_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.update_membership(membership_id=3, roles=["2"], confirm=False)
+
+    assert result.confirmed is False
+    assert result.requires_confirmation is True
+    assert result.ready is True
+    assert result.membership_id == 3
+    assert result.project == "Demo"
+    assert result.result is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_membership_writes_after_confirmation_when_enabled() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/memberships/3" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 3,
+                    "_links": {
+                        "project": {"href": "/api/v3/projects/demo-id", "title": "Demo"},
+                        "principal": {"href": "/api/v3/users/5", "title": "Alice"},
+                        "roles": [{"href": "/api/v3/roles/2", "title": "Developer"}],
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/roles":
+            return httpx.Response(200, json={"_embedded": {"elements": []}}, request=request)
+        if request.url.path == "/api/v3/memberships/3/form" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={"_embedded": {"payload": {"_links": {"roles": [{"href": "/api/v3/roles/2"}]}}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/memberships/3" and request.method == "PATCH":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 3,
+                    "_links": {
+                        "project": {"href": "/api/v3/projects/demo-id", "title": "Demo"},
+                        "principal": {"href": "/api/v3/users/5", "title": "Alice"},
+                        "roles": [{"href": "/api/v3/roles/2", "title": "Developer"}],
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_membership_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.update_membership(membership_id=3, roles=["2"], confirm=True)
+
+    assert result.confirmed is True
+    assert result.requires_confirmation is False
+    assert result.membership_id == 3
+    assert result.project == "Demo"
+    assert result.result is not None
+
+    await client.aclose()
+
+
 @pytest.mark.asyncio
 async def test_delete_news_allows_identifier_write_scope() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -1955,95 +2069,6 @@ async def test_delete_work_package_deletes_when_enabled_and_confirmed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_work_package_auto_confirms_with_write_auto_confirm() -> None:
-    async def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
-            return httpx.Response(
-                200,
-                json={
-                    "id": 42,
-                    "subject": "Delete me later",
-                    "lockVersion": 4,
-                    "_links": {
-                        "project": {"title": "Demo"},
-                        "status": {"title": "New"},
-                        "type": {"title": "Task"},
-                        "activities": {"href": "/api/v3/work_packages/42/activities"},
-                        "relations": {"href": "/api/v3/work_packages/42/relations"},
-                    },
-                },
-                request=request,
-            )
-        if request.url.path == "/api/v3/work_packages/42" and request.method == "DELETE":
-            return httpx.Response(204, request=request)
-        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
-
-    # auto_confirm_delete is what governs deletes; from_env inherits it from
-    # auto_confirm_write, but a directly-constructed Settings must set it.
-    settings = Settings(
-        base_url="https://op.example.com",
-        api_token="token",
-        enable_work_package_write=True,
-        timeout=12,
-        verify_ssl=True,
-        default_page_size=20,
-        max_page_size=50,
-        max_results=100,
-        log_level="WARNING",
-        auto_confirm_write=True,
-        auto_confirm_delete=True,
-    )
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-
-    result = await client.delete_work_package(work_package_id=42, confirm=False)
-
-    assert result.confirmed is True
-    assert result.requires_confirmation is False
-    assert result.result is None
-
-    await client.aclose()
-
-
-@pytest.mark.asyncio
-async def test_delete_previews_when_only_write_auto_confirm_set() -> None:
-    """auto_confirm_write alone must NOT auto-confirm a delete (delete has its own flag)."""
-
-    async def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
-            return httpx.Response(
-                200,
-                json={
-                    "id": 42,
-                    "subject": "Keep me",
-                    "lockVersion": 1,
-                    "_links": {"project": {"title": "Demo"}, "status": {"title": "New"}, "type": {"title": "Task"}},
-                },
-                request=request,
-            )
-        # A DELETE reaching the server would mean the guard failed.
-        raise AssertionError(f"Unexpected request (delete should have previewed): {request.method} {request.url}")
-
-    settings = Settings(
-        base_url="https://op.example.com",
-        api_token="token",
-        enable_work_package_write=True,
-        timeout=12,
-        verify_ssl=True,
-        default_page_size=20,
-        max_page_size=50,
-        max_results=100,
-        log_level="WARNING",
-        auto_confirm_write=True,
-        auto_confirm_delete=False,  # deletes still require confirmation
-    )
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    result = await client.delete_work_package(work_package_id=42, confirm=False)
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
-    await client.aclose()
-
-
-@pytest.mark.asyncio
 async def test_delete_work_package_requires_write_enablement() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
@@ -2213,55 +2238,6 @@ async def test_create_relation_and_delete_relation_work_when_enabled() -> None:
     assert created.result.to_id == 55
 
     deleted = await client.delete_relation(relation_id=650, confirm=True)
-    assert deleted.confirmed is True
-    assert deleted.result is None
-
-    await client.aclose()
-
-
-@pytest.mark.asyncio
-async def test_delete_relation_auto_confirms_with_write_auto_confirm() -> None:
-    async def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/v3/relations/650" and request.method == "GET":
-            return httpx.Response(
-                200,
-                json={
-                    "id": 650,
-                    "type": "blocks",
-                    "_links": {
-                        "from": {"href": "/api/v3/work_packages/42", "title": "Backend API"},
-                        "to": {"href": "/api/v3/work_packages/55", "title": "App integration"},
-                    },
-                },
-                request=request,
-            )
-        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
-            return httpx.Response(
-                200,
-                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
-                request=request,
-            )
-        if request.url.path == "/api/v3/relations/650" and request.method == "DELETE":
-            return httpx.Response(204, request=request)
-        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
-
-    settings = Settings(
-        base_url="https://op.example.com",
-        api_token="token",
-        enable_work_package_write=True,
-        timeout=12,
-        verify_ssl=True,
-        default_page_size=20,
-        max_page_size=50,
-        max_results=100,
-        log_level="WARNING",
-        auto_confirm_write=True,
-        auto_confirm_delete=True,  # deletes are governed by their own flag
-    )
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-
-    deleted = await client.delete_relation(relation_id=650, confirm=False)
-
     assert deleted.confirmed is True
     assert deleted.result is None
 
@@ -6356,13 +6332,48 @@ async def test_toggle_activity_emoji_reaction_patches_and_normalizes() -> None:
 
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
+    result = await client.toggle_activity_emoji_reaction(1988, "heart", confirm=True)
+
+    assert result.confirmed is True
+    assert result.result is not None
+    assert result.result.count == 1
+    assert result.result.results[0].reaction == "heart"
+    assert result.result.results[0].emoji == "❤️"
+    assert result.result.results[0].count == 2
+    assert result.result.results[0].users == ["Alice", "Bob"]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_toggle_activity_emoji_reaction_previews_without_confirm() -> None:
+    """Without confirm=true, the allowlist check still runs but no PATCH is sent."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/activities/1988" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 1988, "_links": {"workPackage": {"href": "/api/v3/work_packages/42"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.method == "PATCH":
+            raise AssertionError("PATCH must not be issued without confirm=true")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
     result = await client.toggle_activity_emoji_reaction(1988, "heart")
 
-    assert result.count == 1
-    assert result.results[0].reaction == "heart"
-    assert result.results[0].emoji == "❤️"
-    assert result.results[0].count == 2
-    assert result.results[0].users == ["Alice", "Bob"]
+    assert result.confirmed is False
+    assert result.requires_confirmation is True
+    assert result.ready is True
+    assert result.result is None
 
     await client.aclose()
 
@@ -6423,6 +6434,80 @@ async def test_toggle_activity_emoji_reaction_fails_closed_without_work_package_
 
     with pytest.raises(OpenProjectServerError, match="missing a work package link"):
         await client.toggle_activity_emoji_reaction(1988, "heart")
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_mark_notification_read_previews_without_confirm() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no request must be issued without confirm=true")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.mark_notification_read(10)
+
+    assert result.confirmed is False
+    assert result.requires_confirmation is True
+    assert result.notification_id == 10
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_mark_notification_read_posts_after_confirmation() -> None:
+    requests: list[tuple[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.method, request.url.path))
+        if request.url.path == "/api/v3/notifications/10/read_ian" and request.method == "POST":
+            return httpx.Response(204, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.mark_notification_read(10, confirm=True)
+
+    assert result.confirmed is True
+    assert result.notification_id == 10
+    assert requests == [("POST", "/api/v3/notifications/10/read_ian")]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_mark_all_notifications_read_previews_without_confirm() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no request must be issued without confirm=true")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.mark_all_notifications_read()
+
+    assert result.confirmed is False
+    assert result.requires_confirmation is True
+    assert result.notification_id is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_mark_all_notifications_read_posts_after_confirmation() -> None:
+    requests: list[tuple[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.method, request.url.path))
+        if request.url.path == "/api/v3/notifications/read_ian" and request.method == "POST":
+            return httpx.Response(204, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.mark_all_notifications_read(confirm=True)
+
+    assert result.confirmed is True
+    assert result.notification_id is None
+    assert requests == [("POST", "/api/v3/notifications/read_ian")]
 
     await client.aclose()
 
@@ -6845,12 +6930,13 @@ async def test_create_relation_resolves_semantic_target_to_numeric() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    settings = _base_settings(enable_work_package_write=True, auto_confirm_write=True)
+    settings = _base_settings(enable_work_package_write=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     await client.create_work_package_relation(
         work_package_id="PROJ-10",
         related_to_work_package_id="PROJ-20",
         relation_type="blocks",
+        confirm=True,
     )
     # The 'to' link must carry the numeric id (20), not the semantic ref.
     assert posted["_links"]["to"]["href"].endswith("/work_packages/20")
@@ -8298,9 +8384,10 @@ async def test_emoji_reaction_toggle_uses_activity_work_package_link_shape() -> 
 
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.toggle_activity_emoji_reaction(1988, "heart")
+    result = await client.toggle_activity_emoji_reaction(1988, "heart", confirm=True)
 
-    assert result.count == 0
+    assert result.result is not None
+    assert result.result.count == 0
     assert requests == [
         ("GET", "/api/v3/activities/1988"),
         ("GET", "/api/v3/work_packages/42"),

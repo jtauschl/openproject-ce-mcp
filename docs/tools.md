@@ -7,9 +7,7 @@ All mutating tools follow the same guarded write pattern by default:
 - Call the tool without `confirm=true` to get a preview or validation result.
 - Call it again with `confirm=true` to execute the write or delete.
 
-If `OPENPROJECT_AUTO_CONFIRM_WRITE` is explicitly enabled, the preview step is skipped for all writes, including deletes. `OPENPROJECT_AUTO_CONFIRM_DELETE` controls deletes independently and inherits `OPENPROJECT_AUTO_CONFIRM_WRITE` when unset; set it to require a preview for deletes while auto-confirming other writes, or to skip the preview for deletes only.
-
-Exception: self-scoped mutations of the current user's own state execute directly without a preview step — marking notifications read (`mark_notification_read`, `mark_all_notifications_read`), updating preferences (`update_my_preferences`), and toggling the current user's emoji reactions (`toggle_activity_emoji_reaction`). These touch only the caller's own state; project-attached reactions still enforce project write scope.
+Every mutation requires explicit `confirm=true` — there is no way to skip the preview step.
 
 Clearing a field: on `update_work_package` and `update_project`, pass the string `"none"` to unassign a nullable association instead of changing it — work-package `assignee`, `responsible`, `version`, `sprint`, `parent`, `category`, `project_phase`, and project `parent`. Omitting a field leaves it unchanged; `"none"` clears it. Required fields (type, status, subject, project) cannot be cleared.
 

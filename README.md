@@ -68,9 +68,7 @@ This MCP server targets **OpenProject Community Edition** only. It does not supp
 - Read and mark notifications; read help texts, working days, and instance configuration
 - Create and inspect grids; inspect custom options
 
-All write operations follow a preview-then-confirm pattern by default: call a tool once to get a validated preview, then again with `confirm=true` to execute. This can be bypassed globally with `OPENPROJECT_AUTO_CONFIRM_WRITE=true`.
-
-Self-scoped mutations of the current user's own state — notification read state, preferences, and the current user's emoji reactions — execute directly without a preview step. Project-attached reactions still enforce project write scope.
+All write operations follow a preview-then-confirm pattern: call a tool once to get a validated preview, then again with `confirm=true` to execute. There is no way to bypass this.
 
 ---
 
@@ -434,13 +432,6 @@ project-scoped write groups on by default, and Advanced setup can narrow them.
 | `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE` | no | `false` | Work-package create/update/delete, comments, relations, attachments, time entries |
 | `OPENPROJECT_ENABLE_VERSION_WRITE` | no | `false` | Version create/update/delete |
 | `OPENPROJECT_ENABLE_BOARD_WRITE` | no | `false` | Board create/update/delete |
-
-### Confirmation Behavior
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `OPENPROJECT_AUTO_CONFIRM_WRITE` | no | `false` | Skip the preview step for writes |
-| `OPENPROJECT_AUTO_CONFIRM_DELETE` | no | `false` in generated configs; inherits `OPENPROJECT_AUTO_CONFIRM_WRITE` if omitted | Skip the preview step for deletes |
 
 ### Token / Context Budget
 

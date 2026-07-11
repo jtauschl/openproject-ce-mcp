@@ -1132,17 +1132,18 @@ async def test_emoji_reaction_tools_pass_expected_arguments() -> None:
         async def list_work_package_reactions(self, work_package_id):
             return {"work_package_id": work_package_id}
 
-        async def toggle_activity_emoji_reaction(self, activity_id, reaction):
-            return {"activity_id": activity_id, "reaction": reaction}
+        async def toggle_activity_emoji_reaction(self, activity_id, reaction, confirm=False):
+            return {"activity_id": activity_id, "reaction": reaction, "confirm": confirm}
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
     listed = await list_work_package_reactions(ctx, "PROJ-1")
-    toggled = await toggle_activity_emoji_reaction(ctx, 1988, "thumbs_up")
+    toggled = await toggle_activity_emoji_reaction(ctx, 1988, "thumbs_up", confirm=True)
 
     assert listed["work_package_id"] == "PROJ-1"
     assert toggled["activity_id"] == 1988
     assert toggled["reaction"] == "thumbs_up"
+    assert toggled["confirm"] is True
 
 
 @pytest.mark.asyncio
@@ -1246,21 +1247,23 @@ async def test_notification_tools_pass_expected_arguments() -> None:
         async def list_notifications(self, **kwargs):
             return kwargs
 
-        async def mark_notification_read(self, notification_id):
-            return {"notification_id": notification_id}
+        async def mark_notification_read(self, notification_id, confirm=False):
+            return {"notification_id": notification_id, "confirm": confirm}
 
-        async def mark_all_notifications_read(self):
-            return {"all": True}
+        async def mark_all_notifications_read(self, confirm=False):
+            return {"all": True, "confirm": confirm}
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
     listed = await list_notifications(ctx, unread_only=True)
-    marked = await mark_notification_read(ctx, 10)
-    marked_all = await mark_all_notifications_read(ctx)
+    marked = await mark_notification_read(ctx, 10, confirm=True)
+    marked_all = await mark_all_notifications_read(ctx, confirm=True)
 
     assert listed["unread_only"] is True
     assert marked["notification_id"] == 10
+    assert marked["confirm"] is True
     assert marked_all["all"] is True
+    assert marked_all["confirm"] is True
 
 
 @pytest.mark.asyncio

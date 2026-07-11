@@ -62,7 +62,7 @@ You do not need the Codex CLI installed for this setup if you use the IDE extens
    OPENPROJECT_LOG_LEVEL = "WARNING"
    ```
 
-   Other keys (such as `OPENPROJECT_AUTO_CONFIRM_WRITE`) are optional and fall back to safe defaults when omitted — see the [Configuration table](../README.md#configuration) for the full list.
+   Other keys (such as `OPENPROJECT_ATTACHMENT_ROOT`) are optional and fall back to safe defaults when omitted — see the [Configuration table](../README.md#configuration) for the full list.
 
 4. **Verify in the IDE extension:**
    - trust the project

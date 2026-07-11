@@ -1046,11 +1046,6 @@ def _run_configure(argv: list[str] | None = None) -> None:
         membership_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", True)
         version_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_WRITE", True)
         board_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_WRITE", True)
-        auto_confirm_write = _prompt_bool(
-            "Skip the preview step for writes? (not recommended — writes execute immediately without a preview)",
-            _bool_from_env(existing, "OPENPROJECT_AUTO_CONFIRM_WRITE", False),
-        )
-        auto_confirm_delete = _bool_from_env(existing, "OPENPROJECT_AUTO_CONFIRM_DELETE", auto_confirm_write)
     else:
         write_projects = ""
         print("Write access disabled — project-scoped writes are disabled.")
@@ -1059,8 +1054,6 @@ def _run_configure(argv: list[str] | None = None) -> None:
         membership_write = False
         version_write = False
         board_write = False
-        auto_confirm_write = False
-        auto_confirm_delete = False
 
     print()
     advanced = _prompt_bool("Configure advanced options?", False)
@@ -1126,14 +1119,6 @@ def _run_configure(argv: list[str] | None = None) -> None:
                 "Enable board writes (create/update/delete)?",
                 board_write,
             )
-            auto_confirm_write = _prompt_bool(
-                "Auto-confirm writes without preview?",
-                auto_confirm_write,
-            )
-            auto_confirm_delete = _prompt_bool(
-                "Auto-confirm deletes without preview?",
-                auto_confirm_delete,
-            )
 
         print()
         print("Optional field filtering — omit fields from reads. Leave empty unless you need it.")
@@ -1181,8 +1166,6 @@ def _run_configure(argv: list[str] | None = None) -> None:
         "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": str(wp_write).lower(),
         "OPENPROJECT_ENABLE_VERSION_WRITE": str(version_write).lower(),
         "OPENPROJECT_ENABLE_BOARD_WRITE": str(board_write).lower(),
-        "OPENPROJECT_AUTO_CONFIRM_WRITE": str(auto_confirm_write).lower(),
-        "OPENPROJECT_AUTO_CONFIRM_DELETE": str(auto_confirm_delete).lower(),
         "OPENPROJECT_ENABLE_ADMIN_WRITE": str(admin_write).lower(),
         "OPENPROJECT_ENABLE_METADATA_TOOLS": str(metadata_tools).lower(),
         "OPENPROJECT_ATTACHMENT_ROOT": attachment_root,

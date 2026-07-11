@@ -272,30 +272,6 @@ def test_settings_from_env_rejects_invalid_log_level() -> None:
         )
 
 
-def test_auto_confirm_delete_inherits_write_when_unset() -> None:
-    env = {
-        "OPENPROJECT_BASE_URL": "https://op.example.com",
-        "OPENPROJECT_API_TOKEN": "token",
-        "OPENPROJECT_AUTO_CONFIRM_WRITE": "true",
-        # OPENPROJECT_AUTO_CONFIRM_DELETE intentionally unset -> inherits write
-    }
-    settings = Settings.from_env(env)
-    assert settings.auto_confirm_write is True
-    assert settings.auto_confirm_delete is True
-
-
-def test_auto_confirm_delete_can_be_disabled_independently() -> None:
-    env = {
-        "OPENPROJECT_BASE_URL": "https://op.example.com",
-        "OPENPROJECT_API_TOKEN": "token",
-        "OPENPROJECT_AUTO_CONFIRM_WRITE": "true",
-        "OPENPROJECT_AUTO_CONFIRM_DELETE": "false",  # keep a preview for deletes
-    }
-    settings = Settings.from_env(env)
-    assert settings.auto_confirm_write is True
-    assert settings.auto_confirm_delete is False
-
-
 def test_allowed_projects_alias_falls_back_and_warns(caplog) -> None:
     with caplog.at_level("WARNING"):
         settings = Settings.from_env(

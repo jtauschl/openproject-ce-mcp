@@ -1,8 +1,9 @@
 """Shared fixtures for integration tests against a live OpenProject instance.
 
 WARNING — these fixtures build a FULLY WRITE-ENABLED client (every
-``enable_*_write`` flag on, plus ``auto_confirm_write=True``) and the write tests
-create and DELETE real data. Run them ONLY against a disposable test instance or a
+``enable_*_write`` flag on) and the write tests create and DELETE real data.
+Every write/delete call passes ``confirm=True`` explicitly — there is no
+auto-confirm setting (OPM-124). Run them ONLY against a disposable test instance or a
 throwaway test project. NEVER point ``OPENPROJECT_BASE_URL`` /
 ``OPENPROJECT_API_TOKEN`` at a production instance or a project whose data you care
 about — a failed cleanup, a bug, or an interrupted run can leave or destroy data.
@@ -54,7 +55,6 @@ def _integration_settings() -> Settings | None:
     return Settings(
         base_url=base_url,
         api_token=api_token,
-        auto_confirm_write=True,
         timeout=30,
         verify_ssl=True,
         default_page_size=20,

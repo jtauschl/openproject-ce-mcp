@@ -79,7 +79,7 @@ Agent mode**. If you use VS Code, this is your guide.
    }
    ```
 
-   Other keys (such as `OPENPROJECT_AUTO_CONFIRM_WRITE`) are optional and fall back to safe defaults when omitted — see the [Configuration table](../README.md#configuration) for the full list.
+   Other keys (such as `OPENPROJECT_ATTACHMENT_ROOT`) are optional and fall back to safe defaults when omitted — see the [Configuration table](../README.md#configuration) for the full list.
 
 4. **Reload:** Open the command palette (**Cmd+Shift+P** on macOS, **Ctrl+Shift+P** on Windows/Linux) and run "Developer: Reload Window".
 

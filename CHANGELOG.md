@@ -32,6 +32,14 @@ development baseline.
   (read) or deny-all (write). Scope strings are internal literals, never
   user input, so this can only surface a programming error, not a user
   misconfiguration.
+- **Breaking: `OPENPROJECT_AUTO_CONFIRM_WRITE` and `OPENPROJECT_AUTO_CONFIRM_DELETE`
+  have been removed** (OPM-124, Phase 2 of the authorization/config redesign,
+  OPM-122; absorbs OPM-57, resolves OPM-105). Every mutating tool now always
+  requires an explicit `confirm=true` call after the preview — there is no
+  longer a way to skip the preview step globally. This also closes a gap
+  where three tools skipped the preview step unconditionally: `mark_notification_read`,
+  `mark_all_notifications_read`, and `toggle_activity_emoji_reaction` now
+  follow the same preview/confirm flow as every other write tool.
 
 ### Internal
 
@@ -40,6 +48,10 @@ development baseline.
   `PERSONAL_READ_TOOLS`, `PERSONAL_MUTATION_TOOLS`, `ADMIN_WRITE_TOOLS`,
   `METADATA_TOOLS`, `ADDITIONAL_READ_SCOPES_BY_TOOL`) instead of ~190 lines
   of hand-written conditional blocks — closes OPM-47.
+- The six form-based write finalizers in `client.py` (work package, version,
+  board, grid, project, membership) now share one generic `_finalize_write`
+  helper for the preview/commit state machine, instead of six near-duplicate
+  implementations — closes OPM-57.
 
 ---
 

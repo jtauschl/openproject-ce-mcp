@@ -1085,7 +1085,7 @@ def test_main_project_claude_no_duplicate_mcp_json(monkeypatch, tmp_path: Path) 
     assert backups == [], "Claude Code project write must not double-write .mcp.json"
 
 
-def test_main_basic_setup_writes_auto_confirm_and_safe_advanced_defaults(monkeypatch, tmp_path: Path) -> None:
+def test_main_basic_setup_safe_advanced_defaults(monkeypatch, tmp_path: Path) -> None:
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
     # global n, project y, claude y, base/default scopes, write access default
     # false, advanced default false.
@@ -1093,8 +1093,6 @@ def test_main_basic_setup_writes_auto_confirm_and_safe_advanced_defaults(monkeyp
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_AUTO_CONFIRM_WRITE"] == "false"
-    assert env["OPENPROJECT_AUTO_CONFIRM_DELETE"] == "false"
     assert env["OPENPROJECT_ENABLE_METADATA_TOOLS"] == "false"
     assert env["OPENPROJECT_ATTACHMENT_ROOT"] == ""
     assert env["OPENPROJECT_MAX_RETRIES"] == "3"
@@ -1116,8 +1114,6 @@ def test_main_write_access_no_disables_write_flags(monkeypatch, tmp_path: Path) 
                             "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "TST",
                             "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
                             "OPENPROJECT_ENABLE_PROJECT_WRITE": "true",
-                            "OPENPROJECT_AUTO_CONFIRM_WRITE": "true",
-                            "OPENPROJECT_AUTO_CONFIRM_DELETE": "true",
                         },
                     }
                 }
@@ -1137,8 +1133,6 @@ def test_main_write_access_no_disables_write_flags(monkeypatch, tmp_path: Path) 
     assert env["OPENPROJECT_ENABLE_MEMBERSHIP_WRITE"] == "false"
     assert env["OPENPROJECT_ENABLE_VERSION_WRITE"] == "false"
     assert env["OPENPROJECT_ENABLE_BOARD_WRITE"] == "false"
-    assert env["OPENPROJECT_AUTO_CONFIRM_WRITE"] == "false"
-    assert env["OPENPROJECT_AUTO_CONFIRM_DELETE"] == "false"
 
 
 def test_main_write_access_enter_keeps_existing_scope(monkeypatch, tmp_path: Path) -> None:
@@ -1155,7 +1149,6 @@ def test_main_write_access_enter_keeps_existing_scope(monkeypatch, tmp_path: Pat
                             "OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM, TST",
                             "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "TST",
                             "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
-                            "OPENPROJECT_AUTO_CONFIRM_WRITE": "true",
                         },
                     }
                 }
@@ -1176,17 +1169,16 @@ def test_main_write_access_enter_keeps_existing_scope(monkeypatch, tmp_path: Pat
     assert env["OPENPROJECT_ALLOWED_PROJECTS_READ"] == "OPM, TST"
     assert env["OPENPROJECT_ALLOWED_PROJECTS_WRITE"] == "TST"
     assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "true"
-    assert env["OPENPROJECT_AUTO_CONFIRM_WRITE"] == "true"
 
 
 def test_main_write_access_yes_defaults_write_controls_on(monkeypatch, tmp_path: Path) -> None:
     # Write-group flags (project/membership/work_package/version/board) still
-    # default on unprompted once write access is enabled. Auto-confirm is no
-    # longer bundled into that default-on set (OPM-87): it gets its own explicit
-    # basic-path prompt and defaults to False, matching "remain opt-in".
+    # default on unprompted once write access is enabled. There is no
+    # auto-confirm prompt anymore (OPM-124): every write/delete always
+    # requires explicit confirm=true, no operator-level bypass exists.
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
 
-    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y", "", "OPM, TST", "y", "TST", "n", "n"])
+    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y", "", "OPM, TST", "y", "TST", "n"])
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
@@ -1197,23 +1189,6 @@ def test_main_write_access_yes_defaults_write_controls_on(monkeypatch, tmp_path:
     assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "true"
     assert env["OPENPROJECT_ENABLE_VERSION_WRITE"] == "true"
     assert env["OPENPROJECT_ENABLE_BOARD_WRITE"] == "true"
-    assert env["OPENPROJECT_AUTO_CONFIRM_WRITE"] == "false"
-    assert env["OPENPROJECT_AUTO_CONFIRM_DELETE"] == "false"
-
-
-def test_main_write_access_yes_auto_confirm_prompt_can_opt_in(monkeypatch, tmp_path: Path) -> None:
-    # Answering "y" to the new explicit auto-confirm prompt opts in; delete
-    # follows the same answer by default (no separate delete prompt in the
-    # basic path — matches config.py's own auto_confirm_delete-inherits-write
-    # default).
-    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
-
-    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y", "", "OPM, TST", "y", "TST", "y", "n"])
-
-    data = json.loads((tmp_path / ".mcp.json").read_text())
-    env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_AUTO_CONFIRM_WRITE"] == "true"
-    assert env["OPENPROJECT_AUTO_CONFIRM_DELETE"] == "true"
 
 
 def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, tmp_path: Path) -> None:
@@ -1263,7 +1238,6 @@ def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: 
         "OPM",  # readable projects
         "y",  # enable write access
         "TST",  # writable projects
-        "n",  # basic-path auto-confirm writes prompt (overridden below in advanced)
         "y",  # advanced
         "",  # project reads
         "",  # membership reads
@@ -1275,8 +1249,6 @@ def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: 
         "n",  # membership writes
         "n",  # version writes
         "n",  # board writes
-        "y",  # auto-confirm writes
-        "n",  # auto-confirm deletes
         "status_explanation",  # hidden project fields
         "description",  # hidden work-package fields
         "comment",  # hidden activity fields
@@ -1302,8 +1274,6 @@ def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: 
     assert env["OPENPROJECT_ALLOWED_PROJECTS_READ"] == "OPM"
     assert env["OPENPROJECT_ALLOWED_PROJECTS_WRITE"] == "TST"
     assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "true"
-    assert env["OPENPROJECT_AUTO_CONFIRM_WRITE"] == "true"
-    assert env["OPENPROJECT_AUTO_CONFIRM_DELETE"] == "false"
     assert env["OPENPROJECT_HIDE_PROJECT_FIELDS"] == "status_explanation"
     assert env["OPENPROJECT_ENABLE_METADATA_TOOLS"] == "true"
     assert env["OPENPROJECT_ATTACHMENT_ROOT"] == "/tmp/uploads"

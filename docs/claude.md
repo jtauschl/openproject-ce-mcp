@@ -64,7 +64,7 @@
    }
    ```
 
-   Other keys (such as `OPENPROJECT_AUTO_CONFIRM_WRITE`) are optional and fall back to safe defaults when omitted — see the [Configuration table](../README.md#configuration) for the full list.
+   Other keys (such as `OPENPROJECT_ATTACHMENT_ROOT`) are optional and fall back to safe defaults when omitted — see the [Configuration table](../README.md#configuration) for the full list.
 
 4. **Reload:** Restart Claude Code, or run "Developer: Reload Window" from the command palette (**Cmd+Shift+P** on macOS, **Ctrl+Shift+P** on Windows/Linux).
 

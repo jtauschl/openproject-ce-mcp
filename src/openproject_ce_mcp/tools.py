@@ -45,6 +45,7 @@ from .models import (
     DocumentListResult,
     DocumentWriteResult,
     EmojiReactionListResult,
+    EmojiReactionWriteResult,
     FavoriteWriteResult,
     FileLinkListResult,
     FileLinkWriteResult,
@@ -66,6 +67,7 @@ from .models import (
     NewsWriteResult,
     NonWorkingDayListResult,
     NotificationListResult,
+    NotificationMarkResult,
     PrincipalListResult,
     PriorityListResult,
     PrioritySummary,
@@ -1462,7 +1464,7 @@ async def create_work_package(
 ) -> WorkPackageWriteResult:
     """Prepare or create a work package.
 
-    The tool validates the payload first. Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
+    The tool validates the payload first. Set confirm=true to write.
     assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number to nest the new work package under a parent.
     estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'PT30M' for 30 minutes). Day-based formats like 'P1D' are not supported by OpenProject.
     """
@@ -1533,7 +1535,7 @@ async def update_work_package(
 ) -> WorkPackageWriteResult:
     """Prepare or update a work package.
 
-    The tool validates the patch first. Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
+    The tool validates the patch first. Set confirm=true to write.
     work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
     estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours) or None to leave unchanged. Day-based formats like 'P1D' are not supported by OpenProject.
@@ -1785,7 +1787,7 @@ async def delete_work_package(
 ) -> WorkPackageWriteResult:
     """Prepare or delete a work package.
 
-    The tool previews the target first. Set confirm=true to delete, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
+    The tool previews the target first. Set confirm=true to delete.
     work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     """
     client = _client_from_context(ctx)
@@ -1812,7 +1814,7 @@ async def create_subtask(
 ) -> WorkPackageWriteResult:
     """Prepare or create a subtask under an existing work package.
 
-    The tool validates the payload first. Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation.
+    The tool validates the payload first. Set confirm=true to write.
     parent_work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
     """
     client = _client_from_context(ctx)
@@ -2489,17 +2491,19 @@ async def toggle_activity_emoji_reaction(
     ctx: Context,
     activity_id: int,
     reaction: str,
-) -> EmojiReactionListResult:
+    confirm: bool = False,
+) -> EmojiReactionWriteResult:
     """Toggle an emoji reaction on a work package comment activity.
 
-    Adds the reaction if absent, removes it if already present, and returns the
-    activity's full reaction set. `reaction` is one of: thumbs_up, thumbs_down,
-    grinning_face_with_smiling_eyes, confused_face, heart, party_popper, rocket, eyes.
+    Adds the reaction if absent, removes it if already present. `reaction` is
+    one of: thumbs_up, thumbs_down, grinning_face_with_smiling_eyes,
+    confused_face, heart, party_popper, rocket, eyes. Set confirm=true to apply
+    it; call without confirm=true first to get a preview.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(activity_id, field_name="activity_id")
     safe_reaction = _validate_required_query(reaction, field_name="reaction", max_length=50)
-    return await _run_tool(client.toggle_activity_emoji_reaction(safe_id, safe_reaction))
+    return await _run_tool(client.toggle_activity_emoji_reaction(safe_id, safe_reaction, confirm=confirm))
 
 
 async def list_reminders(ctx: Context) -> ReminderListResult:
@@ -2711,17 +2715,23 @@ async def list_notifications(
     return await _run_tool(client.list_notifications(unread_only=unread_only, limit=safe_limit, offset=safe_offset))
 
 
-async def mark_notification_read(ctx: Context, notification_id: int) -> None:
-    """Mark a single notification as read."""
+async def mark_notification_read(ctx: Context, notification_id: int, confirm: bool = False) -> NotificationMarkResult:
+    """Mark a single notification as read.
+
+    Set confirm=true to write, or call without confirm=true first for a preview.
+    """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(notification_id, field_name="notification_id")
-    return await _run_tool(client.mark_notification_read(safe_id))
+    return await _run_tool(client.mark_notification_read(safe_id, confirm=confirm))
 
 
-async def mark_all_notifications_read(ctx: Context) -> None:
-    """Mark all notifications as read."""
+async def mark_all_notifications_read(ctx: Context, confirm: bool = False) -> NotificationMarkResult:
+    """Mark all unread notifications as read.
+
+    Set confirm=true to write, or call without confirm=true first for a preview.
+    """
     client = _client_from_context(ctx)
-    return await _run_tool(client.mark_all_notifications_read())
+    return await _run_tool(client.mark_all_notifications_read(confirm=confirm))
 
 
 async def create_user(
@@ -3000,7 +3010,7 @@ async def update_my_preferences(
     confirm: bool = False,
 ) -> UserPreferencesWriteResult:
     """Prepare or update the current user's preferences (language, timezone, comment sort order, …).
-    Set confirm=true to write, or enable OPENPROJECT_AUTO_CONFIRM_WRITE to skip confirmation."""
+    Set confirm=true to write."""
     client = _client_from_context(ctx)
     return await _run_tool(
         client.update_my_preferences(

@@ -81,7 +81,7 @@ permissions, use Claude Code — see [claude.md](claude.md)).
 
    If the file already has a `mcpServers` block, add the `openproject` entry
    alongside your existing servers instead of replacing the whole file. Other
-   keys (such as `OPENPROJECT_AUTO_CONFIRM_WRITE`) are optional and fall back to
+   keys (such as `OPENPROJECT_ATTACHMENT_ROOT`) are optional and fall back to
    safe defaults when omitted — see the [Configuration table](../README.md#configuration).
 
 4. **Restart Claude Desktop** completely (quit and reopen — a window reload is

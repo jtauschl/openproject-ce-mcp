@@ -9,6 +9,8 @@ never by calling enabled_tool_names() as its own oracle — otherwise a bug in
 the selection logic could compare itself to itself and stay green.
 """
 
+import inspect
+
 from openproject_ce_mcp import tools
 from openproject_ce_mcp.config import ConfigError, Settings
 
@@ -125,6 +127,22 @@ def test_every_classified_name_resolves_to_a_real_function() -> None:
         | set(tools.METADATA_TOOLS)
     )
     assert all_classified == set(tools._TOOL_FUNCTIONS)
+
+
+def test_every_write_tool_requires_confirm() -> None:
+    """Signature invariant: every write tool must take a confirm parameter that
+    defaults to False. Does NOT prove confirm is passed through to the client or
+    that confirm=False actually withholds the mutation — those are covered by the
+    targeted wrapper/client behavior tests instead."""
+    write_tool_names = (
+        set().union(*tools.WRITE_TOOLS_BY_SCOPE.values())
+        | set(tools.ADMIN_WRITE_TOOLS)
+        | set(tools.PERSONAL_MUTATION_TOOLS)
+    )
+    for name in write_tool_names:
+        sig = inspect.signature(tools._TOOL_FUNCTIONS[name])
+        assert "confirm" in sig.parameters, f"{name} has no confirm parameter"
+        assert sig.parameters["confirm"].default is False, f"{name}'s confirm must default to False"
 
 
 # ── enabled_tool_names() behavior ───────────────────────────────────────────

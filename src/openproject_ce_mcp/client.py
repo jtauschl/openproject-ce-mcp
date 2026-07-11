@@ -4,12 +4,12 @@ import asyncio
 import json
 import logging
 import mimetypes
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass
 from fnmatch import fnmatch, fnmatchcase
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
@@ -46,6 +46,7 @@ from .models import (
     DocumentWriteResult,
     EmojiReactionListResult,
     EmojiReactionSummary,
+    EmojiReactionWriteResult,
     FavoriteWriteResult,
     FileLinkListResult,
     FileLinkSummary,
@@ -71,6 +72,7 @@ from .models import (
     NonWorkingDay,
     NonWorkingDayListResult,
     NotificationListResult,
+    NotificationMarkResult,
     NotificationSummary,
     OptionValue,
     PrincipalListResult,
@@ -181,6 +183,10 @@ CLEAR_VERSION = object()
 # "leave unchanged" (None). parent/version keep their own sentinels above for
 # historical reasons; new clearable fields share this one.
 CLEAR = object()
+
+# Type variables for the generic write-finalizer (_finalize_write, OPM-124/OPM-57).
+DetailT = TypeVar("DetailT")
+ResultT = TypeVar("ResultT")
 
 
 class OpenProjectError(Exception):
@@ -483,7 +489,7 @@ class OpenProjectClient:
         self._ensure_project_write_allowed(project_ref, payload=payload_current)
         project = self.normalize_project(payload_current)
         payload = {"id": project.id, "identifier": project.identifier, "name": project.name}
-        if self._preview_mode(confirm, delete=True):
+        if not confirm:
             return ProjectWriteResult(
                 action="delete",
                 confirmed=False,
@@ -546,7 +552,7 @@ class OpenProjectClient:
         form_payload = form.get("_embedded", {}).get("payload", payload)
         validation_errors = _normalize_validation_errors(form.get("_embedded", {}).get("validationErrors"))
         ready = not validation_errors
-        if self._preview_mode(confirm):
+        if not confirm:
             return ProjectCopyResult(
                 action="copy",
                 confirmed=False,
@@ -942,7 +948,7 @@ class OpenProjectClient:
             "principal": membership.principal_name,
             "roles": membership.role_names,
         }
-        if self._preview_mode(confirm, delete=True):
+        if not confirm:
             return MembershipWriteResult(
                 action="delete",
                 confirmed=False,
@@ -1177,7 +1183,7 @@ class OpenProjectClient:
             self._ensure_field_writable("document", "description")
             payload["description"] = {"format": "markdown", "raw": description}
         detail = self.normalize_document_detail(current)
-        if self._preview_mode(confirm):
+        if not confirm:
             return DocumentWriteResult(
                 action="update",
                 confirmed=False,
@@ -1299,7 +1305,7 @@ class OpenProjectClient:
         if description is not None:
             self._ensure_field_writable("news", "description")
             payload["description"] = {"format": "markdown", "raw": description}
-        if self._preview_mode(confirm):
+        if not confirm:
             return NewsWriteResult(
                 action="create",
                 confirmed=False,
@@ -1350,7 +1356,7 @@ class OpenProjectClient:
         if description is not None:
             self._ensure_field_writable("news", "description")
             payload["description"] = {"format": "markdown", "raw": description}
-        if self._preview_mode(confirm):
+        if not confirm:
             return NewsWriteResult(
                 action="update",
                 confirmed=False,
@@ -1389,7 +1395,7 @@ class OpenProjectClient:
         self._ensure_news_write_payload_allowed(current)
         detail = self.normalize_news_detail(current)
         payload = {"id": detail.id, "title": detail.title}
-        if self._preview_mode(confirm, delete=True):
+        if not confirm:
             return NewsWriteResult(
                 action="delete",
                 confirmed=False,
@@ -1479,7 +1485,7 @@ class OpenProjectClient:
         self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
         file_info = self._prepare_attachment_file(file_path, include_bytes=confirm)
         await self._validate_attachment_size(file_info["file_size"])
-        if self._preview_mode(confirm):
+        if not confirm:
             return AttachmentWriteResult(
                 action="create",
                 confirmed=False,
@@ -1541,7 +1547,7 @@ class OpenProjectClient:
             "fileName": attachment.file_name,
             "fileSize": attachment.file_size,
         }
-        if self._preview_mode(confirm, delete=True):
+        if not confirm:
             return AttachmentWriteResult(
                 action="delete",
                 confirmed=False,
@@ -1737,7 +1743,7 @@ class OpenProjectClient:
             ongoing=ongoing,
             activity_project_id=activity_project_id,
         )
-        if self._preview_mode(confirm):
+        if not confirm:
             return TimeEntryWriteResult(
                 action="create",
                 confirmed=False,
@@ -1796,7 +1802,7 @@ class OpenProjectClient:
             ongoing=ongoing,
             activity_project_id=project_id,
         )
-        if self._preview_mode(confirm):
+        if not confirm:
             return TimeEntryWriteResult(
                 action="update",
                 confirmed=False,
@@ -1835,7 +1841,7 @@ class OpenProjectClient:
         self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
         detail = self.normalize_time_entry(current)
         payload = {"id": detail.id, "hours": detail.hours, "spentOn": detail.spent_on}
-        if self._preview_mode(confirm, delete=True):
+        if not confirm:
             return TimeEntryWriteResult(
                 action="delete",
                 confirmed=False,
@@ -2618,7 +2624,7 @@ class OpenProjectClient:
             "notify": notify,
         }
 
-        if self._preview_mode(confirm):
+        if not confirm:
             return ActivityWriteResult(
                 action="comment",
                 confirmed=False,
@@ -2681,7 +2687,7 @@ class OpenProjectClient:
             payload["lag"] = lag
 
         preview_payload = payload | {"to_work_package_id": related_numeric_id}
-        if self._preview_mode(confirm):
+        if not confirm:
             return RelationWriteResult(
                 action="create",
                 confirmed=False,
@@ -2722,7 +2728,7 @@ class OpenProjectClient:
         self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
         detail = self.normalize_work_package_detail(current)
 
-        if self._preview_mode(confirm, delete=True):
+        if not confirm:
             return WorkPackageWriteResult(
                 action="delete",
                 confirmed=False,
@@ -2779,7 +2785,7 @@ class OpenProjectClient:
             "from_id": normalized.from_id,
             "to_id": normalized.to_id,
         }
-        if self._preview_mode(confirm, delete=True):
+        if not confirm:
             return RelationWriteResult(
                 action="delete",
                 confirmed=False,
@@ -3099,7 +3105,7 @@ class OpenProjectClient:
         detail = self.normalize_version_detail(current)
         payload = {"id": detail.id, "name": detail.name}
 
-        if self._preview_mode(confirm, delete=True):
+        if not confirm:
             return VersionWriteResult(
                 action="delete",
                 confirmed=False,
@@ -3313,7 +3319,7 @@ class OpenProjectClient:
         detail = self.normalize_board_detail(current)
         payload = {"id": detail.id, "name": detail.name}
 
-        if self._preview_mode(confirm, delete=True):
+        if not confirm:
             return BoardWriteResult(
                 action="delete",
                 confirmed=False,
@@ -3411,13 +3417,16 @@ class OpenProjectClient:
         payload = await self._get(f"work_packages/{work_package_id}/activities_emoji_reactions")
         return self._emoji_reactions_result(payload)
 
-    async def toggle_activity_emoji_reaction(self, activity_id: int, reaction: str) -> EmojiReactionListResult:
+    async def toggle_activity_emoji_reaction(
+        self, activity_id: int, reaction: str, *, confirm: bool = False
+    ) -> EmojiReactionWriteResult:
         self._ensure_write_enabled("work_package")
         if reaction not in self.EMOJI_REACTIONS:
             raise InvalidInputError(f"reaction must be one of: {', '.join(self.EMOJI_REACTIONS)}.")
         # Enforce the project write allowlist against the activity's work package.
         # Fail closed: if the activity has no resolvable workPackage link, refuse
-        # rather than patch an unchecked target.
+        # rather than patch an unchecked target. This check always runs, even in
+        # preview mode — it is an authorization gate, not the mutation itself.
         activity = await self._get(f"activities/{activity_id}")
         work_package_ref = _id_from_href(activity.get("_links", {}).get("workPackage", {}).get("href"))
         if not work_package_ref:
@@ -3426,13 +3435,40 @@ class OpenProjectClient:
             )
         work_package_payload = await self._get(f"work_packages/{work_package_ref}")
         self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
+        if not confirm:
+            # The resulting add/remove state is not predicted here — OpenProject
+            # decides that server-side and doing so ourselves would need an extra
+            # lookup. The preview names the toggle's nature instead (OPM-124).
+            return EmojiReactionWriteResult(
+                action="toggle_reaction",
+                confirmed=False,
+                requires_confirmation=True,
+                ready=True,
+                message=(
+                    f"Toggles the '{reaction}' reaction on activity {activity_id} — adds it if not "
+                    "already present, removes it if present. Ask for confirmation, then call again "
+                    "with confirm=true to apply it."
+                ),
+                activity_id=activity_id,
+                reaction=reaction,
+                result=None,
+            )
         # PATCH toggles: adds the reaction if absent, removes it if present, and
         # returns the full reaction collection for the activity afterwards.
         payload = await self._patch(
             f"activities/{activity_id}/emoji_reactions",
             json_body={"reaction": reaction},
         )
-        return self._emoji_reactions_result(payload)
+        return EmojiReactionWriteResult(
+            action="toggle_reaction",
+            confirmed=True,
+            requires_confirmation=False,
+            ready=True,
+            message=f"Toggled '{reaction}' reaction on activity {activity_id}.",
+            activity_id=activity_id,
+            reaction=reaction,
+            result=self._emoji_reactions_result(payload),
+        )
 
     # --- Reminders (personal, on work packages) ---
 
@@ -3475,7 +3511,7 @@ class OpenProjectClient:
         payload: dict[str, Any] = {"remindAt": remind_at}
         if note is not None:
             payload["note"] = note
-        if self._preview_mode(confirm):
+        if not confirm:
             return ReminderWriteResult(
                 action="create",
                 confirmed=False,
@@ -3536,7 +3572,7 @@ class OpenProjectClient:
             payload["note"] = note
         if not payload:
             raise InvalidInputError("At least one field (remind_at or note) is required.")
-        if self._preview_mode(confirm):
+        if not confirm:
             return ReminderWriteResult(
                 action="update",
                 confirmed=False,
@@ -3565,7 +3601,7 @@ class OpenProjectClient:
 
     async def delete_reminder(self, *, reminder_id: int, confirm: bool = False) -> ReminderWriteResult:
         await self._ensure_reminder_project_write_allowed(reminder_id)
-        if self._preview_mode(confirm, delete=True):
+        if not confirm:
             return ReminderWriteResult(
                 action="delete",
                 confirmed=False,
@@ -3617,7 +3653,7 @@ class OpenProjectClient:
         project_id = int(project_payload["id"])
         project_name = _trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT)
         action = "favorite" if favorite else "unfavorite"
-        if self._preview_mode(confirm):
+        if not confirm:
             verb = "mark as favorite" if favorite else "remove from favorites"
             return FavoriteWriteResult(
                 action=action,
@@ -3752,7 +3788,7 @@ class OpenProjectClient:
         work_package_id = self._work_package_ref(work_package_id)
         work_package_payload = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
-        if self._preview_mode(confirm):
+        if not confirm:
             user_payload = await self._get(f"users/{user_id}")
             watcher = self.normalize_watcher(user_payload)
             return WatcherWriteResult(
@@ -3794,7 +3830,7 @@ class OpenProjectClient:
         work_package_id = self._work_package_ref(work_package_id)
         work_package_payload = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
-        if self._preview_mode(confirm, delete=True):
+        if not confirm:
             return WatcherWriteResult(
                 action="remove",
                 confirmed=False,
@@ -3846,21 +3882,65 @@ class OpenProjectClient:
         total = int(payload.get("total", len(results)))
         return NotificationListResult(count=len(results), total=total, results=results)
 
-    async def mark_notification_read(self, notification_id: int) -> None:
+    async def mark_notification_read(self, notification_id: int, *, confirm: bool = False) -> NotificationMarkResult:
         self._ensure_write_enabled("work_package")
+        if not confirm:
+            # No OpenProject dry-run endpoint exists for this action — this is a
+            # client-side preview only (OPM-124): ready=True means the request is
+            # valid and will be sent once confirmed, not that OpenProject has
+            # already validated it.
+            return NotificationMarkResult(
+                action="mark_read",
+                confirmed=False,
+                requires_confirmation=True,
+                ready=True,
+                message=(
+                    f"Ask for confirmation, then call again with confirm=true to mark "
+                    f"notification {notification_id} read."
+                ),
+                notification_id=notification_id,
+            )
         response = await self._request("POST", f"notifications/{notification_id}/read_ian")
         if response.status_code not in {200, 201, 204}:
             raise OpenProjectServerError(
                 f"OpenProject mark notification read failed with status {response.status_code}."
             )
+        return NotificationMarkResult(
+            action="mark_read",
+            confirmed=True,
+            requires_confirmation=False,
+            ready=True,
+            message=f"Notification {notification_id} marked read.",
+            notification_id=notification_id,
+        )
 
-    async def mark_all_notifications_read(self) -> None:
+    async def mark_all_notifications_read(self, *, confirm: bool = False) -> NotificationMarkResult:
         self._ensure_write_enabled("work_package")
+        if not confirm:
+            return NotificationMarkResult(
+                action="mark_all_read",
+                confirmed=False,
+                requires_confirmation=True,
+                ready=True,
+                message=(
+                    "Marks all currently unread notifications read. Ask for confirmation, "
+                    "then call again with confirm=true to apply it."
+                ),
+                notification_id=None,
+            )
         response = await self._request("POST", "notifications/read_ian")
         if response.status_code not in {200, 201, 204}:
             raise OpenProjectServerError(
                 f"OpenProject mark all notifications read failed with status {response.status_code}."
             )
+        return NotificationMarkResult(
+            action="mark_all_read",
+            confirmed=True,
+            requires_confirmation=False,
+            ready=True,
+            message="All unread notifications marked read.",
+            notification_id=None,
+        )
 
     # --- User CRUD ---
 
@@ -3890,7 +3970,7 @@ class OpenProjectClient:
             payload["password"] = password
         if language is not None:
             payload["language"] = language
-        if self._preview_mode(confirm):
+        if not confirm:
             return UserWriteResult(
                 action="create",
                 confirmed=False,
@@ -3942,7 +4022,7 @@ class OpenProjectClient:
             payload["admin"] = admin
         if language is not None:
             payload["language"] = language
-        if self._preview_mode(confirm):
+        if not confirm:
             return UserWriteResult(
                 action="update",
                 confirmed=False,
@@ -3976,7 +4056,7 @@ class OpenProjectClient:
     ) -> UserWriteResult:
         self._ensure_write_enabled("admin")
         payload = {"id": user_id}
-        if self._preview_mode(confirm, delete=True):
+        if not confirm:
             return UserWriteResult(
                 action="delete",
                 confirmed=False,
@@ -4009,7 +4089,7 @@ class OpenProjectClient:
     ) -> UserWriteResult:
         self._ensure_write_enabled("admin")
         payload = {"id": user_id}
-        if self._preview_mode(confirm):
+        if not confirm:
             return UserWriteResult(
                 action="lock",
                 confirmed=False,
@@ -4043,7 +4123,7 @@ class OpenProjectClient:
     ) -> UserWriteResult:
         self._ensure_write_enabled("admin")
         payload = {"id": user_id}
-        if self._preview_mode(confirm):
+        if not confirm:
             return UserWriteResult(
                 action="unlock",
                 confirmed=False,
@@ -4085,7 +4165,7 @@ class OpenProjectClient:
         if user_ids:
             body["_links"] = {"members": [{"href": self._api_href(f"users/{uid}")} for uid in user_ids]}
         payload_preview = {"name": name, "user_ids": user_ids or []}
-        if self._preview_mode(confirm):
+        if not confirm:
             return GroupWriteResult(
                 action="create",
                 confirmed=False,
@@ -4149,7 +4229,7 @@ class OpenProjectClient:
             payload_preview["add_user_ids"] = add_user_ids
         if remove_user_ids:
             payload_preview["remove_user_ids"] = remove_user_ids
-        if self._preview_mode(confirm):
+        if not confirm:
             return GroupWriteResult(
                 action="update",
                 confirmed=False,
@@ -4183,7 +4263,7 @@ class OpenProjectClient:
     ) -> GroupWriteResult:
         self._ensure_write_enabled("admin")
         payload = {"id": group_id}
-        if self._preview_mode(confirm, delete=True):
+        if not confirm:
             return GroupWriteResult(
                 action="delete",
                 confirmed=False,
@@ -4243,7 +4323,7 @@ class OpenProjectClient:
             self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
         else:
             self._ensure_project_write_link_allowed(None)
-        if self._preview_mode(confirm, delete=True):
+        if not confirm:
             return FileLinkWriteResult(
                 action="delete",
                 confirmed=False,
@@ -4364,7 +4444,7 @@ class OpenProjectClient:
         detail = self.normalize_grid(current)
         scope = current.get("_links", {}).get("scope", {}).get("href")
 
-        if self._preview_mode(confirm, delete=True):
+        if not confirm:
             return GridWriteResult(
                 action="delete",
                 confirmed=False,
@@ -4422,7 +4502,7 @@ class OpenProjectClient:
             body["warnOnLeavingUnsaved"] = warn_on_leaving_unsaved
         if auto_hide_popups is not None:
             body["autoHidePopups"] = auto_hide_popups
-        if self._preview_mode(confirm):
+        if not confirm:
             return UserPreferencesWriteResult(
                 action="update",
                 confirmed=False,
@@ -4606,7 +4686,7 @@ class OpenProjectClient:
             body["type"] = relation_type
         if description is not None:
             body["description"] = description
-        if self._preview_mode(confirm):
+        if not confirm:
             return RelationUpdateResult(
                 action="update",
                 confirmed=False,
@@ -4750,16 +4830,6 @@ class OpenProjectClient:
             LOGGER.warning("OpenProject server error: status=%s", status_code)
             raise OpenProjectServerError("OpenProject returned a server error.")
         raise OpenProjectServerError(f"OpenProject request failed with status {status_code}.")
-
-    def _preview_mode(self, confirm: bool, *, delete: bool = False) -> bool:
-        """Return True if the call should return a preview instead of writing.
-
-        When auto_confirm_write (or auto_confirm_delete for deletes) is enabled
-        in settings, the preview step is skipped and the tool writes immediately.
-        """
-        if delete:
-            return not confirm and not self.settings.auto_confirm_delete
-        return not confirm and not self.settings.auto_confirm_write
 
     def _resolve_limit(self, requested_limit: int | None) -> int:
         limit = requested_limit or self.settings.default_page_size
@@ -6356,6 +6426,82 @@ class OpenProjectClient:
             raise InvalidInputError(f"OpenProject custom field '{key}' requires at least one value.")
         return hrefs
 
+    async def _finalize_write(
+        self,
+        *,
+        result_cls: type[ResultT],
+        action: str,
+        confirm: bool,
+        form: dict[str, Any],
+        write_path: str,
+        write_method: str = "POST",
+        write_scope: str,
+        identity_kwargs: Callable[[dict[str, Any]], dict[str, Any]],
+        normalize: Callable[[dict[str, Any]], DetailT],
+        committed_kwargs: Callable[[DetailT], dict[str, Any]],
+        rejected_message: str,
+        preview_message: str,
+        success_message: str,
+    ) -> ResultT:
+        """Shared rejected/preview/committed state machine for the 6 form-based
+        write finalizers (OPM-57/OPM-124). Each entity differs in its identity
+        field(s), write scope, and normalizer — those are parameterized here,
+        not the messages, which callers supply verbatim so no wording changes.
+
+        identity_kwargs receives the extracted payload (not just static caller
+        args) because at least one entity (grid) derives part of its identity
+        (`scope`) from the payload itself, not from a value the caller passed in.
+        """
+        embedded = form.get("_embedded", {})
+        payload = embedded.get("payload", {})
+        validation_errors = _normalize_validation_errors(embedded.get("validationErrors"))
+        ready = not validation_errors
+        identity = identity_kwargs(payload)
+
+        if not ready:
+            return result_cls(
+                action=action,
+                confirmed=False,
+                requires_confirmation=not confirm,
+                ready=False,
+                message=rejected_message,
+                payload=payload,
+                validation_errors=validation_errors,
+                result=None,
+                **identity,
+            )
+
+        if not confirm:
+            return result_cls(
+                action=action,
+                confirmed=False,
+                requires_confirmation=True,
+                ready=True,
+                message=preview_message,
+                payload=payload,
+                validation_errors={},
+                result=None,
+                **identity,
+            )
+
+        self._ensure_write_enabled(write_scope)
+        if write_method == "PATCH":
+            response = await self._patch(write_path, json_body=payload)
+        else:
+            response = await self._post(write_path, json_body=payload)
+        detail = normalize(response)
+        return result_cls(
+            action=action,
+            confirmed=True,
+            requires_confirmation=False,
+            ready=True,
+            message=success_message,
+            payload=payload,
+            validation_errors={},
+            result=detail,
+            **committed_kwargs(detail),
+        )
+
     async def _finalize_work_package_write(
         self,
         *,
@@ -6369,57 +6515,21 @@ class OpenProjectClient:
         preview_message: str | None = None,
         success_message: str | None = None,
     ) -> WorkPackageWriteResult:
-        embedded = form.get("_embedded", {})
-        payload = embedded.get("payload", {})
-        validation_errors = _normalize_validation_errors(embedded.get("validationErrors"))
-        ready = not validation_errors
-
-        if not ready:
-            return WorkPackageWriteResult(
-                action=action,
-                confirmed=False,
-                requires_confirmation=not confirm,
-                ready=False,
-                message="OpenProject rejected the proposed changes. Fix the validation errors before confirming.",
-                work_package_id=work_package_id,
-                project=project_name,
-                payload=payload,
-                validation_errors=validation_errors,
-                result=None,
-            )
-
-        if self._preview_mode(confirm):
-            return WorkPackageWriteResult(
-                action=action,
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message=preview_message
-                or "OpenProject validated the change. Ask for confirmation, then call again with confirm=true to write it.",
-                work_package_id=work_package_id,
-                project=project_name,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-
-        self._ensure_write_enabled("work_package")
-        if write_method == "PATCH":
-            response = await self._patch(write_path, json_body=payload)
-        else:
-            response = await self._post(write_path, json_body=payload)
-        detail = self.normalize_work_package_detail(response)
-        return WorkPackageWriteResult(
+        return await self._finalize_write(
+            result_cls=WorkPackageWriteResult,
             action=action,
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message=success_message or f"Work package {action}d successfully.",
-            work_package_id=detail.id,
-            project=detail.project,
-            payload=payload,
-            validation_errors={},
-            result=detail,
+            confirm=confirm,
+            form=form,
+            write_path=write_path,
+            write_method=write_method,
+            write_scope="work_package",
+            identity_kwargs=lambda _payload: {"work_package_id": work_package_id, "project": project_name},
+            normalize=self.normalize_work_package_detail,
+            committed_kwargs=lambda d: {"work_package_id": d.id, "project": d.project},
+            rejected_message="OpenProject rejected the proposed changes. Fix the validation errors before confirming.",
+            preview_message=preview_message
+            or "OpenProject validated the change. Ask for confirmation, then call again with confirm=true to write it.",
+            success_message=success_message or f"Work package {action}d successfully.",
         )
 
     def _build_version_write_payload(
@@ -6618,57 +6728,21 @@ class OpenProjectClient:
         preview_message: str | None = None,
         success_message: str | None = None,
     ) -> VersionWriteResult:
-        embedded = form.get("_embedded", {})
-        payload = embedded.get("payload", {})
-        validation_errors = _normalize_validation_errors(embedded.get("validationErrors"))
-        ready = not validation_errors
-
-        if not ready:
-            return VersionWriteResult(
-                action=action,
-                confirmed=False,
-                requires_confirmation=not confirm,
-                ready=False,
-                message="OpenProject rejected the proposed version changes. Fix the validation errors before confirming.",
-                version_id=version_id,
-                project=project_name,
-                payload=payload,
-                validation_errors=validation_errors,
-                result=None,
-            )
-
-        if self._preview_mode(confirm):
-            return VersionWriteResult(
-                action=action,
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message=preview_message
-                or "OpenProject validated the version change. Ask for confirmation, then call again with confirm=true to write it.",
-                version_id=version_id,
-                project=project_name,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-
-        self._ensure_write_enabled("version")
-        if write_method == "PATCH":
-            response = await self._patch(write_path, json_body=payload)
-        else:
-            response = await self._post(write_path, json_body=payload)
-        detail = self.normalize_version_detail(response)
-        return VersionWriteResult(
+        return await self._finalize_write(
+            result_cls=VersionWriteResult,
             action=action,
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message=success_message or f"Version {action}d successfully.",
-            version_id=detail.id,
-            project=detail.defining_project,
-            payload=payload,
-            validation_errors={},
-            result=detail,
+            confirm=confirm,
+            form=form,
+            write_path=write_path,
+            write_method=write_method,
+            write_scope="version",
+            identity_kwargs=lambda _payload: {"version_id": version_id, "project": project_name},
+            normalize=self.normalize_version_detail,
+            committed_kwargs=lambda d: {"version_id": d.id, "project": d.defining_project},
+            rejected_message="OpenProject rejected the proposed version changes. Fix the validation errors before confirming.",
+            preview_message=preview_message
+            or "OpenProject validated the version change. Ask for confirmation, then call again with confirm=true to write it.",
+            success_message=success_message or f"Version {action}d successfully.",
         )
 
     async def _finalize_board_write(
@@ -6684,57 +6758,21 @@ class OpenProjectClient:
         preview_message: str | None = None,
         success_message: str | None = None,
     ) -> BoardWriteResult:
-        embedded = form.get("_embedded", {})
-        payload = embedded.get("payload", {})
-        validation_errors = _normalize_validation_errors(embedded.get("validationErrors"))
-        ready = not validation_errors
-
-        if not ready:
-            return BoardWriteResult(
-                action=action,
-                confirmed=False,
-                requires_confirmation=not confirm,
-                ready=False,
-                message="OpenProject rejected the proposed board changes. Fix the validation errors before confirming.",
-                board_id=board_id,
-                project=project_name,
-                payload=payload,
-                validation_errors=validation_errors,
-                result=None,
-            )
-
-        if self._preview_mode(confirm):
-            return BoardWriteResult(
-                action=action,
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message=preview_message
-                or "OpenProject validated the board change. Ask for confirmation, then call again with confirm=true to write it.",
-                board_id=board_id,
-                project=project_name,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-
-        self._ensure_write_enabled("board")
-        if write_method == "PATCH":
-            response = await self._patch(write_path, json_body=payload)
-        else:
-            response = await self._post(write_path, json_body=payload)
-        detail = self.normalize_board_detail(response)
-        return BoardWriteResult(
+        return await self._finalize_write(
+            result_cls=BoardWriteResult,
             action=action,
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message=success_message or f"Board {action}d successfully.",
-            board_id=detail.id,
-            project=detail.project,
-            payload=payload,
-            validation_errors={},
-            result=detail,
+            confirm=confirm,
+            form=form,
+            write_path=write_path,
+            write_method=write_method,
+            write_scope="board",
+            identity_kwargs=lambda _payload: {"board_id": board_id, "project": project_name},
+            normalize=self.normalize_board_detail,
+            committed_kwargs=lambda d: {"board_id": d.id, "project": d.project},
+            rejected_message="OpenProject rejected the proposed board changes. Fix the validation errors before confirming.",
+            preview_message=preview_message
+            or "OpenProject validated the board change. Ask for confirmation, then call again with confirm=true to write it.",
+            success_message=success_message or f"Board {action}d successfully.",
         )
 
     async def _finalize_grid_write(
@@ -6749,58 +6787,24 @@ class OpenProjectClient:
         preview_message: str | None = None,
         success_message: str | None = None,
     ) -> GridWriteResult:
-        embedded = form.get("_embedded", {})
-        payload = embedded.get("payload", {})
-        validation_errors = _normalize_validation_errors(embedded.get("validationErrors"))
-        ready = not validation_errors
-        scope = payload.get("_links", {}).get("scope", {}).get("href")
-
-        if not ready:
-            return GridWriteResult(
-                action=action,
-                confirmed=False,
-                requires_confirmation=not confirm,
-                ready=False,
-                message="OpenProject rejected the proposed grid changes. Fix the validation errors before confirming.",
-                grid_id=grid_id,
-                scope=scope,
-                payload=payload,
-                validation_errors=validation_errors,
-                result=None,
-            )
-
-        if self._preview_mode(confirm):
-            return GridWriteResult(
-                action=action,
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message=preview_message
-                or "OpenProject validated the grid change. Ask for confirmation, then call again with confirm=true to write it.",
-                grid_id=grid_id,
-                scope=scope,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-
-        self._ensure_write_enabled("project")
-        if write_method == "PATCH":
-            response = await self._patch(write_path, json_body=payload)
-        else:
-            response = await self._post(write_path, json_body=payload)
-        detail = self.normalize_grid(response)
-        return GridWriteResult(
+        return await self._finalize_write(
+            result_cls=GridWriteResult,
             action=action,
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message=success_message or f"Grid {action}d successfully.",
-            grid_id=detail.id,
-            scope=detail.scope,
-            payload=payload,
-            validation_errors={},
-            result=detail,
+            confirm=confirm,
+            form=form,
+            write_path=write_path,
+            write_method=write_method,
+            write_scope="project",  # grids are project-scoped, not their own scope
+            identity_kwargs=lambda payload: {
+                "grid_id": grid_id,
+                "scope": payload.get("_links", {}).get("scope", {}).get("href"),
+            },
+            normalize=self.normalize_grid,
+            committed_kwargs=lambda d: {"grid_id": d.id, "scope": d.scope},
+            rejected_message="OpenProject rejected the proposed grid changes. Fix the validation errors before confirming.",
+            preview_message=preview_message
+            or "OpenProject validated the grid change. Ask for confirmation, then call again with confirm=true to write it.",
+            success_message=success_message or f"Grid {action}d successfully.",
         )
 
     async def _build_project_write_payload(
@@ -6906,54 +6910,21 @@ class OpenProjectClient:
         preview_message: str | None = None,
         success_message: str | None = None,
     ) -> ProjectWriteResult:
-        embedded = form.get("_embedded", {})
-        payload = embedded.get("payload", {})
-        validation_errors = _normalize_validation_errors(embedded.get("validationErrors"))
-        ready = not validation_errors
-        if not ready:
-            return ProjectWriteResult(
-                action=action,
-                confirmed=False,
-                requires_confirmation=not confirm,
-                ready=False,
-                message="OpenProject rejected the proposed project changes. Fix the validation errors before confirming.",
-                project_id=project_id,
-                project=project_name,
-                payload=payload,
-                validation_errors=validation_errors,
-                result=None,
-            )
-        if self._preview_mode(confirm):
-            return ProjectWriteResult(
-                action=action,
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message=preview_message
-                or "OpenProject validated the project change. Ask for confirmation, then call again with confirm=true to write it.",
-                project_id=project_id,
-                project=project_name,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        self._ensure_write_enabled("project")
-        if write_method == "PATCH":
-            response = await self._patch(write_path, json_body=payload)
-        else:
-            response = await self._post(write_path, json_body=payload)
-        project = self.normalize_project(response)
-        return ProjectWriteResult(
+        return await self._finalize_write(
+            result_cls=ProjectWriteResult,
             action=action,
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message=success_message or f"Project {action}d successfully.",
-            project_id=project.id,
-            project=project.name,
-            payload=payload,
-            validation_errors={},
-            result=project,
+            confirm=confirm,
+            form=form,
+            write_path=write_path,
+            write_method=write_method,
+            write_scope="project",
+            identity_kwargs=lambda _payload: {"project_id": project_id, "project": project_name},
+            normalize=self.normalize_project,
+            committed_kwargs=lambda p: {"project_id": p.id, "project": p.name},
+            rejected_message="OpenProject rejected the proposed project changes. Fix the validation errors before confirming.",
+            preview_message=preview_message
+            or "OpenProject validated the project change. Ask for confirmation, then call again with confirm=true to write it.",
+            success_message=success_message or f"Project {action}d successfully.",
         )
 
     async def _finalize_membership_write(
@@ -6969,54 +6940,21 @@ class OpenProjectClient:
         preview_message: str | None = None,
         success_message: str | None = None,
     ) -> MembershipWriteResult:
-        embedded = form.get("_embedded", {})
-        payload = embedded.get("payload", {})
-        validation_errors = _normalize_validation_errors(embedded.get("validationErrors"))
-        ready = not validation_errors
-        if not ready:
-            return MembershipWriteResult(
-                action=action,
-                confirmed=False,
-                requires_confirmation=not confirm,
-                ready=False,
-                message="OpenProject rejected the proposed membership changes. Fix the validation errors before confirming.",
-                membership_id=membership_id,
-                project=project_name,
-                payload=payload,
-                validation_errors=validation_errors,
-                result=None,
-            )
-        if self._preview_mode(confirm):
-            return MembershipWriteResult(
-                action=action,
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message=preview_message
-                or "OpenProject validated the membership change. Ask for confirmation, then call again with confirm=true to write it.",
-                membership_id=membership_id,
-                project=project_name,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        self._ensure_write_enabled("membership")
-        if write_method == "PATCH":
-            response = await self._patch(write_path, json_body=payload)
-        else:
-            response = await self._post(write_path, json_body=payload)
-        membership = self.normalize_membership(response)
-        return MembershipWriteResult(
+        return await self._finalize_write(
+            result_cls=MembershipWriteResult,
             action=action,
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message=success_message or f"Membership {action}d successfully.",
-            membership_id=membership.id,
-            project=membership.project_name,
-            payload=payload,
-            validation_errors={},
-            result=membership,
+            confirm=confirm,
+            form=form,
+            write_path=write_path,
+            write_method=write_method,
+            write_scope="membership",
+            identity_kwargs=lambda _payload: {"membership_id": membership_id, "project": project_name},
+            normalize=self.normalize_membership,
+            committed_kwargs=lambda m: {"membership_id": m.id, "project": m.project_name},
+            rejected_message="OpenProject rejected the proposed membership changes. Fix the validation errors before confirming.",
+            preview_message=preview_message
+            or "OpenProject validated the membership change. Ask for confirmation, then call again with confirm=true to write it.",
+            success_message=success_message or f"Membership {action}d successfully.",
         )
 
     def _ensure_write_enabled(self, scope: str) -> None:
