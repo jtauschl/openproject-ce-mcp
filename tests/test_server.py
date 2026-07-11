@@ -51,7 +51,8 @@ def test_defaults_no_write_tools() -> None:
 
 
 def test_update_my_preferences_always_available() -> None:
-    """update_my_preferences is in the read block — available without any write flag."""
+    """update_my_preferences is in tools.PERSONAL_MUTATION_TOOLS, always registered
+    unconditionally (one of its two registration rules, see tools.enabled_tool_names)."""
     mcp = create_app(make_settings())
     names = _tool_names(mcp)
     assert "update_my_preferences" in names
@@ -102,6 +103,40 @@ def test_enable_membership_read_false_removes_membership_tools() -> None:
     assert "list_users" not in names
 
 
+def test_enable_membership_read_false_removes_previously_ungated_tools() -> None:
+    """OPM-123 regression guard: get_current_user/list_actions/list_capabilities were
+    always registered regardless of any flag, despite their client method enforcing
+    _ensure_read_enabled("principal"/"membership") at call time — a tool visible but
+    failing on every call. They now correctly disappear together with the rest of
+    the membership group. get_my_project_access (home: project) also disappears,
+    because its client method additionally requires membership read."""
+    mcp = create_app(make_settings(enable_membership_read=False))
+    names = _tool_names(mcp)
+    assert "get_current_user" not in names
+    assert "list_actions" not in names
+    assert "list_capabilities" not in names
+    assert "get_my_project_access" not in names
+    # project itself stays active — only the membership-dependent tool is gone
+    assert "list_projects" in names
+
+
+def test_enable_work_package_read_false_removes_previously_ungated_tools() -> None:
+    """list_notifications was always registered despite its client method enforcing
+    _ensure_read_enabled("work_package") — same class of bug as get_current_user."""
+    mcp = create_app(make_settings(enable_work_package_read=False))
+    names = _tool_names(mcp)
+    assert "list_notifications" not in names
+
+
+def test_enable_project_read_false_removes_previously_ungated_tools() -> None:
+    """get_instance_configuration/get_job_status were always registered despite their
+    client method enforcing _ensure_read_enabled("project")."""
+    mcp = create_app(make_settings(enable_project_read=False))
+    names = _tool_names(mcp)
+    assert "get_instance_configuration" not in names
+    assert "get_job_status" not in names
+
+
 def test_enable_work_package_write_adds_wp_write_tools() -> None:
     mcp = create_app(make_settings(enable_work_package_write=True))
     names = _tool_names(mcp)
@@ -136,6 +171,42 @@ def test_enable_project_write_adds_project_write_tools() -> None:
     assert "create_grid" in names
     assert "create_time_entry" not in names
     assert "create_user" not in names
+
+
+def test_work_package_write_without_work_package_read_hides_compound_scope_tools() -> None:
+    """Asymmetric case: delete_file_link additionally requires work_package READ
+    (not just its home WRITE scope) — it must disappear when read is off, even
+    though other work_package writes (which have no such extra dependency) stay.
+    mark_notification_read has no additional-scope requirement and stays too."""
+    mcp = create_app(make_settings(enable_work_package_read=False, enable_work_package_write=True))
+    names = _tool_names(mcp)
+    assert "create_work_package" in names
+    assert "mark_notification_read" in names
+    assert "delete_file_link" not in names
+    assert "list_notifications" not in names
+
+
+def test_membership_write_without_membership_read_hides_compound_scope_tools() -> None:
+    """Asymmetric case: create_membership/update_membership additionally require
+    membership READ (role lookup) and must disappear when read is off, while
+    delete_membership (no additional scope) stays visible."""
+    mcp = create_app(make_settings(enable_membership_read=False, enable_membership_write=True))
+    names = _tool_names(mcp)
+    assert "create_membership" not in names
+    assert "update_membership" not in names
+    assert "delete_membership" in names
+
+
+def test_metadata_tools_partially_hidden_without_additional_read_scopes() -> None:
+    """7 of the 12 metadata tools additionally require board or work_package read;
+    the other 5 have no such dependency and appear regardless."""
+    mcp = create_app(make_settings(enable_metadata_tools=True, enable_board_read=False, enable_work_package_read=False))
+    names = _tool_names(mcp)
+    assert "get_query_filter" not in names  # needs board
+    assert "render_text" not in names  # needs work_package
+    assert "list_help_texts" in names  # no additional scope
+    assert "list_working_days" in names
+    assert "get_custom_option" in names
 
 
 def test_enable_admin_write_adds_user_group_tools() -> None:

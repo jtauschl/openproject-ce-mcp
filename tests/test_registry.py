@@ -1,36 +1,24 @@
-"""Parity test: every tool registered in register_tools() must appear in docs/tools.md."""
+"""Parity test: every tool classified in tools.py (OPM-123) must appear in docs/tools.md."""
 
-import ast
 import re
 from pathlib import Path
 
-TOOLS_PY = Path(__file__).parent.parent / "src" / "openproject_ce_mcp" / "tools.py"
+from openproject_ce_mcp import tools as _tools
+
 TOOLS_MD = Path(__file__).parent.parent / "docs" / "tools.md"
 
 
 def _registered_tool_names() -> set[str]:
-    """Parse register_tools() from tools.py and return all registered function names."""
-    source = TOOLS_PY.read_text()
-    tree = ast.parse(source)
+    """Every tool name known to the classification constants (OPM-123).
 
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "register_tools":
-            names: set[str] = set()
-            for stmt in ast.walk(node):
-                # Registrations go through the local helper: tool(some_name).
-                # (The helper wraps mcp.tool() with error categorization.)
-                if (
-                    isinstance(stmt, ast.Expr)
-                    and isinstance(stmt.value, ast.Call)
-                    and isinstance(stmt.value.func, ast.Name)
-                    and stmt.value.func.id == "tool"
-                    and stmt.value.args
-                    and isinstance(stmt.value.args[0], ast.Name)
-                ):
-                    names.add(stmt.value.args[0].id)
-            return names
-
-    raise RuntimeError("register_tools() not found in tools.py")
+    register_tools() no longer contains hand-written `tool(name)` calls to
+    parse — it iterates `enabled_tool_names()`, which resolves names through
+    `_TOOL_FUNCTIONS`. That dict is itself derived from the classification
+    constants (READ_TOOLS_BY_SCOPE, WRITE_TOOLS_BY_SCOPE, PERSONAL_*,
+    ADMIN_WRITE_TOOLS, METADATA_TOOLS), so reading its keys directly is both
+    simpler and more accurate than re-parsing register_tools() via AST.
+    """
+    return set(_tools._TOOL_FUNCTIONS)
 
 
 def _documented_tool_names() -> set[str]:

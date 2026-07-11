@@ -11,6 +11,31 @@ class ConfigError(ValueError):
     """Raised when environment configuration is missing or invalid."""
 
 
+# Scope strings are internal literals written by this codebase, never user
+# input — an unrecognized one is always a programming error (typo, or a new
+# client.py call site whose scope was never wired up here) and must fail
+# loud via ConfigError, not silently resolve to allow-all or deny-all.
+# "admin" is deliberately NOT a key of _WRITE_SCOPE_SETTINGS: it is handled
+# separately (instance-wide, not a per-scope Settings attribute) by
+# client.py::_ensure_write_enabled and by the tool registration gate.
+_READ_SCOPE_SETTINGS: dict[str, str] = {
+    "work_package": "enable_work_package_read",
+    "project": "enable_project_read",
+    "membership": "enable_membership_read",
+    "role": "enable_membership_read",
+    "principal": "enable_membership_read",
+    "version": "enable_version_read",
+    "board": "enable_board_read",
+}
+_WRITE_SCOPE_SETTINGS: dict[str, str] = {
+    "work_package": "enable_work_package_write",
+    "project": "enable_project_write",
+    "membership": "enable_membership_write",
+    "version": "enable_version_write",
+    "board": "enable_board_write",
+}
+
+
 # Cap for a work-package description shown in list/summary results — a per-row
 # preview so a multi-row list stays scannable without flooding the agent's context
 # window. Single-item reads (get_work_package, get_work_package_activities) are NOT
@@ -102,24 +127,18 @@ class Settings:
     retry_max_delay: float = 60.0
 
     def read_enabled(self, scope: str) -> bool:
-        return {
-            "work_package": self.enable_work_package_read,
-            "project": self.enable_project_read,
-            "membership": self.enable_membership_read,
-            "role": self.enable_membership_read,
-            "principal": self.enable_membership_read,
-            "version": self.enable_version_read,
-            "board": self.enable_board_read,
-        }.get(scope, True)
+        try:
+            attr = _READ_SCOPE_SETTINGS[scope]
+        except KeyError:
+            raise ConfigError(f"Unknown read scope {scope!r}.") from None
+        return bool(getattr(self, attr))
 
     def write_enabled(self, scope: str) -> bool:
-        return {
-            "work_package": self.enable_work_package_write,
-            "project": self.enable_project_write,
-            "membership": self.enable_membership_write,
-            "version": self.enable_version_write,
-            "board": self.enable_board_write,
-        }.get(scope, False)
+        try:
+            attr = _WRITE_SCOPE_SETTINGS[scope]
+        except KeyError:
+            raise ConfigError(f"Unknown write scope {scope!r}.") from None
+        return bool(getattr(self, attr))
 
     @property
     def project_write_scope_configured(self) -> bool:

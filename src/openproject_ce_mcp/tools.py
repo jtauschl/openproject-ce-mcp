@@ -138,6 +138,255 @@ RELATION_TYPE_RE = re.compile(
 )
 
 
+# ── Tool classification (OPM-123) ───────────────────────────────────────────
+#
+# Single source of truth for which tool belongs to which scope, replacing the
+# previously hand-written if/tool(...) blocks. Registration now follows
+# exactly the scopes each tool's client method actually enforces at runtime
+# (verified against client.py, not guessed) — this is a real behavior change
+# for existing OPENPROJECT_ENABLE_*_READ flags: several tools that were
+# always registered regardless of any flag (e.g. get_current_user,
+# list_notifications) now correctly disappear when their real scope is
+# disabled, instead of staying visible and failing only when called.
+#
+# This is Phase 1 of a larger authorization redesign (OPM-122): it fixes the
+# registration/runtime mismatch and gives Phase 4 (OPENPROJECT_TOOLS) a
+# correct foundation. It does NOT introduce a "core" or "personal" grouping
+# as a public concept — that naming decision belongs to Phase 4.
+
+PERSONAL_READ_TOOLS: tuple[str, ...] = ("get_my_preferences",)
+# Verified: get_my_preferences has no _ensure_read_enabled call at all in its
+# client method — genuinely always available today, unlike the tools below
+# that were incorrectly always-registered despite a real runtime gate.
+
+# Three tools, two registration rules (not "two exceptions for three
+# tools"): update_my_preferences is always registered (matches its existing
+# always-on behavior); the two notification-mark-read tools stay bound to
+# write_enabled("work_package") exactly as today. Split into two sub-tuples
+# so enabled_tool_names() below applies each rule via the constant itself,
+# not a second, independently-typed copy of the same names — a real
+# OPENPROJECT_PERSONAL_WRITE is out of scope for this phase.
+ALWAYS_PERSONAL_MUTATION_TOOLS: tuple[str, ...] = ("update_my_preferences",)
+WORK_PACKAGE_GATED_PERSONAL_MUTATION_TOOLS: tuple[str, ...] = (
+    "mark_notification_read",
+    "mark_all_notifications_read",
+)
+PERSONAL_MUTATION_TOOLS: tuple[str, ...] = (
+    *ALWAYS_PERSONAL_MUTATION_TOOLS,
+    *WORK_PACKAGE_GATED_PERSONAL_MUTATION_TOOLS,
+)
+
+READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
+    "project": (
+        "list_projects",
+        "get_project",
+        "get_project_admin_context",
+        "get_project_configuration",
+        "list_sprints",
+        "list_project_sprints",
+        "get_sprint",
+        "list_documents",
+        "get_document",
+        "list_news",
+        "get_news",
+        "get_wiki_page",
+        "list_views",
+        "get_view",
+        "list_grids",
+        "get_grid",
+        "list_categories",
+        "get_category",
+        "list_project_phase_definitions",
+        "get_project_phase_definition",
+        "get_project_phase",
+        "get_my_project_access",
+        "get_project_work_package_context",
+        "get_instance_configuration",
+        "get_job_status",
+    ),
+    "work_package": (
+        "list_work_packages",
+        "search_work_packages",
+        "get_work_package",
+        "get_work_packages",
+        "list_my_open_work_packages",
+        "get_work_package_activities",
+        "list_work_package_reactions",
+        "list_reminders",
+        "get_work_package_relations",
+        "list_work_package_attachments",
+        "get_attachment",
+        "list_work_package_file_links",
+        "list_work_package_watchers",
+        "list_statuses",
+        "get_status",
+        "list_priorities",
+        "get_priority",
+        "list_types",
+        "get_type",
+        "list_time_entry_activities",
+        "list_time_entries",
+        "get_time_entry",
+        "list_relations",
+        "list_notifications",
+    ),
+    "membership": (
+        "list_project_memberships",
+        "get_membership",
+        "list_roles",
+        "list_principals",
+        "list_users",
+        "get_user",
+        "list_groups",
+        "get_group",
+        "get_current_user",
+        "list_actions",
+        "list_capabilities",
+    ),
+    "version": ("list_versions", "get_version"),
+    "board": ("list_boards", "get_board"),
+}
+
+WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
+    "project": (
+        "create_project",
+        "update_project",
+        "delete_project",
+        "copy_project",
+        "add_project_favorite",
+        "remove_project_favorite",
+        "create_news",
+        "update_news",
+        "delete_news",
+        "update_document",
+        "create_grid",
+        "update_grid",
+        "delete_grid",
+    ),
+    "work_package": (
+        "create_work_package",
+        "create_subtask",
+        "update_work_package",
+        "bulk_create_work_packages",
+        "bulk_update_work_packages",
+        "delete_work_package",
+        "add_work_package_comment",
+        "toggle_activity_emoji_reaction",
+        "create_work_package_reminder",
+        "update_reminder",
+        "delete_reminder",
+        "create_work_package_relation",
+        "delete_relation",
+        "create_work_package_attachment",
+        "delete_attachment",
+        "add_work_package_watcher",
+        "remove_work_package_watcher",
+        "create_time_entry",
+        "update_time_entry",
+        "delete_time_entry",
+        "update_relation",
+        "delete_file_link",
+    ),
+    "membership": ("create_membership", "update_membership", "delete_membership"),
+    "version": ("create_version", "update_version", "delete_version"),
+    "board": ("create_board", "update_board", "delete_board"),
+}
+
+ADMIN_WRITE_TOOLS: tuple[str, ...] = (
+    "create_user",
+    "update_user",
+    "delete_user",
+    "lock_user",
+    "unlock_user",
+    "create_group",
+    "update_group",
+    "delete_group",
+)
+# Gated by settings.enable_admin_write directly (checked in enabled_tool_names
+# below), not via write_enabled("admin") — "admin" is deliberately not a key
+# of Settings.write_enabled's scope table (see config.py).
+
+METADATA_TOOLS: tuple[str, ...] = (
+    "get_query_filter",
+    "get_query_column",
+    "get_query_operator",
+    "get_query_sort_by",
+    "list_query_filter_instance_schemas",
+    "get_query_filter_instance_schema",
+    "render_text",
+    "list_help_texts",
+    "get_help_text",
+    "list_working_days",
+    "list_non_working_days",
+    "get_custom_option",
+)
+# Gated by settings.enable_metadata_tools; 7 of these also require an
+# additional read scope (ADDITIONAL_READ_SCOPES_BY_TOOL below).
+
+# Additional read scopes required by tools whose home group above is not
+# sufficient on its own (verified against each client method, not guessed).
+# Only ADDITIONAL requirements are listed here — never the tool's own home
+# scope. role/principal are aliases of the same enable_membership_read flag
+# as membership (see config.py), so they are not listed as separate entries.
+ADDITIONAL_READ_SCOPES_BY_TOOL: dict[str, frozenset[str]] = {
+    "get_my_project_access": frozenset({"membership"}),
+    "get_project_work_package_context": frozenset({"work_package", "version"}),
+    "delete_file_link": frozenset({"work_package"}),  # home: work_package WRITE; also work_package READ
+    "create_membership": frozenset({"membership"}),  # home: membership WRITE; also membership READ (role lookup)
+    "update_membership": frozenset({"membership"}),
+    "get_query_filter": frozenset({"board"}),
+    "get_query_column": frozenset({"board"}),
+    "get_query_operator": frozenset({"board"}),
+    "get_query_sort_by": frozenset({"board"}),
+    "list_query_filter_instance_schemas": frozenset({"board"}),
+    "get_query_filter_instance_schema": frozenset({"board"}),
+    "render_text": frozenset({"work_package"}),
+}
+
+
+def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
+    """Ordered, duplicate-free tool names to register for this configuration.
+
+    The single source of truth for register_tools() (production). Tests must
+    NOT use this function as their expected value — they compute expectations
+    independently from the classification constants above, so a bug in the
+    selection logic here cannot silently pass by comparing itself to itself.
+    """
+    enabled: list[str] = []
+    seen: set[str] = set()
+
+    def include(names: tuple[str, ...]) -> None:
+        for name in names:
+            if name not in seen:
+                enabled.append(name)
+                seen.add(name)
+
+    def additional_scopes_ok(name: str) -> bool:
+        return all(settings.read_enabled(scope) for scope in ADDITIONAL_READ_SCOPES_BY_TOOL.get(name, ()))
+
+    include(PERSONAL_READ_TOOLS)
+    include(ALWAYS_PERSONAL_MUTATION_TOOLS)
+
+    for scope, names in READ_TOOLS_BY_SCOPE.items():
+        if settings.read_enabled(scope):
+            include(tuple(name for name in names if additional_scopes_ok(name)))
+
+    if settings.write_enabled("work_package"):
+        include(WORK_PACKAGE_GATED_PERSONAL_MUTATION_TOOLS)
+
+    for scope, names in WRITE_TOOLS_BY_SCOPE.items():
+        if settings.write_enabled(scope):
+            include(tuple(name for name in names if additional_scopes_ok(name)))
+
+    if settings.enable_admin_write:
+        include(ADMIN_WRITE_TOOLS)
+
+    if settings.enable_metadata_tools:
+        include(tuple(name for name in METADATA_TOOLS if additional_scopes_ok(name)))
+
+    return tuple(enabled)
+
+
 def register_tools(mcp: FastMCP, settings: Settings) -> None:
     # Register a tool with error-categorization applied, so every failure reaches
     # the agent with a stable [category] prefix.
@@ -170,177 +419,8 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
 
         return mcp.tool(structured_output=False)(trimming)
 
-    # Always-available read tools
-    tool(get_current_user)
-    tool(get_instance_configuration)
-    tool(list_actions)
-    tool(list_capabilities)
-    tool(get_job_status)
-    tool(list_statuses)
-    tool(get_status)
-    tool(list_priorities)
-    tool(get_priority)
-    tool(list_types)
-    tool(get_type)
-    tool(list_notifications)
-    tool(get_my_preferences)
-    tool(update_my_preferences)
-    tool(list_documents)
-    tool(get_document)
-    tool(list_news)
-    tool(get_news)
-    tool(get_wiki_page)
-    tool(list_views)
-    tool(get_view)
-    tool(list_grids)
-    tool(get_grid)
-    tool(list_categories)
-    tool(get_category)
-    tool(list_time_entry_activities)
-    tool(list_time_entries)
-    tool(get_time_entry)
-    tool(list_relations)
-    tool(list_project_phase_definitions)
-    tool(get_project_phase_definition)
-    tool(get_project_phase)
-
-    # Scoped read: project
-    if settings.read_enabled("project"):
-        tool(list_projects)
-        tool(get_project)
-        tool(get_project_admin_context)
-        tool(get_project_configuration)
-        tool(get_project_work_package_context)
-        tool(get_my_project_access)
-        tool(list_sprints)
-        tool(list_project_sprints)
-        tool(get_sprint)
-
-    # Scoped read: work_package
-    if settings.read_enabled("work_package"):
-        tool(list_work_packages)
-        tool(search_work_packages)
-        tool(get_work_package)
-        tool(get_work_packages)
-        tool(list_my_open_work_packages)
-        tool(get_work_package_activities)
-        tool(list_work_package_reactions)
-        tool(list_reminders)
-        tool(get_work_package_relations)
-        tool(list_work_package_attachments)
-        tool(get_attachment)
-        tool(list_work_package_file_links)
-        tool(list_work_package_watchers)
-
-    # Scoped read: membership
-    if settings.read_enabled("membership"):
-        tool(list_project_memberships)
-        tool(get_membership)
-        tool(list_roles)
-        tool(list_principals)
-        tool(list_users)
-        tool(get_user)
-        tool(list_groups)
-        tool(get_group)
-
-    # Scoped read: version
-    if settings.read_enabled("version"):
-        tool(list_versions)
-        tool(get_version)
-
-    # Scoped read: board
-    if settings.read_enabled("board"):
-        tool(list_boards)
-        tool(get_board)
-
-    # Scoped write: project
-    if settings.write_enabled("project"):
-        tool(create_project)
-        tool(update_project)
-        tool(delete_project)
-        tool(copy_project)
-        tool(add_project_favorite)
-        tool(remove_project_favorite)
-        tool(create_news)
-        tool(update_news)
-        tool(delete_news)
-        tool(update_document)
-        tool(create_grid)
-        tool(update_grid)
-        tool(delete_grid)
-
-    # Scoped write: work_package
-    if settings.write_enabled("work_package"):
-        tool(create_work_package)
-        tool(create_subtask)
-        tool(update_work_package)
-        tool(bulk_create_work_packages)
-        tool(bulk_update_work_packages)
-        tool(delete_work_package)
-        tool(add_work_package_comment)
-        tool(toggle_activity_emoji_reaction)
-        tool(create_work_package_reminder)
-        tool(update_reminder)
-        tool(delete_reminder)
-        tool(create_work_package_relation)
-        tool(delete_relation)
-        tool(create_work_package_attachment)
-        tool(delete_attachment)
-        tool(add_work_package_watcher)
-        tool(remove_work_package_watcher)
-        tool(create_time_entry)
-        tool(update_time_entry)
-        tool(delete_time_entry)
-        tool(mark_notification_read)
-        tool(mark_all_notifications_read)
-        tool(update_relation)
-        tool(delete_file_link)
-
-    # Scoped write: membership
-    if settings.write_enabled("membership"):
-        tool(create_membership)
-        tool(update_membership)
-        tool(delete_membership)
-
-    # Scoped write: version
-    if settings.write_enabled("version"):
-        tool(create_version)
-        tool(update_version)
-        tool(delete_version)
-
-    # Scoped write: board
-    if settings.write_enabled("board"):
-        tool(create_board)
-        tool(update_board)
-        tool(delete_board)
-
-    # Admin write: instance-global user/group management
-    if settings.enable_admin_write:
-        tool(create_user)
-        tool(update_user)
-        tool(delete_user)
-        tool(lock_user)
-        tool(unlock_user)
-        tool(create_group)
-        tool(update_group)
-        tool(delete_group)
-
-    # Rarely-used metadata/reference tools, opt-in to keep them out of the default
-    # tool set (their schemas + docstrings are the largest fixed context cost).
-    # Enable with OPENPROJECT_ENABLE_METADATA_TOOLS=1.
-    if settings.enable_metadata_tools:
-        tool(get_query_filter)
-        tool(get_query_column)
-        tool(get_query_operator)
-        tool(get_query_sort_by)
-        tool(list_query_filter_instance_schemas)
-        tool(get_query_filter_instance_schema)
-        tool(render_text)
-        tool(list_help_texts)
-        tool(get_help_text)
-        tool(list_working_days)
-        tool(list_non_working_days)
-        tool(get_custom_option)
+    for name in enabled_tool_names(settings):
+        tool(_TOOL_FUNCTIONS[name])
 
 
 async def list_projects(
@@ -3683,3 +3763,21 @@ def _validate_positive_int(value: int, *, field_name: str) -> int:
     if value < 1:
         raise ValueError(f"{field_name} must be at least 1.")
     return value
+
+
+# Resolves every classified tool name (OPM-123) to its actual function object.
+# Derived directly from the classification constants rather than listed a
+# second time, so it can never silently diverge from them — a misspelled or
+# renamed tool name raises KeyError here at import time instead of a tool
+# silently vanishing from registration.
+_TOOL_FUNCTIONS: dict[str, Callable] = {
+    name: globals()[name]
+    for name in (
+        *PERSONAL_READ_TOOLS,
+        *PERSONAL_MUTATION_TOOLS,
+        *(name for names in READ_TOOLS_BY_SCOPE.values() for name in names),
+        *(name for names in WRITE_TOOLS_BY_SCOPE.values() for name in names),
+        *ADMIN_WRITE_TOOLS,
+        *METADATA_TOOLS,
+    )
+}

@@ -7,6 +7,42 @@ development baseline.
 
 ---
 
+## 0.3.0 – Unreleased
+
+### Changed
+
+- **Tools are now registered only when all read and write scopes required by
+  their client implementation are enabled** (OPM-123, Phase 1 of the
+  authorization/config redesign, OPM-122). Previously, several tools were
+  always registered regardless of any `OPENPROJECT_ENABLE_*_READ` flag, even
+  though their underlying client method enforced a real scope check at call
+  time — the tool was visible to the agent but failed on every call once
+  that scope was disabled. Affected tools now correctly disappear together
+  with their real scope: `get_current_user`, `list_actions`,
+  `list_capabilities` (membership read), `list_notifications` (work-package
+  read), `get_instance_configuration`, `get_job_status` (project read).
+  This can also hide some **write** tools when their supporting read scope
+  is disabled, e.g. `create_membership`/`update_membership` (need membership
+  read for a role lookup) or `delete_file_link` (needs work-package read) —
+  not just read tools. No environment variable was renamed, added, or
+  removed; only the effective tool exposure of the existing
+  `OPENPROJECT_ENABLE_*_READ`/`_WRITE` flags is now more precise.
+- `Settings.read_enabled()`/`write_enabled()` now raise `ConfigError` for an
+  unrecognized scope string instead of silently defaulting to allow-all
+  (read) or deny-all (write). Scope strings are internal literals, never
+  user input, so this can only surface a programming error, not a user
+  misconfiguration.
+
+### Internal
+
+- Tool registration in `tools.py` is now table-driven from a small set of
+  classification constants (`READ_TOOLS_BY_SCOPE`, `WRITE_TOOLS_BY_SCOPE`,
+  `PERSONAL_READ_TOOLS`, `PERSONAL_MUTATION_TOOLS`, `ADMIN_WRITE_TOOLS`,
+  `METADATA_TOOLS`, `ADDITIONAL_READ_SCOPES_BY_TOOL`) instead of ~190 lines
+  of hand-written conditional blocks — closes OPM-47.
+
+---
+
 ## 0.2.3 – 2026-07-07
 
 ### Fixed

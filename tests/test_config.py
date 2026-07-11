@@ -165,6 +165,48 @@ def test_settings_from_env_write_scopes_default_to_disabled() -> None:
     assert settings.write_enabled("membership") is False
 
 
+def test_read_enabled_rejects_unknown_scope() -> None:
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+        }
+    )
+
+    with pytest.raises(ConfigError, match="Unknown read scope"):
+        settings.read_enabled("bogus")
+
+
+def test_write_enabled_rejects_unknown_scope() -> None:
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+        }
+    )
+
+    with pytest.raises(ConfigError, match="Unknown write scope"):
+        settings.write_enabled("bogus")
+
+
+def test_write_enabled_does_not_special_case_admin() -> None:
+    # "admin" is intentionally out-of-band: client.py::_ensure_write_enabled
+    # and the tool registration gate check settings.enable_admin_write
+    # directly, never via write_enabled("admin"). A future edit that tries
+    # to route admin through the normal per-scope dict must fail loudly
+    # here rather than silently changing admin's semantics.
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+            "OPENPROJECT_ENABLE_ADMIN_WRITE": "true",
+        }
+    )
+
+    with pytest.raises(ConfigError, match="Unknown write scope"):
+        settings.write_enabled("admin")
+
+
 def test_settings_from_env_rejects_max_page_size_exceeding_max_results() -> None:
     with pytest.raises(ConfigError, match="must not exceed"):
         Settings.from_env(
