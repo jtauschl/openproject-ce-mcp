@@ -45,8 +45,15 @@ depends on configuration; the most relevant controls are:
   scope and requires its own `OPENPROJECT_ENABLE_*_WRITE` opt-in; write scopes
   are always intersected with read scope, so a project must be readable before
   it can be written.
-- **Project allowlists** (`OPENPROJECT_ALLOWED_PROJECTS_READ` /
-  `_WRITE`) restrict every operation to the named projects.
+- **Project allowlists** (`OPENPROJECT_READ_PROJECTS` / `OPENPROJECT_WRITE_PROJECTS`)
+  restrict every project-scoped operation to the named projects. Both are
+  **fail-closed**: empty or unset denies all project-scoped access on that
+  side, not "everything visible" — `*` is required to explicitly allow all
+  projects. `mark_notification_read`/`mark_all_notifications_read` are the one
+  exception: they are personal, self-scoped mutations of the caller's own
+  notification state (not a projected-scoped write) and are governed only by
+  the `work_package` write flag, independent of `OPENPROJECT_WRITE_PROJECTS`.
+  The notification list itself is still filtered by `OPENPROJECT_READ_PROJECTS`.
 - **Admin writes** (user/group/membership management) require the separate
   `OPENPROJECT_ENABLE_ADMIN_WRITE` opt-in.
 - **Write operations use a preview/confirm flow**: call a tool once to get a

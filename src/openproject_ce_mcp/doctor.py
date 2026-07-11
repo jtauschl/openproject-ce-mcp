@@ -198,6 +198,13 @@ def _check_config_parsing(client_configs: list[tuple]) -> tuple[bool, dict[str, 
     return (all_ok, merged_env)
 
 
+_LEGACY_PROJECT_SCOPE_VARS = (
+    "OPENPROJECT_ALLOWED_PROJECTS",
+    "OPENPROJECT_ALLOWED_PROJECTS_READ",
+    "OPENPROJECT_ALLOWED_PROJECTS_WRITE",
+)
+
+
 def _check_env_config(
     settings_override: Settings | None,
     client_env: dict[str, str],
@@ -212,11 +219,20 @@ def _check_env_config(
     combined_env = dict(os.environ)
     combined_env.update(client_env)
 
+    if any(var in combined_env for var in _LEGACY_PROJECT_SCOPE_VARS):
+        print(
+            "[WARN] Legacy project scope variables detected and ignored. Effective project "
+            "access may be empty. Run configure to migrate them to "
+            "OPENPROJECT_READ_PROJECTS/OPENPROJECT_WRITE_PROJECTS.",
+            file=sys.stderr,
+        )
+
     try:
         settings = Settings.from_env(environ=combined_env)
         source = "client configs" if client_env else "process env"
         print(f"[OK] Environment: loaded from {source}")
         _warn_insecure(settings)
+        _print_project_scope_summary(settings)
         return (True, settings)
     except ConfigError as e:
         print(f"[FAIL] Environment: {e}", file=sys.stderr)
@@ -229,6 +245,14 @@ def _warn_insecure(settings: Settings) -> None:
         print("[WARN] SSL verification disabled (OPENPROJECT_VERIFY_SSL=false)", file=sys.stderr)
     if settings.base_url.startswith("http://"):
         print("[WARN] Unencrypted HTTP connection", file=sys.stderr)
+
+
+def _print_project_scope_summary(settings: Settings) -> None:
+    """Make the fail-closed project-scope default diagnosable."""
+    read_summary = ", ".join(settings.read_projects) or "none (fail-closed — nothing readable)"
+    write_summary = ", ".join(settings.write_projects) or "none (fail-closed — nothing writable)"
+    print(f"  Read projects: {read_summary}")
+    print(f"  Write projects: {write_summary}")
 
 
 async def _check_api_connectivity(
@@ -250,7 +274,8 @@ async def _check_api_connectivity(
         max_page_size=settings.max_page_size,
         max_results=settings.max_results,
         log_level=settings.log_level,
-        allowed_projects=settings.allowed_projects,
+        read_projects=settings.read_projects,
+        write_projects=settings.write_projects,
     )
 
     client = OpenProjectClient(diagnostic_settings, transport=transport)

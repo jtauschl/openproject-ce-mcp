@@ -6,8 +6,8 @@
         "OPENPROJECT_BASE_URL": "https://op.example.com",
         "OPENPROJECT_API_TOKEN": "replace-with-your-token",
 
-        "OPENPROJECT_ALLOWED_PROJECTS_READ": "*",
-        "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "",
+        "OPENPROJECT_READ_PROJECTS": "*",
+        "OPENPROJECT_WRITE_PROJECTS": "",
 
         "OPENPROJECT_ENABLE_PROJECT_READ": "true",
         "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "true",

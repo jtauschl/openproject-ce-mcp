@@ -99,9 +99,8 @@ class Settings:
     max_results: int
     log_level: str
     text_limit: int = DEFAULT_TEXT_LIMIT
-    allowed_projects: tuple[str, ...] = ()
-    allowed_write_projects: tuple[str, ...] = ()
-    allowed_write_projects_configured: bool = False
+    read_projects: tuple[str, ...] = ()
+    write_projects: tuple[str, ...] = ()
     enable_work_package_read: bool = True
     enable_project_read: bool = True
     enable_membership_read: bool = True
@@ -139,14 +138,6 @@ class Settings:
         return bool(getattr(self, attr))
 
     @property
-    def project_write_scope_configured(self) -> bool:
-        return self.allowed_write_projects_configured or bool(self.allowed_write_projects)
-
-    @property
-    def project_write_scope_allows_none(self) -> bool:
-        return self.allowed_write_projects_configured and not self.allowed_write_projects
-
-    @property
     def api_base_url(self) -> str:
         return f"{self.base_url}/api/v3"
 
@@ -155,17 +146,8 @@ class Settings:
         env = environ or os.environ
         base_url = _parse_base_url(env.get("OPENPROJECT_BASE_URL"))
         api_token = _require_non_empty(env.get("OPENPROJECT_API_TOKEN"), "OPENPROJECT_API_TOKEN")
-        if "OPENPROJECT_ALLOWED_PROJECTS_READ" not in env and "OPENPROJECT_ALLOWED_PROJECTS" in env:
-            logging.getLogger(__name__).warning(
-                "OPENPROJECT_ALLOWED_PROJECTS is deprecated; rename it to "
-                "OPENPROJECT_ALLOWED_PROJECTS_READ. Falling back to it for now, but this "
-                "alias will be removed in a future release."
-            )
-        allowed_projects = _parse_csv(
-            env.get("OPENPROJECT_ALLOWED_PROJECTS_READ") or env.get("OPENPROJECT_ALLOWED_PROJECTS")
-        )
-        allowed_write_projects_configured = "OPENPROJECT_ALLOWED_PROJECTS_WRITE" in env
-        allowed_write_projects = _parse_csv(env.get("OPENPROJECT_ALLOWED_PROJECTS_WRITE"))
+        read_projects = _parse_csv(env.get("OPENPROJECT_READ_PROJECTS"))
+        write_projects = _parse_csv(env.get("OPENPROJECT_WRITE_PROJECTS"))
         enable_work_package_read = _parse_bool(
             env.get("OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
             "OPENPROJECT_ENABLE_WORK_PACKAGE_READ",
@@ -306,9 +288,8 @@ class Settings:
             max_results=max_results,
             log_level=log_level,
             text_limit=text_limit,
-            allowed_projects=allowed_projects,
-            allowed_write_projects=allowed_write_projects,
-            allowed_write_projects_configured=allowed_write_projects_configured,
+            read_projects=read_projects,
+            write_projects=write_projects,
             enable_project_read=enable_project_read,
             enable_membership_read=enable_membership_read,
             enable_work_package_read=enable_work_package_read,

@@ -40,6 +40,26 @@ development baseline.
   where three tools skipped the preview step unconditionally: `mark_notification_read`,
   `mark_all_notifications_read`, and `toggle_activity_emoji_reaction` now
   follow the same preview/confirm flow as every other write tool.
+- **Breaking + security fix: `OPENPROJECT_ALLOWED_PROJECTS_READ`/`_WRITE` (and
+  the deprecated bare `OPENPROJECT_ALLOWED_PROJECTS` alias) have been renamed
+  to `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS`, with no
+  backward-compatible alias, and the default has flipped from fail-open to
+  fail-closed** (OPM-125, Phase 3 of the authorization/config redesign,
+  OPM-122). Previously, an empty or unset read/write project scope meant
+  "every visible project is readable" — the same silent-fail-open shape as
+  the historical `OPENPROJECT_ALLOWED_PROJECTS` alias fixed in OPM-99. Now
+  empty or unset means "no project is readable/writable"; `*` must be set
+  explicitly to allow all visible projects. This also fixes two data-leak
+  bugs where an empty scope skipped client-side filtering entirely instead of
+  denying: `list_boards` and `list_relations` would have returned every board
+  or relation from every project, unfiltered. `list_notifications` and
+  `list_reminders` did not filter by project scope at all before this
+  release and now do. The interactive `configure` wizard's project-scope
+  prompts default to empty for brand-new setups too (previously `*`), so the
+  wizard and a hand-written config now start from the same fail-closed
+  default; existing configs using the old variable names are still prefilled
+  correctly for a one-time migration, and `doctor` warns when it detects the
+  old names still in use.
 
 ### Internal
 

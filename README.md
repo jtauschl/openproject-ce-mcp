@@ -300,7 +300,7 @@ client, and how to verify the server is picked up.
 |---|---|
 | Server / tools don't appear | Client not restarted, or the config is in the wrong file. Reload the client and confirm the file, location, and root key match your client's row above. |
 | `[auth_error]` on the first call | Wrong `OPENPROJECT_API_TOKEN` or `OPENPROJECT_BASE_URL`. Re-check both; the token is `opapi-…` and the base URL has no trailing `/api/v3`. |
-| Tools appear but writes fail | Writes are opt-in. Enable write access, make sure the project is in `OPENPROJECT_ALLOWED_PROJECTS_WRITE`, and check the corresponding write-group flag such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`. |
+| Tools appear but writes fail | Writes are opt-in. Enable write access, make sure the project is in `OPENPROJECT_WRITE_PROJECTS`, and check the corresponding write-group flag such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`. |
 
 **Uninstall**
 
@@ -408,15 +408,14 @@ are preserved.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `OPENPROJECT_ALLOWED_PROJECTS_READ` | no | `*` | Readable projects; comma-separated identifiers, names, or glob patterns (e.g. `my-project,team-*`); `*` allows all visible projects |
-| `OPENPROJECT_ALLOWED_PROJECTS_WRITE` | no | empty | Writable projects; empty disables all project-scoped writes; always intersected with read scope |
-| `OPENPROJECT_ALLOWED_PROJECTS` | no | — | Deprecated alias for `OPENPROJECT_ALLOWED_PROJECTS_READ`; still honored (with a startup warning) if `_READ` is unset, but will be removed in a future release — rename it |
+| `OPENPROJECT_READ_PROJECTS` | no | empty (nothing readable) | Readable projects; comma-separated identifiers, names, or glob patterns (e.g. `my-project,team-*`); `*` allows all visible projects; empty or unset denies all project-scoped reads |
+| `OPENPROJECT_WRITE_PROJECTS` | no | empty (nothing writable) | Writable projects; empty or unset disables all project-scoped writes; always intersected with read scope |
 
 ### Tool Groups
 
 Access is grouped into five chains: `project`, `membership`, `work_package`,
 `version`, and `board`. Each chain has a read flag and a write flag. Read flags
-default on. Write flags only matter when `OPENPROJECT_ALLOWED_PROJECTS_WRITE`
+default on. Write flags only matter when `OPENPROJECT_WRITE_PROJECTS`
 is not empty; enabling write access in the basic setup turns the normal
 project-scoped write groups on by default, and Advanced setup can narrow them.
 

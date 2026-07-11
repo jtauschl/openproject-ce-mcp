@@ -61,7 +61,8 @@ def _integration_settings() -> Settings | None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=(test_project,),
+        read_projects=(test_project,),
+        write_projects=(test_project,),
         enable_admin_write=True,
         enable_project_write=True,
         enable_work_package_write=True,
@@ -104,8 +105,7 @@ async def denied_client():
     _resolve_test_project()
     denied_settings = dataclasses.replace(
         settings,
-        allowed_write_projects=("no-such-project-for-integration-tests",),
-        allowed_write_projects_configured=True,
+        write_projects=("no-such-project-for-integration-tests",),
     )
     client_instance = OpenProjectClient(denied_settings)
     await client_instance.initialize()

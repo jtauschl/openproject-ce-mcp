@@ -123,6 +123,8 @@ def make_settings() -> Settings:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
+        read_projects=("*",),
+        write_projects=("*",),
     )
 
 

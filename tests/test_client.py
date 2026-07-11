@@ -27,6 +27,9 @@ from openproject_ce_mcp.tools import _to_payload
 
 
 def make_settings() -> Settings:
+    # Permissive project scope by default: this factory is for tests exercising
+    # something other than project-scope enforcement. Tests that specifically test
+    # scope enforcement override read_projects/write_projects explicitly.
     return Settings(
         base_url="https://op.example.com",
         api_token="token",
@@ -36,6 +39,8 @@ def make_settings() -> Settings:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
+        read_projects=("*",),
+        write_projects=("*",),
     )
 
 
@@ -65,6 +70,8 @@ async def test_add_comment_requires_write_gate_not_delete_gate() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -102,12 +109,13 @@ async def test_board_create_respects_allowed_write_projects() -> None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_write_projects=("demo",),
+        read_projects=("*",),
+        write_projects=("demo",),
         enable_board_write=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ALLOWED_PROJECTS_WRITE"):
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await client.create_board(name="Sprint Board", project="other", confirm=False)
 
     await client.aclose()
@@ -139,12 +147,13 @@ async def test_create_time_entry_with_work_package_respects_allowed_write_projec
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_write_projects=("demo",),
+        read_projects=("*",),
+        write_projects=("demo",),
         enable_work_package_write=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ALLOWED_PROJECTS_WRITE"):
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await client.create_time_entry(
             work_package_id=9,
             activity="Development",
@@ -172,13 +181,75 @@ async def test_explicit_empty_write_scope_blocks_project_scoped_write() -> None:
             "OPENPROJECT_BASE_URL": "https://op.example.com",
             "OPENPROJECT_API_TOKEN": "token",
             "OPENPROJECT_ENABLE_BOARD_WRITE": "true",
-            "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "",
+            "OPENPROJECT_READ_PROJECTS": "*",
+            "OPENPROJECT_WRITE_PROJECTS": "",
         }
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ALLOWED_PROJECTS_WRITE"):
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await client.create_board(name="Sprint Board", project="demo", confirm=False)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_empty_read_projects_denies_project_scoped_read() -> None:
+    # OPM-125: the true production default (no scope override at all) must deny,
+    # not allow — constructed directly, not via make_settings()'s permissive default.
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+            request=request,
+        )
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await client.get_project("demo")
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_empty_write_projects_denies_project_scoped_write() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        enable_project_write=True,
+        read_projects=("*",),
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await client.update_project(project_ref="demo", name="New Name", confirm=True)
 
     await client.aclose()
 
@@ -199,14 +270,51 @@ async def test_write_scope_is_intersection_of_read_scope() -> None:
             "OPENPROJECT_BASE_URL": "https://op.example.com",
             "OPENPROJECT_API_TOKEN": "token",
             "OPENPROJECT_ENABLE_BOARD_WRITE": "true",
-            "OPENPROJECT_ALLOWED_PROJECTS_READ": "demo",
-            "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "*",
+            "OPENPROJECT_READ_PROJECTS": "demo",
+            "OPENPROJECT_WRITE_PROJECTS": "*",
         }
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ALLOWED_PROJECTS_READ"):
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
         await client.create_board(name="Other Board", project="other", confirm=False)
+
+    await client.aclose()
+
+
+@pytest.mark.parametrize(
+    "check",
+    [
+        lambda client: client._ensure_project_write_allowed("other"),
+        lambda client: client._ensure_project_write_link_allowed({"href": "/api/v3/projects/other"}),
+        lambda client: client._ensure_board_write_payload_allowed(
+            {"_links": {"project": {"href": "/api/v3/projects/other"}}}
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_write_is_always_a_subset_of_read_scope(check) -> None:
+    # Architecture-level guarantee, not just a single-method test: an
+    # unrestricted write_projects can never rescue a project excluded by
+    # read_projects — read is always checked first, across every write path.
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        enable_project_write=True,
+        enable_board_write=True,
+        read_projects=("other-project",),
+        write_projects=("*",),
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200, request=r)))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        check(client)
 
     await client.aclose()
 
@@ -231,7 +339,7 @@ async def test_project_wildcard_patterns_match_identifier_and_title() -> None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("mcp-*",),
+        read_projects=("mcp-*",),
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -271,11 +379,11 @@ async def test_get_membership_respects_project_scope() -> None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("demo-id",),
+        read_projects=("demo-id",),
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ALLOWED_PROJECTS_READ"):
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
         await client.get_membership(3)
 
     await client.aclose()
@@ -311,8 +419,8 @@ async def test_delete_membership_allows_identifier_write_scope() -> None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("demo-id",),
-        allowed_write_projects=("demo-id",),
+        read_projects=("demo-id",),
+        write_projects=("demo-id",),
         enable_membership_write=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
@@ -335,8 +443,8 @@ def _membership_settings() -> Settings:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("demo-id",),
-        allowed_write_projects=("demo-id",),
+        read_projects=("demo-id",),
+        write_projects=("demo-id",),
         enable_membership_write=True,
     )
 
@@ -469,8 +577,8 @@ async def test_delete_news_allows_identifier_write_scope() -> None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("demo-id",),
-        allowed_write_projects=("demo-id",),
+        read_projects=("demo-id",),
+        write_projects=("demo-id",),
         enable_project_write=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
@@ -515,8 +623,8 @@ async def test_delete_time_entry_allows_identifier_write_scope() -> None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("demo-id",),
-        allowed_write_projects=("demo-id",),
+        read_projects=("demo-id",),
+        write_projects=("demo-id",),
         enable_work_package_write=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
@@ -559,8 +667,8 @@ async def test_delete_version_allows_identifier_write_scope() -> None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("demo-id",),
-        allowed_write_projects=("demo-id",),
+        read_projects=("demo-id",),
+        write_projects=("demo-id",),
         enable_version_write=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
@@ -604,8 +712,8 @@ async def test_delete_board_allows_identifier_write_scope() -> None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("demo-id",),
-        allowed_write_projects=("demo-id",),
+        read_projects=("demo-id",),
+        write_projects=("demo-id",),
         enable_board_write=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
@@ -693,7 +801,7 @@ async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("demo",),
+        read_projects=("demo",),
         hide_project_fields=("description",),
         hide_work_package_fields=("description",),
         hide_activity_fields=("comment",),
@@ -744,6 +852,8 @@ async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
 @pytest.mark.asyncio
 async def test_chain_specific_read_flags_restrict_membership_reads_with_global_read() -> None:
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -812,6 +922,8 @@ async def test_hidden_project_field_is_rejected_on_write() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -847,6 +959,8 @@ async def test_hidden_document_field_is_rejected_on_write() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -878,6 +992,8 @@ async def test_hidden_work_package_field_is_rejected_on_write() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -974,6 +1090,8 @@ async def test_hidden_custom_field_is_rejected_on_write() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -1128,6 +1246,8 @@ async def test_create_work_package_returns_confirmation_preview_before_writing()
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -1216,6 +1336,8 @@ async def test_update_work_package_writes_after_confirmation_when_enabled() -> N
 
     settings = make_settings()
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url=settings.base_url,
         api_token=settings.api_token,
         enable_work_package_write=True,
@@ -1334,6 +1456,8 @@ async def test_update_work_package_schema_probe_includes_lock_version() -> None:
 
     settings = make_settings()
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url=settings.base_url,
         api_token=settings.api_token,
         enable_work_package_write=True,
@@ -1414,6 +1538,8 @@ async def test_update_work_package_reparents_via_parent_link() -> None:
 
     settings = make_settings()
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url=settings.base_url,
         api_token=settings.api_token,
         enable_work_package_write=True,
@@ -1527,6 +1653,8 @@ async def test_update_work_package_unparents_with_null_href_through_schema_probe
 
     settings = make_settings()
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url=settings.base_url,
         api_token=settings.api_token,
         enable_work_package_write=True,
@@ -1610,6 +1738,8 @@ async def test_update_work_package_clears_version_with_null_href() -> None:
 
     settings = make_settings()
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url=settings.base_url,
         api_token=settings.api_token,
         enable_work_package_write=True,
@@ -1692,6 +1822,8 @@ async def test_update_work_package_clears_sprint_with_null_href() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         enable_work_package_write=True,
@@ -1802,6 +1934,8 @@ async def test_update_work_package_resolves_sprint_by_name() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         enable_work_package_write=True,
@@ -1882,6 +2016,8 @@ async def test_update_work_package_clears_assignee_with_null_href() -> None:
 
     settings = make_settings()
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url=settings.base_url,
         api_token=settings.api_token,
         enable_work_package_write=True,
@@ -1958,6 +2094,8 @@ async def test_update_work_package_clears_category_with_null_href() -> None:
 
     settings = make_settings()
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url=settings.base_url,
         api_token=settings.api_token,
         enable_work_package_write=True,
@@ -1999,6 +2137,8 @@ async def test_delete_work_package_requires_confirmation_preview() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -2047,6 +2187,8 @@ async def test_delete_work_package_deletes_when_enabled_and_confirmed() -> None:
 
     settings = make_settings()
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url=settings.base_url,
         api_token=settings.api_token,
         enable_work_package_write=True,
@@ -2093,6 +2235,8 @@ async def test_delete_work_package_requires_write_enablement() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -2142,6 +2286,8 @@ async def test_add_work_package_comment_writes_after_confirmation_when_enabled()
 
     settings = make_settings()
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url=settings.base_url,
         api_token=settings.api_token,
         enable_work_package_write=True,
@@ -2214,6 +2360,8 @@ async def test_create_relation_and_delete_relation_work_when_enabled() -> None:
 
     settings = make_settings()
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url=settings.base_url,
         api_token=settings.api_token,
         enable_work_package_write=True,
@@ -2282,6 +2430,8 @@ async def test_create_subtask_uses_parent_link_in_form_payload() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -2410,6 +2560,8 @@ async def test_get_project_work_package_context_returns_schema_and_metadata() ->
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -2689,6 +2841,8 @@ async def test_get_project_configuration_and_copy_project() -> None:
 
     settings = make_settings()
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url=settings.base_url,
         api_token=settings.api_token,
         enable_project_write=True,
@@ -2937,6 +3091,8 @@ async def test_job_status_documents_news_and_wiki() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -3151,7 +3307,8 @@ async def test_time_entry_crud_and_activity_listing() -> None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("demo",),
+        read_projects=("demo",),
+        write_projects=("demo",),
         enable_work_package_write=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
@@ -3250,6 +3407,8 @@ async def test_list_time_entry_activities_paginates_project_fallback() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -3397,6 +3556,93 @@ async def test_list_time_entry_activities_skips_projects_without_form_access() -
     await client.aclose()
 
 
+def _empty_scope_settings() -> Settings:
+    return Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+
+
+def _no_request_handler(request: httpx.Request) -> httpx.Response:
+    raise AssertionError(f"no request must be issued when read_projects is empty: {request.method} {request.url}")
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_returns_empty_without_request_under_empty_read_projects() -> None:
+    client = OpenProjectClient(_empty_scope_settings(), transport=httpx.MockTransport(_no_request_handler))
+
+    result = await client.list_work_packages()
+
+    assert result.count == 0
+    assert result.results == []
+    assert result.next_offset is None
+    assert result.truncated is False
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_returns_empty_without_request_even_with_project_and_type() -> None:
+    # Proves the early return fires unconditionally — even with project=/type=
+    # explicitly given, no lookup call (project resolution, type resolution) happens.
+    client = OpenProjectClient(_empty_scope_settings(), transport=httpx.MockTransport(_no_request_handler))
+
+    result = await client.list_work_packages(project="demo", type="Bug")
+
+    assert result.results == []
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_search_work_packages_returns_empty_without_request_under_empty_read_projects() -> None:
+    client = OpenProjectClient(_empty_scope_settings(), transport=httpx.MockTransport(_no_request_handler))
+
+    result = await client.search_work_packages(query="demo")
+
+    assert result.count == 0
+    assert result.results == []
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_my_open_work_packages_returns_empty_without_request_even_with_assignee_me() -> None:
+    # Proves the guard fires before get_current_user() is ever called.
+    client = OpenProjectClient(_empty_scope_settings(), transport=httpx.MockTransport(_no_request_handler))
+
+    result = await client.list_my_open_work_packages()
+
+    assert result.count == 0
+    assert result.results == []
+    assert result.next_offset is None
+    assert result.truncated is False
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_package_collection_defense_in_depth_guard() -> None:
+    # Direct test of the shared helper's own guard, independent of its two
+    # public callers, so a future new caller can't silently bypass it.
+    client = OpenProjectClient(_empty_scope_settings(), transport=httpx.MockTransport(_no_request_handler))
+
+    result = await client._list_work_package_collection(project_id=None, filters=[], offset=1, limit=10)
+
+    assert result.count == 0
+    assert result.results == []
+    assert result.next_offset is None
+    assert result.truncated is False
+
+    await client.aclose()
+
+
 @pytest.mark.asyncio
 async def test_global_list_work_packages_and_versions_respect_allowlist_ids() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -3463,7 +3709,7 @@ async def test_global_list_work_packages_and_versions_respect_allowlist_ids() ->
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("6",),
+        read_projects=("6",),
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -3539,7 +3785,7 @@ async def test_list_my_open_work_packages_filters_total_when_all_items_blocked_b
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("6",),
+        read_projects=("6",),
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -3601,7 +3847,7 @@ async def test_list_projects_reports_filtered_total_when_allowlist_drops_items()
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("demo",),
+        read_projects=("demo",),
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -3625,7 +3871,7 @@ async def test_list_projects_walks_multiple_server_pages_when_allowlist_thins_fi
     # real OpenProject 1-based-page semantics.
     import dataclasses
 
-    settings = dataclasses.replace(make_settings(), max_page_size=2, allowed_projects=("demo",))
+    settings = dataclasses.replace(make_settings(), max_page_size=2, read_projects=("demo",))
 
     requested_offsets: list[str] = []
 
@@ -3807,6 +4053,8 @@ async def test_create_time_entry_resolves_activity_from_project_form_context() -
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -3939,7 +4187,7 @@ async def test_project_scoped_reads_accept_numeric_project_ids_when_allowed_by_n
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("Demo",),
+        read_projects=("Demo",),
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -4129,7 +4377,8 @@ async def test_views_categories_and_attachments() -> None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("demo",),
+        read_projects=("demo",),
+        write_projects=("demo",),
         enable_work_package_write=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
@@ -4265,6 +4514,8 @@ async def test_version_crud_uses_form_endpoints_and_commit_paths() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         enable_version_write=True,
@@ -4315,6 +4566,53 @@ async def test_version_crud_uses_form_endpoints_and_commit_paths() -> None:
     deleted = await client.delete_version(version_id=8, confirm=True)
     assert deleted.confirmed is True
     assert deleted.version_id == 8
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_boards_returns_empty_under_empty_read_projects() -> None:
+    # OPM-125 regression: previously use_client_side_filtering was gated on
+    # `bool(allowed_projects)`, so an empty (deny-all) scope skipped filtering
+    # entirely and leaked every board from every project unfiltered.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/queries":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "_type": "Query",
+                                "id": 1,
+                                "name": "Some Board",
+                                "public": False,
+                                "hidden": True,
+                                "_links": {"project": {"href": "/api/v3/projects/6", "title": "Demo"}},
+                            }
+                        ]
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_boards()
+
+    assert result.count == 0
+    assert result.results == []
 
     await client.aclose()
 
@@ -4460,7 +4758,8 @@ async def test_board_crud_uses_query_form_endpoints_and_project_filtering() -> N
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("demo",),
+        read_projects=("demo",),
+        write_projects=("demo",),
         enable_board_write=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
@@ -4567,7 +4866,8 @@ async def test_create_grid_uses_form_endpoint_and_project_scope() -> None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("demo",),
+        read_projects=("demo",),
+        write_projects=("demo",),
         enable_project_write=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
@@ -4987,6 +5287,8 @@ async def test_user_preferences_get_and_update() -> None:
 
     settings = make_settings()
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url=settings.base_url,
         api_token=settings.api_token,
         timeout=settings.timeout,
@@ -5134,6 +5436,59 @@ async def test_help_texts_and_working_days() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_relations_returns_empty_under_empty_read_projects() -> None:
+    # OPM-125 regression: previously `allowlisted` was gated on
+    # `self.settings.allowed_projects` truthiness, so an empty (deny-all)
+    # scope skipped the per-item check and leaked every relation unfiltered.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 1,
+                                "type": "relates",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/1", "title": "A"},
+                                    "to": {"href": "/api/v3/work_packages/2", "title": "B"},
+                                },
+                            }
+                        ]
+                    }
+                },
+                request=request,
+            )
+        if request.url.path in ("/api/v3/work_packages/1", "/api/v3/work_packages/2"):
+            return httpx.Response(
+                200,
+                json={"id": 1, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_relations()
+
+    assert result.count == 0
+    assert result.results == []
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_relations_and_update_relation() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/relations" and request.method == "GET":
@@ -5198,6 +5553,8 @@ async def test_list_relations_and_update_relation() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -5262,6 +5619,8 @@ async def test_create_project_returns_preview_when_not_confirmed() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         enable_project_write=True,
@@ -5302,6 +5661,8 @@ async def test_create_project_rejects_validation_error() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         enable_project_write=True,
@@ -5343,6 +5704,8 @@ async def test_delete_project_returns_preview_and_executes_when_confirmed() -> N
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         enable_project_write=True,
@@ -5391,6 +5754,8 @@ async def test_create_version_returns_preview_when_not_confirmed() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         enable_version_write=True,
@@ -5436,6 +5801,8 @@ async def test_create_version_rejects_validation_error() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url="https://op.example.com",
         api_token="token",
         enable_version_write=True,
@@ -5453,6 +5820,63 @@ async def test_create_version_rejects_validation_error() -> None:
     assert result.ready is False
     assert result.confirmed is False
     assert "name" in result.validation_errors
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("read_projects", "project", "should_deny"),
+    [
+        ((), None, True),
+        (("demo",), None, True),
+        (("*",), None, False),
+        (("demo",), "demo", False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_create_board_global_requires_fully_open_scope(read_projects, project, should_deny) -> None:
+    # OPM-125: an unscoped (global) board can only be verified when BOTH read
+    # and write are fully open — write_projects=("*",) alone is not enough,
+    # since write must still be a subset of read. A project-bound board is
+    # unaffected by this stricter global-board rule.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/queries/form" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={"_embedded": {"payload": {"name": "Board"}, "validationErrors": {}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        enable_board_write=True,
+        enable_project_write=True,
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        read_projects=read_projects,
+        write_projects=("*",),
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    if should_deny:
+        with pytest.raises(PermissionDeniedError):
+            await client.create_board(name="Board", project=project, confirm=False)
+    else:
+        result = await client.create_board(name="Board", project=project, confirm=False)
+        assert result.ready is True
 
     await client.aclose()
 
@@ -5483,6 +5907,8 @@ async def test_create_board_returns_preview_when_not_confirmed() -> None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
+        read_projects=("*",),
+        write_projects=("*",),
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -5522,6 +5948,8 @@ async def test_create_board_rejects_validation_error() -> None:
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
+        read_projects=("*",),
+        write_projects=("*",),
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -5544,7 +5972,8 @@ def _make_grid_settings(extra: dict | None = None) -> Settings:
         "max_page_size": 50,
         "max_results": 100,
         "log_level": "WARNING",
-        "allowed_projects": ("demo",),
+        "read_projects": ("demo",),
+        "write_projects": ("demo",),
         "enable_project_write": True,
     }
     if extra:
@@ -5772,6 +6201,8 @@ async def test_bulk_create_work_packages_executes_with_confirm() -> None:
 
     settings = make_settings()
     settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
         base_url=settings.base_url,
         api_token=settings.api_token,
         enable_work_package_write=True,
@@ -6279,18 +6710,9 @@ async def test_resolve_work_package_id_returns_numeric_id_for_semantic_reference
 
 
 def _write_enabled_settings() -> Settings:
-    s = make_settings()
-    return Settings(
-        base_url=s.base_url,
-        api_token=s.api_token,
-        enable_work_package_write=True,
-        timeout=s.timeout,
-        verify_ssl=s.verify_ssl,
-        default_page_size=s.default_page_size,
-        max_page_size=s.max_page_size,
-        max_results=s.max_results,
-        log_level=s.log_level,
-    )
+    import dataclasses
+
+    return dataclasses.replace(make_settings(), enable_work_package_write=True)
 
 
 @pytest.mark.asyncio
@@ -6410,10 +6832,10 @@ async def test_toggle_activity_emoji_reaction_respects_allowed_write_projects() 
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    settings = _base_settings(enable_work_package_write=True, allowed_write_projects=("demo",))
+    settings = _base_settings(enable_work_package_write=True, write_projects=("demo",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ALLOWED_PROJECTS_WRITE"):
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await client.toggle_activity_emoji_reaction(1988, "heart")
 
     await client.aclose()
@@ -6434,6 +6856,278 @@ async def test_toggle_activity_emoji_reaction_fails_closed_without_work_package_
 
     with pytest.raises(OpenProjectServerError, match="missing a work package link"):
         await client.toggle_activity_emoji_reaction(1988, "heart")
+
+    await client.aclose()
+
+
+def _notification_payload(
+    notification_id: int,
+    *,
+    project_href: str | None = None,
+    project_title: str = "Demo",
+    resource_href: str | None = None,
+) -> dict:
+    links: dict = {}
+    if project_href is not None:
+        links["project"] = {"href": project_href, "title": project_title}
+    if resource_href is not None:
+        links["resource"] = {"href": resource_href, "title": "Task"}
+    return {
+        "id": notification_id,
+        "subject": "Something happened",
+        "readIAN": False,
+        "createdAt": "2026-01-01T00:00:00Z",
+        "_links": links,
+    }
+
+
+@pytest.mark.asyncio
+async def test_list_notifications_filters_by_read_projects() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/notifications":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            _notification_payload(1, project_href="/api/v3/projects/1"),
+                            _notification_payload(2, project_href="/api/v3/projects/2", project_title="Other"),
+                        ]
+                    },
+                    "total": 2,
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        read_projects=("demo",),
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_notifications()
+
+    assert [n.id for n in result.results] == [1]
+    assert result.count == 1
+    assert result.total == 1
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_notifications_returns_only_project_less_under_empty_read_projects() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/notifications":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            _notification_payload(1, project_href="/api/v3/projects/1"),
+                            _notification_payload(2),  # no project link, no resource link: personal/global
+                        ]
+                    },
+                    "total": 2,
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_notifications()
+
+    assert [n.id for n in result.results] == [2]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_notifications_allows_all_under_wildcard_scope() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/notifications":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            _notification_payload(1, project_href="/api/v3/projects/1"),
+                            _notification_payload(2, project_href="/api/v3/projects/2"),
+                        ]
+                    },
+                    "total": 2,
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        read_projects=("*",),
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_notifications()
+
+    assert [n.id for n in result.results] == [1, 2]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_notifications_resolves_work_package_notification_without_project_link() -> None:
+    # OPM-125 regression: a notification with a work-package resource link but
+    # no project link of its own must be resolved via the work package, not
+    # trusted as "no project link therefore personal/global".
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/notifications":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            _notification_payload(1, resource_href="/api/v3/work_packages/9"),
+                        ]
+                    },
+                    "total": 1,
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/9":
+            return httpx.Response(
+                200,
+                json={"id": 9, "_links": {"project": {"href": "/api/v3/projects/2", "title": "Other"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        read_projects=("demo",),  # does not match the work package's "other" project
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_notifications()
+
+    assert result.results == []
+    assert result.count == 0
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_reminders_returns_empty_without_a_request_under_empty_read_projects() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no request must be issued when read_projects is empty")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_reminders()
+
+    assert result.count == 0
+    assert result.results == []
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_reminders_filters_by_read_projects_via_work_package() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/reminders":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 1,
+                                "remindAt": "2026-01-01T00:00:00Z",
+                                "note": "Allowed",
+                                "_links": {"remindable": {"href": "/api/v3/work_packages/1"}},
+                            },
+                            {
+                                "id": 2,
+                                "remindAt": "2026-01-01T00:00:00Z",
+                                "note": "Denied",
+                                "_links": {"remindable": {"href": "/api/v3/work_packages/2"}},
+                            },
+                        ]
+                    }
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/1":
+            return httpx.Response(
+                200,
+                json={"id": 1, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/2":
+            return httpx.Response(
+                200,
+                json={"id": 2, "_links": {"project": {"href": "/api/v3/projects/2", "title": "Other"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        read_projects=("demo",),
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_reminders()
+
+    assert [r.id for r in result.results] == [1]
 
     await client.aclose()
 
@@ -6556,11 +7250,41 @@ async def test_create_work_package_reminder_posts_and_normalizes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_reminder_denies_malformed_remindable_link_even_under_open_scope() -> None:
+    # OPM-125: deliberate tightening — an unresolvable remindable link must be
+    # denied even under a fully open READ_PROJECTS=*/WRITE_PROJECTS=* scope
+    # (previously a fastpath skipped this check entirely when scope was open).
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/reminders/7":
+            return httpx.Response(200, json={"_links": {}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await client.update_reminder(reminder_id=7, note="Updated", confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_update_reminder_requires_a_field() -> None:
-    client = OpenProjectClient(
-        _write_enabled_settings(),
-        transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}, request=r)),
-    )
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/reminders/7":
+            return httpx.Response(
+                200,
+                json={"_links": {"remindable": {"href": "/api/v3/work_packages/1"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/1":
+            return httpx.Response(
+                200,
+                json={"_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
     with pytest.raises(InvalidInputError, match="At least one field"):
         await client.update_reminder(reminder_id=7, confirm=True)
@@ -6582,19 +7306,9 @@ async def test_add_project_favorite_uses_workspaces_path_and_empty_body() -> Non
             return httpx.Response(204, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    settings = make_settings()
-    settings = Settings(
-        base_url=settings.base_url,
-        api_token=settings.api_token,
-        enable_project_write=True,
-        allowed_write_projects=("demo",),
-        timeout=settings.timeout,
-        verify_ssl=settings.verify_ssl,
-        default_page_size=settings.default_page_size,
-        max_page_size=settings.max_page_size,
-        max_results=settings.max_results,
-        log_level=settings.log_level,
-    )
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), enable_project_write=True, write_projects=("demo",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     result = await client.add_project_favorite(project="demo", confirm=True)
@@ -6622,19 +7336,9 @@ async def test_add_project_favorite_translates_404_to_version_hint() -> None:
             return httpx.Response(404, json={"message": "Not found"}, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    settings = make_settings()
-    settings = Settings(
-        base_url=settings.base_url,
-        api_token=settings.api_token,
-        enable_project_write=True,
-        allowed_write_projects=("demo",),
-        timeout=settings.timeout,
-        verify_ssl=settings.verify_ssl,
-        default_page_size=settings.default_page_size,
-        max_page_size=settings.max_page_size,
-        max_results=settings.max_results,
-        log_level=settings.log_level,
-    )
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), enable_project_write=True, write_projects=("demo",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(NotFoundError, match="Project favorites requires OpenProject 17.0"):
@@ -6762,6 +7466,8 @@ def _base_settings(**overrides) -> Settings:
         "max_page_size": 50,
         "max_results": 100,
         "log_level": "WARNING",
+        "read_projects": ("*",),
+        "write_projects": ("*",),
     }
     base.update(overrides)
     return Settings(**base)
@@ -6878,7 +7584,7 @@ async def test_list_relations_filters_by_read_allowlist_both_sides() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    settings = _base_settings(allowed_projects=("allowed",))
+    settings = _base_settings(read_projects=("allowed",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     result = await client.list_relations()
     ids = {r.id for r in result.results}
@@ -6962,14 +7668,13 @@ async def test_copy_project_checks_destination_allowlist() -> None:
 
     settings = _base_settings(
         enable_project_write=True,
-        allowed_projects=("src", "dst-ok"),
-        allowed_write_projects=("src", "dst-ok"),
-        allowed_write_projects_configured=True,
+        read_projects=("src", "dst-ok"),
+        write_projects=("src", "dst-ok"),
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     # The source "src" is allowed, so a PermissionDeniedError here can only come
     # from the destination identifier "dst-bad" being outside the allowlist.
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ALLOWED_PROJECTS_READ"):
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
         await client.copy_project(source_project="src", name="Bad", identifier="dst-bad", confirm=True)
 
     # Positive control: an allowed destination passes the allowlist stage (it then
@@ -7025,10 +7730,10 @@ async def test_delete_file_link_respects_allowed_write_projects() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    settings = _base_settings(enable_work_package_write=True, allowed_write_projects=("demo",))
+    settings = _base_settings(enable_work_package_write=True, write_projects=("demo",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ALLOWED_PROJECTS_WRITE"):
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await client.delete_file_link(5, confirm=True)
 
     await client.aclose()
@@ -7063,7 +7768,7 @@ async def test_delete_file_link_allows_write_project() -> None:
             return httpx.Response(204, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    settings = _base_settings(enable_work_package_write=True, allowed_write_projects=("demo",))
+    settings = _base_settings(enable_work_package_write=True, write_projects=("demo",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     result = await client.delete_file_link(5, confirm=True)
@@ -7996,7 +8701,7 @@ async def test_list_project_sprints_filters_sprints_outside_allowed_projects() -
     # same way list_sprints already does via _sprint_payload_allowed.
     import dataclasses
 
-    settings = dataclasses.replace(make_settings(), allowed_projects=("demo",))
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
@@ -8075,7 +8780,7 @@ async def test_list_versions_global_backfills_after_allowlist_filter() -> None:
     # request (pageSize=settings.max_results) and paginates the 3 filtered survivors.
     import dataclasses
 
-    settings = dataclasses.replace(make_settings(), allowed_projects=("demo",))
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
 
     def version_item(item_id: int, allowed: bool) -> dict:
         title = "Demo" if allowed else "Secret Project"
@@ -8168,7 +8873,7 @@ async def test_list_sprints_backfills_after_allowlist_filter() -> None:
     # list_sprints (sprints can be shared cross-project via Backlogs sharing).
     import dataclasses
 
-    settings = dataclasses.replace(make_settings(), allowed_projects=("demo",))
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
 
     def sprint_item(item_id: int, allowed: bool) -> dict:
         workspace_id = 7 if allowed else 99
@@ -8231,7 +8936,7 @@ async def test_list_project_sprints_backfills_after_allowlist_filter() -> None:
     # project can be *defined* by a different, possibly disallowed project (OPM-98).
     import dataclasses
 
-    settings = dataclasses.replace(make_settings(), allowed_projects=("demo",))
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
 
     def sprint_item(item_id: int, allowed: bool) -> dict:
         workspace_id = 7 if allowed else 99
@@ -8431,7 +9136,7 @@ async def test_file_link_delete_uses_container_work_package_link_shape() -> None
             return httpx.Response(204, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    settings = _base_settings(enable_work_package_write=True, allowed_write_projects=("demo",))
+    settings = _base_settings(enable_work_package_write=True, write_projects=("demo",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     result = await client.delete_file_link(5, confirm=True)
@@ -8594,7 +9299,7 @@ async def test_global_relations_allowlist_checks_from_and_to_link_shapes() -> No
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    settings = _base_settings(allowed_projects=("demo",))
+    settings = _base_settings(read_projects=("demo",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     result = await client.list_relations()

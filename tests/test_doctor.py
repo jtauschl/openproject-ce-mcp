@@ -25,7 +25,7 @@ def make_doctor_settings():
             "max_page_size": 50,
             "max_results": 100,
             "log_level": "WARNING",
-            "allowed_projects": ("*",),
+            "read_projects": ("*",),
         }
         return Settings(**{**defaults, **overrides})
 

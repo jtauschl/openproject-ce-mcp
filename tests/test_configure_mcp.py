@@ -769,6 +769,78 @@ def test_merge_prefill_field_wise_priority(tmp_path: Path) -> None:
     assert merged["OPENPROJECT_API_TOKEN"] == "gtok"  # global token preserved
 
 
+def test_merge_prefill_empty_project_token_does_not_blank_global_token(tmp_path: Path) -> None:
+    # Presence-based override is a deliberate exception for project-scope keys
+    # only (OPM-125) — an empty OPENPROJECT_API_TOKEN in a higher-priority
+    # source must NOT blank out a real token from a lower-priority one.
+    global_f = tmp_path / "global.json"
+    global_f.write_text(json.dumps({"mcpServers": {"openproject": {"env": {"OPENPROJECT_API_TOKEN": "gtok"}}}}))
+    project_f = tmp_path / "project.json"
+    project_f.write_text(json.dumps({"mcpServers": {"openproject": {"env": {"OPENPROJECT_API_TOKEN": ""}}}}))
+    gclient = c.Client("g", "G", global_f, "json", lambda: True, "d", root_key="mcpServers")
+    pclient = c.Client("p", "P", tmp_path / "unused", "json", lambda: True, "d", root_key="mcpServers")
+    merged = c._merge_prefill([(gclient, global_f), (pclient, project_f)])
+    assert merged["OPENPROJECT_API_TOKEN"] == "gtok"
+
+
+def _scope_clients(tmp_path: Path, global_env: dict, project_env: dict) -> tuple:
+    global_f = tmp_path / "global.json"
+    global_f.write_text(json.dumps({"mcpServers": {"openproject": {"env": global_env}}}))
+    project_f = tmp_path / "project.json"
+    project_f.write_text(json.dumps({"mcpServers": {"openproject": {"env": project_env}}}))
+    gclient = c.Client("g", "G", global_f, "json", lambda: True, "d", root_key="mcpServers")
+    pclient = c.Client("p", "P", tmp_path / "unused", "json", lambda: True, "d", root_key="mcpServers")
+    return [(gclient, global_f), (pclient, project_f)]
+
+
+def test_merge_scope_prefill_source_priority_beats_new_vs_legacy_key_choice(tmp_path: Path) -> None:
+    # OPM-125 review: a higher-priority source's LEGACY key must still win over
+    # a lower-priority source's NEW key — source priority is resolved first,
+    # new-vs-legacy only within a single source. Merging all sources' raw keys
+    # into one dict first (as a plain field-wise merge would) loses this
+    # ordering, since both keys end up side by side with no source attached.
+    pairs = _scope_clients(
+        tmp_path,
+        global_env={"OPENPROJECT_READ_PROJECTS": "*"},
+        project_env={"OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM"},
+    )
+    read_value, _, read_used_legacy, _ = c._merge_scope_prefill(pairs)
+    assert read_value == "OPM"
+    assert read_used_legacy is True
+
+
+def test_merge_scope_prefill_project_legacy_empty_overrides_global_new_wildcard(tmp_path: Path) -> None:
+    pairs = _scope_clients(
+        tmp_path,
+        global_env={"OPENPROJECT_READ_PROJECTS": "*"},
+        project_env={"OPENPROJECT_ALLOWED_PROJECTS_READ": ""},
+    )
+    read_value, _, _, _ = c._merge_scope_prefill(pairs)
+    assert read_value == ""
+
+
+def test_merge_scope_prefill_project_new_key_empty_overrides_global_legacy_scope(tmp_path: Path) -> None:
+    pairs = _scope_clients(
+        tmp_path,
+        global_env={"OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM"},
+        project_env={"OPENPROJECT_READ_PROJECTS": ""},
+    )
+    read_value, _, read_used_legacy, _ = c._merge_scope_prefill(pairs)
+    assert read_value == ""
+    assert read_used_legacy is False
+
+
+def test_merge_scope_prefill_new_key_wins_over_legacy_within_same_source(tmp_path: Path) -> None:
+    pairs = _scope_clients(
+        tmp_path,
+        global_env={},
+        project_env={"OPENPROJECT_READ_PROJECTS": "OPM", "OPENPROJECT_ALLOWED_PROJECTS_READ": "TST"},
+    )
+    read_value, _, read_used_legacy, _ = c._merge_scope_prefill(pairs)
+    assert read_value == "OPM"
+    assert read_used_legacy is False
+
+
 def test_shim_reexports_public_names() -> None:
     # The root configure_mcp.py shim must re-export main and helpers so get.sh
     # and any importer keep working.
@@ -1100,6 +1172,17 @@ def test_main_basic_setup_safe_advanced_defaults(monkeypatch, tmp_path: Path) ->
     assert env["OPENPROJECT_RETRY_MAX_DELAY"] == "60.0"
 
 
+def test_main_fresh_setup_defaults_read_projects_to_empty_not_wildcard(monkeypatch, tmp_path: Path) -> None:
+    # OPM-125: a brand-new setup (no prefill, no legacy keys) must start
+    # fail-closed like the runtime default, not silently suggest "*".
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y"] + [""] * 12)
+
+    data = json.loads((tmp_path / ".mcp.json").read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert env["OPENPROJECT_READ_PROJECTS"] == ""
+
+
 def test_main_write_access_no_disables_write_flags(monkeypatch, tmp_path: Path) -> None:
     target = tmp_path / ".mcp.json"
     target.write_text(
@@ -1127,7 +1210,7 @@ def test_main_write_access_no_disables_write_flags(monkeypatch, tmp_path: Path) 
 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_ALLOWED_PROJECTS_WRITE"] == ""
+    assert env["OPENPROJECT_WRITE_PROJECTS"] == ""
     assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "false"
     assert env["OPENPROJECT_ENABLE_PROJECT_WRITE"] == "false"
     assert env["OPENPROJECT_ENABLE_MEMBERSHIP_WRITE"] == "false"
@@ -1166,9 +1249,72 @@ def test_main_write_access_enter_keeps_existing_scope(monkeypatch, tmp_path: Pat
 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_ALLOWED_PROJECTS_READ"] == "OPM, TST"
-    assert env["OPENPROJECT_ALLOWED_PROJECTS_WRITE"] == "TST"
+    assert env["OPENPROJECT_READ_PROJECTS"] == "OPM, TST"
+    assert env["OPENPROJECT_WRITE_PROJECTS"] == "TST"
     assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "true"
+
+
+def test_main_migrates_legacy_only_project_scope_keys(monkeypatch, tmp_path: Path) -> None:
+    # OPM-125: an existing config with ONLY the old ALLOWED_PROJECTS_* keys must
+    # still prefill correctly (not silently fall back to "*") and the output must
+    # use only the new key names.
+    target = tmp_path / ".mcp.json"
+    target.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "openproject": {
+                        "command": "old",
+                        "env": {
+                            "OPENPROJECT_BASE_URL": "https://old.example.com",
+                            "OPENPROJECT_API_TOKEN": "old-token",
+                            "OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM,TST",
+                        },
+                    }
+                }
+            }
+        )
+    )
+    claude = _json_client(tmp_path / ".claude.json", project_target=target)
+    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y", "", "", "", ""], secret="")
+
+    data = json.loads(target.read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert env["OPENPROJECT_READ_PROJECTS"] == "OPM,TST"
+    assert "OPENPROJECT_ALLOWED_PROJECTS_READ" not in env
+
+
+def test_main_explicit_empty_new_key_overrides_nonempty_legacy_key(monkeypatch, tmp_path: Path) -> None:
+    # OPM-125: presence, not truthiness, decides the prefill — a deliberately
+    # empty OPENPROJECT_READ_PROJECTS/_WRITE_PROJECTS must win over a nonempty
+    # legacy value, not silently resurrect it.
+    target = tmp_path / ".mcp.json"
+    target.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "openproject": {
+                        "command": "old",
+                        "env": {
+                            "OPENPROJECT_BASE_URL": "https://old.example.com",
+                            "OPENPROJECT_API_TOKEN": "old-token",
+                            "OPENPROJECT_READ_PROJECTS": "",
+                            "OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM",
+                            "OPENPROJECT_WRITE_PROJECTS": "",
+                            "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "TST",
+                        },
+                    }
+                }
+            }
+        )
+    )
+    claude = _json_client(tmp_path / ".claude.json", project_target=target)
+    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y", "", "", "", ""], secret="")
+
+    data = json.loads(target.read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert env["OPENPROJECT_READ_PROJECTS"] == ""
+    assert env["OPENPROJECT_WRITE_PROJECTS"] == ""
 
 
 def test_main_write_access_yes_defaults_write_controls_on(monkeypatch, tmp_path: Path) -> None:
@@ -1182,8 +1328,8 @@ def test_main_write_access_yes_defaults_write_controls_on(monkeypatch, tmp_path:
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_ALLOWED_PROJECTS_READ"] == "OPM, TST"
-    assert env["OPENPROJECT_ALLOWED_PROJECTS_WRITE"] == "TST"
+    assert env["OPENPROJECT_READ_PROJECTS"] == "OPM, TST"
+    assert env["OPENPROJECT_WRITE_PROJECTS"] == "TST"
     assert env["OPENPROJECT_ENABLE_PROJECT_WRITE"] == "true"
     assert env["OPENPROJECT_ENABLE_MEMBERSHIP_WRITE"] == "true"
     assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "true"
@@ -1271,8 +1417,8 @@ def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: 
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_ALLOWED_PROJECTS_READ"] == "OPM"
-    assert env["OPENPROJECT_ALLOWED_PROJECTS_WRITE"] == "TST"
+    assert env["OPENPROJECT_READ_PROJECTS"] == "OPM"
+    assert env["OPENPROJECT_WRITE_PROJECTS"] == "TST"
     assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "true"
     assert env["OPENPROJECT_HIDE_PROJECT_FIELDS"] == "status_explanation"
     assert env["OPENPROJECT_ENABLE_METADATA_TOOLS"] == "true"

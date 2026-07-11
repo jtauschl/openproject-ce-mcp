@@ -33,7 +33,7 @@ def test_doctor_detects_invalid_token(client):
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
-        allowed_projects=("*",),
+        read_projects=("*",),
     )
 
     exit_code = _run_doctor(settings_override=bad_settings)

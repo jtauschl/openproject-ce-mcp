@@ -43,8 +43,8 @@ permissions, use Claude Code — see [claude.md](claude.md)).
            "OPENPROJECT_BASE_URL": "https://op.example.com",
            "OPENPROJECT_API_TOKEN": "replace-with-your-token",
 
-           "OPENPROJECT_ALLOWED_PROJECTS_READ": "*",
-           "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "",
+           "OPENPROJECT_READ_PROJECTS": "*",
+           "OPENPROJECT_WRITE_PROJECTS": "",
 
            "OPENPROJECT_ENABLE_PROJECT_READ": "true",
            "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "true",
@@ -101,5 +101,5 @@ permissions, use Claude Code — see [claude.md](claude.md)).
 - Claude Desktop and Claude Code use separate config files. If you already
   configured the server in Claude Desktop and want it in Claude Code too, you can
   import it with `claude mcp add-from-claude-desktop`.
-- `OPENPROJECT_ALLOWED_PROJECTS_READ` accepts comma-separated identifiers, names, or glob patterns: `project-one,team-*`. Use `*` for all visible projects.
-- `OPENPROJECT_ALLOWED_PROJECTS_WRITE` only narrows scope; it doesn't enable writes by itself. Enable the corresponding write group, such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`, for the operations you need.
+- `OPENPROJECT_READ_PROJECTS` accepts comma-separated identifiers, names, or glob patterns: `project-one,team-*`. Use `*` for all visible projects.
+- `OPENPROJECT_WRITE_PROJECTS` only narrows scope; it doesn't enable writes by itself. Enable the corresponding write group, such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`, for the operations you need.

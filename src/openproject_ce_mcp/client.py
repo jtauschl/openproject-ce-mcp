@@ -255,7 +255,7 @@ class OpenProjectClient:
         )
 
     async def initialize(self) -> None:
-        if not self.settings.allowed_projects or _scope_allows_all(self.settings.allowed_projects):
+        if not self.settings.read_projects or _scope_allows_all(self.settings.read_projects):
             return
         try:
             payload = await self._get("projects", params={"pageSize": "500"})
@@ -271,7 +271,7 @@ class OpenProjectClient:
                     project_name.casefold(),
                     project_name.casefold().replace(" ", "-"),
                 }
-                if _scope_matches_candidates(self.settings.allowed_projects, candidates):
+                if _scope_matches_candidates(self.settings.read_projects, candidates):
                     self._project_id_to_identifier[project_id] = project_identifier
         except Exception:
             pass
@@ -1980,6 +1980,16 @@ class OpenProjectClient:
     ) -> WorkPackageListResult:
         self._ensure_read_enabled("work_package")
         effective_limit = self._resolve_limit(limit)
+        if not self.settings.read_projects:
+            return WorkPackageListResult(
+                offset=offset,
+                limit=effective_limit,
+                total=0,
+                count=0,
+                next_offset=None,
+                truncated=False,
+                results=[],
+            )
         filters: list[dict[str, Any]] = [{"subject_or_id": {"operator": "**", "values": [query]}}]
         project_id: int | None = None
         if project is not None:
@@ -2071,13 +2081,23 @@ class OpenProjectClient:
     ) -> WorkPackageListResult:
         self._ensure_read_enabled("work_package")
         effective_limit = self._resolve_limit(limit)
+        if not self.settings.read_projects:
+            return WorkPackageListResult(
+                offset=offset,
+                limit=effective_limit,
+                total=0,
+                count=0,
+                next_offset=None,
+                truncated=False,
+                results=[],
+            )
         filters: list[dict[str, Any]] = []
         project_id: int | None = None
         if project is not None:
             project_payload = await self._get_project_payload(project)
             project_id = int(project_payload["id"])
             filters.append({"project_id": {"operator": "=", "values": [str(project_id)]}})
-        elif self.settings.allowed_projects and not _scope_allows_all(self.settings.allowed_projects):
+        elif self.settings.read_projects and not _scope_allows_all(self.settings.read_projects):
             # No explicit project given but read scope is restricted — add a server-side
             # project filter so the API only returns WPs from the allowed projects.
             allowed_ids = [str(pid) for pid in self._project_id_to_identifier]
@@ -2172,6 +2192,18 @@ class OpenProjectClient:
         sort_by: list[SortCriterion] | None = None,
         group_by: str | None = None,
     ) -> WorkPackageListResult:
+        if not self.settings.read_projects:
+            # Defense-in-depth: both public callers already guard on this before
+            # reaching here, but this must stay correct on its own for any future caller.
+            return WorkPackageListResult(
+                offset=offset,
+                limit=limit,
+                total=0,
+                count=0,
+                next_offset=None,
+                truncated=False,
+                results=[],
+            )
         params = {
             "offset": str(offset),
             "pageSize": str(limit),
@@ -2821,8 +2853,18 @@ class OpenProjectClient:
         limit: int | None = None,
     ) -> WorkPackageListResult:
         self._ensure_read_enabled("work_package")
-        current_user = await self.get_current_user()
         effective_limit = self._resolve_limit(limit)
+        if not self.settings.read_projects:
+            return WorkPackageListResult(
+                offset=offset,
+                limit=effective_limit,
+                total=0,
+                count=0,
+                next_offset=None,
+                truncated=False,
+                results=[],
+            )
+        current_user = await self.get_current_user()
         payload = await self._get(
             "work_packages",
             params={
@@ -2891,7 +2933,7 @@ class OpenProjectClient:
             )
 
         # OPM-108: the global endpoint has no project filter, so results are filtered
-        # client-side against OPENPROJECT_ALLOWED_PROJECTS_READ. A single page sized to the
+        # client-side against OPENPROJECT_READ_PROJECTS. A single page sized to the
         # caller's limit could look sparser than reality after filtering; fetch up to
         # settings.max_results in one request and paginate the filtered survivors in memory
         # instead (same pattern as list_views/list_documents). Bounded by max_results — not a
@@ -3144,7 +3186,9 @@ class OpenProjectClient:
     ) -> BoardListResult:
         self._ensure_read_enabled("board")
         effective_limit = self._resolve_limit(limit)
-        use_client_side_filtering = project is not None or bool(search) or bool(self.settings.allowed_projects)
+        use_client_side_filtering = (
+            project is not None or bool(search) or not _scope_allows_all(self.settings.read_projects)
+        )
         if use_client_side_filtering:
             project_candidates: set[str] = set()
             if project is not None:
@@ -3228,9 +3272,10 @@ class OpenProjectClient:
     ) -> BoardWriteResult:
         if project is not None:
             await self._get_project_payload(project, write=True)
-        elif self.settings.project_write_scope_configured:
+        elif not (_scope_allows_all(self.settings.read_projects) and _scope_allows_all(self.settings.write_projects)):
             raise PermissionDeniedError(
-                "Project-scoped board writes require a project when OPENPROJECT_ALLOWED_PROJECTS_WRITE is set."
+                "Project-scoped board writes require a project unless both OPENPROJECT_READ_PROJECTS and "
+                "OPENPROJECT_WRITE_PROJECTS are '*'."
             )
         payload = await self._build_board_write_payload(
             name=name,
@@ -3489,12 +3534,23 @@ class OpenProjectClient:
 
     async def list_reminders(self) -> ReminderListResult:
         self._ensure_read_enabled("work_package")
+        if not self.settings.read_projects:
+            return ReminderListResult(count=0, results=[])  # deny-all: skip the network call entirely
         payload = await self._get("reminders")
-        results = [
-            self.normalize_reminder(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
+        elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+        if not _scope_allows_all(self.settings.read_projects):
+            cache: dict[str, bool] = {}
+            filtered = []
+            for item in elements:
+                href = item.get("_links", {}).get("remindable", {}).get("href")
+                if not href:
+                    continue  # can't verify -> fail closed
+                if href not in cache:
+                    cache[href] = await self._work_package_project_allowed(href)
+                if cache[href]:
+                    filtered.append(item)
+            elements = filtered
+        results = [self.normalize_reminder(item) for item in elements]
         return ReminderListResult(count=len(results), results=results)
 
     async def create_work_package_reminder(
@@ -3542,16 +3598,13 @@ class OpenProjectClient:
 
     async def _ensure_reminder_project_write_allowed(self, reminder_id: int) -> None:
         """Apply the project write allowlist to the reminder's work package."""
-        no_read_scope = not self.settings.allowed_projects or _scope_allows_all(self.settings.allowed_projects)
-        if no_read_scope and not self.settings.project_write_scope_configured:
-            return
         current = await self._get(f"reminders/{reminder_id}")
         remindable = current.get("_links", {}).get("remindable")
         if not isinstance(remindable, dict) or not remindable.get("href"):
-            # Fail closed: a configured allowlist must not be bypassed just
-            # because the reminder's work-package link is missing/malformed.
+            # Fail closed: an unresolvable work-package link must not be bypassed,
+            # even under a fully open READ_PROJECTS=*/WRITE_PROJECTS=* scope.
             raise PermissionDeniedError(
-                "OpenProject writes to this reminder are disabled by OPENPROJECT_ALLOWED_PROJECTS_WRITE."
+                "OpenProject writes to this reminder are disabled by OPENPROJECT_WRITE_PROJECTS."
             )
         work_package = await self._get(self._link_to_api_path(remindable["href"]))
         self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
@@ -3874,13 +3927,42 @@ class OpenProjectClient:
         if unread_only:
             params["filters"] = _json_param([{"readIAN": {"operator": "=", "values": ["f"]}}])
         payload = await self._get("notifications", params=params)
-        results = [
-            self.normalize_notification(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        total = int(payload.get("total", len(results)))
+        elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+        if _scope_allows_all(self.settings.read_projects):
+            filtered = elements
+            total = int(payload.get("total", len(elements)))
+        else:
+            # Server-side pagination has no project filter, so this only scopes the
+            # current page — a filtered-empty page does not prove no further allowed
+            # notifications exist on later pages (see docs/architecture.md).
+            wp_cache: dict[str, bool] = {}
+            filtered = []
+            for item in elements:
+                if await self._notification_payload_allowed(item, wp_cache):
+                    filtered.append(item)
+            total = len(filtered)
+        results = [self.normalize_notification(item) for item in filtered]
         return NotificationListResult(count=len(results), total=total, results=results)
+
+    async def _notification_payload_allowed(self, payload: dict[str, Any], wp_cache: dict[str, bool]) -> bool:
+        links = payload.get("_links", {})
+        project_link = links.get("project")
+        if isinstance(project_link, dict):
+            try:
+                self._ensure_project_link_allowed(project_link)
+                return True
+            except PermissionDeniedError:
+                return False
+        resource_link = links.get("resource")
+        resource_href = resource_link.get("href") if isinstance(resource_link, dict) else None
+        if isinstance(resource_href, str) and "work_packages/" in resource_href:
+            # Work-package-linked notification without its own resolvable project
+            # link — resolve via the work package itself instead of trusting the
+            # absent link (same helper/cache pattern as list_relations/list_reminders).
+            if resource_href not in wp_cache:
+                wp_cache[resource_href] = await self._work_package_project_allowed(resource_href)
+            return wp_cache[resource_href]
+        return True  # no project link and no work-package resource link: genuinely personal/global
 
     async def mark_notification_read(self, notification_id: int, *, confirm: bool = False) -> NotificationMarkResult:
         self._ensure_write_enabled("work_package")
@@ -4620,7 +4702,7 @@ class OpenProjectClient:
             params["filters"] = json.dumps([{"type": {"operator": "=", "values": [relation_type]}}])
         payload = await self._get("relations", params=params or None)
         results = []
-        allowlisted = self.settings.allowed_projects and not _scope_allows_all(self.settings.allowed_projects)
+        allowlisted = not _scope_allows_all(self.settings.read_projects)
         results = []
         # Cache project-allow decisions per work package so a batch of relations
         # between the same work packages doesn't refetch (mitigates N+1).
@@ -7021,58 +7103,36 @@ class OpenProjectClient:
         return None
 
     def _ensure_project_allowed(self, project_ref: str, *, payload: dict[str, Any] | None = None) -> None:
-        if not self.settings.allowed_projects:
-            return
-        if _scope_allows_all(self.settings.allowed_projects):
+        if _scope_allows_all(self.settings.read_projects):
             return
         candidates = self._project_candidates(project_ref=project_ref, payload=payload)
-        if not _scope_matches_candidates(self.settings.allowed_projects, candidates):
-            raise PermissionDeniedError(
-                "OpenProject access to this project is disabled by OPENPROJECT_ALLOWED_PROJECTS_READ."
-            )
+        if not _scope_matches_candidates(self.settings.read_projects, candidates):
+            raise PermissionDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
 
     def _ensure_project_write_allowed(self, project_ref: str, *, payload: dict[str, Any] | None = None) -> None:
         self._ensure_project_allowed(project_ref, payload=payload)
-        if self.settings.project_write_scope_allows_none:
-            raise PermissionDeniedError(
-                "OpenProject writes to this project are disabled by OPENPROJECT_ALLOWED_PROJECTS_WRITE."
-            )
-        if not self.settings.project_write_scope_configured:
-            return
-        if _scope_allows_all(self.settings.allowed_write_projects):
+        if _scope_allows_all(self.settings.write_projects):
             return
         candidates = self._project_candidates(project_ref=project_ref, payload=payload)
-        if not _scope_matches_candidates(self.settings.allowed_write_projects, candidates):
+        if not _scope_matches_candidates(self.settings.write_projects, candidates):
             raise PermissionDeniedError(
-                "OpenProject writes to this project are disabled by OPENPROJECT_ALLOWED_PROJECTS_WRITE."
+                "OpenProject writes to this project are disabled by OPENPROJECT_WRITE_PROJECTS."
             )
 
     def _ensure_project_write_candidate_allowed(self, *, identifier: str | None, name: str | None) -> None:
         candidates = self._project_candidates(identifier=identifier, name=name)
-        if (
-            self.settings.allowed_projects
-            and not _scope_allows_all(self.settings.allowed_projects)
-            and not _scope_matches_candidates(self.settings.allowed_projects, candidates)
+        if not _scope_allows_all(self.settings.read_projects) and not _scope_matches_candidates(
+            self.settings.read_projects, candidates
+        ):
+            raise PermissionDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
+        if not _scope_allows_all(self.settings.write_projects) and not _scope_matches_candidates(
+            self.settings.write_projects, candidates
         ):
             raise PermissionDeniedError(
-                "OpenProject access to this project is disabled by OPENPROJECT_ALLOWED_PROJECTS_READ."
-            )
-        if self.settings.project_write_scope_allows_none:
-            raise PermissionDeniedError(
-                "OpenProject writes to this project are disabled by OPENPROJECT_ALLOWED_PROJECTS_WRITE."
-            )
-        if not self.settings.project_write_scope_configured:
-            return
-        if _scope_allows_all(self.settings.allowed_write_projects):
-            return
-        if not _scope_matches_candidates(self.settings.allowed_write_projects, candidates):
-            raise PermissionDeniedError(
-                "OpenProject writes to this project are disabled by OPENPROJECT_ALLOWED_PROJECTS_WRITE."
+                "OpenProject writes to this project are disabled by OPENPROJECT_WRITE_PROJECTS."
             )
 
     def _project_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        if not self.settings.allowed_projects:
-            return True
         try:
             self._ensure_project_allowed(str(payload.get("id", "")), payload=payload)
             return True
@@ -7080,63 +7140,43 @@ class OpenProjectClient:
             return False
 
     def _project_name_allowed(self, project_name: str | None) -> bool:
-        if not self.settings.allowed_projects:
-            return True
-        if _scope_allows_all(self.settings.allowed_projects):
+        if _scope_allows_all(self.settings.read_projects):
             return True
         if not project_name:
             return False
-        return _scope_matches_candidates(self.settings.allowed_projects, {project_name.casefold()})
+        return _scope_matches_candidates(self.settings.read_projects, {project_name.casefold()})
 
     def _ensure_project_link_allowed(self, link: Any) -> None:
-        if not self.settings.allowed_projects:
-            return
-        if _scope_allows_all(self.settings.allowed_projects):
+        if _scope_allows_all(self.settings.read_projects):
             return
         candidates = self._project_candidates(link=link)
-        if not _scope_matches_candidates(self.settings.allowed_projects, candidates):
-            raise PermissionDeniedError(
-                "OpenProject access to this project is disabled by OPENPROJECT_ALLOWED_PROJECTS_READ."
-            )
+        if not _scope_matches_candidates(self.settings.read_projects, candidates):
+            raise PermissionDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
 
     def _ensure_project_write_link_allowed(self, link: Any) -> None:
         self._ensure_project_link_allowed(link)
-        if self.settings.project_write_scope_allows_none:
-            raise PermissionDeniedError(
-                "OpenProject writes to this project are disabled by OPENPROJECT_ALLOWED_PROJECTS_WRITE."
-            )
-        if not self.settings.project_write_scope_configured:
-            return
-        if _scope_allows_all(self.settings.allowed_write_projects):
+        if _scope_allows_all(self.settings.write_projects):
             return
         candidates = self._project_candidates(link=link)
-        if not _scope_matches_candidates(self.settings.allowed_write_projects, candidates):
+        if not _scope_matches_candidates(self.settings.write_projects, candidates):
             raise PermissionDeniedError(
-                "OpenProject writes to this project are disabled by OPENPROJECT_ALLOWED_PROJECTS_WRITE."
+                "OpenProject writes to this project are disabled by OPENPROJECT_WRITE_PROJECTS."
             )
 
     def _ensure_board_payload_allowed(self, payload: dict[str, Any]) -> None:
         project_link = payload.get("_links", {}).get("project")
-        if not self.settings.allowed_projects:
-            return
-        if _scope_allows_all(self.settings.allowed_projects):
+        if _scope_allows_all(self.settings.read_projects):
             return
         if not isinstance(project_link, dict):
-            raise PermissionDeniedError(
-                "OpenProject access to this board is disabled by OPENPROJECT_ALLOWED_PROJECTS_READ."
-            )
+            raise PermissionDeniedError("OpenProject access to this board is disabled by OPENPROJECT_READ_PROJECTS.")
         self._ensure_project_link_allowed(project_link)
 
     def _ensure_board_write_payload_allowed(self, payload: dict[str, Any]) -> None:
         project_link = payload.get("_links", {}).get("project")
-        if not self.settings.project_write_scope_configured:
-            return
-        if _scope_allows_all(self.settings.allowed_write_projects):
+        if _scope_allows_all(self.settings.read_projects) and _scope_allows_all(self.settings.write_projects):
             return
         if not isinstance(project_link, dict):
-            raise PermissionDeniedError(
-                "OpenProject writes to this board are disabled by OPENPROJECT_ALLOWED_PROJECTS_WRITE."
-            )
+            raise PermissionDeniedError("OpenProject writes to this board are disabled by OPENPROJECT_WRITE_PROJECTS.")
         self._ensure_project_write_link_allowed(project_link)
 
     def _board_payload_allowed(self, payload: dict[str, Any]) -> bool:
@@ -7148,14 +7188,10 @@ class OpenProjectClient:
 
     def _ensure_view_payload_allowed(self, payload: dict[str, Any]) -> None:
         project_link = payload.get("_links", {}).get("project")
-        if not self.settings.allowed_projects:
-            return
-        if _scope_allows_all(self.settings.allowed_projects):
+        if _scope_allows_all(self.settings.read_projects):
             return
         if not isinstance(project_link, dict):
-            raise PermissionDeniedError(
-                "OpenProject access to this view is disabled by OPENPROJECT_ALLOWED_PROJECTS_READ."
-            )
+            raise PermissionDeniedError("OpenProject access to this view is disabled by OPENPROJECT_READ_PROJECTS.")
         self._ensure_project_link_allowed(project_link)
 
     def _view_payload_allowed(self, payload: dict[str, Any]) -> bool:

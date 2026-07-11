@@ -10,8 +10,8 @@ def test_settings_from_env_loads_and_normalizes_values() -> None:
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com/",
             "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_ALLOWED_PROJECTS_READ": "mcp-test, openproject-ce-mcp",
-            "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "mcp-test",
+            "OPENPROJECT_READ_PROJECTS": "mcp-test, openproject-ce-mcp",
+            "OPENPROJECT_WRITE_PROJECTS": "mcp-test",
             "OPENPROJECT_ENABLE_PROJECT_READ": "true",
             "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "false",
             "OPENPROJECT_HIDE_PROJECT_FIELDS": "description,status_explanation",
@@ -31,9 +31,8 @@ def test_settings_from_env_loads_and_normalizes_values() -> None:
 
     assert settings.base_url == "https://op.example.com"
     assert settings.api_base_url == "https://op.example.com/api/v3"
-    assert settings.allowed_projects == ("mcp-test", "openproject-ce-mcp")
-    assert settings.allowed_write_projects == ("mcp-test",)
-    assert settings.allowed_write_projects_configured is True
+    assert settings.read_projects == ("mcp-test", "openproject-ce-mcp")
+    assert settings.write_projects == ("mcp-test",)
     assert settings.enable_project_read is True
     assert settings.enable_membership_read is False
     assert settings.hide_project_fields == ("description", "status_explanation")
@@ -63,50 +62,18 @@ def test_settings_from_env_rejects_invalid_relationships() -> None:
         )
 
 
-def test_settings_from_env_falls_back_to_deprecated_allowed_projects_alias() -> None:
-    # OPM-99: OPENPROJECT_ALLOWED_PROJECTS (no _READ suffix) must still restrict
-    # read access for existing deployments — silently ignoring it would fail open
-    # (empty allow-list means unrestricted access, see _ensure_project_allowed).
-    settings = Settings.from_env(
-        {
-            "OPENPROJECT_BASE_URL": "https://op.example.com",
-            "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_ALLOWED_PROJECTS": "demo",
-        }
-    )
-
-    assert settings.allowed_projects == ("demo",)
-    assert settings.allowed_write_projects == ()
-    assert settings.allowed_write_projects_configured is False
-
-
 def test_settings_from_env_accepts_wildcard_project_scopes() -> None:
     settings = Settings.from_env(
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
             "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_ALLOWED_PROJECTS_READ": "*",
-            "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "*",
+            "OPENPROJECT_READ_PROJECTS": "*",
+            "OPENPROJECT_WRITE_PROJECTS": "*",
         }
     )
 
-    assert settings.allowed_projects == ("*",)
-    assert settings.allowed_write_projects == ("*",)
-    assert settings.allowed_write_projects_configured is True
-
-
-def test_settings_from_env_treats_explicit_empty_write_scope_as_configured() -> None:
-    settings = Settings.from_env(
-        {
-            "OPENPROJECT_BASE_URL": "https://op.example.com",
-            "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "",
-        }
-    )
-
-    assert settings.allowed_write_projects == ()
-    assert settings.allowed_write_projects_configured is True
-    assert settings.project_write_scope_allows_none is True
+    assert settings.read_projects == ("*",)
+    assert settings.write_projects == ("*",)
 
 
 def test_settings_from_env_per_scope_read_flag_disables_independently_of_default() -> None:
@@ -270,33 +237,6 @@ def test_settings_from_env_rejects_invalid_log_level() -> None:
                 "OPENPROJECT_LOG_LEVEL": "VERBOSE",
             }
         )
-
-
-def test_allowed_projects_alias_falls_back_and_warns(caplog) -> None:
-    with caplog.at_level("WARNING"):
-        settings = Settings.from_env(
-            {
-                "OPENPROJECT_BASE_URL": "https://op.example.com",
-                "OPENPROJECT_API_TOKEN": "token-value",
-                "OPENPROJECT_ALLOWED_PROJECTS": "legacy-project",
-            }
-        )
-    assert settings.allowed_projects == ("legacy-project",)
-    assert any("OPENPROJECT_ALLOWED_PROJECTS is deprecated" in record.message for record in caplog.records)
-
-
-def test_allowed_projects_read_takes_precedence_over_alias(caplog) -> None:
-    with caplog.at_level("WARNING"):
-        settings = Settings.from_env(
-            {
-                "OPENPROJECT_BASE_URL": "https://op.example.com",
-                "OPENPROJECT_API_TOKEN": "token-value",
-                "OPENPROJECT_ALLOWED_PROJECTS_READ": "current-project",
-                "OPENPROJECT_ALLOWED_PROJECTS": "legacy-project",
-            }
-        )
-    assert settings.allowed_projects == ("current-project",)
-    assert not any("deprecated" in record.message for record in caplog.records)
 
 
 def test_http_remote_base_url_warns(caplog) -> None:
