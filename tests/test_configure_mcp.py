@@ -4,6 +4,8 @@ import importlib.util
 import json
 import subprocess
 import sys
+from collections.abc import Mapping, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -295,24 +297,99 @@ def test_git_warning_prints_when_file_is_not_ignored(monkeypatch, tmp_path: Path
 # ── registration mode (asked up front, non-interactive) ─────────────────────────
 
 
-def _answers(monkeypatch, seq: list[str]) -> None:
-    it = iter(seq)
-    monkeypatch.setattr("builtins.input", lambda _prompt="": next(it, ""))
+class _AnswerBook:
+    """Matches queued answers to wizard prompts by prompt content, not call order.
+
+    Each key is a literal substring expected to appear in exactly one live prompt's
+    text (checked on every call, not just at construction time — see OPM-132: a
+    construction-time-only "is one key nested in another" check would miss two
+    independent keys that both happen to match the same longer prompt). A key's
+    value is a single answer or a queue: the tool-groups validation retry loop
+    reprompts with a label that is a strict extension of the initial one
+    ("Enabled tool groups" -> "Enabled tool groups — comma-separated, check
+    spelling"), so one key with a multi-item queue naturally covers an initial ask
+    plus its retries.
+    """
+
+    def __init__(self, answers: Mapping[str, str | Sequence[str]]) -> None:
+        self._queues: dict[str, list[str]] = {
+            key: [value] if isinstance(value, str) else list(value) for key, value in answers.items()
+        }
+
+    def __call__(self, prompt: str) -> str:
+        matches = [key for key in self._queues if key in prompt]
+        if not matches:
+            raise AssertionError(f"no answer registered for prompt: {prompt!r}")
+        if len(matches) > 1:
+            raise AssertionError(f"multiple answers match prompt {prompt!r}: {matches}")
+        queue = self._queues[matches[0]]
+        if not queue:
+            raise AssertionError(f"answer queue exhausted for {matches[0]!r} (prompt: {prompt!r})")
+        return queue.pop(0)
+
+    def assert_consumed(self) -> None:
+        leftover = {key: queue for key, queue in self._queues.items() if queue}
+        if leftover:
+            raise AssertionError(f"answers registered but never consumed: {leftover}")
+
+
+@contextmanager
+def _answers(monkeypatch, answers: Mapping[str, str | Sequence[str]]):
+    """Drive ``_choose_targets`` (or similar) with prompt-keyed answers.
+
+    Yields the ``_AnswerBook`` and asserts everything was consumed on a normal
+    exit — if the ``with`` body raises, that exception propagates first and this
+    check is skipped, so a genuine failure is never masked.
+    """
+    book = _AnswerBook(answers)
+    monkeypatch.setattr("builtins.input", lambda prompt="": book(prompt))
+    yield book
+    book.assert_consumed()
+
+
+def test_answer_book_raises_on_two_independent_keys_matching_one_prompt() -> None:
+    # "Enable" and "writes" don't contain each other (neither is a substring of
+    # the other), so a construction-time-only "is one key nested in another"
+    # check would miss this — both still match "Enable admin writes?" and the
+    # runtime check in __call__ must catch it.
+    book = _AnswerBook({"Enable": "y", "writes": "n"})
+    with pytest.raises(AssertionError, match="multiple answers match"):
+        book("Enable admin writes?")
+
+
+def test_answer_book_raises_on_unregistered_prompt() -> None:
+    book = _AnswerBook({"Configure globally": "y"})
+    with pytest.raises(AssertionError, match="no answer registered"):
+        book("Some other prompt")
+
+
+def test_answer_book_assert_consumed_reports_leftover_key() -> None:
+    book = _AnswerBook({"Configure globally": "y", "Configure project-scoped": "n"})
+    book("Configure globally (user-wide)?")
+    with pytest.raises(AssertionError, match="Configure project-scoped"):
+        book.assert_consumed()
+
+
+def test_answer_book_does_not_mutate_caller_supplied_list() -> None:
+    caller_list = ["y", "n"]
+    book = _AnswerBook({"Enabled tool groups": caller_list})
+    book("Enabled tool groups")
+    assert caller_list == ["y", "n"], "must copy, not pop from the caller's own list"
 
 
 def test_choose_targets_both_gates_no(monkeypatch, tmp_path: Path) -> None:
     codex = _codex_client(tmp_path / "config.toml", project_target=tmp_path / ".codex" / "config.toml")
     # global gate no, project gate no → nothing.
-    _answers(monkeypatch, ["", ""])
-    assert c._choose_targets([codex]) == ([], [], [], [])
+    with _answers(monkeypatch, {"Configure globally": "", "Configure project-scoped": ""}):
+        assert c._choose_targets([codex]) == ([], [], [], [])
 
 
 def test_choose_targets_global_only(monkeypatch, tmp_path: Path) -> None:
     codex = _codex_client(tmp_path / "config.toml", project_target=tmp_path / ".codex" / "config.toml")
     # global gate yes, per-client yes; project gate is skipped because scopes are
     # configured in separate runs.
-    _answers(monkeypatch, ["y", "y"])
-    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([codex])
+    with _answers(monkeypatch, {"Configure globally": "y", "Configure Codex?": "y"}):
+        global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([codex])
     assert global_clients == [codex]
     assert project_clients == []
     assert remove_global_clients == []
@@ -322,8 +399,9 @@ def test_choose_targets_global_only(monkeypatch, tmp_path: Path) -> None:
 def test_choose_targets_project_only(monkeypatch, tmp_path: Path) -> None:
     codex = _codex_client(tmp_path / "config.toml", project_target=tmp_path / ".codex" / "config.toml")
     # global gate no; project gate yes, per-client yes.
-    _answers(monkeypatch, ["", "y", "y"])
-    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([codex])
+    answers = {"Configure globally": "", "Configure project-scoped": "y", "Configure Codex?": "y"}
+    with _answers(monkeypatch, answers):
+        global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([codex])
     assert global_clients == []
     assert project_clients == [codex]
     assert remove_global_clients == []
@@ -332,10 +410,13 @@ def test_choose_targets_project_only(monkeypatch, tmp_path: Path) -> None:
 
 def test_choose_targets_project_offers_undetected(monkeypatch, tmp_path: Path) -> None:
     # A client NOT detected still gets offered in the project gate (default n),
-    # answer y anyway → it is selected. It is NOT offered in the global gate.
+    # answer y anyway → it is selected. It is NOT offered in the global gate
+    # (not even prompted: the global gate is skipped entirely when nothing is
+    # detected, so no "Configure globally" key is registered here).
     codex = _codex_client(tmp_path / "config.toml", detect=False, project_target=tmp_path / ".codex" / "config.toml")
-    _answers(monkeypatch, ["y", "y"])  # project gate yes (global gate skipped: no detected), per-client yes
-    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([codex])
+    answers = {"Configure project-scoped": "y", "Configure Codex?": "y"}
+    with _answers(monkeypatch, answers):
+        global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([codex])
     assert global_clients == []
     assert project_clients == [codex]
     assert remove_global_clients == []
@@ -344,10 +425,11 @@ def test_choose_targets_project_offers_undetected(monkeypatch, tmp_path: Path) -
 
 def test_choose_targets_claude_code_default_yes_when_alone(monkeypatch, tmp_path: Path) -> None:
     # Claude Code undetected + no other project client detected → project default y,
-    # so pressing Enter selects it.
+    # so pressing Enter selects it. Global gate skipped entirely (nothing detected).
     claude = _json_client(tmp_path / ".claude.json", detect=False, project_target=tmp_path / ".mcp.json")
-    _answers(monkeypatch, ["y", ""])  # project gate yes, then Enter (default y) for claude
-    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([claude])
+    answers = {"Configure project-scoped": "y", "Configure Claude Code?": ""}
+    with _answers(monkeypatch, answers):
+        global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([claude])
     assert project_clients == [claude]
     assert global_clients == []
     assert remove_global_clients == []
@@ -359,8 +441,13 @@ def test_choose_targets_offers_global_removal_when_global_gate_no(monkeypatch, t
     target.write_text(json.dumps({"mcpServers": {"openproject": {"env": ENV}}}))
     claude = _json_client(target, project_target=tmp_path / ".mcp.json")
 
-    _answers(monkeypatch, ["n", "y", "n"])
-    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([claude])
+    answers = {
+        "Configure globally": "n",
+        "Remove existing global Claude Code": "y",
+        "Configure project-scoped": "n",
+    }
+    with _answers(monkeypatch, answers):
+        global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([claude])
 
     assert global_clients == []
     assert project_clients == []
@@ -373,8 +460,9 @@ def test_choose_targets_offers_project_removal_when_project_gate_no(monkeypatch,
     target.write_text(json.dumps({"mcpServers": {"openproject": {"env": ENV}}}))
     claude = _json_client(tmp_path / ".claude.json", detect=False, project_target=target)
 
-    _answers(monkeypatch, ["n", "y"])
-    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([claude])
+    answers = {"Configure project-scoped": "n", "Remove existing project-scoped Claude Code": "y"}
+    with _answers(monkeypatch, answers):
+        global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([claude])
 
     assert global_clients == []
     assert project_clients == []
@@ -387,8 +475,13 @@ def test_choose_targets_global_config_can_remove_existing_project(monkeypatch, t
     project_target.write_text(json.dumps({"mcpServers": {"openproject": {"env": ENV}}}))
     claude = _json_client(tmp_path / ".claude.json", project_target=project_target)
 
-    _answers(monkeypatch, ["y", "y", "y"])
-    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([claude])
+    answers = {
+        "Configure globally": "y",
+        "Configure Claude Code?": "y",
+        "Remove existing project-scoped Claude Code": "y",
+    }
+    with _answers(monkeypatch, answers):
+        global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([claude])
 
     assert global_clients == [claude]
     assert project_clients == []
@@ -930,8 +1023,8 @@ def test_choose_targets_no_detected_skips_global_gate(monkeypatch, tmp_path: Pat
     # offers project-capable clients (default n for undetected).
     codex = _codex_client(tmp_path / "config.toml", detect=False, project_target=tmp_path / ".codex" / "config.toml")
     # Only the project gate consumes an answer here (global gate skipped). Say no.
-    _answers(monkeypatch, [""])
-    global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([codex])
+    with _answers(monkeypatch, {"Configure project-scoped": ""}):
+        global_clients, project_clients, remove_global_clients, remove_project_clients = c._choose_targets([codex])
     assert global_clients == []
     assert project_clients == []
     assert remove_global_clients == []
@@ -1036,11 +1129,25 @@ def test_uninstall_removes_openproject_from_project_keeps_github(tmp_path: Path)
 # ── main() orchestration (happy paths + abort), prompts fully patched ───────────
 
 
-def _run_main(monkeypatch, tmp_path: Path, clients, answers: list[str], secret: str = "opapi-tok"):
-    """Drive main() with patched infra + a shared answer iterator for input/getpass.
+def _run_main(
+    monkeypatch,
+    tmp_path: Path,
+    clients,
+    answers: Mapping[str, str | Sequence[str]],
+    secret: str = "opapi-tok",
+    *,
+    strict: bool = True,
+) -> None:
+    """Drive main() with patched infra + prompt-keyed answers for input; getpass.
 
-    ``answers`` feeds both the gate/bool/text prompts (input) in order; the token
-    (getpass) returns ``secret``. Returns nothing — assert on written files.
+    ``answers`` feeds the gate/bool/text prompts (input), matched by prompt
+    content via ``_AnswerBook`` — not by call order. The token (getpass) returns
+    ``secret`` directly (there is only one secret-style prompt in the wizard, so
+    it doesn't need to go through the answer book). Returns nothing — assert on
+    written files. If ``main()`` raises (e.g. an expected ``SystemExit``), that
+    propagates immediately and the consumed-check below is skipped, so it never
+    masks a genuine failure. Pass ``strict=False`` to skip the consumed-check on a
+    normal exit too, for a test that deliberately over-registers answers.
     """
     monkeypatch.setattr(c, "_check_python", lambda: None)
     monkeypatch.setattr(c, "_installed_mode", lambda: True)  # installed: no uv sync, cwd paths
@@ -1049,17 +1156,63 @@ def _run_main(monkeypatch, tmp_path: Path, clients, answers: list[str], secret: 
     monkeypatch.setattr(c, "_clients", lambda: clients)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PWD", str(tmp_path))
-    it = iter(answers)
-    monkeypatch.setattr("builtins.input", lambda _prompt="": next(it, ""))
-    monkeypatch.setattr(c.getpass, "getpass", lambda _prompt="": secret)
+    book = _AnswerBook(answers)
+    monkeypatch.setattr("builtins.input", lambda prompt="": book(prompt))
+    monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": secret)
     c.main([])
+    if strict:
+        book.assert_consumed()
+
+
+# When ``advanced`` is answered yes, the wizard always asks 16 further optional
+# fields regardless of write access; 5 more (the per-category write toggles) are
+# asked additionally when write access is also enabled. Tests that drive the
+# advanced flow but don't care about these specific values merge one or both of
+# these in with "" (keep-default) answers, rather than retyping all 16-21 keys
+# — and rather than relying on iterator-exhaustion padding the way the old
+# positional lists did, which is exactly the silent-absorption failure mode
+# OPM-132 removes.
+_WRITE_CONTROL_DEFAULTS: dict[str, str] = {
+    "Enable work-package writes": "",
+    "Enable project writes": "",
+    "Enable membership writes": "",
+    "Enable version writes": "",
+    "Enable board writes": "",
+}
+_ADVANCED_ONLY_DEFAULTS: dict[str, str] = {
+    "Hidden project fields": "",
+    "Hidden work-package fields": "",
+    "Hidden activity fields": "",
+    "Hidden custom fields": "",
+    "Enable admin writes": "",
+    "Attachment upload root": "",
+    "Default page size": "",
+    "Max page size": "",
+    "Max total results": "",
+    "List text preview char limit": "",
+    "Request timeout seconds": "",
+    "Verify TLS certificates?": "",
+    "Max retries for 429": "",
+    "Retry base delay seconds": "",
+    "Retry max delay seconds": "",
+    "Log level": "",
+}
 
 
 def test_main_global_only_writes_no_mcp_json(monkeypatch, tmp_path: Path) -> None:
     gtarget = tmp_path / ".claude.json"
     claude = _json_client(gtarget, project_target=tmp_path / ".mcp.json")
-    # global gate y, per-client y; project gate is skipped; then creds default.
-    _run_main(monkeypatch, tmp_path, [claude], ["y", "y"] + [""] * 30)
+    # global gate y, per-client y; project gate is skipped; then creds default
+    # (write access off, advanced off, so nothing beyond these 6 is ever asked).
+    answers = {
+        "Configure globally": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers)
     assert gtarget.exists(), "global claude config should be written"
     assert not (tmp_path / ".mcp.json").exists(), "no project .mcp.json for global-only"
 
@@ -1078,7 +1231,16 @@ def test_main_project_cursor_writes_cursor_file(monkeypatch, tmp_path: Path) -> 
         restart_hint="reload",
     )
     # global gate n; project gate y, cursor y; then creds default.
-    _run_main(monkeypatch, tmp_path, [cursor], ["n", "y", "y"] + [""] * 30)
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Cursor?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+    }
+    _run_main(monkeypatch, tmp_path, [cursor], answers)
     assert ctarget.exists(), "cursor project config should be written"
     data = json.loads(ctarget.read_text())
     assert data["mcpServers"]["openproject"]["command"] == "openproject-ce-mcp"
@@ -1098,14 +1260,15 @@ def test_main_neither_aborts_before_token(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(c, "_server_command", lambda installed: ("openproject-ce-mcp", True))
     monkeypatch.setattr(c, "_clients", lambda: [claude])
     monkeypatch.chdir(tmp_path)
-    it = iter(["n", "n"])  # both gates no
-    monkeypatch.setattr("builtins.input", lambda _prompt="": next(it, ""))
+    book = _AnswerBook({"Configure globally": "n", "Configure project-scoped": "n"})
+    monkeypatch.setattr("builtins.input", lambda prompt="": book(prompt))
     monkeypatch.setattr(c.getpass, "getpass", _boom)
     with pytest.raises(SystemExit) as exc:
         c.main([])
     assert exc.value.code == 1
     assert token_asked["v"] is False, "must abort before asking for the token"
     assert not (tmp_path / ".mcp.json").exists()
+    book.assert_consumed()
 
 
 def test_main_neither_aborts_before_token_in_clone_mode(monkeypatch, tmp_path: Path) -> None:
@@ -1123,14 +1286,15 @@ def test_main_neither_aborts_before_token_in_clone_mode(monkeypatch, tmp_path: P
     monkeypatch.setattr(c, "_server_command", lambda installed: ("openproject-ce-mcp", True))
     monkeypatch.setattr(c, "_clients", lambda: [claude])
     monkeypatch.chdir(tmp_path)
-    it = iter(["n", "n"])  # both gates no
-    monkeypatch.setattr("builtins.input", lambda _prompt="": next(it, ""))
+    book = _AnswerBook({"Configure globally": "n", "Configure project-scoped": "n"})
+    monkeypatch.setattr("builtins.input", lambda prompt="": book(prompt))
     monkeypatch.setattr(c.getpass, "getpass", _boom)
     with pytest.raises(SystemExit) as exc:
         c.main([])
     assert exc.value.code == 1
     assert token_asked["v"] is False, "must abort before asking for the token"
     assert not (tmp_path / ".mcp.json").exists()
+    book.assert_consumed()
 
 
 def test_main_can_remove_existing_global_without_collecting_credentials(monkeypatch, tmp_path: Path) -> None:
@@ -1149,8 +1313,15 @@ def test_main_can_remove_existing_global_without_collecting_credentials(monkeypa
     monkeypatch.setattr(c, "_server_command", lambda installed: ("openproject-ce-mcp", True))
     monkeypatch.setattr(c, "_clients", lambda: [claude])
     monkeypatch.chdir(tmp_path)
-    it = iter(["n", "y", "n"])  # no global config, remove existing global, no project config
-    monkeypatch.setattr("builtins.input", lambda _prompt="": next(it, ""))
+    # no global config, remove existing global, no project config
+    book = _AnswerBook(
+        {
+            "Configure globally": "n",
+            "Remove existing global Claude Code": "y",
+            "Configure project-scoped": "n",
+        }
+    )
+    monkeypatch.setattr("builtins.input", lambda prompt="": book(prompt))
     monkeypatch.setattr(c.getpass, "getpass", _boom)
 
     c.main([])
@@ -1158,6 +1329,7 @@ def test_main_can_remove_existing_global_without_collecting_credentials(monkeypa
     assert token_asked["v"] is False, "removal-only flow must not ask for credentials"
     data = json.loads(target.read_text())
     assert "mcpServers" not in data
+    book.assert_consumed()
 
 
 def test_main_project_prefill_does_not_use_global_values(monkeypatch, tmp_path: Path) -> None:
@@ -1197,7 +1369,17 @@ def test_main_project_prefill_does_not_use_global_values(monkeypatch, tmp_path: 
 
     # Skip global, keep existing global, configure project. Empty base/token keep
     # the selected project's values, not the global ones.
-    _run_main(monkeypatch, tmp_path, [claude], ["n", "n", "y", "y"] + [""] * 12, secret="")
+    answers = {
+        "Configure globally": "n",
+        "Remove existing global Claude Code": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
     data = json.loads(project_target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
@@ -1208,7 +1390,16 @@ def test_main_project_prefill_does_not_use_global_values(monkeypatch, tmp_path: 
 def test_main_project_non_claude_writes_generic_mcp_json(monkeypatch, tmp_path: Path) -> None:
     # Project scope with ONLY a non-Claude client (codex) → generic .mcp.json IS written.
     codex = _codex_client(tmp_path / "g.toml", project_target=tmp_path / ".codex" / "config.toml")
-    _run_main(monkeypatch, tmp_path, [codex], ["n", "y", "y"] + [""] * 30)
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Codex?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+    }
+    _run_main(monkeypatch, tmp_path, [codex], answers)
     assert (tmp_path / ".codex" / "config.toml").exists()
     assert (tmp_path / ".mcp.json").exists(), "generic .mcp.json written when no Claude Code project"
 
@@ -1217,7 +1408,16 @@ def test_main_project_claude_no_duplicate_mcp_json(monkeypatch, tmp_path: Path) 
     # Project scope WITH Claude Code → .mcp.json is Claude's project file, written once,
     # and the generic write is skipped (no double write / no extra backup).
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
-    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y"] + [""] * 30)
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers)
     assert (tmp_path / ".mcp.json").exists()
     # exactly one .mcp.json, no stray backup from a second write
     backups = list(tmp_path.glob(".mcp.json.bak.*"))
@@ -1228,7 +1428,16 @@ def test_main_basic_setup_safe_advanced_defaults(monkeypatch, tmp_path: Path) ->
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
     # global n, project y, claude y, base/default scopes, write access default
     # false, advanced default false.
-    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y"] + [""] * 12)
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers)
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
@@ -1244,7 +1453,16 @@ def test_main_fresh_setup_defaults_read_projects_to_empty_not_wildcard(monkeypat
     # OPM-125: a brand-new setup (no prefill, no legacy keys) must start
     # fail-closed like the runtime default, not silently suggest "*".
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
-    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y"] + [""] * 12)
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers)
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
@@ -1274,7 +1492,16 @@ def test_main_write_access_no_disables_write_flags(monkeypatch, tmp_path: Path) 
     claude = _json_client(tmp_path / ".claude.json", project_target=target)
     # The explicit write-access answer disables project-scoped writes. The next
     # answer is consumed by the advanced gate; write flags are not prompted.
-    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y", "", "*", "n", "n"], secret="")
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "*",
+        "Enable write access?": "n",
+        "Configure advanced options?": "n",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
@@ -1307,13 +1534,21 @@ def test_main_write_access_enter_keeps_existing_scope(monkeypatch, tmp_path: Pat
         )
     )
     claude = _json_client(tmp_path / ".claude.json", project_target=target)
-    _run_main(
-        monkeypatch,
-        tmp_path,
-        [claude],
-        ["n", "y", "y", "", "", "", "", "", "", "", "", "", "", "", "n"],
-        secret="",
-    )
+    # Enter on every prompt: write access defaults on (existing write scope is
+    # non-empty), so the "Writable projects" prompt fires too, then advanced
+    # defaults off (its default is hardcoded False, not derived from existing
+    # config) — nothing beyond these 5 credentials-phase prompts is ever asked.
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Writable projects": "",
+        "Configure advanced options?": "",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
@@ -1344,7 +1579,16 @@ def test_main_migrates_legacy_only_project_scope_keys(monkeypatch, tmp_path: Pat
         )
     )
     claude = _json_client(tmp_path / ".claude.json", project_target=target)
-    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y", "", "", "", ""], secret="")
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
@@ -1377,7 +1621,16 @@ def test_main_explicit_empty_new_key_overrides_nonempty_legacy_key(monkeypatch, 
         )
     )
     claude = _json_client(tmp_path / ".claude.json", project_target=target)
-    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y", "", "", "", ""], secret="")
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
@@ -1392,7 +1645,17 @@ def test_main_write_access_yes_defaults_write_controls_on(monkeypatch, tmp_path:
     # requires explicit confirm=true, no operator-level bypass exists.
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
 
-    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y", "", "OPM, TST", "y", "TST", "n"])
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "OPM, TST",
+        "Enable write access?": "y",
+        "Writable projects": "TST",
+        "Configure advanced options?": "n",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers)
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
@@ -1430,7 +1693,16 @@ def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, 
     )
     claude = _json_client(tmp_path / ".claude.json", project_target=target)
 
-    _run_main(monkeypatch, tmp_path, [claude], ["n", "y", "y"] + [""] * 12, secret="")
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
@@ -1444,39 +1716,39 @@ def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, 
 
 def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: Path) -> None:
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
-    answers = [
-        "n",  # no global
-        "y",  # project
-        "y",  # claude
-        "",  # base url default
-        "OPM",  # readable projects
-        "y",  # enable write access
-        "TST",  # writable projects
-        "y",  # advanced
-        "projects,work-packages,memberships,versions,boards,personal,extended",  # enabled tool groups
-        "y",  # enable personal-data writes (personal is in the groups above)
-        "y",  # work-package writes
-        "n",  # project writes
-        "n",  # membership writes
-        "n",  # version writes
-        "n",  # board writes
-        "status_explanation",  # hidden project fields
-        "description",  # hidden work-package fields
-        "comment",  # hidden activity fields
-        "budget",  # hidden custom fields
-        "n",  # admin writes
-        "/tmp/uploads",  # attachment root
-        "5",  # default page size
-        "25",  # max page size
-        "50",  # max results
-        "250",  # text limit
-        "20",  # timeout
-        "y",  # verify ssl
-        "4",  # max retries
-        "0.5",  # retry base
-        "10",  # retry max
-        "INFO",  # log level
-    ]
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "OPM",
+        "Enable write access?": "y",
+        "Writable projects": "TST",
+        "Configure advanced options?": "y",
+        "Enabled tool groups": "projects,work-packages,memberships,versions,boards,personal,extended",
+        "Enable personal-data writes": "y",
+        "Enable work-package writes": "y",
+        "Enable project writes": "n",
+        "Enable membership writes": "n",
+        "Enable version writes": "n",
+        "Enable board writes": "n",
+        "Hidden project fields": "status_explanation",
+        "Hidden work-package fields": "description",
+        "Hidden activity fields": "comment",
+        "Hidden custom fields": "budget",
+        "Enable admin writes": "n",
+        "Attachment upload root": "/tmp/uploads",
+        "Default page size": "5",
+        "Max page size": "25",
+        "Max total results": "50",
+        "List text preview char limit": "250",
+        "Request timeout seconds": "20",
+        "Verify TLS certificates?": "y",
+        "Max retries for 429": "4",
+        "Retry base delay seconds": "0.5",
+        "Retry max delay seconds": "10",
+        "Log level": "INFO",
+    }
     _run_main(monkeypatch, tmp_path, [claude], answers)
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
@@ -1518,17 +1790,22 @@ def test_main_advanced_deselecting_group_disables_existing_write_flag(monkeypatc
         )
     )
     claude = _json_client(tmp_path / ".claude.json", project_target=target)
-    answers = [
-        "n",
-        "y",
-        "y",
-        "",  # base url
-        "",  # read projects
-        "y",  # enable write access
-        "",  # writable projects (keep existing "*")
-        "y",  # advanced
-        "projects,work-packages,memberships,versions",  # groups WITHOUT boards
-    ]
+    # advanced + write access both on → the wizard also asks the 5 write-control
+    # toggles and the 16 always-asked advanced-only fields; none of those are
+    # asserted on here, so they're left at their kept/default answers.
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "y",
+        "Writable projects": "",  # keep existing "*"
+        "Configure advanced options?": "y",
+        "Enabled tool groups": "projects,work-packages,memberships,versions",  # groups WITHOUT boards
+        **_WRITE_CONTROL_DEFAULTS,
+        **_ADVANCED_ONLY_DEFAULTS,
+    }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
     data = json.loads(target.read_text())
@@ -1557,16 +1834,19 @@ def test_main_personal_write_forced_false_when_personal_group_absent_in_advanced
         )
     )
     claude = _json_client(tmp_path / ".claude.json", project_target=target)
-    answers = [
-        "n",
-        "y",
-        "y",
-        "",  # base url
-        "",  # read projects
-        "n",  # write access disabled
-        "y",  # advanced
-        "projects,work-packages",  # groups WITHOUT personal — no personal_write slot needed
-    ]
+    # write access off → no write-control toggles; advanced on → the 16
+    # always-asked advanced-only fields still fire, left at their defaults.
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "n",
+        "Configure advanced options?": "y",
+        "Enabled tool groups": "projects,work-packages",  # groups WITHOUT personal — no personal_write slot needed
+        **_ADVANCED_ONLY_DEFAULTS,
+    }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
     data = json.loads(target.read_text())
@@ -1600,7 +1880,16 @@ def test_main_legacy_migration_reconciles_read_off_write_on_same_scope(monkeypat
     # (board read was false), while OPENPROJECT_ENABLE_BOARD_WRITE stayed true from
     # the same legacy config — the reconciliation must fire even in this
     # non-advanced/migration-only path, not just when the user types groups by hand.
-    answers = ["n", "y", "y", "", "", "y", ""]
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "y",
+        "Writable projects": "",
+        "Configure advanced options?": "",
+    }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
     data = json.loads(target.read_text())
@@ -1611,18 +1900,25 @@ def test_main_legacy_migration_reconciles_read_off_write_on_same_scope(monkeypat
 
 def test_main_advanced_invalid_group_reprompts_then_succeeds(monkeypatch, tmp_path: Path) -> None:
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
-    answers = [
-        "n",
-        "y",
-        "y",
-        "",  # base url
-        "",  # read projects
-        "n",  # write access
-        "y",  # advanced
-        "projects,work-packages,personl",  # typo: should be "personal"
-        "projects,work-packages,personal",  # corrected on reprompt
-        "y",  # personal_write prompt (personal now present + advanced)
-    ]
+    # "Enabled tool groups" gets a 2-item queue: the initial typo'd answer, then
+    # the corrected one on reprompt — the reprompt's label
+    # ("Enabled tool groups — comma-separated, check spelling") is a strict
+    # extension of the initial one, so this one key covers both asks.
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "n",
+        "Configure advanced options?": "y",
+        "Enabled tool groups": [
+            "projects,work-packages,personl",  # typo: should be "personal"
+            "projects,work-packages,personal",  # corrected on reprompt
+        ],
+        "Enable personal-data writes": "y",  # personal now present + advanced
+        **_ADVANCED_ONLY_DEFAULTS,
+    }
     _run_main(monkeypatch, tmp_path, [claude], answers)
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
@@ -1654,18 +1950,21 @@ def test_main_typo_in_group_list_does_not_clobber_unrelated_personal_write(monke
         )
     )
     claude = _json_client(tmp_path / ".claude.json", project_target=target)
-    answers = [
-        "n",
-        "y",
-        "y",
-        "",  # base url
-        "",  # read projects
-        "n",  # write access
-        "y",  # advanced
-        "projects,personl",  # typo drops "personal"
-        "projects,personal",  # corrected — "personal" is back
-        "",  # personal_write prompt: keep existing (true) default
-    ]
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "n",
+        "Configure advanced options?": "y",
+        "Enabled tool groups": [
+            "projects,personl",  # typo drops "personal"
+            "projects,personal",  # corrected — "personal" is back
+        ],
+        "Enable personal-data writes": "",  # keep existing (true) default
+        **_ADVANCED_ONLY_DEFAULTS,
+    }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
     data = json.loads(target.read_text())
@@ -1677,18 +1976,19 @@ def test_main_typo_in_group_list_does_not_clobber_unrelated_personal_write(monke
 def test_main_advanced_permanently_invalid_group_aborts_without_writing(monkeypatch, tmp_path: Path) -> None:
     target = tmp_path / ".mcp.json"
     claude = _json_client(tmp_path / ".claude.json", project_target=target)
-    answers = [
-        "n",
-        "y",
-        "y",
-        "",  # base url
-        "",  # read projects
-        "n",  # write access
-        "y",  # advanced
-        "bogus1",
-        "bogus2",
-        "bogus3",  # 3 attempts, all invalid
-    ]
+    # 3 input() calls total for tool groups: the initial ask plus 2 reprompts
+    # (the 3rd failure aborts immediately, with no 3rd reprompt) — all under one
+    # queued key, since every reprompt's label extends the initial one.
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "n",
+        "Configure advanced options?": "y",
+        "Enabled tool groups": ["bogus1", "bogus2", "bogus3"],  # 3 attempts, all invalid
+    }
     with pytest.raises(SystemExit) as exc:
         _run_main(monkeypatch, tmp_path, [claude], answers)
     assert exc.value.code == 1
@@ -1700,22 +2000,28 @@ def test_wizard_invariant_generated_config_always_parses_with_settings_from_env(
     structurally inside main() itself; this test is a regression guard, not the
     mechanism that creates the guarantee."""
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
-    answers = [
-        "n",
-        "y",
-        "y",
-        "",  # base url
-        "OPM",  # readable projects
-        "y",  # enable write access
-        "TST",  # writable projects
-        "y",  # advanced
-        "projects,work-packages,memberships,versions,boards,personal,extended",
-        "y",  # personal write
-        "y",
-        "y",
-        "y",
-        "y",  # all remaining write controls on
-    ]
+    # Only 4 of the 5 write-control toggles are explicitly answered "y" here
+    # (matching the original list, which ran out after 4) — "Enable board
+    # writes" is left at its merged "" (kept-default) answer. Not asserted on
+    # either way; this test only checks the generated config parses cleanly.
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "OPM",
+        "Enable write access?": "y",
+        "Writable projects": "TST",
+        "Configure advanced options?": "y",
+        "Enabled tool groups": "projects,work-packages,memberships,versions,boards,personal,extended",
+        "Enable personal-data writes": "y",
+        **_WRITE_CONTROL_DEFAULTS,
+        "Enable work-package writes": "y",
+        "Enable project writes": "y",
+        "Enable membership writes": "y",
+        "Enable version writes": "y",
+        **_ADVANCED_ONLY_DEFAULTS,
+    }
     _run_main(monkeypatch, tmp_path, [claude], answers)
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
@@ -1724,16 +2030,20 @@ def test_wizard_invariant_generated_config_always_parses_with_settings_from_env(
 
 def test_main_ctrl_c_exits_130_no_traceback(monkeypatch, capsys) -> None:
     # Ctrl+C during a prompt → clean "Cancelled" message + exit 130, no traceback.
+    # This is the one deliberate, documented exception to the "no direct
+    # builtins.input patch outside _AnswerBook" rule (see OPM-132): raising an
+    # exception isn't an "answer" _AnswerBook's string/string-queue API can
+    # express, and it isn't the positional-fragility class OPM-132 targets.
     monkeypatch.setattr(c, "_check_python", lambda: None)
     monkeypatch.setattr(c, "_installed_mode", lambda: True)
     monkeypatch.setattr(c, "_install_deps", lambda *a, **k: None)
     monkeypatch.setattr(c, "_server_command", lambda installed: ("openproject-ce-mcp", True))
     monkeypatch.setattr(c, "_clients", lambda: [])
 
-    def _interrupt(*a, **k):
+    def raise_keyboard_interrupt(_prompt: str = "") -> str:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr("builtins.input", _interrupt)
+    monkeypatch.setattr("builtins.input", raise_keyboard_interrupt)
     with pytest.raises(SystemExit) as exc:
         c.main([])
     assert exc.value.code == 130
