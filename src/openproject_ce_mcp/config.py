@@ -4,6 +4,7 @@ import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from urllib.parse import urlparse
 
 
@@ -42,7 +43,7 @@ _WRITE_SCOPE_SETTINGS: dict[str, str] = {
 # OPENPROJECT_TOOLS group name -> read/write scope string used above. "personal"
 # and "extended" are scopes in their own right (see Settings.enable_personal_*
 # and enable_metadata_tools); "extended" has no write counterpart because every
-# METADATA_TOOLS client.py method is a pure read.
+# client method in the "extended" tool group is a pure read.
 _TOOL_GROUP_TO_SCOPE: dict[str, str] = {
     "projects": "project",
     "work-packages": "work_package",
@@ -302,6 +303,12 @@ class Settings:
         if text_limit > TEXT_LIMIT_MAX:
             raise ConfigError(f"OPENPROJECT_TEXT_LIMIT must not exceed {TEXT_LIMIT_MAX}.")
         attachment_root = (env.get("OPENPROJECT_ATTACHMENT_ROOT") or "").strip()
+        if attachment_root and not Path(attachment_root).expanduser().is_absolute():
+            raise ConfigError(
+                "OPENPROJECT_ATTACHMENT_ROOT must be an absolute path (e.g. /home/user/uploads "
+                "or ~/uploads) — a relative path would resolve against the server's current "
+                "working directory, which this phase removes as an implicit fallback."
+            )
         max_retries = _parse_int(
             env.get("OPENPROJECT_MAX_RETRIES"),
             "OPENPROJECT_MAX_RETRIES",

@@ -7343,15 +7343,26 @@ class OpenProjectClient:
     def _attachment_root(self) -> Path:
         """The directory attachment uploads are confined to.
 
-        Defaults to the current working directory (where the client launched the
-        server — typically the user's project). OPENPROJECT_ATTACHMENT_ROOT can
-        point it elsewhere. This bounds which local files a caller can upload,
+        OPENPROJECT_ATTACHMENT_ROOT must be set to an absolute directory; there
+        is no current-working-directory fallback (a globally installed MCP
+        server's cwd is unpredictable, so silently falling back to it would let
+        an upload land in, or escape from, whatever directory happened to
+        launch the server). This bounds which local files a caller can upload,
         so a malicious/confused agent cannot exfiltrate arbitrary host files
-        (e.g. the API token in .mcp.json, SSH keys, /etc/passwd).
+        (e.g. the API token in .mcp.json, SSH keys, /etc/passwd). tools.py also
+        only registers create_work_package_attachment when this is set
+        (OPM-127); this check is defense-in-depth for a caller that constructs
+        OpenProjectClient directly, bypassing that registration gate (as
+        several tests in test_client.py already do).
         """
         configured = self.settings.attachment_root
-        base = Path(configured).expanduser() if configured else Path.cwd()
-        return base.resolve()
+        if not configured:
+            raise PermissionDeniedError(
+                "Attachment uploads are disabled: OPENPROJECT_ATTACHMENT_ROOT is not set. "
+                "There is no current-working-directory fallback — set it to an absolute, "
+                "existing directory to allow local file uploads."
+            )
+        return Path(configured).expanduser().resolve()
 
     # Files that must never be uploaded even from inside the attachment root:
     # the config often lives in the server's working directory, so directory

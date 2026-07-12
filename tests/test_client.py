@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 
 import httpx
@@ -4380,6 +4381,7 @@ async def test_views_categories_and_attachments() -> None:
         read_projects=("demo",),
         write_projects=("demo",),
         enable_work_package_write=True,
+        attachment_root=os.getcwd(),  # OPM-127: uploads need a configured root
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -7597,6 +7599,38 @@ async def test_attachment_rejects_symlink_escape(tmp_path) -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
     with pytest.raises(InvalidInputError, match="outside the allowed attachment directory"):
         client._prepare_attachment_file(str(link), include_bytes=True)
+    await client.aclose()
+
+
+async def test_attachment_root_empty_refuses_upload(tmp_path) -> None:
+    """OPM-127: no OPENPROJECT_ATTACHMENT_ROOT means uploads are disabled, not cwd."""
+    settings = _base_settings(enable_work_package_write=True)  # attachment_root defaults to ""
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
+    some_file = tmp_path / "note.txt"
+    some_file.write_text("hello")
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ATTACHMENT_ROOT"):
+        client._prepare_attachment_file(str(some_file), include_bytes=True)
+    await client.aclose()
+
+
+async def test_create_work_package_attachment_refuses_when_root_unset(tmp_path) -> None:
+    """The refusal surfaces through the full create_work_package_attachment call path."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_work_package_write=True)  # attachment_root defaults to ""
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    some_file = tmp_path / "note.txt"
+    some_file.write_text("hello")
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ATTACHMENT_ROOT"):
+        await client.create_work_package_attachment(work_package_id=42, file_path=str(some_file), confirm=True)
     await client.aclose()
 
 

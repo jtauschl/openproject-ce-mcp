@@ -87,6 +87,7 @@ def test_read_and_write_classifications_are_disjoint() -> None:
         set().union(*tools.WRITE_TOOLS_BY_SCOPE.values())
         | set(tools.ADMIN_WRITE_TOOLS)
         | set(tools.PERSONAL_MUTATION_TOOLS)
+        | set(tools.ATTACHMENT_UPLOAD_TOOLS)
     )
     assert read_classified.isdisjoint(write_classified), read_classified & write_classified
 
@@ -121,6 +122,7 @@ def test_every_classified_name_resolves_to_a_real_function() -> None:
     # explicitly rather than relying on import success alone.
     all_classified = (
         set(tools.PERSONAL_MUTATION_TOOLS)
+        | set(tools.ATTACHMENT_UPLOAD_TOOLS)
         | set().union(*tools.READ_TOOLS_BY_SCOPE.values())
         | set().union(*tools.WRITE_TOOLS_BY_SCOPE.values())
         | set(tools.ADMIN_WRITE_TOOLS)
@@ -137,6 +139,7 @@ def test_every_write_tool_requires_confirm() -> None:
         set().union(*tools.WRITE_TOOLS_BY_SCOPE.values())
         | set(tools.ADMIN_WRITE_TOOLS)
         | set(tools.PERSONAL_MUTATION_TOOLS)
+        | set(tools.ATTACHMENT_UPLOAD_TOOLS)
     )
     for name in write_tool_names:
         sig = inspect.signature(tools._TOOL_FUNCTIONS[name])
@@ -287,6 +290,27 @@ def test_work_package_write_no_longer_couples_to_notification_mark_read() -> Non
     delta = with_wp_write - baseline
     assert "mark_notification_read" not in delta
     assert "mark_all_notifications_read" not in delta
+
+
+# ── attachment-upload AND-gate (OPM-127) — same bespoke-branch shape as the
+# "personal" AND-gate above, but scope-flag AND a non-empty config string,
+# not scope-flag AND scope-flag.
+
+
+def test_work_package_write_alone_does_not_expose_attachment_upload() -> None:
+    names = set(tools.enabled_tool_names(make_settings(enable_work_package_write=True)))
+    assert "create_work_package_attachment" not in names
+
+
+def test_attachment_root_alone_does_not_expose_upload_without_write() -> None:
+    names = set(tools.enabled_tool_names(make_settings(attachment_root="/tmp/uploads")))
+    assert "create_work_package_attachment" not in names
+
+
+def test_work_package_write_and_attachment_root_expose_upload() -> None:
+    names = set(tools.enabled_tool_names(make_settings(enable_work_package_write=True, attachment_root="/tmp/uploads")))
+    assert "create_work_package_attachment" in names
+    assert "create_work_package" in names  # other wp-write tools unaffected
 
 
 def test_read_enabled_unknown_scope_raises_not_silently_allows() -> None:

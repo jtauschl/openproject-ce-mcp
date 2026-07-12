@@ -1262,7 +1262,7 @@ def _run_configure(argv: list[str] | None = None) -> None:
         print()
         print("Advanced tool exposure and runtime settings.")
         admin_write = _prompt_bool("Enable admin writes (users/groups)?", admin_write)
-        attachment_root = _prompt("Attachment upload root (empty = current working directory)", attachment_root)
+        attachment_root = _prompt("Attachment upload root, absolute path (empty = uploads disabled)", attachment_root)
         default_page_size = _prompt("Default page size", default_page_size)
         max_page_size = _prompt("Max page size", max_page_size)
         max_results = _prompt("Max total results", max_results)

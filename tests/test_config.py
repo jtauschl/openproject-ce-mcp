@@ -399,3 +399,48 @@ def test_retry_settings_valid_defaults() -> None:
     assert settings.max_retries == 3
     assert settings.retry_base_delay == 1.0
     assert settings.retry_max_delay == 60.0
+
+
+def test_relative_attachment_root_is_rejected() -> None:
+    with pytest.raises(ConfigError, match="absolute"):
+        Settings.from_env(
+            {
+                "OPENPROJECT_BASE_URL": "https://op.example.com",
+                "OPENPROJECT_API_TOKEN": "token-value",
+                "OPENPROJECT_ATTACHMENT_ROOT": "uploads",
+            }
+        )
+
+
+def test_absolute_attachment_root_is_accepted() -> None:
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+            "OPENPROJECT_ATTACHMENT_ROOT": "/tmp/uploads",
+        }
+    )
+    assert settings.attachment_root == "/tmp/uploads"
+
+
+def test_tilde_attachment_root_is_accepted() -> None:
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+            "OPENPROJECT_ATTACHMENT_ROOT": "~/uploads",
+        }
+    )
+    assert settings.attachment_root == "~/uploads"
+
+
+def test_empty_attachment_root_is_accepted_at_config_time() -> None:
+    # The config layer only validates format when a value IS given — the actual
+    # "uploads disabled" enforcement happens later, in client.py/tools.py, not here.
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+        }
+    )
+    assert settings.attachment_root == ""

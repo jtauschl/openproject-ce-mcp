@@ -289,7 +289,6 @@ WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "delete_reminder",
         "create_work_package_relation",
         "delete_relation",
-        "create_work_package_attachment",
         "delete_attachment",
         "add_work_package_watcher",
         "remove_work_package_watcher",
@@ -303,6 +302,17 @@ WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
     "version": ("create_version", "update_version", "delete_version"),
     "board": ("create_board", "update_board", "delete_board"),
 }
+
+# create_work_package_attachment is NOT in WRITE_TOOLS_BY_SCOPE["work_package"]
+# above: it needs work_package write AND a configured OPENPROJECT_ATTACHMENT_ROOT
+# (OPM-127) — an empty root disables local uploads entirely (client.py's
+# _attachment_root has no cwd fallback), so registering the tool without a root
+# would only expose a schema whose every call fails, wasting context. Its own
+# named constant, handled by a bespoke AND-gate branch in enabled_tool_names()
+# below (mirroring the ADMIN_WRITE_TOOLS / "personal" bespoke branches), rather
+# than a generic mechanism — this is currently the only scope-flag-AND-config-
+# value gate in the codebase.
+ATTACHMENT_UPLOAD_TOOLS: tuple[str, ...] = ("create_work_package_attachment",)
 
 ADMIN_WRITE_TOOLS: tuple[str, ...] = (
     "create_user",
@@ -377,6 +387,11 @@ def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
     # on, see the constant's docstring-comment above.
     if settings.read_enabled("personal") and settings.write_enabled("personal"):
         include(PERSONAL_MUTATION_TOOLS)
+
+    # Bespoke AND-gate (OPM-127): local upload needs BOTH work_package write AND a
+    # configured OPENPROJECT_ATTACHMENT_ROOT — see ATTACHMENT_UPLOAD_TOOLS above.
+    if settings.write_enabled("work_package") and settings.attachment_root:
+        include(ATTACHMENT_UPLOAD_TOOLS)
 
     return tuple(enabled)
 
@@ -3776,6 +3791,7 @@ _TOOL_FUNCTIONS: dict[str, Callable] = {
     name: globals()[name]
     for name in (
         *PERSONAL_MUTATION_TOOLS,
+        *ATTACHMENT_UPLOAD_TOOLS,
         *(name for names in READ_TOOLS_BY_SCOPE.values() for name in names),
         *(name for names in WRITE_TOOLS_BY_SCOPE.values() for name in names),
         *ADMIN_WRITE_TOOLS,

@@ -65,9 +65,11 @@ depends on configuration; the most relevant controls are:
   and apply regardless of confirmation state — an emoji reaction, for
   example, is resolved to its activity's linked work package and checked
   against that project's write scope, rejected if the link can't be resolved.
-- **Attachment uploads are confined** to `OPENPROJECT_ATTACHMENT_ROOT`
-  (defaults to the current working directory): files outside it are refused,
-  and credential/config files (`.mcp.json`, `.env`, `*.pem`, keys) are refused
+- **Attachment uploads require `OPENPROJECT_ATTACHMENT_ROOT`** to be set to an
+  absolute directory — there is no current-working-directory fallback, and
+  `create_work_package_attachment` is not even registered when it's unset.
+  Once set, files outside the configured root are refused, and
+  credential/config files (`.mcp.json`, `.env`, `*.pem`, keys) are refused
   even inside it, so an attachment tool call cannot exfiltrate local secrets.
 - **The API token is a secret.** Store it only in a local, git-ignored config
   (e.g. `.mcp.json`, mode `600`) — never commit it. A remote plain-`http://`

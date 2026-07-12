@@ -187,10 +187,18 @@ def test_enable_work_package_write_adds_wp_write_tools() -> None:
     assert "create_time_entry" in names
     assert "update_relation" in names
     assert "delete_file_link" in names
+    # work_package write alone is no longer sufficient for attachment uploads (OPM-127)
+    assert "create_work_package_attachment" not in names
     # Other write scopes remain locked
     assert "create_project" not in names
     assert "create_board" not in names
     assert "create_news" not in names
+
+
+def test_attachment_root_plus_work_package_write_adds_upload_tool() -> None:
+    mcp = create_app(make_settings(enable_work_package_write=True, attachment_root="/tmp/uploads"))
+    names = _tool_names(mcp)
+    assert "create_work_package_attachment" in names
 
 
 def test_enable_board_write_adds_board_write_tools() -> None:
