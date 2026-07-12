@@ -102,9 +102,9 @@ The tool set itself is trimmed too, mainly by not emitting redundant output
 schemas: on a fully write-enabled deployment (all write scopes on, metadata
 tools off — the default), the `tools/list` payload is currently ~30k tokens,
 down from an unoptimized ~60k baseline (**−50%**). Read-only deployments (no
-write scopes enabled) pay a smaller ~19k. Rarely-used metadata tools are
-gated off by default (`OPENPROJECT_ENABLE_METADATA_TOOLS`), and confirmed
-writes drop the echoed request `payload`. Run `python tools/measure-context.py`
+write scopes enabled) pay a smaller ~18k. Rarely-used metadata tools are
+gated off by default (the `extended` group in `OPENPROJECT_TOOLS`), and
+confirmed writes drop the echoed request `payload`. Run `python tools/measure-context.py`
 to reproduce all of these numbers (the tool-catalog part needs no live
 instance; the response-size table needs a local Docker test instance — see
 the script's docstring).
@@ -413,30 +413,44 @@ are preserved.
 
 ### Tool Groups
 
-Access is grouped into five chains: `project`, `membership`, `work_package`,
-`version`, and `board`. Each chain has a read flag and a write flag. Read flags
-default on. Write flags only matter when `OPENPROJECT_WRITE_PROJECTS`
-is not empty; enabling write access in the basic setup turns the normal
-project-scoped write groups on by default, and Advanced setup can narrow them.
+`OPENPROJECT_TOOLS` is a comma-separated list of the tool groups to register:
+`projects`, `work-packages`, `memberships`, `versions`, `boards`, `personal`,
+`extended`. It controls tool *visibility* (and context-token budget), not data
+access — the actual security boundary is `OPENPROJECT_READ_PROJECTS` /
+`OPENPROJECT_WRITE_PROJECTS` plus the write flags below. It has three distinct
+states:
+
+- **Unset:** the compatible core-5 default — `projects,work-packages,memberships,versions,boards`.
+  `personal` and `extended` are opt-in only and are never included by default.
+- **Explicit empty string:** no tool groups at all.
+- **A concrete list:** exactly those groups.
+
+`personal` covers `get_my_preferences` and `list_notifications`. `extended`
+covers the rarely-used metadata/reference tools (`get_query_*` schema tools,
+`render_text`, `get_custom_option`, `list_help_texts`/`get_help_text`,
+`list_working_days`/`list_non_working_days`) — add `extended` to
+`OPENPROJECT_TOOLS` to expose them; they are off by default to keep them out
+of the tool set and save context.
+
+An unknown group name is rejected at startup. Each of the 5 write flags below
+requires its matching group to be present in `OPENPROJECT_TOOLS`; enabling
+write access in the basic setup turns the normal project-scoped write groups
+on by default, and Advanced setup can narrow them.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `OPENPROJECT_ENABLE_PROJECT_READ` | no | `true` | Projects, documents, news, wiki, lifecycle |
-| `OPENPROJECT_ENABLE_WORK_PACKAGE_READ` | no | `true` | Work packages, relations, attachments, time entries |
-| `OPENPROJECT_ENABLE_MEMBERSHIP_READ` | no | `true` | Memberships, roles, principals |
-| `OPENPROJECT_ENABLE_VERSION_READ` | no | `true` | Versions |
-| `OPENPROJECT_ENABLE_BOARD_READ` | no | `true` | Boards and views |
+| `OPENPROJECT_TOOLS` | no | unset (core-5) | Comma-separated tool groups; unset uses the core-5 default (`projects,work-packages,memberships,versions,boards`), an explicit empty string exposes no groups; optional groups are `personal` and `extended` |
 | `OPENPROJECT_ENABLE_PROJECT_WRITE` | no | `false` | Project create/update/delete, news, documents, grids |
 | `OPENPROJECT_ENABLE_MEMBERSHIP_WRITE` | no | `false` | Project membership create/update/delete |
 | `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE` | no | `false` | Work-package create/update/delete, comments, relations, attachments, time entries |
 | `OPENPROJECT_ENABLE_VERSION_WRITE` | no | `false` | Version create/update/delete |
 | `OPENPROJECT_ENABLE_BOARD_WRITE` | no | `false` | Board create/update/delete |
+| `OPENPROJECT_PERSONAL_WRITE` | no | `false` | Personal-data mutations (update your own preferences, mark notifications read). Requires `personal` in `OPENPROJECT_TOOLS`; unlike the other write flags, `personal` also gates the paired reads, so both must be true together for these tools to appear |
 
 ### Token / Context Budget
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `OPENPROJECT_ENABLE_METADATA_TOOLS` | no | `false` | Expose the rarely-used metadata/reference tools (`get_query_*` schema tools, `render_text`, `get_custom_option`, `list_help_texts`/`get_help_text`, `list_working_days`/`list_non_working_days`). Off by default to keep them out of the tool set and save context; they stay reachable once enabled |
 | `OPENPROJECT_DEFAULT_PAGE_SIZE` | no | `10` | Default results per page (kept small to bound list context; raise if you want more rows per call) |
 | `OPENPROJECT_MAX_PAGE_SIZE` | no | `50` | Hard cap on results per request |
 | `OPENPROJECT_MAX_RESULTS` | no | `100` | Hard cap on total results returned by a tool |
@@ -477,8 +491,8 @@ need per row, and responses are trimmed for context economy (list results drop
 the derivable `count`/`truncated`; a confirmed write drops the echoed request
 `payload`). On `update_work_package` / `update_project`, pass `"none"` to clear a
 nullable field (assignee, responsible, version, sprint, parent, category, project_phase).
-A handful of rarely-used metadata tools are gated behind
-`OPENPROJECT_ENABLE_METADATA_TOOLS` (see Configuration).
+A handful of rarely-used metadata tools are gated behind the `extended` group
+in `OPENPROJECT_TOOLS` (see Configuration).
 
 See the full [tool reference](docs/tools.md) for descriptions of every tool.
 

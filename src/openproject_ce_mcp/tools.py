@@ -151,31 +151,27 @@ RELATION_TYPE_RE = re.compile(
 # list_notifications) now correctly disappear when their real scope is
 # disabled, instead of staying visible and failing only when called.
 #
-# This is Phase 1 of a larger authorization redesign (OPM-122): it fixes the
-# registration/runtime mismatch and gives Phase 4 (OPENPROJECT_TOOLS) a
-# correct foundation. It does NOT introduce a "core" or "personal" grouping
-# as a public concept — that naming decision belongs to Phase 4.
-
-PERSONAL_READ_TOOLS: tuple[str, ...] = ("get_my_preferences",)
-# Verified: get_my_preferences has no _ensure_read_enabled call at all in its
-# client method — genuinely always available today, unlike the tools below
-# that were incorrectly always-registered despite a real runtime gate.
-
-# Three tools, two registration rules (not "two exceptions for three
-# tools"): update_my_preferences is always registered (matches its existing
-# always-on behavior); the two notification-mark-read tools stay bound to
-# write_enabled("work_package") exactly as today. Split into two sub-tuples
-# so enabled_tool_names() below applies each rule via the constant itself,
-# not a second, independently-typed copy of the same names — a real
-# OPENPROJECT_PERSONAL_WRITE is out of scope for this phase.
-ALWAYS_PERSONAL_MUTATION_TOOLS: tuple[str, ...] = ("update_my_preferences",)
-WORK_PACKAGE_GATED_PERSONAL_MUTATION_TOOLS: tuple[str, ...] = (
+# This is Phase 1 of a larger authorization redesign (OPM-122); Phase 4
+# (OPM-126) replaced the 5 per-scope read booleans and the metadata-tools flag
+# with a single OPENPROJECT_TOOLS group list ("personal" and "extended" joined
+# the 5 original scopes as first-class groups) and introduced the independent
+# OPENPROJECT_PERSONAL_WRITE flag.
+#
+# "personal" is NOT a normal write scope: the other 5 scopes treat read and
+# write as independent axes (a write tool appears once its write flag is on,
+# regardless of the paired read flag). For "personal", the repo owner decided
+# that "personal" in OPENPROJECT_TOOLS controls visibility of the WHOLE
+# personal surface (read AND write), with OPENPROJECT_PERSONAL_WRITE acting as
+# an additional gate only within that already-visible surface — an AND, not
+# an independent toggle. PERSONAL_MUTATION_TOOLS is therefore its own named
+# constant, handled by a bespoke branch in enabled_tool_names() (mirroring
+# the existing ADMIN_WRITE_TOOLS bespoke branch) rather than being folded into
+# WRITE_TOOLS_BY_SCOPE, which would run it through the generic independent
+# read/write iteration and lose the AND semantics.
+PERSONAL_MUTATION_TOOLS: tuple[str, ...] = (
+    "update_my_preferences",
     "mark_notification_read",
     "mark_all_notifications_read",
-)
-PERSONAL_MUTATION_TOOLS: tuple[str, ...] = (
-    *ALWAYS_PERSONAL_MUTATION_TOOLS,
-    *WORK_PACKAGE_GATED_PERSONAL_MUTATION_TOOLS,
 )
 
 READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
@@ -230,7 +226,6 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "list_time_entries",
         "get_time_entry",
         "list_relations",
-        "list_notifications",
     ),
     "membership": (
         "list_project_memberships",
@@ -247,6 +242,21 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
     ),
     "version": ("list_versions", "get_version"),
     "board": ("list_boards", "get_board"),
+    "personal": ("get_my_preferences", "list_notifications"),
+    "extended": (
+        "get_query_filter",
+        "get_query_column",
+        "get_query_operator",
+        "get_query_sort_by",
+        "list_query_filter_instance_schemas",
+        "get_query_filter_instance_schema",
+        "render_text",
+        "list_help_texts",
+        "get_help_text",
+        "list_working_days",
+        "list_non_working_days",
+        "get_custom_option",
+    ),
 }
 
 WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
@@ -308,28 +318,13 @@ ADMIN_WRITE_TOOLS: tuple[str, ...] = (
 # below), not via write_enabled("admin") — "admin" is deliberately not a key
 # of Settings.write_enabled's scope table (see config.py).
 
-METADATA_TOOLS: tuple[str, ...] = (
-    "get_query_filter",
-    "get_query_column",
-    "get_query_operator",
-    "get_query_sort_by",
-    "list_query_filter_instance_schemas",
-    "get_query_filter_instance_schema",
-    "render_text",
-    "list_help_texts",
-    "get_help_text",
-    "list_working_days",
-    "list_non_working_days",
-    "get_custom_option",
-)
-# Gated by settings.enable_metadata_tools; 7 of these also require an
-# additional read scope (ADDITIONAL_READ_SCOPES_BY_TOOL below).
-
 # Additional read scopes required by tools whose home group above is not
 # sufficient on its own (verified against each client method, not guessed).
 # Only ADDITIONAL requirements are listed here — never the tool's own home
 # scope. role/principal are aliases of the same enable_membership_read flag
 # as membership (see config.py), so they are not listed as separate entries.
+# The 7 "extended"-home tools below point at their additional scopes
+# ("board"/"work_package"), not at "extended" itself.
 ADDITIONAL_READ_SCOPES_BY_TOOL: dict[str, frozenset[str]] = {
     "get_my_project_access": frozenset({"membership"}),
     "get_project_work_package_context": frozenset({"work_package", "version"}),
@@ -366,15 +361,9 @@ def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
     def additional_scopes_ok(name: str) -> bool:
         return all(settings.read_enabled(scope) for scope in ADDITIONAL_READ_SCOPES_BY_TOOL.get(name, ()))
 
-    include(PERSONAL_READ_TOOLS)
-    include(ALWAYS_PERSONAL_MUTATION_TOOLS)
-
     for scope, names in READ_TOOLS_BY_SCOPE.items():
         if settings.read_enabled(scope):
             include(tuple(name for name in names if additional_scopes_ok(name)))
-
-    if settings.write_enabled("work_package"):
-        include(WORK_PACKAGE_GATED_PERSONAL_MUTATION_TOOLS)
 
     for scope, names in WRITE_TOOLS_BY_SCOPE.items():
         if settings.write_enabled(scope):
@@ -383,8 +372,11 @@ def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
     if settings.enable_admin_write:
         include(ADMIN_WRITE_TOOLS)
 
-    if settings.enable_metadata_tools:
-        include(tuple(name for name in METADATA_TOOLS if additional_scopes_ok(name)))
+    # Bespoke AND-gate (not the generic independent read/write iteration above):
+    # personal mutations need BOTH "personal" visible AND OPENPROJECT_PERSONAL_WRITE
+    # on, see the constant's docstring-comment above.
+    if settings.read_enabled("personal") and settings.write_enabled("personal"):
+        include(PERSONAL_MUTATION_TOOLS)
 
     return tuple(enabled)
 
@@ -3783,11 +3775,9 @@ def _validate_positive_int(value: int, *, field_name: str) -> int:
 _TOOL_FUNCTIONS: dict[str, Callable] = {
     name: globals()[name]
     for name in (
-        *PERSONAL_READ_TOOLS,
         *PERSONAL_MUTATION_TOOLS,
         *(name for names in READ_TOOLS_BY_SCOPE.values() for name in names),
         *(name for names in WRITE_TOOLS_BY_SCOPE.values() for name in names),
         *ADMIN_WRITE_TOOLS,
-        *METADATA_TOOLS,
     )
 }

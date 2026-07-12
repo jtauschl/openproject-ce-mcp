@@ -50,12 +50,53 @@ def test_defaults_no_write_tools() -> None:
     assert "mark_notification_read" not in names
 
 
-def test_update_my_preferences_always_available() -> None:
-    """update_my_preferences is in tools.PERSONAL_MUTATION_TOOLS, always registered
-    unconditionally (one of its two registration rules, see tools.enabled_tool_names)."""
+def test_update_my_preferences_absent_by_default() -> None:
+    """OPM-126: "personal" is opt-in only — update_my_preferences is no longer
+    unconditionally registered like it was pre-OPM-126."""
     mcp = create_app(make_settings())
     names = _tool_names(mcp)
+    assert "update_my_preferences" not in names
+
+
+def test_update_my_preferences_needs_both_personal_read_and_write() -> None:
+    """ "personal" is an AND-gate, not the independent read/write pattern every
+    other scope uses: both enable_personal_read AND enable_personal_write are
+    required together before the mutation tools appear."""
+    mcp = create_app(make_settings(enable_personal_read=True, enable_personal_write=True))
+    names = _tool_names(mcp)
     assert "update_my_preferences" in names
+    assert "mark_notification_read" in names
+    assert "mark_all_notifications_read" in names
+
+
+def test_personal_tools_absent_by_default() -> None:
+    mcp = create_app(make_settings())
+    names = _tool_names(mcp)
+    assert "get_my_preferences" not in names
+    assert "list_notifications" not in names
+    assert "update_my_preferences" not in names
+    assert "mark_notification_read" not in names
+    assert "mark_all_notifications_read" not in names
+
+
+def test_personal_read_alone_exposes_only_reads() -> None:
+    mcp = create_app(make_settings(enable_personal_read=True))
+    names = _tool_names(mcp)
+    assert "get_my_preferences" in names
+    assert "list_notifications" in names
+    assert "update_my_preferences" not in names
+    assert "mark_notification_read" not in names
+    assert "mark_all_notifications_read" not in names
+
+
+def test_personal_write_alone_exposes_nothing() -> None:
+    mcp = create_app(make_settings(enable_personal_write=True))
+    names = _tool_names(mcp)
+    assert "get_my_preferences" not in names
+    assert "list_notifications" not in names
+    assert "update_my_preferences" not in names
+    assert "mark_notification_read" not in names
+    assert "mark_all_notifications_read" not in names
 
 
 def test_enable_project_read_false_removes_project_tools() -> None:
@@ -144,7 +185,6 @@ def test_enable_work_package_write_adds_wp_write_tools() -> None:
     assert "update_work_package" in names
     assert "delete_work_package" in names
     assert "create_time_entry" in names
-    assert "mark_notification_read" in names
     assert "update_relation" in names
     assert "delete_file_link" in names
     # Other write scopes remain locked
@@ -176,12 +216,10 @@ def test_enable_project_write_adds_project_write_tools() -> None:
 def test_work_package_write_without_work_package_read_hides_compound_scope_tools() -> None:
     """Asymmetric case: delete_file_link additionally requires work_package READ
     (not just its home WRITE scope) — it must disappear when read is off, even
-    though other work_package writes (which have no such extra dependency) stay.
-    mark_notification_read has no additional-scope requirement and stays too."""
+    though other work_package writes (which have no such extra dependency) stay."""
     mcp = create_app(make_settings(enable_work_package_read=False, enable_work_package_write=True))
     names = _tool_names(mcp)
     assert "create_work_package" in names
-    assert "mark_notification_read" in names
     assert "delete_file_link" not in names
     assert "list_notifications" not in names
 

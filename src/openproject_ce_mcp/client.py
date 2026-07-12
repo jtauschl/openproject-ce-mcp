@@ -3918,7 +3918,7 @@ class OpenProjectClient:
         limit: int | None = None,
         offset: int = 1,
     ) -> NotificationListResult:
-        self._ensure_read_enabled("work_package")
+        self._ensure_read_enabled("personal")
         effective_limit = self._resolve_limit(limit)
         params: dict[str, str] = {
             "offset": str(offset),
@@ -3965,7 +3965,7 @@ class OpenProjectClient:
         return True  # no project link and no work-package resource link: genuinely personal/global
 
     async def mark_notification_read(self, notification_id: int, *, confirm: bool = False) -> NotificationMarkResult:
-        self._ensure_write_enabled("work_package")
+        self._ensure_write_enabled("personal")
         if not confirm:
             # No OpenProject dry-run endpoint exists for this action — this is a
             # client-side preview only (OPM-124): ready=True means the request is
@@ -3997,7 +3997,7 @@ class OpenProjectClient:
         )
 
     async def mark_all_notifications_read(self, *, confirm: bool = False) -> NotificationMarkResult:
-        self._ensure_write_enabled("work_package")
+        self._ensure_write_enabled("personal")
         if not confirm:
             return NotificationMarkResult(
                 action="mark_all_read",
@@ -4557,6 +4557,7 @@ class OpenProjectClient:
     # --- User Preferences ---
 
     async def get_my_preferences(self) -> UserPreferences:
+        self._ensure_read_enabled("personal")
         payload = await self._get("my_preferences")
         return self.normalize_user_preferences(payload)
 
@@ -4571,8 +4572,10 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> UserPreferencesWriteResult:
         # Self-scoped: only the authenticated token owner's own preferences
-        # (language, timezone, popup behaviour). No project/admin scope applies;
-        # the confirm/preview flow is the guard here.
+        # (language, timezone, popup behaviour). Gated by "personal" write
+        # (OPENPROJECT_PERSONAL_WRITE); the confirm/preview flow is a separate,
+        # additional guard on top, not a substitute for it.
+        self._ensure_write_enabled("personal")
         body: dict[str, Any] = {}
         if lang is not None:
             body["lang"] = lang
@@ -7054,6 +7057,7 @@ class OpenProjectClient:
             "membership": "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE",
             "version": "OPENPROJECT_ENABLE_VERSION_WRITE",
             "board": "OPENPROJECT_ENABLE_BOARD_WRITE",
+            "personal": "OPENPROJECT_PERSONAL_WRITE",
         }.get(scope, "the corresponding write-group setting")
         raise PermissionDeniedError(
             f"OpenProject {scope.replace('_', ' ')} write support is disabled. "
@@ -7063,17 +7067,19 @@ class OpenProjectClient:
     def _ensure_read_enabled(self, scope: str) -> None:
         if self.settings.read_enabled(scope):
             return
-        scope_env = {
-            "project": "OPENPROJECT_ENABLE_PROJECT_READ",
-            "membership": "OPENPROJECT_ENABLE_MEMBERSHIP_READ",
-            "role": "OPENPROJECT_ENABLE_MEMBERSHIP_READ",
-            "principal": "OPENPROJECT_ENABLE_MEMBERSHIP_READ",
-            "work_package": "OPENPROJECT_ENABLE_WORK_PACKAGE_READ",
-            "version": "OPENPROJECT_ENABLE_VERSION_READ",
-            "board": "OPENPROJECT_ENABLE_BOARD_READ",
-        }.get(scope, "the relevant OPENPROJECT_ENABLE_*_READ flag")
+        scope_group = {
+            "project": "projects",
+            "membership": "memberships",
+            "role": "memberships",
+            "principal": "memberships",
+            "work_package": "work-packages",
+            "version": "versions",
+            "board": "boards",
+            "personal": "personal",
+        }.get(scope, "the relevant tool group")
         raise PermissionDeniedError(
-            f"OpenProject {scope.replace('_', ' ')} read support is disabled. Set {scope_env}=true to allow reads."
+            f"OpenProject {scope.replace('_', ' ')} read support is disabled. "
+            f"Add '{scope_group}' to OPENPROJECT_TOOLS to allow reads."
         )
 
     def _sprint_payload_allowed(self, payload: dict[str, Any]) -> bool:

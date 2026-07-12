@@ -841,6 +841,73 @@ def test_merge_scope_prefill_new_key_wins_over_legacy_within_same_source(tmp_pat
     assert read_used_legacy is False
 
 
+# ── _merge_tool_groups_prefill (OPM-126) ────────────────────────────────────────
+
+
+def test_merge_tool_groups_prefill_source_priority_beats_new_vs_legacy_key_choice(tmp_path: Path) -> None:
+    # Same error class as OPM-125's _merge_scope_prefill review: a higher-priority
+    # source's LEGACY-derived value must still win over a lower-priority source's
+    # NEW key.
+    pairs = _scope_clients(
+        tmp_path,
+        global_env={"OPENPROJECT_TOOLS": "projects"},
+        project_env={
+            "OPENPROJECT_ENABLE_PROJECT_READ": "false",
+            "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "true",
+            "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "false",
+            "OPENPROJECT_ENABLE_VERSION_READ": "false",
+            "OPENPROJECT_ENABLE_BOARD_READ": "false",
+        },
+    )
+    value, used_legacy = c._merge_tool_groups_prefill(pairs)
+    assert used_legacy is True
+    groups = value.split(",")
+    assert "work-packages" in groups
+    assert "projects" not in groups
+
+
+def test_merge_tool_groups_prefill_new_key_wins_over_legacy_within_same_source(tmp_path: Path) -> None:
+    pairs = _scope_clients(
+        tmp_path,
+        global_env={},
+        project_env={"OPENPROJECT_TOOLS": "boards", "OPENPROJECT_ENABLE_PROJECT_READ": "true"},
+    )
+    value, used_legacy = c._merge_tool_groups_prefill(pairs)
+    assert value == "boards"
+    assert used_legacy is False
+
+
+def test_merge_tool_groups_prefill_migrates_legacy_flags_to_groups(tmp_path: Path) -> None:
+    pairs = _scope_clients(
+        tmp_path,
+        global_env={},
+        project_env={
+            "OPENPROJECT_ENABLE_PROJECT_READ": "true",
+            "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "false",
+            "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "true",
+            "OPENPROJECT_ENABLE_VERSION_READ": "true",
+            "OPENPROJECT_ENABLE_BOARD_READ": "true",
+            "OPENPROJECT_ENABLE_METADATA_TOOLS": "true",
+        },
+    )
+    value, used_legacy = c._merge_tool_groups_prefill(pairs)
+    assert used_legacy is True
+    assert set(value.split(",")) == {"projects", "memberships", "versions", "boards", "extended"}
+
+
+def test_merge_tool_groups_prefill_explicit_empty_new_key_overrides_legacy(tmp_path: Path) -> None:
+    # Presence, not truthiness: an explicit empty OPENPROJECT_TOOLS must win over
+    # a nonempty legacy flag in the same source, not silently resurrect it.
+    pairs = _scope_clients(
+        tmp_path,
+        global_env={},
+        project_env={"OPENPROJECT_TOOLS": "", "OPENPROJECT_ENABLE_PROJECT_READ": "true"},
+    )
+    value, used_legacy = c._merge_tool_groups_prefill(pairs)
+    assert value == ""
+    assert used_legacy is False
+
+
 def test_shim_reexports_public_names() -> None:
     # The root configure_mcp.py shim must re-export main and helpers so get.sh
     # and any importer keep working.
@@ -1165,7 +1232,8 @@ def test_main_basic_setup_safe_advanced_defaults(monkeypatch, tmp_path: Path) ->
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_ENABLE_METADATA_TOOLS"] == "false"
+    assert env["OPENPROJECT_TOOLS"] == c._DEFAULT_TOOL_GROUPS_CSV
+    assert env["OPENPROJECT_PERSONAL_WRITE"] == "false"
     assert env["OPENPROJECT_ATTACHMENT_ROOT"] == ""
     assert env["OPENPROJECT_MAX_RETRIES"] == "3"
     assert env["OPENPROJECT_RETRY_BASE_DELAY"] == "1.0"
@@ -1349,7 +1417,7 @@ def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, 
                             "OPENPROJECT_BASE_URL": "https://old.example.com",
                             "OPENPROJECT_API_TOKEN": "old-token",
                             "OPENPROJECT_HIDE_PROJECT_FIELDS": "description",
-                            "OPENPROJECT_ENABLE_METADATA_TOOLS": "true",
+                            "OPENPROJECT_TOOLS": "projects,work-packages,memberships,versions,boards,extended",
                             "OPENPROJECT_ATTACHMENT_ROOT": "/tmp/uploads",
                             "OPENPROJECT_MAX_RETRIES": "7",
                             "OPENPROJECT_RETRY_BASE_DELAY": "2.5",
@@ -1367,7 +1435,7 @@ def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
     assert env["OPENPROJECT_HIDE_PROJECT_FIELDS"] == "description"
-    assert env["OPENPROJECT_ENABLE_METADATA_TOOLS"] == "true"
+    assert env["OPENPROJECT_TOOLS"] == "projects,work-packages,memberships,versions,boards,extended"
     assert env["OPENPROJECT_ATTACHMENT_ROOT"] == "/tmp/uploads"
     assert env["OPENPROJECT_MAX_RETRIES"] == "7"
     assert env["OPENPROJECT_RETRY_BASE_DELAY"] == "2.5"
@@ -1385,11 +1453,8 @@ def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: 
         "y",  # enable write access
         "TST",  # writable projects
         "y",  # advanced
-        "",  # project reads
-        "",  # membership reads
-        "",  # work-package reads
-        "",  # version reads
-        "",  # board reads
+        "projects,work-packages,memberships,versions,boards,personal,extended",  # enabled tool groups
+        "y",  # enable personal-data writes (personal is in the groups above)
         "y",  # work-package writes
         "n",  # project writes
         "n",  # membership writes
@@ -1400,7 +1465,6 @@ def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: 
         "comment",  # hidden activity fields
         "budget",  # hidden custom fields
         "n",  # admin writes
-        "y",  # metadata tools
         "/tmp/uploads",  # attachment root
         "5",  # default page size
         "25",  # max page size
@@ -1421,11 +1485,241 @@ def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: 
     assert env["OPENPROJECT_WRITE_PROJECTS"] == "TST"
     assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "true"
     assert env["OPENPROJECT_HIDE_PROJECT_FIELDS"] == "status_explanation"
-    assert env["OPENPROJECT_ENABLE_METADATA_TOOLS"] == "true"
+    tool_groups = env["OPENPROJECT_TOOLS"].split(",")
+    assert "extended" in tool_groups
+    assert "personal" in tool_groups
+    assert env["OPENPROJECT_PERSONAL_WRITE"] == "true"
     assert env["OPENPROJECT_ATTACHMENT_ROOT"] == "/tmp/uploads"
     assert env["OPENPROJECT_DEFAULT_PAGE_SIZE"] == "5"
     assert env["OPENPROJECT_MAX_RETRIES"] == "4"
     assert env["OPENPROJECT_RETRY_BASE_DELAY"] == "0.5"
+
+
+# ── Wizard reconciliation + validation (OPM-126 review rounds 3-7) ─────────────
+
+
+def test_main_advanced_deselecting_group_disables_existing_write_flag(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".mcp.json"
+    target.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "openproject": {
+                        "command": "old",
+                        "env": {
+                            "OPENPROJECT_BASE_URL": "https://old.example.com",
+                            "OPENPROJECT_API_TOKEN": "old-token",
+                            "OPENPROJECT_WRITE_PROJECTS": "*",
+                            "OPENPROJECT_ENABLE_BOARD_WRITE": "true",
+                        },
+                    }
+                }
+            }
+        )
+    )
+    claude = _json_client(tmp_path / ".claude.json", project_target=target)
+    answers = [
+        "n",
+        "y",
+        "y",
+        "",  # base url
+        "",  # read projects
+        "y",  # enable write access
+        "",  # writable projects (keep existing "*")
+        "y",  # advanced
+        "projects,work-packages,memberships,versions",  # groups WITHOUT boards
+    ]
+    _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
+
+    data = json.loads(target.read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert "boards" not in env["OPENPROJECT_TOOLS"].split(",")
+    assert env["OPENPROJECT_ENABLE_BOARD_WRITE"] == "false"
+    c.Settings.from_env(env)  # must still parse cleanly
+
+
+def test_main_personal_write_forced_false_when_personal_group_absent_in_advanced(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".mcp.json"
+    target.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "openproject": {
+                        "command": "old",
+                        "env": {
+                            "OPENPROJECT_BASE_URL": "https://old.example.com",
+                            "OPENPROJECT_API_TOKEN": "old-token",
+                            "OPENPROJECT_PERSONAL_WRITE": "true",
+                        },
+                    }
+                }
+            }
+        )
+    )
+    claude = _json_client(tmp_path / ".claude.json", project_target=target)
+    answers = [
+        "n",
+        "y",
+        "y",
+        "",  # base url
+        "",  # read projects
+        "n",  # write access disabled
+        "y",  # advanced
+        "projects,work-packages",  # groups WITHOUT personal — no personal_write slot needed
+    ]
+    _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
+
+    data = json.loads(target.read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert "personal" not in env["OPENPROJECT_TOOLS"].split(",")
+    assert env["OPENPROJECT_PERSONAL_WRITE"] == "false"
+
+
+def test_main_legacy_migration_reconciles_read_off_write_on_same_scope(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".mcp.json"
+    target.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "openproject": {
+                        "command": "old",
+                        "env": {
+                            "OPENPROJECT_BASE_URL": "https://old.example.com",
+                            "OPENPROJECT_API_TOKEN": "old-token",
+                            "OPENPROJECT_WRITE_PROJECTS": "*",
+                            "OPENPROJECT_ENABLE_BOARD_READ": "false",
+                            "OPENPROJECT_ENABLE_BOARD_WRITE": "true",
+                        },
+                    }
+                }
+            }
+        )
+    )
+    claude = _json_client(tmp_path / ".claude.json", project_target=target)
+    # Advanced entirely skipped: the migrated OPENPROJECT_TOOLS excludes "boards"
+    # (board read was false), while OPENPROJECT_ENABLE_BOARD_WRITE stayed true from
+    # the same legacy config — the reconciliation must fire even in this
+    # non-advanced/migration-only path, not just when the user types groups by hand.
+    answers = ["n", "y", "y", "", "", "y", ""]
+    _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
+
+    data = json.loads(target.read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert "boards" not in env["OPENPROJECT_TOOLS"].split(",")
+    assert env["OPENPROJECT_ENABLE_BOARD_WRITE"] == "false"
+
+
+def test_main_advanced_invalid_group_reprompts_then_succeeds(monkeypatch, tmp_path: Path) -> None:
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+    answers = [
+        "n",
+        "y",
+        "y",
+        "",  # base url
+        "",  # read projects
+        "n",  # write access
+        "y",  # advanced
+        "projects,work-packages,personl",  # typo: should be "personal"
+        "projects,work-packages,personal",  # corrected on reprompt
+        "y",  # personal_write prompt (personal now present + advanced)
+    ]
+    _run_main(monkeypatch, tmp_path, [claude], answers)
+
+    data = json.loads((tmp_path / ".mcp.json").read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    groups = env["OPENPROJECT_TOOLS"].split(",")
+    assert "personal" in groups
+    assert env["OPENPROJECT_PERSONAL_WRITE"] == "true"
+
+
+def test_main_typo_in_group_list_does_not_clobber_unrelated_personal_write(monkeypatch, tmp_path: Path) -> None:
+    # OPM-126 review round 5 regression: a typo in ONE group must not permanently
+    # disable an unrelated, already-correct write flag once corrected.
+    target = tmp_path / ".mcp.json"
+    target.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "openproject": {
+                        "command": "old",
+                        "env": {
+                            "OPENPROJECT_BASE_URL": "https://old.example.com",
+                            "OPENPROJECT_API_TOKEN": "old-token",
+                            "OPENPROJECT_TOOLS": "projects,personal",
+                            "OPENPROJECT_PERSONAL_WRITE": "true",
+                        },
+                    }
+                }
+            }
+        )
+    )
+    claude = _json_client(tmp_path / ".claude.json", project_target=target)
+    answers = [
+        "n",
+        "y",
+        "y",
+        "",  # base url
+        "",  # read projects
+        "n",  # write access
+        "y",  # advanced
+        "projects,personl",  # typo drops "personal"
+        "projects,personal",  # corrected — "personal" is back
+        "",  # personal_write prompt: keep existing (true) default
+    ]
+    _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
+
+    data = json.loads(target.read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert "personal" in env["OPENPROJECT_TOOLS"].split(",")
+    assert env["OPENPROJECT_PERSONAL_WRITE"] == "true"
+
+
+def test_main_advanced_permanently_invalid_group_aborts_without_writing(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".mcp.json"
+    claude = _json_client(tmp_path / ".claude.json", project_target=target)
+    answers = [
+        "n",
+        "y",
+        "y",
+        "",  # base url
+        "",  # read projects
+        "n",  # write access
+        "y",  # advanced
+        "bogus1",
+        "bogus2",
+        "bogus3",  # 3 attempts, all invalid
+    ]
+    with pytest.raises(SystemExit) as exc:
+        _run_main(monkeypatch, tmp_path, [claude], answers)
+    assert exc.value.code == 1
+    assert not target.exists()
+
+
+def test_wizard_invariant_generated_config_always_parses_with_settings_from_env(monkeypatch, tmp_path: Path) -> None:
+    """The generated env must always parse via Settings.from_env — enforced
+    structurally inside main() itself; this test is a regression guard, not the
+    mechanism that creates the guarantee."""
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+    answers = [
+        "n",
+        "y",
+        "y",
+        "",  # base url
+        "OPM",  # readable projects
+        "y",  # enable write access
+        "TST",  # writable projects
+        "y",  # advanced
+        "projects,work-packages,memberships,versions,boards,personal,extended",
+        "y",  # personal write
+        "y",
+        "y",
+        "y",
+        "y",  # all remaining write controls on
+    ]
+    _run_main(monkeypatch, tmp_path, [claude], answers)
+    data = json.loads((tmp_path / ".mcp.json").read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    c.Settings.from_env(env)  # must not raise
 
 
 def test_main_ctrl_c_exits_130_no_traceback(monkeypatch, capsys) -> None:

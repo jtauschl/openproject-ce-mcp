@@ -26,6 +26,8 @@ _READ_SCOPE_SETTINGS: dict[str, str] = {
     "principal": "enable_membership_read",
     "version": "enable_version_read",
     "board": "enable_board_read",
+    "personal": "enable_personal_read",
+    "extended": "enable_metadata_tools",
 }
 _WRITE_SCOPE_SETTINGS: dict[str, str] = {
     "work_package": "enable_work_package_write",
@@ -33,7 +35,72 @@ _WRITE_SCOPE_SETTINGS: dict[str, str] = {
     "membership": "enable_membership_write",
     "version": "enable_version_write",
     "board": "enable_board_write",
+    "personal": "enable_personal_write",
 }
+
+
+# OPENPROJECT_TOOLS group name -> read/write scope string used above. "personal"
+# and "extended" are scopes in their own right (see Settings.enable_personal_*
+# and enable_metadata_tools); "extended" has no write counterpart because every
+# METADATA_TOOLS client.py method is a pure read.
+_TOOL_GROUP_TO_SCOPE: dict[str, str] = {
+    "projects": "project",
+    "work-packages": "work_package",
+    "memberships": "membership",
+    "versions": "version",
+    "boards": "board",
+    "personal": "personal",
+    "extended": "extended",
+}
+
+# Compatible core-5 default when OPENPROJECT_TOOLS is unset entirely — "personal"
+# and "extended" are opt-in only, never part of the unset default (see OPM-126).
+_DEFAULT_TOOL_GROUPS: frozenset[str] = frozenset({"projects", "work-packages", "memberships", "versions", "boards"})
+
+# (flag_key, tool group, env var) triples: a True write flag whose group is not
+# in OPENPROJECT_TOOLS is a startup-time ConfigError (see tool_exposure_violations
+# below). Shared by Settings.from_env's validation and setup_cli.py's pre-write
+# wizard reconciliation so the rule lives in exactly one place.
+WRITE_GROUP_REQUIREMENTS: tuple[tuple[str, str, str], ...] = (
+    ("project_write", "projects", "OPENPROJECT_ENABLE_PROJECT_WRITE"),
+    ("work_package_write", "work-packages", "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"),
+    ("membership_write", "memberships", "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE"),
+    ("version_write", "versions", "OPENPROJECT_ENABLE_VERSION_WRITE"),
+    ("board_write", "boards", "OPENPROJECT_ENABLE_BOARD_WRITE"),
+    ("personal_write", "personal", "OPENPROJECT_PERSONAL_WRITE"),
+)
+
+
+def tool_exposure_violations(tool_groups: frozenset[str], **write_flags: bool) -> list[tuple[str, str, str]]:
+    """(flag_key, group, env_var) triples where write_flags[flag_key] is True but
+    group is absent from tool_groups. Shared by Settings.from_env's startup
+    validation and setup_cli.py's pre-write reconciliation."""
+    return [
+        (key, group, env_var)
+        for key, group, env_var in WRITE_GROUP_REQUIREMENTS
+        if write_flags.get(key) and group not in tool_groups
+    ]
+
+
+def parse_tool_groups_csv(raw: str) -> frozenset[str]:
+    """Parse + validate a raw OPENPROJECT_TOOLS CSV value (no unset-handling —
+    that is _parse_tool_groups's job). Raises ConfigError on any unknown group
+    name. Public so setup_cli.py can validate the wizard's free-text prompt
+    with the exact same rule the runtime enforces."""
+    raw_groups = _parse_csv(raw)
+    unknown = sorted(set(raw_groups) - set(_TOOL_GROUP_TO_SCOPE))
+    if unknown:
+        raise ConfigError(
+            f"OPENPROJECT_TOOLS has unknown tool group(s): {', '.join(unknown)}. "
+            f"Known groups: {', '.join(sorted(_TOOL_GROUP_TO_SCOPE))}."
+        )
+    return frozenset(raw_groups)
+
+
+def _parse_tool_groups(env: Mapping[str, str]) -> frozenset[str]:
+    if "OPENPROJECT_TOOLS" not in env:
+        return _DEFAULT_TOOL_GROUPS
+    return parse_tool_groups_csv(env.get("OPENPROJECT_TOOLS", ""))
 
 
 # Cap for a work-package description shown in list/summary results — a per-row
@@ -106,6 +173,7 @@ class Settings:
     enable_membership_read: bool = True
     enable_version_read: bool = True
     enable_board_read: bool = True
+    enable_personal_read: bool = False
     hide_project_fields: tuple[str, ...] = ()
     hide_work_package_fields: tuple[str, ...] = ()
     hide_activity_fields: tuple[str, ...] = ()
@@ -116,6 +184,7 @@ class Settings:
     enable_membership_write: bool = False
     enable_version_write: bool = False
     enable_board_write: bool = False
+    enable_personal_write: bool = False
     enable_admin_write: bool = False
     enable_metadata_tools: bool = False
     attachment_root: str = ""
@@ -148,31 +217,14 @@ class Settings:
         api_token = _require_non_empty(env.get("OPENPROJECT_API_TOKEN"), "OPENPROJECT_API_TOKEN")
         read_projects = _parse_csv(env.get("OPENPROJECT_READ_PROJECTS"))
         write_projects = _parse_csv(env.get("OPENPROJECT_WRITE_PROJECTS"))
-        enable_work_package_read = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
-            "OPENPROJECT_ENABLE_WORK_PACKAGE_READ",
-            default=True,
-        )
-        enable_project_read = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_PROJECT_READ"),
-            "OPENPROJECT_ENABLE_PROJECT_READ",
-            default=True,
-        )
-        enable_membership_read = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_MEMBERSHIP_READ"),
-            "OPENPROJECT_ENABLE_MEMBERSHIP_READ",
-            default=True,
-        )
-        enable_version_read = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_VERSION_READ"),
-            "OPENPROJECT_ENABLE_VERSION_READ",
-            default=True,
-        )
-        enable_board_read = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_BOARD_READ"),
-            "OPENPROJECT_ENABLE_BOARD_READ",
-            default=True,
-        )
+        tool_groups = _parse_tool_groups(env)
+        enable_project_read = "projects" in tool_groups
+        enable_work_package_read = "work-packages" in tool_groups
+        enable_membership_read = "memberships" in tool_groups
+        enable_version_read = "versions" in tool_groups
+        enable_board_read = "boards" in tool_groups
+        enable_personal_read = "personal" in tool_groups
+        enable_metadata_tools = "extended" in tool_groups
         hidden_fields = {
             entity: patterns
             for entity, env_name in HIDE_FIELD_ENV_BY_ENTITY.items()
@@ -207,14 +259,14 @@ class Settings:
             "OPENPROJECT_ENABLE_BOARD_WRITE",
             default=False,
         )
+        enable_personal_write = _parse_bool(
+            env.get("OPENPROJECT_PERSONAL_WRITE"),
+            "OPENPROJECT_PERSONAL_WRITE",
+            default=False,
+        )
         enable_admin_write = _parse_bool(
             env.get("OPENPROJECT_ENABLE_ADMIN_WRITE"),
             "OPENPROJECT_ENABLE_ADMIN_WRITE",
-            default=False,
-        )
-        enable_metadata_tools = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_METADATA_TOOLS"),
-            "OPENPROJECT_ENABLE_METADATA_TOOLS",
             default=False,
         )
         timeout = _parse_float(env.get("OPENPROJECT_TIMEOUT"), "OPENPROJECT_TIMEOUT", default=12.0, minimum=1.0)
@@ -278,6 +330,19 @@ class Settings:
         if max_page_size > max_results:
             raise ConfigError("OPENPROJECT_MAX_PAGE_SIZE must not exceed OPENPROJECT_MAX_RESULTS.")
 
+        violations = tool_exposure_violations(
+            tool_groups,
+            project_write=enable_project_write,
+            work_package_write=enable_work_package_write,
+            membership_write=enable_membership_write,
+            version_write=enable_version_write,
+            board_write=enable_board_write,
+            personal_write=enable_personal_write,
+        )
+        if violations:
+            _, group, env_var = violations[0]
+            raise ConfigError(f"{env_var}=true requires '{group}' to be present in OPENPROJECT_TOOLS.")
+
         return cls(
             base_url=base_url,
             api_token=api_token,
@@ -295,6 +360,7 @@ class Settings:
             enable_work_package_read=enable_work_package_read,
             enable_version_read=enable_version_read,
             enable_board_read=enable_board_read,
+            enable_personal_read=enable_personal_read,
             hide_project_fields=hide_project_fields,
             hide_work_package_fields=hide_work_package_fields,
             hide_activity_fields=hide_activity_fields,
@@ -305,6 +371,7 @@ class Settings:
             enable_membership_write=enable_membership_write,
             enable_version_write=enable_version_write,
             enable_board_write=enable_board_write,
+            enable_personal_write=enable_personal_write,
             enable_admin_write=enable_admin_write,
             enable_metadata_tools=enable_metadata_tools,
             attachment_root=attachment_root,

@@ -14,9 +14,9 @@ def _registered_tool_names() -> set[str]:
     register_tools() no longer contains hand-written `tool(name)` calls to
     parse — it iterates `enabled_tool_names()`, which resolves names through
     `_TOOL_FUNCTIONS`. That dict is itself derived from the classification
-    constants (READ_TOOLS_BY_SCOPE, WRITE_TOOLS_BY_SCOPE, PERSONAL_*,
-    ADMIN_WRITE_TOOLS, METADATA_TOOLS), so reading its keys directly is both
-    simpler and more accurate than re-parsing register_tools() via AST.
+    constants (READ_TOOLS_BY_SCOPE, WRITE_TOOLS_BY_SCOPE,
+    PERSONAL_MUTATION_TOOLS, ADMIN_WRITE_TOOLS), so reading its keys directly
+    is both simpler and more accurate than re-parsing register_tools() via AST.
     """
     return set(_tools._TOOL_FUNCTIONS)
 

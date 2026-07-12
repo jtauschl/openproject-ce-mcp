@@ -1,8 +1,9 @@
-"""Architecture tests for the OPM-123 tool classification in tools.py.
+"""Architecture tests for the OPM-123/OPM-126 tool classification in tools.py.
 
 These are structural/name-based invariants over the classification constants
-(READ_TOOLS_BY_SCOPE, WRITE_TOOLS_BY_SCOPE, PERSONAL_*, ADMIN_WRITE_TOOLS,
-METADATA_TOOLS, ADDITIONAL_READ_SCOPES_BY_TOOL) and over enabled_tool_names().
+(READ_TOOLS_BY_SCOPE — including the "personal"/"extended" groups added by
+OPM-126 — WRITE_TOOLS_BY_SCOPE, PERSONAL_MUTATION_TOOLS, ADMIN_WRITE_TOOLS,
+ADDITIONAL_READ_SCOPES_BY_TOOL) and over enabled_tool_names().
 
 Expectations are computed independently from the classification constants,
 never by calling enabled_tool_names() as its own oracle — otherwise a bug in
@@ -36,6 +37,7 @@ ALL_READ_OFF = {
     "enable_membership_read": False,
     "enable_version_read": False,
     "enable_board_read": False,
+    "enable_personal_read": False,
 }
 ALL_READ_ON = {
     "enable_project_read": True,
@@ -43,6 +45,7 @@ ALL_READ_ON = {
     "enable_membership_read": True,
     "enable_version_read": True,
     "enable_board_read": True,
+    "enable_personal_read": True,
 }
 
 
@@ -54,10 +57,8 @@ def test_classification_tuples_are_duplicate_free() -> None:
         assert len(names) == len(set(names)), f"duplicate in READ_TOOLS_BY_SCOPE[{scope!r}]"
     for scope, names in tools.WRITE_TOOLS_BY_SCOPE.items():
         assert len(names) == len(set(names)), f"duplicate in WRITE_TOOLS_BY_SCOPE[{scope!r}]"
-    assert len(tools.PERSONAL_READ_TOOLS) == len(set(tools.PERSONAL_READ_TOOLS))
     assert len(tools.PERSONAL_MUTATION_TOOLS) == len(set(tools.PERSONAL_MUTATION_TOOLS))
     assert len(tools.ADMIN_WRITE_TOOLS) == len(set(tools.ADMIN_WRITE_TOOLS))
-    assert len(tools.METADATA_TOOLS) == len(set(tools.METADATA_TOOLS))
 
 
 def test_no_tool_in_two_different_read_scopes() -> None:
@@ -78,10 +79,10 @@ def test_no_tool_in_two_different_write_scopes() -> None:
 
 def test_read_and_write_classifications_are_disjoint() -> None:
     # Formal invariant: every tool has exactly one registration direction
-    # (read XOR write), never both.
-    read_classified = (
-        set().union(*tools.READ_TOOLS_BY_SCOPE.values()) | set(tools.PERSONAL_READ_TOOLS) | set(tools.METADATA_TOOLS)
-    )
+    # (read XOR write), never both. READ_TOOLS_BY_SCOPE now includes
+    # "personal" and "extended" as ordinary groups, so no separate union is
+    # needed for their former, now-deleted dedicated read-only constants.
+    read_classified = set().union(*tools.READ_TOOLS_BY_SCOPE.values())
     write_classified = (
         set().union(*tools.WRITE_TOOLS_BY_SCOPE.values())
         | set(tools.ADMIN_WRITE_TOOLS)
@@ -119,12 +120,10 @@ def test_every_classified_name_resolves_to_a_real_function() -> None:
     # raised KeyError at module load). This test locks that invariant in
     # explicitly rather than relying on import success alone.
     all_classified = (
-        set(tools.PERSONAL_READ_TOOLS)
-        | set(tools.PERSONAL_MUTATION_TOOLS)
+        set(tools.PERSONAL_MUTATION_TOOLS)
         | set().union(*tools.READ_TOOLS_BY_SCOPE.values())
         | set().union(*tools.WRITE_TOOLS_BY_SCOPE.values())
         | set(tools.ADMIN_WRITE_TOOLS)
-        | set(tools.METADATA_TOOLS)
     )
     assert all_classified == set(tools._TOOL_FUNCTIONS)
 
@@ -154,18 +153,28 @@ def test_enabled_tool_names_is_duplicate_free_and_ordered() -> None:
     assert isinstance(names, tuple)
 
 
-def test_default_settings_include_get_my_preferences_and_update_my_preferences() -> None:
+def test_default_settings_exclude_personal_tools() -> None:
+    # OPM-126: "personal" is opt-in only, not part of the compatible unset
+    # default — unlike OPM-123, where get_my_preferences was unconditional.
     names = set(tools.enabled_tool_names(make_settings()))
+    assert "get_my_preferences" not in names
+    assert "list_notifications" not in names
+    assert "update_my_preferences" not in names
+
+
+def test_personal_group_and_write_flag_expose_personal_tools() -> None:
+    names = set(tools.enabled_tool_names(make_settings(enable_personal_read=True, enable_personal_write=True)))
     assert "get_my_preferences" in names
+    assert "list_notifications" in names
     assert "update_my_preferences" in names
+    assert "mark_notification_read" in names
+    assert "mark_all_notifications_read" in names
 
 
 def test_all_reads_off_removes_every_read_classified_tool() -> None:
     names = set(tools.enabled_tool_names(make_settings(**ALL_READ_OFF)))
     read_classified = set().union(*tools.READ_TOOLS_BY_SCOPE.values())
     assert read_classified.isdisjoint(names)
-    # Personal read tool is unaffected by any scope flag.
-    assert "get_my_preferences" in names
 
 
 def test_membership_read_false_removes_home_group_plus_dependent_tools() -> None:
@@ -223,12 +232,14 @@ def test_admin_write_toggle_is_independent() -> None:
 
 
 def test_metadata_tools_need_their_additional_read_scopes_too() -> None:
-    # All reads on: all 12 metadata tools appear.
-    full = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON, enable_metadata_tools=True)))
-    assert set(tools.METADATA_TOOLS) <= full
+    extended_tools = tools.READ_TOOLS_BY_SCOPE["extended"]
 
-    # Board+work_package read off: the 7 dependent metadata tools disappear,
-    # the other 5 (no additional scope) remain.
+    # All reads on: all 12 extended-group tools appear.
+    full = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON, enable_metadata_tools=True)))
+    assert set(extended_tools) <= full
+
+    # Board+work_package read off: the 7 dependent tools disappear, the other
+    # 5 (no additional scope) remain.
     partial = set(
         tools.enabled_tool_names(
             make_settings(
@@ -237,10 +248,45 @@ def test_metadata_tools_need_their_additional_read_scopes_too() -> None:
             )
         )
     )
-    dependent = {name for name in tools.METADATA_TOOLS if name in tools.ADDITIONAL_READ_SCOPES_BY_TOOL}
-    independent = set(tools.METADATA_TOOLS) - dependent
+    dependent = {name for name in extended_tools if name in tools.ADDITIONAL_READ_SCOPES_BY_TOOL}
+    independent = set(extended_tools) - dependent
     assert dependent.isdisjoint(partial)
     assert independent <= partial
+
+
+# ── "personal" AND-gate (OPM-126) — NOT the independent read/write pattern ──
+#
+# Unlike every other scope (see test_write_delta_uses_all_reads_on_baseline /
+# test_admin_write_toggle_is_independent, where a write flag alone exposes its
+# write tools regardless of the paired read flag), "personal" mutations need
+# BOTH enable_personal_read AND enable_personal_write. There is deliberately
+# no test_all_scoped_writes_independent-style analogue here — that would
+# misrepresent the AND-gate as an independent toggle.
+
+
+def test_personal_write_alone_does_not_expose_personal_mutations() -> None:
+    names = set(tools.enabled_tool_names(make_settings(**ALL_READ_OFF, enable_personal_write=True)))
+    assert "update_my_preferences" not in names
+    assert "mark_notification_read" not in names
+    assert "mark_all_notifications_read" not in names
+
+
+def test_personal_read_alone_exposes_reads_but_not_mutations() -> None:
+    only_personal_read = {**ALL_READ_OFF, "enable_personal_read": True}
+    names = set(tools.enabled_tool_names(make_settings(**only_personal_read)))
+    assert "get_my_preferences" in names
+    assert "list_notifications" in names
+    assert "update_my_preferences" not in names
+    assert "mark_notification_read" not in names
+    assert "mark_all_notifications_read" not in names
+
+
+def test_work_package_write_no_longer_couples_to_notification_mark_read() -> None:
+    baseline = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON)))
+    with_wp_write = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON, enable_work_package_write=True)))
+    delta = with_wp_write - baseline
+    assert "mark_notification_read" not in delta
+    assert "mark_all_notifications_read" not in delta
 
 
 def test_read_enabled_unknown_scope_raises_not_silently_allows() -> None:

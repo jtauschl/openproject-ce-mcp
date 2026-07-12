@@ -868,7 +868,7 @@ async def test_chain_specific_read_flags_restrict_membership_reads_with_global_r
         settings, transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}, request=r))
     )
 
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_MEMBERSHIP_READ"):
+    with pytest.raises(PermissionDeniedError, match="memberships"):
         await client.list_roles()
 
     await client.aclose()
@@ -5297,6 +5297,8 @@ async def test_user_preferences_get_and_update() -> None:
         max_page_size=settings.max_page_size,
         max_results=settings.max_results,
         log_level=settings.log_level,
+        enable_personal_read=True,
+        enable_personal_write=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -5317,15 +5319,41 @@ async def test_user_preferences_get_and_update() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_my_preferences_needs_no_write_gate() -> None:
-    """update_my_preferences has no write gate — it works without any write flags."""
+async def test_get_my_preferences_denied_without_personal_read() -> None:
+    """OPM-126: get_my_preferences now has a client-side gate matching its new
+    registry-level "personal" gate — previously it had zero runtime checks."""
 
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no request must be issued without personal read enabled")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    with pytest.raises(PermissionDeniedError, match="personal"):
+        await client.get_my_preferences()
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_my_preferences_denied_without_personal_write() -> None:
+    """OPM-126: update_my_preferences is now gated by "personal" write, unlike
+    its previous always-on behavior."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no request must be issued without personal write enabled")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_PERSONAL_WRITE"):
+        await client.update_my_preferences(lang="de", confirm=True)
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_my_preferences_succeeds_with_personal_write_enabled() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/my_preferences" and request.method == "PATCH":
             return httpx.Response(200, json={"_type": "UserPreferences"}, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    client = OpenProjectClient(_personal_write_enabled_settings(), transport=httpx.MockTransport(handler))
     result = await client.update_my_preferences(lang="de", confirm=True)
     assert result.confirmed
     await client.aclose()
@@ -6715,6 +6743,18 @@ def _write_enabled_settings() -> Settings:
     return dataclasses.replace(make_settings(), enable_work_package_write=True)
 
 
+def _personal_write_enabled_settings() -> Settings:
+    import dataclasses
+
+    return dataclasses.replace(make_settings(), enable_personal_write=True)
+
+
+def _personal_read_and_write_enabled_settings() -> Settings:
+    import dataclasses
+
+    return dataclasses.replace(make_settings(), enable_personal_read=True, enable_personal_write=True)
+
+
 @pytest.mark.asyncio
 async def test_toggle_activity_emoji_reaction_patches_and_normalizes() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -6910,6 +6950,7 @@ async def test_list_notifications_filters_by_read_projects() -> None:
         max_results=100,
         log_level="WARNING",
         read_projects=("demo",),
+        enable_personal_read=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -6950,6 +6991,7 @@ async def test_list_notifications_returns_only_project_less_under_empty_read_pro
         max_page_size=50,
         max_results=100,
         log_level="WARNING",
+        enable_personal_read=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -6989,6 +7031,7 @@ async def test_list_notifications_allows_all_under_wildcard_scope() -> None:
         max_results=100,
         log_level="WARNING",
         read_projects=("*",),
+        enable_personal_read=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -6996,6 +7039,34 @@ async def test_list_notifications_allows_all_under_wildcard_scope() -> None:
 
     assert [n.id for n in result.results] == [1, 2]
 
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_notifications_denied_by_personal_read_not_work_package_read() -> None:
+    """OPM-126: list_notifications' home scope moved from "work_package" to
+    "personal" — enable_work_package_read=True must no longer be sufficient,
+    and enable_personal_read=False must deny it even with every other read on."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no request must be issued without personal read enabled")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        read_projects=("*",),
+        enable_work_package_read=True,
+        enable_personal_read=False,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    with pytest.raises(PermissionDeniedError, match="personal"):
+        await client.list_notifications()
     await client.aclose()
 
 
@@ -7036,6 +7107,7 @@ async def test_list_notifications_resolves_work_package_notification_without_pro
         max_results=100,
         log_level="WARNING",
         read_projects=("demo",),  # does not match the work package's "other" project
+        enable_personal_read=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -7137,7 +7209,7 @@ async def test_mark_notification_read_previews_without_confirm() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         raise AssertionError("no request must be issued without confirm=true")
 
-    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+    client = OpenProjectClient(_personal_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
     result = await client.mark_notification_read(10)
 
@@ -7158,7 +7230,7 @@ async def test_mark_notification_read_posts_after_confirmation() -> None:
             return httpx.Response(204, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+    client = OpenProjectClient(_personal_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
     result = await client.mark_notification_read(10, confirm=True)
 
@@ -7174,7 +7246,7 @@ async def test_mark_all_notifications_read_previews_without_confirm() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         raise AssertionError("no request must be issued without confirm=true")
 
-    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+    client = OpenProjectClient(_personal_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
     result = await client.mark_all_notifications_read()
 
@@ -7195,7 +7267,7 @@ async def test_mark_all_notifications_read_posts_after_confirmation() -> None:
             return httpx.Response(204, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+    client = OpenProjectClient(_personal_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
     result = await client.mark_all_notifications_read(confirm=True)
 

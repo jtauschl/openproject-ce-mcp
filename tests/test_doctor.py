@@ -195,6 +195,56 @@ def test_env_config_warns_on_http_url(capsys, make_doctor_settings, monkeypatch)
     assert "HTTP" in output
 
 
+def test_env_config_warns_on_legacy_tool_exposure_vars(capsys, monkeypatch):
+    """Should warn when a legacy per-scope read flag / metadata flag (OPM-126) is present."""
+    from openproject_ce_mcp.doctor import _check_env_config
+
+    monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
+    monkeypatch.setenv("OPENPROJECT_API_TOKEN", "test-token")
+    monkeypatch.setenv("OPENPROJECT_ENABLE_BOARD_READ", "false")
+
+    _check_env_config(None, {})
+
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert "[WARN]" in output
+    assert "OPENPROJECT_TOOLS" in output
+
+
+def test_env_config_no_legacy_warning_with_only_new_tools_var(capsys, monkeypatch):
+    """Should NOT warn about legacy tool-exposure vars when only OPENPROJECT_TOOLS is set."""
+    from openproject_ce_mcp.doctor import _check_env_config
+
+    monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
+    monkeypatch.setenv("OPENPROJECT_API_TOKEN", "test-token")
+    monkeypatch.setenv("OPENPROJECT_TOOLS", "projects,work-packages")
+
+    _check_env_config(None, {})
+
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert "Legacy tool-exposure" not in output
+
+
+def test_env_config_legacy_tool_exposure_vars_are_ignored_by_effective_settings(monkeypatch):
+    """The warned-about legacy var must actually be ignored: the effective Settings
+    reflect the new OPENPROJECT_TOOLS default, not the legacy value — matching the
+    runtime's own resolution, not just a cosmetic warning that diverges from it."""
+    from openproject_ce_mcp.doctor import _check_env_config
+
+    monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
+    monkeypatch.setenv("OPENPROJECT_API_TOKEN", "test-token")
+    monkeypatch.setenv("OPENPROJECT_ENABLE_BOARD_READ", "false")
+
+    env_ok, settings = _check_env_config(None, {})
+
+    assert env_ok is True
+    assert settings is not None
+    # Legacy var is ignored — board read falls back to the compatible core-5
+    # default (True), not the (now-inert) legacy value of False.
+    assert settings.read_enabled("board") is True
+
+
 # API connectivity tests
 
 

@@ -9,11 +9,7 @@
         "OPENPROJECT_READ_PROJECTS": "*",
         "OPENPROJECT_WRITE_PROJECTS": "",
 
-        "OPENPROJECT_ENABLE_PROJECT_READ": "true",
-        "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "true",
-        "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "true",
-        "OPENPROJECT_ENABLE_VERSION_READ": "true",
-        "OPENPROJECT_ENABLE_BOARD_READ": "true",
+        "OPENPROJECT_TOOLS": "projects,work-packages,memberships,versions,boards",
 
         "OPENPROJECT_HIDE_PROJECT_FIELDS": "",
         "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": "",
@@ -27,8 +23,6 @@
         "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
         "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
         "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
-
-        "OPENPROJECT_ENABLE_METADATA_TOOLS": "false",
 
         "OPENPROJECT_TIMEOUT": "12",
         "OPENPROJECT_VERIFY_SSL": "true",

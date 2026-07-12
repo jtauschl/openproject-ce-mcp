@@ -94,7 +94,14 @@ async def measure_tools_list() -> None:
     print("=== Tool catalog (tools/list) ===\n")
     scenarios = [
         ("write-enabled, metadata tools off (default)", {**BASE_ENV, **WRITE_ENV}),
-        ("write-enabled, metadata tools on", {**BASE_ENV, **WRITE_ENV, "OPENPROJECT_ENABLE_METADATA_TOOLS": "true"}),
+        (
+            "write-enabled, metadata tools on",
+            {
+                **BASE_ENV,
+                **WRITE_ENV,
+                "OPENPROJECT_TOOLS": "projects,work-packages,memberships,versions,boards,extended",
+            },
+        ),
         ("read-only (no write scopes)", BASE_ENV),
     ]
     for label, env in scenarios:

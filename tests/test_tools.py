@@ -1479,7 +1479,10 @@ async def test_list_notifications_returns_normalized_results() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), enable_personal_read=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     result = await list_notifications(FakeContext(client))
 
     assert result.count == 1

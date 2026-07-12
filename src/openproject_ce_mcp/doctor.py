@@ -204,6 +204,15 @@ _LEGACY_PROJECT_SCOPE_VARS = (
     "OPENPROJECT_ALLOWED_PROJECTS_WRITE",
 )
 
+_LEGACY_TOOL_EXPOSURE_VARS = (
+    "OPENPROJECT_ENABLE_PROJECT_READ",
+    "OPENPROJECT_ENABLE_WORK_PACKAGE_READ",
+    "OPENPROJECT_ENABLE_MEMBERSHIP_READ",
+    "OPENPROJECT_ENABLE_VERSION_READ",
+    "OPENPROJECT_ENABLE_BOARD_READ",
+    "OPENPROJECT_ENABLE_METADATA_TOOLS",
+)
+
 
 def _check_env_config(
     settings_override: Settings | None,
@@ -224,6 +233,14 @@ def _check_env_config(
             "[WARN] Legacy project scope variables detected and ignored. Effective project "
             "access may be empty. Run configure to migrate them to "
             "OPENPROJECT_READ_PROJECTS/OPENPROJECT_WRITE_PROJECTS.",
+            file=sys.stderr,
+        )
+
+    if any(var in combined_env for var in _LEGACY_TOOL_EXPOSURE_VARS):
+        print(
+            "[WARN] Legacy tool-exposure variables detected and ignored. Effective tool "
+            "groups may differ from what you expect. Run configure to migrate them to "
+            "OPENPROJECT_TOOLS.",
             file=sys.stderr,
         )
 

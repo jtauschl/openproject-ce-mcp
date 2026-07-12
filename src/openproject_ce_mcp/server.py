@@ -83,10 +83,10 @@ status, subject, project) cannot be cleared.
 
 A set of rarely-needed metadata/reference tools (the `get_query_*` schema tools,
 `render_text`, `get_custom_option`, `list_help_texts` / `get_help_text`,
-`list_working_days` / `list_non_working_days`) is gated behind
-`OPENPROJECT_ENABLE_METADATA_TOOLS=true` to keep them out of the default tool set.
-If one is not registered, it is intentionally disabled here, not missing — enabling
-that flag exposes them.
+`list_working_days` / `list_non_working_days`) is gated behind the `extended`
+group to keep them out of the default tool set. If one is not registered, it
+is intentionally disabled here, not missing — add `extended` to
+`OPENPROJECT_TOOLS` to expose them.
 """
 
 

@@ -12,8 +12,7 @@ def test_settings_from_env_loads_and_normalizes_values() -> None:
             "OPENPROJECT_API_TOKEN": "token-value",
             "OPENPROJECT_READ_PROJECTS": "mcp-test, openproject-ce-mcp",
             "OPENPROJECT_WRITE_PROJECTS": "mcp-test",
-            "OPENPROJECT_ENABLE_PROJECT_READ": "true",
-            "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "false",
+            "OPENPROJECT_TOOLS": "projects,work-packages,versions,boards",
             "OPENPROJECT_HIDE_PROJECT_FIELDS": "description,status_explanation",
             "OPENPROJECT_HIDE_PRINCIPAL_FIELDS": "*mail,login",
             "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": "description",
@@ -81,7 +80,7 @@ def test_settings_from_env_per_scope_read_flag_disables_independently_of_default
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
             "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "false",
+            "OPENPROJECT_TOOLS": "projects,work-packages,versions,boards",
         }
     )
 
@@ -94,8 +93,7 @@ def test_settings_from_env_scoped_read_flags_disable_chains_independently() -> N
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
             "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_ENABLE_PROJECT_READ": "false",
-            "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "false",
+            "OPENPROJECT_TOOLS": "memberships",
         }
     )
 
@@ -130,6 +128,103 @@ def test_settings_from_env_write_scopes_default_to_disabled() -> None:
     assert settings.write_enabled("project") is False
     assert settings.write_enabled("work_package") is False
     assert settings.write_enabled("membership") is False
+
+
+def test_tool_groups_unset_enables_core_five_only() -> None:
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+        }
+    )
+
+    assert settings.read_enabled("project") is True
+    assert settings.read_enabled("work_package") is True
+    assert settings.read_enabled("membership") is True
+    assert settings.read_enabled("version") is True
+    assert settings.read_enabled("board") is True
+    assert settings.read_enabled("personal") is False
+    assert settings.enable_metadata_tools is False
+
+
+def test_tool_groups_explicit_empty_string_disables_every_group() -> None:
+    # Explicit empty string is a real three-state distinction from "unset" —
+    # it means "no tool groups at all", not "use the compatible default".
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+            "OPENPROJECT_TOOLS": "",
+        }
+    )
+
+    assert settings.read_enabled("project") is False
+    assert settings.read_enabled("work_package") is False
+    assert settings.read_enabled("membership") is False
+    assert settings.read_enabled("version") is False
+    assert settings.read_enabled("board") is False
+    assert settings.read_enabled("personal") is False
+    assert settings.enable_metadata_tools is False
+
+
+def test_tool_groups_unknown_name_rejected() -> None:
+    with pytest.raises(ConfigError, match="unknown tool group"):
+        Settings.from_env(
+            {
+                "OPENPROJECT_BASE_URL": "https://op.example.com",
+                "OPENPROJECT_API_TOKEN": "token-value",
+                "OPENPROJECT_TOOLS": "bogus",
+            }
+        )
+
+
+def test_tool_groups_partially_unknown_list_rejected_not_silently_filtered() -> None:
+    with pytest.raises(ConfigError, match="unknown tool group"):
+        Settings.from_env(
+            {
+                "OPENPROJECT_BASE_URL": "https://op.example.com",
+                "OPENPROJECT_API_TOKEN": "token-value",
+                "OPENPROJECT_TOOLS": "projects,bogus,boards",
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("write_var", "groups_without"),
+    [
+        ("OPENPROJECT_ENABLE_PROJECT_WRITE", "work-packages,memberships,versions,boards"),
+        ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "projects,memberships,versions,boards"),
+        ("OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", "projects,work-packages,versions,boards"),
+        ("OPENPROJECT_ENABLE_VERSION_WRITE", "projects,work-packages,memberships,boards"),
+        ("OPENPROJECT_ENABLE_BOARD_WRITE", "projects,work-packages,memberships,versions"),
+        ("OPENPROJECT_PERSONAL_WRITE", "projects,work-packages,memberships,versions,boards"),
+    ],
+)
+def test_write_flag_without_visible_group_rejected(write_var: str, groups_without: str) -> None:
+    with pytest.raises(ConfigError, match="requires"):
+        Settings.from_env(
+            {
+                "OPENPROJECT_BASE_URL": "https://op.example.com",
+                "OPENPROJECT_API_TOKEN": "token-value",
+                "OPENPROJECT_TOOLS": groups_without,
+                write_var: "true",
+            }
+        )
+
+
+def test_write_flag_with_visible_group_accepted() -> None:
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+            "OPENPROJECT_TOOLS": "projects,work-packages,memberships,versions,boards,personal",
+            "OPENPROJECT_ENABLE_PROJECT_WRITE": "true",
+            "OPENPROJECT_PERSONAL_WRITE": "true",
+        }
+    )
+
+    assert settings.write_enabled("project") is True
+    assert settings.write_enabled("personal") is True
 
 
 def test_read_enabled_rejects_unknown_scope() -> None:
@@ -223,7 +318,7 @@ def test_settings_from_env_rejects_invalid_bool_value() -> None:
             {
                 "OPENPROJECT_BASE_URL": "https://op.example.com",
                 "OPENPROJECT_API_TOKEN": "token-value",
-                "OPENPROJECT_ENABLE_PROJECT_READ": "ja",
+                "OPENPROJECT_PERSONAL_WRITE": "ja",
             }
         )
 

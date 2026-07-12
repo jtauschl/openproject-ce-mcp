@@ -61,12 +61,49 @@ development baseline.
   correctly for a one-time migration, and `doctor` warns when it detects the
   old names still in use.
 
+- **Breaking: the 5 per-scope read booleans
+  (`OPENPROJECT_ENABLE_PROJECT_READ`/`_WORK_PACKAGE_READ`/`_MEMBERSHIP_READ`/
+  `_VERSION_READ`/`_BOARD_READ`) and `OPENPROJECT_ENABLE_METADATA_TOOLS` have
+  been replaced by a single
+  `OPENPROJECT_TOOLS=projects,work-packages,memberships,versions,boards[,personal,extended]`
+  variable** (OPM-126, Phase 4 of the authorization/config redesign,
+  OPM-122). A new `OPENPROJECT_PERSONAL_WRITE` flag (default `false`) gates
+  the three personal-data mutations (`update_my_preferences`,
+  `mark_notification_read`, `mark_all_notifications_read`), independent of
+  `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`. `OPENPROJECT_TOOLS` controls tool
+  *visibility*/context budget, not data access — the security boundary
+  remains `OPENPROJECT_READ_PROJECTS`/`WRITE_PROJECTS` plus the write flags —
+  so, unlike the OPM-125 project-scope rename, it keeps a three-state
+  semantics: unset defaults to the 5 core groups (compatible with the
+  previous per-scope-read defaults), an explicit empty string disables every
+  group, and any other value is exactly the groups listed. An unknown group
+  name is rejected at startup, as is a write flag whose group is not present
+  in `OPENPROJECT_TOOLS`.
+  **This is not a fully compatible upgrade for every tool:** `get_my_preferences`
+  (previously always registered) and `list_notifications` (previously gated
+  by work-package read) both moved under the new `personal` group, which is
+  opt-in and NOT part of the unset default — a bare upgrade with no config
+  change loses these two read tools until `personal` is added to
+  `OPENPROJECT_TOOLS`. `personal` is also the one group with an AND
+  relationship to its write flag: the three personal mutations require both
+  `personal` in `OPENPROJECT_TOOLS` *and* `OPENPROJECT_PERSONAL_WRITE=true`,
+  unlike every other scope where read and write are independent axes. The
+  interactive `configure` wizard, `.mcp.json.example`, and `doctor` were
+  updated in this same phase: the wizard migrates existing configs using the
+  old variable names to the new `OPENPROJECT_TOOLS` value (and reconciles any
+  write flag left on for a now-invisible group before writing), and `doctor`
+  warns when it detects the old names still in use. The detailed per-client
+  setup guides (`docs/claude.md` and siblings), `AGENTS.md`, and `SECURITY.md`
+  still show the old variable names and will be updated in Phase 6
+  (OPM-128) — they are pure documentation with no functional effect on a
+  running server, unlike the wizard/doctor changes above.
+
 ### Internal
 
 - Tool registration in `tools.py` is now table-driven from a small set of
   classification constants (`READ_TOOLS_BY_SCOPE`, `WRITE_TOOLS_BY_SCOPE`,
-  `PERSONAL_READ_TOOLS`, `PERSONAL_MUTATION_TOOLS`, `ADMIN_WRITE_TOOLS`,
-  `METADATA_TOOLS`, `ADDITIONAL_READ_SCOPES_BY_TOOL`) instead of ~190 lines
+  `PERSONAL_MUTATION_TOOLS`, `ADMIN_WRITE_TOOLS`,
+  `ADDITIONAL_READ_SCOPES_BY_TOOL`) instead of ~190 lines
   of hand-written conditional blocks — closes OPM-47.
 - The six form-based write finalizers in `client.py` (work package, version,
   board, grid, project, membership) now share one generic `_finalize_write`
