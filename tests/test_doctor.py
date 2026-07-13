@@ -288,6 +288,32 @@ def test_env_config_legacy_tool_exposure_vars_are_ignored_by_effective_settings(
     assert settings.read_enabled("board") is True
 
 
+@pytest.mark.parametrize(
+    ("legacy_var", "attr"),
+    [
+        ("OPENPROJECT_ALLOWED_PROJECTS", "read_projects"),
+        ("OPENPROJECT_ALLOWED_PROJECTS_READ", "read_projects"),
+        ("OPENPROJECT_ALLOWED_PROJECTS_WRITE", "write_projects"),
+    ],
+)
+def test_env_config_legacy_project_scope_vars_are_ignored_by_effective_settings(monkeypatch, legacy_var, attr):
+    """Same guarantee as the tool-exposure case, for all three legacy project-scope
+    vars: each must be ignored by the effective Settings (fail-closed empty tuple),
+    not just warned about cosmetically. Without the WRITE case, the write-relevant
+    fail-closed path would stay unguarded by any test."""
+    from openproject_ce_mcp.doctor import _check_env_config
+
+    monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
+    monkeypatch.setenv("OPENPROJECT_API_TOKEN", "test-token")
+    monkeypatch.setenv(legacy_var, "OPM")
+
+    env_ok, settings = _check_env_config(None, {})
+
+    assert env_ok is True
+    assert settings is not None
+    assert getattr(settings, attr) == ()
+
+
 # API connectivity tests
 
 
