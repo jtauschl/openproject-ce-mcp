@@ -83,9 +83,12 @@ development baseline.
   cutting the fixed schema cost paid on every request.
 - **Long work-package text is read in full on single-item reads**, while
   list responses stay length-bounded.
-- **Simplified the setup flow**: the `configure` wizard leads with a basic
-  path and moves everything else behind one advanced-options gate;
-  install docs now lead with `uv tool install`.
+- **Simplified the setup flow**: the `configure` wizard now has explicit
+  `--quick` (the default — client target(s), base URL, token, readable
+  projects, and a single project-scoped write-scope choice) and `--advanced`
+  (the full questionnaire, including personal-data and admin writes) modes
+  instead of one runtime "advanced options?" prompt; install docs now lead
+  with `uv tool install`.
 - **Improved tool descriptions and validation error messages** to reduce
   agent retry loops.
 

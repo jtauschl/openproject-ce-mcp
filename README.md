@@ -393,11 +393,21 @@ Your client config (`.mcp.json`, `.codex/config.toml`, or `.vscode/mcp.json`) co
 set differ from a safe default, so a fresh setup is just `OPENPROJECT_BASE_URL`
 and `OPENPROJECT_API_TOKEN` plus whatever scope you gave it — not a
 fully-spelled-out table (see the [Configuration table](#configuration) below
-for what every field defaults to). The basic path asks for connection, project
-scope, and whether project-scoped writes should be enabled. Detailed per-chain
-read/write groups, field filtering, and runtime settings are behind the
-"Configure advanced options?" prompt; if you skip it while reconfiguring,
-existing advanced values are preserved.
+for what every field defaults to). Two modes control how much it asks:
+
+- **`configure` / `configure --quick`** (the default) — client target(s), base
+  URL, token, readable projects, and one *project-scoped* write-scope choice
+  (`none` / `work-packages` / `all`, mapped to the five project-scoped
+  `OPENPROJECT_ENABLE_*_WRITE` flags). This choice does not touch personal-data
+  writes (`OPENPROJECT_PERSONAL_WRITE`) or admin writes
+  (`OPENPROJECT_ENABLE_ADMIN_WRITE`) — those are independent and keep
+  whatever value they already had (off, on a fresh setup). Use `--advanced`
+  to change them.
+- **`configure --advanced`** — the full questionnaire: detailed per-chain
+  read/write groups, field filtering, individual write flags (including
+  personal-data and admin writes), and runtime settings, in addition to the
+  quick-mode questions. Reconfiguring an existing setup with `--quick` leaves
+  any advanced-only values you'd previously set untouched.
 
 Before writing anything, the wizard tests the connection against your real
 OpenProject instance and shows a preview of every change (files to create,

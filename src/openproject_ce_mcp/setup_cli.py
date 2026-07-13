@@ -31,7 +31,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 import httpx
 
@@ -804,6 +804,60 @@ def _bool_from_env(env: dict[str, str], key: str, fallback: bool = False) -> boo
     return fallback
 
 
+_WRITE_SCOPE_FLAG_KEYS = (
+    "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE",
+    "OPENPROJECT_ENABLE_PROJECT_WRITE",
+    "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE",
+    "OPENPROJECT_ENABLE_VERSION_WRITE",
+    "OPENPROJECT_ENABLE_BOARD_WRITE",
+)
+
+
+def _classify_write_scope(
+    existing: dict[str, str],
+    *,
+    write_projects_existing: str,
+) -> Literal["none", "work-packages", "all", "custom"]:
+    """Classify the effective write scope for the quick-mode prompt's default.
+
+    write_projects_existing must be the already-resolved value from
+    _merge_scope_prefill (legacy-vs-new precedence handled there), not a raw
+    lookup in ``existing`` — ``existing`` (from _merge_prefill) drops explicit
+    empty values and doesn't translate the legacy scope key.
+
+    An empty writable-projects scope means no project can actually be written
+    to, regardless of what the five write flags say (see
+    _ensure_project_write_allowed), so it always classifies as "none" —
+    never letting a dormant flag combination resolve to a non-"none" default
+    that could silently expand access if the prompt's default is accepted.
+    """
+    if not write_projects_existing.strip():
+        return "none"
+    flags = tuple(_bool_from_env(existing, key, False) for key in _WRITE_SCOPE_FLAG_KEYS)
+    if not any(flags):
+        return "none"
+    if all(flags):
+        return "all"
+    if flags == (True, False, False, False, False):
+        return "work-packages"
+    return "custom"
+
+
+def _parse_write_scope_choice(raw: str, *, allowed: frozenset[str], default: str) -> str | None:
+    """Strict exact-match parser for the quick-mode write-scope prompt.
+
+    Deliberately no prefix/fuzzy matching — "all" materially expands write
+    permissions, so an ambiguous or mistyped answer must be rejected and
+    re-prompted, never guessed.
+    """
+    value = raw.strip().lower()
+    if not value:
+        return default
+    if value in allowed:
+        return value
+    return None
+
+
 def _scope_prefill(existing: dict[str, str], new_key: str, legacy_keys: list[str]) -> tuple[str, bool]:
     """Resolve a project-scope prefill by key presence, not truthiness.
 
@@ -1107,8 +1161,21 @@ def _collect_credentials(
     existing: dict[str, str],
     *,
     interactive: bool,
+    mode: Literal["quick", "advanced"],
 ) -> tuple[dict[str, str], frozenset[str], ConnectionCheck]:
-    """Prompt for base URL/token/scope/advanced settings; return env + tool groups + connection status.
+    """Prompt for base URL/token/scope/settings; return env + tool groups + connection status.
+
+    ``mode`` selects which questionnaire runs: "quick" asks only client
+    target(s)/base URL/token/readable projects/a single *project-scoped*
+    write-scope choice (none/work-packages/all) and fills everything else
+    from safe defaults; "advanced" asks the full questionnaire (tool groups,
+    field-hiding, individual write flags, page sizes, SSL, logging). The
+    quick-mode write-scope choice only governs the five project-scoped write
+    flags — personal-data writes (``OPENPROJECT_PERSONAL_WRITE``) and admin
+    writes (``OPENPROJECT_ENABLE_ADMIN_WRITE``) are independent axes that keep
+    whatever value they already had (or the default, on a fresh setup); only
+    ``--advanced`` re-prompts them. The caller resolves the mode from the
+    ``--quick``/``--advanced`` CLI flags — it is no longer a runtime prompt.
 
     In interactive mode, validates the candidate settings against a live API
     connection before returning. A `network_error` offers a genuine choice
@@ -1150,29 +1217,98 @@ def _collect_credentials(
             read_projects_existing,
         )
         existing_write_projects = write_projects_existing.strip()
-        write_access = _prompt_bool("Enable write access?", bool(existing_write_projects))
-        if write_access:
-            write_projects_default = existing_write_projects or read_projects
-            write_projects = _prompt(
-                "Writable projects (subset of readable)",
-                write_projects_default,
-            )
-            wp_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", True)
-            project_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_WRITE", True)
-            membership_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", True)
-            version_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_WRITE", True)
-            board_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_WRITE", True)
+        advanced = mode == "advanced"
+
+        if advanced:
+            write_access = _prompt_bool("Enable write access?", bool(existing_write_projects))
+            if write_access:
+                write_projects_default = existing_write_projects or read_projects
+                write_projects = _prompt(
+                    "Writable projects (subset of readable)",
+                    write_projects_default,
+                )
+                wp_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", True)
+                project_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_WRITE", True)
+                membership_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", True)
+                version_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_WRITE", True)
+                board_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_WRITE", True)
+            else:
+                write_projects = ""
+                print("Write access disabled — project-scoped writes are disabled.")
+                wp_write = False
+                project_write = False
+                membership_write = False
+                version_write = False
+                board_write = False
         else:
-            write_projects = ""
-            print("Write access disabled — project-scoped writes are disabled.")
-            wp_write = False
-            project_write = False
-            membership_write = False
-            version_write = False
-            board_write = False
+            # Quick mode: one write-scope choice replaces the yes/no gate above
+            # entirely — no overlapping decisions (OPM-55).
+            write_scope_class = _classify_write_scope(existing, write_projects_existing=write_projects_existing)
+            is_custom = write_scope_class == "custom"
+            allowed_choices = ["none", "work-packages", "all"] + (["keep"] if is_custom else [])
+            default_choice = "keep" if is_custom else write_scope_class
+
+            print()
+            print("Write scope — how much can this server write to your OpenProject projects?")
+            print("  none            no project-scoped writes")
+            print(
+                "  work-packages   project-scoped work-package writes only (create/update/delete, "
+                "comments, relations, attachments, time entries)"
+            )
+            print(
+                "  all             all project-scoped writes (work packages, projects, memberships, versions, boards)"
+            )
+            if is_custom:
+                print("  keep            keep your current custom write-scope combination unchanged")
+            print(
+                "  (personal-data and admin writes are unaffected here and keep their existing "
+                "value, if any; change them with --advanced)"
+            )
+
+            allowed = frozenset(allowed_choices)
+            write_scope_choice: str | None = None
+            for ws_attempt in range(3):
+                raw = _prompt(f"Write scope [{'/'.join(allowed_choices)}]", default_choice)
+                write_scope_choice = _parse_write_scope_choice(raw, allowed=allowed, default=default_choice)
+                if write_scope_choice is not None:
+                    break
+                if ws_attempt == 2:
+                    print("Could not parse a valid write scope. Nothing written.", file=sys.stderr)
+                    sys.exit(1)
+                print(f"  ! Invalid write scope. Allowed values: {', '.join(allowed_choices)}.")
+
+            if write_scope_choice == "none":
+                write_access = False
+                write_projects = ""
+                wp_write = project_write = membership_write = version_write = board_write = False
+                print("Write access disabled — project-scoped writes are disabled.")
+            elif write_scope_choice == "keep":
+                write_access = True
+                write_projects = existing_write_projects
+                wp_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", False)
+                project_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_WRITE", False)
+                membership_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", False)
+                version_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_WRITE", False)
+                board_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_WRITE", False)
+            else:
+                write_access = True
+                write_projects_default = existing_write_projects or read_projects
+                write_projects = _prompt(
+                    "Writable projects (subset of readable)",
+                    write_projects_default,
+                )
+                if write_scope_choice == "work-packages":
+                    wp_write, project_write, membership_write, version_write, board_write = (
+                        True,
+                        False,
+                        False,
+                        False,
+                        False,
+                    )
+                else:  # "all"
+                    wp_write = project_write = membership_write = version_write = board_write = True
 
         print()
-        advanced = _prompt_bool("Configure advanced options?", False)
 
         tool_groups_csv, tool_groups_used_legacy = _merge_tool_groups_prefill(prefill_pairs)
         personal_write = _bool_from_env(existing, "OPENPROJECT_PERSONAL_WRITE", False)
@@ -1599,7 +1735,23 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
         "For scripted installs; normally auto-detected from stdin, this is an explicit "
         "override for automation that still runs with a real terminal attached.",
     )
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--quick",
+        action="store_true",
+        help="Minimal first-run questionnaire: client target(s), base URL, token, readable "
+        "projects, and a single project-scoped write-scope choice. Safe defaults for "
+        "everything else. This is the default when neither --quick nor --advanced is given.",
+    )
+    mode_group.add_argument(
+        "--advanced",
+        action="store_true",
+        help="Full questionnaire: tool groups, field-hiding, individual read/write flags "
+        "(including personal-data and admin writes), page sizes, SSL, logging, in addition "
+        "to the quick-mode questions.",
+    )
     args = parser.parse_args(argv)
+    mode: Literal["quick", "advanced"] = "advanced" if args.advanced else "quick"
 
     if args.uninstall:
         _run_uninstall()
@@ -1670,7 +1822,9 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
     ]
     existing = _merge_prefill(prefill_pairs)
 
-    env, tool_groups_final, connection = _collect_credentials(prefill_pairs, existing, interactive=interactive)
+    env, tool_groups_final, connection = _collect_credentials(
+        prefill_pairs, existing, interactive=interactive, mode=mode
+    )
 
     # Final defensive check: the generated config must always parse cleanly with
     # the exact runtime validation, not just the wizard's own reconciliation above.
