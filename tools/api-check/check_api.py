@@ -316,6 +316,10 @@ FILTER_ALIASES = {
     "status_id": "status",
     "project_id": "project",
     "assignee": "assigned_to",
+    "assigned_to_id": "assigned_to",
+    "priority_id": "priority",
+    "type_id": "type",
+    "version_id": "version",
 }
 FILTER_SKIP = {"date", "scope", "context"}  # query params / matchers, not filter files
 
