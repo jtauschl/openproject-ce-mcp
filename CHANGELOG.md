@@ -7,108 +7,134 @@ development baseline.
 
 ---
 
-## 0.3.0 – Unreleased
+## Unreleased
+
+### Added
+
+- **Batch work-package read**: `get_work_packages(ids=[...])` fetches multiple
+  work packages in parallel, with per-item error tracking and deduplication
+  (capped at 100 ids per call).
+- **Sorting and grouping** for work-package lists: `sort_by` and `group_by`
+  parameters on `list_work_packages` and `search_work_packages`.
+- **Work-package filters**: assignee/status/priority equality filters, plus
+  created/updated/due date filters (exact-day and range), using the official
+  OpenProject filter keys.
+- **Automatic retry with exponential backoff** for transient HTTP failures
+  (429/502/503/504, connection/timeout errors), honoring `Retry-After` and
+  configurable via `OPENPROJECT_MAX_RETRIES`/`OPENPROJECT_RETRY_BASE_DELAY`/
+  `OPENPROJECT_RETRY_MAX_DELAY`. Only idempotent methods are retried.
+- **Work-package time tracking, metadata, and hierarchy fields**: writable
+  estimated/remaining time and duration (ISO 8601, e.g. `PT8H`), activity
+  details, author/category/timestamps, children/ancestors.
+- **Work-package scheduling fields**: `scheduleManually`,
+  `ignoreNonWorkingDays`, derived start/due date, percentage done, `readonly`.
+- **Clearing nullable associations via `'none'`** now works consistently
+  across assignee, responsible, category, project_phase, and parent.
+- **Backlogs sprint support**: read tools plus a writable/clearable sprint
+  link on `update_work_package`, for instances with the Backlogs module.
+- **`doctor` command**: diagnoses setup end to end — binary resolution,
+  client config discovery, environment merging, live connectivity, tool
+  registration.
+- Several new read-only fields, and field-hiding coverage extended to
+  status, type, and sprint (previously unsupported).
 
 ### Changed
 
-- **Tools are now registered only when all read and write scopes required by
-  their client implementation are enabled** (OPM-123, Phase 1 of the
-  authorization/config redesign, OPM-122). Previously, several tools were
-  always registered regardless of any `OPENPROJECT_ENABLE_*_READ` flag, even
-  though their underlying client method enforced a real scope check at call
-  time — the tool was visible to the agent but failed on every call once
-  that scope was disabled. Affected tools now correctly disappear together
-  with their real scope: `get_current_user`, `list_actions`,
-  `list_capabilities` (membership read), `list_notifications` (work-package
-  read), `get_instance_configuration`, `get_job_status` (project read).
-  This can also hide some **write** tools when their supporting read scope
-  is disabled, e.g. `create_membership`/`update_membership` (need membership
-  read for a role lookup) or `delete_file_link` (needs work-package read) —
-  not just read tools. No environment variable was renamed, added, or
-  removed; only the effective tool exposure of the existing
-  `OPENPROJECT_ENABLE_*_READ`/`_WRITE` flags is now more precise.
-- `Settings.read_enabled()`/`write_enabled()` now raise `ConfigError` for an
-  unrecognized scope string instead of silently defaulting to allow-all
-  (read) or deny-all (write). Scope strings are internal literals, never
-  user input, so this can only surface a programming error, not a user
-  misconfiguration.
-- **Breaking: `OPENPROJECT_AUTO_CONFIRM_WRITE` and `OPENPROJECT_AUTO_CONFIRM_DELETE`
-  have been removed** (OPM-124, Phase 2 of the authorization/config redesign,
-  OPM-122; absorbs OPM-57, resolves OPM-105). Every mutating tool now always
-  requires an explicit `confirm=true` call after the preview — there is no
-  longer a way to skip the preview step globally. This also closes a gap
-  where three tools skipped the preview step unconditionally: `mark_notification_read`,
-  `mark_all_notifications_read`, and `toggle_activity_emoji_reaction` now
-  follow the same preview/confirm flow as every other write tool.
-- **Breaking + security fix: `OPENPROJECT_ALLOWED_PROJECTS_READ`/`_WRITE` (and
-  the deprecated bare `OPENPROJECT_ALLOWED_PROJECTS` alias) have been renamed
-  to `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS`, with no
-  backward-compatible alias, and the default has flipped from fail-open to
-  fail-closed** (OPM-125, Phase 3 of the authorization/config redesign,
-  OPM-122). Previously, an empty or unset read/write project scope meant
-  "every visible project is readable" — the same silent-fail-open shape as
-  the historical `OPENPROJECT_ALLOWED_PROJECTS` alias fixed in OPM-99. Now
-  empty or unset means "no project is readable/writable"; `*` must be set
-  explicitly to allow all visible projects. This also fixes two data-leak
-  bugs where an empty scope skipped client-side filtering entirely instead of
-  denying: `list_boards` and `list_relations` would have returned every board
-  or relation from every project, unfiltered. `list_notifications` and
-  `list_reminders` did not filter by project scope at all before this
-  release and now do. The interactive `configure` wizard's project-scope
-  prompts default to empty for brand-new setups too (previously `*`), so the
-  wizard and a hand-written config now start from the same fail-closed
-  default; existing configs using the old variable names are still prefilled
-  correctly for a one-time migration, and `doctor` warns when it detects the
-  old names still in use.
+- **Tools are now registered only when every scope their implementation
+  actually needs is enabled**, not just the scope named by their obvious
+  flag — some read and write tools that previously stayed visible after
+  their supporting scope was disabled now correctly disappear with it. No
+  environment variable was renamed; only tool exposure got more precise.
+- **Every mutating tool now always requires an explicit `confirm=true`
+  call.** The global auto-confirm bypass has been removed, closing a gap
+  where three tools (marking notifications read, toggling an emoji
+  reaction) previously skipped the preview step unconditionally.
+- **Breaking + security fix: project-scope variables renamed and flipped to
+  fail-closed.** The read/write project-allowlist variables have new names
+  with no backward-compatible alias, and an empty/unset scope now denies
+  all project-scoped access instead of allowing it — `*` must be set
+  explicitly. This also fixes two data-leak bugs where an empty scope
+  skipped filtering entirely instead of denying, and adds project-scope
+  filtering to two list tools that previously had none.
+- **Breaking: tool-group exposure consolidated into one variable**
+  (`OPENPROJECT_TOOLS`), replacing five separate per-scope read booleans
+  and a metadata-tools toggle. A new flag gates personal-data mutations,
+  requiring the matching group to also be enabled. Two previously
+  always-visible read tools moved under a new opt-in group — re-check your
+  configuration after upgrading if you rely on them.
+- **Breaking: the local-attachment root no longer falls back to the current
+  working directory when unset.** An empty/unset root now disables local
+  uploads entirely instead of defaulting to an unpredictable path; a
+  configured root must be absolute.
+- **`configure` and `doctor` reworked**: a live connection test and full
+  preview now run behind one final confirm (fixing an ordering bug where
+  config removals could run before credentials were collected), the wizard
+  writes only values that deviate from the default, legacy-variable
+  warnings now also show at server startup, and a new `--non-interactive`
+  flag supports scripted installs.
+- **Trimmed list/write responses to reduce context.** Confirmed writes no
+  longer repeat the raw request payload, list results drop derivable
+  fields, and a new `select` parameter returns only the requested row
+  fields on the main list/search tools.
+- **Hidden fields are now omitted entirely instead of being nulled out.**
+- **Metadata/reference tools are now opt-in** instead of always registered,
+  cutting the fixed schema cost paid on every request.
+- **Long work-package text is read in full on single-item reads**, while
+  list responses stay length-bounded.
+- **Simplified the setup flow**: the `configure` wizard leads with a basic
+  path and moves everything else behind one advanced-options gate;
+  install docs now lead with `uv tool install`.
+- **Improved tool descriptions and validation error messages** to reduce
+  agent retry loops.
 
-- **Breaking: the 5 per-scope read booleans
-  (`OPENPROJECT_ENABLE_PROJECT_READ`/`_WORK_PACKAGE_READ`/`_MEMBERSHIP_READ`/
-  `_VERSION_READ`/`_BOARD_READ`) and `OPENPROJECT_ENABLE_METADATA_TOOLS` have
-  been replaced by a single
-  `OPENPROJECT_TOOLS=projects,work-packages,memberships,versions,boards[,personal,extended]`
-  variable** (OPM-126, Phase 4 of the authorization/config redesign,
-  OPM-122). A new `OPENPROJECT_PERSONAL_WRITE` flag (default `false`) gates
-  the three personal-data mutations (`update_my_preferences`,
-  `mark_notification_read`, `mark_all_notifications_read`), independent of
-  `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`. `OPENPROJECT_TOOLS` controls tool
-  *visibility*/context budget, not data access — the security boundary
-  remains `OPENPROJECT_READ_PROJECTS`/`WRITE_PROJECTS` plus the write flags —
-  so, unlike the OPM-125 project-scope rename, it keeps a three-state
-  semantics: unset defaults to the 5 core groups (compatible with the
-  previous per-scope-read defaults), an explicit empty string disables every
-  group, and any other value is exactly the groups listed. An unknown group
-  name is rejected at startup, as is a write flag whose group is not present
-  in `OPENPROJECT_TOOLS`.
-  **This is not a fully compatible upgrade for every tool:** `get_my_preferences`
-  (previously always registered) and `list_notifications` (previously gated
-  by work-package read) both moved under the new `personal` group, which is
-  opt-in and NOT part of the unset default — a bare upgrade with no config
-  change loses these two read tools until `personal` is added to
-  `OPENPROJECT_TOOLS`. `personal` is also the one group with an AND
-  relationship to its write flag: the three personal mutations require both
-  `personal` in `OPENPROJECT_TOOLS` *and* `OPENPROJECT_PERSONAL_WRITE=true`,
-  unlike every other scope where read and write are independent axes. The
-  interactive `configure` wizard, `.mcp.json.example`, and `doctor` were
-  updated in this same phase: the wizard migrates existing configs using the
-  old variable names to the new `OPENPROJECT_TOOLS` value (and reconciles any
-  write flag left on for a now-invisible group before writing), and `doctor`
-  warns when it detects the old names still in use. The detailed per-client
-  setup guides (`docs/claude.md` and siblings), `AGENTS.md`, and `SECURITY.md`
-  still show the old variable names and will be updated in Phase 6
-  (OPM-128) — they are pure documentation with no functional effect on a
-  running server, unlike the wizard/doctor changes above.
+### Fixed
+
+- **`OPENPROJECT_LOG_LEVEL` is no longer ignored.**
+- **Fixed type-unsafe id validators** that raised an unhelpful error for a
+  JSON string, `None`, or boolean id; bulk work-package tools now accept
+  the same semantic id references as single-item tools.
+- **Fixed `list_projects` pagination**: a multi-page walk could stop early
+  or skip/misalign results on a later page.
+- **Fixed sparse result pages** in `list_versions`, `list_sprints`, and
+  `list_project_sprints` under a restrictive project allowlist.
+- **Fixed missing metadata fields** on work-package summaries that were
+  documented but raised validation errors when requested via `select`.
+
+### Security
+
+- **User-provided content is now delimited and flagged as untrusted.**
+  Work-package descriptions, comments, news, wiki pages, and custom text
+  fields are wrapped in markers, and server instructions warn connecting
+  agents to treat this content as data, not instructions.
+- **Fixed a project-isolation leak** where a sprint list tool could return
+  results belonging to a different, disallowed project.
+- **Fixed a fail-open regression** in a deprecated project-scope alias that
+  had been silently dropped, removing a deployment's read restriction
+  instead of keeping it.
 
 ### Internal
 
-- Tool registration in `tools.py` is now table-driven from a small set of
-  classification constants (`READ_TOOLS_BY_SCOPE`, `WRITE_TOOLS_BY_SCOPE`,
-  `PERSONAL_MUTATION_TOOLS`, `ADMIN_WRITE_TOOLS`,
-  `ADDITIONAL_READ_SCOPES_BY_TOOL`) instead of ~190 lines
-  of hand-written conditional blocks — closes OPM-47.
-- The six form-based write finalizers in `client.py` (work package, version,
-  board, grid, project, membership) now share one generic `_finalize_write`
-  helper for the preview/commit state machine, instead of six near-duplicate
-  implementations — closes OPM-57.
+- Tool registration is now table-driven from a small set of classification
+  constants instead of ~190 lines of hand-written conditionals.
+- The six write finalizers (work package, version, board, grid, project,
+  membership) now share one generic preview/commit helper instead of six
+  near-duplicate implementations.
+- Wizard tests now match prompts by their text instead of positional
+  order, so reordering a prompt can't silently misalign answers.
+- Evaluated the remaining runtime-tuning variables (timeouts, page sizes,
+  retries, log level) and the field-hiding variables; both stay as-is, no
+  functional change.
+
+### Docs
+
+- Documented the context-reduction features, the `'none'` field-clearing
+  pattern, and all new metadata fields in server instructions, README, and
+  `docs/tools.md`.
+- `OPENPROJECT_HIDE_<ENTITY>_FIELDS`'s full entity list moved from README
+  into its own `docs/field-hiding.md` reference page.
+- Corrected `SECURITY.md`'s read-default claims; re-measured and corrected
+  README's context-efficiency numbers, with a repeatable script to
+  regenerate them.
 
 ---
 
@@ -133,6 +159,15 @@ development baseline.
   creatable through the API and that `list_capabilities` is not the source of
   truth for what the tools allow, enriched at startup with the instance's live
   active feature flags (best-effort; never blocks server start).
+- **`create_work_package` and `update_work_package` gain a `parent` parameter**
+  (numeric id or a `PROJ-123` reference) to nest or re-parent a work package.
+  `update_work_package` also accepts the literal `'none'` to clear the parent
+  and make the work package top-level again.
+
+### Docs
+
+- Added `SECURITY.md`, documenting the supported-versions and vulnerability-
+  reporting policy.
 
 ---
 
