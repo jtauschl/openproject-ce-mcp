@@ -42,7 +42,7 @@ SPARSE_PATHS=(
   "/config/routes.rb"
   "/app/models/emoji_reaction.rb"   # EMOJI_MAP enum values
   "/app/models/version.rb"          # VERSION_STATUSES
-  "modules/backlogs"                # Sprint model/representers (17.6+, see OPM-102)
+  "modules/*/lib/api/v3"            # every module's API subtree (Backlogs, Meetings, etc., OPM-146)
 )
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

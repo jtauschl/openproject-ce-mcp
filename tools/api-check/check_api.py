@@ -381,6 +381,7 @@ def run_full_coverage() -> int:
     filters = sorted(_extract_client_filters())
     rows: list[tuple[str, str, list[str]]] = []
     introduced_late: list[str] = []
+    missing_at_latest: list[str] = []
 
     for r in resources:
         if r in MODULE_RESOURCES:
@@ -390,11 +391,15 @@ def run_full_coverage() -> int:
         rows.append((r, "resource", cells))
         if cells[0] == "—" and "yes" in cells:
             introduced_late.append(f"{r} (from {VERSIONS[cells.index('yes')]})")
+        if cells[-1] == "—":
+            missing_at_latest.append(f"{r} (resource)")
     for f in filters:
         cells = ["yes" if _filter_present(v, f) else "—" for v in VERSIONS]
         rows.append((f, "filter", cells))
         if cells[0] == "—" and "yes" in cells:
             introduced_late.append(f"{f} filter (from {VERSIONS[cells.index('yes')]})")
+        if cells[-1] == "—":
+            missing_at_latest.append(f"{f} (filter)")
 
     header = f"{'access':<28} {'kind':<9} " + " ".join(f"{v:<6}" for v in VERSIONS)
     print(header)
@@ -412,7 +417,16 @@ def run_full_coverage() -> int:
         for x in introduced_late:
             print(f"  - {x}")
     else:
-        print("All source-verifiable accesses exist back to 16.0.")
+        print("No source-verifiable accesses were introduced after 16.0.")
+
+    if missing_at_latest:
+        print()
+        print(
+            f"FAIL: {len(missing_at_latest)} client-used resource/filter(s) missing at the latest pinned version ({VERSIONS[-1]}):"
+        )
+        for x in missing_at_latest:
+            print(f"  - {x}")
+        return 1
     return 0
 
 
