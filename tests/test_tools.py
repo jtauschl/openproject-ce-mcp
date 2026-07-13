@@ -1614,6 +1614,12 @@ async def test_bulk_update_work_packages_tool_validates_required_fields() -> Non
             items=[{"work_package_id": 1, "parent_work_package_id": -1}],
         )
 
+    with pytest.raises(ValueError, match="must use a simple ISO 8601 duration"):
+        await bulk_update_work_packages(  # type: ignore[arg-type]
+            FakeContext(StubClient()),
+            items=[{"work_package_id": 1, "estimated_time": "bogus"}],
+        )
+
 
 @pytest.mark.asyncio
 async def test_bulk_update_work_packages_tool_passes_validated_items() -> None:
@@ -1636,7 +1642,15 @@ async def test_bulk_update_work_packages_tool_passes_validated_items() -> None:
     await bulk_update_work_packages(
         FakeContext(StubClient()),  # type: ignore[arg-type]
         items=[
-            {"work_package_id": 10, "subject": "New title", "status": "In progress", "parent_work_package_id": 30},
+            {
+                "work_package_id": 10,
+                "subject": "New title",
+                "status": "In progress",
+                "parent_work_package_id": 30,
+                "estimated_time": "PT8H",
+                "remaining_time": "PT3H",
+                "duration": "PT10H",
+            },
             {"work_package_id": 20, "due_date": "2026-12-31"},
         ],
         confirm=True,
@@ -1648,8 +1662,48 @@ async def test_bulk_update_work_packages_tool_passes_validated_items() -> None:
     assert received[0]["subject"] == "New title"
     assert received[0]["status"] == "In progress"
     assert received[0]["parent_work_package_id"] == "30"
+    assert received[0]["estimated_time"] == "PT8H"
+    assert received[0]["remaining_time"] == "PT3H"
+    assert received[0]["duration"] == "PT10H"
     assert received[1]["work_package_id"] == "20"
     assert received[1]["due_date"] == "2026-12-31"
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_work_packages_tool_accepts_each_duration_field_alone() -> None:
+    # Regression guard for OPM-133: each of estimated_time/remaining_time/duration
+    # must independently satisfy the "at least one field" check, not just when
+    # combined with an already-supported field like subject/status.
+    received: list = []
+
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            received.extend(kwargs["items"])
+            return {
+                "action": "bulk_update",
+                "total": len(kwargs["items"]),
+                "succeeded": len(kwargs["items"]),
+                "failed": 0,
+                "confirmed": kwargs["confirm"],
+                "requires_confirmation": not kwargs["confirm"],
+                "message": "ok",
+                "items": [],
+            }
+
+    await bulk_update_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        items=[
+            {"work_package_id": 10, "estimated_time": "PT8H"},
+            {"work_package_id": 20, "remaining_time": "PT3H"},
+            {"work_package_id": 30, "duration": "PT10H"},
+        ],
+        confirm=True,
+    )
+
+    assert len(received) == 3
+    assert received[0]["estimated_time"] == "PT8H"
+    assert received[1]["remaining_time"] == "PT3H"
+    assert received[2]["duration"] == "PT10H"
 
 
 def test_validate_work_package_ref_accepts_numeric_and_semantic() -> None:

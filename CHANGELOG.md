@@ -25,8 +25,9 @@ development baseline.
   configurable via `OPENPROJECT_MAX_RETRIES`/`OPENPROJECT_RETRY_BASE_DELAY`/
   `OPENPROJECT_RETRY_MAX_DELAY`. Only idempotent methods are retried.
 - **Work-package time tracking, metadata, and hierarchy fields**: writable
-  estimated/remaining time and duration (ISO 8601, e.g. `PT8H`), activity
-  details, author/category/timestamps, children/ancestors.
+  estimated/remaining time and duration (ISO 8601, e.g. `PT8H`, now
+  supported on bulk updates too), activity details, author/category/
+  timestamps, children/ancestors.
 - **Work-package scheduling fields**: `scheduleManually`,
   `ignoreNonWorkingDays`, derived start/due date, percentage done, `readonly`.
 - **Clearing nullable associations via `'none'`** now works consistently

@@ -1712,7 +1712,8 @@ async def bulk_update_work_packages(
     Each item in `items` must contain `work_package_id`. At least one other field must be present per item.
     Optional fields per item: `subject`, `description`, `type`, `version`, `project_phase`, `status`,
     `assignee`, `responsible`, `priority`, `category`, `custom_fields`, `parent_work_package_id`,
-    `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD).
+    `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`, `duration`
+    (ISO8601 duration strings in PT format, e.g. 'PT8H').
 
     With confirm=false (default) all items are validated and a preview is returned.
     With confirm=true all items are updated. Failed items are reported in the result — the operation
@@ -1753,6 +1754,13 @@ async def bulk_update_work_packages(
         )
         safe_start_date = _validate_optional_date(item.get("start_date"), field_name=f"items[{i}].start_date")
         safe_due_date = _validate_optional_date(item.get("due_date"), field_name=f"items[{i}].due_date")
+        safe_estimated_time = _validate_optional_duration(
+            item.get("estimated_time"), field_name=f"items[{i}].estimated_time"
+        )
+        safe_remaining_time = _validate_optional_duration(
+            item.get("remaining_time"), field_name=f"items[{i}].remaining_time"
+        )
+        safe_duration = _validate_optional_duration(item.get("duration"), field_name=f"items[{i}].duration")
         if not any(
             v is not None
             for v in (
@@ -1770,6 +1778,9 @@ async def bulk_update_work_packages(
                 safe_start_date,
                 safe_due_date,
                 safe_parent_work_package_id,
+                safe_estimated_time,
+                safe_remaining_time,
+                safe_duration,
             )
         ):
             raise ValueError(f"items[{i}]: at least one field to update is required.")
@@ -1790,6 +1801,9 @@ async def bulk_update_work_packages(
                 "parent_work_package_id": safe_parent_work_package_id,
                 "start_date": safe_start_date,
                 "due_date": safe_due_date,
+                "estimated_time": safe_estimated_time,
+                "remaining_time": safe_remaining_time,
+                "duration": safe_duration,
             }
         )
     return await _run_tool(client.bulk_update_work_packages(items=safe_items, confirm=confirm))

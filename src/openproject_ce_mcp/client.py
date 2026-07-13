@@ -2599,6 +2599,9 @@ class OpenProjectClient:
                     parent_work_package_id=item.get("parent_work_package_id"),
                     start_date=item.get("start_date"),
                     due_date=item.get("due_date"),
+                    estimated_time=item.get("estimated_time"),
+                    remaining_time=item.get("remaining_time"),
+                    duration=item.get("duration"),
                     confirm=confirm,
                 )
                 if not result.ready:

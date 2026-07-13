@@ -6304,6 +6304,8 @@ async def test_bulk_create_work_packages_partial_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_bulk_update_work_packages_preview_mode() -> None:
+    captured: dict[str, dict] = {}
+
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/10" and request.method == "GET":
             return httpx.Response(
@@ -6339,7 +6341,11 @@ async def test_bulk_update_work_packages_preview_mode() -> None:
                 },
                 request=request,
             )
-        if request.url.path in {"/api/v3/work_packages/10/form", "/api/v3/work_packages/20/form"}:
+        if request.url.path == "/api/v3/work_packages/10/form":
+            body = json.loads(request.content)
+            captured["body"] = body
+            return _make_wp_form_response(request, body)
+        if request.url.path == "/api/v3/work_packages/20/form":
             body = json.loads(request.content)
             return _make_wp_form_response(request, body)
         if request.url.path == "/api/v3/statuses":
@@ -6351,7 +6357,13 @@ async def test_bulk_update_work_packages_preview_mode() -> None:
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
     result = await client.bulk_update_work_packages(
         items=[
-            {"work_package_id": 10, "subject": "New 10"},
+            {
+                "work_package_id": 10,
+                "subject": "New 10",
+                "estimated_time": "PT8H",
+                "remaining_time": "PT3H",
+                "duration": "PT10H",
+            },
             {"work_package_id": 20, "status": "In progress"},
         ],
         confirm=False,
@@ -6363,6 +6375,9 @@ async def test_bulk_update_work_packages_preview_mode() -> None:
     assert result.total == 2
     assert result.succeeded == 2
     assert result.failed == 0
+    assert captured["body"]["estimatedTime"] == "PT8H"
+    assert captured["body"]["remainingTime"] == "PT3H"
+    assert captured["body"]["duration"] == "PT10H"
     await client.aclose()
 
 
