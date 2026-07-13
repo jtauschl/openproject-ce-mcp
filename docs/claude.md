@@ -18,7 +18,7 @@
    ```
    **This file holds your API token.** Add `.mcp.json` to your project's `.gitignore` so it is never committed.
 
-3. **Let the wizard write `.mcp.json` for you.** The easiest path is to run `openproject-ce-mcp configure`, answer the project-scoped gate, and select Claude Code — it writes `.mcp.json` for you. The example below (also mirrored at [`.mcp.json.example`](../.mcp.json.example)) is for creating it manually. With a PyPI install (uv tool / pipx / pip) the `command` is simply `openproject-ce-mcp` (resolved from your PATH); for a zero-install setup use `"command": "uvx"` with `"args": ["openproject-ce-mcp"]`. A source install instead points at the `.venv` binary (`...\.venv\bin\openproject-ce-mcp`, or `...\.venv\Scripts\openproject-ce-mcp.exe` on Windows).
+3. **Let the wizard write `.mcp.json` for you.** The easiest path is to run `openproject-ce-mcp configure`, answer the project-scoped gate, and select Claude Code — it writes `.mcp.json` for you, with only the values you set (everything else falls back to a safe default and is omitted from the file). The example below is for creating it manually. With a PyPI install (uv tool / pipx / pip) the `command` is simply `openproject-ce-mcp` (resolved from your PATH); for a zero-install setup use `"command": "uvx"` with `"args": ["openproject-ce-mcp"]`. A source install instead points at the `.venv` binary (`...\.venv\bin\openproject-ce-mcp`, or `...\.venv\Scripts\openproject-ce-mcp.exe` on Windows).
    ```json
    {
      "mcpServers": {
@@ -27,44 +27,16 @@
          "env": {
            "OPENPROJECT_BASE_URL": "https://op.example.com",
            "OPENPROJECT_API_TOKEN": "replace-with-your-token",
-
            "OPENPROJECT_READ_PROJECTS": "my-project,other-project",
-           "OPENPROJECT_WRITE_PROJECTS": "my-project",
-
-           "OPENPROJECT_ENABLE_PROJECT_READ": "true",
-           "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "true",
-           "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "true",
-           "OPENPROJECT_ENABLE_VERSION_READ": "true",
-           "OPENPROJECT_ENABLE_BOARD_READ": "true",
-
-           "OPENPROJECT_HIDE_PROJECT_FIELDS": "",
-           "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": "",
-           "OPENPROJECT_HIDE_ACTIVITY_FIELDS": "",
-           "OPENPROJECT_HIDE_CUSTOM_FIELDS": "",
-
-           "OPENPROJECT_ENABLE_ADMIN_WRITE": "false",
-
-           "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
-           "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
-           "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
-           "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
-           "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
-           "OPENPROJECT_ENABLE_METADATA_TOOLS": "false",
-
-           "OPENPROJECT_TIMEOUT": "12",
-           "OPENPROJECT_VERIFY_SSL": "true",
-           "OPENPROJECT_DEFAULT_PAGE_SIZE": "10",
-           "OPENPROJECT_MAX_PAGE_SIZE": "50",
-           "OPENPROJECT_MAX_RESULTS": "100",
-           "OPENPROJECT_TEXT_LIMIT": "500",
-           "OPENPROJECT_LOG_LEVEL": "WARNING"
+           "OPENPROJECT_WRITE_PROJECTS": "my-project"
          }
        }
      }
    }
    ```
 
-   Other keys (such as `OPENPROJECT_ATTACHMENT_ROOT`) are optional and fall back to safe defaults when omitted — see the [Configuration table](../README.md#configuration) for the full list.
+   The full set of `env` keys is the same as every other client — see
+   [`.mcp.json.example`](../.mcp.json.example) or the [Configuration table](../README.md#configuration).
 
 4. **Reload:** Restart Claude Code, or run "Developer: Reload Window" from the command palette (**Cmd+Shift+P** on macOS, **Ctrl+Shift+P** on Windows/Linux).
 
@@ -99,42 +71,16 @@ After reloading, confirm the server is live:
       "env": {
         "OPENPROJECT_BASE_URL": "https://op.example.com",
         "OPENPROJECT_API_TOKEN": "replace-with-your-token",
-
         "OPENPROJECT_READ_PROJECTS": "*",
-        "OPENPROJECT_WRITE_PROJECTS": "",
-
-        "OPENPROJECT_ENABLE_PROJECT_READ": "true",
-        "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "true",
-        "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "true",
-        "OPENPROJECT_ENABLE_VERSION_READ": "true",
-        "OPENPROJECT_ENABLE_BOARD_READ": "true",
-
-        "OPENPROJECT_HIDE_PROJECT_FIELDS": "",
-        "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": "",
-        "OPENPROJECT_HIDE_ACTIVITY_FIELDS": "",
-        "OPENPROJECT_HIDE_CUSTOM_FIELDS": "",
-
-        "OPENPROJECT_ENABLE_ADMIN_WRITE": "false",
-
-        "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
-        "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
-        "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
-        "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
-        "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
-        "OPENPROJECT_ENABLE_METADATA_TOOLS": "false",
-
-        "OPENPROJECT_TIMEOUT": "12",
-        "OPENPROJECT_VERIFY_SSL": "true",
-        "OPENPROJECT_DEFAULT_PAGE_SIZE": "10",
-        "OPENPROJECT_MAX_PAGE_SIZE": "50",
-        "OPENPROJECT_MAX_RESULTS": "100",
-        "OPENPROJECT_TEXT_LIMIT": "500",
-        "OPENPROJECT_LOG_LEVEL": "WARNING"
+        "OPENPROJECT_WRITE_PROJECTS": ""
       }
     }
   }
 }
 ```
+
+The full set of `env` keys is the same as every other client — see
+[`.mcp.json.example`](../.mcp.json.example) or the [Configuration table](../README.md#configuration).
 
 ---
 

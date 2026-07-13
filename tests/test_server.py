@@ -478,3 +478,40 @@ def test_main_doctor_help_prints_help_not_runs_checks(monkeypatch, capsys) -> No
     assert "Running OpenProject MCP diagnostics" not in out
     assert "[OK]" not in out
     assert "[FAIL]" not in out
+
+
+# ── legacy env-var warnings at real server startup (OPM-128) ────────────────────
+
+
+class _StubApp:
+    def run(self, *, transport: str) -> None:  # pragma: no cover - never actually invoked
+        pass
+
+
+def test_run_server_warns_on_legacy_env_var(monkeypatch, capsys) -> None:
+    # Unlike doctor (a separate, manually-invoked command), the real server
+    # startup path previously had zero legacy-var awareness — this is the gap
+    # OPM-128 closed after this repo's own project config silently failed
+    # closed on the old names with no diagnostic anywhere.
+    monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://op.example.com")
+    monkeypatch.setenv("OPENPROJECT_API_TOKEN", "tok")
+    monkeypatch.setenv("OPENPROJECT_ALLOWED_PROJECTS_READ", "OPM")
+    monkeypatch.setattr(server, "create_app", lambda settings: _StubApp())
+
+    server._run_server()
+
+    err = capsys.readouterr().err
+    assert "[WARN]" in err
+    assert "OPENPROJECT_ALLOWED_PROJECTS_READ" in err
+    assert "OPENPROJECT_READ_PROJECTS" in err
+
+
+def test_run_server_silent_when_no_legacy_env_vars(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://op.example.com")
+    monkeypatch.setenv("OPENPROJECT_API_TOKEN", "tok")
+    monkeypatch.delenv("OPENPROJECT_ALLOWED_PROJECTS_READ", raising=False)
+    monkeypatch.setattr(server, "create_app", lambda settings: _StubApp())
+
+    server._run_server()
+
+    assert capsys.readouterr().err == ""

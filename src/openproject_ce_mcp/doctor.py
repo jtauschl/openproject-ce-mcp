@@ -17,7 +17,7 @@ import httpx
 
 from . import __version__
 from .client import AuthenticationError, OpenProjectClient, OpenProjectError
-from .config import ConfigError, Settings
+from .config import ConfigError, Settings, legacy_env_warnings
 from .models import CurrentUser
 
 EXIT_SUCCESS = 0
@@ -198,22 +198,6 @@ def _check_config_parsing(client_configs: list[tuple]) -> tuple[bool, dict[str, 
     return (all_ok, merged_env)
 
 
-_LEGACY_PROJECT_SCOPE_VARS = (
-    "OPENPROJECT_ALLOWED_PROJECTS",
-    "OPENPROJECT_ALLOWED_PROJECTS_READ",
-    "OPENPROJECT_ALLOWED_PROJECTS_WRITE",
-)
-
-_LEGACY_TOOL_EXPOSURE_VARS = (
-    "OPENPROJECT_ENABLE_PROJECT_READ",
-    "OPENPROJECT_ENABLE_WORK_PACKAGE_READ",
-    "OPENPROJECT_ENABLE_MEMBERSHIP_READ",
-    "OPENPROJECT_ENABLE_VERSION_READ",
-    "OPENPROJECT_ENABLE_BOARD_READ",
-    "OPENPROJECT_ENABLE_METADATA_TOOLS",
-)
-
-
 def _check_env_config(
     settings_override: Settings | None,
     client_env: dict[str, str],
@@ -228,21 +212,8 @@ def _check_env_config(
     combined_env = dict(os.environ)
     combined_env.update(client_env)
 
-    if any(var in combined_env for var in _LEGACY_PROJECT_SCOPE_VARS):
-        print(
-            "[WARN] Legacy project scope variables detected and ignored. Effective project "
-            "access may be empty. Run configure to migrate them to "
-            "OPENPROJECT_READ_PROJECTS/OPENPROJECT_WRITE_PROJECTS.",
-            file=sys.stderr,
-        )
-
-    if any(var in combined_env for var in _LEGACY_TOOL_EXPOSURE_VARS):
-        print(
-            "[WARN] Legacy tool-exposure variables detected and ignored. Effective tool "
-            "groups may differ from what you expect. Run configure to migrate them to "
-            "OPENPROJECT_TOOLS.",
-            file=sys.stderr,
-        )
+    for warning in legacy_env_warnings(combined_env):
+        print(f"[WARN] {warning}", file=sys.stderr)
 
     try:
         settings = Settings.from_env(environ=combined_env)
@@ -265,11 +236,18 @@ def _warn_insecure(settings: Settings) -> None:
 
 
 def _print_project_scope_summary(settings: Settings) -> None:
-    """Make the fail-closed project-scope default diagnosable."""
+    """Make the fail-closed project-scope default and write-group state diagnosable."""
     read_summary = ", ".join(settings.read_projects) or "none (fail-closed — nothing readable)"
     write_summary = ", ".join(settings.write_projects) or "none (fail-closed — nothing writable)"
     print(f"  Read projects: {read_summary}")
     print(f"  Write projects: {write_summary}")
+    print(f"  Work-package writes: {settings.enable_work_package_write}")
+    print(f"  Project writes: {settings.enable_project_write}")
+    print(f"  Membership writes: {settings.enable_membership_write}")
+    print(f"  Version writes: {settings.enable_version_write}")
+    print(f"  Board writes: {settings.enable_board_write}")
+    print(f"  Personal-data writes: {settings.enable_personal_write}")
+    print(f"  Admin writes: {settings.enable_admin_write}")
 
 
 async def _check_api_connectivity(

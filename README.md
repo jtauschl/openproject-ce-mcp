@@ -389,13 +389,26 @@ If a check fails, doctor prints a `[FAIL]` message with details and suggestions.
 
 Your client config (`.mcp.json`, `.codex/config.toml`, or `.vscode/mcp.json`) contains your API token. Treat it like a password. This repo gitignores `.mcp.json`, but when you place a project-scoped config in your **own** project, add it to that project's `.gitignore` so the token is never committed.
 
-`openproject-ce-mcp configure` writes a complete config. The basic path asks for
-connection, project scope, whether project-scoped writes should be enabled, and
-— only if writes are enabled — whether to skip the write-preview step
-(auto-confirm), which defaults to off. Detailed per-chain read/write groups,
-field filtering, and runtime settings are behind the "Configure advanced
-options?" prompt; if you skip it while reconfiguring, existing advanced values
-are preserved.
+`openproject-ce-mcp configure` writes a minimal config: only the values you
+set differ from a safe default, so a fresh setup is just `OPENPROJECT_BASE_URL`
+and `OPENPROJECT_API_TOKEN` plus whatever scope you gave it — not a
+fully-spelled-out table (see the [Configuration table](#configuration) below
+for what every field defaults to). The basic path asks for connection, project
+scope, and whether project-scoped writes should be enabled. Detailed per-chain
+read/write groups, field filtering, and runtime settings are behind the
+"Configure advanced options?" prompt; if you skip it while reconfiguring,
+existing advanced values are preserved.
+
+Before writing anything, the wizard tests the connection against your real
+OpenProject instance and shows a preview of every change (files to create,
+update, or remove; the effective settings) — nothing is written or removed
+until you confirm. This is keyed on **stdin alone** being a real terminal, so
+redirecting stdout (e.g. `configure | tee log`) does not skip it — a human
+typing answers always gets the connection test and confirmation. Ctrl+C
+cancels cleanly at any point without writing. Only a genuinely non-interactive
+stdin (piped canned answers, CI, install scripts) or the explicit
+`--non-interactive` flag skips the connection test and preview and writes
+directly, matching prior behavior.
 
 ### Connection
 

@@ -20,6 +20,8 @@ Runs in two modes:
 from __future__ import annotations
 
 import argparse
+import asyncio
+import dataclasses
 import getpass
 import json
 import os
@@ -29,7 +31,20 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import NamedTuple
 
+import httpx
+
+from openproject_ce_mcp.client import (
+    AuthenticationError,
+    InvalidInputError,
+    NotFoundError,
+    OpenProjectClient,
+    OpenProjectError,
+    OpenProjectServerError,
+    PermissionDeniedError,
+    TransportError,
+)
 from openproject_ce_mcp.config import ConfigError, Settings, parse_tool_groups_csv, tool_exposure_violations
 
 # tomllib is stdlib only on Python 3.11+. This installer supports 3.10 (which
@@ -1019,23 +1034,555 @@ def _merge_tool_groups_prefill(pairs: list[tuple[Client, Path | None]]) -> tuple
     return value, used_legacy
 
 
+# ── live connection test + preview/confirm (OPM-121, folded into OPM-128) ──────
+
+
+class ConnectionCheck(NamedTuple):
+    """Outcome of a live API check against candidate wizard settings.
+
+    ``status`` is one of: ``"ok"``, ``"config_error"``, ``"auth_error"``,
+    ``"permission_error"``, ``"not_found_error"``, ``"invalid_input_error"``,
+    ``"server_error"``, ``"network_error"``, ``"unexpected_error"``, or
+    ``"skipped"`` (non-interactive — no check was attempted).
+    """
+
+    status: str
+    detail: str
+    user_name: str | None
+
+
+async def _test_connection_async(
+    env: dict[str, str], *, transport: httpx.AsyncBaseTransport | None = None
+) -> ConnectionCheck:
+    try:
+        settings = Settings.from_env(env)
+    except ConfigError as exc:
+        return ConnectionCheck("config_error", str(exc), None)
+
+    # Shorter timeout, no retries — same reasoning as doctor.py's diagnostic
+    # check: a connection TEST should fail fast, not wait through the user's
+    # configured full retry/backoff policy (which could take tens of seconds
+    # for a genuinely down host).
+    diagnostic_settings = dataclasses.replace(settings, timeout=5.0, max_retries=0)
+    client = OpenProjectClient(diagnostic_settings, transport=transport)
+    try:
+        user = await client.get_current_user()
+        return ConnectionCheck("ok", "", user.name)
+    except AuthenticationError as exc:
+        return ConnectionCheck("auth_error", str(exc), None)
+    except PermissionDeniedError as exc:
+        return ConnectionCheck("permission_error", str(exc), None)
+    except NotFoundError as exc:
+        return ConnectionCheck("not_found_error", str(exc), None)
+    except InvalidInputError as exc:
+        return ConnectionCheck("invalid_input_error", str(exc), None)
+    except TransportError as exc:
+        return ConnectionCheck("network_error", str(exc), None)
+    except OpenProjectServerError as exc:
+        return ConnectionCheck("server_error", str(exc), None)
+    except OpenProjectError as exc:
+        # Fallback bucket: the six named subclasses above are exhaustive today,
+        # but a future subclass shouldn't crash the wizard.
+        return ConnectionCheck("server_error", str(exc), None)
+    except Exception as exc:  # noqa: BLE001 - must not crash the wizard on an unexpected client bug
+        return ConnectionCheck("unexpected_error", f"{type(exc).__name__}: {exc}", None)
+    finally:
+        await client.aclose()
+
+
+def _test_connection(env: dict[str, str], *, transport: httpx.AsyncBaseTransport | None = None) -> ConnectionCheck:
+    """Synchronous wrapper — the wizard itself has no other async call sites.
+
+    ``transport`` is test-only (an ``httpx.MockTransport``); production callers
+    never pass it, so the real network stack is used.
+    """
+    return asyncio.run(_test_connection_async(env, transport=transport))
+
+
+_MAX_CREDENTIAL_ATTEMPTS = 3
+
+
+def _collect_credentials(
+    prefill_pairs: list[tuple[Client, Path | None]],
+    existing: dict[str, str],
+    *,
+    interactive: bool,
+) -> tuple[dict[str, str], frozenset[str], ConnectionCheck]:
+    """Prompt for base URL/token/scope/advanced settings; return env + tool groups + connection status.
+
+    In interactive mode, validates the candidate settings against a live API
+    connection before returning. A `network_error` offers a genuine choice
+    (retry the same check / proceed unverified / re-enter credentials) since
+    it might be transient; every other error class forces re-entry of
+    credentials outright — never a silent proceed past a real config/auth/
+    permission problem. Exits (code 1) if no working credentials are produced
+    within ``_MAX_CREDENTIAL_ATTEMPTS`` full re-entry attempts.
+    """
+    for _attempt in range(_MAX_CREDENTIAL_ATTEMPTS):
+        print()
+
+        base_url = _prompt(
+            "OpenProject base URL",
+            existing.get("OPENPROJECT_BASE_URL", "https://op.example.com"),
+        )
+
+        has_token = bool(existing.get("OPENPROJECT_API_TOKEN"))
+        token = _prompt_secret("OpenProject API token", has_existing=has_token)
+        if not token:
+            token = existing.get("OPENPROJECT_API_TOKEN", "")
+        if not token:
+            print("An API token is required.", file=sys.stderr)
+            sys.exit(1)
+        print("  This token is saved in the config file — keep it private and never commit it.")
+
+        print()
+        print("Project scope — comma-separated identifiers, names, or globs (e.g. team-*).")
+        read_projects_existing, write_projects_existing, read_used_legacy, write_used_legacy = _merge_scope_prefill(
+            prefill_pairs
+        )
+        if read_used_legacy or write_used_legacy:
+            print(
+                "Found legacy OPENPROJECT_ALLOWED_PROJECTS_READ/_WRITE — using their values as "
+                "defaults for the renamed OPENPROJECT_READ_PROJECTS/OPENPROJECT_WRITE_PROJECTS."
+            )
+        read_projects = _prompt(
+            "Readable projects (empty = none, * = all visible)",
+            read_projects_existing,
+        )
+        existing_write_projects = write_projects_existing.strip()
+        write_access = _prompt_bool("Enable write access?", bool(existing_write_projects))
+        if write_access:
+            write_projects_default = existing_write_projects or read_projects
+            write_projects = _prompt(
+                "Writable projects (subset of readable)",
+                write_projects_default,
+            )
+            wp_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", True)
+            project_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_WRITE", True)
+            membership_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", True)
+            version_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_WRITE", True)
+            board_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_WRITE", True)
+        else:
+            write_projects = ""
+            print("Write access disabled — project-scoped writes are disabled.")
+            wp_write = False
+            project_write = False
+            membership_write = False
+            version_write = False
+            board_write = False
+
+        print()
+        advanced = _prompt_bool("Configure advanced options?", False)
+
+        tool_groups_csv, tool_groups_used_legacy = _merge_tool_groups_prefill(prefill_pairs)
+        personal_write = _bool_from_env(existing, "OPENPROJECT_PERSONAL_WRITE", False)
+        if tool_groups_used_legacy:
+            print(
+                "Found legacy OPENPROJECT_ENABLE_*_READ/_METADATA_TOOLS settings — using them "
+                "to derive a default for the renamed OPENPROJECT_TOOLS."
+            )
+        hide_project = existing.get("OPENPROJECT_HIDE_PROJECT_FIELDS", "")
+        hide_wp = existing.get("OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS", "")
+        hide_activity = existing.get("OPENPROJECT_HIDE_ACTIVITY_FIELDS", "")
+        hide_custom = existing.get("OPENPROJECT_HIDE_CUSTOM_FIELDS", "")
+        admin_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_WRITE")
+        timeout = existing.get("OPENPROJECT_TIMEOUT", "12")
+        verify_ssl = existing.get("OPENPROJECT_VERIFY_SSL", "true")
+        default_page_size = existing.get("OPENPROJECT_DEFAULT_PAGE_SIZE", "10")
+        max_page_size = existing.get("OPENPROJECT_MAX_PAGE_SIZE", "50")
+        max_results = existing.get("OPENPROJECT_MAX_RESULTS", "100")
+        text_limit = existing.get("OPENPROJECT_TEXT_LIMIT", "500")
+        log_level = existing.get("OPENPROJECT_LOG_LEVEL", "WARNING")
+        attachment_root = existing.get("OPENPROJECT_ATTACHMENT_ROOT", "")
+        max_retries = existing.get("OPENPROJECT_MAX_RETRIES", "3")
+        retry_base_delay = existing.get("OPENPROJECT_RETRY_BASE_DELAY", "1.0")
+        retry_max_delay = existing.get("OPENPROJECT_RETRY_MAX_DELAY", "60.0")
+
+        if advanced:
+            print()
+            print(
+                "Tool groups — comma-separated (projects, work-packages, memberships, versions, "
+                "boards, personal, extended). Defaults are usually right for first-time setup."
+            )
+            tool_groups_csv = _prompt("Enabled tool groups", tool_groups_csv)
+
+        # Unconditional (not just under advanced): validates a migrated or existing-config
+        # value too, not only a freshly-typed one. Bounded to 3 attempts so a non-interactive
+        # context (piped input, canned test answers) cannot loop forever.
+        for tg_attempt in range(3):
+            try:
+                tool_groups_final = parse_tool_groups_csv(tool_groups_csv)
+                break
+            except ConfigError as exc:
+                if tg_attempt == 2:
+                    print(
+                        "Could not parse a valid OPENPROJECT_TOOLS value. Nothing written.",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+                print(f"  ! Invalid tool groups ({exc}).")
+                tool_groups_csv = _prompt(
+                    "Enabled tool groups — comma-separated, check spelling",
+                    tool_groups_csv,  # current (possibly wrong) value, not the bare default
+                )
+
+        if "personal" not in tool_groups_final:
+            # No visible personal group → personal writes cannot be active either.
+            personal_write = False
+        elif advanced:
+            # Only actively re-prompt in the advanced flow.
+            personal_write = _prompt_bool(
+                "Enable personal-data writes (preferences, notification read-state)?",
+                personal_write,
+            )
+        # else: advanced was skipped — keep the existing personal_write value as-is,
+        # matching the wizard's established principle that skipped advanced values
+        # are preserved, not reset.
+
+        if advanced:
+            if write_access:
+                print()
+                print("Write controls — OpenProject permissions and the writable project scope still apply.")
+                wp_write = _prompt_bool(
+                    "Enable work-package writes (create/update/delete, comments, relations, attachments, time entries)?",
+                    wp_write,
+                )
+                project_write = _prompt_bool(
+                    "Enable project writes (create/update/delete)?",
+                    project_write,
+                )
+                membership_write = _prompt_bool(
+                    "Enable membership writes (create/update/delete)?",
+                    membership_write,
+                )
+                version_write = _prompt_bool(
+                    "Enable version writes (create/update/delete)?",
+                    version_write,
+                )
+                board_write = _prompt_bool(
+                    "Enable board writes (create/update/delete)?",
+                    board_write,
+                )
+
+            print()
+            print("Optional field filtering — omit fields from reads. Leave empty unless you need it.")
+            hide_project = _prompt("Hidden project fields (comma-separated)", hide_project)
+            hide_wp = _prompt("Hidden work-package fields (comma-separated)", hide_wp)
+            hide_activity = _prompt("Hidden activity fields (comma-separated)", hide_activity)
+            hide_custom = _prompt("Hidden custom fields (comma-separated)", hide_custom)
+
+            print()
+            print("Advanced tool exposure and runtime settings.")
+            admin_write = _prompt_bool("Enable admin writes (users/groups)?", admin_write)
+            attachment_root = _prompt(
+                "Attachment upload root, absolute path (empty = uploads disabled)", attachment_root
+            )
+            default_page_size = _prompt("Default page size", default_page_size)
+            max_page_size = _prompt("Max page size", max_page_size)
+            max_results = _prompt("Max total results", max_results)
+            text_limit = _prompt("List text preview char limit", text_limit)
+            timeout = _prompt("Request timeout seconds", timeout)
+            verify_ssl = (
+                "true"
+                if _prompt_bool("Verify TLS certificates?", _bool_from_env({"v": verify_ssl}, "v", True))
+                else "false"
+            )
+            max_retries = _prompt("Max retries for 429/5xx responses", max_retries)
+            retry_base_delay = _prompt("Retry base delay seconds", retry_base_delay)
+            retry_max_delay = _prompt("Retry max delay seconds", retry_max_delay)
+            log_level = _prompt("Log level", log_level)
+
+        # Write-flag reconciliation: from the ORIGINAL (unmutated) values, once, using
+        # the now-validated tool_groups_final — never mutate write_flags across retries
+        # above, or a group-list typo could permanently disable an unrelated, correctly
+        # chosen write flag (see OPM-126 review).
+        original_write_flags = {
+            "project_write": project_write,
+            "work_package_write": wp_write,
+            "membership_write": membership_write,
+            "version_write": version_write,
+            "board_write": board_write,
+            "personal_write": personal_write,
+        }
+        write_flags = original_write_flags.copy()
+        for key, group, env_var in tool_exposure_violations(tool_groups_final, **write_flags):
+            print(
+                f"  ! '{group}' is not in the enabled tool groups — disabling {env_var} "
+                "(it would otherwise fail at startup)."
+            )
+            write_flags[key] = False
+        project_write = write_flags["project_write"]
+        wp_write = write_flags["work_package_write"]
+        membership_write = write_flags["membership_write"]
+        version_write = write_flags["version_write"]
+        board_write = write_flags["board_write"]
+        personal_write = write_flags["personal_write"]
+
+        env: dict[str, str] = {
+            "OPENPROJECT_BASE_URL": base_url,
+            "OPENPROJECT_API_TOKEN": token,
+            "OPENPROJECT_READ_PROJECTS": read_projects,
+            "OPENPROJECT_WRITE_PROJECTS": write_projects,
+            "OPENPROJECT_TOOLS": tool_groups_csv,
+            "OPENPROJECT_HIDE_PROJECT_FIELDS": hide_project,
+            "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": hide_wp,
+            "OPENPROJECT_HIDE_ACTIVITY_FIELDS": hide_activity,
+            "OPENPROJECT_HIDE_CUSTOM_FIELDS": hide_custom,
+            "OPENPROJECT_ENABLE_PROJECT_WRITE": str(project_write).lower(),
+            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": str(membership_write).lower(),
+            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": str(wp_write).lower(),
+            "OPENPROJECT_ENABLE_VERSION_WRITE": str(version_write).lower(),
+            "OPENPROJECT_ENABLE_BOARD_WRITE": str(board_write).lower(),
+            "OPENPROJECT_PERSONAL_WRITE": str(personal_write).lower(),
+            "OPENPROJECT_ENABLE_ADMIN_WRITE": str(admin_write).lower(),
+            "OPENPROJECT_ATTACHMENT_ROOT": attachment_root,
+            "OPENPROJECT_TIMEOUT": timeout,
+            "OPENPROJECT_VERIFY_SSL": verify_ssl,
+            "OPENPROJECT_DEFAULT_PAGE_SIZE": default_page_size,
+            "OPENPROJECT_MAX_PAGE_SIZE": max_page_size,
+            "OPENPROJECT_MAX_RESULTS": max_results,
+            "OPENPROJECT_TEXT_LIMIT": text_limit,
+            "OPENPROJECT_MAX_RETRIES": max_retries,
+            "OPENPROJECT_RETRY_BASE_DELAY": retry_base_delay,
+            "OPENPROJECT_RETRY_MAX_DELAY": retry_max_delay,
+            "OPENPROJECT_LOG_LEVEL": log_level,
+        }
+
+        if not interactive:
+            return env, tool_groups_final, ConnectionCheck("skipped", "", None)
+
+        while True:
+            check = _test_connection(env)
+            if check.status == "ok":
+                return env, tool_groups_final, check
+            if check.status != "network_error":
+                print(f"  ! Connection check failed ({check.status}): {check.detail}")
+                print("  Please re-enter your credentials.")
+                break
+            print(f"  ! Could not verify the connection: {check.detail}")
+            choice = (
+                _prompt(
+                    "Retry the connection check, proceed without verifying, or re-enter "
+                    "credentials? [retry/proceed/edit]",
+                    "retry",
+                )
+                .strip()
+                .lower()
+            )
+            if choice.startswith("p"):
+                return env, tool_groups_final, check
+            if choice.startswith("e"):
+                break
+            # anything else (including the "retry" default) loops back and retries
+            # the same connection check without re-prompting any field.
+
+    print(
+        f"Could not collect a working configuration after {_MAX_CREDENTIAL_ATTEMPTS} attempts. Nothing written.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+def _preview_changes(
+    remove_global_clients: list[Client],
+    remove_project_clients: list[Client],
+    global_clients: list[Client],
+    project_clients: list[Client],
+    write_generic_mcp_json: bool,
+    env: dict[str, str] | None,
+    connection: ConnectionCheck | None,
+    tool_groups_final: frozenset[str] | None,
+) -> bool:
+    """Print every pending mutation and the effective settings; return the user's confirm.
+
+    ``env``/``connection``/``tool_groups_final`` are None for a pure-removal
+    flow with nothing to write — only the removal list is shown in that case.
+    """
+    print()
+    print("Preview of changes:")
+    for client in remove_global_clients:
+        print(f"  - Remove {client.label} (global): {client.target}")
+    for client in remove_project_clients:
+        print(f"  - Remove {client.label} (project): {client.project_target}")
+    for client in global_clients:
+        action = "Update" if _has_openproject_config(client, client.target) else "Create"
+        print(f"  - {action} {client.label} (global): {client.target}")
+    for client in project_clients:
+        action = "Update" if _has_openproject_config(client, client.project_target) else "Create"
+        print(f"  - {action} {client.label} (project): {client.project_target}")
+    if write_generic_mcp_json:
+        print("  - Write generic .mcp.json (copy-source for project scope)")
+
+    if env is not None:
+        print()
+        if connection is None or connection.status == "skipped":
+            print("  Connection: skipped (non-interactive)")
+        elif connection.status == "ok":
+            print(f"  Connection: OK (connected as {connection.user_name})")
+        else:
+            print(f"  Connection: UNVERIFIED — proceeding without a successful check ({connection.detail})")
+        print(f"  Base URL: {env['OPENPROJECT_BASE_URL']}")
+        print("  API token: configured (hidden)")
+        # Effective scope is always shown here, even though an empty/default
+        # value ends up omitted from the written file (see minimal-diff writing) —
+        # the file's minimalism must never reduce what the user was told.
+        print(f"  Read projects: {env['OPENPROJECT_READ_PROJECTS'] or 'none (fail-closed)'}")
+        print(f"  Write projects: {env['OPENPROJECT_WRITE_PROJECTS'] or 'none (fail-closed)'}")
+        if tool_groups_final is not None:
+            print(f"  Tool groups: {', '.join(sorted(tool_groups_final)) or 'none'}")
+        print(f"  Work-package writes: {env['OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE']}")
+        print(f"  Project writes: {env['OPENPROJECT_ENABLE_PROJECT_WRITE']}")
+        print(f"  Membership writes: {env['OPENPROJECT_ENABLE_MEMBERSHIP_WRITE']}")
+        print(f"  Version writes: {env['OPENPROJECT_ENABLE_VERSION_WRITE']}")
+        print(f"  Board writes: {env['OPENPROJECT_ENABLE_BOARD_WRITE']}")
+        print(f"  Personal-data writes: {env['OPENPROJECT_PERSONAL_WRITE']}")
+        print(f"  Admin writes: {env['OPENPROJECT_ENABLE_ADMIN_WRITE']}")
+        if env["OPENPROJECT_VERIFY_SSL"] == "false":
+            print("  ! TLS verification disabled (OPENPROJECT_VERIFY_SSL=false)")
+        if env["OPENPROJECT_BASE_URL"].startswith("http://"):
+            print("  ! Unencrypted HTTP connection")
+
+    print()
+    return _prompt_bool("Proceed with these changes?", default=False)
+
+
+def _apply_changes(
+    remove_global_clients: list[Client],
+    remove_project_clients: list[Client],
+    global_clients: list[Client],
+    project_clients: list[Client],
+    write_generic_mcp_json: bool,
+    generic_target: Path | None,
+    command: str,
+    env: dict[str, str] | None,
+) -> None:
+    """Perform every mutation in one bundled step: removals first, then writes.
+
+    Bundling matters because it's called exactly once, after any preview/confirm
+    — never split across the flow, or a decline partway through would leave some
+    mutations applied and others not (the bug this replaces: removals used to run
+    immediately after target selection, before credentials were even collected).
+    ``env`` is None for a pure-removal flow with nothing to write.
+    """
+    if remove_global_clients:
+        print()
+        print("Removing deselected user-wide (global) config:")
+        for client in remove_global_clients:
+            _remove_client_config(client, target=client.target)
+    if remove_project_clients:
+        print()
+        print("Removing deselected project-scoped config:")
+        for client in remove_project_clients:
+            _remove_client_config(client, target=client.project_target)
+
+    if env is None:
+        return
+
+    print()
+    if global_clients:
+        print("Configuring user-wide (global):")
+        _apply_registration(global_clients, command, env, scope="global")
+    if project_clients:
+        print("Configuring project-scoped (this directory):")
+        _apply_registration(project_clients, command, env, scope="project")
+    if write_generic_mcp_json and generic_target is not None:
+        _write_mcp_json(env, generic_target, command)
+
+
+# ── minimal-diff config writing (OPM-128) ───────────────────────────────────────
+
+# Materialized once, at import time (cheap — no I/O): every optional field's
+# real runtime default, from the single source of truth (Settings.from_env
+# itself), rather than a second hand-copied table of default literals that
+# could silently drift from config.py's actual defaults. BASE_URL/API_TOKEN
+# are throwaway placeholders — never written anywhere, always kept unconditionally.
+_DEFAULT_SETTINGS = Settings.from_env(
+    {"OPENPROJECT_BASE_URL": "https://placeholder.invalid", "OPENPROJECT_API_TOKEN": "placeholder"}
+)
+_DEFAULT_TOOL_GROUPS: frozenset[str] = parse_tool_groups_csv(_DEFAULT_TOOL_GROUPS_CSV)
+
+# (env key, Settings attribute) — every generated env key except BASE_URL/
+# API_TOKEN (always kept) and TOOLS (special-cased: compared against the
+# already-resolved tool_groups_final frozenset, not a Settings attribute).
+_MINIMAL_ENV_FIELD_MAP: tuple[tuple[str, str], ...] = (
+    ("OPENPROJECT_READ_PROJECTS", "read_projects"),
+    ("OPENPROJECT_WRITE_PROJECTS", "write_projects"),
+    ("OPENPROJECT_HIDE_PROJECT_FIELDS", "hide_project_fields"),
+    ("OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS", "hide_work_package_fields"),
+    ("OPENPROJECT_HIDE_ACTIVITY_FIELDS", "hide_activity_fields"),
+    ("OPENPROJECT_HIDE_CUSTOM_FIELDS", "hide_custom_fields"),
+    ("OPENPROJECT_ENABLE_PROJECT_WRITE", "enable_project_write"),
+    ("OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", "enable_membership_write"),
+    ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "enable_work_package_write"),
+    ("OPENPROJECT_ENABLE_VERSION_WRITE", "enable_version_write"),
+    ("OPENPROJECT_ENABLE_BOARD_WRITE", "enable_board_write"),
+    ("OPENPROJECT_PERSONAL_WRITE", "enable_personal_write"),
+    ("OPENPROJECT_ENABLE_ADMIN_WRITE", "enable_admin_write"),
+    ("OPENPROJECT_ATTACHMENT_ROOT", "attachment_root"),
+    ("OPENPROJECT_TIMEOUT", "timeout"),
+    ("OPENPROJECT_VERIFY_SSL", "verify_ssl"),
+    ("OPENPROJECT_DEFAULT_PAGE_SIZE", "default_page_size"),
+    ("OPENPROJECT_MAX_PAGE_SIZE", "max_page_size"),
+    ("OPENPROJECT_MAX_RESULTS", "max_results"),
+    ("OPENPROJECT_TEXT_LIMIT", "text_limit"),
+    ("OPENPROJECT_MAX_RETRIES", "max_retries"),
+    ("OPENPROJECT_RETRY_BASE_DELAY", "retry_base_delay"),
+    ("OPENPROJECT_RETRY_MAX_DELAY", "retry_max_delay"),
+    ("OPENPROJECT_LOG_LEVEL", "log_level"),
+)
+
+
+def _minimal_env(env: dict[str, str], candidate: Settings, tool_groups_final: frozenset[str]) -> dict[str, str]:
+    """Trim ``env`` to BASE_URL/API_TOKEN plus only the fields that deviate from
+    the safe default — a fresh/default setup writes a near-empty file, not a
+    fully-spelled-out 23-key table.
+
+    The written value for a kept key is always the original string already in
+    ``env`` — never a re-serialized ``Settings`` value — so e.g. ``"12.0"``
+    typed for a default-12.0 timeout is recognized as "= default" without ever
+    writing back a reformatted ``"12"``. Re-running ``configure`` later
+    prefills identically either way: every prefill reader (``_scope_prefill``,
+    ``_merge_scope_prefill``, ``_merge_tool_groups_prefill``, the plain
+    ``existing.get(KEY, "<default>")`` calls) already treats a *missing* key
+    the same as an explicit default value.
+    """
+    minimal: dict[str, str] = {
+        "OPENPROJECT_BASE_URL": env["OPENPROJECT_BASE_URL"],
+        "OPENPROJECT_API_TOKEN": env["OPENPROJECT_API_TOKEN"],
+    }
+    if tool_groups_final != _DEFAULT_TOOL_GROUPS:
+        minimal["OPENPROJECT_TOOLS"] = env["OPENPROJECT_TOOLS"]
+    for env_key, attr in _MINIMAL_ENV_FIELD_MAP:
+        if getattr(candidate, attr) != getattr(_DEFAULT_SETTINGS, attr):
+            minimal[env_key] = env[env_key]
+    return minimal
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: list[str] | None = None, *, interactive: bool | None = None) -> None:
     """Console entry point: run the interactive setup, exiting cleanly on Ctrl+C.
 
     Ctrl+C during any prompt should read as "cancelled", not a Python traceback,
     so we catch KeyboardInterrupt here and exit 130 (the conventional SIGINT code).
+
+    ``interactive`` forces the connection-test/preview-confirm step on or off;
+    None (the default) auto-detects from stdin alone being a real terminal
+    (redirecting stdout, e.g. `| tee log`, must NOT disable it — a human is
+    still typing answers) — see ``--non-interactive`` for the explicit CLI
+    opt-out used by scripted installs. Tests always pass ``interactive=False``
+    explicitly (see tests/test_configure_mcp.py's ``_run_main``) so no network
+    access or extra prompt happens under test.
     """
     try:
-        _run_configure(argv)
+        _run_configure(argv, interactive=interactive)
     except KeyboardInterrupt:
         print("\nCancelled — nothing was written.", file=sys.stderr)
         sys.exit(130)
 
 
-def _run_configure(argv: list[str] | None = None) -> None:
+def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="openproject-ce-mcp",
         description="Configure or remove the openproject MCP server for your clients.",
@@ -1045,6 +1592,13 @@ def _run_configure(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Remove the openproject entry from client configs (user-wide, and project-local in the current directory). Leaves other servers/settings intact.",
     )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Skip the live connection test and preview/confirm step, and write immediately. "
+        "For scripted installs; normally auto-detected from stdin, this is an explicit "
+        "override for automation that still runs with a real terminal attached.",
+    )
     args = parser.parse_args(argv)
 
     if args.uninstall:
@@ -1052,6 +1606,15 @@ def _run_configure(argv: list[str] | None = None) -> None:
         return
 
     _check_python()
+
+    if interactive is None:
+        # stdin alone, not stdout: a human piping stdout through `| tee log`
+        # (or an IDE that captures output) is still typing real answers and
+        # must still get the connection test/preview/confirm — only redirected
+        # STDIN (piped canned answers, CI, install scripts) has no one to ask.
+        # --non-interactive is the explicit opt-out for scripted use that still
+        # happens to have a real stdin attached.
+        interactive = False if args.non_interactive else sys.stdin.isatty()
 
     # Compute the run mode once; thread it through instead of re-stat'ing the
     # filesystem in every helper.
@@ -1074,29 +1637,29 @@ def _run_configure(argv: list[str] | None = None) -> None:
     claude_code_project = any(c.key == "claude-code" for c in project_clients)
     write_generic_mcp_json = bool(project_clients) and not claude_code_project
 
-    if remove_global_clients:
-        print()
-        print("Removing deselected user-wide (global) config:")
-        for client in remove_global_clients:
-            _remove_client_config(client, target=client.target)
-    if remove_project_clients:
-        print()
-        print("Removing deselected project-scoped config:")
-        for client in remove_project_clients:
-            _remove_client_config(client, target=client.project_target)
-
+    # Removals are NOT applied here — only recorded. Executing them immediately
+    # (the old behavior) meant an abort anywhere after this point left deletions
+    # applied with nothing written; they now run inside _apply_changes, bundled
+    # with every other mutation, after any preview/confirm.
     removed_any = bool(remove_global_clients or remove_project_clients)
     if not global_clients and not project_clients and not write_generic_mcp_json:
-        if removed_any:
-            print()
-            print("No targets selected to configure. Removed selected OpenProject entries.")
-            return
-        print(
-            "\nNothing selected to configure. Re-run and choose a global and/or "
-            "project-scoped target (see the guides).",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        if not removed_any:
+            print(
+                "\nNothing selected to configure. Re-run and choose a global and/or "
+                "project-scoped target (see the guides).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        # Removal-only flow: nothing to write, so no credentials/connection test.
+        if interactive:
+            proceed = _preview_changes(remove_global_clients, remove_project_clients, [], [], False, None, None, None)
+            if not proceed:
+                print("\nCancelled — nothing was written.")
+                return
+        _apply_changes(remove_global_clients, remove_project_clients, [], [], False, None, command, None)
+        print()
+        print("No targets selected to configure. Removed selected OpenProject entries.")
+        return
 
     # Field-wise prefill from the selected scope only. Project-scoped values never
     # silently override global values, and global values never leak into a local
@@ -1107,253 +1670,53 @@ def _run_configure(argv: list[str] | None = None) -> None:
     ]
     existing = _merge_prefill(prefill_pairs)
 
-    print()
-
-    base_url = _prompt(
-        "OpenProject base URL",
-        existing.get("OPENPROJECT_BASE_URL", "https://op.example.com"),
-    )
-
-    has_token = bool(existing.get("OPENPROJECT_API_TOKEN"))
-    token = _prompt_secret("OpenProject API token", has_existing=has_token)
-    if not token:
-        token = existing.get("OPENPROJECT_API_TOKEN", "")
-    if not token:
-        print("An API token is required.", file=sys.stderr)
-        sys.exit(1)
-    print("  This token is saved in the config file — keep it private and never commit it.")
-
-    print()
-    print("Project scope — comma-separated identifiers, names, or globs (e.g. team-*).")
-    read_projects_existing, write_projects_existing, read_used_legacy, write_used_legacy = _merge_scope_prefill(
-        prefill_pairs
-    )
-    if read_used_legacy or write_used_legacy:
-        print(
-            "Found legacy OPENPROJECT_ALLOWED_PROJECTS_READ/_WRITE — using their values as "
-            "defaults for the renamed OPENPROJECT_READ_PROJECTS/OPENPROJECT_WRITE_PROJECTS."
-        )
-    read_projects = _prompt(
-        "Readable projects (empty = none, * = all visible)",
-        read_projects_existing,
-    )
-    existing_write_projects = write_projects_existing.strip()
-    write_access = _prompt_bool("Enable write access?", bool(existing_write_projects))
-    if write_access:
-        write_projects_default = existing_write_projects or read_projects
-        write_projects = _prompt(
-            "Writable projects (subset of readable)",
-            write_projects_default,
-        )
-        wp_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", True)
-        project_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_WRITE", True)
-        membership_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", True)
-        version_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_WRITE", True)
-        board_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_WRITE", True)
-    else:
-        write_projects = ""
-        print("Write access disabled — project-scoped writes are disabled.")
-        wp_write = False
-        project_write = False
-        membership_write = False
-        version_write = False
-        board_write = False
-
-    print()
-    advanced = _prompt_bool("Configure advanced options?", False)
-
-    tool_groups_csv, tool_groups_used_legacy = _merge_tool_groups_prefill(prefill_pairs)
-    personal_write = _bool_from_env(existing, "OPENPROJECT_PERSONAL_WRITE", False)
-    if tool_groups_used_legacy:
-        print(
-            "Found legacy OPENPROJECT_ENABLE_*_READ/_METADATA_TOOLS settings — using them "
-            "to derive a default for the renamed OPENPROJECT_TOOLS."
-        )
-    hide_project = existing.get("OPENPROJECT_HIDE_PROJECT_FIELDS", "")
-    hide_wp = existing.get("OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS", "")
-    hide_activity = existing.get("OPENPROJECT_HIDE_ACTIVITY_FIELDS", "")
-    hide_custom = existing.get("OPENPROJECT_HIDE_CUSTOM_FIELDS", "")
-    admin_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_WRITE")
-    timeout = existing.get("OPENPROJECT_TIMEOUT", "12")
-    verify_ssl = existing.get("OPENPROJECT_VERIFY_SSL", "true")
-    default_page_size = existing.get("OPENPROJECT_DEFAULT_PAGE_SIZE", "10")
-    max_page_size = existing.get("OPENPROJECT_MAX_PAGE_SIZE", "50")
-    max_results = existing.get("OPENPROJECT_MAX_RESULTS", "100")
-    text_limit = existing.get("OPENPROJECT_TEXT_LIMIT", "500")
-    log_level = existing.get("OPENPROJECT_LOG_LEVEL", "WARNING")
-    attachment_root = existing.get("OPENPROJECT_ATTACHMENT_ROOT", "")
-    max_retries = existing.get("OPENPROJECT_MAX_RETRIES", "3")
-    retry_base_delay = existing.get("OPENPROJECT_RETRY_BASE_DELAY", "1.0")
-    retry_max_delay = existing.get("OPENPROJECT_RETRY_MAX_DELAY", "60.0")
-
-    if advanced:
-        print()
-        print(
-            "Tool groups — comma-separated (projects, work-packages, memberships, versions, "
-            "boards, personal, extended). Defaults are usually right for first-time setup."
-        )
-        tool_groups_csv = _prompt("Enabled tool groups", tool_groups_csv)
-
-    # Unconditional (not just under advanced): validates a migrated or existing-config
-    # value too, not only a freshly-typed one. Bounded to 3 attempts so a non-interactive
-    # context (piped input, canned test answers) cannot loop forever.
-    for attempt in range(3):
-        try:
-            tool_groups_final = parse_tool_groups_csv(tool_groups_csv)
-            break
-        except ConfigError as exc:
-            if attempt == 2:
-                print(
-                    "Could not parse a valid OPENPROJECT_TOOLS value. Nothing written.",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-            print(f"  ! Invalid tool groups ({exc}).")
-            tool_groups_csv = _prompt(
-                "Enabled tool groups — comma-separated, check spelling",
-                tool_groups_csv,  # current (possibly wrong) value, not the bare default
-            )
-
-    if "personal" not in tool_groups_final:
-        # No visible personal group → personal writes cannot be active either.
-        personal_write = False
-    elif advanced:
-        # Only actively re-prompt in the advanced flow.
-        personal_write = _prompt_bool(
-            "Enable personal-data writes (preferences, notification read-state)?",
-            personal_write,
-        )
-    # else: advanced was skipped — keep the existing personal_write value as-is,
-    # matching the wizard's established principle that skipped advanced values
-    # are preserved, not reset.
-
-    if advanced:
-        if write_access:
-            print()
-            print("Write controls — OpenProject permissions and the writable project scope still apply.")
-            wp_write = _prompt_bool(
-                "Enable work-package writes (create/update/delete, comments, relations, attachments, time entries)?",
-                wp_write,
-            )
-            project_write = _prompt_bool(
-                "Enable project writes (create/update/delete)?",
-                project_write,
-            )
-            membership_write = _prompt_bool(
-                "Enable membership writes (create/update/delete)?",
-                membership_write,
-            )
-            version_write = _prompt_bool(
-                "Enable version writes (create/update/delete)?",
-                version_write,
-            )
-            board_write = _prompt_bool(
-                "Enable board writes (create/update/delete)?",
-                board_write,
-            )
-
-        print()
-        print("Optional field filtering — omit fields from reads. Leave empty unless you need it.")
-        hide_project = _prompt("Hidden project fields (comma-separated)", hide_project)
-        hide_wp = _prompt("Hidden work-package fields (comma-separated)", hide_wp)
-        hide_activity = _prompt("Hidden activity fields (comma-separated)", hide_activity)
-        hide_custom = _prompt("Hidden custom fields (comma-separated)", hide_custom)
-
-        print()
-        print("Advanced tool exposure and runtime settings.")
-        admin_write = _prompt_bool("Enable admin writes (users/groups)?", admin_write)
-        attachment_root = _prompt("Attachment upload root, absolute path (empty = uploads disabled)", attachment_root)
-        default_page_size = _prompt("Default page size", default_page_size)
-        max_page_size = _prompt("Max page size", max_page_size)
-        max_results = _prompt("Max total results", max_results)
-        text_limit = _prompt("List text preview char limit", text_limit)
-        timeout = _prompt("Request timeout seconds", timeout)
-        verify_ssl = (
-            "true"
-            if _prompt_bool("Verify TLS certificates?", _bool_from_env({"v": verify_ssl}, "v", True))
-            else "false"
-        )
-        max_retries = _prompt("Max retries for 429/5xx responses", max_retries)
-        retry_base_delay = _prompt("Retry base delay seconds", retry_base_delay)
-        retry_max_delay = _prompt("Retry max delay seconds", retry_max_delay)
-        log_level = _prompt("Log level", log_level)
-
-    # Write-flag reconciliation: from the ORIGINAL (unmutated) values, once, using
-    # the now-validated tool_groups_final — never mutate write_flags across retries
-    # above, or a group-list typo could permanently disable an unrelated, correctly
-    # chosen write flag (see OPM-126 review).
-    original_write_flags = {
-        "project_write": project_write,
-        "work_package_write": wp_write,
-        "membership_write": membership_write,
-        "version_write": version_write,
-        "board_write": board_write,
-        "personal_write": personal_write,
-    }
-    write_flags = original_write_flags.copy()
-    for key, group, env_var in tool_exposure_violations(tool_groups_final, **write_flags):
-        print(
-            f"  ! '{group}' is not in the enabled tool groups — disabling {env_var} "
-            "(it would otherwise fail at startup)."
-        )
-        write_flags[key] = False
-    project_write = write_flags["project_write"]
-    wp_write = write_flags["work_package_write"]
-    membership_write = write_flags["membership_write"]
-    version_write = write_flags["version_write"]
-    board_write = write_flags["board_write"]
-    personal_write = write_flags["personal_write"]
-
-    env: dict[str, str] = {
-        "OPENPROJECT_BASE_URL": base_url,
-        "OPENPROJECT_API_TOKEN": token,
-        "OPENPROJECT_READ_PROJECTS": read_projects,
-        "OPENPROJECT_WRITE_PROJECTS": write_projects,
-        "OPENPROJECT_TOOLS": tool_groups_csv,
-        "OPENPROJECT_HIDE_PROJECT_FIELDS": hide_project,
-        "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": hide_wp,
-        "OPENPROJECT_HIDE_ACTIVITY_FIELDS": hide_activity,
-        "OPENPROJECT_HIDE_CUSTOM_FIELDS": hide_custom,
-        "OPENPROJECT_ENABLE_PROJECT_WRITE": str(project_write).lower(),
-        "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": str(membership_write).lower(),
-        "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": str(wp_write).lower(),
-        "OPENPROJECT_ENABLE_VERSION_WRITE": str(version_write).lower(),
-        "OPENPROJECT_ENABLE_BOARD_WRITE": str(board_write).lower(),
-        "OPENPROJECT_PERSONAL_WRITE": str(personal_write).lower(),
-        "OPENPROJECT_ENABLE_ADMIN_WRITE": str(admin_write).lower(),
-        "OPENPROJECT_ATTACHMENT_ROOT": attachment_root,
-        "OPENPROJECT_TIMEOUT": timeout,
-        "OPENPROJECT_VERIFY_SSL": verify_ssl,
-        "OPENPROJECT_DEFAULT_PAGE_SIZE": default_page_size,
-        "OPENPROJECT_MAX_PAGE_SIZE": max_page_size,
-        "OPENPROJECT_MAX_RESULTS": max_results,
-        "OPENPROJECT_TEXT_LIMIT": text_limit,
-        "OPENPROJECT_MAX_RETRIES": max_retries,
-        "OPENPROJECT_RETRY_BASE_DELAY": retry_base_delay,
-        "OPENPROJECT_RETRY_MAX_DELAY": retry_max_delay,
-        "OPENPROJECT_LOG_LEVEL": log_level,
-    }
+    env, tool_groups_final, connection = _collect_credentials(prefill_pairs, existing, interactive=interactive)
 
     # Final defensive check: the generated config must always parse cleanly with
     # the exact runtime validation, not just the wizard's own reconciliation above.
     try:
-        Settings.from_env(env)
+        candidate_settings = Settings.from_env(env)
     except ConfigError as exc:
         print(f"Generated configuration is invalid ({exc}). Nothing written.", file=sys.stderr)
         sys.exit(1)
 
-    print()
-    if global_clients:
-        print("Configuring user-wide (global):")
-        _apply_registration(global_clients, command, env, scope="global")
-    if project_clients:
-        print("Configuring project-scoped (this directory):")
-        _apply_registration(project_clients, command, env, scope="project")
+    # The preview (below) always shows the full/effective settings from `env`;
+    # only the file actually written is trimmed to deviations from the default.
+    minimal_env = _minimal_env(env, candidate_settings, tool_groups_final)
+
     # Generic copy-source .mcp.json: only when project scope was chosen and not
     # already covered by Claude Code's project write.
+    generic_target: Path | None = None
     if write_generic_mcp_json:
-        generic = _resolve_mcp_json("local", installed) if installed else _resolve_mcp_json(None, installed=False)
-        _write_mcp_json(env, generic, command)
+        generic_target = (
+            _resolve_mcp_json("local", installed) if installed else _resolve_mcp_json(None, installed=False)
+        )
+
+    if interactive:
+        proceed = _preview_changes(
+            remove_global_clients,
+            remove_project_clients,
+            global_clients,
+            project_clients,
+            write_generic_mcp_json,
+            env,
+            connection,
+            tool_groups_final,
+        )
+        if not proceed:
+            print("\nCancelled — nothing was written.")
+            return
+
+    _apply_changes(
+        remove_global_clients,
+        remove_project_clients,
+        global_clients,
+        project_clients,
+        write_generic_mcp_json,
+        generic_target,
+        command,
+        minimal_env,
+    )
 
     print()
     print("Server configured.")

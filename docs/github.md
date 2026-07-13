@@ -32,7 +32,7 @@ Agent mode**. If you use VS Code, this is your guide.
    ```
    **This file holds your API token.** Add `.vscode/mcp.json` to your project's `.gitignore` so it is never committed.
 
-3. **Example config:** With a PyPI install the command is simply `openproject-ce-mcp`; source installs can use the `.venv` binary path (`...\.venv\Scripts\openproject-ce-mcp.exe` on Windows).
+3. **Example config:** With a PyPI install the command is simply `openproject-ce-mcp`; source installs can use the `.venv` binary path (`...\.venv\Scripts\openproject-ce-mcp.exe` on Windows). The wizard writes only the values you set (everything else falls back to a safe default and is omitted from the file).
    ```json
    {
      "servers": {
@@ -42,44 +42,16 @@ Agent mode**. If you use VS Code, this is your guide.
          "env": {
            "OPENPROJECT_BASE_URL": "https://op.example.com",
            "OPENPROJECT_API_TOKEN": "replace-with-your-token",
-
            "OPENPROJECT_READ_PROJECTS": "my-project,other-project",
-           "OPENPROJECT_WRITE_PROJECTS": "my-project",
-
-           "OPENPROJECT_ENABLE_PROJECT_READ": "true",
-           "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "true",
-           "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "true",
-           "OPENPROJECT_ENABLE_VERSION_READ": "true",
-           "OPENPROJECT_ENABLE_BOARD_READ": "true",
-
-           "OPENPROJECT_HIDE_PROJECT_FIELDS": "",
-           "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": "",
-           "OPENPROJECT_HIDE_ACTIVITY_FIELDS": "",
-           "OPENPROJECT_HIDE_CUSTOM_FIELDS": "",
-
-           "OPENPROJECT_ENABLE_ADMIN_WRITE": "false",
-
-           "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
-           "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
-           "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
-           "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
-           "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
-           "OPENPROJECT_ENABLE_METADATA_TOOLS": "false",
-
-           "OPENPROJECT_TIMEOUT": "12",
-           "OPENPROJECT_VERIFY_SSL": "true",
-           "OPENPROJECT_DEFAULT_PAGE_SIZE": "10",
-           "OPENPROJECT_MAX_PAGE_SIZE": "50",
-           "OPENPROJECT_MAX_RESULTS": "100",
-           "OPENPROJECT_TEXT_LIMIT": "500",
-           "OPENPROJECT_LOG_LEVEL": "WARNING"
+           "OPENPROJECT_WRITE_PROJECTS": "my-project"
          }
        }
      }
    }
    ```
 
-   Other keys (such as `OPENPROJECT_ATTACHMENT_ROOT`) are optional and fall back to safe defaults when omitted — see the [Configuration table](../README.md#configuration) for the full list.
+   The full set of `env` keys is the same as every other client — see
+   [`.mcp.json.example`](../.mcp.json.example) or the [Configuration table](../README.md#configuration) for the full list.
 
 4. **Reload:** Open the command palette (**Cmd+Shift+P** on macOS, **Ctrl+Shift+P** on Windows/Linux) and run "Developer: Reload Window".
 

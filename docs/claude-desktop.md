@@ -29,11 +29,13 @@ permissions, use Claude Code — see [claude.md](claude.md)).
 
 3. **Add the server.** The easiest path is to let `openproject-ce-mcp configure`
    detect the Claude Desktop app and write this file for you (it registers Claude
-   Desktop through its global config — Claude Desktop has no project-local config).
-   To add it by hand instead, copy the `env` block from any config the wizard
-   generates (for example the `.mcp.json` it writes in a project directory); the
-   root key is the same, `mcpServers`. With a PyPI install the command is simply
-   `openproject-ce-mcp`; source installs can use the `.venv` binary path.
+   Desktop through its global config — Claude Desktop has no project-local config),
+   with only the values you set (everything else falls back to a safe default and
+   is omitted from the file). To add it by hand instead, copy the `env` block from
+   any config the wizard generates (for example the `.mcp.json` it writes in a
+   project directory); the root key is the same, `mcpServers`. With a PyPI install
+   the command is simply `openproject-ce-mcp`; source installs can use the `.venv`
+   binary path.
    ```json
    {
      "mcpServers": {
@@ -42,37 +44,8 @@ permissions, use Claude Code — see [claude.md](claude.md)).
          "env": {
            "OPENPROJECT_BASE_URL": "https://op.example.com",
            "OPENPROJECT_API_TOKEN": "replace-with-your-token",
-
            "OPENPROJECT_READ_PROJECTS": "*",
-           "OPENPROJECT_WRITE_PROJECTS": "",
-
-           "OPENPROJECT_ENABLE_PROJECT_READ": "true",
-           "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "true",
-           "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "true",
-           "OPENPROJECT_ENABLE_VERSION_READ": "true",
-           "OPENPROJECT_ENABLE_BOARD_READ": "true",
-
-           "OPENPROJECT_HIDE_PROJECT_FIELDS": "",
-           "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": "",
-           "OPENPROJECT_HIDE_ACTIVITY_FIELDS": "",
-           "OPENPROJECT_HIDE_CUSTOM_FIELDS": "",
-
-           "OPENPROJECT_ENABLE_ADMIN_WRITE": "false",
-
-           "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
-           "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
-           "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
-           "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
-           "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
-           "OPENPROJECT_ENABLE_METADATA_TOOLS": "false",
-
-           "OPENPROJECT_TIMEOUT": "12",
-           "OPENPROJECT_VERIFY_SSL": "true",
-           "OPENPROJECT_DEFAULT_PAGE_SIZE": "10",
-           "OPENPROJECT_MAX_PAGE_SIZE": "50",
-           "OPENPROJECT_MAX_RESULTS": "100",
-           "OPENPROJECT_TEXT_LIMIT": "500",
-           "OPENPROJECT_LOG_LEVEL": "WARNING"
+           "OPENPROJECT_WRITE_PROJECTS": ""
          }
        }
      }
@@ -80,9 +53,9 @@ permissions, use Claude Code — see [claude.md](claude.md)).
    ```
 
    If the file already has a `mcpServers` block, add the `openproject` entry
-   alongside your existing servers instead of replacing the whole file. Other
-   keys (such as `OPENPROJECT_ATTACHMENT_ROOT`) are optional and fall back to
-   safe defaults when omitted — see the [Configuration table](../README.md#configuration).
+   alongside your existing servers instead of replacing the whole file. The
+   full set of `env` keys is the same as every other client — see
+   [`.mcp.json.example`](../.mcp.json.example) or the [Configuration table](../README.md#configuration).
 
 4. **Restart Claude Desktop** completely (quit and reopen — a window reload is
    not enough).

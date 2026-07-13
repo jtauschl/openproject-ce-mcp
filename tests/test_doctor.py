@@ -160,6 +160,25 @@ def test_env_config_with_settings_override(make_doctor_settings):
     assert result_settings is settings
 
 
+def test_env_config_scope_summary_shows_personal_write(capsys, monkeypatch):
+    """OPM-128: OPENPROJECT_PERSONAL_WRITE was previously invisible in doctor's
+    output — the scope summary must now surface it (and the other write flags)
+    so "why is a write tool missing" is diagnosable without reading source."""
+    from openproject_ce_mcp.doctor import _check_env_config
+
+    monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
+    monkeypatch.setenv("OPENPROJECT_API_TOKEN", "test-token")
+    monkeypatch.setenv("OPENPROJECT_TOOLS", "projects,personal")
+    monkeypatch.setenv("OPENPROJECT_PERSONAL_WRITE", "true")
+    monkeypatch.setenv("OPENPROJECT_ENABLE_ADMIN_WRITE", "true")
+
+    _check_env_config(None, {})
+
+    output = capsys.readouterr().out
+    assert "Personal-data writes: True" in output
+    assert "Admin writes: True" in output
+
+
 def test_env_config_warns_on_verify_ssl_false(capsys, make_doctor_settings, monkeypatch):
     """Should warn when SSL verification is disabled."""
     from openproject_ce_mcp.doctor import _check_env_config
@@ -196,7 +215,11 @@ def test_env_config_warns_on_http_url(capsys, make_doctor_settings, monkeypatch)
 
 
 def test_env_config_warns_on_legacy_tool_exposure_vars(capsys, monkeypatch):
-    """Should warn when a legacy per-scope read flag / metadata flag (OPM-126) is present."""
+    """Should warn when a legacy per-scope read flag / metadata flag (OPM-126) is present.
+
+    OPM-128: the warning names the specific old variable AND its replacement
+    (not a generic "legacy tool-exposure variables" grouped message).
+    """
     from openproject_ce_mcp.doctor import _check_env_config
 
     monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
@@ -208,7 +231,27 @@ def test_env_config_warns_on_legacy_tool_exposure_vars(capsys, monkeypatch):
     captured = capsys.readouterr()
     output = captured.out + captured.err
     assert "[WARN]" in output
+    assert "OPENPROJECT_ENABLE_BOARD_READ" in output
     assert "OPENPROJECT_TOOLS" in output
+    assert "deprecated" in output
+
+
+def test_env_config_warns_on_legacy_project_scope_vars(capsys, monkeypatch):
+    """OPM-128: same per-name warning for the project-scope legacy vars — this
+    path had no dedicated test before (only the tool-exposure one did)."""
+    from openproject_ce_mcp.doctor import _check_env_config
+
+    monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
+    monkeypatch.setenv("OPENPROJECT_API_TOKEN", "test-token")
+    monkeypatch.setenv("OPENPROJECT_ALLOWED_PROJECTS_READ", "OPM")
+
+    _check_env_config(None, {})
+
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert "[WARN]" in output
+    assert "OPENPROJECT_ALLOWED_PROJECTS_READ" in output
+    assert "OPENPROJECT_READ_PROJECTS" in output
 
 
 def test_env_config_no_legacy_warning_with_only_new_tools_var(capsys, monkeypatch):

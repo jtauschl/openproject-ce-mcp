@@ -21,7 +21,7 @@ src/openproject_ce_mcp/
 ### `config.py`
 
 - Parses environment variables into an immutable `Settings` object.
-- Applies safe defaults such as read enabled, write disabled, explicit page limits, and opt-in confirmation skipping.
+- Applies safe defaults: project scope is fail-closed (empty/unset `OPENPROJECT_READ_PROJECTS`/`WRITE_PROJECTS` denies all project-scoped access), writes are off by default, explicit page limits apply, and every mutation always requires `confirm=true` — there is no way to skip that confirmation.
 - Centralizes scope interpretation for:
   - read gating
   - scoped write enablement
@@ -121,9 +121,8 @@ The model has two independent layers:
 
 **Layer 1 — MCP server gates** (env var flags, checked before any HTTP call):
 
-- scoped `OPENPROJECT_ENABLE_*_READ`
+- `OPENPROJECT_TOOLS` (which tool groups — and therefore which read scopes — are exposed at all; the `extended` group opt-in exposes a rarely-used subset of metadata tools)
 - scoped write-group flags such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`, plus `OPENPROJECT_ENABLE_ADMIN_WRITE`
-- `OPENPROJECT_ENABLE_METADATA_TOOLS` (opt-in exposure of rarely-used metadata tools)
 - `OPENPROJECT_READ_PROJECTS` / `OPENPROJECT_WRITE_PROJECTS` (fail-closed: empty or unset denies all project-scoped access on that side)
 - `OPENPROJECT_HIDE_<ENTITY>_FIELDS` / `OPENPROJECT_HIDE_CUSTOM_FIELDS`
 - preview-by-default writes — every mutation always requires explicit `confirm=true`, with no bypass
@@ -141,7 +140,7 @@ Important properties of the current model:
 - hidden fields are masked on reads and rejected on writes
 - destructive operations still use the same project-scope checks as non-destructive writes
 - instance-global admin operations (user/group management) require explicit `OPENPROJECT_ENABLE_ADMIN_WRITE=true` — never activated by project-scoped write flags
-- most metadata tools (statuses, types, priorities, notifications, …) are always available and not gated by any read flag; a rarely-used subset (query schema tools, `render_text`, `get_custom_option`, help texts, working days) is gated off by default behind `OPENPROJECT_ENABLE_METADATA_TOOLS` to save context
+- most metadata tools (statuses, types, priorities, notifications, …) are always available and not gated by any read flag; a rarely-used subset (query schema tools, `render_text`, `get_custom_option`, help texts, working days) is gated off by default behind the `extended` group in `OPENPROJECT_TOOLS` to save context
 - `list_notifications` filters by `OPENPROJECT_READ_PROJECTS`, but under a restricted (non-empty, non-`*`) scope this only filters the current server-side page — an empty filtered page does not guarantee no further allowed notifications exist on later pages, since the notifications endpoint has no server-side project filter to paginate against
 
 ## Supported scope (Community Edition)

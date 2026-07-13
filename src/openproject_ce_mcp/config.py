@@ -98,6 +98,41 @@ def parse_tool_groups_csv(raw: str) -> frozenset[str]:
     return frozenset(raw_groups)
 
 
+# Old env-var name -> its replacement. Never read for a value — Settings.from_env
+# has zero legacy-name handling, by design (see OPM-125's fail-closed rename);
+# this map exists only to WARN, once per detected old name, from every entry
+# point that inspects raw env (doctor.py and server.py's real startup path —
+# OPM-128 closed the gap where only doctor warned, not the actual running
+# server). Order is deterministic (dict insertion order) so warning output is
+# stable across calls.
+_LEGACY_ENV_VAR_MAP: dict[str, str] = {
+    "OPENPROJECT_ALLOWED_PROJECTS": "OPENPROJECT_READ_PROJECTS",
+    "OPENPROJECT_ALLOWED_PROJECTS_READ": "OPENPROJECT_READ_PROJECTS",
+    "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "OPENPROJECT_WRITE_PROJECTS",
+    "OPENPROJECT_ENABLE_PROJECT_READ": "OPENPROJECT_TOOLS",
+    "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "OPENPROJECT_TOOLS",
+    "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "OPENPROJECT_TOOLS",
+    "OPENPROJECT_ENABLE_VERSION_READ": "OPENPROJECT_TOOLS",
+    "OPENPROJECT_ENABLE_BOARD_READ": "OPENPROJECT_TOOLS",
+    "OPENPROJECT_ENABLE_METADATA_TOOLS": "OPENPROJECT_TOOLS",
+}
+
+
+def legacy_env_warnings(env: Mapping[str, str]) -> list[str]:
+    """One warning line per detected legacy env-var name, naming both the old
+    name and its replacement — never a single generic message per category, so
+    the operator knows exactly which variable to rename. Presence alone
+    triggers a warning (matching prior behavior): a legacy var sitting
+    alongside its already-correct replacement still warns, since its value is
+    silently ignored either way and that's worth flagging as dead config.
+    """
+    return [
+        f"{old} is deprecated and ignored (fail-closed defaults still apply) — use {new} instead."
+        for old, new in _LEGACY_ENV_VAR_MAP.items()
+        if old in env
+    ]
+
+
 def _parse_tool_groups(env: Mapping[str, str]) -> frozenset[str]:
     if "OPENPROJECT_TOOLS" not in env:
         return _DEFAULT_TOOL_GROUPS

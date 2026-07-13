@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from openproject_ce_mcp.config import ConfigError, Settings
+from openproject_ce_mcp.config import ConfigError, Settings, legacy_env_warnings
 
 
 def test_settings_from_env_loads_and_normalizes_values() -> None:
@@ -443,4 +443,58 @@ def test_empty_attachment_root_is_accepted_at_config_time() -> None:
             "OPENPROJECT_API_TOKEN": "token-value",
         }
     )
+    assert settings.attachment_root == ""
+
+
+# ── legacy_env_warnings (OPM-128) ────────────────────────────────────────────────
+
+
+def test_legacy_env_warnings_empty_when_no_legacy_vars_present() -> None:
+    assert legacy_env_warnings({"OPENPROJECT_BASE_URL": "https://op.example.com"}) == []
+
+
+def test_legacy_env_warnings_names_both_old_and_new_var() -> None:
+    warnings = legacy_env_warnings({"OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM"})
+    assert len(warnings) == 1
+    assert "OPENPROJECT_ALLOWED_PROJECTS_READ" in warnings[0]
+    assert "OPENPROJECT_READ_PROJECTS" in warnings[0]
+    assert "deprecated" in warnings[0]
+    assert "fail-closed" in warnings[0]
+
+
+def test_legacy_env_warnings_one_line_per_detected_name_in_map_order() -> None:
+    env = {
+        "OPENPROJECT_ENABLE_BOARD_READ": "true",
+        "OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM",
+        "OPENPROJECT_ENABLE_METADATA_TOOLS": "false",
+    }
+    warnings = legacy_env_warnings(env)
+    assert len(warnings) == 3
+    # Deterministic order = _LEGACY_ENV_VAR_MAP's own definition order, not the
+    # dict-iteration order of the (arbitrarily ordered) input env.
+    assert "OPENPROJECT_ALLOWED_PROJECTS_READ" in warnings[0]
+    assert "OPENPROJECT_ENABLE_BOARD_READ" in warnings[1]
+    assert "OPENPROJECT_ENABLE_METADATA_TOOLS" in warnings[2]
+
+
+def test_legacy_env_warnings_still_warns_when_replacement_is_also_present() -> None:
+    # The old value is never adopted either way, but a legacy var sitting next
+    # to its already-correct replacement is still dead config worth flagging.
+    env = {"OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM", "OPENPROJECT_READ_PROJECTS": "TST"}
+    warnings = legacy_env_warnings(env)
+    assert len(warnings) == 1
+    assert "OPENPROJECT_ALLOWED_PROJECTS_READ" in warnings[0]
+
+
+def test_legacy_env_warnings_does_not_resurrect_old_value() -> None:
+    # The old value is never adopted — fail-closed defaults apply exactly as if
+    # the legacy variable weren't set at all.
+    env = {
+        "OPENPROJECT_BASE_URL": "https://op.example.com",
+        "OPENPROJECT_API_TOKEN": "tok",
+        "OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM",
+    }
+    assert legacy_env_warnings(env)  # sanity: this env does trigger a warning
+    settings = Settings.from_env(env)
+    assert settings.read_projects == ()
     assert settings.attachment_root == ""

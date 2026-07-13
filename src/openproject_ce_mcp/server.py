@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -12,7 +13,7 @@ from mcp.server.fastmcp import FastMCP
 
 from . import __version__
 from .client import OpenProjectClient
-from .config import Settings, configure_logging
+from .config import Settings, configure_logging, legacy_env_warnings
 from .tools import register_tools
 
 # Server instructions surfaced to the connecting agent in the MCP `initialize`
@@ -169,6 +170,14 @@ def create_app(settings: Settings) -> FastMCP:
 
 
 def _run_server() -> None:
+    # os.environ is already the fully-merged view here — the MCP client launcher
+    # injects the config file's env block directly as this subprocess's
+    # environment, so no client-config-file merging is needed (unlike doctor,
+    # which inspects multiple clients' config files directly). Warn-only, never
+    # adopts the legacy value — Settings.from_env below continues to ignore it.
+    for warning in legacy_env_warnings(os.environ):
+        print(f"[WARN] {warning}", file=sys.stderr)
+
     settings = Settings.from_env()
     create_app(settings).run(transport="stdio")
 

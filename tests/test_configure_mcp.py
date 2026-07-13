@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import json
 import subprocess
@@ -8,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
+import httpx
 import pytest
 
 # The interactive setup lives in the package at src/openproject_ce_mcp/setup_cli.py.
@@ -1137,6 +1139,7 @@ def _run_main(
     secret: str = "opapi-tok",
     *,
     strict: bool = True,
+    interactive: bool = False,
 ) -> None:
     """Drive main() with patched infra + prompt-keyed answers for input; getpass.
 
@@ -1148,6 +1151,14 @@ def _run_main(
     propagates immediately and the consumed-check below is skipped, so it never
     masks a genuine failure. Pass ``strict=False`` to skip the consumed-check on a
     normal exit too, for a test that deliberately over-registers answers.
+
+    Always passes ``interactive`` explicitly (OPM-128) — relying on pytest's
+    stdin/stdout not being a tty would work today, but is incidental, not
+    guaranteed, and would silently start making real network calls (the
+    OPM-121/128 connection test) if it ever stopped holding. Defaults to
+    False; pass ``interactive=True`` for tests exercising the connection-test/
+    preview/confirm flow itself, in which case ``c._test_connection`` should
+    also be monkeypatched (a real network call must never happen in tests).
     """
     monkeypatch.setattr(c, "_check_python", lambda: None)
     monkeypatch.setattr(c, "_installed_mode", lambda: True)  # installed: no uv sync, cwd paths
@@ -1159,7 +1170,7 @@ def _run_main(
     book = _AnswerBook(answers)
     monkeypatch.setattr("builtins.input", lambda prompt="": book(prompt))
     monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": secret)
-    c.main([])
+    c.main([], interactive=interactive)
     if strict:
         book.assert_consumed()
 
@@ -1441,17 +1452,23 @@ def test_main_basic_setup_safe_advanced_defaults(monkeypatch, tmp_path: Path) ->
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_TOOLS"] == c._DEFAULT_TOOL_GROUPS_CSV
-    assert env["OPENPROJECT_PERSONAL_WRITE"] == "false"
-    assert env["OPENPROJECT_ATTACHMENT_ROOT"] == ""
-    assert env["OPENPROJECT_MAX_RETRIES"] == "3"
-    assert env["OPENPROJECT_RETRY_BASE_DELAY"] == "1.0"
-    assert env["OPENPROJECT_RETRY_MAX_DELAY"] == "60.0"
+    # OPM-128: every value here equals its default, so minimal-diff writing
+    # omits all of them (incl. OPENPROJECT_TOOLS) — only BASE_URL/API_TOKEN
+    # are ever unconditionally kept.
+    assert set(env) == {"OPENPROJECT_BASE_URL", "OPENPROJECT_API_TOKEN"}
+    settings = c.Settings.from_env(env)
+    assert settings.enable_personal_write is False
+    assert settings.attachment_root == ""
+    assert settings.max_retries == 3
+    assert settings.retry_base_delay == 1.0
+    assert settings.retry_max_delay == 60.0
 
 
 def test_main_fresh_setup_defaults_read_projects_to_empty_not_wildcard(monkeypatch, tmp_path: Path) -> None:
     # OPM-125: a brand-new setup (no prefill, no legacy keys) must start
-    # fail-closed like the runtime default, not silently suggest "*".
+    # fail-closed like the runtime default, not silently suggest "*". OPM-128:
+    # that default is also what minimal-diff writing omits — assert both the
+    # omission and the resolved (still fail-closed) effective value.
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
     answers = {
         "Configure globally": "n",
@@ -1466,7 +1483,8 @@ def test_main_fresh_setup_defaults_read_projects_to_empty_not_wildcard(monkeypat
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_READ_PROJECTS"] == ""
+    assert "OPENPROJECT_READ_PROJECTS" not in env
+    assert c.Settings.from_env(env).read_projects == ()
 
 
 def test_main_write_access_no_disables_write_flags(monkeypatch, tmp_path: Path) -> None:
@@ -1505,12 +1523,17 @@ def test_main_write_access_no_disables_write_flags(monkeypatch, tmp_path: Path) 
 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_WRITE_PROJECTS"] == ""
-    assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "false"
-    assert env["OPENPROJECT_ENABLE_PROJECT_WRITE"] == "false"
-    assert env["OPENPROJECT_ENABLE_MEMBERSHIP_WRITE"] == "false"
-    assert env["OPENPROJECT_ENABLE_VERSION_WRITE"] == "false"
-    assert env["OPENPROJECT_ENABLE_BOARD_WRITE"] == "false"
+    # OPM-128: all of these end up at their default (empty/false), so
+    # minimal-diff writing omits them from the file — assert the resolved
+    # effective values instead of the (now-absent) raw keys.
+    assert "OPENPROJECT_WRITE_PROJECTS" not in env
+    settings = c.Settings.from_env(env)
+    assert settings.write_projects == ()
+    assert settings.enable_work_package_write is False
+    assert settings.enable_project_write is False
+    assert settings.enable_membership_write is False
+    assert settings.enable_version_write is False
+    assert settings.enable_board_write is False
 
 
 def test_main_write_access_enter_keeps_existing_scope(monkeypatch, tmp_path: Path) -> None:
@@ -1634,8 +1657,13 @@ def test_main_explicit_empty_new_key_overrides_nonempty_legacy_key(monkeypatch, 
 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert env["OPENPROJECT_READ_PROJECTS"] == ""
-    assert env["OPENPROJECT_WRITE_PROJECTS"] == ""
+    # Both resolve to empty (the default) — the empty new key won, not the
+    # nonempty legacy value — so OPM-128's minimal-diff writing omits both.
+    assert "OPENPROJECT_READ_PROJECTS" not in env
+    assert "OPENPROJECT_WRITE_PROJECTS" not in env
+    settings = c.Settings.from_env(env)
+    assert settings.read_projects == ()
+    assert settings.write_projects == ()
 
 
 def test_main_write_access_yes_defaults_write_controls_on(monkeypatch, tmp_path: Path) -> None:
@@ -1811,8 +1839,11 @@ def test_main_advanced_deselecting_group_disables_existing_write_flag(monkeypatc
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
     assert "boards" not in env["OPENPROJECT_TOOLS"].split(",")
-    assert env["OPENPROJECT_ENABLE_BOARD_WRITE"] == "false"
-    c.Settings.from_env(env)  # must still parse cleanly
+    # Reconciliation disabled board_write to false (the default) — OPM-128's
+    # minimal-diff writing therefore omits the key entirely.
+    assert "OPENPROJECT_ENABLE_BOARD_WRITE" not in env
+    settings = c.Settings.from_env(env)  # must still parse cleanly
+    assert settings.enable_board_write is False
 
 
 def test_main_personal_write_forced_false_when_personal_group_absent_in_advanced(monkeypatch, tmp_path: Path) -> None:
@@ -1852,7 +1883,10 @@ def test_main_personal_write_forced_false_when_personal_group_absent_in_advanced
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
     assert "personal" not in env["OPENPROJECT_TOOLS"].split(",")
-    assert env["OPENPROJECT_PERSONAL_WRITE"] == "false"
+    # personal_write is forced to false (the default) — OPM-128's minimal-diff
+    # writing therefore omits the key entirely.
+    assert "OPENPROJECT_PERSONAL_WRITE" not in env
+    assert c.Settings.from_env(env).enable_personal_write is False
 
 
 def test_main_legacy_migration_reconciles_read_off_write_on_same_scope(monkeypatch, tmp_path: Path) -> None:
@@ -1895,7 +1929,10 @@ def test_main_legacy_migration_reconciles_read_off_write_on_same_scope(monkeypat
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
     assert "boards" not in env["OPENPROJECT_TOOLS"].split(",")
-    assert env["OPENPROJECT_ENABLE_BOARD_WRITE"] == "false"
+    # Reconciliation disabled board_write to false (the default) — OPM-128's
+    # minimal-diff writing therefore omits the key entirely.
+    assert "OPENPROJECT_ENABLE_BOARD_WRITE" not in env
+    assert c.Settings.from_env(env).enable_board_write is False
 
 
 def test_main_advanced_invalid_group_reprompts_then_succeeds(monkeypatch, tmp_path: Path) -> None:
@@ -2048,3 +2085,513 @@ def test_main_ctrl_c_exits_130_no_traceback(monkeypatch, capsys) -> None:
         c.main([])
     assert exc.value.code == 130
     assert "Cancelled" in capsys.readouterr().err
+
+
+# ── _test_connection (OPM-121/128) ──────────────────────────────────────────────
+
+_CONNECTION_ENV = {"OPENPROJECT_BASE_URL": "https://op.example.com", "OPENPROJECT_API_TOKEN": "tok"}
+
+
+def test_connection_success_returns_ok_with_user_name() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"id": 1, "name": "Test User", "login": "testuser"}, request=request)
+
+    check = c._test_connection(_CONNECTION_ENV, transport=httpx.MockTransport(handler))
+    assert check.status == "ok"
+    assert check.user_name == "Test User"
+
+
+def test_connection_401_returns_auth_error() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"message": "Unauthorized"}, request=request)
+
+    check = c._test_connection(_CONNECTION_ENV, transport=httpx.MockTransport(handler))
+    assert check.status == "auth_error"
+
+
+def test_connection_403_forbidden_returns_permission_error() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"message": "Forbidden"}, request=request)
+
+    check = c._test_connection(_CONNECTION_ENV, transport=httpx.MockTransport(handler))
+    assert check.status == "permission_error"
+
+
+def test_connection_404_returns_not_found_error() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"message": "Not found"}, request=request)
+
+    check = c._test_connection(_CONNECTION_ENV, transport=httpx.MockTransport(handler))
+    assert check.status == "not_found_error"
+
+
+def test_connection_timeout_returns_network_error() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.TimeoutException("timed out")
+
+    check = c._test_connection(_CONNECTION_ENV, transport=httpx.MockTransport(handler))
+    assert check.status == "network_error"
+
+
+def test_connection_connect_error_returns_network_error() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused")
+
+    check = c._test_connection(_CONNECTION_ENV, transport=httpx.MockTransport(handler))
+    assert check.status == "network_error"
+
+
+def test_connection_invalid_settings_returns_config_error_without_network_call() -> None:
+    called = {"v": False}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        called["v"] = True
+        return httpx.Response(200, json={}, request=request)
+
+    check = c._test_connection({"OPENPROJECT_BASE_URL": ""}, transport=httpx.MockTransport(handler))
+    assert check.status == "config_error"
+    assert called["v"] is False, "must not attempt a network call for invalid settings"
+
+
+# ── interactive connection test + preview/confirm (OPM-121/128) ────────────────
+
+
+def test_main_interactive_declined_confirm_leaves_everything_unchanged(monkeypatch, tmp_path: Path, capsys) -> None:
+    # OPM-128 regression: removals used to execute immediately after target
+    # selection, before any credentials/preview — a declined confirm must now
+    # leave BOTH the removal and the write as no-ops, proving the reorder fix.
+    # Also exercises a mixed remove(global) + create(project) preview in one go.
+    gtarget = tmp_path / ".claude.json"
+    gtarget.write_text(json.dumps({"mcpServers": {"openproject": {"env": ENV}}}))
+    ptarget = tmp_path / ".mcp.json"
+    claude = _json_client(gtarget, project_target=ptarget)
+
+    monkeypatch.setattr(c, "_test_connection", lambda env, **_k: c.ConnectionCheck("ok", "", "Test User"))
+
+    answers = {
+        "Configure globally": "n",
+        "Remove existing global Claude Code": "y",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+        "Proceed with these changes?": "n",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers, interactive=True)
+
+    data = json.loads(gtarget.read_text())
+    assert "openproject" in data["mcpServers"], "declined confirm must not have removed the global entry"
+    assert not ptarget.exists(), "declined confirm must not have written the project config"
+
+    out = capsys.readouterr().out
+    assert "Remove Claude Code (global)" in out
+    assert "Create Claude Code (project)" in out
+    assert "Connection: OK (connected as Test User)" in out
+    assert "API token: configured (hidden)" in out
+
+
+def test_main_interactive_confirm_yes_applies_mixed_remove_and_create(monkeypatch, tmp_path: Path) -> None:
+    gtarget = tmp_path / ".claude.json"
+    gtarget.write_text(json.dumps({"mcpServers": {"openproject": {"env": ENV}}}))
+    ptarget = tmp_path / ".mcp.json"
+    claude = _json_client(gtarget, project_target=ptarget)
+
+    monkeypatch.setattr(c, "_test_connection", lambda env, **_k: c.ConnectionCheck("ok", "", "Test User"))
+
+    answers = {
+        "Configure globally": "n",
+        "Remove existing global Claude Code": "y",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+        "Proceed with these changes?": "y",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers, interactive=True)
+
+    data = json.loads(gtarget.read_text())
+    assert "openproject" not in data.get("mcpServers", {})
+    assert ptarget.exists()
+
+
+def test_main_interactive_remove_only_declined_confirm_leaves_file_unchanged(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".claude.json"
+    target.write_text(json.dumps({"mcpServers": {"openproject": {"env": ENV}}}))
+    claude = _json_client(target, project_target=tmp_path / ".mcp.json")
+
+    # No _test_connection monkeypatch needed: a pure-removal flow never collects
+    # credentials, so the connection test is never attempted (env stays None).
+    answers = {
+        "Configure globally": "n",
+        "Remove existing global Claude Code": "y",
+        "Configure project-scoped": "n",
+        "Proceed with these changes?": "n",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers, interactive=True)
+
+    data = json.loads(target.read_text())
+    assert "openproject" in data["mcpServers"]
+
+
+def test_main_interactive_remove_only_confirm_yes_removes(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".claude.json"
+    target.write_text(json.dumps({"mcpServers": {"openproject": {"env": ENV}}}))
+    claude = _json_client(target, project_target=tmp_path / ".mcp.json")
+
+    answers = {
+        "Configure globally": "n",
+        "Remove existing global Claude Code": "y",
+        "Configure project-scoped": "n",
+        "Proceed with these changes?": "y",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers, interactive=True)
+
+    data = json.loads(target.read_text())
+    assert "mcpServers" not in data
+
+
+def test_main_interactive_network_error_proceed_unverified(monkeypatch, tmp_path: Path, capsys) -> None:
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+
+    monkeypatch.setattr(c, "_test_connection", lambda env, **_k: c.ConnectionCheck("network_error", "timed out", None))
+
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+        "Retry the connection check": "proceed",
+        "Proceed with these changes?": "y",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers, interactive=True)
+
+    assert (tmp_path / ".mcp.json").exists()
+    assert "UNVERIFIED" in capsys.readouterr().out
+
+
+def test_main_interactive_network_error_retry_then_ok(monkeypatch, tmp_path: Path) -> None:
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+
+    results = iter(
+        [
+            c.ConnectionCheck("network_error", "timed out", None),
+            c.ConnectionCheck("ok", "", "Test User"),
+        ]
+    )
+    monkeypatch.setattr(c, "_test_connection", lambda env, **_k: next(results))
+
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+        "Retry the connection check": "retry",
+        "Proceed with these changes?": "y",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers, interactive=True)
+
+    assert (tmp_path / ".mcp.json").exists()
+
+
+def test_main_interactive_network_error_edit_reenters_credentials(monkeypatch, tmp_path: Path) -> None:
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+
+    results = iter(
+        [
+            c.ConnectionCheck("network_error", "timed out", None),
+            c.ConnectionCheck("ok", "", "Test User"),
+        ]
+    )
+    monkeypatch.setattr(c, "_test_connection", lambda env, **_k: next(results))
+
+    # "edit" re-prompts every credential field from scratch, so each is asked twice.
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": ["", ""],
+        "Readable projects": ["", ""],
+        "Enable write access?": ["", ""],
+        "Configure advanced options?": ["", ""],
+        "Retry the connection check": "edit",
+        "Proceed with these changes?": "y",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers, interactive=True)
+
+    assert (tmp_path / ".mcp.json").exists()
+
+
+def test_main_interactive_auth_error_forces_credential_reentry_no_menu(monkeypatch, tmp_path: Path, capsys) -> None:
+    # Unlike network_error, a non-network error gets no retry/proceed/edit menu —
+    # it forces credential re-entry outright, never a silent proceed.
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+
+    results = iter(
+        [
+            c.ConnectionCheck("auth_error", "bad token", None),
+            c.ConnectionCheck("ok", "", "Test User"),
+        ]
+    )
+    monkeypatch.setattr(c, "_test_connection", lambda env, **_k: next(results))
+
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": ["", ""],
+        "Readable projects": ["", ""],
+        "Enable write access?": ["", ""],
+        "Configure advanced options?": ["", ""],
+        "Proceed with these changes?": "y",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers, interactive=True)
+
+    assert (tmp_path / ".mcp.json").exists()
+    out = capsys.readouterr().out
+    assert "Connection check failed" in out
+    assert "re-enter your credentials" in out
+
+
+def test_main_interactive_credentials_exhausted_aborts_without_writing(monkeypatch, tmp_path: Path) -> None:
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+
+    monkeypatch.setattr(c, "_test_connection", lambda env, **_k: c.ConnectionCheck("auth_error", "bad token", None))
+
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": ["", "", ""],
+        "Readable projects": ["", "", ""],
+        "Enable write access?": ["", "", ""],
+        "Configure advanced options?": ["", "", ""],
+    }
+    with pytest.raises(SystemExit) as exc:
+        _run_main(monkeypatch, tmp_path, [claude], answers, interactive=True)
+    assert exc.value.code == 1
+    assert not (tmp_path / ".mcp.json").exists()
+
+
+# ── interactive auto-detection (must key on stdin alone, not stdout) ────────────
+
+
+def _run_main_autodetect(monkeypatch, tmp_path: Path, clients, answers, argv=(), secret="opapi-tok"):
+    """Like `_run_main`, but does NOT force `interactive=` — exercises `main()`'s
+    real `interactive=None` auto-detection path instead. Callers monkeypatch
+    `sys.stdin.isatty`/`sys.stdout.isatty` before calling this."""
+    monkeypatch.setattr(c, "_check_python", lambda: None)
+    monkeypatch.setattr(c, "_installed_mode", lambda: True)
+    monkeypatch.setattr(c, "_install_deps", lambda *a, **k: None)
+    monkeypatch.setattr(c, "_server_command", lambda installed: ("openproject-ce-mcp", True))
+    monkeypatch.setattr(c, "_clients", lambda: clients)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PWD", str(tmp_path))
+    book = _AnswerBook(answers)
+    monkeypatch.setattr("builtins.input", lambda prompt="": book(prompt))
+    monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": secret)
+    c.main(list(argv))
+    return book
+
+
+def test_main_interactive_autodetect_ignores_redirected_stdout(monkeypatch, tmp_path: Path) -> None:
+    # P1 fix: piping stdout (e.g. `configure | tee log`) makes stdout.isatty()
+    # False even though a human is still typing at a real terminal — the old
+    # `stdin.isatty() and stdout.isatty()` check silently downgraded that
+    # session to non-interactive, skipping the connection test/preview/confirm
+    # the README promises can't be skipped. Detection must key on stdin alone.
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+    monkeypatch.setattr(c, "_test_connection", lambda env, **_k: c.ConnectionCheck("ok", "", "Test User"))
+    monkeypatch.setattr(c.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(c.sys.stdout, "isatty", lambda: False)
+
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+        "Proceed with these changes?": "y",
+    }
+    book = _run_main_autodetect(monkeypatch, tmp_path, [claude], answers)
+
+    assert (tmp_path / ".mcp.json").exists()
+    book.assert_consumed()  # "Proceed with these changes?" WAS asked → stayed interactive
+
+
+def test_main_non_interactive_flag_forces_skip_even_with_real_stdin(monkeypatch, tmp_path: Path) -> None:
+    # The explicit --non-interactive opt-out (for scripted installs) must win
+    # even when a real terminal happens to be attached to stdin.
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+    monkeypatch.setattr(c.sys.stdin, "isatty", lambda: True)
+
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+        "Configure advanced options?": "",
+    }
+    book = _run_main_autodetect(monkeypatch, tmp_path, [claude], answers, argv=["--non-interactive"])
+
+    assert (tmp_path / ".mcp.json").exists()
+    book.assert_consumed()  # no "Proceed with these changes?" key needed — never asked
+
+
+# ── _minimal_env (OPM-128 minimal-diff config writing) ──────────────────────────
+
+# Every optional field explicitly set to its own default's string form — proves
+# _minimal_env recognizes "explicitly set but equal to default" (not just
+# "absent"), which is the actually interesting case; a key that was never in
+# the dict at all trivially stays absent.
+_FULL_DEFAULT_ENV: dict[str, str] = {
+    "OPENPROJECT_BASE_URL": "https://op.example.com",
+    "OPENPROJECT_API_TOKEN": "tok",
+    "OPENPROJECT_READ_PROJECTS": "",
+    "OPENPROJECT_WRITE_PROJECTS": "",
+    "OPENPROJECT_TOOLS": c._DEFAULT_TOOL_GROUPS_CSV,
+    "OPENPROJECT_HIDE_PROJECT_FIELDS": "",
+    "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": "",
+    "OPENPROJECT_HIDE_ACTIVITY_FIELDS": "",
+    "OPENPROJECT_HIDE_CUSTOM_FIELDS": "",
+    "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
+    "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
+    "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
+    "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
+    "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
+    "OPENPROJECT_PERSONAL_WRITE": "false",
+    "OPENPROJECT_ENABLE_ADMIN_WRITE": "false",
+    "OPENPROJECT_ATTACHMENT_ROOT": "",
+    "OPENPROJECT_TIMEOUT": "12",
+    "OPENPROJECT_VERIFY_SSL": "true",
+    "OPENPROJECT_DEFAULT_PAGE_SIZE": "10",
+    "OPENPROJECT_MAX_PAGE_SIZE": "50",
+    "OPENPROJECT_MAX_RESULTS": "100",
+    "OPENPROJECT_TEXT_LIMIT": "500",
+    "OPENPROJECT_MAX_RETRIES": "3",
+    "OPENPROJECT_RETRY_BASE_DELAY": "1.0",
+    "OPENPROJECT_RETRY_MAX_DELAY": "60.0",
+    "OPENPROJECT_LOG_LEVEL": "WARNING",
+}
+
+
+def _minimal_env_for(env: dict[str, str]) -> dict[str, str]:
+    candidate = c.Settings.from_env(env)
+    tool_groups_final = c.parse_tool_groups_csv(env.get("OPENPROJECT_TOOLS", c._DEFAULT_TOOL_GROUPS_CSV))
+    return c._minimal_env(env, candidate, tool_groups_final)
+
+
+def test_minimal_env_all_defaults_keeps_only_base_url_and_token() -> None:
+    minimal = _minimal_env_for(dict(_FULL_DEFAULT_ENV))
+    assert minimal == {
+        "OPENPROJECT_BASE_URL": "https://op.example.com",
+        "OPENPROJECT_API_TOKEN": "tok",
+    }
+
+
+@pytest.mark.parametrize(
+    ("env_key", "deviated_value"),
+    [
+        ("OPENPROJECT_READ_PROJECTS", "OPM"),
+        ("OPENPROJECT_WRITE_PROJECTS", "OPM"),
+        ("OPENPROJECT_TOOLS", "projects"),
+        ("OPENPROJECT_HIDE_PROJECT_FIELDS", "description"),
+        ("OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS", "description"),
+        ("OPENPROJECT_HIDE_ACTIVITY_FIELDS", "comment"),
+        ("OPENPROJECT_HIDE_CUSTOM_FIELDS", "budget"),
+        ("OPENPROJECT_ENABLE_PROJECT_WRITE", "true"),
+        ("OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", "true"),
+        ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "true"),
+        ("OPENPROJECT_ENABLE_VERSION_WRITE", "true"),
+        ("OPENPROJECT_ENABLE_BOARD_WRITE", "true"),
+        ("OPENPROJECT_ENABLE_ADMIN_WRITE", "true"),
+        ("OPENPROJECT_ATTACHMENT_ROOT", "/tmp/uploads"),
+        ("OPENPROJECT_TIMEOUT", "20"),
+        ("OPENPROJECT_VERIFY_SSL", "false"),
+        ("OPENPROJECT_DEFAULT_PAGE_SIZE", "5"),
+        ("OPENPROJECT_MAX_PAGE_SIZE", "25"),
+        ("OPENPROJECT_MAX_RESULTS", "50"),
+        ("OPENPROJECT_TEXT_LIMIT", "250"),
+        ("OPENPROJECT_MAX_RETRIES", "4"),
+        ("OPENPROJECT_RETRY_BASE_DELAY", "0.5"),
+        ("OPENPROJECT_RETRY_MAX_DELAY", "10"),
+        ("OPENPROJECT_LOG_LEVEL", "INFO"),
+    ],
+)
+def test_minimal_env_keeps_a_single_deviated_key(env_key: str, deviated_value: str) -> None:
+    env = dict(_FULL_DEFAULT_ENV)
+    env[env_key] = deviated_value
+    minimal = _minimal_env_for(env)
+    assert minimal[env_key] == deviated_value
+    assert set(minimal) == {"OPENPROJECT_BASE_URL", "OPENPROJECT_API_TOKEN", env_key}
+
+
+def test_minimal_env_keeps_personal_write_alongside_its_required_group() -> None:
+    # PERSONAL_WRITE=true is only valid with "personal" in OPENPROJECT_TOOLS (an
+    # AND-gate, unlike every other write flag) — not a clean single-field
+    # deviation, so it gets its own test rather than the parametrized one above.
+    env = dict(_FULL_DEFAULT_ENV)
+    env["OPENPROJECT_TOOLS"] = c._DEFAULT_TOOL_GROUPS_CSV + ",personal"
+    env["OPENPROJECT_PERSONAL_WRITE"] = "true"
+    minimal = _minimal_env_for(env)
+    assert minimal["OPENPROJECT_TOOLS"] == env["OPENPROJECT_TOOLS"]
+    assert minimal["OPENPROJECT_PERSONAL_WRITE"] == "true"
+    assert set(minimal) == {
+        "OPENPROJECT_BASE_URL",
+        "OPENPROJECT_API_TOKEN",
+        "OPENPROJECT_TOOLS",
+        "OPENPROJECT_PERSONAL_WRITE",
+    }
+
+
+def test_minimal_env_keeps_original_string_not_a_reformatted_settings_value() -> None:
+    # "12.0" for a default-12.0 timeout must be recognized as "= default" (and
+    # omitted) — not written back as a differently-formatted "12".
+    env = dict(_FULL_DEFAULT_ENV)
+    env["OPENPROJECT_TIMEOUT"] = "12.0"
+    minimal = _minimal_env_for(env)
+    assert "OPENPROJECT_TIMEOUT" not in minimal
+
+    # A genuinely deviated float value is kept verbatim, not reformatted either.
+    env["OPENPROJECT_TIMEOUT"] = "20.50"
+    minimal = _minimal_env_for(env)
+    assert minimal["OPENPROJECT_TIMEOUT"] == "20.50"
+
+
+@pytest.mark.parametrize(
+    "env",
+    [
+        _FULL_DEFAULT_ENV,
+        {**_FULL_DEFAULT_ENV, "OPENPROJECT_READ_PROJECTS": "OPM, TST", "OPENPROJECT_ENABLE_PROJECT_WRITE": "true"},
+        {
+            **_FULL_DEFAULT_ENV,
+            "OPENPROJECT_TOOLS": "projects,work-packages,memberships,versions,boards,personal,extended",
+            "OPENPROJECT_PERSONAL_WRITE": "true",
+            "OPENPROJECT_TIMEOUT": "30",
+            "OPENPROJECT_LOG_LEVEL": "ERROR",
+        },
+    ],
+)
+def test_minimal_env_round_trips_to_the_same_effective_settings(env: dict[str, str]) -> None:
+    # The real regression safety net: whatever _minimal_env trims away must
+    # never change the *effective* settings a later Settings.from_env resolves.
+    minimal = _minimal_env_for(dict(env))
+    original_settings = c.Settings.from_env(env)
+    minimal_settings = c.Settings.from_env(minimal)
+    for f in dataclasses.fields(c.Settings):
+        if f.name in ("base_url", "api_token"):
+            continue
+        assert getattr(original_settings, f.name) == getattr(minimal_settings, f.name), f.name
