@@ -118,13 +118,36 @@ def _run_pty(cmd: list[str], *, cwd: Path, env: dict[str, str], timeout: float =
     blocking ``os.read`` -- a launcher that hangs while holding the pty open
     would otherwise never reach ``proc.wait(timeout=...)`` at all, since that
     call only happens after the read loop returns.
+
+    ``start_new_session=True`` detaches the child from any controlling
+    terminal via ``setsid()``. On macOS/BSD a session leader auto-acquires
+    the first tty it opens as its controlling terminal, but Linux does not --
+    it requires an explicit ``TIOCSCTTY`` ioctl, without which get.sh's own
+    ``/dev/tty`` open fails with ENXIO ("No such device or address") even
+    though its preceding ``-e``/``-r`` checks pass. Claim it explicitly via
+    ``preexec_fn`` so this works the same on both.
     """
-    import pty  # Unix-only; deferred so importing this module never fails collection on Windows.
+    import fcntl  # Unix-only; deferred alongside pty so collection never fails on Windows.
+    import pty
+    import termios
+
+    def _claim_controlling_tty() -> None:
+        try:
+            fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+        except OSError:
+            pass  # already the controlling terminal (e.g. macOS/BSD auto-acquire) -- fine.
 
     master_fd, slave_fd = pty.openpty()
     try:
         proc = subprocess.Popen(
-            cmd, cwd=cwd, env=env, stdin=slave_fd, stdout=slave_fd, stderr=slave_fd, start_new_session=True
+            cmd,
+            cwd=cwd,
+            env=env,
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            start_new_session=True,
+            preexec_fn=_claim_controlling_tty,
         )
         os.close(slave_fd)
         slave_fd = -1
