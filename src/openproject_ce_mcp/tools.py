@@ -447,7 +447,11 @@ async def list_projects(
     name, identifier, active, public, status, parent_name, created_at, updated_at.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap.
+    next_offset as the next call's offset to page past the cap. Under a
+    restrictive OPENPROJECT_READ_PROJECTS, total reflects only the allowed
+    projects already scanned to fill this page, not a full count of all
+    matches — the search stops as soon as it has enough, so an exact total
+    would need an extra full walk. Page until next_offset is null.
     """
     client = _client_from_context(ctx)
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)
@@ -1261,8 +1265,9 @@ async def search_work_packages(
 ) -> WorkPackageListResult:
     """Search work packages by free text, optionally scoped to a project.
 
-    Set status to restrict results to a specific OpenProject status.
-    Set open_only=true to return only open work packages.
+    Set status to restrict results to an exact OpenProject status name or
+    numeric ID — not a meta-value like 'open'/'closed'.
+    Set open_only=true to return only open (not-closed) work packages.
     Set assignee_me=true to return only work packages assigned to the current user.
 
     assignee filters by any user (username, id, or "me"). assignee_me takes precedence.
@@ -1291,7 +1296,14 @@ async def search_work_packages(
     readonly, ignore_non_working_days.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap.
+    next_offset as the next call's offset to page past the cap. total is the real
+    matching count only when the query is provably restricted to
+    OPENPROJECT_READ_PROJECTS server-side — scope is unrestricted, or an explicit
+    project was given. Otherwise (no project, restricted scope) total falls back
+    to this page's item count, and next_offset/truncated are based on whether
+    this page came back full rather than the server's own total, so nothing here
+    ever reveals how many matches exist in projects you can't see. Page until
+    next_offset is null either way.
     """
     client = _client_from_context(ctx)
     safe_query = _validate_required_query(query, field_name="query", max_length=120)
@@ -1363,7 +1375,9 @@ async def list_work_packages(
 
     assignee filters by any user (username, id, or "me"). assignee_me takes precedence.
 
-    status/priority filter by name or numeric ID (case-insensitive).
+    status/priority filter by exact OpenProject status/priority name or numeric
+    ID (case-insensitive) — not meta-values like 'open'/'closed'; set
+    open_only=true to restrict results to not-closed work packages instead.
 
     Date filters accept YYYY-MM-DD format:
     - created_on/updated_on/due_on: exact date match
@@ -1387,7 +1401,15 @@ async def list_work_packages(
     readonly, ignore_non_working_days.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap.
+    next_offset as the next call's offset to page past the cap. total is the real
+    matching count only when the query is provably restricted to
+    OPENPROJECT_READ_PROJECTS server-side — scope is unrestricted, an explicit
+    project was given, or (no project, restricted scope) a server-side filter for
+    the resolved allowed project IDs was sent. Otherwise total falls back to this
+    page's item count, and next_offset/truncated are based on whether this page
+    came back full rather than the server's own total, so nothing here ever
+    reveals how many matches exist in projects you can't see. Page until
+    next_offset is null either way.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -2009,7 +2031,13 @@ async def list_my_open_work_packages(
     """List the current user's open assigned work packages.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap.
+    next_offset as the next call's offset to page past the cap. This query has no
+    project scope of its own, so total is the real matching count only when
+    OPENPROJECT_READ_PROJECTS is unrestricted ("*"); under a restricted scope,
+    total always falls back to this page's item count, and next_offset/truncated
+    are based on whether this page came back full rather than the server's own
+    total, so nothing here ever reveals how many matches exist in projects you
+    can't see. Page until next_offset is null either way.
     """
     client = _client_from_context(ctx)
     safe_offset = _validate_offset(offset)

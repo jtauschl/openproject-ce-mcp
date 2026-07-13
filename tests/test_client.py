@@ -1205,6 +1205,262 @@ async def test_list_work_packages_resolves_type_and_version_filters() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_work_packages_exposes_real_total_when_scope_unrestricted() -> None:
+    # read_projects="*" -- the query is provably unrestricted, so the server's
+    # real total is safe to expose regardless of what any single page contains.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/work_packages"
+        return httpx.Response(
+            200,
+            json={
+                "total": 5,
+                "_embedded": {
+                    "elements": [
+                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                        {"id": 2, "subject": "B", "_links": {"project": {"title": "demo"}}},
+                    ]
+                },
+            },
+            request=request,
+        )
+
+    client = OpenProjectClient(_base_settings(read_projects=("*",)), transport=httpx.MockTransport(handler))
+    result = await client.list_work_packages(limit=2)
+
+    assert result.total == 5
+    assert result.count == 2
+    assert result.next_offset == 2
+    assert result.truncated is True
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_falls_back_to_page_count_when_project_cache_empty() -> None:
+    # Restricted scope, no explicit project, and the allowed-project-id cache
+    # (populated by initialize(), which this test deliberately never calls --
+    # e.g. because initialize() silently swallowed a failure) is empty. No
+    # server-side project filter is sent at all, so even though nothing on
+    # THIS page happens to be filtered, the server's total could still include
+    # matches from a disallowed project on a later page -- total must fall
+    # back to this page's item count regardless.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/work_packages"
+        params = dict(request.url.params)
+        assert "project_id" not in params["filters"]
+        return httpx.Response(
+            200,
+            json={
+                "total": 50,
+                "_embedded": {
+                    "elements": [
+                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                        {"id": 2, "subject": "B", "_links": {"project": {"title": "demo"}}},
+                    ]
+                },
+            },
+            request=request,
+        )
+
+    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+    result = await client.list_work_packages(limit=2)
+
+    assert [wp.id for wp in result.results] == [1, 2]
+    assert result.total == 2
+    assert result.count == 2
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_exposes_real_total_when_restricted_scope_filter_sent() -> None:
+    # Restricted scope, no explicit project, but the allowed-project-id cache IS
+    # populated (as initialize() would do on success) -- a server-side project_id
+    # filter covering exactly the allowed projects is sent, so the query is
+    # provably restricted and the server's real total is safe to expose.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/work_packages"
+        params = dict(request.url.params)
+        assert '"project_id"' in params["filters"]
+        return httpx.Response(
+            200,
+            json={
+                "total": 5,
+                "_embedded": {
+                    "elements": [
+                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                        {"id": 2, "subject": "B", "_links": {"project": {"title": "demo"}}},
+                    ]
+                },
+            },
+            request=request,
+        )
+
+    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+    client._project_id_to_identifier[1] = "demo"
+    result = await client.list_work_packages(limit=2)
+
+    assert result.total == 5
+    assert result.count == 2
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_pagination_hints_do_not_leak_untrusted_total() -> None:
+    # Same untrusted-total scenario as the empty-cache test above, but this one
+    # asserts on next_offset/truncated specifically: they must NOT be derived
+    # from the server's secret total (50) -- that would reveal the existence of
+    # further matches just as much as exposing the total itself. Since this raw
+    # page came back short of the requested limit, there is nothing more to
+    # page through.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "total": 50,
+                "_embedded": {
+                    "elements": [
+                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                    ]
+                },
+            },
+            request=request,
+        )
+
+    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+    result = await client.list_work_packages(limit=5)
+
+    assert result.total == 1
+    assert result.next_offset is None
+    assert result.truncated is False
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_pagination_continues_with_untrusted_total_when_page_full() -> None:
+    # Same untrusted-total scope, but the raw page came back full (== limit) --
+    # there may be more allowed matches on a later server page, so pagination
+    # must still continue even though the total itself stays hidden.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "total": 50,
+                "_embedded": {
+                    "elements": [
+                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                        {"id": 2, "subject": "B", "_links": {"project": {"title": "demo"}}},
+                    ]
+                },
+            },
+            request=request,
+        )
+
+    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+    result = await client.list_work_packages(offset=1, limit=2)
+
+    assert result.total == 2
+    assert result.next_offset == 2
+    assert result.truncated is True
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_search_work_packages_falls_back_to_page_count_without_explicit_project() -> None:
+    # search_work_packages has no restricted-scope project_id filter branch at
+    # all (unlike list_work_packages), so without an explicit project it must
+    # never trust the server total under a restricted scope, regardless of
+    # whether this particular page happened to be filtered.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "total": 50,
+                "_embedded": {
+                    "elements": [
+                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                    ]
+                },
+            },
+            request=request,
+        )
+
+    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+    result = await client.search_work_packages(query="A", limit=5)
+
+    assert result.total == 1
+    assert result.count == 1
+    assert result.next_offset is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_search_work_packages_exposes_real_total_with_explicit_project() -> None:
+    # An explicit project is validated against the allowlist by
+    # _get_project_payload before the filter is built, so the query is
+    # provably restricted to that one allowed project and the server total is
+    # safe to expose.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(200, json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo"})
+        return httpx.Response(
+            200,
+            json={
+                "total": 5,
+                "_embedded": {
+                    "elements": [
+                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                    ]
+                },
+            },
+            request=request,
+        )
+
+    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+    result = await client.search_work_packages(query="A", project="demo", limit=5)
+
+    assert result.total == 5
+    assert result.count == 1
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_my_open_work_packages_falls_back_to_page_count_under_restricted_scope() -> None:
+    # list_my_open_work_packages never sends a project-scoping filter at all,
+    # so under a restricted scope the total must always fall back to the
+    # page's item count -- never the server's secret total.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/users/me":
+            return httpx.Response(200, json={"id": 9, "name": "Me", "login": "me"}, request=request)
+        return httpx.Response(
+            200,
+            json={
+                "total": 50,
+                "_embedded": {
+                    "elements": [
+                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                    ]
+                },
+            },
+            request=request,
+        )
+
+    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+    result = await client.list_my_open_work_packages(limit=5)
+
+    assert result.total == 1
+    assert result.count == 1
+    assert result.next_offset is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_create_work_package_returns_confirmation_preview_before_writing() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path in {"/api/v3/projects/demo", "/api/v3/projects/1"}:
@@ -3664,7 +3920,9 @@ async def test_list_work_package_collection_defense_in_depth_guard() -> None:
     # public callers, so a future new caller can't silently bypass it.
     client = OpenProjectClient(_empty_scope_settings(), transport=httpx.MockTransport(_no_request_handler))
 
-    result = await client._list_work_package_collection(project_id=None, filters=[], offset=1, limit=10)
+    result = await client._list_work_package_collection(
+        project_id=None, filters=[], offset=1, limit=10, total_is_scope_safe=False
+    )
 
     assert result.count == 0
     assert result.results == []
@@ -9633,7 +9891,10 @@ async def test_list_versions_project_scoped_uses_exact_server_pagination() -> No
     page = await client.list_versions(project="demo", limit=2)
 
     assert [v.id for v in page.results] == [1, 2]
-    assert page.total == 2
+    # No client-side filtering happens on this branch, so total is the real
+    # server-reported match count (5), not just this page's item count (2).
+    assert page.total == 5
+    assert page.count == 2
     assert page.truncated is True
     assert page.next_offset == 2
 

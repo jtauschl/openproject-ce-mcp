@@ -2045,10 +2045,12 @@ class OpenProjectClient:
             )
         filters: list[dict[str, Any]] = [{"subject_or_id": {"operator": "**", "values": [query]}}]
         project_id: int | None = None
+        total_is_scope_safe = _scope_allows_all(self.settings.read_projects)
         if project is not None:
             project_payload = await self._get_project_payload(project)
             project_id = int(project_payload["id"])
             filters.append({"project_id": {"operator": "=", "values": [str(project_id)]}})
+            total_is_scope_safe = True
         if status:
             status_id = await self._resolve_status_id(status)
             filters.append({"status_id": {"operator": "=", "values": [status_id]}})
@@ -2107,6 +2109,7 @@ class OpenProjectClient:
             limit=effective_limit,
             sort_by=sort_by,
             group_by=group_by,
+            total_is_scope_safe=total_is_scope_safe,
         )
 
     async def list_work_packages(
@@ -2146,16 +2149,21 @@ class OpenProjectClient:
             )
         filters: list[dict[str, Any]] = []
         project_id: int | None = None
+        total_is_scope_safe = _scope_allows_all(self.settings.read_projects)
         if project is not None:
             project_payload = await self._get_project_payload(project)
             project_id = int(project_payload["id"])
             filters.append({"project_id": {"operator": "=", "values": [str(project_id)]}})
-        elif self.settings.read_projects and not _scope_allows_all(self.settings.read_projects):
+            total_is_scope_safe = True
+        elif not total_is_scope_safe:
             # No explicit project given but read scope is restricted — add a server-side
-            # project filter so the API only returns WPs from the allowed projects.
+            # project filter so the API only returns WPs from the allowed projects. This
+            # cache can be empty (e.g. initialize() silently failed), in which case no
+            # filter is sent and the server total must not be trusted.
             allowed_ids = [str(pid) for pid in self._project_id_to_identifier]
             if allowed_ids:
                 filters.append({"project_id": {"operator": "=", "values": allowed_ids}})
+                total_is_scope_safe = True
         if open_only:
             filters.append({"status_id": {"operator": "o", "values": []}})
         if assignee_me:
@@ -2233,6 +2241,7 @@ class OpenProjectClient:
             limit=effective_limit,
             sort_by=sort_by,
             group_by=group_by,
+            total_is_scope_safe=total_is_scope_safe,
         )
 
     async def _list_work_package_collection(
@@ -2244,6 +2253,7 @@ class OpenProjectClient:
         limit: int,
         sort_by: list[SortCriterion] | None = None,
         group_by: str | None = None,
+        total_is_scope_safe: bool,
     ) -> WorkPackageListResult:
         if not self.settings.read_projects:
             # Defense-in-depth: both public callers already guard on this before
@@ -2276,21 +2286,39 @@ class OpenProjectClient:
             params["groupBy"] = group_by
 
         payload = await self._get("work_packages", params=params)
-        raw_items = [
-            item
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._work_package_payload_allowed(item)
-        ]
+        raw_elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+        raw_items = [item for item in raw_elements if self._work_package_payload_allowed(item)]
         results = [self.normalize_work_package_summary(item) for item in raw_items]
         server_total = int(payload.get("total", len(results)))
-        total = len(results)
+        # The server total is only safe to expose when the query itself was
+        # provably restricted to the allowed scope server-side (total_is_scope_safe,
+        # set by the caller) — a clean current page is NOT sufficient on its own,
+        # since a later page could still contain disallowed-project matches that
+        # the total would otherwise leak the existence of. The per-page equality
+        # check stays as defense in depth against a scoped query somehow still
+        # returning a disallowed item.
+        total_trustworthy = total_is_scope_safe and len(raw_items) == len(raw_elements)
+        if total_trustworthy:
+            total = server_total
+            next_offset = _next_offset(offset, limit, server_total)
+            truncated = server_total > offset * limit
+        else:
+            # Pagination hints must not be derived from the untrustworthy server
+            # total either — that would leak the existence of disallowed-project
+            # matches just as much as exposing the total itself. "Is there more
+            # to page through" is instead based purely on whether this raw server
+            # page came back full, which reveals nothing beyond what any
+            # paginated API already implies.
+            total = len(results)
+            next_offset = (offset + 1) if len(raw_elements) == limit else None
+            truncated = len(raw_elements) == limit
         return WorkPackageListResult(
             offset=offset,
             limit=limit,
             total=total,
-            count=total,
-            next_offset=_next_offset(offset, limit, server_total),
-            truncated=server_total > offset * limit,
+            count=len(results),
+            next_offset=next_offset,
+            truncated=truncated,
             results=results,
         )
 
@@ -2934,21 +2962,36 @@ class OpenProjectClient:
                 ),
             },
         )
-        raw_items = [
-            item
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._work_package_payload_allowed(item)
-        ]
+        raw_elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+        raw_items = [item for item in raw_elements if self._work_package_payload_allowed(item)]
         results = [self.normalize_work_package_summary(item) for item in raw_items]
         server_total = int(payload.get("total", len(results)))
-        total = len(results)
+        # This query has no server-side project filter at all, so the server total
+        # counts matches across every project regardless of the allowlist — only
+        # trust it when the scope is unrestricted. A clean current page is NOT
+        # sufficient: a later page could still contain disallowed-project matches
+        # that the total would otherwise leak the existence of.
+        total_is_scope_safe = _scope_allows_all(self.settings.read_projects)
+        total_trustworthy = total_is_scope_safe and len(raw_items) == len(raw_elements)
+        if total_trustworthy:
+            total = server_total
+            next_offset = _next_offset(offset, effective_limit, server_total)
+            truncated = server_total > offset * effective_limit
+        else:
+            # See _list_work_package_collection: pagination hints must not be
+            # derived from the untrustworthy server total either. Base "is there
+            # more to page through" purely on whether this raw server page came
+            # back full.
+            total = len(results)
+            next_offset = (offset + 1) if len(raw_elements) == effective_limit else None
+            truncated = len(raw_elements) == effective_limit
         return WorkPackageListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=total,
-            next_offset=_next_offset(offset, effective_limit, server_total),
-            truncated=server_total > offset * effective_limit,
+            count=len(results),
+            next_offset=next_offset,
+            truncated=truncated,
             results=results,
         )
 
@@ -2978,12 +3021,11 @@ class OpenProjectClient:
                 if isinstance(item, dict)
             ]
             server_total = int(payload.get("total", len(results)))
-            total = len(results)
             return VersionListResult(
                 offset=offset,
                 limit=effective_limit,
-                total=total,
-                count=total,
+                total=server_total,
+                count=len(results),
                 next_offset=_next_offset(offset, effective_limit, server_total),
                 truncated=server_total > offset * effective_limit,
                 results=results,
