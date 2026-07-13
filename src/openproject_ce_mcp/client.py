@@ -6173,11 +6173,14 @@ class OpenProjectClient:
 
     def normalize_watcher(self, payload: dict[str, Any]) -> WatcherSummary:
         watcher_id = int(payload["id"])
-        return WatcherSummary(
-            id=watcher_id,
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"User {watcher_id}",
-            login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
-            url=self._web_url(f"users/{watcher_id}"),
+        return self._apply_hidden_fields(
+            "watcher",
+            WatcherSummary(
+                id=watcher_id,
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"User {watcher_id}",
+                login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
+                url=self._web_url(f"users/{watcher_id}"),
+            ),
         )
 
     def normalize_notification(self, payload: dict[str, Any]) -> NotificationSummary:

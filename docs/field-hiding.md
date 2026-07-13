@@ -21,7 +21,7 @@ Supported entities for `OPENPROJECT_HIDE_<ENTITY>_FIELDS`: `project`,
 `query_filter_instance_schema`, `document`, `news`, `wiki_page`, `category`,
 `attachment`, `time_entry_activity`, `time_entry`, `work_package`,
 `relation`, `activity`, `reminder`, `version`, `sprint`, `board`,
-`current_user`, `instance_configuration`, `status`, `type`.
+`current_user`, `instance_configuration`, `status`, `type`, `watcher`.
 
 See the [Configuration table](../README.md#configuration) for the two
 variables' required/default values.

@@ -2562,9 +2562,6 @@ async def get_work_package_activities(
     to widen (or ``0``-based semantics via a larger value) the per-comment cap.
     When a comment is cut, ``comment_truncated`` is true and ``comment_length``
     reports its real length.
-
-    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)

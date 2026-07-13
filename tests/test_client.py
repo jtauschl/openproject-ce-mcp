@@ -9057,6 +9057,33 @@ async def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() ->
 
 
 @pytest.mark.asyncio
+async def test_hidden_watcher_fields_are_tagged_and_dropped_from_payload() -> None:
+    # OPM-141: normalize_watcher never applied OPENPROJECT_HIDE_WATCHER_FIELDS,
+    # unlike every other normalize_* method for user-identifying data.
+    client = OpenProjectClient(
+        _base_settings(hidden_fields={"watcher": ("login",)}),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+
+    watcher = client.normalize_watcher(
+        {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "login": "ada",
+        }
+    )
+
+    assert watcher._hidden_keys == frozenset({"login"})
+    assert watcher.login == "ada"  # preserved on the dataclass
+    assert watcher.name == "Ada Lovelace"
+    serialized = _to_payload(watcher)
+    assert "login" not in serialized
+    assert serialized["name"] == "Ada Lovelace"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_hidden_user_fields_are_tagged_and_dropped_from_payload() -> None:
     # OPM-89: firstName/lastName exposed as read fields, echoing what create_user/
     # update_user already write. Respects existing OPENPROJECT_HIDE_USER_FIELDS wiring.

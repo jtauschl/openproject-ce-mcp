@@ -26,6 +26,7 @@ def test_settings_from_env_loads_and_normalizes_values() -> None:
             "OPENPROJECT_HIDE_PRINCIPAL_FIELDS": "*mail,login",
             "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": "description",
             "OPENPROJECT_HIDE_ACTIVITY_FIELDS": "comment",
+            "OPENPROJECT_HIDE_WATCHER_FIELDS": "login",
             "OPENPROJECT_HIDE_CUSTOM_FIELDS": "budget, internal_notes",
             "OPENPROJECT_ENABLE_PROJECT_WRITE": "true",
             "OPENPROJECT_TIMEOUT": "15",
@@ -47,6 +48,7 @@ def test_settings_from_env_loads_and_normalizes_values() -> None:
     assert settings.hidden_fields["principal"] == ("*mail", "login")
     assert settings.hide_work_package_fields == ("description",)
     assert settings.hide_activity_fields == ("comment",)
+    assert settings.hidden_fields["watcher"] == ("login",)
     assert settings.hide_custom_fields == ("budget", "internal_notes")
     assert settings.enable_project_write is True
     assert settings.verify_ssl is False
