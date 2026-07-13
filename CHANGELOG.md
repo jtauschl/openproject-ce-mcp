@@ -120,6 +120,13 @@ development baseline.
   `list_project_sprints` under a restrictive project allowlist.
 - **Fixed missing metadata fields** on work-package summaries that were
   documented but raised validation errors when requested via `select`.
+- **Fixed `list_users`/`list_groups` pagination under `search`**: `total`,
+  `next_offset`, and `truncated` were computed from the unfiltered server
+  page instead of the actually-matching results, so a search could report
+  the wrong count or stop paging too early.
+- **Fixed a project-by-name type lookup** that skipped the project allowlist
+  check its sibling lookups already applied, letting a type resolve against
+  a project outside `OPENPROJECT_READ_PROJECTS`.
 - **`create_user`/`update_user` now round-trip through OpenProject's real
   form-validation endpoint** before returning a preview, like every other
   create/update tool — a `confirm=false` call previously always reported the

@@ -335,6 +335,24 @@ async def test_api_connectivity_success(make_doctor_settings, mock_success_trans
 
 
 @pytest.mark.asyncio
+async def test_api_connectivity_preserves_real_scope_flags(make_doctor_settings, mock_success_transport, capsys):
+    """The diagnostic settings must carry forward real enable_*_read/write
+    flags, not silently fall back to dataclass defaults (OPM-157): a
+    membership-read-disabled config must fail the connectivity check the
+    same way the running server would, not report false success."""
+    from openproject_ce_mcp.doctor import _check_api_connectivity
+
+    settings = make_doctor_settings(enable_membership_read=False)
+    api_ok, user = await _check_api_connectivity(settings, mock_success_transport)
+
+    assert api_ok is False
+    assert user is None
+
+    captured = capsys.readouterr()
+    assert "[FAIL] API:" in captured.err
+
+
+@pytest.mark.asyncio
 async def test_api_connectivity_auth_failure(make_doctor_settings, mock_auth_failure_transport, capsys):
     """Should detect authentication failures."""
     from openproject_ce_mcp.doctor import _check_api_connectivity
