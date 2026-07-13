@@ -13,7 +13,8 @@ development baseline.
 
 - **Batch work-package read**: `get_work_packages(ids=[...])` fetches multiple
   work packages in parallel, with per-item error tracking and deduplication
-  (capped at 100 ids per call).
+  (capped at 100 ids per call), and accepts a `select` parameter to trim each
+  fetched work package to just the requested fields.
 - **Sorting and grouping** for work-package lists: `sort_by` and `group_by`
   parameters on `list_work_packages` and `search_work_packages`.
 - **Work-package filters**: assignee/status/priority equality filters, plus

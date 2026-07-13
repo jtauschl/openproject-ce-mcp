@@ -499,8 +499,8 @@ See [Field hiding](docs/field-hiding.md) for the full list of supported entities
 
 Tools are grouped by area: projects, memberships, users, groups, work packages, versions, boards, time entries, wiki, news, documents, notifications, grids, and more.
 
-List and search tools accept a `select` parameter to return only the fields you
-need per row, and responses are trimmed for context economy (list results drop
+List and search tools, plus the batch-read `get_work_packages`, accept a
+`select` parameter to return only the fields you need per row, and responses are trimmed for context economy (list results drop
 the derivable `count`/`truncated`; a confirmed write drops the echoed request
 `payload`). On `update_work_package` / `update_project`, pass `"none"` to clear a
 nullable field (assignee, responsible, version, sprint, parent, category, project_phase).

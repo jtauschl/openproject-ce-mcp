@@ -66,6 +66,7 @@ from openproject_ce_mcp.tools import (
     get_view,
     get_wiki_page,
     get_work_package,
+    get_work_packages,
     list_boards,
     list_categories,
     list_documents,
@@ -216,6 +217,36 @@ async def test_get_work_package_returns_compact_summary() -> None:
     assert result.relations_url == "https://op.example.com/api/v3/work_packages/42/relations"
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_work_packages_tool_rejects_unknown_select_field() -> None:
+    class StubClient:
+        async def get_work_packages(self, **kwargs):
+            raise AssertionError("client should not be called when select validation fails")
+
+    with pytest.raises(ValueError, match="not a valid WorkPackageDetail field"):
+        await get_work_packages(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            ids=["1"],
+            select=["bogus"],
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_work_packages_tool_does_not_forward_select_to_client() -> None:
+    class StubClient:
+        async def get_work_packages(self, **kwargs):
+            return kwargs
+
+    result = await get_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        ids=["1"],
+        select=["id", "subject"],
+    )
+
+    assert "select" not in result
+    assert result["ids"] == ["1"]
 
 
 @pytest.mark.asyncio

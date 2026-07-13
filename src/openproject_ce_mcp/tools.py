@@ -31,6 +31,7 @@ from .models import (
     AttachmentListResult,
     AttachmentSummary,
     AttachmentWriteResult,
+    BatchWorkPackageReadItemResult,
     BatchWorkPackageReadResult,
     BoardDetail,
     BoardListResult,
@@ -1412,6 +1413,7 @@ async def get_work_packages(
     ctx: Context,
     ids: list[int | str],
     text_limit: int | None = None,
+    select: list[str] | None = None,
 ) -> BatchWorkPackageReadResult:
     """Get multiple work packages by ID in a single batch call.
 
@@ -1421,6 +1423,11 @@ async def get_work_packages(
 
     ids: internal ids (e.g., 952) or display_ids (e.g., "OPM-51"),
     not UI display numbers. Duplicate IDs are automatically deduplicated.
+
+    select restricts each result's work_package to the given fields (e.g.
+    ["id", "subject", "status"]); an invalid name returns the allowed set.
+    The id/success/error fields on each result are always included regardless
+    of select, so you can still tell which items succeeded.
     """
     client = _client_from_context(ctx)
 
@@ -1444,6 +1451,7 @@ async def get_work_packages(
         raise ValueError(f"Maximum {BATCH_READ_MAX_IDS} unique work packages per batch (got {len(unique_ids)})")
 
     safe_text_limit = _validate_optional_text_limit(text_limit)
+    _validate_select(select, row_type=WorkPackageDetail)
 
     return await _run_tool(client.get_work_packages(ids=unique_ids, text_limit=safe_text_limit))
 
@@ -3200,8 +3208,12 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None) -> Any:
     - **hidden keys** (OPM-72): removed entirely (not nulled) when the client tagged
       the instance with ``_hidden_keys``.
 
-    ``select`` (OPM-65) is applied to the top-level ``results`` rows only, keeping
-    just the requested fields per row.
+    ``select`` (OPM-65) is applied to the top-level ``results`` rows, keeping
+    just the requested fields per row. For a row type registered in
+    ``_SELECT_NESTED_FIELD`` (OPM-134, e.g. a batch-read item that wraps a
+    single work package rather than being one), ``select`` instead trims that
+    nested entity — the row's own wrapper fields (id/success/error) are kept
+    regardless of ``select``.
 
     Non-dataclass values pass through unchanged, so tools (and test stubs) that
     already return plain dicts are untouched.
@@ -3238,11 +3250,35 @@ def _has_field(value: Any, name: str) -> bool:
     return any(f.name == name for f in dataclass_fields(value))
 
 
+# Rows that wrap a single nested entity instead of being the entity itself.
+# `select` trims the nested entity; the row's own wrapper fields (id/success/
+# error) always survive, since a batch caller needs them to correlate results
+# regardless of which entity fields it asked for.
+_SELECT_NESTED_FIELD: dict[type, str] = {
+    BatchWorkPackageReadItemResult: "work_package",
+}
+
+
 def _select_fields(row: Any, select: frozenset[str]) -> Any:
-    """Keep only the selected fields of a result row (dataclass), still trimmed."""
+    """Keep only the selected fields of a result row (dataclass), still trimmed.
+
+    Most rows ARE the selectable entity. A row type in ``_SELECT_NESTED_FIELD``
+    instead wraps a single nested entity — for those, ``select`` trims the
+    nested entity and the row's own fields are always kept in full.
+    """
     if not is_dataclass(row) or isinstance(row, type):
         return _to_payload(row)
     hidden = getattr(row, "_hidden_keys", ())
+    nested_field = _SELECT_NESTED_FIELD.get(type(row))
+    if nested_field is not None:
+        out = {
+            f.name: _to_payload(getattr(row, f.name))
+            for f in dataclass_fields(row)
+            if f.name != nested_field and f.name not in hidden
+        }
+        nested = getattr(row, nested_field)
+        out[nested_field] = _select_fields(nested, select) if nested is not None else None
+        return out
     return {
         f.name: _to_payload(getattr(row, f.name))
         for f in dataclass_fields(row)

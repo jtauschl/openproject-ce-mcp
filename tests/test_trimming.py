@@ -25,6 +25,7 @@ from openproject_ce_mcp.tools import (
     create_work_package,
     get_status,
     get_work_package,
+    get_work_packages,
     list_work_packages,
     update_relation,
 )
@@ -67,6 +68,51 @@ def _wp_list(results=None) -> m.WorkPackageListResult:
         next_offset=None,
         truncated=False,
         results=results,
+    )
+
+
+def _wp_detail(**overrides) -> m.WorkPackageDetail:
+    defaults = {
+        "id": 5,
+        "display_id": "OPM-5",
+        "subject": "Subject",
+        "type": "Task",
+        "status": "New",
+        "priority": None,
+        "project_phase": None,
+        "assignee": None,
+        "responsible": None,
+        "project": "OPM",
+        "version": None,
+        "sprint": None,
+        "parent_id": None,
+        "parent_display_id": None,
+        "start_date": None,
+        "due_date": None,
+        "percentage_complete": None,
+        "lock_version": 1,
+        "description": "desc",
+        "url": "http://x/5",
+        "activities_url": "http://x/5/activities",
+        "relations_url": "http://x/5/relations",
+    }
+    defaults.update(overrides)
+    return m.WorkPackageDetail(**defaults)
+
+
+def _batch_read(items=None) -> m.BatchWorkPackageReadResult:
+    items = (
+        items
+        if items is not None
+        else [m.BatchWorkPackageReadItemResult(id=5, success=True, work_package=_wp_detail(), error=None)]
+    )
+    return m.BatchWorkPackageReadResult(
+        action="batch_read",
+        total=len(items),
+        succeeded=sum(1 for item in items if item.success),
+        failed=sum(1 for item in items if not item.success),
+        message="ok",
+        results=items,
     )
 
 
@@ -171,6 +217,41 @@ def test_normalize_select_shapes_kwarg() -> None:
     assert _normalize_select(["id", " subject "]) == frozenset({"id", "subject"})
 
 
+# ── OPM-134: select trims the nested work_package on batch reads ──────────────
+
+
+def test_batch_read_select_trims_nested_work_package_fields() -> None:
+    out = _to_payload(_batch_read(), select=frozenset({"id", "subject"}))
+    row = out["results"][0]
+    assert sorted(row["work_package"]) == ["id", "subject"]
+    # wrapper fields always survive, regardless of select
+    assert sorted(row) == ["error", "id", "success", "work_package"]
+
+
+def test_batch_read_select_none_returns_full_detail() -> None:
+    out = _to_payload(_batch_read())
+    assert "activities_url" in out["results"][0]["work_package"]
+
+
+def test_batch_read_select_skips_failed_items_without_crash() -> None:
+    items = [
+        m.BatchWorkPackageReadItemResult(id=5, success=True, work_package=_wp_detail(), error=None),
+        m.BatchWorkPackageReadItemResult(id=6, success=False, work_package=None, error="not found"),
+    ]
+    out = _to_payload(_batch_read(items=items), select=frozenset({"id", "subject"}))
+    assert out["results"][1]["work_package"] is None
+    assert out["results"][1]["error"] == "not found"
+
+
+def test_validate_select_rejects_unknown_field_for_work_package_detail() -> None:
+    with pytest.raises(ValueError, match="not a valid WorkPackageDetail field"):
+        _validate_select(["bogus"], row_type=m.WorkPackageDetail)
+
+
+def test_returns_trimmable_true_for_batch_read() -> None:
+    assert _returns_trimmable(get_work_packages) is True
+
+
 # ── OPM-72 forward-compat: _hidden_keys removed entirely ──────────────────────
 
 
@@ -226,6 +307,7 @@ def test_trimmed_tools_have_no_output_schema() -> None:
         "update_work_package",
         "bulk_create_work_packages",
         "update_relation",
+        "get_work_packages",
     ]:
         assert tools[name].output_schema is None, name
 
@@ -238,7 +320,13 @@ def test_untrimmed_tools_keep_output_schema() -> None:
 
 def test_list_tools_expose_select_param() -> None:
     tools = _tools(create_app(_make_settings()))
-    for name in ["list_work_packages", "search_work_packages", "list_projects", "list_users"]:
+    for name in [
+        "list_work_packages",
+        "search_work_packages",
+        "list_projects",
+        "list_users",
+        "get_work_packages",
+    ]:
         assert "select" in json.dumps(tools[name].parameters), name
 
 
