@@ -4117,7 +4117,6 @@ class OpenProjectClient:
         language: str | None = None,
         confirm: bool = False,
     ) -> UserWriteResult:
-        self._ensure_write_enabled("admin")
         payload: dict[str, Any] = {
             "login": login,
             "email": email,
@@ -4130,30 +4129,14 @@ class OpenProjectClient:
             payload["password"] = password
         if language is not None:
             payload["language"] = language
-        if not confirm:
-            return UserWriteResult(
-                action="create",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to create the user. Ask for confirmation, then call again with confirm=true.",
-                user_id=None,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        response = await self._post("users", json_body=payload)
-        result = self.normalize_user_detail(response)
-        return UserWriteResult(
+        form = await self._post("users/form", json_body=payload)
+        return await self._finalize_user_write(
             action="create",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="User created successfully.",
-            user_id=result.id,
-            payload=payload,
-            validation_errors={},
-            result=result,
+            confirm=confirm,
+            form=form,
+            write_path="users",
+            preview_message="OpenProject validated the user. Ask for confirmation, then call again with confirm=true to create it.",
+            success_message="User created successfully.",
         )
 
     async def update_user(
@@ -4168,7 +4151,6 @@ class OpenProjectClient:
         language: str | None = None,
         confirm: bool = False,
     ) -> UserWriteResult:
-        self._ensure_write_enabled("admin")
         payload: dict[str, Any] = {}
         if login is not None:
             payload["login"] = login
@@ -4182,30 +4164,15 @@ class OpenProjectClient:
             payload["admin"] = admin
         if language is not None:
             payload["language"] = language
-        if not confirm:
-            return UserWriteResult(
-                action="update",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to update the user. Ask for confirmation, then call again with confirm=true.",
-                user_id=user_id,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        response = await self._patch(f"users/{user_id}", json_body=payload)
-        result = self.normalize_user_detail(response)
-        return UserWriteResult(
+        form = await self._post(f"users/{user_id}/form", json_body=payload)
+        return await self._finalize_user_write(
             action="update",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="User updated successfully.",
-            user_id=result.id,
-            payload=payload,
-            validation_errors={},
-            result=result,
+            confirm=confirm,
+            form=form,
+            write_path=f"users/{user_id}",
+            write_method="PATCH",
+            user_id=user_id,
+            success_message="User updated successfully.",
         )
 
     async def delete_user(
@@ -7136,6 +7103,35 @@ class OpenProjectClient:
             preview_message=preview_message
             or "OpenProject validated the membership change. Ask for confirmation, then call again with confirm=true to write it.",
             success_message=success_message or f"Membership {action}d successfully.",
+        )
+
+    async def _finalize_user_write(
+        self,
+        *,
+        action: str,
+        confirm: bool,
+        form: dict[str, Any],
+        write_path: str,
+        write_method: str = "POST",
+        user_id: int | None = None,
+        preview_message: str | None = None,
+        success_message: str | None = None,
+    ) -> UserWriteResult:
+        return await self._finalize_write(
+            result_cls=UserWriteResult,
+            action=action,
+            confirm=confirm,
+            form=form,
+            write_path=write_path,
+            write_method=write_method,
+            write_scope="admin",
+            identity_kwargs=lambda _payload: {"user_id": user_id},
+            normalize=self.normalize_user_detail,
+            committed_kwargs=lambda u: {"user_id": u.id},
+            rejected_message="OpenProject rejected the proposed user changes. Fix the validation errors before confirming.",
+            preview_message=preview_message
+            or "OpenProject validated the user change. Ask for confirmation, then call again with confirm=true to write it.",
+            success_message=success_message or f"User {action}d successfully.",
         )
 
     def _ensure_write_enabled(self, scope: str) -> None:

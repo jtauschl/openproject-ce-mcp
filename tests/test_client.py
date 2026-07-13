@@ -5290,6 +5290,216 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
 
 
 @pytest.mark.asyncio
+async def test_create_user_returns_preview_when_not_confirmed() -> None:
+    # OPM-142: create_user must round-trip through the real users/form endpoint,
+    # even with admin writes disabled locally — form validation is a read-only
+    # preview, same as every other form-based create_*/update_* tool.
+    calls: list[tuple[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path))
+        if request.url.path == "/api/v3/users/form" and request.method == "POST":
+            body = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"_embedded": {"schema": {}, "payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(enable_admin_write=False), transport=httpx.MockTransport(handler))
+
+    result = await client.create_user(
+        login="ada", email="ada@example.com", firstname="Ada", lastname="Lovelace", confirm=False
+    )
+
+    assert calls == [("POST", "/api/v3/users/form")]
+    assert result.confirmed is False
+    assert result.requires_confirmation is True
+    assert result.ready is True
+    assert result.validation_errors == {}
+    assert result.user_id is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_user_rejects_validation_error() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/users/form" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "schema": {},
+                        "payload": {},
+                        "validationErrors": {"login": {"message": "Login has already been taken."}},
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(enable_admin_write=True), transport=httpx.MockTransport(handler))
+
+    result = await client.create_user(
+        login="ada", email="ada@example.com", firstname="Ada", lastname="Lovelace", confirm=True
+    )
+
+    assert result.ready is False
+    assert result.confirmed is False
+    assert "login" in result.validation_errors
+    # A rejected form must short-circuit before ever reaching the write endpoint.
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_user_confirm_denied_without_admin_write_enabled() -> None:
+    # The form preview call is always allowed (no local gate); only the actual
+    # write requires OPENPROJECT_ENABLE_ADMIN_WRITE=true.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/users/form" and request.method == "POST":
+            body = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"_embedded": {"schema": {}, "payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(enable_admin_write=False), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError):
+        await client.create_user(
+            login="ada", email="ada@example.com", firstname="Ada", lastname="Lovelace", confirm=True
+        )
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_user_commits_using_form_payload_after_validation() -> None:
+    calls: list[tuple[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path))
+        if request.url.path == "/api/v3/users/form" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "schema": {},
+                        # OpenProject-normalized payload differs from the raw input
+                        # (e.g. login lower-cased) — the write must use this, not
+                        # the original input payload.
+                        "payload": {"login": "ada", "email": "ada@example.com"},
+                        "validationErrors": {},
+                    }
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/users" and request.method == "POST":
+            body = json.loads(request.content)
+            assert body == {"login": "ada", "email": "ada@example.com"}
+            return httpx.Response(201, json={"id": 9, "login": "ada", "_links": {}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(enable_admin_write=True), transport=httpx.MockTransport(handler))
+
+    result = await client.create_user(
+        login="Ada", email="ada@example.com", firstname="Ada", lastname="Lovelace", confirm=True
+    )
+
+    assert calls == [("POST", "/api/v3/users/form"), ("POST", "/api/v3/users")]
+    assert result.confirmed is True
+    assert result.requires_confirmation is False
+    assert result.ready is True
+    assert result.user_id == 9  # from the normalized write response, not the input
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_user_preview_echoes_caller_supplied_user_id() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/users/9/form" and request.method == "POST":
+            body = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"_embedded": {"schema": {}, "payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(enable_admin_write=False), transport=httpx.MockTransport(handler))
+
+    result = await client.update_user(9, email="new@example.com", confirm=False)
+
+    assert result.user_id == 9
+    assert result.confirmed is False
+    assert result.requires_confirmation is True
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_user_confirm_denied_without_admin_write_enabled() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/users/9/form" and request.method == "POST":
+            body = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"_embedded": {"schema": {}, "payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(enable_admin_write=False), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError):
+        await client.update_user(9, email="new@example.com", confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_user_commits_using_form_payload_after_validation() -> None:
+    calls: list[tuple[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path))
+        if request.url.path == "/api/v3/users/9/form" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "schema": {},
+                        "payload": {"email": "new@example.com"},
+                        "validationErrors": {},
+                    }
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/users/9" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body == {"email": "new@example.com"}
+            return httpx.Response(200, json={"id": 9, "email": "new@example.com", "_links": {}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(enable_admin_write=True), transport=httpx.MockTransport(handler))
+
+    result = await client.update_user(9, email="new@example.com", confirm=True)
+
+    assert calls == [("POST", "/api/v3/users/9/form"), ("PATCH", "/api/v3/users/9")]
+    assert result.confirmed is True
+    assert result.requires_confirmation is False
+    assert result.user_id == 9  # from the normalized write response
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_user_preferences_get_and_update() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/my_preferences" and request.method == "GET":
