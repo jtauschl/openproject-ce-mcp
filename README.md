@@ -13,26 +13,20 @@ An MCP server for OpenProject that lets local AI agents read and manage project 
 
 The server runs as a local subprocess of your MCP client over stdio. It wraps OpenProject API v3 and exposes typed tools for projects, work packages, memberships, versions, boards, time entries, and more.
 
----
+## Why use this MCP
 
-## Scope: Community Edition
-
-This MCP server targets **OpenProject Community Edition** only. It does not support Enterprise Edition features such as:
-
-- Placeholder Users
-- Budgets
-- Portfolios
-- Programs
-- Custom Actions
-- Baseline Comparisons
-
-**Note:** OpenProject Enterprise Edition includes its own MCP server. If you have an Enterprise license, use the official Enterprise MCP instead of this one.
+- **Context-frugal by design** — compact, agent-shaped responses instead of raw HAL payloads (~21 fields + ~46 links per item in the raw API). Measured up to **−98%** tokens per response with `select`; see [Context efficiency](#context-efficiency) below for the full numbers.
+- **Guarded writes** — every write follows a preview-then-confirm pattern; there is no way to bypass it.
+- **Defense-in-depth project scope** — MCP read/write allowlists restrict the token's effective scope in addition to OpenProject's own server-side permissions.
+- **Typed tools, not a raw REST client** — one call per intent (list, search, create, update) instead of hand-built HAL requests and link-following.
 
 ---
 
 ## Table of Contents
 
+- [Why use this MCP](#why-use-this-mcp)
 - [What you can do](#what-you-can-do)
+- [Scope: Community Edition](#scope-community-edition)
 - [How it works](#how-it-works)
 - [Getting started](#getting-started)
 - [Configuration](#configuration)
@@ -69,6 +63,21 @@ This MCP server targets **OpenProject Community Edition** only. It does not supp
 - Create and inspect grids; inspect custom options
 
 All write operations follow a preview-then-confirm pattern: call a tool once to get a validated preview, then again with `confirm=true` to execute. There is no way to bypass this.
+
+---
+
+## Scope: Community Edition
+
+This MCP server targets **OpenProject Community Edition** only. It does not support Enterprise Edition features such as:
+
+- Placeholder Users
+- Budgets
+- Portfolios
+- Programs
+- Custom Actions
+- Baseline Comparisons
+
+**Note:** OpenProject Enterprise Edition includes its own MCP server. If you have an Enterprise license, use the official Enterprise MCP instead of this one.
 
 ---
 
