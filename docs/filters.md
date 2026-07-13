@@ -143,7 +143,7 @@ All filter keys and operators verified against OpenProject CE 17.5 source code:
 - **Filter definitions:** `app/models/queries/work_packages/filter/*.rb`
 - **Strategy definitions:** `app/models/queries/filters/strategies/*.rb`
 - **Last verified:** 2026-07-09
-- **Related work package:** OPM-51 (payload-shape contract tests)
+- **Test coverage:** payload-shape contract tests in `tests/test_client.py`
 
 ## See Also
 

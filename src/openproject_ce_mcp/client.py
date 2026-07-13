@@ -6591,7 +6591,7 @@ class OpenProjectClient:
         preview_message: str,
         success_message: str,
     ) -> ResultT:
-        """Shared rejected/preview/committed state machine for the 6 form-based
+        """Shared rejected/preview/committed state machine for the 7 form-based
         write finalizers (OPM-57/OPM-124). Each entity differs in its identity
         field(s), write scope, and normalizer — those are parameterized here,
         not the messages, which callers supply verbatim so no wording changes.

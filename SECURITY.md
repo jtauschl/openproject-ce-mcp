@@ -39,23 +39,36 @@ available it will be released to PyPI and noted in the
 This server is a guarded bridge to the OpenProject REST API. Its security posture
 depends on configuration; the most relevant controls are:
 
-- **Read is enabled by default per resource scope** (`project`, `work_package`,
-  `membership`, `version`, `board`); each scope's `OPENPROJECT_ENABLE_*_READ`
-  flag can disable it individually. **Write is disabled by default** for every
-  scope and requires its own `OPENPROJECT_ENABLE_*_WRITE` opt-in; write scopes
-  are always intersected with read scope, so a project must be readable before
-  it can be written.
+- **Read tools are exposed per tool group via `OPENPROJECT_TOOLS`** (a
+  comma-separated list: `projects`, `work-packages`, `memberships`, `versions`,
+  `boards` — these five are the default when `OPENPROJECT_TOOLS` is unset —
+  plus the opt-in `personal` and `extended` groups). Removing a group from
+  `OPENPROJECT_TOOLS` removes both its read and write tools; there is no
+  separate per-scope `OPENPROJECT_ENABLE_*_READ` flag anymore — that
+  mechanism was replaced by `OPENPROJECT_TOOLS` and any leftover
+  `OPENPROJECT_ENABLE_*_READ`/`OPENPROJECT_ENABLE_METADATA_TOOLS` var in your
+  config is now ignored (a startup/`doctor` warning names the exact
+  replacement). **Write is disabled by default** for every scope and requires
+  its own `OPENPROJECT_ENABLE_*_WRITE` opt-in (`OPENPROJECT_PERSONAL_WRITE`
+  for the `personal` group, which has no `ENABLE_` prefix); enabling a write
+  flag also requires its group to already be present in `OPENPROJECT_TOOLS`.
+  Write scopes are always intersected with read scope, so a project must be
+  readable before it can be written.
 - **Project allowlists** (`OPENPROJECT_READ_PROJECTS` / `OPENPROJECT_WRITE_PROJECTS`)
   restrict every project-scoped operation to the named projects. Both are
   **fail-closed**: empty or unset denies all project-scoped access on that
   side, not "everything visible" — `*` is required to explicitly allow all
   projects. `mark_notification_read`/`mark_all_notifications_read` are the one
   exception: they are personal, self-scoped mutations of the caller's own
-  notification state (not a projected-scoped write) and are governed only by
-  the `work_package` write flag, independent of `OPENPROJECT_WRITE_PROJECTS`.
-  The notification list itself is still filtered by `OPENPROJECT_READ_PROJECTS`.
-- **Admin writes** (user/group/membership management) require the separate
-  `OPENPROJECT_ENABLE_ADMIN_WRITE` opt-in.
+  notification state (not a project-scoped write) and are governed only by the
+  `personal` group (`OPENPROJECT_TOOLS`) plus `OPENPROJECT_PERSONAL_WRITE`,
+  independent of `OPENPROJECT_WRITE_PROJECTS`. The notification list itself is
+  still filtered by `OPENPROJECT_READ_PROJECTS`.
+- **Admin writes** (user/group management) require the separate
+  `OPENPROJECT_ENABLE_ADMIN_WRITE` opt-in. **Membership writes** are a
+  project-scoped write like any other and use `OPENPROJECT_ENABLE_MEMBERSHIP_WRITE`
+  (plus the `memberships` group and the usual project write allowlist) — they
+  are not part of admin-write.
 - **Write operations use a preview/confirm flow**: call a tool once to get a
   preview, then again with `confirm=true` to execute. Previews are
   server-validated where OpenProject provides an appropriate form or
@@ -87,9 +100,9 @@ injection payloads** in this content to manipulate an agent connected via MCP.
 
 1. **Server instructions** explicitly warn connecting agents that returned content
    is untrusted and should be treated as data, not instructions.
-2. **Content delimiting**: Long-form user-provided text (descriptions, comments, 
+2. **Content delimiting**: Long-form user-provided text (descriptions, comments,
    news, wiki content) is wrapped in `<user-content>` tags to mark clear boundaries.
-   Short fields (subject lines, titles, names) are NOT delimited as they are 
+   Short fields (subject lines, titles, names) are NOT delimited as they are
    typically visible in listings and easier to inspect manually.
 3. **Read-only by default**: Write operations require explicit opt-in and use a
    preview/confirm flow.
@@ -104,5 +117,5 @@ this server only if you trust:
 - The connecting agent to handle untrusted input responsibly
 - Your MCP client to enforce permission boundaries
 
-If your threat model cannot accept this risk, disable the relevant read scopes
-(`OPENPROJECT_ENABLE_WORK_PACKAGE_READ=false` etc.).
+If your threat model cannot accept this risk, remove the relevant group(s) from
+`OPENPROJECT_TOOLS` (e.g. drop `work-packages`) to stop exposing that content.

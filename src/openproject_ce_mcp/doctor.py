@@ -7,6 +7,7 @@ connectivity, and tool registration to diagnose "server doesn't show up" issues.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 import os
@@ -258,20 +259,12 @@ async def _check_api_connectivity(
 
     Uses reduced timeout and no retries for fast diagnostic feedback.
     """
-    # For doctor diagnostics, use shorter timeout and no retries
-    diagnostic_settings = Settings(
-        base_url=settings.base_url,
-        api_token=settings.api_token,
-        timeout=5.0,  # Shorter timeout for doctor
-        verify_ssl=settings.verify_ssl,
-        max_retries=0,  # No retries for fast feedback
-        default_page_size=settings.default_page_size,
-        max_page_size=settings.max_page_size,
-        max_results=settings.max_results,
-        log_level=settings.log_level,
-        read_projects=settings.read_projects,
-        write_projects=settings.write_projects,
-    )
+    # Shorter timeout, no retries, for fast diagnostic feedback — but every
+    # other flag (enable_*_read/write, tool scopes, etc.) is preserved from
+    # the real settings, matching setup_cli.py's equivalent check, so the
+    # connectivity result reflects what the running server would actually
+    # enforce rather than the Settings dataclass defaults.
+    diagnostic_settings = dataclasses.replace(settings, timeout=5.0, max_retries=0)
 
     client = OpenProjectClient(diagnostic_settings, transport=transport)
     try:

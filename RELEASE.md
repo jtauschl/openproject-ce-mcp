@@ -275,3 +275,9 @@ verification, not just as a tooling health check.
      artifact content check (section 9) and the tag-exactness check (step 4)
      both passed before giving that go-ahead. Closing the tracker version is
      a separate step after the publish succeeds.
+  6. **Create a GitHub Release** for the new tag, after the PyPI publish
+     succeeds. `publish.yml` only builds and publishes to PyPI — it does not
+     create a GitHub Release object — but every prior tagged version has one,
+     created manually out-of-band. Keep doing this for consistent release
+     history; if that policy ever changes, update this step instead of
+     letting a future release silently skip it.

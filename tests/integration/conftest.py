@@ -69,6 +69,8 @@ def _integration_settings() -> Settings | None:
         enable_membership_write=True,
         enable_version_write=True,
         enable_board_write=True,
+        enable_personal_read=True,
+        enable_personal_write=True,
     )
 
 

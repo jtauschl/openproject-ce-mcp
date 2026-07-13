@@ -20,6 +20,8 @@ development baseline.
 - **Work-package filters**: assignee/status/priority equality filters, plus
   created/updated/due date filters (exact-day and range), using the official
   OpenProject filter keys.
+- **`list_versions` gains a `search` parameter**, matching the same
+  name-substring pattern as `list_projects`.
 - **Automatic retry with exponential backoff** for transient HTTP failures
   (429/502/503/504, connection/timeout errors), honoring `Retry-After` and
   configurable via `OPENPROJECT_MAX_RETRIES`/`OPENPROJECT_RETRY_BASE_DELAY`/
@@ -45,29 +47,43 @@ development baseline.
 - **Tools are now registered only when every scope their implementation
   actually needs is enabled**, not just the scope named by their obvious
   flag — some read and write tools that previously stayed visible after
-  their supporting scope was disabled now correctly disappear with it. No
-  environment variable was renamed; only tool exposure got more precise.
+  their supporting scope was disabled now correctly disappear with it. This
+  particular change needs no configuration update on its own; see the
+  breaking changes below for this release's actual environment-variable
+  renames.
 - **Every mutating tool now always requires an explicit `confirm=true`
-  call.** The global auto-confirm bypass has been removed, closing a gap
-  where three tools (marking notifications read, toggling an emoji
-  reaction) previously skipped the preview step unconditionally.
+  call.** The global auto-confirm bypass has been removed —
+  `OPENPROJECT_AUTO_CONFIRM_WRITE` and `OPENPROJECT_AUTO_CONFIRM_DELETE` are
+  gone with no replacement — closing a gap where three tools (marking
+  notifications read, toggling an emoji reaction) previously skipped the
+  preview step unconditionally.
 - **Breaking + security fix: project-scope variables renamed and flipped to
-  fail-closed.** The read/write project-allowlist variables have new names
-  with no backward-compatible alias, and an empty/unset scope now denies
-  all project-scoped access instead of allowing it — `*` must be set
-  explicitly. This also fixes two data-leak bugs where an empty scope
-  skipped filtering entirely instead of denying, and adds project-scope
-  filtering to two list tools that previously had none.
+  fail-closed.** `OPENPROJECT_ALLOWED_PROJECTS`/`OPENPROJECT_ALLOWED_PROJECTS_READ`
+  is now `OPENPROJECT_READ_PROJECTS`, and `OPENPROJECT_ALLOWED_PROJECTS_WRITE`
+  is now `OPENPROJECT_WRITE_PROJECTS` — no backward-compatible alias. An
+  empty/unset scope now denies all project-scoped access instead of allowing
+  it — `*` must be set explicitly to keep the old "allow everything"
+  behavior. **If your config only sets the old variable names, upgrading
+  will silently deny all project-scoped access** — update to the new names
+  first. This also fixes two data-leak bugs where an empty scope skipped
+  filtering entirely instead of denying, and adds project-scope filtering to
+  two list tools that previously had none.
 - **Breaking: tool-group exposure consolidated into one variable**
-  (`OPENPROJECT_TOOLS`), replacing five separate per-scope read booleans
-  and a metadata-tools toggle. A new flag gates personal-data mutations,
-  requiring the matching group to also be enabled. Two previously
-  always-visible read tools moved under a new opt-in group — re-check your
-  configuration after upgrading if you rely on them.
+  (`OPENPROJECT_TOOLS`, a comma-separated list; unset defaults to
+  `projects,work-packages,memberships,versions,boards`). This replaces five
+  per-scope read flags (`OPENPROJECT_ENABLE_PROJECT_READ`,
+  `_WORK_PACKAGE_READ`, `_MEMBERSHIP_READ`, `_VERSION_READ`, `_BOARD_READ`)
+  and `OPENPROJECT_ENABLE_METADATA_TOOLS` — left set in an old config, they
+  are now silently ignored (a startup/`doctor` warning names the exact
+  replacement). Personal-data tools (own preferences, notification
+  mutations) now need the opt-in `personal` group plus
+  `OPENPROJECT_PERSONAL_WRITE=true` for writes — two previously
+  always-visible read tools moved under this new opt-in group, so re-check
+  your configuration after upgrading if you rely on them.
 - **Breaking: the local-attachment root no longer falls back to the current
-  working directory when unset.** An empty/unset root now disables local
-  uploads entirely instead of defaulting to an unpredictable path; a
-  configured root must be absolute.
+  working directory when unset.** An empty/unset `OPENPROJECT_ATTACHMENT_ROOT`
+  now disables local uploads entirely instead of defaulting to an
+  unpredictable path; a configured root must be absolute.
 - **`configure` and `doctor` reworked**: a live connection test and full
   preview now run behind one final confirm (fixing an ordering bug where
   config removals could run before credentials were collected), the wizard
@@ -104,6 +120,11 @@ development baseline.
   `list_project_sprints` under a restrictive project allowlist.
 - **Fixed missing metadata fields** on work-package summaries that were
   documented but raised validation errors when requested via `select`.
+- **`create_user`/`update_user` now round-trip through OpenProject's real
+  form-validation endpoint** before returning a preview, like every other
+  create/update tool — a `confirm=false` call previously always reported the
+  request as valid even when it would actually be rejected (e.g. a duplicate
+  login or email).
 
 ### Security
 
@@ -116,19 +137,33 @@ development baseline.
 - **Fixed a fail-open regression** in a deprecated project-scope alias that
   had been silently dropped, removing a deployment's read restriction
   instead of keeping it.
+- **Fixed a cross-project allowlist bypass** in internal reference
+  resolvers: linking a work package's parent, a relation target, a version,
+  or a Backlogs sprint could reach an entity in a project outside
+  `OPENPROJECT_READ_PROJECTS` without being checked first. Reading grids had
+  the same gap and is fixed the same way.
+- **Fixed a field-hiding gap**: watcher entries never respected
+  `OPENPROJECT_HIDE_WATCHER_FIELDS`, unlike every other user-identifying
+  field.
 
 ### Internal
 
 - Tool registration is now table-driven from a small set of classification
   constants instead of ~190 lines of hand-written conditionals.
-- The six write finalizers (work package, version, board, grid, project,
-  membership) now share one generic preview/commit helper instead of six
+- The seven write finalizers (work package, version, board, grid, project,
+  membership, user) now share one generic preview/commit helper instead of
   near-duplicate implementations.
 - Wizard tests now match prompts by their text instead of positional
   order, so reordering a prompt can't silently misalign answers.
 - Evaluated the remaining runtime-tuning variables (timeouts, page sizes,
   retries, log level) and the field-hiding variables; both stay as-is, no
   functional change.
+- The API-drift checker (`tools/api-check/check_api.py --all`) now fails
+  with a nonzero exit code when a client-used resource or filter is missing
+  from the latest pinned OpenProject version, instead of always exiting 0
+  regardless of findings; its source inventory (`check_coverage.py`) now
+  also walks every module's API subtree (e.g. Meetings), not just the
+  top-level one.
 
 ### Docs
 
@@ -140,6 +175,8 @@ development baseline.
 - Corrected `SECURITY.md`'s read-default claims; re-measured and corrected
   README's context-efficiency numbers, with a repeatable script to
   regenerate them.
+- Added a "why use this MCP" summary to README, and reordered it ahead of
+  the scope/limitations section.
 
 ---
 
