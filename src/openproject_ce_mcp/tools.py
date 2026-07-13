@@ -445,6 +445,9 @@ async def list_projects(
     select restricts each result row to the given fields (e.g. ["id", "name",
     "identifier"]); an invalid name returns the allowed set. Common fields: id,
     name, identifier, active, public, status, parent_name, created_at, updated_at.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)
@@ -475,6 +478,9 @@ async def list_sprints(
     """List Backlogs sprints visible to the current token.
 
     Requires the OpenProject Backlogs module; unavailable instances return a clear not-found message.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_offset = _validate_offset(offset)
@@ -488,7 +494,11 @@ async def list_project_sprints(
     offset: int = 1,
     limit: int | None = None,
 ) -> SprintListResult:
-    """List Backlogs sprints for a project by id or identifier."""
+    """List Backlogs sprints for a project by id or identifier.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
     safe_offset = _validate_offset(offset)
@@ -694,7 +704,11 @@ async def list_principals(
     offset: int = 1,
     limit: int | None = None,
 ) -> PrincipalListResult:
-    """List users and groups that can be used for project memberships."""
+    """List users and groups that can be used for project memberships.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
     client = _client_from_context(ctx)
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)
     safe_offset = _validate_offset(offset)
@@ -714,6 +728,9 @@ async def list_users(
     select restricts each result row to the given fields (e.g. ["id", "name",
     "login"]); an invalid name returns the allowed set. Common fields: id, name,
     login, email, status, admin, created_at, updated_at.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)
@@ -739,7 +756,11 @@ async def list_groups(
     offset: int = 1,
     limit: int | None = None,
 ) -> GroupListResult:
-    """List groups visible to the current token."""
+    """List groups visible to the current token.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
     client = _client_from_context(ctx)
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)
     safe_offset = _validate_offset(offset)
@@ -762,7 +783,11 @@ async def list_actions(
     offset: int = 1,
     limit: int | None = None,
 ) -> ActionListResult:
-    """List API actions exposed by OpenProject."""
+    """List API actions exposed by OpenProject.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
     client = _client_from_context(ctx)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
@@ -776,7 +801,11 @@ async def list_capabilities(
     offset: int = 1,
     limit: int | None = None,
 ) -> CapabilityListResult:
-    """List API capabilities exposed by OpenProject."""
+    """List API capabilities exposed by OpenProject.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_capability_id = _validate_optional_query(capability_id, field_name="capability_id", max_length=100)
@@ -983,7 +1012,11 @@ async def list_views(
     offset: int = 1,
     limit: int | None = None,
 ) -> ViewListResult:
-    """List saved OpenProject views, optionally filtered by project or view subtype."""
+    """List saved OpenProject views, optionally filtered by project or view subtype.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_type = _validate_optional_query(type, field_name="type", max_length=120)
@@ -1015,7 +1048,11 @@ async def list_documents(
     offset: int = 1,
     limit: int | None = None,
 ) -> DocumentListResult:
-    """List documents, optionally filtered to a single project."""
+    """List documents, optionally filtered to a single project.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_offset = _validate_offset(offset)
@@ -1064,7 +1101,11 @@ async def list_news(
     offset: int = 1,
     limit: int | None = None,
 ) -> NewsListResult:
-    """List news entries, optionally filtered by project or title/summary search."""
+    """List news entries, optionally filtered by project or title/summary search.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)
@@ -1248,6 +1289,9 @@ async def search_work_packages(
     updated_at, author, category, description, schedule_manually,
     derived_start_date, derived_due_date, percentage_done, derived_percentage_done,
     readonly, ignore_non_working_days.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_query = _validate_required_query(query, field_name="query", max_length=120)
@@ -1341,6 +1385,9 @@ async def list_work_packages(
     updated_at, author, category, description, schedule_manually,
     derived_start_date, derived_due_date, percentage_done, derived_percentage_done,
     readonly, ignore_non_working_days.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -1428,6 +1475,10 @@ async def get_work_packages(
     ["id", "subject", "status"]); an invalid name returns the allowed set.
     The id/success/error fields on each result are always included regardless
     of select, so you can still tell which items succeeded.
+
+    For batches with many full-detail items, set text_limit and/or select
+    proactively — an unbounded batch of large work packages can exceed the
+    tool-result size limit and get redirected to a file.
     """
     client = _client_from_context(ctx)
 
@@ -1955,7 +2006,11 @@ async def list_my_open_work_packages(
     offset: int = 1,
     limit: int | None = None,
 ) -> WorkPackageListResult:
-    """List the current user's open assigned work packages."""
+    """List the current user's open assigned work packages.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
     client = _client_from_context(ctx)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
@@ -1968,7 +2023,11 @@ async def list_versions(
     offset: int = 1,
     limit: int | None = None,
 ) -> VersionListResult:
-    """List versions globally or for a specific project."""
+    """List versions globally or for a specific project.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_offset = _validate_offset(offset)
@@ -2085,7 +2144,11 @@ async def list_boards(
     offset: int = 1,
     limit: int | None = None,
 ) -> BoardListResult:
-    """List saved OpenProject boards/queries, optionally scoped to a project."""
+    """List saved OpenProject boards/queries, optionally scoped to a project.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)
@@ -2319,6 +2382,9 @@ async def list_time_entries(
     """List time entries with optional project, work package, user, and date filters.
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -2491,6 +2557,9 @@ async def get_work_package_activities(
     to widen (or ``0``-based semantics via a larger value) the per-comment cap.
     When a comment is cut, ``comment_truncated`` is true and ``comment_length``
     reports its real length.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2737,7 +2806,11 @@ async def list_notifications(
     limit: int | None = None,
     offset: int = 1,
 ) -> NotificationListResult:
-    """List in-app notifications for the current user."""
+    """List in-app notifications for the current user.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
     client = _client_from_context(ctx)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
