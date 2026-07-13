@@ -124,7 +124,7 @@ The model has two independent layers:
 - `OPENPROJECT_TOOLS` (which tool groups — and therefore which read scopes — are exposed at all; the `extended` group opt-in exposes a rarely-used subset of metadata tools)
 - scoped write-group flags such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`, plus `OPENPROJECT_ENABLE_ADMIN_WRITE`
 - `OPENPROJECT_READ_PROJECTS` / `OPENPROJECT_WRITE_PROJECTS` (fail-closed: empty or unset denies all project-scoped access on that side)
-- `OPENPROJECT_HIDE_<ENTITY>_FIELDS` / `OPENPROJECT_HIDE_CUSTOM_FIELDS`
+- `OPENPROJECT_HIDE_<ENTITY>_FIELDS` / `OPENPROJECT_HIDE_CUSTOM_FIELDS` (see [Field hiding](field-hiding.md))
 - preview-by-default writes — every mutation always requires explicit `confirm=true`, with no bypass
 
 **Layer 2 — OpenProject server permissions** (enforced by the API, not the MCP):
