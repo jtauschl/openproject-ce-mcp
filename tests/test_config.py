@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 import pytest
 
 from openproject_ce_mcp.config import ConfigError, Settings, legacy_env_warnings
+
+# A real absolute path in native format for whichever OS runs the tests
+# (e.g. /tmp/uploads on Linux/macOS, C:\Users\...\Temp\uploads on Windows) —
+# Path.is_absolute() only recognizes drive-letter/UNC paths as absolute on
+# Windows, so a hardcoded POSIX literal like "/tmp/uploads" fails there.
+ABSOLUTE_ATTACHMENT_ROOT = str(Path(tempfile.gettempdir()) / "uploads")
 
 
 def test_settings_from_env_loads_and_normalizes_values() -> None:
@@ -417,10 +426,10 @@ def test_absolute_attachment_root_is_accepted() -> None:
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
             "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_ATTACHMENT_ROOT": "/tmp/uploads",
+            "OPENPROJECT_ATTACHMENT_ROOT": ABSOLUTE_ATTACHMENT_ROOT,
         }
     )
-    assert settings.attachment_root == "/tmp/uploads"
+    assert settings.attachment_root == ABSOLUTE_ATTACHMENT_ROOT
 
 
 def test_tilde_attachment_root_is_accepted() -> None:

@@ -5,6 +5,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tempfile
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
@@ -36,6 +37,11 @@ ENV = {
     "OPENPROJECT_BASE_URL": "https://op.example.com",
     "OPENPROJECT_API_TOKEN": 'opapi-with"quote\\and-backslash',
 }
+
+# A real absolute path in native format for whichever OS runs the tests —
+# Path.is_absolute() only recognizes drive-letter/UNC paths as absolute on
+# Windows, so a hardcoded POSIX literal like "/tmp/uploads" fails there.
+ATTACHMENT_ROOT = str(Path(tempfile.gettempdir()) / "uploads")
 CMD = "/home/user/openproject-ce-mcp/.venv/bin/openproject-ce-mcp"
 
 
@@ -1709,7 +1715,7 @@ def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, 
                             "OPENPROJECT_API_TOKEN": "old-token",
                             "OPENPROJECT_HIDE_PROJECT_FIELDS": "description",
                             "OPENPROJECT_TOOLS": "projects,work-packages,memberships,versions,boards,extended",
-                            "OPENPROJECT_ATTACHMENT_ROOT": "/tmp/uploads",
+                            "OPENPROJECT_ATTACHMENT_ROOT": ATTACHMENT_ROOT,
                             "OPENPROJECT_MAX_RETRIES": "7",
                             "OPENPROJECT_RETRY_BASE_DELAY": "2.5",
                             "OPENPROJECT_RETRY_MAX_DELAY": "30",
@@ -1736,7 +1742,7 @@ def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, 
     env = data["mcpServers"]["openproject"]["env"]
     assert env["OPENPROJECT_HIDE_PROJECT_FIELDS"] == "description"
     assert env["OPENPROJECT_TOOLS"] == "projects,work-packages,memberships,versions,boards,extended"
-    assert env["OPENPROJECT_ATTACHMENT_ROOT"] == "/tmp/uploads"
+    assert env["OPENPROJECT_ATTACHMENT_ROOT"] == ATTACHMENT_ROOT
     assert env["OPENPROJECT_MAX_RETRIES"] == "7"
     assert env["OPENPROJECT_RETRY_BASE_DELAY"] == "2.5"
     assert env["OPENPROJECT_RETRY_MAX_DELAY"] == "30"
@@ -1765,7 +1771,7 @@ def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: 
         "Hidden activity fields": "comment",
         "Hidden custom fields": "budget",
         "Enable admin writes": "n",
-        "Attachment upload root": "/tmp/uploads",
+        "Attachment upload root": ATTACHMENT_ROOT,
         "Default page size": "5",
         "Max page size": "25",
         "Max total results": "50",
@@ -1789,7 +1795,7 @@ def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: 
     assert "extended" in tool_groups
     assert "personal" in tool_groups
     assert env["OPENPROJECT_PERSONAL_WRITE"] == "true"
-    assert env["OPENPROJECT_ATTACHMENT_ROOT"] == "/tmp/uploads"
+    assert env["OPENPROJECT_ATTACHMENT_ROOT"] == ATTACHMENT_ROOT
     assert env["OPENPROJECT_DEFAULT_PAGE_SIZE"] == "5"
     assert env["OPENPROJECT_MAX_RETRIES"] == "4"
     assert env["OPENPROJECT_RETRY_BASE_DELAY"] == "0.5"
@@ -2518,7 +2524,7 @@ def test_minimal_env_all_defaults_keeps_only_base_url_and_token() -> None:
         ("OPENPROJECT_ENABLE_VERSION_WRITE", "true"),
         ("OPENPROJECT_ENABLE_BOARD_WRITE", "true"),
         ("OPENPROJECT_ENABLE_ADMIN_WRITE", "true"),
-        ("OPENPROJECT_ATTACHMENT_ROOT", "/tmp/uploads"),
+        ("OPENPROJECT_ATTACHMENT_ROOT", ATTACHMENT_ROOT),
         ("OPENPROJECT_TIMEOUT", "20"),
         ("OPENPROJECT_VERIFY_SSL", "false"),
         ("OPENPROJECT_DEFAULT_PAGE_SIZE", "5"),
