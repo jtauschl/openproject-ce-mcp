@@ -1507,6 +1507,14 @@ async def test_update_work_package_reparents_via_parent_link() -> None:
                 },
                 request=request,
             )
+        if request.url.path == "/api/v3/work_packages/7" and request.method == "GET":
+            # OPM-139: the new parent's own project must be allowlist-checked before
+            # it can be linked.
+            return httpx.Response(
+                200,
+                json={"id": 7, "_links": {"project": {"title": "Demo", "href": "/api/v3/projects/1"}}},
+                request=request,
+            )
         if request.url.path == "/api/v3/work_packages/42/form":
             body = json.loads(request.content)
             assert body["_links"]["parent"]["href"] == "/api/v3/work_packages/7"
@@ -2324,6 +2332,13 @@ async def test_create_relation_and_delete_relation_work_when_enabled() -> None:
                 json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
                 request=request,
             )
+        if request.url.path == "/api/v3/work_packages/55" and request.method == "GET":
+            # OPM-139: the relation target's own project must be allowlist-checked too.
+            return httpx.Response(
+                200,
+                json={"id": 55, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
         if request.url.path == "/api/v3/work_packages/42/relations" and request.method == "POST":
             body = json.loads(request.content)
             assert body["type"] == "blocks"
@@ -2410,6 +2425,14 @@ async def test_create_subtask_uses_parent_link_in_form_payload() -> None:
                         "relations": {"href": "/api/v3/work_packages/42/relations"},
                     },
                 },
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1" and request.method == "GET":
+            # OPM-144: _resolve_type_id now always authorizes the project by fetching
+            # it, even when the project ref is already numeric.
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo"},
                 request=request,
             )
         if request.url.path == "/api/v3/projects/1/types":
@@ -3171,6 +3194,13 @@ async def test_time_entry_crud_and_activity_listing() -> None:
             return httpx.Response(
                 200,
                 json={"_type": "Project", "id": 6, "name": "Demo", "identifier": "demo"},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/55" and request.method == "GET":
+            # OPM-139: list_time_entries' work_package_id filter is now allowlist-checked.
+            return httpx.Response(
+                200,
+                json={"id": 55, "_links": {"project": {"href": "/api/v3/projects/6", "title": "Demo"}}},
                 request=request,
             )
         if request.url.path == "/api/v3/time_entries/form" and request.method == "POST":
@@ -4901,6 +4931,14 @@ async def test_create_work_package_resolves_schema_backed_fields_and_custom_fiel
                 json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo"},
                 request=request,
             )
+        if request.url.path == "/api/v3/projects/1" and request.method == "GET":
+            # OPM-144: _resolve_type_id now always authorizes the project by fetching
+            # it, even when the project ref is already numeric.
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo"},
+                request=request,
+            )
         if request.url.path == "/api/v3/projects/1/types":
             return httpx.Response(
                 200,
@@ -6027,6 +6065,101 @@ def _make_grid_payload(grid_id: int = 55) -> dict:
 
 
 @pytest.mark.asyncio
+async def test_list_grids_filters_disallowed_project_scope() -> None:
+    # read_projects excludes "demo" — the project-scoped grid must be filtered out,
+    # while a personal (/my/page) grid stays visible regardless of the allowlist.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/grids" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            _make_grid_payload(grid_id=55),  # scope /projects/demo -> disallowed
+                            {
+                                "_type": "Grid",
+                                "id": 56,
+                                "rowCount": 1,
+                                "columnCount": 1,
+                                "_links": {"scope": {"href": "/my/page"}, "self": {"href": "/api/v3/grids/56"}},
+                            },
+                        ]
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _make_grid_settings({"read_projects": ("other",), "write_projects": ("other",)})
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.list_grids()
+
+    assert [g.id for g in result.results] == [56]
+    assert result.count == 1
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_grid_denies_disallowed_project_scope() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/grids/55" and request.method == "GET":
+            return httpx.Response(200, json=_make_grid_payload(), request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _make_grid_settings({"read_projects": ("other",), "write_projects": ("other",)})
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await client.get_grid(55)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_grid_returns_summary_for_allowed_project() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/grids/55" and request.method == "GET":
+            return httpx.Response(200, json=_make_grid_payload(), request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
+    result = await client.get_grid(55)
+
+    assert result.id == 55
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_grid_denies_missing_or_malformed_scope_under_restrictive_allowlist() -> None:
+    # Fail-closed: an unrecognized/missing scope must not default to "allowed"
+    # under a restrictive (non-wildcard) allowlist.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/grids/77" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Grid",
+                    "id": 77,
+                    "rowCount": 1,
+                    "columnCount": 1,
+                    "_links": {"self": {"href": "/api/v3/grids/77"}},  # no "scope" link at all
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _make_grid_settings({"read_projects": ("demo",), "write_projects": ("demo",)})
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await client.get_grid(77)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_update_grid_preview_mode() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/grids/55" and request.method == "GET":
@@ -6731,14 +6864,15 @@ async def test_get_work_package_unknown_reference_maps_404_to_not_found() -> Non
 
 
 @pytest.mark.asyncio
-async def test_resolve_work_package_id_returns_numeric_id_for_semantic_reference() -> None:
-    # The numeric-id resolver (used where the canonical id itself is needed, e.g. the
-    # relations "involved" filter) fetches the WP for a semantic ref and reads back id;
-    # a numeric ref short-circuits without any request.
+async def test_resolve_work_package_id_fetches_and_validates_both_reference_shapes() -> None:
+    # OPM-139: both a numeric id and a semantic ref now fetch the WP to validate its
+    # project against the allowlist — neither shape short-circuits any more.
     requests: list[str] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request.url.path)
+        if request.url.path == "/api/v3/work_packages/99":
+            return httpx.Response(200, json=_wp_detail_payload(99, "99"), request=request)
         if request.url.path == "/api/v3/work_packages/PROJ-7":
             return httpx.Response(200, json=_wp_detail_payload(55, "PROJ-7"), request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
@@ -6746,10 +6880,291 @@ async def test_resolve_work_package_id_returns_numeric_id_for_semantic_reference
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
     assert await client._resolve_work_package_id(99) == 99
-    assert requests == []  # numeric short-circuit, no API call
+    assert requests == ["/api/v3/work_packages/99"]
 
     assert await client._resolve_work_package_id("PROJ-7") == 55
-    assert requests == ["/api/v3/work_packages/PROJ-7"]
+    assert requests == ["/api/v3/work_packages/99", "/api/v3/work_packages/PROJ-7"]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_work_package_denies_disallowed_parent_project() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/999" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 999, "_links": {"project": {"title": "Other", "href": "/api/v3/projects/2"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",), write_projects=("demo",), enable_work_package_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await client.create_work_package(
+            project="demo", type="Task", subject="Child", parent_work_package_id=999, confirm=True
+        )
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_denies_disallowed_parent_project() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/999" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 999, "_links": {"project": {"title": "Other", "href": "/api/v3/projects/2"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",), write_projects=("demo",), enable_work_package_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await client.update_work_package(work_package_id=42, parent_work_package_id=999, confirm=True)
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_work_package_relation_denies_disallowed_target_project() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/999" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 999, "_links": {"project": {"title": "Other", "href": "/api/v3/projects/2"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",), write_projects=("demo",), enable_work_package_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await client.create_work_package_relation(
+            work_package_id=42, related_to_work_package_id=999, relation_type="blocks", confirm=True
+        )
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_denies_disallowed_sprint_project() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "lockVersion": 1,
+                    "_links": {"project": {"title": "Demo", "href": "/api/v3/projects/1"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/sprints/700" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 700,
+                    "name": "Sprint 1",
+                    "_links": {"definingWorkspace": {"title": "Other", "href": "/api/v3/projects/2"}},
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",), write_projects=("demo",), enable_work_package_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await client.update_work_package(work_package_id=42, sprint="700", confirm=True)
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_project_denies_disallowed_parent_project() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/form" and request.method == "POST":
+            return httpx.Response(200, json={"_embedded": {"schema": {}}}, request=request)
+        if request.url.path == "/api/v3/projects/999" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 999, "identifier": "other", "name": "Other"},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",), write_projects=("demo",), enable_project_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await client.update_project(project_ref="demo", parent="999", confirm=True)
+    await client.aclose()
+
+
+@pytest.mark.parametrize("project_ref", ["secret", "99"])
+@pytest.mark.asyncio
+async def test_resolve_type_id_denies_disallowed_project(project_ref: str) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == f"/api/v3/projects/{project_ref}":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 99, "identifier": "secret", "name": "Secret"},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",))  # neither "secret" nor "99" is allowed
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await client._resolve_type_id("Bug", project=project_ref)
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resolve_version_id_numeric_project_ref_is_allowlist_checked_first() -> None:
+    # A numeric, disallowed project ref must be denied via _get_project_payload
+    # before any version-listing request is ever made.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/999" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 999, "identifier": "other", "name": "Other"},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await client._resolve_version_id("500", project="999")
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resolve_version_id_project_scoped_shared_version_found_on_second_page() -> None:
+    # A version defined in a disallowed project, but shared into the (allowed) target
+    # project, must resolve by numeric id AND by name, even when it only appears on
+    # page 2 of the target project's own version list.
+    def page_1() -> dict:
+        elements = [{"id": i, "name": f"v{i}", "_links": {}} for i in range(1, 51)]
+        return {"_embedded": {"elements": elements}}
+
+    def page_2() -> dict:
+        return {
+            "_embedded": {
+                "elements": [{"id": 999, "name": "Shared Release", "_links": {}}],
+            }
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo", "active": True},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/versions" and request.method == "GET":
+            offset = request.url.params["offset"]
+            assert request.url.params["pageSize"] == "50"
+            if offset == "1":
+                return httpx.Response(200, json={**page_1(), "total": 51}, request=request)
+            if offset == "2":
+                return httpx.Response(200, json={**page_2(), "total": 51}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    by_id = await client._resolve_version_id("999", project="demo")
+    assert by_id == "999"
+
+    by_name = await client._resolve_version_id("Shared Release", project="demo")
+    assert by_name == "999"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resolve_version_id_project_scoped_unrelated_version_denied() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo", "active": True},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/versions" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"total": 1, "_embedded": {"elements": [{"id": 1, "name": "v1", "_links": {}}]}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="not available"):
+        await client._resolve_version_id("999", project="demo")
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resolve_version_id_no_project_falls_back_to_defining_project_check() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/versions/500" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 500,
+                    "name": "v500",
+                    "_links": {"definingProject": {"title": "Other", "href": "/api/v3/projects/2"}},
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await client._resolve_version_id("500", project=None)
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resolve_version_id_project_less_name_match_beyond_first_filtered_page() -> None:
+    # 50 substring-matching-but-not-exact names, then the real exact match — must be
+    # found even though it's beyond page 1 of the search-filtered survivors.
+    def raw_elements() -> list[dict]:
+        decoys = [{"id": i, "name": f"Release Candidate {i}", "_links": {}} for i in range(1, 51)]
+        exact = {"id": 999, "name": "Release", "_links": {}}
+        return [*decoys, exact]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/versions" and request.method == "GET":
+            assert request.url.params["pageSize"] == str(make_settings().max_results)
+            return httpx.Response(200, json={"_embedded": {"elements": raw_elements()}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    matched = await client._resolve_version_id("Release", project=None)
+    assert matched == "999"
 
     await client.aclose()
 
@@ -9067,6 +9482,147 @@ async def test_list_versions_project_scoped_search_overfetches_and_filters() -> 
     assert second_page.total == 3
     assert second_page.truncated is True
     assert second_page.next_offset == 3
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_users_no_search_uses_exact_server_pagination() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/users" and request.method == "GET":
+            assert request.url.params["offset"] == "1"
+            assert request.url.params["pageSize"] == "2"
+            return httpx.Response(
+                200,
+                json={
+                    "total": 5,
+                    "_embedded": {
+                        "elements": [
+                            {"id": 1, "name": "Alice", "login": "alice", "email": "alice@example.com"},
+                            {"id": 2, "name": "Bob", "login": "bob", "email": "bob@example.com"},
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    page = await client.list_users(limit=2)
+
+    assert [u.id for u in page.results] == [1, 2]
+    assert page.total == 5
+    assert page.truncated is True
+    assert page.next_offset == 2
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_users_search_overfetches_and_filters_then_paginates() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/users" and request.method == "GET":
+            assert request.url.params["offset"] == "1"
+            assert request.url.params["pageSize"] == str(make_settings().max_results)
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {"id": 1, "name": "Alice Smith", "login": "alice", "email": "alice@example.com"},
+                            {"id": 2, "name": "Bob Jones", "login": "bob", "email": "bob@acme.io"},
+                            {"id": 3, "name": "Carol Diaz", "login": "carol", "email": "carol@example.com"},
+                            {"id": 4, "name": "Dana Alicente", "login": "dana", "email": "dana@example.com"},
+                        ]
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    page = await client.list_users(search="ali")
+
+    # "ali" substring-matches ids 1 (name+login) and 4 (name "Alicente"); 2 and 3 don't match.
+    assert {u.id for u in page.results} == {1, 4}
+    assert page.total == 2
+
+    # Filter-then-paginate ordering: limit=1/offset=2 must return the 2nd filtered
+    # survivor (id=4), not slice the raw 4-item page first.
+    second_page = await client.list_users(search="ali", limit=1, offset=2)
+    assert [u.id for u in second_page.results] == [4]
+    assert second_page.total == 2
+    assert second_page.truncated is False
+    assert second_page.next_offset is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_groups_no_search_uses_exact_server_pagination() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/groups" and request.method == "GET":
+            assert request.url.params["offset"] == "1"
+            assert request.url.params["pageSize"] == "2"
+            return httpx.Response(
+                200,
+                json={
+                    "total": 5,
+                    "_embedded": {
+                        "elements": [
+                            {"id": 1, "name": "Alpha"},
+                            {"id": 2, "name": "Beta"},
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    page = await client.list_groups(limit=2)
+
+    assert [g.id for g in page.results] == [1, 2]
+    assert page.total == 5
+    assert page.truncated is True
+    assert page.next_offset == 2
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_groups_search_overfetches_and_filters_then_paginates() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/groups" and request.method == "GET":
+            assert request.url.params["offset"] == "1"
+            assert request.url.params["pageSize"] == str(make_settings().max_results)
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {"id": 1, "name": "Engineering Alpha"},
+                            {"id": 2, "name": "Sales"},
+                            {"id": 3, "name": "Support"},
+                            {"id": 4, "name": "Alpha Squad"},
+                        ]
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    page = await client.list_groups(search="alpha")
+
+    assert {g.id for g in page.results} == {1, 4}
+    assert page.total == 2
+
+    second_page = await client.list_groups(search="alpha", limit=1, offset=2)
+    assert [g.id for g in second_page.results] == [4]
+    assert second_page.total == 2
+    assert second_page.truncated is False
+    assert second_page.next_offset is None
 
     await client.aclose()
 

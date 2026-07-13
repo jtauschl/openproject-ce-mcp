@@ -657,6 +657,43 @@ class OpenProjectClient:
     ) -> UserListResult:
         self._ensure_read_enabled("membership")
         effective_limit = self._resolve_limit(limit)
+
+        if search is not None:
+            # No server-side name/login/email filter exists for /users, so over-fetch
+            # up to settings.max_results in one request and paginate the filtered
+            # survivors in memory instead of trusting the server's pre-filter total
+            # (same pattern as list_versions' project-scoped-with-search branch, OPM-135).
+            payload = await self._get(
+                "users",
+                params={"offset": "1", "pageSize": str(self.settings.max_results)},
+            )
+            results = [
+                self.normalize_user(item)
+                for item in payload.get("_embedded", {}).get("elements", [])
+                if isinstance(item, dict)
+            ]
+            search_key = search.casefold()
+            results = [
+                item
+                for item in results
+                if search_key in (item.name or "").casefold()
+                or search_key in (item.login or "").casefold()
+                or search_key in (item.email or "").casefold()
+            ]
+            total = len(results)
+            start = (offset - 1) * effective_limit
+            end = start + effective_limit
+            page = results[start:end]
+            return UserListResult(
+                offset=offset,
+                limit=effective_limit,
+                total=total,
+                count=len(page),
+                next_offset=offset + 1 if end < total else None,
+                truncated=end < total,
+                results=page,
+            )
+
         payload = await self._get(
             "users",
             params={
@@ -669,15 +706,6 @@ class OpenProjectClient:
             for item in payload.get("_embedded", {}).get("elements", [])
             if isinstance(item, dict)
         ]
-        if search is not None:
-            search_key = search.casefold()
-            results = [
-                item
-                for item in results
-                if search_key in (item.name or "").casefold()
-                or search_key in (item.login or "").casefold()
-                or search_key in (item.email or "").casefold()
-            ]
         total = int(payload.get("total", len(results)))
         return UserListResult(
             offset=offset,
@@ -703,6 +731,34 @@ class OpenProjectClient:
     ) -> GroupListResult:
         self._ensure_read_enabled("membership")
         effective_limit = self._resolve_limit(limit)
+
+        if search is not None:
+            # Same over-fetch-then-filter-then-paginate pattern as list_users above.
+            payload = await self._get(
+                "groups",
+                params={"offset": "1", "pageSize": str(self.settings.max_results)},
+            )
+            results = [
+                self.normalize_group(item)
+                for item in payload.get("_embedded", {}).get("elements", [])
+                if isinstance(item, dict)
+            ]
+            search_key = search.casefold()
+            results = [item for item in results if search_key in (item.name or "").casefold()]
+            total = len(results)
+            start = (offset - 1) * effective_limit
+            end = start + effective_limit
+            page = results[start:end]
+            return GroupListResult(
+                offset=offset,
+                limit=effective_limit,
+                total=total,
+                count=len(page),
+                next_offset=offset + 1 if end < total else None,
+                truncated=end < total,
+                results=page,
+            )
+
         payload = await self._get(
             "groups",
             params={
@@ -715,9 +771,6 @@ class OpenProjectClient:
             for item in payload.get("_embedded", {}).get("elements", [])
             if isinstance(item, dict)
         ]
-        if search is not None:
-            search_key = search.casefold()
-            results = [item for item in results if search_key in (item.name or "").casefold()]
         total = int(payload.get("total", len(results)))
         return GroupListResult(
             offset=offset,
@@ -4458,6 +4511,20 @@ class OpenProjectClient:
 
     # --- Grids ---
 
+    def _ensure_grid_payload_allowed(self, payload: dict[str, Any]) -> None:
+        scope_link = payload.get("_links", {}).get("scope")
+        scope_href = scope_link.get("href") if isinstance(scope_link, dict) else None
+        if scope_href == "/my/page":
+            return  # documented personal-scope grid — never project-scoped, always allowed
+        self._ensure_project_link_allowed(scope_link)
+
+    def _grid_payload_allowed(self, payload: dict[str, Any]) -> bool:
+        try:
+            self._ensure_grid_payload_allowed(payload)
+            return True
+        except PermissionDeniedError:
+            return False
+
     async def list_grids(self, *, scope: str | None = None) -> GridListResult:
         self._ensure_read_enabled("project")
         params: dict[str, str] = {}
@@ -4467,13 +4534,14 @@ class OpenProjectClient:
         results = [
             self.normalize_grid(item)
             for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
+            if isinstance(item, dict) and self._grid_payload_allowed(item)
         ]
         return GridListResult(count=len(results), results=results)
 
     async def get_grid(self, grid_id: int) -> GridSummary:
         self._ensure_read_enabled("project")
         payload = await self._get(f"grids/{grid_id}")
+        self._ensure_grid_payload_allowed(payload)
         return self.normalize_grid(payload)
 
     async def create_grid(
@@ -7566,11 +7634,10 @@ class OpenProjectClient:
         return f"/{self._api_prefix.lstrip('/')}{relative_path.lstrip('/')}"
 
     async def _resolve_project_id(self, project_ref: str) -> str:
-        if project_ref.isdigit():
-            return project_ref
         payload = await self._get(f"projects/{quote(project_ref, safe='')}")
         if payload.get("_type") != "Project":
             raise NotFoundError("OpenProject project not found.")
+        self._ensure_project_allowed(project_ref, payload=payload)
         return str(payload["id"])
 
     async def _resolve_principal_id(self, principal_ref: str) -> str:
@@ -7619,10 +7686,8 @@ class OpenProjectClient:
         if not project:
             raise InvalidInputError("type names require a project filter. Pass a numeric type id or set project.")
 
-        project_id = project
-        if not project_id.isdigit():
-            project_payload = await self._get(f"projects/{quote(project, safe='')}")
-            project_id = str(project_payload["id"])
+        project_payload = await self._get_project_payload(project)
+        project_id = str(project_payload["id"])
         payload = await self._get(f"projects/{project_id}/types")
         elements = payload.get("_embedded", {}).get("elements", [])
         matches = [str(item["id"]) for item in elements if str(item.get("name", "")).casefold() == type_ref.casefold()]
@@ -7631,26 +7696,89 @@ class OpenProjectClient:
         return matches[0]
 
     async def _resolve_version_id(self, version_ref: str, *, project: str | None) -> str:
+        if project is not None:
+            project_ref = project
+            if project_ref.isdigit():
+                # Must use _get_project_payload, not a raw self._get. The project
+                # fetch itself is unavoidable either way (the payload's id/identifier/
+                # name are what the allowlist check matches against) — the point is
+                # that _get_project_payload fetches AND checks together, so a denied
+                # project raises immediately and no FURTHER request (e.g. listing
+                # that project's versions) ever fires afterward.
+                project_payload = await self._get_project_payload(project_ref)
+                project_ref = project_payload.get("identifier") or project_ref
+
+            wanted_id = int(version_ref) if version_ref.isdigit() else None
+            name_matches: list[VersionSummary] = []
+            offset = 1
+            while True:
+                page = await self.list_versions(project=project_ref, offset=offset, limit=self.settings.max_page_size)
+                if wanted_id is not None:
+                    if any(v.id == wanted_id for v in page.results):
+                        return version_ref
+                else:
+                    name_matches.extend(v for v in page.results if (v.name or "").casefold() == version_ref.casefold())
+                if page.next_offset is None:
+                    break
+                offset = page.next_offset
+
+            if wanted_id is not None:
+                raise InvalidInputError(f"OpenProject version '{version_ref}' is not available in project '{project}'.")
+            if not name_matches:
+                raise InvalidInputError(f"OpenProject version '{version_ref}' was not found in project '{project}'.")
+            if len(name_matches) > 1:
+                raise InvalidInputError(
+                    f"OpenProject version '{version_ref}' is ambiguous without a more specific filter. Pass a numeric version id."
+                )
+            return str(name_matches[0].id)
+
         if version_ref.isdigit():
+            # No target project to check availability against — reached via a global,
+            # unscoped `version` filter on list_work_packages/search_work_packages
+            # (project is optional there). Deliberately conservative: falls back to a
+            # direct definingProject check, which can reject a version shared *into*
+            # an allowed project when that project isn't specified as the check
+            # target (no way to know which sharing context applies without one) — an
+            # accepted fail-closed trade-off for the project-less path, not a bug.
+            payload = await self._get(f"versions/{version_ref}")
+            self._ensure_project_link_allowed(payload.get("_links", {}).get("definingProject"))
             return version_ref
 
-        project_ref = project
-        if project_ref is not None and project_ref.isdigit():
-            project_payload = await self._get(f"projects/{project_ref}")
-            project_ref = project_payload.get("identifier") or project_ref
-        versions = await self.list_versions(project=project_ref, offset=1, limit=self.settings.max_results)
-        matches = [str(item.id) for item in versions.results if (item.name or "").casefold() == version_ref.casefold()]
-        if not matches:
-            scope = f" in project '{project}'" if project else ""
-            raise InvalidInputError(f"OpenProject version '{version_ref}' was not found{scope}.")
-        if len(matches) > 1:
+        # No project + name ref: pass search=version_ref rather than relying on our
+        # own post-hoc filtering, AND page-walk the search-filtered results. The
+        # global branch fetches up to max_results raw items, filters by `search`
+        # BEFORE slicing, but still slices the *filtered* result down to
+        # effective_limit (clamped to max_page_size) for the page it returns — a
+        # single call at offset=1 would still miss an exact match beyond the first
+        # max_page_size substring-matching candidates.
+        name_matches = []
+        offset = 1
+        while True:
+            page = await self.list_versions(
+                project=None, search=version_ref, offset=offset, limit=self.settings.max_page_size
+            )
+            name_matches.extend(v for v in page.results if (v.name or "").casefold() == version_ref.casefold())
+            if page.next_offset is None:
+                break
+            offset = page.next_offset
+
+        if not name_matches:
+            raise InvalidInputError(f"OpenProject version '{version_ref}' was not found.")
+        if len(name_matches) > 1:
             raise InvalidInputError(
                 f"OpenProject version '{version_ref}' is ambiguous without a more specific filter. Pass a numeric version id."
             )
-        return matches[0]
+        return str(name_matches[0].id)
 
     async def _resolve_sprint_id(self, sprint_ref: str, *, project: str) -> str:
         if sprint_ref.isdigit():
+            try:
+                payload = await self._get(f"sprints/{sprint_ref}")
+            except NotFoundError as exc:
+                raise NotFoundError(
+                    "OpenProject sprint not found, or the Backlogs module / sprint API is unavailable."
+                ) from exc
+            self._ensure_sprint_workspace_allowed(payload)
             return sprint_ref
 
         sprints = await self.list_project_sprints(project, offset=1, limit=self.settings.max_results)
@@ -7682,16 +7810,18 @@ class OpenProjectClient:
 
         Needed where the numeric id itself is required (e.g. a relation filter or a
         client-side equality check) rather than a request path. A numeric reference
-        is returned directly without an API call; a project-prefixed identifier is
-        resolved by fetching the work package — the path endpoint accepts the semantic
-        form on OpenProject 17.5+ — and reading back its numeric ``id``.
+        no longer short-circuits (OPM-139): it now triggers a fetch of the work
+        package too, so its project can be validated against the allowlist before
+        its ``id`` is read back. A project-prefixed identifier is resolved the same
+        way, but additionally only works on OpenProject 17.5+ (and requires the
+        exact, case-sensitive project identifier).
         """
         reference = str(ref).strip()
-        if reference.isdigit():
-            return int(reference)
         try:
             payload = await self._get(f"work_packages/{quote(reference, safe='')}")
         except NotFoundError as exc:
+            if reference.isdigit():
+                raise
             # A project-prefixed reference only resolves on OpenProject 17.5+ (and
             # requires the exact, case-sensitive project identifier). Give a hint
             # instead of a bare "not found" so a too-old instance or a case/prefix
@@ -7701,6 +7831,7 @@ class OpenProjectClient:
                 "require OpenProject 17.5+ and the exact project identifier (case-sensitive); "
                 "on older instances use the numeric work-package id."
             ) from exc
+        self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
         return int(payload["id"])
 
     async def _resolve_status_id(self, status_ref: str) -> str:
