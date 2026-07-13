@@ -8989,6 +8989,89 @@ async def test_list_versions_project_scoped_uses_exact_server_pagination() -> No
 
 
 @pytest.mark.asyncio
+async def test_list_versions_global_search_filters_by_name_substring() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/versions" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {"id": 1, "name": "0.2.3", "_links": {}},
+                            {"id": 2, "name": "0.3.0", "_links": {}},
+                            {"id": 3, "name": "Rejected", "_links": {}},
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    page = await client.list_versions(search="0.3")
+
+    assert [v.id for v in page.results] == [2]
+    assert page.total == 1
+
+    no_match = await client.list_versions(search="nonexistent")
+    assert no_match.results == []
+    assert no_match.total == 0
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_versions_project_scoped_search_overfetches_and_filters() -> None:
+    # Unlike the no-search project-scoped path (exact server pagination, tested above),
+    # a search filter has no server-side equivalent here either — so it must switch to
+    # the same over-fetch + in-memory filter/paginate pattern as the global branch.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 7, "identifier": "demo", "name": "Demo", "active": True},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/7/versions" and request.method == "GET":
+            # Always requests the over-fetch page (pageSize=max_results), regardless
+            # of the caller's own limit/offset — those apply only to the filtered
+            # in-memory result, confirmed below via the limit=1/offset=2 case.
+            assert request.url.params["offset"] == "1"
+            assert request.url.params["pageSize"] == str(make_settings().max_results)
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {"id": 1, "name": "Sprint 1", "_links": {}},
+                            {"id": 2, "name": "Sprint 2", "_links": {}},
+                            {"id": 3, "name": "Backlog", "_links": {}},
+                            {"id": 4, "name": "Sprint 3", "_links": {}},
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    page = await client.list_versions(project="demo", search="sprint")
+
+    assert [v.id for v in page.results] == [1, 2, 4]
+    assert page.total == 3
+
+    # Filter-then-paginate ordering: with 3 "sprint" matches, limit=1/offset=2 must
+    # return the 2nd filtered survivor (id=2), not slice the raw 4-item page first.
+    second_page = await client.list_versions(project="demo", search="sprint", limit=1, offset=2)
+    assert [v.id for v in second_page.results] == [2]
+    assert second_page.total == 3
+    assert second_page.truncated is True
+    assert second_page.next_offset == 3
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_sprints_backfills_after_allowlist_filter() -> None:
     # OPM-108: same fix as list_versions above, applied to the always-filtered
     # list_sprints (sprints can be shared cross-project via Backlogs sharing).

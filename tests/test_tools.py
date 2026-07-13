@@ -836,7 +836,7 @@ async def test_version_tools_pass_expected_arguments() -> None:
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
-    listed = await list_versions(ctx, project="demo")
+    listed = await list_versions(ctx, project="demo", search="Release")
     detail = await get_version(ctx, 7)
     created = await create_version(
         ctx,
@@ -850,6 +850,7 @@ async def test_version_tools_pass_expected_arguments() -> None:
     deleted = await delete_version(ctx, 7, confirm=True)
 
     assert listed["project"] == "demo"
+    assert listed["search"] == "Release"
     assert detail["version_id"] == 7
     assert created["project"] == "demo"
     assert created["name"] == "Release 1"

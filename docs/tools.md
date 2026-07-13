@@ -206,7 +206,7 @@ A subset of rarely-used metadata tools — the `get_query_*` schema tools, `rend
 
 | Tool | Description |
 |---|---|
-| `list_versions` | List versions globally or scoped to a specific project |
+| `list_versions` | List versions globally or scoped to a specific project, with an optional name filter |
 | `get_version` | Fetch a compact version summary by id |
 | `create_version` | Validate and then create a version; only writes when called again with `confirm=true` |
 | `update_version` | Validate and then update a version; only writes when called again with `confirm=true` |

@@ -2020,19 +2020,24 @@ async def list_my_open_work_packages(
 async def list_versions(
     ctx: Context,
     project: str | None = None,
+    search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
 ) -> VersionListResult:
-    """List versions globally or for a specific project.
+    """List versions globally or for a specific project, optionally filtered by a
+    case-insensitive name substring.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
+    safe_search = _validate_optional_query(search, field_name="search", max_length=100)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
-    return await _run_tool(client.list_versions(project=safe_project, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(
+        client.list_versions(project=safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
+    )
 
 
 async def get_version(

@@ -2903,12 +2903,13 @@ class OpenProjectClient:
         self,
         *,
         project: str | None = None,
+        search: str | None = None,
         offset: int = 1,
         limit: int | None = None,
     ) -> VersionListResult:
         self._ensure_read_enabled("version")
         effective_limit = self._resolve_limit(limit)
-        if project:
+        if project and not search:
             # GET /api/v3/versions has no project filter; use the project-scoped endpoint.
             # Access to the project is verified by _get_project_payload, so per-item
             # allowlist checks are redundant and would fail because the definingProject
@@ -2935,21 +2936,42 @@ class OpenProjectClient:
                 results=results,
             )
 
-        # OPM-108: the global endpoint has no project filter, so results are filtered
-        # client-side against OPENPROJECT_READ_PROJECTS. A single page sized to the
-        # caller's limit could look sparser than reality after filtering; fetch up to
-        # settings.max_results in one request and paginate the filtered survivors in memory
-        # instead (same pattern as list_views/list_documents). Bounded by max_results — not a
-        # full multi-page walk across every server page.
-        payload = await self._get(
-            "versions",
-            params={"offset": "1", "pageSize": str(self.settings.max_results)},
-        )
-        results = [
-            self.normalize_version(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._version_payload_allowed(item)
-        ]
+        if project:
+            # search given: no server-side name filter exists for the project-scoped
+            # endpoint either, so over-fetch this project's versions and filter/paginate
+            # in memory instead of relying on exact server-side pagination.
+            project_payload = await self._get_project_payload(project)
+            project_id = int(project_payload["id"])
+            payload = await self._get(
+                f"projects/{project_id}/versions",
+                params={"offset": "1", "pageSize": str(self.settings.max_results)},
+            )
+            results = [
+                self.normalize_version(item)
+                for item in payload.get("_embedded", {}).get("elements", [])
+                if isinstance(item, dict)
+            ]
+        else:
+            # OPM-108: the global endpoint has no project filter, so results are filtered
+            # client-side against OPENPROJECT_READ_PROJECTS. A single page sized to the
+            # caller's limit could look sparser than reality after filtering; fetch up to
+            # settings.max_results in one request and paginate the filtered survivors in memory
+            # instead (same pattern as list_views/list_documents). Bounded by max_results — not a
+            # full multi-page walk across every server page.
+            payload = await self._get(
+                "versions",
+                params={"offset": "1", "pageSize": str(self.settings.max_results)},
+            )
+            results = [
+                self.normalize_version(item)
+                for item in payload.get("_embedded", {}).get("elements", [])
+                if isinstance(item, dict) and self._version_payload_allowed(item)
+            ]
+
+        if search:
+            search_key = search.casefold()
+            results = [item for item in results if search_key in (item.name or "").casefold()]
+
         total = len(results)
         start = (offset - 1) * effective_limit
         end = start + effective_limit
