@@ -56,3 +56,4 @@ if (-not (Test-Path (Join-Path $Dest "configure_mcp.py"))) {
 # ── run setup ─────────────────────────────────────────────────────────────────
 Set-Location $Dest
 & $Python @PyArgs configure_mcp.py
+exit $LASTEXITCODE

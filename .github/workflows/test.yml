@@ -60,3 +60,38 @@ jobs:
 
       - name: Check package metadata
         run: uvx twine check dist/*
+
+  launchers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Check get.sh syntax (POSIX sh)
+        run: sh -n get.sh
+
+      - name: Check uninstall.sh syntax (bash)
+        run: bash -n uninstall.sh
+
+      - name: Check get.ps1 / uninstall.ps1 syntax (PowerShell parser)
+        shell: pwsh
+        run: |
+          $hadErrors = $false
+          foreach ($f in @("get.ps1", "uninstall.ps1")) {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($f, [ref]$null, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Host "::error file=$f::$($_.Message)" }
+              $hadErrors = $true
+            }
+          }
+          if ($hadErrors) { exit 1 }
+
+      - name: Run launcher tests
+        run: uv run pytest -m launcher

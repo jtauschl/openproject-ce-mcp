@@ -122,6 +122,11 @@ verification, not just as a tooling health check.
 - Note the project's coverage-tooling policy (if a coverage tool is
   installed but no threshold is enforced, that's an open question to raise,
   not an assumed gap).
+- **Explicit skip decision** — if the excluded/integration subset was not
+  run this release, record that as an explicit accept/skip decision in
+  this review's findings (who decided, why — e.g. no local harness
+  available) rather than leaving it as an implied gap inside a green run;
+  carry it forward into section 12's "known/accepted skips" summary.
 
 ## 5. API-check / drift tooling itself
 
@@ -138,6 +143,11 @@ verification, not just as a tooling health check.
   deterministic (env-vars-unset) mode as the primary gate; treat a live-
   probed run as a supplementary check against a test harness only, never
   production.
+- **Deterministic generated reports** — for any release-gating report this
+  tool regenerates (e.g. `COVERAGE.md` from the API-drift checker),
+  regenerate it fresh in deterministic/no-live-probe mode as part of this
+  review and diff against the committed version; a stale committed report
+  is a finding, not a rubber stamp.
 
 ## 6. Info hygiene
 
@@ -157,6 +167,14 @@ verification, not just as a tooling health check.
   the current setup flow — no leftover language describing an older,
   since-simplified flow.
 - Confirm the architecture doc still matches what's implemented.
+- **Source-installer launchers** — confirm `get.sh`, `get.ps1`,
+  `uninstall.sh`, `uninstall.ps1`, and `configure_mcp.py` are covered by
+  their dedicated test suite (POSIX/PowerShell syntax checks, both
+  dependency-install paths — `uv sync` and venv+pip fallback — launcher→
+  interpreter handoff, and setup CLI argv dispatch) and that suite is
+  green; this review does not re-derive that coverage inline. Spot-check
+  README's documented destination paths and `DIR`/`$env:DIR` override
+  against the scripts' current content.
 
 ## 8. Permission model consistency
 
@@ -212,6 +230,13 @@ verification, not just as a tooling health check.
   since the last release. Note explicitly whether the publish workflow
   creates a release-notes object on the hosting platform, since that
   affects section 10.
+- **Supply-chain / Trusted Publishing review** — confirm the publish
+  workflow still uses PyPI Trusted Publishing (OIDC `id-token: write` plus
+  a scoped `environment:`, no stored long-lived token/secret) and that the
+  configured OIDC identity (repo + workflow filename) still matches.
+  Record explicitly whether a build-provenance attestation (e.g.
+  `actions/attest-build-provenance`) is produced — if not, that's a
+  standing accepted gap to note here, not to silently skip.
 - Confirm whether a changelog section for the target version already exists:
   if absent, it gets written fresh in section 12; if a draft already exists,
   don't blindly overwrite it — check whether it's an approved draft (then
@@ -233,7 +258,7 @@ verification, not just as a tooling health check.
   not as a separate review action, since the changelog doesn't exist until
   then.
 
-## 11. Client/consumer config compatibility
+## 11. Client/consumer config & environment-variable compatibility
 
 - Confirm any config file this project's setup tooling writes for external
   consumers (IDE/client configs, generated config files, etc.) is still
@@ -242,6 +267,13 @@ verification, not just as a tooling health check.
   reading code explicitly handles the old shape too.
 - Confirm setup/diagnostic commands don't create unnecessary secrets or
   backup files on a normal, no-conflict run.
+- **Env-var migration mapping** — for any renamed/removed/consolidated
+  environment variable this release (cross-check against `CHANGELOG.md`'s
+  `### Changed` entries by name), confirm: the old name has no silent
+  alias, the new name and its exact replacement are spelled out in the
+  changelog, and an unset/removed scope fails closed rather than defaulting
+  to the old "allow everything" behavior. Confirm the startup/`doctor`
+  warning names the exact replacement variable, not just "deprecated."
 
 ## 12. Go/No-Go decision
 
@@ -275,7 +307,15 @@ verification, not just as a tooling health check.
      artifact content check (section 9) and the tag-exactness check (step 4)
      both passed before giving that go-ahead. Closing the tracker version is
      a separate step after the publish succeeds.
-  6. **Create a GitHub Release** for the new tag, after the PyPI publish
+  6. **Verify the publish** — before creating the GitHub Release: confirm
+     the `publish.yml` run for this tag succeeded (`gh run list`/
+     `gh run view`), confirm the new version's files are visible on PyPI,
+     and in a fresh temporary environment `pip install <package>==<X.Y.Z>`
+     from the real PyPI index (not a local artifact — section 9 already
+     covers that) and re-run the same console-script `--help`/`--version`
+     smoke as section 9. This is the only check that exercises the artifact
+     users actually receive.
+  7. **Create a GitHub Release** for the new tag, after the PyPI publish
      succeeds. `publish.yml` only builds and publishes to PyPI — it does not
      create a GitHub Release object — but every prior tagged version has one,
      created manually out-of-band. Keep doing this for consistent release

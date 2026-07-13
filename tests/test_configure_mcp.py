@@ -803,6 +803,39 @@ def test_install_deps_skipped_when_installed(monkeypatch) -> None:
     assert called == []
 
 
+def test_install_deps_uv_sync_branch(monkeypatch) -> None:
+    called = []
+    monkeypatch.setattr(c.subprocess, "run", lambda *a, **k: called.append((a, k)))
+    c._install_deps("uv", installed=False)
+    assert called == [((["uv", "sync"],), {"cwd": c._REPO_ROOT, "check": True})]
+
+
+def test_install_deps_venv_pip_fallback_creates_venv(monkeypatch, tmp_path: Path) -> None:
+    fake_venv = tmp_path / ".venv"
+    assert not fake_venv.exists()
+    monkeypatch.setattr(c, "VENV", fake_venv)
+    called = []
+    monkeypatch.setattr(c.subprocess, "run", lambda *a, **k: called.append((a, k)))
+    c._install_deps(None, installed=False)
+    pip = fake_venv / ("Scripts" if c._IS_WINDOWS else "bin") / "pip"
+    assert called == [
+        (([c.sys.executable, "-m", "venv", str(fake_venv)],), {"check": True}),
+        (([str(pip), "install", "-e", "."],), {"cwd": c._REPO_ROOT, "check": True}),
+    ]
+
+
+def test_install_deps_venv_pip_fallback_reuses_existing_venv(monkeypatch, tmp_path: Path) -> None:
+    fake_venv = tmp_path / ".venv"
+    fake_venv.mkdir()
+    monkeypatch.setattr(c, "VENV", fake_venv)
+    called = []
+    monkeypatch.setattr(c.subprocess, "run", lambda *a, **k: called.append((a, k)))
+    c._install_deps(None, installed=False)
+    pip = fake_venv / ("Scripts" if c._IS_WINDOWS else "bin") / "pip"
+    # Only the pip install call -- venv creation is skipped because VENV already exists.
+    assert called == [(([str(pip), "install", "-e", "."],), {"cwd": c._REPO_ROOT, "check": True})]
+
+
 def test_doc_locations_installed_are_urls() -> None:
     docs = c._doc_locations(installed=True)
     assert all(v.startswith("https://github.com/") for v in docs.values())
@@ -1021,6 +1054,34 @@ def test_shim_reexports_public_names() -> None:
     spec.loader.exec_module(shim)
     assert callable(shim.main)
     assert callable(shim._merge_json)
+
+
+def test_setup_cli_main_dispatches_uninstall_argv(monkeypatch) -> None:
+    # Unit-level check of the argv-parsing -> dispatch logic in isolation: does
+    # NOT exercise the configure_mcp.py shim itself (main = _setup_cli.main
+    # there, so calling it directly bypasses the shim's own module-load path).
+    # The real launcher -> interpreter handoff is covered separately by the
+    # executable uninstall.sh/uninstall.ps1 tests in test_launchers.py.
+    called = []
+    monkeypatch.setattr(c, "_run_uninstall", lambda: called.append(True))
+    c.main(["--uninstall"], interactive=False)
+    assert called == [True]
+
+
+def test_shim_getattr_missing_name_raises_attribute_error() -> None:
+    # PEP 562 __getattr__ delegates known names to _setup_cli but must raise a
+    # clean AttributeError (naming configure_mcp, not _setup_cli) for a
+    # genuinely-missing attribute, not silently return None or leak an
+    # unrelated error from _setup_cli.
+    import importlib.util
+
+    shim_path = Path(__file__).resolve().parent.parent / "configure_mcp.py"
+    spec = importlib.util.spec_from_file_location("configure_mcp_shim", shim_path)
+    assert spec and spec.loader
+    shim = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(shim)
+    with pytest.raises(AttributeError, match="configure_mcp.*nonexistent_symbol_xyz"):
+        _ = shim.nonexistent_symbol_xyz
 
 
 # ── gate behaviour: no clients, global gate not offered ─────────────────────────
