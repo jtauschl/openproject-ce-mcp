@@ -4,7 +4,9 @@
   <img src="../img/claude.jpg" alt="Claude artwork for the Claude Desktop MCP guide." width="960">
 </p>
 
-This guide covers the standalone **Claude Desktop app** (macOS/Windows). It is a
+This guide covers the standalone **Claude Desktop app** (macOS/Windows/Linux
+(Beta) — the Linux build officially supports Ubuntu 22.04+ and Debian 12+ on
+x64/arm64, with a few feature gaps compared to macOS/Windows). It is a
 different program from Claude Code, and it uses its **own** config file —
 Claude Desktop does not read the Claude Code config (`~/.claude.json`).
 
@@ -27,7 +29,7 @@ See [Installation](installation.md) for installing the package first.
 1. **Locate the config file** (create it if it does not exist):
    - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
    - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-   - **Linux:** `~/.config/Claude/claude_desktop_config.json`
+   - **Linux (Beta):** `~/.config/Claude/claude_desktop_config.json`
 
    In the app you can open it via **Settings → Developer → Edit Config**.
 
@@ -60,8 +62,11 @@ See [Installation](installation.md) for installing the package first.
 **This file holds your API token.**
 
 ```bash
-# macOS/Linux
+# macOS
 chmod 600 ~/Library/Application\ Support/Claude/claude_desktop_config.json
+
+# Linux (Beta)
+chmod 600 ~/.config/Claude/claude_desktop_config.json
 ```
 
 On Windows, restrict the file to your user via its **Properties → Security**.

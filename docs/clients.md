@@ -19,10 +19,11 @@ for credentials:
   directory (`.mcp.json`, `.codex/config.toml`, `.vscode/mcp.json`,
   `.cursor/mcp.json`). Offered for every supported project-capable client
   (all except Claude Desktop, which is global-only), whether or not it is
-  detected. **Recommended for most users:** the server is then available
+  detected. **Recommended for most clients:** the server is then available
   only in the current project, so different projects can have different
   OpenProject access. VS Code/Copilot calls this "workspace-scoped" — same
-  idea, different name.
+  idea, different name. **Exception:** for Claude Code, prefer its native
+  Local scope for credentials instead — see the note below.
 - **Global (user-wide)** — registers the server in a detected client's
   user-wide config (e.g. `~/.claude.json`), available in every project.
   Choose this only if you intentionally want the same OpenProject server
@@ -33,6 +34,15 @@ want both scopes with separate settings. If a deselected scope already has an
 OpenProject entry, setup asks whether to remove it; it never silently deletes
 it. Existing entries for other MCP servers are kept, and each edited file is
 backed up first.
+
+This Project/Global choice describes what the `configure` wizard itself can
+write — not necessarily every client's own scope terminology. Claude Code in
+particular has a third, native **Local scope** (private and project-specific,
+like Project scope, but stored outside your repository in `~/.claude.json`)
+that Claude Code itself recommends for credentials. `configure` doesn't
+produce it — it's set up manually via `claude mcp add`. See
+[Claude / Claude Code](claude.md) for that command and the reasoning behind
+it.
 
 Registration only points your client at the installed command; it is not a
 second install. Using more than one client (say Claude and Codex)? Create one

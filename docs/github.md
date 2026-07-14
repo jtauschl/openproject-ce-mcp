@@ -23,17 +23,28 @@ file). See [Installation](installation.md) for installing the package first.
 
 ## Manual setup
 
-Create `.vscode/mcp.json`:
+Create `.vscode/mcp.json`. VS Code treats this file as shareable workspace
+configuration, so instead of hardcoding the token, define an `inputs` entry
+and reference it from `env` — VS Code prompts for the value the first time
+the server starts and stores it securely, rather than in the file itself:
 
 ```json
 {
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "openproject-token",
+      "description": "OpenProject API token",
+      "password": true
+    }
+  ],
   "servers": {
     "openproject": {
       "type": "stdio",
       "command": "openproject-ce-mcp",
       "env": {
         "OPENPROJECT_BASE_URL": "https://op.example.com",
-        "OPENPROJECT_API_TOKEN": "replace-with-your-token",
+        "OPENPROJECT_API_TOKEN": "${input:openproject-token}",
         "OPENPROJECT_READ_PROJECTS": "my-project,other-project",
         "OPENPROJECT_WRITE_PROJECTS": "my-project"
       }
@@ -47,18 +58,21 @@ installs can use the `.venv` binary path (`...\.venv\Scripts\openproject-ce-mcp.
 on Windows). The full set of `env` keys is the same as every other client —
 see [`.mcp.json.example`](../.mcp.json.example) or [Configuration](configuration.md).
 
-Avoid hardcoding sensitive information when possible. VS Code recommends
-using environment files or input variables.
+With the `inputs` pattern above, `.vscode/mcp.json` itself holds no secret and
+can be committed to version control.
 
 ## Protect credentials
 
-**`.vscode/mcp.json` holds your API token.**
+The current automatic setup (`configure`) writes the token directly into
+`.vscode/mcp.json`, and a manual setup that skips the `inputs` pattern above
+does the same — in both cases, the file holds your API token in plain text:
 
 ```bash
 chmod 600 .vscode/mcp.json
 ```
 
-Add `.vscode/mcp.json` to your project's `.gitignore` so it is never committed.
+Add `.vscode/mcp.json` to your project's `.gitignore` so it is never
+committed.
 
 ## Reload and verify
 
@@ -77,17 +91,23 @@ Windows/Linux) and run "Developer: Reload Window". Then:
 Use the user `mcp.json` if you want the server available in all workspaces
 instead of one:
 
-1. Open the command palette (**Cmd+Shift+P** on macOS, **Ctrl+Shift+P** on Windows/Linux) and select "Open User MCP Settings"
+1. Open the command palette (**Cmd+Shift+P** on macOS, **Ctrl+Shift+P** on Windows/Linux) and select "MCP: Open User Configuration"
 2. **Add the same config** as above (workspace-scoped example)
 3. **Reload:** Open the command palette again and run "Developer: Reload Window"
 
-If you prefer to edit the file directly, the user `mcp.json` lives at:
+Prefer this command over editing the path below directly — VS Code profiles
+and remote environments (SSH, WSL, Dev Containers) can each have their own
+user configuration location, and the command always opens the right one. If
+you still want to edit the file directly, the user `mcp.json` lives at:
 
 - **Windows:** `%APPDATA%\Code\User\mcp.json`
 - **macOS:** `~/Library/Application Support/Code/User/mcp.json`
 - **Linux:** `~/.config/Code/User/mcp.json`
 
-**Protect credentials** the same way as the workspace-scoped file (`chmod 600`
+**Protect credentials:** with the `inputs` pattern above, the user
+configuration itself holds no token — VS Code stores the value securely
+instead. If you store the token directly instead, or let `configure` write
+it, protect the file the same way as the workspace-scoped file (`chmod 600`
 on macOS/Linux; restrict to your user via **Properties → Security** on
 Windows).
 
