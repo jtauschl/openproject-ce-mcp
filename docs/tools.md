@@ -1,5 +1,9 @@
 # Tool reference
 
+<p align="center">
+  <img src="../img/tools-reference.jpg" alt="A structured set of project tools connected through a central router to a work board." width="960">
+</p>
+
 All tools exposed by the OpenProject CE MCP server.
 
 All mutating tools follow the same guarded write pattern by default:
@@ -15,9 +19,9 @@ All list tools are bounded and paginated. They return compact summaries — not 
 
 Responses are trimmed for context economy: list results omit the derivable `count`/`truncated` fields, and a confirmed write omits the echoed request `payload` (its normalized `result` carries the same data). `list_work_packages`, `search_work_packages`, `list_projects`, `list_users` and the batch-read `get_work_packages` accept an optional `select` (a list of field names) to return only the fields you need per row (for `get_work_packages`, per fetched work package); an invalid name returns the allowed set for that row type.
 
-Beyond the obvious fields, work packages also carry scheduling/derived state (`schedule_manually`, `ignore_non_working_days`, `derived_start_date`, `derived_due_date`, `percentage_done`, `derived_percentage_done`, `readonly`); versions and memberships carry `created_at`/`updated_at`; users carry `firstname`/`lastname`; categories carry `default_assignee`/`default_assignee_id`; projects carry `favorited`; Backlogs sprints carry `status_href`, `finish_date`, `defining_workspace`/`defining_workspace_id`, and `created_at`/`updated_at`. Any of these can be hidden per entity via the matching `OPENPROJECT_HIDE_<ENTITY>_FIELDS` environment variable — see the [Configuration table](../README.md#configuration).
+Beyond the obvious fields, work packages also carry scheduling/derived state (`schedule_manually`, `ignore_non_working_days`, `derived_start_date`, `derived_due_date`, `percentage_done`, `derived_percentage_done`, `readonly`); versions and memberships carry `created_at`/`updated_at`; users carry `firstname`/`lastname`; categories carry `default_assignee`/`default_assignee_id`; projects carry `favorited`; Backlogs sprints carry `status_href`, `finish_date`, `defining_workspace`/`defining_workspace_id`, and `created_at`/`updated_at`. Any of these can be hidden per entity via the matching `OPENPROJECT_HIDE_<ENTITY>_FIELDS` environment variable — see [Configuration](configuration.md).
 
-A subset of rarely-used metadata tools — the `get_query_*` schema tools, `render_text`, `get_custom_option`, `list_help_texts`/`get_help_text`, `list_working_days`/`list_non_working_days` — is **opt-in**: they are registered only when the `extended` group is present in `OPENPROJECT_TOOLS`, to keep them out of the default tool set and save context.
+A subset of rarely-used metadata tools — the `get_query_*` schema tools, `render_text`, `get_custom_option`, `list_help_texts`/`get_help_text`, `list_working_days`/`list_non_working_days` — is **opt-in**: they are registered only when `OPENPROJECT_ENABLE_EXTENDED_READ=true`, to keep them out of the default tool set and save context.
 
 ---
 
@@ -43,10 +47,18 @@ A subset of rarely-used metadata tools — the `get_query_*` schema tools, `rend
 
 ## Memberships
 
+`get_current_user` and `get_my_project_access` (below) report only the
+caller's own identity/access and are on by default
+(`OPENPROJECT_ENABLE_MEMBERSHIP_READ`). `list_principals` is the odd one out
+in this table: it returns the instance-wide user/group list (the same PII as
+`list_users`/`list_groups`), so it lives behind
+`OPENPROJECT_ENABLE_ADMIN_READ` like the [Users](#users) and
+[Groups](#groups) read tools below, not `OPENPROJECT_ENABLE_MEMBERSHIP_READ`.
+
 | Tool | Description |
 |---|---|
 | `list_roles` | List OpenProject roles visible to the current user |
-| `list_principals` | List users and groups that can be used for memberships |
+| `list_principals` | List users and groups that can be used for memberships (`OPENPROJECT_ENABLE_ADMIN_READ`) |
 | `list_project_memberships` | List memberships for a project, including principals and role names |
 | `get_membership` | Fetch a compact membership summary by id |
 | `create_membership` | Validate and then create a project membership; only writes when called again with `confirm=true` |
@@ -56,18 +68,28 @@ A subset of rarely-used metadata tools — the `get_query_*` schema tools, `rend
 
 ## Users
 
+`get_current_user` is the exception in this table — it returns only the
+caller's own identity and is on by default. Every other tool here lists or
+looks up other users and requires `OPENPROJECT_ENABLE_ADMIN_READ=true`
+(reads) / `OPENPROJECT_ENABLE_ADMIN_WRITE=true` (writes), off by default
+since this is instance-wide PII with no project-scope boundary.
+
 | Tool | Description |
 |---|---|
 | `get_current_user` | Return the currently authenticated user's profile |
-| `list_users` | List visible OpenProject users with an optional search filter |
-| `get_user` | Fetch a compact user profile by id |
-| `create_user` | Validate and then create a user account; only writes when called again with `confirm=true` |
-| `update_user` | Validate and then update a user account; only writes when called again with `confirm=true` |
-| `delete_user` | Validate and then delete a user account; only deletes when called again with `confirm=true` |
-| `lock_user` | Lock a user account to prevent login |
-| `unlock_user` | Unlock a previously locked user account |
+| `list_users` | List visible OpenProject users with an optional search filter (`OPENPROJECT_ENABLE_ADMIN_READ`) |
+| `get_user` | Fetch a compact user profile by id (`OPENPROJECT_ENABLE_ADMIN_READ`) |
+| `create_user` | Validate and then create a user account; only writes when called again with `confirm=true` (`OPENPROJECT_ENABLE_ADMIN_WRITE`) |
+| `update_user` | Validate and then update a user account; only writes when called again with `confirm=true` (`OPENPROJECT_ENABLE_ADMIN_WRITE`) |
+| `delete_user` | Validate and then delete a user account; only deletes when called again with `confirm=true` (`OPENPROJECT_ENABLE_ADMIN_WRITE`) |
+| `lock_user` | Lock a user account to prevent login (`OPENPROJECT_ENABLE_ADMIN_WRITE`) |
+| `unlock_user` | Unlock a previously locked user account (`OPENPROJECT_ENABLE_ADMIN_WRITE`) |
 
 ## Groups
+
+Same gating as [Users](#users) above: reads need
+`OPENPROJECT_ENABLE_ADMIN_READ=true`, writes need
+`OPENPROJECT_ENABLE_ADMIN_WRITE=true`.
 
 | Tool | Description |
 |---|---|
@@ -282,3 +304,31 @@ A subset of rarely-used metadata tools — the `get_query_*` schema tools, `rend
 |---|---|
 | `list_relations` | List all relations across the instance, optionally filtered by type |
 | `update_relation` | Prepare or update the type or description of a relation; only writes when called again with `confirm=true` |
+
+## Errors
+
+Every tool failure carries a stable, machine-readable category as a leading
+`[category]` prefix on the error message, so an agent can branch on the failure
+type instead of parsing free text. The categories are:
+
+| Category | Meaning |
+|---|---|
+| `[validation_error]` | An input was rejected before the request (fix the arguments and retry) |
+| `[auth_error]` | Authentication failed (check the API token) |
+| `[permission_denied]` | The token lacks permission, or a write scope is disabled |
+| `[not_found]` | The resource does not exist (or the feature needs a newer OpenProject) |
+| `[transport_error]` | OpenProject could not be reached (transient — safe to retry) |
+| `[server_error]` | OpenProject returned an unexpected failure |
+| `[openproject_error]` | Any other OpenProject-side failure |
+
+Successful write previews are not errors — they return a structured result with
+`ready`, `requires_confirmation`, `validation_errors`, and a human-readable
+`message`.
+
+## See also
+
+- [Documentation hub](README.md) — full documentation index
+- [Work package filters](filters.md) — filter keys and operators for `list_work_packages` / `search_work_packages`
+- [Field hiding](field-hiding.md) — full list of entities supported by `OPENPROJECT_HIDE_<ENTITY>_FIELDS`
+- [Configuration](configuration.md) — the full environment variable reference
+- [Troubleshooting](troubleshooting.md) — common tool/setup issues

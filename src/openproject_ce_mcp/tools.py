@@ -141,34 +141,29 @@ RELATION_TYPE_RE = re.compile(
 )
 
 
-# ── Tool classification (OPM-123) ───────────────────────────────────────────
+# ── Tool classification ──────────────────────────────────────────────────────
 #
-# Single source of truth for which tool belongs to which scope, replacing the
-# previously hand-written if/tool(...) blocks. Registration now follows
-# exactly the scopes each tool's client method actually enforces at runtime
-# (verified against client.py, not guessed) — this is a real behavior change
-# for existing OPENPROJECT_ENABLE_*_READ flags: several tools that were
-# always registered regardless of any flag (e.g. get_current_user,
-# list_notifications) now correctly disappear when their real scope is
-# disabled, instead of staying visible and failing only when called.
+# Single source of truth for which tool belongs to which scope. Registration
+# follows exactly the scopes each tool's client method actually enforces at
+# runtime (verified against client.py, not guessed) — several tools that
+# would otherwise be always registered regardless of any flag (e.g.
+# get_current_user, list_notifications) correctly disappear when their real
+# scope is disabled, instead of staying visible and failing only when called.
 #
-# This is Phase 1 of a larger authorization redesign (OPM-122); Phase 4
-# (OPM-126) replaced the 5 per-scope read booleans and the metadata-tools flag
-# with a single OPENPROJECT_TOOLS group list ("personal" and "extended" joined
-# the 5 original scopes as first-class groups) and introduced the independent
-# OPENPROJECT_PERSONAL_WRITE flag.
+# Tool visibility is controlled by individual read/write boolean env vars
+# (OPENPROJECT_ENABLE_<SCOPE>_READ / _WRITE), one pair per scope, all
+# independent of each other except where noted below.
 #
-# "personal" is NOT a normal write scope: the other 5 scopes treat read and
+# "personal" is NOT a normal write scope: the other scopes treat read and
 # write as independent axes (a write tool appears once its write flag is on,
 # regardless of the paired read flag). For "personal", the repo owner decided
-# that "personal" in OPENPROJECT_TOOLS controls visibility of the WHOLE
-# personal surface (read AND write), with OPENPROJECT_PERSONAL_WRITE acting as
+# that OPENPROJECT_ENABLE_PERSONAL_READ controls visibility of the WHOLE
+# personal surface (read AND write), with OPENPROJECT_ENABLE_PERSONAL_WRITE acting as
 # an additional gate only within that already-visible surface — an AND, not
 # an independent toggle. PERSONAL_MUTATION_TOOLS is therefore its own named
-# constant, handled by a bespoke branch in enabled_tool_names() (mirroring
-# the existing ADMIN_WRITE_TOOLS bespoke branch) rather than being folded into
-# WRITE_TOOLS_BY_SCOPE, which would run it through the generic independent
-# read/write iteration and lose the AND semantics.
+# constant, handled by a bespoke branch in enabled_tool_names() rather than
+# being folded into WRITE_TOOLS_BY_SCOPE, which would run it through the
+# generic independent read/write iteration and lose the AND semantics.
 PERSONAL_MUTATION_TOOLS: tuple[str, ...] = (
     "update_my_preferences",
     "mark_notification_read",
@@ -232,11 +227,6 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "list_project_memberships",
         "get_membership",
         "list_roles",
-        "list_principals",
-        "list_users",
-        "get_user",
-        "list_groups",
-        "get_group",
         "get_current_user",
         "list_actions",
         "list_capabilities",
@@ -244,6 +234,13 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
     "version": ("list_versions", "get_version"),
     "board": ("list_boards", "get_board"),
     "personal": ("get_my_preferences", "list_notifications"),
+    "admin": (
+        "list_principals",
+        "list_users",
+        "get_user",
+        "list_groups",
+        "get_group",
+    ),
     "extended": (
         "get_query_filter",
         "get_query_column",
@@ -259,6 +256,17 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "get_custom_option",
     ),
 }
+
+ADMIN_WRITE_TOOLS: tuple[str, ...] = (
+    "create_user",
+    "update_user",
+    "delete_user",
+    "lock_user",
+    "unlock_user",
+    "create_group",
+    "update_group",
+    "delete_group",
+)
 
 WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
     "project": (
@@ -302,32 +310,28 @@ WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
     "membership": ("create_membership", "update_membership", "delete_membership"),
     "version": ("create_version", "update_version", "delete_version"),
     "board": ("create_board", "update_board", "delete_board"),
+    "admin": ADMIN_WRITE_TOOLS,
 }
+
+# Project-scoped write categories: registration additionally requires both
+# OPENPROJECT_READ_PROJECTS and OPENPROJECT_WRITE_PROJECTS to be non-empty
+# (see enabled_tool_names below) — the write-category flags above default to
+# True, but a write tool that could never succeed against any project (no
+# project is both readable and writable) shouldn't be registered at all. Not
+# "admin" (instance-wide, not gated by either allowlist) and not "personal"
+# (its own bespoke AND-gate below, independent of project scope).
+_PROJECT_SCOPED_WRITE_SCOPES: frozenset[str] = frozenset({"project", "work_package", "membership", "version", "board"})
 
 # create_work_package_attachment is NOT in WRITE_TOOLS_BY_SCOPE["work_package"]
 # above: it needs work_package write AND a configured OPENPROJECT_ATTACHMENT_ROOT
-# (OPM-127) — an empty root disables local uploads entirely (client.py's
+# — an empty root disables local uploads entirely (client.py's
 # _attachment_root has no cwd fallback), so registering the tool without a root
 # would only expose a schema whose every call fails, wasting context. Its own
 # named constant, handled by a bespoke AND-gate branch in enabled_tool_names()
-# below (mirroring the ADMIN_WRITE_TOOLS / "personal" bespoke branches), rather
-# than a generic mechanism — this is currently the only scope-flag-AND-config-
-# value gate in the codebase.
+# below (mirroring the "personal" bespoke branch), rather than a generic
+# mechanism — this is currently the only scope-flag-AND-config-value gate in
+# the codebase.
 ATTACHMENT_UPLOAD_TOOLS: tuple[str, ...] = ("create_work_package_attachment",)
-
-ADMIN_WRITE_TOOLS: tuple[str, ...] = (
-    "create_user",
-    "update_user",
-    "delete_user",
-    "lock_user",
-    "unlock_user",
-    "create_group",
-    "update_group",
-    "delete_group",
-)
-# Gated by settings.enable_admin_write directly (checked in enabled_tool_names
-# below), not via write_enabled("admin") — "admin" is deliberately not a key
-# of Settings.write_enabled's scope table (see config.py).
 
 # Additional read scopes required by tools whose home group above is not
 # sufficient on its own (verified against each client method, not guessed).
@@ -376,22 +380,25 @@ def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
         if settings.read_enabled(scope):
             include(tuple(name for name in names if additional_scopes_ok(name)))
 
+    project_scope_usable = bool(settings.read_projects) and bool(settings.write_projects)
     for scope, names in WRITE_TOOLS_BY_SCOPE.items():
-        if settings.write_enabled(scope):
-            include(tuple(name for name in names if additional_scopes_ok(name)))
-
-    if settings.enable_admin_write:
-        include(ADMIN_WRITE_TOOLS)
+        if not settings.write_enabled(scope):
+            continue
+        if scope in _PROJECT_SCOPED_WRITE_SCOPES and not project_scope_usable:
+            continue
+        include(tuple(name for name in names if additional_scopes_ok(name)))
 
     # Bespoke AND-gate (not the generic independent read/write iteration above):
-    # personal mutations need BOTH "personal" visible AND OPENPROJECT_PERSONAL_WRITE
+    # personal mutations need BOTH "personal" visible AND OPENPROJECT_ENABLE_PERSONAL_WRITE
     # on, see the constant's docstring-comment above.
     if settings.read_enabled("personal") and settings.write_enabled("personal"):
         include(PERSONAL_MUTATION_TOOLS)
 
-    # Bespoke AND-gate (OPM-127): local upload needs BOTH work_package write AND a
-    # configured OPENPROJECT_ATTACHMENT_ROOT — see ATTACHMENT_UPLOAD_TOOLS above.
-    if settings.write_enabled("work_package") and settings.attachment_root:
+    # Bespoke AND-gate: local upload needs work_package write, a configured
+    # OPENPROJECT_ATTACHMENT_ROOT, AND usable project scope (it is
+    # project-/work-package-scoped like the rest of WRITE_TOOLS_BY_SCOPE's
+    # project-scoped entries) — see ATTACHMENT_UPLOAD_TOOLS above.
+    if settings.write_enabled("work_package") and settings.attachment_root and project_scope_usable:
         include(ATTACHMENT_UPLOAD_TOOLS)
 
     return tuple(enabled)
@@ -3947,6 +3954,5 @@ _TOOL_FUNCTIONS: dict[str, Callable] = {
         *ATTACHMENT_UPLOAD_TOOLS,
         *(name for names in READ_TOOLS_BY_SCOPE.values() for name in names),
         *(name for names in WRITE_TOOLS_BY_SCOPE.values() for name in names),
-        *ADMIN_WRITE_TOOLS,
     )
 }

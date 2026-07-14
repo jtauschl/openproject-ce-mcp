@@ -312,11 +312,9 @@ class _AnswerBook:
     text (checked on every call, not just at construction time — see OPM-132: a
     construction-time-only "is one key nested in another" check would miss two
     independent keys that both happen to match the same longer prompt). A key's
-    value is a single answer or a queue: the tool-groups validation retry loop
-    reprompts with a label that is a strict extension of the initial one
-    ("Enabled tool groups" -> "Enabled tool groups — comma-separated, check
-    spelling"), so one key with a multi-item queue naturally covers an initial ask
-    plus its retries.
+    value is a single answer or a queue: a validation retry loop that reprompts
+    with a label extending the initial one is naturally covered by one key with
+    a multi-item queue, spanning the initial ask plus its retries.
     """
 
     def __init__(self, answers: Mapping[str, str | Sequence[str]]) -> None:
@@ -380,8 +378,8 @@ def test_answer_book_assert_consumed_reports_leftover_key() -> None:
 
 def test_answer_book_does_not_mutate_caller_supplied_list() -> None:
     caller_list = ["y", "n"]
-    book = _AnswerBook({"Enabled tool groups": caller_list})
-    book("Enabled tool groups")
+    book = _AnswerBook({"Write scope": caller_list})
+    book("Write scope")
     assert caller_list == ["y", "n"], "must copy, not pop from the caller's own list"
 
 
@@ -975,73 +973,6 @@ def test_merge_scope_prefill_new_key_wins_over_legacy_within_same_source(tmp_pat
     assert read_used_legacy is False
 
 
-# ── _merge_tool_groups_prefill (OPM-126) ────────────────────────────────────────
-
-
-def test_merge_tool_groups_prefill_source_priority_beats_new_vs_legacy_key_choice(tmp_path: Path) -> None:
-    # Same error class as OPM-125's _merge_scope_prefill review: a higher-priority
-    # source's LEGACY-derived value must still win over a lower-priority source's
-    # NEW key.
-    pairs = _scope_clients(
-        tmp_path,
-        global_env={"OPENPROJECT_TOOLS": "projects"},
-        project_env={
-            "OPENPROJECT_ENABLE_PROJECT_READ": "false",
-            "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "true",
-            "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "false",
-            "OPENPROJECT_ENABLE_VERSION_READ": "false",
-            "OPENPROJECT_ENABLE_BOARD_READ": "false",
-        },
-    )
-    value, used_legacy = c._merge_tool_groups_prefill(pairs)
-    assert used_legacy is True
-    groups = value.split(",")
-    assert "work-packages" in groups
-    assert "projects" not in groups
-
-
-def test_merge_tool_groups_prefill_new_key_wins_over_legacy_within_same_source(tmp_path: Path) -> None:
-    pairs = _scope_clients(
-        tmp_path,
-        global_env={},
-        project_env={"OPENPROJECT_TOOLS": "boards", "OPENPROJECT_ENABLE_PROJECT_READ": "true"},
-    )
-    value, used_legacy = c._merge_tool_groups_prefill(pairs)
-    assert value == "boards"
-    assert used_legacy is False
-
-
-def test_merge_tool_groups_prefill_migrates_legacy_flags_to_groups(tmp_path: Path) -> None:
-    pairs = _scope_clients(
-        tmp_path,
-        global_env={},
-        project_env={
-            "OPENPROJECT_ENABLE_PROJECT_READ": "true",
-            "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "false",
-            "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "true",
-            "OPENPROJECT_ENABLE_VERSION_READ": "true",
-            "OPENPROJECT_ENABLE_BOARD_READ": "true",
-            "OPENPROJECT_ENABLE_METADATA_TOOLS": "true",
-        },
-    )
-    value, used_legacy = c._merge_tool_groups_prefill(pairs)
-    assert used_legacy is True
-    assert set(value.split(",")) == {"projects", "memberships", "versions", "boards", "extended"}
-
-
-def test_merge_tool_groups_prefill_explicit_empty_new_key_overrides_legacy(tmp_path: Path) -> None:
-    # Presence, not truthiness: an explicit empty OPENPROJECT_TOOLS must win over
-    # a nonempty legacy flag in the same source, not silently resurrect it.
-    pairs = _scope_clients(
-        tmp_path,
-        global_env={},
-        project_env={"OPENPROJECT_TOOLS": "", "OPENPROJECT_ENABLE_PROJECT_READ": "true"},
-    )
-    value, used_legacy = c._merge_tool_groups_prefill(pairs)
-    assert value == ""
-    assert used_legacy is False
-
-
 def test_shim_reexports_public_names() -> None:
     # The root configure_mcp.py shim must re-export main and helpers so get.sh
     # and any importer keep working.
@@ -1261,6 +1192,20 @@ _WRITE_CONTROL_DEFAULTS: dict[str, str] = {
     "Enable membership writes": "",
     "Enable version writes": "",
     "Enable board writes": "",
+}
+# The 8 individual tool-exposure read booleans are unconditionally asked whenever
+# --advanced is used (regardless of write access) — every advanced-mode test must
+# answer all 8, so tests that don't care about a specific one merge this in with
+# "" (keep existing/default) answers.
+_TOOL_EXPOSURE_DEFAULTS: dict[str, str] = {
+    "Enable project tools?": "",
+    "Enable work-package tools?": "",
+    "Enable membership tools?": "",
+    "Enable version tools?": "",
+    "Enable board tools?": "",
+    "Enable personal tools (own preferences, notifications)?": "",
+    "Enable extended/rarely-used metadata tools?": "",
+    "Enable admin tools (list/view users and groups)?": "",
 }
 _ADVANCED_ONLY_DEFAULTS: dict[str, str] = {
     "Hidden project fields": "",
@@ -1518,11 +1463,25 @@ def test_main_basic_setup_safe_advanced_defaults(monkeypatch, tmp_path: Path) ->
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    # OPM-128: every value here equals its default, so minimal-diff writing
-    # omits all of them (incl. OPENPROJECT_TOOLS) — only BASE_URL/API_TOKEN
-    # are ever unconditionally kept.
-    assert set(env) == {"OPENPROJECT_BASE_URL", "OPENPROJECT_API_TOKEN"}
+    # A fresh setup's fail-safe quick-mode default ("no write access") deviates
+    # from Settings' own optimistic True default for the 5 project-scoped write
+    # flags (that default only makes sense once a project scope is granted), so
+    # minimal-diff writing must keep them explicitly false here.
+    assert set(env) == {
+        "OPENPROJECT_BASE_URL",
+        "OPENPROJECT_API_TOKEN",
+        "OPENPROJECT_ENABLE_PROJECT_WRITE",
+        "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE",
+        "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE",
+        "OPENPROJECT_ENABLE_VERSION_WRITE",
+        "OPENPROJECT_ENABLE_BOARD_WRITE",
+    }
     settings = c.Settings.from_env(env)
+    assert settings.enable_work_package_write is False
+    assert settings.enable_project_write is False
+    assert settings.enable_membership_write is False
+    assert settings.enable_version_write is False
+    assert settings.enable_board_write is False
     assert settings.enable_personal_write is False
     assert settings.attachment_root == ""
     assert settings.max_retries == 3
@@ -1615,6 +1574,10 @@ def test_main_write_access_enter_keeps_existing_scope(monkeypatch, tmp_path: Pat
                             "OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM, TST",
                             "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "TST",
                             "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
+                            "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
+                            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
+                            "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
+                            "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
                         },
                     }
                 }
@@ -1641,7 +1604,12 @@ def test_main_write_access_enter_keeps_existing_scope(monkeypatch, tmp_path: Pat
     env = data["mcpServers"]["openproject"]["env"]
     assert env["OPENPROJECT_READ_PROJECTS"] == "OPM, TST"
     assert env["OPENPROJECT_WRITE_PROJECTS"] == "TST"
-    assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "true"
+    settings = c.Settings.from_env(env)
+    assert settings.enable_work_package_write is True
+    assert settings.enable_project_write is False
+    assert settings.enable_membership_write is False
+    assert settings.enable_version_write is False
+    assert settings.enable_board_write is False
 
 
 def test_main_migrates_legacy_only_project_scope_keys(monkeypatch, tmp_path: Path) -> None:
@@ -1750,11 +1718,14 @@ def test_main_write_access_yes_defaults_write_controls_on(monkeypatch, tmp_path:
     env = data["mcpServers"]["openproject"]["env"]
     assert env["OPENPROJECT_READ_PROJECTS"] == "OPM, TST"
     assert env["OPENPROJECT_WRITE_PROJECTS"] == "TST"
-    assert env["OPENPROJECT_ENABLE_PROJECT_WRITE"] == "true"
-    assert env["OPENPROJECT_ENABLE_MEMBERSHIP_WRITE"] == "true"
-    assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "true"
-    assert env["OPENPROJECT_ENABLE_VERSION_WRITE"] == "true"
-    assert env["OPENPROJECT_ENABLE_BOARD_WRITE"] == "true"
+    # All 5 flags equal Settings' own True default, so minimal-diff writing
+    # omits them — assert the resolved effective values instead.
+    settings = c.Settings.from_env(env)
+    assert settings.enable_project_write is True
+    assert settings.enable_membership_write is True
+    assert settings.enable_work_package_write is True
+    assert settings.enable_version_write is True
+    assert settings.enable_board_write is True
 
 
 def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, tmp_path: Path) -> None:
@@ -1769,7 +1740,7 @@ def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, 
                             "OPENPROJECT_BASE_URL": "https://old.example.com",
                             "OPENPROJECT_API_TOKEN": "old-token",
                             "OPENPROJECT_HIDE_PROJECT_FIELDS": "description",
-                            "OPENPROJECT_TOOLS": "projects,work-packages,memberships,versions,boards,extended",
+                            "OPENPROJECT_ENABLE_EXTENDED_READ": "true",
                             "OPENPROJECT_ATTACHMENT_ROOT": ATTACHMENT_ROOT,
                             "OPENPROJECT_MAX_RETRIES": "7",
                             "OPENPROJECT_RETRY_BASE_DELAY": "2.5",
@@ -1795,7 +1766,7 @@ def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
     assert env["OPENPROJECT_HIDE_PROJECT_FIELDS"] == "description"
-    assert env["OPENPROJECT_TOOLS"] == "projects,work-packages,memberships,versions,boards,extended"
+    assert env["OPENPROJECT_ENABLE_EXTENDED_READ"] == "true"
     assert env["OPENPROJECT_ATTACHMENT_ROOT"] == ATTACHMENT_ROOT
     assert env["OPENPROJECT_MAX_RETRIES"] == "7"
     assert env["OPENPROJECT_RETRY_BASE_DELAY"] == "2.5"
@@ -1915,6 +1886,10 @@ def test_main_quick_write_scope_prefill_matches_existing_standard_combo(monkeypa
                             "OPENPROJECT_API_TOKEN": "old-token",
                             "OPENPROJECT_WRITE_PROJECTS": "TST",
                             "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
+                            "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
+                            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
+                            "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
+                            "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
                         },
                     }
                 }
@@ -1936,7 +1911,12 @@ def test_main_quick_write_scope_prefill_matches_existing_standard_combo(monkeypa
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
     assert env["OPENPROJECT_WRITE_PROJECTS"] == "TST"
-    assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "true"
+    settings = c.Settings.from_env(env)
+    assert settings.enable_work_package_write is True
+    assert settings.enable_project_write is False
+    assert settings.enable_membership_write is False
+    assert settings.enable_version_write is False
+    assert settings.enable_board_write is False
 
 
 def test_main_quick_write_scope_dormant_flags_with_empty_write_projects_default_to_none(
@@ -2003,6 +1983,9 @@ def test_main_quick_write_scope_custom_combo_defaults_to_keep_and_is_unchanged(m
                             "OPENPROJECT_WRITE_PROJECTS": "OPM,TST",
                             "OPENPROJECT_ENABLE_VERSION_WRITE": "true",
                             "OPENPROJECT_ENABLE_BOARD_WRITE": "true",
+                            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
+                            "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
+                            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
                         },
                     }
                 }
@@ -2143,6 +2126,10 @@ def test_main_quick_write_scope_classification_uses_legacy_write_projects_key(mo
                             "OPENPROJECT_API_TOKEN": "old-token",
                             "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "TST",
                             "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
+                            "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
+                            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
+                            "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
+                            "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
                         },
                     }
                 }
@@ -2164,7 +2151,7 @@ def test_main_quick_write_scope_classification_uses_legacy_write_projects_key(mo
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
     assert env["OPENPROJECT_WRITE_PROJECTS"] == "TST"
-    assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "true"
+    assert c.Settings.from_env(env).enable_work_package_write is True
 
 
 def test_main_quick_write_scope_classification_prefers_new_key_over_legacy_when_both_set(
@@ -2267,8 +2254,9 @@ def test_main_quick_write_scope_none_does_not_touch_personal_or_admin_write(monk
                         "env": {
                             "OPENPROJECT_BASE_URL": "https://old.example.com",
                             "OPENPROJECT_API_TOKEN": "old-token",
-                            "OPENPROJECT_TOOLS": "projects,work-packages,personal",
-                            "OPENPROJECT_PERSONAL_WRITE": "true",
+                            "OPENPROJECT_ENABLE_PERSONAL_READ": "true",
+                            "OPENPROJECT_ENABLE_PERSONAL_WRITE": "true",
+                            "OPENPROJECT_ENABLE_ADMIN_READ": "true",
                             "OPENPROJECT_ENABLE_ADMIN_WRITE": "true",
                         },
                     }
@@ -2295,15 +2283,16 @@ def test_main_quick_write_scope_none_does_not_touch_personal_or_admin_write(monk
     assert settings.enable_membership_write is False
     assert settings.enable_version_write is False
     assert settings.enable_board_write is False
-    assert env["OPENPROJECT_PERSONAL_WRITE"] == "true"
+    assert env["OPENPROJECT_ENABLE_PERSONAL_WRITE"] == "true"
     assert env["OPENPROJECT_ENABLE_ADMIN_WRITE"] == "true"
     assert settings.enable_personal_write is True
     assert settings.enable_admin_write is True
 
 
-def test_main_quick_skips_tool_groups_prompt(monkeypatch, tmp_path: Path) -> None:
-    # No "Enabled tool groups" answer registered — if the prompt fired anyway,
-    # _AnswerBook would raise. Quick mode must silently keep the default groups.
+def test_main_quick_skips_tool_exposure_prompts(monkeypatch, tmp_path: Path) -> None:
+    # None of the 8 "Enable ... tools?" answers are registered — if any prompt
+    # fired anyway, _AnswerBook would raise. Quick mode must silently keep the
+    # default read exposure.
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
     answers = {
         "Configure globally": "n",
@@ -2317,10 +2306,11 @@ def test_main_quick_skips_tool_groups_prompt(monkeypatch, tmp_path: Path) -> Non
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert "OPENPROJECT_TOOLS" not in env  # equals the default, so omitted
+    # All 8 read-exposure flags equal their default, so minimal-diff writing omits them.
+    assert not any(k.startswith("OPENPROJECT_ENABLE_") and k.endswith("_READ") for k in env)
 
 
-def test_main_advanced_flag_still_asks_tool_groups_and_field_hiding(monkeypatch, tmp_path: Path) -> None:
+def test_main_advanced_flag_still_asks_tool_exposure_and_field_hiding(monkeypatch, tmp_path: Path) -> None:
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
     answers = {
         "Configure globally": "n",
@@ -2329,7 +2319,8 @@ def test_main_advanced_flag_still_asks_tool_groups_and_field_hiding(monkeypatch,
         "OpenProject base URL": "",
         "Readable projects": "",
         "Enable write access?": "n",
-        "Enabled tool groups": "projects,work-packages,extended",
+        **_TOOL_EXPOSURE_DEFAULTS,
+        "Enable extended/rarely-used metadata tools?": "y",
         **_ADVANCED_ONLY_DEFAULTS,
         "Hidden project fields": "description",
     }
@@ -2337,7 +2328,7 @@ def test_main_advanced_flag_still_asks_tool_groups_and_field_hiding(monkeypatch,
 
     data = json.loads((tmp_path / ".mcp.json").read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert "extended" in env["OPENPROJECT_TOOLS"].split(",")
+    assert env["OPENPROJECT_ENABLE_EXTENDED_READ"] == "true"
     assert env["OPENPROJECT_HIDE_PROJECT_FIELDS"] == "description"
 
 
@@ -2357,7 +2348,9 @@ def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: 
         "Readable projects": "OPM",
         "Enable write access?": "y",
         "Writable projects": "TST",
-        "Enabled tool groups": "projects,work-packages,memberships,versions,boards,personal,extended",
+        **_TOOL_EXPOSURE_DEFAULTS,
+        "Enable personal tools (own preferences, notifications)?": "y",
+        "Enable extended/rarely-used metadata tools?": "y",
         "Enable personal-data writes": "y",
         "Enable work-package writes": "y",
         "Enable project writes": "n",
@@ -2387,12 +2380,13 @@ def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: 
     env = data["mcpServers"]["openproject"]["env"]
     assert env["OPENPROJECT_READ_PROJECTS"] == "OPM"
     assert env["OPENPROJECT_WRITE_PROJECTS"] == "TST"
-    assert env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] == "true"
+    # work_package_write=true equals Settings' own True default, so
+    # minimal-diff writing omits the key — assert the resolved value instead.
+    assert c.Settings.from_env(env).enable_work_package_write is True
     assert env["OPENPROJECT_HIDE_PROJECT_FIELDS"] == "status_explanation"
-    tool_groups = env["OPENPROJECT_TOOLS"].split(",")
-    assert "extended" in tool_groups
-    assert "personal" in tool_groups
-    assert env["OPENPROJECT_PERSONAL_WRITE"] == "true"
+    assert env["OPENPROJECT_ENABLE_EXTENDED_READ"] == "true"
+    assert env["OPENPROJECT_ENABLE_PERSONAL_READ"] == "true"
+    assert env["OPENPROJECT_ENABLE_PERSONAL_WRITE"] == "true"
     assert env["OPENPROJECT_ATTACHMENT_ROOT"] == ATTACHMENT_ROOT
     assert env["OPENPROJECT_DEFAULT_PAGE_SIZE"] == "5"
     assert env["OPENPROJECT_MAX_RETRIES"] == "4"
@@ -2433,7 +2427,8 @@ def test_main_advanced_deselecting_group_disables_existing_write_flag(monkeypatc
         "Readable projects": "",
         "Enable write access?": "y",
         "Writable projects": "",  # keep existing "*"
-        "Enabled tool groups": "projects,work-packages,memberships,versions",  # groups WITHOUT boards
+        **_TOOL_EXPOSURE_DEFAULTS,
+        "Enable board tools?": "n",  # deselect boards
         **_WRITE_CONTROL_DEFAULTS,
         **_ADVANCED_ONLY_DEFAULTS,
     }
@@ -2441,10 +2436,10 @@ def test_main_advanced_deselecting_group_disables_existing_write_flag(monkeypatc
 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert "boards" not in env["OPENPROJECT_TOOLS"].split(",")
-    # Reconciliation disabled board_write to false (the default) — OPM-128's
-    # minimal-diff writing therefore omits the key entirely.
-    assert "OPENPROJECT_ENABLE_BOARD_WRITE" not in env
+    assert env["OPENPROJECT_ENABLE_BOARD_READ"] == "false"
+    # Reconciliation disabled board_write to false, which now deviates from
+    # Settings' own True default — minimal-diff writing therefore keeps it.
+    assert env["OPENPROJECT_ENABLE_BOARD_WRITE"] == "false"
     settings = c.Settings.from_env(env)  # must still parse cleanly
     assert settings.enable_board_write is False
 
@@ -2460,7 +2455,7 @@ def test_main_personal_write_forced_false_when_personal_group_absent_in_advanced
                         "env": {
                             "OPENPROJECT_BASE_URL": "https://old.example.com",
                             "OPENPROJECT_API_TOKEN": "old-token",
-                            "OPENPROJECT_PERSONAL_WRITE": "true",
+                            "OPENPROJECT_ENABLE_PERSONAL_WRITE": "true",
                         },
                     }
                 }
@@ -2477,17 +2472,18 @@ def test_main_personal_write_forced_false_when_personal_group_absent_in_advanced
         "OpenProject base URL": "",
         "Readable projects": "",
         "Enable write access?": "n",
-        "Enabled tool groups": "projects,work-packages",  # groups WITHOUT personal — no personal_write slot needed
+        # personal tools left at "" (default False) — no personal_write slot needed.
+        **_TOOL_EXPOSURE_DEFAULTS,
         **_ADVANCED_ONLY_DEFAULTS,
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="", argv=["--advanced"])
 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert "personal" not in env["OPENPROJECT_TOOLS"].split(",")
+    assert "OPENPROJECT_ENABLE_PERSONAL_READ" not in env
     # personal_write is forced to false (the default) — OPM-128's minimal-diff
     # writing therefore omits the key entirely.
-    assert "OPENPROJECT_PERSONAL_WRITE" not in env
+    assert "OPENPROJECT_ENABLE_PERSONAL_WRITE" not in env
     assert c.Settings.from_env(env).enable_personal_write is False
 
 
@@ -2505,6 +2501,10 @@ def test_main_legacy_migration_reconciles_read_off_write_on_same_scope(monkeypat
                             "OPENPROJECT_WRITE_PROJECTS": "*",
                             "OPENPROJECT_ENABLE_BOARD_READ": "false",
                             "OPENPROJECT_ENABLE_BOARD_WRITE": "true",
+                            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
+                            "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
+                            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
+                            "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
                         },
                     }
                 }
@@ -2516,9 +2516,10 @@ def test_main_legacy_migration_reconciles_read_off_write_on_same_scope(monkeypat
     # existing config, a non-standard combo that classifies as "custom", so
     # accepting the default "keep" choice carries board_write=true (and the
     # existing "*" write scope) through unchanged — proving reconciliation
-    # (which then excludes "boards" from the migrated OPENPROJECT_TOOLS, since
-    # board read was false) fires even in this non-advanced/migration-only
-    # path, not just when the user types groups by hand.
+    # (which then keeps OPENPROJECT_ENABLE_BOARD_READ=false, since board read
+    # was already false in the existing config) fires even in this
+    # non-advanced/migration-only path, not just when the user answers the
+    # advanced tool-exposure prompts by hand.
     answers = {
         "Configure globally": "n",
         "Configure project-scoped": "y",
@@ -2531,105 +2532,11 @@ def test_main_legacy_migration_reconciles_read_off_write_on_same_scope(monkeypat
 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    assert "boards" not in env["OPENPROJECT_TOOLS"].split(",")
-    # Reconciliation disabled board_write to false (the default) — OPM-128's
-    # minimal-diff writing therefore omits the key entirely.
-    assert "OPENPROJECT_ENABLE_BOARD_WRITE" not in env
+    assert env["OPENPROJECT_ENABLE_BOARD_READ"] == "false"
+    # Reconciliation disabled board_write to false, which now deviates from
+    # Settings' own True default — minimal-diff writing therefore keeps it.
+    assert env["OPENPROJECT_ENABLE_BOARD_WRITE"] == "false"
     assert c.Settings.from_env(env).enable_board_write is False
-
-
-def test_main_advanced_invalid_group_reprompts_then_succeeds(monkeypatch, tmp_path: Path) -> None:
-    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
-    # "Enabled tool groups" gets a 2-item queue: the initial typo'd answer, then
-    # the corrected one on reprompt — the reprompt's label
-    # ("Enabled tool groups — comma-separated, check spelling") is a strict
-    # extension of the initial one, so this one key covers both asks.
-    answers = {
-        "Configure globally": "n",
-        "Configure project-scoped": "y",
-        "Configure Claude Code?": "y",
-        "OpenProject base URL": "",
-        "Readable projects": "",
-        "Enable write access?": "n",
-        "Enabled tool groups": [
-            "projects,work-packages,personl",  # typo: should be "personal"
-            "projects,work-packages,personal",  # corrected on reprompt
-        ],
-        "Enable personal-data writes": "y",  # personal now present + advanced
-        **_ADVANCED_ONLY_DEFAULTS,
-    }
-    _run_main(monkeypatch, tmp_path, [claude], answers, argv=["--advanced"])
-
-    data = json.loads((tmp_path / ".mcp.json").read_text())
-    env = data["mcpServers"]["openproject"]["env"]
-    groups = env["OPENPROJECT_TOOLS"].split(",")
-    assert "personal" in groups
-    assert env["OPENPROJECT_PERSONAL_WRITE"] == "true"
-
-
-def test_main_typo_in_group_list_does_not_clobber_unrelated_personal_write(monkeypatch, tmp_path: Path) -> None:
-    # OPM-126 review round 5 regression: a typo in ONE group must not permanently
-    # disable an unrelated, already-correct write flag once corrected.
-    target = tmp_path / ".mcp.json"
-    target.write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "openproject": {
-                        "command": "old",
-                        "env": {
-                            "OPENPROJECT_BASE_URL": "https://old.example.com",
-                            "OPENPROJECT_API_TOKEN": "old-token",
-                            "OPENPROJECT_TOOLS": "projects,personal",
-                            "OPENPROJECT_PERSONAL_WRITE": "true",
-                        },
-                    }
-                }
-            }
-        )
-    )
-    claude = _json_client(tmp_path / ".claude.json", project_target=target)
-    answers = {
-        "Configure globally": "n",
-        "Configure project-scoped": "y",
-        "Configure Claude Code?": "y",
-        "OpenProject base URL": "",
-        "Readable projects": "",
-        "Enable write access?": "n",
-        "Enabled tool groups": [
-            "projects,personl",  # typo drops "personal"
-            "projects,personal",  # corrected — "personal" is back
-        ],
-        "Enable personal-data writes": "",  # keep existing (true) default
-        **_ADVANCED_ONLY_DEFAULTS,
-    }
-    _run_main(monkeypatch, tmp_path, [claude], answers, secret="", argv=["--advanced"])
-
-    data = json.loads(target.read_text())
-    env = data["mcpServers"]["openproject"]["env"]
-    assert "personal" in env["OPENPROJECT_TOOLS"].split(",")
-    assert env["OPENPROJECT_PERSONAL_WRITE"] == "true"
-
-
-def test_main_advanced_permanently_invalid_group_aborts_without_writing(monkeypatch, tmp_path: Path) -> None:
-    target = tmp_path / ".mcp.json"
-    claude = _json_client(tmp_path / ".claude.json", project_target=target)
-    # 3 input() calls total for tool groups: the initial ask plus 2 reprompts
-    # (the 3rd failure aborts immediately, with no 3rd reprompt) — all under one
-    # queued key, since every reprompt's label extends the initial one.
-    answers = {
-        "Configure globally": "n",
-        "Configure project-scoped": "y",
-        "Configure Claude Code?": "y",
-        "OpenProject base URL": "",
-        "Readable projects": "",
-        "Enable write access?": "n",
-        "Enabled tool groups": ["bogus1", "bogus2", "bogus3"],  # 3 attempts, all invalid
-    }
-    with pytest.raises(SystemExit) as exc:
-        _run_main(monkeypatch, tmp_path, [claude], answers, argv=["--advanced"])
-    assert exc.value.code == 1
-    assert not target.exists()
 
 
 def test_wizard_invariant_generated_config_always_parses_with_settings_from_env(monkeypatch, tmp_path: Path) -> None:
@@ -2649,7 +2556,9 @@ def test_wizard_invariant_generated_config_always_parses_with_settings_from_env(
         "Readable projects": "OPM",
         "Enable write access?": "y",
         "Writable projects": "TST",
-        "Enabled tool groups": "projects,work-packages,memberships,versions,boards,personal,extended",
+        **_TOOL_EXPOSURE_DEFAULTS,
+        "Enable personal tools (own preferences, notifications)?": "y",
+        "Enable extended/rarely-used metadata tools?": "y",
         "Enable personal-data writes": "y",
         **_WRITE_CONTROL_DEFAULTS,
         "Enable work-package writes": "y",
@@ -3052,18 +2961,25 @@ _FULL_DEFAULT_ENV: dict[str, str] = {
     "OPENPROJECT_API_TOKEN": "tok",
     "OPENPROJECT_READ_PROJECTS": "",
     "OPENPROJECT_WRITE_PROJECTS": "",
-    "OPENPROJECT_TOOLS": c._DEFAULT_TOOL_GROUPS_CSV,
+    "OPENPROJECT_ENABLE_PROJECT_READ": "true",
+    "OPENPROJECT_ENABLE_PROJECT_WRITE": "true",
+    "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "true",
+    "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
+    "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "true",
+    "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "true",
+    "OPENPROJECT_ENABLE_VERSION_READ": "true",
+    "OPENPROJECT_ENABLE_VERSION_WRITE": "true",
+    "OPENPROJECT_ENABLE_BOARD_READ": "true",
+    "OPENPROJECT_ENABLE_BOARD_WRITE": "true",
+    "OPENPROJECT_ENABLE_PERSONAL_READ": "false",
+    "OPENPROJECT_ENABLE_PERSONAL_WRITE": "false",
+    "OPENPROJECT_ENABLE_ADMIN_READ": "false",
+    "OPENPROJECT_ENABLE_ADMIN_WRITE": "false",
+    "OPENPROJECT_ENABLE_EXTENDED_READ": "false",
     "OPENPROJECT_HIDE_PROJECT_FIELDS": "",
     "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": "",
     "OPENPROJECT_HIDE_ACTIVITY_FIELDS": "",
     "OPENPROJECT_HIDE_CUSTOM_FIELDS": "",
-    "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
-    "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
-    "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
-    "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
-    "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
-    "OPENPROJECT_PERSONAL_WRITE": "false",
-    "OPENPROJECT_ENABLE_ADMIN_WRITE": "false",
     "OPENPROJECT_ATTACHMENT_ROOT": "",
     "OPENPROJECT_TIMEOUT": "12",
     "OPENPROJECT_VERIFY_SSL": "true",
@@ -3080,8 +2996,7 @@ _FULL_DEFAULT_ENV: dict[str, str] = {
 
 def _minimal_env_for(env: dict[str, str]) -> dict[str, str]:
     candidate = c.Settings.from_env(env)
-    tool_groups_final = c.parse_tool_groups_csv(env.get("OPENPROJECT_TOOLS", c._DEFAULT_TOOL_GROUPS_CSV))
-    return c._minimal_env(env, candidate, tool_groups_final)
+    return c._minimal_env(env, candidate)
 
 
 def test_minimal_env_all_defaults_keeps_only_base_url_and_token() -> None:
@@ -3097,17 +3012,18 @@ def test_minimal_env_all_defaults_keeps_only_base_url_and_token() -> None:
     [
         ("OPENPROJECT_READ_PROJECTS", "OPM"),
         ("OPENPROJECT_WRITE_PROJECTS", "OPM"),
-        ("OPENPROJECT_TOOLS", "projects"),
+        ("OPENPROJECT_ENABLE_PERSONAL_READ", "true"),
+        ("OPENPROJECT_ENABLE_EXTENDED_READ", "true"),
+        ("OPENPROJECT_ENABLE_ADMIN_READ", "true"),
         ("OPENPROJECT_HIDE_PROJECT_FIELDS", "description"),
         ("OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS", "description"),
         ("OPENPROJECT_HIDE_ACTIVITY_FIELDS", "comment"),
         ("OPENPROJECT_HIDE_CUSTOM_FIELDS", "budget"),
-        ("OPENPROJECT_ENABLE_PROJECT_WRITE", "true"),
-        ("OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", "true"),
-        ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "true"),
-        ("OPENPROJECT_ENABLE_VERSION_WRITE", "true"),
-        ("OPENPROJECT_ENABLE_BOARD_WRITE", "true"),
-        ("OPENPROJECT_ENABLE_ADMIN_WRITE", "true"),
+        ("OPENPROJECT_ENABLE_PROJECT_WRITE", "false"),
+        ("OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", "false"),
+        ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "false"),
+        ("OPENPROJECT_ENABLE_VERSION_WRITE", "false"),
+        ("OPENPROJECT_ENABLE_BOARD_WRITE", "false"),
         ("OPENPROJECT_ATTACHMENT_ROOT", ATTACHMENT_ROOT),
         ("OPENPROJECT_TIMEOUT", "20"),
         ("OPENPROJECT_VERIFY_SSL", "false"),
@@ -3129,21 +3045,62 @@ def test_minimal_env_keeps_a_single_deviated_key(env_key: str, deviated_value: s
     assert set(minimal) == {"OPENPROJECT_BASE_URL", "OPENPROJECT_API_TOKEN", env_key}
 
 
-def test_minimal_env_keeps_personal_write_alongside_its_required_group() -> None:
-    # PERSONAL_WRITE=true is only valid with "personal" in OPENPROJECT_TOOLS (an
-    # AND-gate, unlike every other write flag) — not a clean single-field
-    # deviation, so it gets its own test rather than the parametrized one above.
+@pytest.mark.parametrize(
+    ("read_key", "write_key"),
+    [
+        ("OPENPROJECT_ENABLE_PROJECT_READ", "OPENPROJECT_ENABLE_PROJECT_WRITE"),
+        ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ", "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"),
+        ("OPENPROJECT_ENABLE_MEMBERSHIP_READ", "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE"),
+        ("OPENPROJECT_ENABLE_VERSION_READ", "OPENPROJECT_ENABLE_VERSION_WRITE"),
+        ("OPENPROJECT_ENABLE_BOARD_READ", "OPENPROJECT_ENABLE_BOARD_WRITE"),
+    ],
+)
+def test_minimal_env_keeps_read_flag_off_alongside_its_forced_write_flag(read_key: str, write_key: str) -> None:
+    # Disabling a core read flag (default true) forces its paired write flag
+    # (also default true) off too — Settings.from_env rejects write=true with
+    # read=false. Two keys deviate together, not a clean single-field case.
     env = dict(_FULL_DEFAULT_ENV)
-    env["OPENPROJECT_TOOLS"] = c._DEFAULT_TOOL_GROUPS_CSV + ",personal"
-    env["OPENPROJECT_PERSONAL_WRITE"] = "true"
+    env[read_key] = "false"
+    env[write_key] = "false"
     minimal = _minimal_env_for(env)
-    assert minimal["OPENPROJECT_TOOLS"] == env["OPENPROJECT_TOOLS"]
-    assert minimal["OPENPROJECT_PERSONAL_WRITE"] == "true"
+    assert minimal[read_key] == "false"
+    assert minimal[write_key] == "false"
+    assert set(minimal) == {"OPENPROJECT_BASE_URL", "OPENPROJECT_API_TOKEN", read_key, write_key}
+
+
+def test_minimal_env_keeps_personal_write_alongside_its_required_read_flag() -> None:
+    # PERSONAL_WRITE=true is only valid with PERSONAL_READ=true (an AND-gate,
+    # since both default false, unlike the core-5 scopes) — not a clean
+    # single-field deviation, so it gets its own test rather than the
+    # parametrized one above.
+    env = dict(_FULL_DEFAULT_ENV)
+    env["OPENPROJECT_ENABLE_PERSONAL_READ"] = "true"
+    env["OPENPROJECT_ENABLE_PERSONAL_WRITE"] = "true"
+    minimal = _minimal_env_for(env)
+    assert minimal["OPENPROJECT_ENABLE_PERSONAL_READ"] == "true"
+    assert minimal["OPENPROJECT_ENABLE_PERSONAL_WRITE"] == "true"
     assert set(minimal) == {
         "OPENPROJECT_BASE_URL",
         "OPENPROJECT_API_TOKEN",
-        "OPENPROJECT_TOOLS",
-        "OPENPROJECT_PERSONAL_WRITE",
+        "OPENPROJECT_ENABLE_PERSONAL_READ",
+        "OPENPROJECT_ENABLE_PERSONAL_WRITE",
+    }
+
+
+def test_minimal_env_keeps_admin_write_alongside_its_required_read_flag() -> None:
+    # ADMIN_WRITE=true is only valid with ADMIN_READ=true — same AND-gate
+    # shape as personal, so it gets its own test too.
+    env = dict(_FULL_DEFAULT_ENV)
+    env["OPENPROJECT_ENABLE_ADMIN_READ"] = "true"
+    env["OPENPROJECT_ENABLE_ADMIN_WRITE"] = "true"
+    minimal = _minimal_env_for(env)
+    assert minimal["OPENPROJECT_ENABLE_ADMIN_READ"] == "true"
+    assert minimal["OPENPROJECT_ENABLE_ADMIN_WRITE"] == "true"
+    assert set(minimal) == {
+        "OPENPROJECT_BASE_URL",
+        "OPENPROJECT_API_TOKEN",
+        "OPENPROJECT_ENABLE_ADMIN_READ",
+        "OPENPROJECT_ENABLE_ADMIN_WRITE",
     }
 
 
@@ -3165,11 +3122,13 @@ def test_minimal_env_keeps_original_string_not_a_reformatted_settings_value() ->
     "env",
     [
         _FULL_DEFAULT_ENV,
-        {**_FULL_DEFAULT_ENV, "OPENPROJECT_READ_PROJECTS": "OPM, TST", "OPENPROJECT_ENABLE_PROJECT_WRITE": "true"},
+        {**_FULL_DEFAULT_ENV, "OPENPROJECT_READ_PROJECTS": "OPM, TST", "OPENPROJECT_ENABLE_BOARD_WRITE": "false"},
         {
             **_FULL_DEFAULT_ENV,
-            "OPENPROJECT_TOOLS": "projects,work-packages,memberships,versions,boards,personal,extended",
-            "OPENPROJECT_PERSONAL_WRITE": "true",
+            "OPENPROJECT_ENABLE_PERSONAL_READ": "true",
+            "OPENPROJECT_ENABLE_EXTENDED_READ": "true",
+            "OPENPROJECT_ENABLE_ADMIN_READ": "true",
+            "OPENPROJECT_ENABLE_PERSONAL_WRITE": "true",
             "OPENPROJECT_TIMEOUT": "30",
             "OPENPROJECT_LOG_LEVEL": "ERROR",
         },
@@ -3185,3 +3144,124 @@ def test_minimal_env_round_trips_to_the_same_effective_settings(env: dict[str, s
         if f.name in ("base_url", "api_token"):
             continue
         assert getattr(original_settings, f.name) == getattr(minimal_settings, f.name), f.name
+
+
+# ── scope-pair key ordering (read/write config reorder) ────────────────────────
+
+# The full canonical order: project allowlists together, then each scope's
+# read immediately followed by its write, then the one read-only scope
+# (extended) with no write pendant, trailing. Every generator (the wizard's
+# `env` dict, `_MINIMAL_ENV_FIELD_MAP`, `.mcp.json.example`) must produce this
+# exact order for whichever of these keys it actually emits.
+_CANONICAL_SCOPE_KEY_ORDER: tuple[str, ...] = (
+    "OPENPROJECT_READ_PROJECTS",
+    "OPENPROJECT_WRITE_PROJECTS",
+    "OPENPROJECT_ENABLE_PROJECT_READ",
+    "OPENPROJECT_ENABLE_PROJECT_WRITE",
+    "OPENPROJECT_ENABLE_WORK_PACKAGE_READ",
+    "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE",
+    "OPENPROJECT_ENABLE_MEMBERSHIP_READ",
+    "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE",
+    "OPENPROJECT_ENABLE_VERSION_READ",
+    "OPENPROJECT_ENABLE_VERSION_WRITE",
+    "OPENPROJECT_ENABLE_BOARD_READ",
+    "OPENPROJECT_ENABLE_BOARD_WRITE",
+    "OPENPROJECT_ENABLE_PERSONAL_READ",
+    "OPENPROJECT_ENABLE_PERSONAL_WRITE",
+    "OPENPROJECT_ENABLE_ADMIN_READ",
+    "OPENPROJECT_ENABLE_ADMIN_WRITE",
+    "OPENPROJECT_ENABLE_EXTENDED_READ",
+)
+
+# Deviates every single scope-pair key from its own default (the 5 core reads
+# and their writes forced off; personal/admin/extended forced on; both
+# project allowlists set) so every key in _CANONICAL_SCOPE_KEY_ORDER actually
+# survives minimal-diff writing — letting the assertion below be an exact
+# equality against the full canonical list, not just a subsequence check.
+_ALL_SCOPE_KEYS_DEVIATED_ANSWERS: dict[str, str] = {
+    "Configure globally": "n",
+    "Configure project-scoped": "y",
+    "OpenProject base URL": "",
+    "Readable projects": "*",
+    "Enable write access?": "y",
+    "Writable projects": "TST",
+    "Enable project tools?": "n",
+    "Enable project writes": "n",
+    "Enable work-package tools?": "n",
+    "Enable work-package writes": "n",
+    "Enable membership tools?": "n",
+    "Enable membership writes": "n",
+    "Enable version tools?": "n",
+    "Enable version writes": "n",
+    "Enable board tools?": "n",
+    "Enable board writes": "n",
+    "Enable personal tools (own preferences, notifications)?": "y",
+    "Enable personal-data writes": "y",
+    "Enable admin tools (list/view users and groups)?": "y",
+    "Enable extended/rarely-used metadata tools?": "y",
+    **_ADVANCED_ONLY_DEFAULTS,
+    "Enable admin writes": "y",
+}
+
+
+def _assert_scope_keys_in_canonical_order(env: Mapping[str, str]) -> None:
+    present = [key for key in _CANONICAL_SCOPE_KEY_ORDER if key in env]
+    # Every key was deliberately deviated from its default above, so all of
+    # them must have survived minimal-diff writing — this is an exact
+    # equality against the full list, not merely a subsequence check, so an
+    # unrelated key sitting between a pair (breaking true adjacency) would
+    # also be caught by comparing against list(env) filtered the same way.
+    assert present == list(_CANONICAL_SCOPE_KEY_ORDER)
+    actual_scope_keys = [key for key in env if key in _CANONICAL_SCOPE_KEY_ORDER]
+    assert actual_scope_keys == present
+
+
+def test_generated_json_config_orders_scope_pairs_canonically(monkeypatch, tmp_path: Path) -> None:
+    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
+    answers = {**_ALL_SCOPE_KEYS_DEVIATED_ANSWERS, "Configure Claude Code?": "y"}
+    _run_main(monkeypatch, tmp_path, [claude], answers, argv=["--advanced"])
+
+    data = json.loads((tmp_path / ".mcp.json").read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    _assert_scope_keys_in_canonical_order(env)
+
+
+@_needs_tomllib
+def test_generated_toml_config_orders_scope_pairs_canonically(monkeypatch, tmp_path: Path) -> None:
+    codex = _codex_client(tmp_path / "config.toml", project_target=tmp_path / ".codex" / "config.toml")
+    answers = {**_ALL_SCOPE_KEYS_DEVIATED_ANSWERS, "Configure Codex?": "y"}
+    _run_main(monkeypatch, tmp_path, [codex], answers, argv=["--advanced"])
+
+    data = tomllib.loads((tmp_path / ".codex" / "config.toml").read_text())
+    env = data["mcp_servers"]["openproject"]["env"]
+    _assert_scope_keys_in_canonical_order(env)
+
+
+def test_minimal_env_orders_keys_canonically() -> None:
+    # Deviate one key per scope pair (plus both allowlists and extended) so
+    # _minimal_env's output can be checked against the exact canonical order,
+    # not just set equality.
+    env = dict(_FULL_DEFAULT_ENV)
+    env["OPENPROJECT_READ_PROJECTS"] = "OPM"
+    env["OPENPROJECT_WRITE_PROJECTS"] = "OPM"
+    env["OPENPROJECT_ENABLE_PROJECT_READ"] = "false"
+    env["OPENPROJECT_ENABLE_PROJECT_WRITE"] = "false"
+    env["OPENPROJECT_ENABLE_WORK_PACKAGE_READ"] = "false"
+    env["OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"] = "false"
+    env["OPENPROJECT_ENABLE_MEMBERSHIP_READ"] = "false"
+    env["OPENPROJECT_ENABLE_MEMBERSHIP_WRITE"] = "false"
+    env["OPENPROJECT_ENABLE_VERSION_READ"] = "false"
+    env["OPENPROJECT_ENABLE_VERSION_WRITE"] = "false"
+    env["OPENPROJECT_ENABLE_BOARD_READ"] = "false"
+    env["OPENPROJECT_ENABLE_BOARD_WRITE"] = "false"
+    env["OPENPROJECT_ENABLE_PERSONAL_READ"] = "true"
+    env["OPENPROJECT_ENABLE_PERSONAL_WRITE"] = "true"
+    env["OPENPROJECT_ENABLE_ADMIN_READ"] = "true"
+    env["OPENPROJECT_ENABLE_ADMIN_WRITE"] = "true"
+    env["OPENPROJECT_ENABLE_EXTENDED_READ"] = "true"
+
+    minimal = _minimal_env_for(env)
+    present = [key for key in _CANONICAL_SCOPE_KEY_ORDER if key in minimal]
+    assert present == list(_CANONICAL_SCOPE_KEY_ORDER)
+    actual_scope_keys = [key for key in minimal if key in _CANONICAL_SCOPE_KEY_ORDER]
+    assert actual_scope_keys == present

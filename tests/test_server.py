@@ -27,6 +27,19 @@ def _tool_names(mcp) -> set[str]:
     return {t.name for t in mcp._tool_manager.list_tools()}
 
 
+# The 5 project-scoped write flags now default True on the Settings dataclass
+# itself (direct Settings(**kwargs) construction never validates that
+# combination) — tests isolating a single write category must explicitly turn
+# the other 4 off, or they'd all be visible regardless of the flag under test.
+ALL_WRITE_OFF = {
+    "enable_project_write": False,
+    "enable_work_package_write": False,
+    "enable_membership_write": False,
+    "enable_version_write": False,
+    "enable_board_write": False,
+}
+
+
 def test_defaults_contain_read_tools() -> None:
     mcp = create_app(make_settings())
     names = _tool_names(mcp)
@@ -179,7 +192,13 @@ def test_enable_project_read_false_removes_previously_ungated_tools() -> None:
 
 
 def test_enable_work_package_write_adds_wp_write_tools() -> None:
-    mcp = create_app(make_settings(enable_work_package_write=True))
+    mcp = create_app(
+        make_settings(
+            **{**ALL_WRITE_OFF, "enable_work_package_write": True},
+            read_projects=("*",),
+            write_projects=("*",),
+        )
+    )
     names = _tool_names(mcp)
     assert "create_work_package" in names
     assert "update_work_package" in names
@@ -196,13 +215,22 @@ def test_enable_work_package_write_adds_wp_write_tools() -> None:
 
 
 def test_attachment_root_plus_work_package_write_adds_upload_tool() -> None:
-    mcp = create_app(make_settings(enable_work_package_write=True, attachment_root="/tmp/uploads"))
+    mcp = create_app(
+        make_settings(
+            enable_work_package_write=True,
+            attachment_root="/tmp/uploads",
+            read_projects=("*",),
+            write_projects=("*",),
+        )
+    )
     names = _tool_names(mcp)
     assert "create_work_package_attachment" in names
 
 
 def test_enable_board_write_adds_board_write_tools() -> None:
-    mcp = create_app(make_settings(enable_board_write=True))
+    mcp = create_app(
+        make_settings(**{**ALL_WRITE_OFF, "enable_board_write": True}, read_projects=("*",), write_projects=("*",))
+    )
     names = _tool_names(mcp)
     assert "create_board" in names
     assert "update_board" in names
@@ -211,7 +239,9 @@ def test_enable_board_write_adds_board_write_tools() -> None:
 
 
 def test_enable_project_write_adds_project_write_tools() -> None:
-    mcp = create_app(make_settings(enable_project_write=True))
+    mcp = create_app(
+        make_settings(**{**ALL_WRITE_OFF, "enable_project_write": True}, read_projects=("*",), write_projects=("*",))
+    )
     names = _tool_names(mcp)
     assert "create_project" in names
     assert "create_news" in names
@@ -224,8 +254,22 @@ def test_enable_project_write_adds_project_write_tools() -> None:
 def test_work_package_write_without_work_package_read_hides_compound_scope_tools() -> None:
     """Asymmetric case: delete_file_link additionally requires work_package READ
     (not just its home WRITE scope) — it must disappear when read is off, even
-    though other work_package writes (which have no such extra dependency) stay."""
-    mcp = create_app(make_settings(enable_work_package_read=False, enable_work_package_write=True))
+    though other work_package writes (which have no such extra dependency) stay.
+
+    This is a low-level registration test of enabled_tool_names()'s additional-
+    scope dependency tracking, deliberately using direct Settings(...)
+    construction to reach a read=False/write=True combo that Settings.from_env
+    would reject at startup (see test_config.py's tool_exposure_violations
+    coverage) — enabled_tool_names() itself must still behave predictably for
+    that input, since nothing else re-validates it downstream."""
+    mcp = create_app(
+        make_settings(
+            enable_work_package_read=False,
+            enable_work_package_write=True,
+            read_projects=("*",),
+            write_projects=("*",),
+        )
+    )
     names = _tool_names(mcp)
     assert "create_work_package" in names
     assert "delete_file_link" not in names
@@ -235,8 +279,16 @@ def test_work_package_write_without_work_package_read_hides_compound_scope_tools
 def test_membership_write_without_membership_read_hides_compound_scope_tools() -> None:
     """Asymmetric case: create_membership/update_membership additionally require
     membership READ (role lookup) and must disappear when read is off, while
-    delete_membership (no additional scope) stays visible."""
-    mcp = create_app(make_settings(enable_membership_read=False, enable_membership_write=True))
+    delete_membership (no additional scope) stays visible.
+
+    Same deliberate-direct-Settings-construction rationale as
+    test_work_package_write_without_work_package_read_hides_compound_scope_tools
+    above — this is a registration-logic test, not a config-validation test."""
+    mcp = create_app(
+        make_settings(
+            enable_membership_read=False, enable_membership_write=True, read_projects=("*",), write_projects=("*",)
+        )
+    )
     names = _tool_names(mcp)
     assert "create_membership" not in names
     assert "update_membership" not in names
@@ -256,7 +308,7 @@ def test_metadata_tools_partially_hidden_without_additional_read_scopes() -> Non
 
 
 def test_enable_admin_write_adds_user_group_tools() -> None:
-    mcp = create_app(make_settings(enable_admin_write=True))
+    mcp = create_app(make_settings(enable_admin_write=True, enable_admin_read=True))
     names = _tool_names(mcp)
     assert "create_user" in names
     assert "update_user" in names
@@ -317,15 +369,18 @@ def test_enable_metadata_tools_adds_them() -> None:
 
 def test_all_scoped_writes_independent() -> None:
     """Each scoped write flag activates exactly its own tools."""
-    for flag, expected_tool in [
-        ("enable_project_write", "create_project"),
-        ("enable_work_package_write", "create_work_package"),
-        ("enable_membership_write", "create_membership"),
-        ("enable_version_write", "create_version"),
-        ("enable_board_write", "create_board"),
-        ("enable_admin_write", "create_user"),
+    for flag, expected_tool, extra in [
+        ("enable_project_write", "create_project", {}),
+        ("enable_work_package_write", "create_work_package", {}),
+        ("enable_membership_write", "create_membership", {}),
+        ("enable_version_write", "create_version", {}),
+        ("enable_board_write", "create_board", {}),
+        # admin_write requires its own admin_read (like every other write flag
+        # requires its matching read) — pass it explicitly so this doesn't
+        # codify a combination Settings.from_env would reject at startup.
+        ("enable_admin_write", "create_user", {"enable_admin_read": True}),
     ]:
-        mcp = create_app(make_settings(**{flag: True}))
+        mcp = create_app(make_settings(**{flag: True}, **extra, read_projects=("*",), write_projects=("*",)))
         names = _tool_names(mcp)
         assert expected_tool in names, f"{expected_tool} missing when {flag}=True"
 
@@ -376,6 +431,20 @@ def test_fetch_active_feature_flags_swallows_errors(monkeypatch) -> None:
 
     monkeypatch.setattr(server.OpenProjectClient, "get_instance_configuration", _boom)
     assert server._fetch_active_feature_flags(make_settings()) is None
+
+
+@pytest.mark.allow_feature_flag_fetch
+async def test_fetch_active_feature_flags_skips_cleanly_inside_a_running_loop(recwarn) -> None:
+    """A caller that builds create_app() from inside its own event loop (e.g.
+    tools/measure-context.py, which calls it from an async function under
+    asyncio.run(main())) must not trip asyncio.run()'s "cannot nest" error —
+    that would create the fetch coroutine and then abandon it unawaited,
+    leaving a RuntimeWarning behind. Detect the running loop up front and
+    skip the fetch instead. This test itself runs inside pytest-asyncio's
+    event loop, reproducing the same nested-loop scenario."""
+    result = server._fetch_active_feature_flags(make_settings())
+    assert result is None
+    assert not any("was never awaited" in str(w.message) for w in recwarn.list)
 
 
 def test_instructions_fall_back_to_static_without_flags() -> None:

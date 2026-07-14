@@ -73,6 +73,7 @@ async def test_add_comment_requires_write_gate_not_delete_gate() -> None:
     settings = Settings(
         read_projects=("*",),
         write_projects=("*",),
+        enable_work_package_write=False,
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -869,7 +870,7 @@ async def test_chain_specific_read_flags_restrict_membership_reads_with_global_r
         settings, transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}, request=r))
     )
 
-    with pytest.raises(PermissionDeniedError, match="memberships"):
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_MEMBERSHIP_READ"):
         await client.list_roles()
 
     await client.aclose()
@@ -2502,6 +2503,7 @@ async def test_delete_work_package_requires_write_enablement() -> None:
     settings = Settings(
         read_projects=("*",),
         write_projects=("*",),
+        enable_work_package_write=False,
         base_url="https://op.example.com",
         api_token="token",
         timeout=12,
@@ -5406,7 +5408,10 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), enable_admin_read=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     users = await client.list_users(search="alice")
     user = await client.get_user("5")
@@ -5420,6 +5425,90 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
     assert groups.count == 1
     assert groups.results[0].member_count == 2
     assert group.members == ["Alice", "Bob"]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_admin_scoped_reads_are_denied_before_any_http_call_without_admin_read() -> None:
+    """The 5 tools that moved to the "admin" scope must all raise
+    PermissionDeniedError from their own gate check, before issuing any
+    request — a handler that raises on any call proves no HTTP request was
+    even attempted."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_ADMIN_READ"):
+        await client.list_principals()
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_ADMIN_READ"):
+        await client.list_users()
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_ADMIN_READ"):
+        await client.get_user("5")
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_ADMIN_READ"):
+        await client.list_groups()
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_ADMIN_READ"):
+        await client.get_group(7)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_internal_principal_resolution_bypasses_admin_read_gate() -> None:
+    """create_membership resolves a name-based principal via
+    _resolve_principal_id -> _list_principals_unchecked, which deliberately
+    has no OPENPROJECT_ENABLE_ADMIN_READ gate (see the comment on
+    _list_principals_unchecked in client.py): the caller is already
+    authorized through create_membership's own membership-write scope check,
+    and only a single resolved id is used internally, never the full
+    PrincipalSummary list. This must keep working even with admin_read off —
+    the negative case (the public list_principals tool itself staying
+    gated) is covered by
+    test_admin_scoped_reads_are_denied_before_any_http_call_without_admin_read."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo-id" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo-id", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/principals" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {"id": 5, "name": "Alice", "login": "alice", "_type": "User"},
+                        ]
+                    },
+                    "total": 1,
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/roles" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [{"id": 2, "name": "Member", "_links": {"self": {"href": "/api/v3/roles/2"}}}]
+                    }
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/memberships/form" and request.method == "POST":
+            return httpx.Response(200, json={"_embedded": {"payload": {}}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _membership_settings()
+    assert settings.enable_admin_read is False  # the case this test exists to cover
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.create_membership(project="demo-id", principal="Alice", roles=["Member"], confirm=False)
+
+    assert result.ready is True
 
     await client.aclose()
 
@@ -5598,7 +5687,9 @@ async def test_create_user_rejects_validation_error() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(_base_settings(enable_admin_write=True), transport=httpx.MockTransport(handler))
+    client = OpenProjectClient(
+        _base_settings(enable_admin_write=True, enable_admin_read=True), transport=httpx.MockTransport(handler)
+    )
 
     result = await client.create_user(
         login="ada", email="ada@example.com", firstname="Ada", lastname="Lovelace", confirm=True
@@ -5663,7 +5754,9 @@ async def test_create_user_commits_using_form_payload_after_validation() -> None
             return httpx.Response(201, json={"id": 9, "login": "ada", "_links": {}}, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(_base_settings(enable_admin_write=True), transport=httpx.MockTransport(handler))
+    client = OpenProjectClient(
+        _base_settings(enable_admin_write=True, enable_admin_read=True), transport=httpx.MockTransport(handler)
+    )
 
     result = await client.create_user(
         login="Ada", email="ada@example.com", firstname="Ada", lastname="Lovelace", confirm=True
@@ -5745,7 +5838,9 @@ async def test_update_user_commits_using_form_payload_after_validation() -> None
             return httpx.Response(200, json={"id": 9, "email": "new@example.com", "_links": {}}, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(_base_settings(enable_admin_write=True), transport=httpx.MockTransport(handler))
+    client = OpenProjectClient(
+        _base_settings(enable_admin_write=True, enable_admin_read=True), transport=httpx.MockTransport(handler)
+    )
 
     result = await client.update_user(9, email="new@example.com", confirm=True)
 
@@ -5849,7 +5944,7 @@ async def test_update_my_preferences_denied_without_personal_write() -> None:
         raise AssertionError("no request must be issued without personal write enabled")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_PERSONAL_WRITE"):
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_PERSONAL_WRITE"):
         await client.update_my_preferences(lang="de", confirm=True)
     await client.aclose()
 
@@ -9308,7 +9403,10 @@ async def test_group_members_is_flat_array() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), enable_admin_read=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     group = await client.get_group(7)
 
     # Our normalization must correctly extract members from the bare array
@@ -10005,7 +10103,10 @@ async def test_list_users_no_search_uses_exact_server_pagination() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), enable_admin_read=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     page = await client.list_users(limit=2)
 
     assert [u.id for u in page.results] == [1, 2]
@@ -10038,7 +10139,10 @@ async def test_list_users_search_overfetches_and_filters_then_paginates() -> Non
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), enable_admin_read=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     page = await client.list_users(search="ali")
 
     # "ali" substring-matches ids 1 (name+login) and 4 (name "Alicente"); 2 and 3 don't match.
@@ -10077,7 +10181,10 @@ async def test_list_groups_no_search_uses_exact_server_pagination() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), enable_admin_read=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     page = await client.list_groups(limit=2)
 
     assert [g.id for g in page.results] == [1, 2]
@@ -10110,7 +10217,10 @@ async def test_list_groups_search_overfetches_and_filters_then_paginates() -> No
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), enable_admin_read=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     page = await client.list_groups(search="alpha")
 
     assert {g.id for g in page.results} == {1, 4}

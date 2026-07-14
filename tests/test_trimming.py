@@ -287,6 +287,9 @@ def _make_settings(**overrides) -> Settings:
         "max_results": 100,
         "log_level": "WARNING",
         "enable_work_package_write": True,
+        "enable_admin_read": True,
+        "read_projects": ("*",),
+        "write_projects": ("*",),
     }
     defaults.update(overrides)
     return Settings(**defaults)

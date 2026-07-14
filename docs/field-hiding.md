@@ -1,5 +1,9 @@
 # Field hiding
 
+<p align="center">
+  <img src="../img/field-hiding.jpg" alt="Project records passing through a privacy shield that reveals only permitted fields." width="960">
+</p>
+
 Two env-var forms let you omit specific fields from MCP responses and reject
 attempts to write them, without touching the OpenProject instance itself:
 
@@ -23,5 +27,11 @@ Supported entities for `OPENPROJECT_HIDE_<ENTITY>_FIELDS`: `project`,
 `relation`, `activity`, `reminder`, `version`, `sprint`, `board`,
 `current_user`, `instance_configuration`, `status`, `type`, `watcher`.
 
-See the [Configuration table](../README.md#configuration) for the two
-variables' required/default values.
+See [Configuration](configuration.md) for the two variables' required/default
+values.
+
+## See also
+
+- [Documentation hub](README.md) — full documentation index
+- [Tool reference](tools.md) — which response fields exist per entity before hiding
+- [Configuration](configuration.md) — the full environment variable reference

@@ -68,18 +68,39 @@ development baseline.
   first. This also fixes two data-leak bugs where an empty scope skipped
   filtering entirely instead of denying, and adds project-scope filtering to
   two list tools that previously had none.
-- **Breaking: tool-group exposure consolidated into one variable**
-  (`OPENPROJECT_TOOLS`, a comma-separated list; unset defaults to
-  `projects,work-packages,memberships,versions,boards`). This replaces five
-  per-scope read flags (`OPENPROJECT_ENABLE_PROJECT_READ`,
-  `_WORK_PACKAGE_READ`, `_MEMBERSHIP_READ`, `_VERSION_READ`, `_BOARD_READ`)
-  and `OPENPROJECT_ENABLE_METADATA_TOOLS` — left set in an old config, they
-  are now silently ignored (a startup/`doctor` warning names the exact
-  replacement). Personal-data tools (own preferences, notification
-  mutations) now need the opt-in `personal` group plus
-  `OPENPROJECT_PERSONAL_WRITE=true` for writes — two previously
-  always-visible read tools moved under this new opt-in group, so re-check
-  your configuration after upgrading if you rely on them.
+- **Breaking: tool exposure is individual booleans again, plus a new
+  `OPENPROJECT_ENABLE_ADMIN_READ` scope.** `OPENPROJECT_ENABLE_PROJECT_READ`,
+  `_WORK_PACKAGE_READ`, `_MEMBERSHIP_READ`, `_VERSION_READ`, `_BOARD_READ`
+  (default `true`) are current variables again; `OPENPROJECT_ENABLE_EXTENDED_READ`
+  (renamed from `OPENPROJECT_ENABLE_METADATA_TOOLS`) and the new
+  `OPENPROJECT_ENABLE_PERSONAL_READ`/`OPENPROJECT_ENABLE_ADMIN_READ` default
+  `false`. `OPENPROJECT_TOOLS` (the brief-lived comma-separated-list design)
+  and `OPENPROJECT_ENABLE_METADATA_TOOLS` are now silently ignored if left
+  set in an old config (a startup/`doctor` warning names the exact
+  replacement). `list_users`/`get_user`/`list_groups`/`get_group`/
+  `list_principals` moved from the always-on membership scope to the new,
+  opt-in `OPENPROJECT_ENABLE_ADMIN_READ` — this instance-wide user/group
+  listing (PII: names, logins, emails) is no longer visible by default.
+  Personal-data tools (own preferences, notification mutations) still need
+  `OPENPROJECT_ENABLE_PERSONAL_READ=true` plus
+  `OPENPROJECT_ENABLE_PERSONAL_WRITE=true` for writes (renamed from
+  `OPENPROJECT_PERSONAL_WRITE` for naming consistency with every other write
+  flag; the old name is now a warned, ignored legacy alias).
+- **Breaking: the 5 project-scoped write flags
+  (`OPENPROJECT_ENABLE_PROJECT_WRITE`, `_WORK_PACKAGE_WRITE`,
+  `_MEMBERSHIP_WRITE`, `_VERSION_WRITE`, `_BOARD_WRITE`) now default `true`
+  instead of `false`.** The real gate for them was always
+  `OPENPROJECT_WRITE_PROJECTS` — a category flag alone can't write anything
+  without a project also listed there, and that allowlist stays fail-closed
+  (empty/unset denies all project-scoped writes) — so this makes a granted
+  project scope immediately usable across all 5 categories without also
+  toggling 5 separate flags; set one to `false` to carve out an exception.
+  `OPENPROJECT_ENABLE_PERSONAL_WRITE` and `OPENPROJECT_ENABLE_ADMIN_WRITE` are
+  unaffected and still default `false`, since neither has a project-scope
+  safety net. Project-scoped write tools are now also only *registered* when
+  both `OPENPROJECT_READ_PROJECTS` and `OPENPROJECT_WRITE_PROJECTS` are
+  non-empty, so an unconfigured install's tool catalog stays small and
+  read-only despite the new write defaults.
 - **Breaking: the local-attachment root no longer falls back to the current
   working directory when unset.** An empty/unset `OPENPROJECT_ATTACHMENT_ROOT`
   now disables local uploads entirely instead of defaulting to an

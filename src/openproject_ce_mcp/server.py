@@ -84,10 +84,9 @@ status, subject, project) cannot be cleared.
 
 A set of rarely-needed metadata/reference tools (the `get_query_*` schema tools,
 `render_text`, `get_custom_option`, `list_help_texts` / `get_help_text`,
-`list_working_days` / `list_non_working_days`) is gated behind the `extended`
-group to keep them out of the default tool set. If one is not registered, it
-is intentionally disabled here, not missing — add `extended` to
-`OPENPROJECT_TOOLS` to expose them.
+`list_working_days` / `list_non_working_days`) is opt-in to keep them out of
+the default tool set. If one is not registered, it is intentionally disabled
+here, not missing — set `OPENPROJECT_ENABLE_EXTENDED_READ=true` to expose them.
 """
 
 
@@ -98,6 +97,18 @@ def _fetch_active_feature_flags(settings: Settings) -> list[str] | None:
     never block or crash server start — same fault-tolerant philosophy as
     ``OpenProjectClient.initialize`` (which swallows startup errors).
     """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        # create_app() is normally called synchronously (no loop running yet),
+        # which is what asyncio.run() below requires. A caller that builds the
+        # app from inside its own event loop (e.g. tools/measure-context.py)
+        # can't nest asyncio.run() here, and there's no safe sync fallback —
+        # skip this best-effort enrichment rather than raise or leave a
+        # never-awaited coroutine behind.
+        return None
 
     async def _run() -> list[str] | None:
         client = OpenProjectClient(settings)

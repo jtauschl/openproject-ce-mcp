@@ -381,14 +381,14 @@ def _readme_section(readme: str, heading: str) -> str:
 
 
 def test_readme_documents_get_sh_destination_and_dir_override() -> None:
-    section = _readme_section((REPO_ROOT / "README.md").read_text(), "Alternative: install from source")
+    section = _readme_section((REPO_ROOT / "docs" / "installation.md").read_text(), "Alternative: install from source")
     assert "~/openproject-ce-mcp" in section
     assert "DIR=" in section
     assert 'DEST="${DIR:-$HOME/openproject-ce-mcp}"' in GET_SH.read_text()
 
 
 def test_readme_documents_get_ps1_destination_and_dir_override() -> None:
-    section = _readme_section((REPO_ROOT / "README.md").read_text(), "Alternative: install from source")
+    section = _readme_section((REPO_ROOT / "docs" / "installation.md").read_text(), "Alternative: install from source")
     assert "%USERPROFILE%\\openproject-ce-mcp" in section
     assert "$env:DIR" in section
     assert 'Join-Path $env:USERPROFILE "openproject-ce-mcp"' in GET_PS1.read_text()
@@ -397,7 +397,7 @@ def test_readme_documents_get_ps1_destination_and_dir_override() -> None:
 def test_readme_uninstall_section_mentions_venv_and_op_sources() -> None:
     # README describes .op-sources descriptively ("the API-source clones"),
     # not by its literal env/dir name -- check what's actually there.
-    section = _readme_section((REPO_ROOT / "README.md").read_text(), "Uninstalling a source install")
+    section = _readme_section((REPO_ROOT / "docs" / "installation.md").read_text(), "Uninstalling a source install")
     assert ".venv" in section
     assert "API-source clones" in section
     assert "caches" in section

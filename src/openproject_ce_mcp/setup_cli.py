@@ -45,7 +45,7 @@ from openproject_ce_mcp.client import (
     PermissionDeniedError,
     TransportError,
 )
-from openproject_ce_mcp.config import ConfigError, Settings, parse_tool_groups_csv, tool_exposure_violations
+from openproject_ce_mcp.config import ConfigError, Settings, tool_exposure_violations
 
 # tomllib is stdlib only on Python 3.11+. This installer supports 3.10 (which
 # lacks it) and must stay dependency-free, so import it optionally. When present
@@ -833,7 +833,7 @@ def _classify_write_scope(
     """
     if not write_projects_existing.strip():
         return "none"
-    flags = tuple(_bool_from_env(existing, key, False) for key in _WRITE_SCOPE_FLAG_KEYS)
+    flags = tuple(_bool_from_env(existing, key, True) for key in _WRITE_SCOPE_FLAG_KEYS)
     if not any(flags):
         return "none"
     if all(flags):
@@ -1047,47 +1047,6 @@ def _merge_scope_prefill(pairs: list[tuple[Client, Path | None]]) -> tuple[str, 
     return read_value, write_value, read_used_legacy, write_used_legacy
 
 
-# Legacy per-scope read booleans / metadata flag (OPM-126) -> the OPENPROJECT_TOOLS
-# group name they were replaced by.
-_LEGACY_READ_ENV_TO_GROUP: dict[str, str] = {
-    "OPENPROJECT_ENABLE_PROJECT_READ": "projects",
-    "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "work-packages",
-    "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "memberships",
-    "OPENPROJECT_ENABLE_VERSION_READ": "versions",
-    "OPENPROJECT_ENABLE_BOARD_READ": "boards",
-    "OPENPROJECT_ENABLE_METADATA_TOOLS": "extended",
-}
-_DEFAULT_TOOL_GROUPS_CSV = "projects,work-packages,memberships,versions,boards"
-
-
-def _merge_tool_groups_prefill(pairs: list[tuple[Client, Path | None]]) -> tuple[str, bool]:
-    """Resolve an OPENPROJECT_TOOLS prefill across config sources, migrating the
-    legacy per-scope read booleans / metadata flag when no new key is present.
-
-    Same source-priority-first pattern as _merge_scope_prefill (OPM-125): each
-    source is resolved independently (new key wins over legacy within that
-    source), and only the last source that defines ANY relevant key
-    contributes its value — never the older, incorrect pattern of merging all
-    sources' raw keys into one dict before resolving new-vs-legacy, which
-    would lose per-source priority. Pairs must be LOWEST priority first
-    (globals), HIGHEST last (project/cwd).
-    """
-    value = _DEFAULT_TOOL_GROUPS_CSV
-    used_legacy = False
-    for client, target in pairs:
-        env = _read_client_env(client, target=target)
-        if "OPENPROJECT_TOOLS" in env:
-            value, used_legacy = env["OPENPROJECT_TOOLS"], False
-        elif any(key in env for key in _LEGACY_READ_ENV_TO_GROUP):
-            groups = [
-                group
-                for env_key, group in _LEGACY_READ_ENV_TO_GROUP.items()
-                if _bool_from_env(env, env_key, group != "extended")
-            ]
-            value, used_legacy = ",".join(groups), True
-    return value, used_legacy
-
-
 # ── live connection test + preview/confirm (OPM-121, folded into OPM-128) ──────
 
 
@@ -1162,16 +1121,16 @@ def _collect_credentials(
     *,
     interactive: bool,
     mode: Literal["quick", "advanced"],
-) -> tuple[dict[str, str], frozenset[str], ConnectionCheck]:
-    """Prompt for base URL/token/scope/settings; return env + tool groups + connection status.
+) -> tuple[dict[str, str], ConnectionCheck]:
+    """Prompt for base URL/token/scope/settings; return env + connection status.
 
     ``mode`` selects which questionnaire runs: "quick" asks only client
     target(s)/base URL/token/readable projects/a single *project-scoped*
     write-scope choice (none/work-packages/all) and fills everything else
-    from safe defaults; "advanced" asks the full questionnaire (tool groups,
-    field-hiding, individual write flags, page sizes, SSL, logging). The
+    from safe defaults; "advanced" asks the full questionnaire (individual
+    read/write controls, field-hiding, page sizes, SSL, logging). The
     quick-mode write-scope choice only governs the five project-scoped write
-    flags — personal-data writes (``OPENPROJECT_PERSONAL_WRITE``) and admin
+    flags — personal-data writes (``OPENPROJECT_ENABLE_PERSONAL_WRITE``) and admin
     writes (``OPENPROJECT_ENABLE_ADMIN_WRITE``) are independent axes that keep
     whatever value they already had (or the default, on a fresh setup); only
     ``--advanced`` re-prompts them. The caller resolves the mode from the
@@ -1285,11 +1244,11 @@ def _collect_credentials(
             elif write_scope_choice == "keep":
                 write_access = True
                 write_projects = existing_write_projects
-                wp_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", False)
-                project_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_WRITE", False)
-                membership_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", False)
-                version_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_WRITE", False)
-                board_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_WRITE", False)
+                wp_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", True)
+                project_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_WRITE", True)
+                membership_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", True)
+                version_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_WRITE", True)
+                board_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_WRITE", True)
             else:
                 write_access = True
                 write_projects_default = existing_write_projects or read_projects
@@ -1310,18 +1269,20 @@ def _collect_credentials(
 
         print()
 
-        tool_groups_csv, tool_groups_used_legacy = _merge_tool_groups_prefill(prefill_pairs)
-        personal_write = _bool_from_env(existing, "OPENPROJECT_PERSONAL_WRITE", False)
-        if tool_groups_used_legacy:
-            print(
-                "Found legacy OPENPROJECT_ENABLE_*_READ/_METADATA_TOOLS settings — using them "
-                "to derive a default for the renamed OPENPROJECT_TOOLS."
-            )
+        enable_project_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_READ", True)
+        enable_work_package_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_READ", True)
+        enable_membership_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_READ", True)
+        enable_version_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_READ", True)
+        enable_board_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_READ", True)
+        enable_personal_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_PERSONAL_READ", False)
+        personal_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_PERSONAL_WRITE", False)
+        enable_admin_read = _bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_READ", False)
+        admin_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_WRITE")
+        enable_metadata_tools = _bool_from_env(existing, "OPENPROJECT_ENABLE_EXTENDED_READ", False)
         hide_project = existing.get("OPENPROJECT_HIDE_PROJECT_FIELDS", "")
         hide_wp = existing.get("OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS", "")
         hide_activity = existing.get("OPENPROJECT_HIDE_ACTIVITY_FIELDS", "")
         hide_custom = existing.get("OPENPROJECT_HIDE_CUSTOM_FIELDS", "")
-        admin_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_ADMIN_WRITE")
         timeout = existing.get("OPENPROJECT_TIMEOUT", "12")
         verify_ssl = existing.get("OPENPROJECT_VERIFY_SSL", "true")
         default_page_size = existing.get("OPENPROJECT_DEFAULT_PAGE_SIZE", "10")
@@ -1337,69 +1298,60 @@ def _collect_credentials(
         if advanced:
             print()
             print(
-                "Tool groups — comma-separated (projects, work-packages, memberships, versions, "
-                "boards, personal, extended). Defaults are usually right for first-time setup."
+                "Tool exposure and write controls — which groups are registered as tools, and which "
+                "can write. OpenProject permissions and the writable project scope still apply to "
+                "writes. Defaults are usually right."
             )
-            tool_groups_csv = _prompt("Enabled tool groups", tool_groups_csv)
-
-        # Unconditional (not just under advanced): validates a migrated or existing-config
-        # value too, not only a freshly-typed one. Bounded to 3 attempts so a non-interactive
-        # context (piped input, canned test answers) cannot loop forever.
-        for tg_attempt in range(3):
-            try:
-                tool_groups_final = parse_tool_groups_csv(tool_groups_csv)
-                break
-            except ConfigError as exc:
-                if tg_attempt == 2:
-                    print(
-                        "Could not parse a valid OPENPROJECT_TOOLS value. Nothing written.",
-                        file=sys.stderr,
-                    )
-                    sys.exit(1)
-                print(f"  ! Invalid tool groups ({exc}).")
-                tool_groups_csv = _prompt(
-                    "Enabled tool groups — comma-separated, check spelling",
-                    tool_groups_csv,  # current (possibly wrong) value, not the bare default
-                )
-
-        if "personal" not in tool_groups_final:
-            # No visible personal group → personal writes cannot be active either.
-            personal_write = False
-        elif advanced:
-            # Only actively re-prompt in the advanced flow.
-            personal_write = _prompt_bool(
-                "Enable personal-data writes (preferences, notification read-state)?",
-                personal_write,
-            )
-        # else: advanced was skipped — keep the existing personal_write value as-is,
-        # matching the wizard's established principle that skipped advanced values
-        # are preserved, not reset.
-
-        if advanced:
+            enable_project_read = _prompt_bool("Enable project tools?", enable_project_read)
             if write_access:
-                print()
-                print("Write controls — OpenProject permissions and the writable project scope still apply.")
-                wp_write = _prompt_bool(
-                    "Enable work-package writes (create/update/delete, comments, relations, attachments, time entries)?",
-                    wp_write,
-                )
                 project_write = _prompt_bool(
                     "Enable project writes (create/update/delete)?",
                     project_write,
                 )
+            enable_work_package_read = _prompt_bool("Enable work-package tools?", enable_work_package_read)
+            if write_access:
+                wp_write = _prompt_bool(
+                    "Enable work-package writes (create/update/delete, comments, relations, attachments, time entries)?",
+                    wp_write,
+                )
+            enable_membership_read = _prompt_bool("Enable membership tools?", enable_membership_read)
+            if write_access:
                 membership_write = _prompt_bool(
                     "Enable membership writes (create/update/delete)?",
                     membership_write,
                 )
+            enable_version_read = _prompt_bool("Enable version tools?", enable_version_read)
+            if write_access:
                 version_write = _prompt_bool(
                     "Enable version writes (create/update/delete)?",
                     version_write,
                 )
+            enable_board_read = _prompt_bool("Enable board tools?", enable_board_read)
+            if write_access:
                 board_write = _prompt_bool(
                     "Enable board writes (create/update/delete)?",
                     board_write,
                 )
+            enable_personal_read = _prompt_bool(
+                "Enable personal tools (own preferences, notifications)?", enable_personal_read
+            )
+            if enable_personal_read:
+                personal_write = _prompt_bool(
+                    "Enable personal-data writes (preferences, notification read-state)?",
+                    personal_write,
+                )
+            enable_admin_read = _prompt_bool("Enable admin tools (list/view users and groups)?", enable_admin_read)
+            admin_write = _prompt_bool("Enable admin writes (users/groups)?", admin_write)
+            enable_metadata_tools = _prompt_bool("Enable extended/rarely-used metadata tools?", enable_metadata_tools)
 
+        if not enable_personal_read:
+            # No visible personal surface → personal writes cannot be active either.
+            # Still needed standalone (not just inside the `if advanced` block above):
+            # in quick mode enable_personal_read keeps its pre-advanced value and the
+            # block above never runs, so this is the only place enforcing the rule then.
+            personal_write = False
+
+        if advanced:
             print()
             print("Optional field filtering — omit fields from reads. Leave empty unless you need it.")
             hide_project = _prompt("Hidden project fields (comma-separated)", hide_project)
@@ -1408,8 +1360,7 @@ def _collect_credentials(
             hide_custom = _prompt("Hidden custom fields (comma-separated)", hide_custom)
 
             print()
-            print("Advanced tool exposure and runtime settings.")
-            admin_write = _prompt_bool("Enable admin writes (users/groups)?", admin_write)
+            print("Advanced runtime settings.")
             attachment_root = _prompt(
                 "Attachment upload root, absolute path (empty = uploads disabled)", attachment_root
             )
@@ -1429,9 +1380,18 @@ def _collect_credentials(
             log_level = _prompt("Log level", log_level)
 
         # Write-flag reconciliation: from the ORIGINAL (unmutated) values, once, using
-        # the now-validated tool_groups_final — never mutate write_flags across retries
-        # above, or a group-list typo could permanently disable an unrelated, correctly
-        # chosen write flag (see OPM-126 review).
+        # the now-validated read booleans — never mutate write_flags across retries
+        # above, or a mistaken read toggle could permanently disable an unrelated,
+        # correctly chosen write flag.
+        read_flags = {
+            "project_read": enable_project_read,
+            "work_package_read": enable_work_package_read,
+            "membership_read": enable_membership_read,
+            "version_read": enable_version_read,
+            "board_read": enable_board_read,
+            "personal_read": enable_personal_read,
+            "admin_read": enable_admin_read,
+        }
         original_write_flags = {
             "project_write": project_write,
             "work_package_write": wp_write,
@@ -1439,38 +1399,44 @@ def _collect_credentials(
             "version_write": version_write,
             "board_write": board_write,
             "personal_write": personal_write,
+            "admin_write": admin_write,
         }
         write_flags = original_write_flags.copy()
-        for key, group, env_var in tool_exposure_violations(tool_groups_final, **write_flags):
-            print(
-                f"  ! '{group}' is not in the enabled tool groups — disabling {env_var} "
-                "(it would otherwise fail at startup)."
-            )
-            write_flags[key] = False
+        for write_key, _read_key, write_env_var, read_env_var in tool_exposure_violations(read_flags, write_flags):
+            print(f"  ! {read_env_var}=false — disabling {write_env_var} (it would otherwise fail at startup).")
+            write_flags[write_key] = False
         project_write = write_flags["project_write"]
         wp_write = write_flags["work_package_write"]
         membership_write = write_flags["membership_write"]
         version_write = write_flags["version_write"]
         board_write = write_flags["board_write"]
         personal_write = write_flags["personal_write"]
+        admin_write = write_flags["admin_write"]
 
         env: dict[str, str] = {
             "OPENPROJECT_BASE_URL": base_url,
             "OPENPROJECT_API_TOKEN": token,
             "OPENPROJECT_READ_PROJECTS": read_projects,
             "OPENPROJECT_WRITE_PROJECTS": write_projects,
-            "OPENPROJECT_TOOLS": tool_groups_csv,
+            "OPENPROJECT_ENABLE_PROJECT_READ": str(enable_project_read).lower(),
+            "OPENPROJECT_ENABLE_PROJECT_WRITE": str(project_write).lower(),
+            "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": str(enable_work_package_read).lower(),
+            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": str(wp_write).lower(),
+            "OPENPROJECT_ENABLE_MEMBERSHIP_READ": str(enable_membership_read).lower(),
+            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": str(membership_write).lower(),
+            "OPENPROJECT_ENABLE_VERSION_READ": str(enable_version_read).lower(),
+            "OPENPROJECT_ENABLE_VERSION_WRITE": str(version_write).lower(),
+            "OPENPROJECT_ENABLE_BOARD_READ": str(enable_board_read).lower(),
+            "OPENPROJECT_ENABLE_BOARD_WRITE": str(board_write).lower(),
+            "OPENPROJECT_ENABLE_PERSONAL_READ": str(enable_personal_read).lower(),
+            "OPENPROJECT_ENABLE_PERSONAL_WRITE": str(personal_write).lower(),
+            "OPENPROJECT_ENABLE_ADMIN_READ": str(enable_admin_read).lower(),
+            "OPENPROJECT_ENABLE_ADMIN_WRITE": str(admin_write).lower(),
+            "OPENPROJECT_ENABLE_EXTENDED_READ": str(enable_metadata_tools).lower(),
             "OPENPROJECT_HIDE_PROJECT_FIELDS": hide_project,
             "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": hide_wp,
             "OPENPROJECT_HIDE_ACTIVITY_FIELDS": hide_activity,
             "OPENPROJECT_HIDE_CUSTOM_FIELDS": hide_custom,
-            "OPENPROJECT_ENABLE_PROJECT_WRITE": str(project_write).lower(),
-            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": str(membership_write).lower(),
-            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": str(wp_write).lower(),
-            "OPENPROJECT_ENABLE_VERSION_WRITE": str(version_write).lower(),
-            "OPENPROJECT_ENABLE_BOARD_WRITE": str(board_write).lower(),
-            "OPENPROJECT_PERSONAL_WRITE": str(personal_write).lower(),
-            "OPENPROJECT_ENABLE_ADMIN_WRITE": str(admin_write).lower(),
             "OPENPROJECT_ATTACHMENT_ROOT": attachment_root,
             "OPENPROJECT_TIMEOUT": timeout,
             "OPENPROJECT_VERIFY_SSL": verify_ssl,
@@ -1485,12 +1451,12 @@ def _collect_credentials(
         }
 
         if not interactive:
-            return env, tool_groups_final, ConnectionCheck("skipped", "", None)
+            return env, ConnectionCheck("skipped", "", None)
 
         while True:
             check = _test_connection(env)
             if check.status == "ok":
-                return env, tool_groups_final, check
+                return env, check
             if check.status != "network_error":
                 print(f"  ! Connection check failed ({check.status}): {check.detail}")
                 print("  Please re-enter your credentials.")
@@ -1506,7 +1472,7 @@ def _collect_credentials(
                 .lower()
             )
             if choice.startswith("p"):
-                return env, tool_groups_final, check
+                return env, check
             if choice.startswith("e"):
                 break
             # anything else (including the "retry" default) loops back and retries
@@ -1527,12 +1493,11 @@ def _preview_changes(
     write_generic_mcp_json: bool,
     env: dict[str, str] | None,
     connection: ConnectionCheck | None,
-    tool_groups_final: frozenset[str] | None,
 ) -> bool:
     """Print every pending mutation and the effective settings; return the user's confirm.
 
-    ``env``/``connection``/``tool_groups_final`` are None for a pure-removal
-    flow with nothing to write — only the removal list is shown in that case.
+    ``env``/``connection`` are None for a pure-removal flow with nothing to
+    write — only the removal list is shown in that case.
     """
     print()
     print("Preview of changes:")
@@ -1564,14 +1529,27 @@ def _preview_changes(
         # the file's minimalism must never reduce what the user was told.
         print(f"  Read projects: {env['OPENPROJECT_READ_PROJECTS'] or 'none (fail-closed)'}")
         print(f"  Write projects: {env['OPENPROJECT_WRITE_PROJECTS'] or 'none (fail-closed)'}")
-        if tool_groups_final is not None:
-            print(f"  Tool groups: {', '.join(sorted(tool_groups_final)) or 'none'}")
-        print(f"  Work-package writes: {env['OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE']}")
+        read_groups = [
+            label
+            for label, key in (
+                ("projects", "OPENPROJECT_ENABLE_PROJECT_READ"),
+                ("work-packages", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
+                ("memberships", "OPENPROJECT_ENABLE_MEMBERSHIP_READ"),
+                ("versions", "OPENPROJECT_ENABLE_VERSION_READ"),
+                ("boards", "OPENPROJECT_ENABLE_BOARD_READ"),
+                ("personal", "OPENPROJECT_ENABLE_PERSONAL_READ"),
+                ("admin", "OPENPROJECT_ENABLE_ADMIN_READ"),
+                ("extended", "OPENPROJECT_ENABLE_EXTENDED_READ"),
+            )
+            if env[key] == "true"
+        ]
+        print(f"  Tool exposure: {', '.join(read_groups) or 'none'}")
         print(f"  Project writes: {env['OPENPROJECT_ENABLE_PROJECT_WRITE']}")
+        print(f"  Work-package writes: {env['OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE']}")
         print(f"  Membership writes: {env['OPENPROJECT_ENABLE_MEMBERSHIP_WRITE']}")
         print(f"  Version writes: {env['OPENPROJECT_ENABLE_VERSION_WRITE']}")
         print(f"  Board writes: {env['OPENPROJECT_ENABLE_BOARD_WRITE']}")
-        print(f"  Personal-data writes: {env['OPENPROJECT_PERSONAL_WRITE']}")
+        print(f"  Personal-data writes: {env['OPENPROJECT_ENABLE_PERSONAL_WRITE']}")
         print(f"  Admin writes: {env['OPENPROJECT_ENABLE_ADMIN_WRITE']}")
         if env["OPENPROJECT_VERIFY_SSL"] == "false":
             print("  ! TLS verification disabled (OPENPROJECT_VERIFY_SSL=false)")
@@ -1635,25 +1613,31 @@ def _apply_changes(
 _DEFAULT_SETTINGS = Settings.from_env(
     {"OPENPROJECT_BASE_URL": "https://placeholder.invalid", "OPENPROJECT_API_TOKEN": "placeholder"}
 )
-_DEFAULT_TOOL_GROUPS: frozenset[str] = parse_tool_groups_csv(_DEFAULT_TOOL_GROUPS_CSV)
 
 # (env key, Settings attribute) — every generated env key except BASE_URL/
-# API_TOKEN (always kept) and TOOLS (special-cased: compared against the
-# already-resolved tool_groups_final frozenset, not a Settings attribute).
+# API_TOKEN (always kept).
 _MINIMAL_ENV_FIELD_MAP: tuple[tuple[str, str], ...] = (
     ("OPENPROJECT_READ_PROJECTS", "read_projects"),
     ("OPENPROJECT_WRITE_PROJECTS", "write_projects"),
+    ("OPENPROJECT_ENABLE_PROJECT_READ", "enable_project_read"),
+    ("OPENPROJECT_ENABLE_PROJECT_WRITE", "enable_project_write"),
+    ("OPENPROJECT_ENABLE_WORK_PACKAGE_READ", "enable_work_package_read"),
+    ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "enable_work_package_write"),
+    ("OPENPROJECT_ENABLE_MEMBERSHIP_READ", "enable_membership_read"),
+    ("OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", "enable_membership_write"),
+    ("OPENPROJECT_ENABLE_VERSION_READ", "enable_version_read"),
+    ("OPENPROJECT_ENABLE_VERSION_WRITE", "enable_version_write"),
+    ("OPENPROJECT_ENABLE_BOARD_READ", "enable_board_read"),
+    ("OPENPROJECT_ENABLE_BOARD_WRITE", "enable_board_write"),
+    ("OPENPROJECT_ENABLE_PERSONAL_READ", "enable_personal_read"),
+    ("OPENPROJECT_ENABLE_PERSONAL_WRITE", "enable_personal_write"),
+    ("OPENPROJECT_ENABLE_ADMIN_READ", "enable_admin_read"),
+    ("OPENPROJECT_ENABLE_ADMIN_WRITE", "enable_admin_write"),
+    ("OPENPROJECT_ENABLE_EXTENDED_READ", "enable_metadata_tools"),
     ("OPENPROJECT_HIDE_PROJECT_FIELDS", "hide_project_fields"),
     ("OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS", "hide_work_package_fields"),
     ("OPENPROJECT_HIDE_ACTIVITY_FIELDS", "hide_activity_fields"),
     ("OPENPROJECT_HIDE_CUSTOM_FIELDS", "hide_custom_fields"),
-    ("OPENPROJECT_ENABLE_PROJECT_WRITE", "enable_project_write"),
-    ("OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", "enable_membership_write"),
-    ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "enable_work_package_write"),
-    ("OPENPROJECT_ENABLE_VERSION_WRITE", "enable_version_write"),
-    ("OPENPROJECT_ENABLE_BOARD_WRITE", "enable_board_write"),
-    ("OPENPROJECT_PERSONAL_WRITE", "enable_personal_write"),
-    ("OPENPROJECT_ENABLE_ADMIN_WRITE", "enable_admin_write"),
     ("OPENPROJECT_ATTACHMENT_ROOT", "attachment_root"),
     ("OPENPROJECT_TIMEOUT", "timeout"),
     ("OPENPROJECT_VERIFY_SSL", "verify_ssl"),
@@ -1668,26 +1652,24 @@ _MINIMAL_ENV_FIELD_MAP: tuple[tuple[str, str], ...] = (
 )
 
 
-def _minimal_env(env: dict[str, str], candidate: Settings, tool_groups_final: frozenset[str]) -> dict[str, str]:
+def _minimal_env(env: dict[str, str], candidate: Settings) -> dict[str, str]:
     """Trim ``env`` to BASE_URL/API_TOKEN plus only the fields that deviate from
     the safe default — a fresh/default setup writes a near-empty file, not a
-    fully-spelled-out 23-key table.
+    fully-spelled-out table.
 
     The written value for a kept key is always the original string already in
     ``env`` — never a re-serialized ``Settings`` value — so e.g. ``"12.0"``
     typed for a default-12.0 timeout is recognized as "= default" without ever
     writing back a reformatted ``"12"``. Re-running ``configure`` later
     prefills identically either way: every prefill reader (``_scope_prefill``,
-    ``_merge_scope_prefill``, ``_merge_tool_groups_prefill``, the plain
-    ``existing.get(KEY, "<default>")`` calls) already treats a *missing* key
-    the same as an explicit default value.
+    ``_merge_scope_prefill``, the plain ``existing.get(KEY, "<default>")``
+    calls) already treats a *missing* key the same as an explicit default
+    value.
     """
     minimal: dict[str, str] = {
         "OPENPROJECT_BASE_URL": env["OPENPROJECT_BASE_URL"],
         "OPENPROJECT_API_TOKEN": env["OPENPROJECT_API_TOKEN"],
     }
-    if tool_groups_final != _DEFAULT_TOOL_GROUPS:
-        minimal["OPENPROJECT_TOOLS"] = env["OPENPROJECT_TOOLS"]
     for env_key, attr in _MINIMAL_ENV_FIELD_MAP:
         if getattr(candidate, attr) != getattr(_DEFAULT_SETTINGS, attr):
             minimal[env_key] = env[env_key]
@@ -1746,7 +1728,7 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
     mode_group.add_argument(
         "--advanced",
         action="store_true",
-        help="Full questionnaire: tool groups, field-hiding, individual read/write flags "
+        help="Full questionnaire: individual read/write controls, field-hiding "
         "(including personal-data and admin writes), page sizes, SSL, logging, in addition "
         "to the quick-mode questions.",
     )
@@ -1804,7 +1786,7 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
             sys.exit(1)
         # Removal-only flow: nothing to write, so no credentials/connection test.
         if interactive:
-            proceed = _preview_changes(remove_global_clients, remove_project_clients, [], [], False, None, None, None)
+            proceed = _preview_changes(remove_global_clients, remove_project_clients, [], [], False, None, None)
             if not proceed:
                 print("\nCancelled — nothing was written.")
                 return
@@ -1822,9 +1804,7 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
     ]
     existing = _merge_prefill(prefill_pairs)
 
-    env, tool_groups_final, connection = _collect_credentials(
-        prefill_pairs, existing, interactive=interactive, mode=mode
-    )
+    env, connection = _collect_credentials(prefill_pairs, existing, interactive=interactive, mode=mode)
 
     # Final defensive check: the generated config must always parse cleanly with
     # the exact runtime validation, not just the wizard's own reconciliation above.
@@ -1836,7 +1816,7 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
 
     # The preview (below) always shows the full/effective settings from `env`;
     # only the file actually written is trimmed to deviations from the default.
-    minimal_env = _minimal_env(env, candidate_settings, tool_groups_final)
+    minimal_env = _minimal_env(env, candidate_settings)
 
     # Generic copy-source .mcp.json: only when project scope was chosen and not
     # already covered by Claude Code's project write.
@@ -1855,7 +1835,6 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
             write_generic_mcp_json,
             env,
             connection,
-            tool_groups_final,
         )
         if not proceed:
             print("\nCancelled — nothing was written.")

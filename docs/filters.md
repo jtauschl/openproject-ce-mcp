@@ -1,5 +1,9 @@
 # Work Package Filters
 
+<p align="center">
+  <img src="../img/work-package-filters.jpg" alt="Many work package records passing through layered filters into a precise result set." width="960">
+</p>
+
 Verified against OpenProject CE source code (versions 16.0–17.5).
 
 This document describes all work package filter parameters available in `list_work_packages` and `search_work_packages` tools, their official API filter keys, supported operators, and implementation details.
@@ -147,5 +151,6 @@ All filter keys and operators verified against OpenProject CE 17.5 source code:
 
 ## See Also
 
+- [Documentation hub](README.md) — full documentation index
 - [tools.md](tools.md) - MCP tool documentation
 - [OpenProject API v3 documentation](https://www.openproject.org/docs/api/introduction/)

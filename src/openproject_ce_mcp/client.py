@@ -15,7 +15,7 @@ from urllib.parse import quote, unquote, urljoin, urlparse
 import httpx
 
 from . import __version__
-from .config import HIDE_FIELD_ENV_BY_ENTITY, Settings
+from .config import HIDE_FIELD_ENV_BY_ENTITY, READ_SCOPE_ENV_VAR, Settings
 from .models import (
     ActionListResult,
     ActionSummary,
@@ -623,7 +623,24 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> PrincipalListResult:
-        self._ensure_read_enabled("principal")
+        self._ensure_read_enabled("admin")
+        return await self._list_principals_unchecked(search=search, offset=offset, limit=limit)
+
+    async def _list_principals_unchecked(
+        self,
+        *,
+        search: str | None = None,
+        offset: int = 1,
+        limit: int | None = None,
+    ) -> PrincipalListResult:
+        # No _ensure_read_enabled("admin") gate here by design: this is also used
+        # internally by _resolve_principal_id to turn a name into an id for
+        # operations the caller has already been authorized for through that
+        # operation's own scope check (e.g. membership/work-package write) — it
+        # never returns instance-wide PII to the agent, only a single resolved
+        # id. Only the public list_principals tool, which does surface the full
+        # PrincipalSummary list (name/login/email/status) to the agent, is
+        # gated behind OPENPROJECT_ENABLE_ADMIN_READ.
         effective_limit = self._resolve_limit(limit)
         filters: list[dict[str, Any]] = []
         if search:
@@ -655,7 +672,7 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> UserListResult:
-        self._ensure_read_enabled("membership")
+        self._ensure_read_enabled("admin")
         effective_limit = self._resolve_limit(limit)
 
         if search is not None:
@@ -718,7 +735,7 @@ class OpenProjectClient:
         )
 
     async def get_user(self, user_ref: str) -> UserDetail:
-        self._ensure_read_enabled("membership")
+        self._ensure_read_enabled("admin")
         payload = await self._get(f"users/{quote(user_ref, safe='')}")
         return self.normalize_user_detail(payload)
 
@@ -729,7 +746,7 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> GroupListResult:
-        self._ensure_read_enabled("membership")
+        self._ensure_read_enabled("admin")
         effective_limit = self._resolve_limit(limit)
 
         if search is not None:
@@ -783,7 +800,7 @@ class OpenProjectClient:
         )
 
     async def get_group(self, group_id: int) -> GroupDetail:
-        self._ensure_read_enabled("membership")
+        self._ensure_read_enabled("admin")
         payload = await self._get(f"groups/{group_id}")
         return self.normalize_group_detail(payload)
 
@@ -4675,8 +4692,8 @@ class OpenProjectClient:
     ) -> UserPreferencesWriteResult:
         # Self-scoped: only the authenticated token owner's own preferences
         # (language, timezone, popup behaviour). Gated by "personal" write
-        # (OPENPROJECT_PERSONAL_WRITE); the confirm/preview flow is a separate,
-        # additional guard on top, not a substitute for it.
+        # (OPENPROJECT_ENABLE_PERSONAL_WRITE); the confirm/preview flow is a
+        # separate, additional guard on top, not a substitute for it.
         self._ensure_write_enabled("personal")
         body: dict[str, Any] = {}
         if lang is not None:
@@ -7177,21 +7194,16 @@ class OpenProjectClient:
         )
 
     def _ensure_write_enabled(self, scope: str) -> None:
-        if scope == "admin":
-            if not self.settings.enable_admin_write:
-                raise PermissionDeniedError(
-                    "User/group management is disabled. Set OPENPROJECT_ENABLE_ADMIN_WRITE=true to allow it."
-                )
-            return
         if self.settings.write_enabled(scope):
             return
         scope_env = {
-            "work_package": "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE",
             "project": "OPENPROJECT_ENABLE_PROJECT_WRITE",
+            "work_package": "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE",
             "membership": "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE",
             "version": "OPENPROJECT_ENABLE_VERSION_WRITE",
             "board": "OPENPROJECT_ENABLE_BOARD_WRITE",
-            "personal": "OPENPROJECT_PERSONAL_WRITE",
+            "personal": "OPENPROJECT_ENABLE_PERSONAL_WRITE",
+            "admin": "OPENPROJECT_ENABLE_ADMIN_WRITE",
         }.get(scope, "the corresponding write-group setting")
         raise PermissionDeniedError(
             f"OpenProject {scope.replace('_', ' ')} write support is disabled. "
@@ -7201,19 +7213,9 @@ class OpenProjectClient:
     def _ensure_read_enabled(self, scope: str) -> None:
         if self.settings.read_enabled(scope):
             return
-        scope_group = {
-            "project": "projects",
-            "membership": "memberships",
-            "role": "memberships",
-            "principal": "memberships",
-            "work_package": "work-packages",
-            "version": "versions",
-            "board": "boards",
-            "personal": "personal",
-        }.get(scope, "the relevant tool group")
+        env_var = READ_SCOPE_ENV_VAR.get(scope, "the relevant OPENPROJECT_ENABLE_*_READ setting")
         raise PermissionDeniedError(
-            f"OpenProject {scope.replace('_', ' ')} read support is disabled. "
-            f"Add '{scope_group}' to OPENPROJECT_TOOLS to allow reads."
+            f"OpenProject {scope.replace('_', ' ')} read support is disabled. Set {env_var}=true to allow reads."
         )
 
     def _sprint_payload_allowed(self, payload: dict[str, Any]) -> bool:
@@ -7687,7 +7689,9 @@ class OpenProjectClient:
             return str(current_user.id)
         if principal_ref.isdigit():
             return principal_ref
-        principals = await self.list_principals(search=principal_ref, offset=1, limit=self.settings.max_results)
+        principals = await self._list_principals_unchecked(
+            search=principal_ref, offset=1, limit=self.settings.max_results
+        )
         matches = [
             str(item.id) for item in principals.results if (item.name or "").casefold() == principal_ref.casefold()
         ]

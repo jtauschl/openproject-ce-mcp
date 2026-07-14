@@ -4,45 +4,64 @@
   <img src="../img/claude.jpg" alt="Claude artwork for the Claude MCP guide." width="960">
 </p>
 
-## Setup: Project-scoped (Preferred)
+## Recommended setup
 
-**Best practice:** Use `.mcp.json` in your project root. This allows different projects to have different OpenProject access and permissions.
+Use `.mcp.json` in your project root (project-scoped). This allows different
+projects to have different OpenProject access and permissions. Prefer this
+over the user-wide alternative below unless you intentionally want one
+OpenProject server shared across every project — see
+[global vs. project-scoped](clients.md#global-vs-project-scoped).
 
-### Steps
+## Automatic setup
 
-1. **Create `.mcp.json` in your project root**
+Run `openproject-ce-mcp configure`, answer the project-scoped gate, and select
+Claude Code — it writes `.mcp.json` for you, with only the values you set
+(everything else falls back to a safe default and is omitted from the file).
+See [Installation](installation.md) for installing the package first.
 
-2. **Protect it if it contains secrets:**
-   ```bash
-   chmod 600 .mcp.json
-   ```
-   **This file holds your API token.** Add `.mcp.json` to your project's `.gitignore` so it is never committed.
+## Manual setup
 
-3. **Let the wizard write `.mcp.json` for you.** The easiest path is to run `openproject-ce-mcp configure`, answer the project-scoped gate, and select Claude Code — it writes `.mcp.json` for you, with only the values you set (everything else falls back to a safe default and is omitted from the file). The example below is for creating it manually. With a PyPI install (uv tool / pipx / pip) the `command` is simply `openproject-ce-mcp` (resolved from your PATH); for a zero-install setup use `"command": "uvx"` with `"args": ["openproject-ce-mcp"]`. A source install instead points at the `.venv` binary (`...\.venv\bin\openproject-ce-mcp`, or `...\.venv\Scripts\openproject-ce-mcp.exe` on Windows).
-   ```json
-   {
-     "mcpServers": {
-       "openproject": {
-         "command": "openproject-ce-mcp",
-         "env": {
-           "OPENPROJECT_BASE_URL": "https://op.example.com",
-           "OPENPROJECT_API_TOKEN": "replace-with-your-token",
-           "OPENPROJECT_READ_PROJECTS": "my-project,other-project",
-           "OPENPROJECT_WRITE_PROJECTS": "my-project"
-         }
-       }
-     }
-   }
-   ```
+Create `.mcp.json` in your project root:
 
-   The full set of `env` keys is the same as every other client — see
-   [`.mcp.json.example`](../.mcp.json.example) or the [Configuration table](../README.md#configuration).
+```json
+{
+  "mcpServers": {
+    "openproject": {
+      "command": "openproject-ce-mcp",
+      "env": {
+        "OPENPROJECT_BASE_URL": "https://op.example.com",
+        "OPENPROJECT_API_TOKEN": "replace-with-your-token",
+        "OPENPROJECT_READ_PROJECTS": "my-project,other-project",
+        "OPENPROJECT_WRITE_PROJECTS": "my-project"
+      }
+    }
+  }
+}
+```
 
-4. **Reload:** Restart Claude Code, or run "Developer: Reload Window" from the command palette (**Cmd+Shift+P** on macOS, **Ctrl+Shift+P** on Windows/Linux).
+With a PyPI install (uv tool / pipx / pip) the `command` is simply
+`openproject-ce-mcp` (resolved from your PATH); for a zero-install setup use
+`"command": "uvx"` with `"args": ["openproject-ce-mcp"]`. A source install
+instead points at the `.venv` binary (`...\.venv\bin\openproject-ce-mcp`, or
+`...\.venv\Scripts\openproject-ce-mcp.exe` on Windows).
 
-### Verify
+The full set of `env` keys is the same as every other client — see
+[`.mcp.json.example`](../.mcp.json.example) or [Configuration](configuration.md).
 
-After reloading, confirm the server is live:
+## Protect credentials
+
+**`.mcp.json` holds your API token.**
+
+```bash
+chmod 600 .mcp.json
+```
+
+Add `.mcp.json` to your project's `.gitignore` so it is never committed.
+
+## Reload and verify
+
+Restart Claude Code, or run "Developer: Reload Window" from the command
+palette (**Cmd+Shift+P** on macOS, **Ctrl+Shift+P** on Windows/Linux). Then:
 
 - The `openproject` server appears in Claude Code's MCP server list (`/mcp`).
 - Ask Claude to call `list_projects` (or `get_current_user`). A successful call returns your projects (or your account), which confirms the base URL and token work.
@@ -50,17 +69,18 @@ After reloading, confirm the server is live:
 
 ---
 
-## Setup: User-wide
+## User-wide setup (alternative)
 
-**Alternative:** If you want to share one OpenProject CE MCP instance across all projects, use the user-wide config in your home directory.
+If you want to share one OpenProject CE MCP instance across all projects
+instead of scoping it per project, use the user-wide config in your home
+directory:
 
 - File:
   - **Windows:** `%USERPROFILE%\.claude.json`
   - **macOS:** `~/.claude.json`
   - **Linux:** `~/.claude.json`
-- Security: `chmod 600 ~/.claude.json` on macOS/Linux; on Windows restrict it to your user via **Properties → Security**.
-
-**Note:** All projects share the same credentials and permissions. Project-scoped setup (above) is the preferred method.
+- **Protect credentials:** `chmod 600 ~/.claude.json` on macOS/Linux; on
+  Windows restrict it to your user via **Properties → Security**.
 
 **Example:**
 ```json
@@ -80,7 +100,10 @@ After reloading, confirm the server is live:
 ```
 
 The full set of `env` keys is the same as every other client — see
-[`.mcp.json.example`](../.mcp.json.example) or the [Configuration table](../README.md#configuration).
+[`.mcp.json.example`](../.mcp.json.example) or [Configuration](configuration.md).
+
+**Note:** All projects share the same credentials and permissions.
+Project-scoped setup (above) is the preferred method.
 
 ---
 
@@ -88,4 +111,10 @@ The full set of `env` keys is the same as every other client — see
 
 - After changing the config, reload MCP servers: run "Developer: Reload Window" from the command palette (**Cmd+Shift+P** on macOS, **Ctrl+Shift+P** on Windows/Linux)
 - `OPENPROJECT_READ_PROJECTS` accepts comma-separated identifiers, names, or glob patterns: `project-one,team-*`. Use `*` for all visible projects
-- `OPENPROJECT_WRITE_PROJECTS` only narrows scope; it doesn't enable writes by itself. Enable the corresponding write group, such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`, for the operations you need
+- `OPENPROJECT_WRITE_PROJECTS` is the real write gate — the 5 core write-category flags (like `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`) are on by default and do nothing until a project is listed here; set one to `false` to exclude that category instead
+
+## See also
+
+- [Documentation hub](README.md) — full documentation index
+- [Clients](clients.md) — global vs. project-scoped, and every client's file layout
+- [Configuration](configuration.md) — the full environment variable reference

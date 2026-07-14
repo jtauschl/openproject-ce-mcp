@@ -21,7 +21,8 @@ def test_settings_from_env_loads_and_normalizes_values() -> None:
             "OPENPROJECT_API_TOKEN": "token-value",
             "OPENPROJECT_READ_PROJECTS": "mcp-test, openproject-ce-mcp",
             "OPENPROJECT_WRITE_PROJECTS": "mcp-test",
-            "OPENPROJECT_TOOLS": "projects,work-packages,versions,boards",
+            "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "false",
+            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
             "OPENPROJECT_HIDE_PROJECT_FIELDS": "description,status_explanation",
             "OPENPROJECT_HIDE_PRINCIPAL_FIELDS": "*mail,login",
             "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": "description",
@@ -91,7 +92,8 @@ def test_settings_from_env_per_scope_read_flag_disables_independently_of_default
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
             "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_TOOLS": "projects,work-packages,versions,boards",
+            "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "false",
+            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
         }
     )
 
@@ -104,7 +106,10 @@ def test_settings_from_env_scoped_read_flags_disable_chains_independently() -> N
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
             "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_TOOLS": "memberships",
+            "OPENPROJECT_ENABLE_PROJECT_READ": "false",
+            "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
+            "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "false",
+            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
         }
     )
 
@@ -113,35 +118,50 @@ def test_settings_from_env_scoped_read_flags_disable_chains_independently() -> N
     assert settings.read_enabled("membership") is True  # not disabled
 
 
-def test_settings_from_env_scoped_write_flag_enables_one_scope_independently() -> None:
-    # writes default to disabled; a scoped flag opts one chain in without affecting others
+def test_settings_from_env_scoped_write_flag_disables_one_scope_independently() -> None:
+    # project-scoped writes default to enabled; a scoped flag opts one chain
+    # out without affecting others
     settings = Settings.from_env(
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
             "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
+            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
         }
     )
 
-    assert settings.write_enabled("work_package") is True
-    assert settings.write_enabled("project") is False
-    assert settings.write_enabled("membership") is False
-
-
-def test_settings_from_env_write_scopes_default_to_disabled() -> None:
-    settings = Settings.from_env(
-        {
-            "OPENPROJECT_BASE_URL": "https://op.example.com",
-            "OPENPROJECT_API_TOKEN": "token-value",
-        }
-    )
-
-    assert settings.write_enabled("project") is False
     assert settings.write_enabled("work_package") is False
-    assert settings.write_enabled("membership") is False
+    assert settings.write_enabled("project") is True
+    assert settings.write_enabled("membership") is True
 
 
-def test_tool_groups_unset_enables_core_five_only() -> None:
+def test_settings_from_env_project_scoped_write_defaults_to_enabled() -> None:
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+        }
+    )
+
+    assert settings.write_enabled("project") is True
+    assert settings.write_enabled("work_package") is True
+    assert settings.write_enabled("membership") is True
+    assert settings.write_enabled("version") is True
+    assert settings.write_enabled("board") is True
+
+
+def test_settings_from_env_personal_and_admin_write_default_to_disabled() -> None:
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+        }
+    )
+
+    assert settings.write_enabled("personal") is False
+    assert settings.write_enabled("admin") is False
+
+
+def test_read_defaults_core_five_true_personal_extended_admin_false() -> None:
     settings = Settings.from_env(
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
@@ -156,16 +176,24 @@ def test_tool_groups_unset_enables_core_five_only() -> None:
     assert settings.read_enabled("board") is True
     assert settings.read_enabled("personal") is False
     assert settings.enable_metadata_tools is False
+    assert settings.read_enabled("admin") is False
 
 
-def test_tool_groups_explicit_empty_string_disables_every_group() -> None:
-    # Explicit empty string is a real three-state distinction from "unset" —
-    # it means "no tool groups at all", not "use the compatible default".
+def test_read_flags_all_explicitly_false() -> None:
     settings = Settings.from_env(
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
             "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_TOOLS": "",
+            "OPENPROJECT_ENABLE_PROJECT_READ": "false",
+            "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
+            "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "false",
+            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
+            "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "false",
+            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
+            "OPENPROJECT_ENABLE_VERSION_READ": "false",
+            "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
+            "OPENPROJECT_ENABLE_BOARD_READ": "false",
+            "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
         }
     )
 
@@ -176,61 +204,45 @@ def test_tool_groups_explicit_empty_string_disables_every_group() -> None:
     assert settings.read_enabled("board") is False
     assert settings.read_enabled("personal") is False
     assert settings.enable_metadata_tools is False
-
-
-def test_tool_groups_unknown_name_rejected() -> None:
-    with pytest.raises(ConfigError, match="unknown tool group"):
-        Settings.from_env(
-            {
-                "OPENPROJECT_BASE_URL": "https://op.example.com",
-                "OPENPROJECT_API_TOKEN": "token-value",
-                "OPENPROJECT_TOOLS": "bogus",
-            }
-        )
-
-
-def test_tool_groups_partially_unknown_list_rejected_not_silently_filtered() -> None:
-    with pytest.raises(ConfigError, match="unknown tool group"):
-        Settings.from_env(
-            {
-                "OPENPROJECT_BASE_URL": "https://op.example.com",
-                "OPENPROJECT_API_TOKEN": "token-value",
-                "OPENPROJECT_TOOLS": "projects,bogus,boards",
-            }
-        )
+    assert settings.read_enabled("admin") is False
 
 
 @pytest.mark.parametrize(
-    ("write_var", "groups_without"),
+    ("write_var", "read_var"),
     [
-        ("OPENPROJECT_ENABLE_PROJECT_WRITE", "work-packages,memberships,versions,boards"),
-        ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "projects,memberships,versions,boards"),
-        ("OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", "projects,work-packages,versions,boards"),
-        ("OPENPROJECT_ENABLE_VERSION_WRITE", "projects,work-packages,memberships,boards"),
-        ("OPENPROJECT_ENABLE_BOARD_WRITE", "projects,work-packages,memberships,versions"),
-        ("OPENPROJECT_PERSONAL_WRITE", "projects,work-packages,memberships,versions,boards"),
+        ("OPENPROJECT_ENABLE_PROJECT_WRITE", "OPENPROJECT_ENABLE_PROJECT_READ"),
+        ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
+        ("OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", "OPENPROJECT_ENABLE_MEMBERSHIP_READ"),
+        ("OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
+        ("OPENPROJECT_ENABLE_BOARD_WRITE", "OPENPROJECT_ENABLE_BOARD_READ"),
+        ("OPENPROJECT_ENABLE_PERSONAL_WRITE", "OPENPROJECT_ENABLE_PERSONAL_READ"),
+        ("OPENPROJECT_ENABLE_ADMIN_WRITE", "OPENPROJECT_ENABLE_ADMIN_READ"),
     ],
 )
-def test_write_flag_without_visible_group_rejected(write_var: str, groups_without: str) -> None:
+def test_write_flag_without_matching_read_rejected(write_var: str, read_var: str) -> None:
+    # Covers the review-flagged scenario explicitly: a manually-set READ=false
+    # combined with the new implicit WRITE=true (project-scoped) default must
+    # still fail loudly via Settings.from_env, exactly like an explicit
+    # WRITE=true typed alongside READ=false.
     with pytest.raises(ConfigError, match="requires"):
         Settings.from_env(
             {
                 "OPENPROJECT_BASE_URL": "https://op.example.com",
                 "OPENPROJECT_API_TOKEN": "token-value",
-                "OPENPROJECT_TOOLS": groups_without,
+                read_var: "false",
                 write_var: "true",
             }
         )
 
 
-def test_write_flag_with_visible_group_accepted() -> None:
+def test_write_flag_with_read_enabled_accepted() -> None:
     settings = Settings.from_env(
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
             "OPENPROJECT_API_TOKEN": "token-value",
-            "OPENPROJECT_TOOLS": "projects,work-packages,memberships,versions,boards,personal",
+            "OPENPROJECT_ENABLE_PERSONAL_READ": "true",
             "OPENPROJECT_ENABLE_PROJECT_WRITE": "true",
-            "OPENPROJECT_PERSONAL_WRITE": "true",
+            "OPENPROJECT_ENABLE_PERSONAL_WRITE": "true",
         }
     )
 
@@ -262,22 +274,23 @@ def test_write_enabled_rejects_unknown_scope() -> None:
         settings.write_enabled("bogus")
 
 
-def test_write_enabled_does_not_special_case_admin() -> None:
-    # "admin" is intentionally out-of-band: client.py::_ensure_write_enabled
-    # and the tool registration gate check settings.enable_admin_write
-    # directly, never via write_enabled("admin"). A future edit that tries
-    # to route admin through the normal per-scope dict must fail loudly
-    # here rather than silently changing admin's semantics.
+def test_write_enabled_treats_admin_as_a_normal_scope() -> None:
+    # "admin" is a normal scope like any other (unlike the old special-cased
+    # design where client.py checked settings.enable_admin_write directly) —
+    # write_enabled("admin")/read_enabled("admin") work like every other
+    # scope, and the write flag requires its own read flag exactly the same
+    # way as the other 6 pairs.
     settings = Settings.from_env(
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",
             "OPENPROJECT_API_TOKEN": "token-value",
+            "OPENPROJECT_ENABLE_ADMIN_READ": "true",
             "OPENPROJECT_ENABLE_ADMIN_WRITE": "true",
         }
     )
 
-    with pytest.raises(ConfigError, match="Unknown write scope"):
-        settings.write_enabled("admin")
+    assert settings.read_enabled("admin") is True
+    assert settings.write_enabled("admin") is True
 
 
 def test_settings_from_env_rejects_max_page_size_exceeding_max_results() -> None:
@@ -329,7 +342,7 @@ def test_settings_from_env_rejects_invalid_bool_value() -> None:
             {
                 "OPENPROJECT_BASE_URL": "https://op.example.com",
                 "OPENPROJECT_API_TOKEN": "token-value",
-                "OPENPROJECT_PERSONAL_WRITE": "ja",
+                "OPENPROJECT_ENABLE_PERSONAL_WRITE": "ja",
             }
         )
 
@@ -475,7 +488,7 @@ def test_legacy_env_warnings_names_both_old_and_new_var() -> None:
 
 def test_legacy_env_warnings_one_line_per_detected_name_in_map_order() -> None:
     env = {
-        "OPENPROJECT_ENABLE_BOARD_READ": "true",
+        "OPENPROJECT_TOOLS": "projects",
         "OPENPROJECT_ALLOWED_PROJECTS_READ": "OPM",
         "OPENPROJECT_ENABLE_METADATA_TOOLS": "false",
     }
@@ -484,8 +497,87 @@ def test_legacy_env_warnings_one_line_per_detected_name_in_map_order() -> None:
     # Deterministic order = _LEGACY_ENV_VAR_MAP's own definition order, not the
     # dict-iteration order of the (arbitrarily ordered) input env.
     assert "OPENPROJECT_ALLOWED_PROJECTS_READ" in warnings[0]
-    assert "OPENPROJECT_ENABLE_BOARD_READ" in warnings[1]
-    assert "OPENPROJECT_ENABLE_METADATA_TOOLS" in warnings[2]
+    assert "OPENPROJECT_ENABLE_METADATA_TOOLS" in warnings[1]
+    assert "OPENPROJECT_TOOLS" in warnings[2]
+
+
+def test_legacy_env_warnings_openproject_tools_is_deprecated() -> None:
+    warnings = legacy_env_warnings({"OPENPROJECT_TOOLS": "projects,work-packages"})
+    assert len(warnings) == 1
+    assert "OPENPROJECT_TOOLS" in warnings[0]
+    assert "deprecated" in warnings[0]
+    assert "OPENPROJECT_ENABLE_" in warnings[0]  # points at the individual replacement variables
+
+
+def test_legacy_env_warnings_metadata_tools_points_at_extended_read() -> None:
+    warnings = legacy_env_warnings({"OPENPROJECT_ENABLE_METADATA_TOOLS": "true"})
+    assert len(warnings) == 1
+    assert "OPENPROJECT_ENABLE_METADATA_TOOLS" in warnings[0]
+    assert "OPENPROJECT_ENABLE_EXTENDED_READ" in warnings[0]
+
+
+def test_legacy_env_warnings_personal_write_points_at_enable_personal_write() -> None:
+    # OPENPROJECT_PERSONAL_WRITE was renamed to OPENPROJECT_ENABLE_PERSONAL_WRITE
+    # for naming consistency with every other write flag — never released, so a
+    # straight rename, but still tracked in the legacy map like every other
+    # rename in this codebase (warn once, never silently adopt the old value).
+    warnings = legacy_env_warnings({"OPENPROJECT_PERSONAL_WRITE": "true"})
+    assert len(warnings) == 1
+    assert "OPENPROJECT_PERSONAL_WRITE" in warnings[0]
+    assert "OPENPROJECT_ENABLE_PERSONAL_WRITE" in warnings[0]
+    assert "deprecated" in warnings[0]
+
+
+def test_personal_write_legacy_name_is_ignored_by_effective_settings() -> None:
+    # Presence has zero effect on the parsed Settings — only a warning. The old
+    # name must not be silently adopted as the new one's value.
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+            "OPENPROJECT_ENABLE_PERSONAL_READ": "true",
+            "OPENPROJECT_PERSONAL_WRITE": "true",  # legacy name — must be ignored
+        }
+    )
+    assert settings.write_enabled("personal") is False
+
+
+def test_openproject_tools_is_ignored_by_effective_settings() -> None:
+    # Presence has zero effect on the parsed Settings — only a warning.
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+            "OPENPROJECT_TOOLS": "",  # would have meant "disable every group" under the old CSV design
+        }
+    )
+    assert settings.read_enabled("project") is True
+    assert settings.read_enabled("work_package") is True
+
+
+def test_core_five_legacy_names_now_take_effect_with_no_warning() -> None:
+    # The 5 pre-OPM-126 individual booleans are current again, not legacy.
+    env = {
+        "OPENPROJECT_BASE_URL": "https://op.example.com",
+        "OPENPROJECT_API_TOKEN": "token-value",
+        "OPENPROJECT_ENABLE_PROJECT_READ": "false",
+        "OPENPROJECT_ENABLE_PROJECT_WRITE": "false",
+        "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": "false",
+        "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "false",
+        "OPENPROJECT_ENABLE_MEMBERSHIP_READ": "false",
+        "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "false",
+        "OPENPROJECT_ENABLE_VERSION_READ": "false",
+        "OPENPROJECT_ENABLE_VERSION_WRITE": "false",
+        "OPENPROJECT_ENABLE_BOARD_READ": "false",
+        "OPENPROJECT_ENABLE_BOARD_WRITE": "false",
+    }
+    assert legacy_env_warnings(env) == []
+    settings = Settings.from_env(env)
+    assert settings.read_enabled("project") is False
+    assert settings.read_enabled("work_package") is False
+    assert settings.read_enabled("membership") is False
+    assert settings.read_enabled("version") is False
+    assert settings.read_enabled("board") is False
 
 
 def test_legacy_env_warnings_still_warns_when_replacement_is_also_present() -> None:

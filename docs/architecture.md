@@ -1,5 +1,9 @@
 # Architecture
 
+<p align="center">
+  <img src="../img/architecture.jpg" alt="Five modular server layers connected by a guarded bidirectional request flow." width="960">
+</p>
+
 OpenProject CE MCP is intentionally small and flat. The codebase keeps transport, validation, policy checks, OpenProject API access, and MCP exposure in a few narrow layers instead of spreading them across many abstractions.
 
 ## Layout
@@ -21,7 +25,7 @@ src/openproject_ce_mcp/
 ### `config.py`
 
 - Parses environment variables into an immutable `Settings` object.
-- Applies safe defaults: project scope is fail-closed (empty/unset `OPENPROJECT_READ_PROJECTS`/`WRITE_PROJECTS` denies all project-scoped access), writes are off by default, explicit page limits apply, and every mutation always requires `confirm=true` — there is no way to skip that confirmation.
+- Applies safe defaults: project scope is fail-closed (empty/unset `OPENPROJECT_READ_PROJECTS`/`WRITE_PROJECTS` denies all project-scoped access, regardless of the write-category flags below), explicit page limits apply, and every mutation always requires `confirm=true` — there is no way to skip that confirmation.
 - Centralizes scope interpretation for:
   - read gating
   - scoped write enablement
@@ -121,7 +125,7 @@ The model has two independent layers:
 
 **Layer 1 — MCP server gates** (env var flags, checked before any HTTP call):
 
-- `OPENPROJECT_TOOLS` (which tool groups — and therefore which read scopes — are exposed at all; the `extended` group opt-in exposes a rarely-used subset of metadata tools)
+- the 8 individual `OPENPROJECT_ENABLE_<GROUP>_READ` flags (which read scopes are exposed at all; `OPENPROJECT_ENABLE_EXTENDED_READ` opt-in exposes a rarely-used subset of metadata tools, `OPENPROJECT_ENABLE_ADMIN_READ` opt-in exposes the instance-wide user/group list)
 - scoped write-group flags such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`, plus `OPENPROJECT_ENABLE_ADMIN_WRITE`
 - `OPENPROJECT_READ_PROJECTS` / `OPENPROJECT_WRITE_PROJECTS` (fail-closed: empty or unset denies all project-scoped access on that side)
 - `OPENPROJECT_HIDE_<ENTITY>_FIELDS` / `OPENPROJECT_HIDE_CUSTOM_FIELDS` (see [Field hiding](field-hiding.md))
@@ -139,8 +143,8 @@ Important properties of the current model:
 - an empty or unset `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS` disables all project-scoped reads/writes respectively — fail-closed, not fail-open
 - hidden fields are masked on reads and rejected on writes
 - destructive operations still use the same project-scope checks as non-destructive writes
-- instance-global admin operations (user/group management) require explicit `OPENPROJECT_ENABLE_ADMIN_WRITE=true` — never activated by project-scoped write flags
-- most metadata tools (statuses, types, priorities, notifications, …) are always available and not gated by any read flag; a rarely-used subset (query schema tools, `render_text`, `get_custom_option`, help texts, working days) is gated off by default behind the `extended` group in `OPENPROJECT_TOOLS` to save context
+- instance-global admin operations (list/view users and groups, plus user/group management) are gated behind `OPENPROJECT_ENABLE_ADMIN_READ`/`OPENPROJECT_ENABLE_ADMIN_WRITE` — an ordinary read/write pair like every other scope, but neither is bounded by project-scoped write flags, and both default off since the data (instance-wide PII) has no project-scope safety net
+- most metadata tools (statuses, types, priorities, notifications, …) are always available and not gated by any read flag; a rarely-used subset (query schema tools, `render_text`, `get_custom_option`, help texts, working days) is off by default behind `OPENPROJECT_ENABLE_EXTENDED_READ` to save context
 - `list_notifications` filters by `OPENPROJECT_READ_PROJECTS`, but under a restricted (non-empty, non-`*`) scope this only filters the current server-side page — an empty filtered page does not guarantee no further allowed notifications exist on later pages, since the notifications endpoint has no server-side project filter to paginate against
 
 ## Supported scope (Community Edition)
@@ -199,3 +203,10 @@ If the project grows further, likely extraction candidates are:
 - separate modules for work-package writes and schema handling
 - a dedicated policy module for scope checks and hidden-field enforcement
 - dedicated integration-test helpers around form endpoints and live smoke tests
+
+## See also
+
+- [Documentation hub](README.md) — full documentation index
+- [Development](development.md) — dev environment setup and running tests
+- [Tool reference](tools.md) — every MCP tool this server exposes
+- [Configuration](configuration.md) — the full environment variable reference

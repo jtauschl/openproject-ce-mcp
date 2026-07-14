@@ -49,6 +49,7 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/jtauschl/openproject-ce-mcp"
 Repository = "https://github.com/jtauschl/openproject-ce-mcp"
+Documentation = "https://github.com/jtauschl/openproject-ce-mcp/tree/main/docs"
 "Bug Tracker" = "https://github.com/jtauschl/openproject-ce-mcp/issues"
 
 [project.scripts]

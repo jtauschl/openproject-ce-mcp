@@ -161,15 +161,17 @@ def test_env_config_with_settings_override(make_doctor_settings):
 
 
 def test_env_config_scope_summary_shows_personal_write(capsys, monkeypatch):
-    """OPM-128: OPENPROJECT_PERSONAL_WRITE was previously invisible in doctor's
-    output — the scope summary must now surface it (and the other write flags)
-    so "why is a write tool missing" is diagnosable without reading source."""
+    """OPM-128: OPENPROJECT_ENABLE_PERSONAL_WRITE was previously invisible in
+    doctor's output — the scope summary must now surface it (and the other
+    write flags) so "why is a write tool missing" is diagnosable without
+    reading source."""
     from openproject_ce_mcp.doctor import _check_env_config
 
     monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
     monkeypatch.setenv("OPENPROJECT_API_TOKEN", "test-token")
-    monkeypatch.setenv("OPENPROJECT_TOOLS", "projects,personal")
-    monkeypatch.setenv("OPENPROJECT_PERSONAL_WRITE", "true")
+    monkeypatch.setenv("OPENPROJECT_ENABLE_PERSONAL_READ", "true")
+    monkeypatch.setenv("OPENPROJECT_ENABLE_PERSONAL_WRITE", "true")
+    monkeypatch.setenv("OPENPROJECT_ENABLE_ADMIN_READ", "true")
     monkeypatch.setenv("OPENPROJECT_ENABLE_ADMIN_WRITE", "true")
 
     _check_env_config(None, {})
@@ -215,7 +217,7 @@ def test_env_config_warns_on_http_url(capsys, make_doctor_settings, monkeypatch)
 
 
 def test_env_config_warns_on_legacy_tool_exposure_vars(capsys, monkeypatch):
-    """Should warn when a legacy per-scope read flag / metadata flag (OPM-126) is present.
+    """Should warn when the legacy comma-separated tool-exposure variable is present.
 
     OPM-128: the warning names the specific old variable AND its replacement
     (not a generic "legacy tool-exposure variables" grouped message).
@@ -224,15 +226,15 @@ def test_env_config_warns_on_legacy_tool_exposure_vars(capsys, monkeypatch):
 
     monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
     monkeypatch.setenv("OPENPROJECT_API_TOKEN", "test-token")
-    monkeypatch.setenv("OPENPROJECT_ENABLE_BOARD_READ", "false")
+    monkeypatch.setenv("OPENPROJECT_TOOLS", "projects")
 
     _check_env_config(None, {})
 
     captured = capsys.readouterr()
     output = captured.out + captured.err
     assert "[WARN]" in output
-    assert "OPENPROJECT_ENABLE_BOARD_READ" in output
     assert "OPENPROJECT_TOOLS" in output
+    assert "individual OPENPROJECT_ENABLE_" in output
     assert "deprecated" in output
 
 
@@ -254,37 +256,38 @@ def test_env_config_warns_on_legacy_project_scope_vars(capsys, monkeypatch):
     assert "OPENPROJECT_READ_PROJECTS" in output
 
 
-def test_env_config_no_legacy_warning_with_only_new_tools_var(capsys, monkeypatch):
-    """Should NOT warn about legacy tool-exposure vars when only OPENPROJECT_TOOLS is set."""
+def test_env_config_no_legacy_warning_with_only_current_read_vars(capsys, monkeypatch):
+    """Should NOT warn when only the current individual read booleans are set."""
     from openproject_ce_mcp.doctor import _check_env_config
 
     monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
     monkeypatch.setenv("OPENPROJECT_API_TOKEN", "test-token")
-    monkeypatch.setenv("OPENPROJECT_TOOLS", "projects,work-packages")
+    monkeypatch.setenv("OPENPROJECT_ENABLE_PROJECT_READ", "true")
+    monkeypatch.setenv("OPENPROJECT_ENABLE_WORK_PACKAGE_READ", "true")
 
     _check_env_config(None, {})
 
     captured = capsys.readouterr()
     output = captured.out + captured.err
-    assert "Legacy tool-exposure" not in output
+    assert "[WARN]" not in output
 
 
 def test_env_config_legacy_tool_exposure_vars_are_ignored_by_effective_settings(monkeypatch):
     """The warned-about legacy var must actually be ignored: the effective Settings
-    reflect the new OPENPROJECT_TOOLS default, not the legacy value — matching the
-    runtime's own resolution, not just a cosmetic warning that diverges from it."""
+    reflect the current per-scope read defaults, not the legacy CSV value — matching
+    the runtime's own resolution, not just a cosmetic warning that diverges from it."""
     from openproject_ce_mcp.doctor import _check_env_config
 
     monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
     monkeypatch.setenv("OPENPROJECT_API_TOKEN", "test-token")
-    monkeypatch.setenv("OPENPROJECT_ENABLE_BOARD_READ", "false")
+    monkeypatch.setenv("OPENPROJECT_TOOLS", "projects")
 
     env_ok, settings = _check_env_config(None, {})
 
     assert env_ok is True
     assert settings is not None
-    # Legacy var is ignored — board read falls back to the compatible core-5
-    # default (True), not the (now-inert) legacy value of False.
+    # Legacy var is ignored — board read falls back to its own current
+    # default (True), not the (now-inert) OPENPROJECT_TOOLS CSV value.
     assert settings.read_enabled("board") is True
 
 
@@ -425,10 +428,13 @@ def test_tool_registration_respects_write_flags(make_doctor_settings, capsys):
     """Tool count should vary based on write flags."""
     from openproject_ce_mcp.doctor import _check_tool_registration
 
-    # All write enabled
+    # All write enabled, and both project allowlists set so the project-scoped
+    # write tools are actually registered (write registration requires both
+    # OPENPROJECT_READ_PROJECTS and OPENPROJECT_WRITE_PROJECTS to be non-empty).
     settings_all = make_doctor_settings(
         enable_work_package_write=True,
         enable_project_write=True,
+        write_projects=("*",),
     )
     _check_tool_registration(settings_all)
     captured_all = capsys.readouterr()
@@ -437,6 +443,7 @@ def test_tool_registration_respects_write_flags(make_doctor_settings, capsys):
     settings_none = make_doctor_settings(
         enable_work_package_write=False,
         enable_project_write=False,
+        write_projects=("*",),
     )
     _check_tool_registration(settings_none)
     captured_none = capsys.readouterr()

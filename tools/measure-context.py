@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Measure the context/token cost this MCP actually produces, right now.
 
-Backs the numbers in README.md's "Context efficiency" section. Two parts:
+Backs the numbers in docs/context-efficiency.md (and the short summary table
+in README.md's "How it works" section). Two parts:
 
 1. **Tool catalog size** (`tools/list`) — pure code, no live instance needed.
    Builds the app with every write scope enabled (the worst case) and, for
@@ -49,11 +50,16 @@ from openproject_ce_mcp.server import create_app  # noqa: E402
 from openproject_ce_mcp.tools import _to_payload  # noqa: E402
 
 WRITE_ENV = {
+    "OPENPROJECT_READ_PROJECTS": "*",
+    "OPENPROJECT_WRITE_PROJECTS": "*",
     "OPENPROJECT_ENABLE_PROJECT_WRITE": "true",
     "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": "true",
     "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
     "OPENPROJECT_ENABLE_VERSION_WRITE": "true",
     "OPENPROJECT_ENABLE_BOARD_WRITE": "true",
+    "OPENPROJECT_ENABLE_PERSONAL_READ": "true",
+    "OPENPROJECT_ENABLE_PERSONAL_WRITE": "true",
+    "OPENPROJECT_ENABLE_ADMIN_READ": "true",
     "OPENPROJECT_ENABLE_ADMIN_WRITE": "true",
 }
 BASE_ENV = {
@@ -93,16 +99,16 @@ SAMPLE_WORK_PACKAGES = [
 async def measure_tools_list() -> None:
     print("=== Tool catalog (tools/list) ===\n")
     scenarios = [
-        ("write-enabled, metadata tools off (default)", {**BASE_ENV, **WRITE_ENV}),
+        ("every write scope enabled, extended tools off (worst case)", {**BASE_ENV, **WRITE_ENV}),
         (
-            "write-enabled, metadata tools on",
+            "every write scope enabled, extended tools on",
             {
                 **BASE_ENV,
                 **WRITE_ENV,
-                "OPENPROJECT_TOOLS": "projects,work-packages,memberships,versions,boards,extended",
+                "OPENPROJECT_ENABLE_EXTENDED_READ": "true",
             },
         ),
-        ("read-only (no write scopes)", BASE_ENV),
+        ("fresh install (compatible defaults, no project scope granted)", BASE_ENV),
     ]
     for label, env in scenarios:
         settings = Settings.from_env(env)

@@ -8,11 +8,21 @@ This guide covers the standalone **Claude Desktop app** (macOS/Windows). It is a
 different program from Claude Code, and it uses its **own** config file —
 Claude Desktop does not read the Claude Code config (`~/.claude.json`).
 
-Claude Desktop only has a single, user-wide config: the server is available in
-every conversation. There is no project-scoped option here (for per-project
-permissions, use Claude Code — see [claude.md](claude.md)).
+## Recommended setup
 
-## Setup
+Claude Desktop only has a single, user-wide config — every conversation
+shares it. There is no project-scoped option here; for per-project
+permissions, use Claude Code instead (see [claude.md](claude.md)).
+
+## Automatic setup
+
+Let `openproject-ce-mcp configure` detect the Claude Desktop app and write
+this file for you (it registers Claude Desktop through its global config —
+Claude Desktop has no project-local config), with only the values you set
+(everything else falls back to a safe default and is omitted from the file).
+See [Installation](installation.md) for installing the package first.
+
+## Manual setup
 
 1. **Locate the config file** (create it if it does not exist):
    - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
@@ -21,21 +31,7 @@ permissions, use Claude Code — see [claude.md](claude.md)).
 
    In the app you can open it via **Settings → Developer → Edit Config**.
 
-2. **Protect it if it contains secrets** (macOS/Linux):
-   ```bash
-   chmod 600 ~/Library/Application\ Support/Claude/claude_desktop_config.json
-   ```
-   On Windows, restrict the file to your user via its **Properties → Security**.
-
-3. **Add the server.** The easiest path is to let `openproject-ce-mcp configure`
-   detect the Claude Desktop app and write this file for you (it registers Claude
-   Desktop through its global config — Claude Desktop has no project-local config),
-   with only the values you set (everything else falls back to a safe default and
-   is omitted from the file). To add it by hand instead, copy the `env` block from
-   any config the wizard generates (for example the `.mcp.json` it writes in a
-   project directory); the root key is the same, `mcpServers`. With a PyPI install
-   the command is simply `openproject-ce-mcp`; source installs can use the `.venv`
-   binary path.
+2. **Add the server:**
    ```json
    {
      "mcpServers": {
@@ -53,14 +49,27 @@ permissions, use Claude Code — see [claude.md](claude.md)).
    ```
 
    If the file already has a `mcpServers` block, add the `openproject` entry
-   alongside your existing servers instead of replacing the whole file. The
-   full set of `env` keys is the same as every other client — see
-   [`.mcp.json.example`](../.mcp.json.example) or the [Configuration table](../README.md#configuration).
+   alongside your existing servers instead of replacing the whole file. With a
+   PyPI install the command is simply `openproject-ce-mcp`; source installs can
+   use the `.venv` binary path. The full set of `env` keys is the same as every
+   other client — see [`.mcp.json.example`](../.mcp.json.example) or
+   [Configuration](configuration.md).
 
-4. **Restart Claude Desktop** completely (quit and reopen — a window reload is
-   not enough).
+## Protect credentials
 
-### Verify
+**This file holds your API token.**
+
+```bash
+# macOS/Linux
+chmod 600 ~/Library/Application\ Support/Claude/claude_desktop_config.json
+```
+
+On Windows, restrict the file to your user via its **Properties → Security**.
+
+## Reload and verify
+
+**Restart Claude Desktop** completely (quit and reopen — a window reload is
+not enough). Then:
 
 - Open a new conversation and check the tools/plugins menu for the `openproject`
   server.
@@ -75,4 +84,10 @@ permissions, use Claude Code — see [claude.md](claude.md)).
   configured the server in Claude Desktop and want it in Claude Code too, you can
   import it with `claude mcp add-from-claude-desktop`.
 - `OPENPROJECT_READ_PROJECTS` accepts comma-separated identifiers, names, or glob patterns: `project-one,team-*`. Use `*` for all visible projects.
-- `OPENPROJECT_WRITE_PROJECTS` only narrows scope; it doesn't enable writes by itself. Enable the corresponding write group, such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`, for the operations you need.
+- `OPENPROJECT_WRITE_PROJECTS` is the real write gate — the 5 core write-category flags (like `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`) are on by default and do nothing until a project is listed here; set one to `false` to exclude that category instead.
+
+## See also
+
+- [Documentation hub](README.md) — full documentation index
+- [Clients](clients.md) — global vs. project-scoped, and every client's file layout
+- [Configuration](configuration.md) — the full environment variable reference
