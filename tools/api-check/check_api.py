@@ -294,9 +294,11 @@ def run_constants(verbose: bool = False) -> int:
 
 CLIENT = ROOT / "src" / "openproject_ce_mcp" / "client.py"
 
-# Resources whose v3 API lives in a separate module engine (modules/<x>/), which
-# the sparse source checkout does not include. They exist in CE but cannot be
-# source-verified here, so they are reported as "module" rather than missing.
+# Resources whose v3 API lives in a separate module engine (modules/<x>/).
+# fetch-sources.sh does fetch each module's lib/api/v3 subtree, but this tool
+# only parses the top-level lib/api/v3 tree, not per-module route/representer
+# files, so these are reported as "module" (not source-verified here) rather
+# than missing. They exist in CE and are verified at runtime instead.
 MODULE_RESOURCES = {
     "grids": "my_page",
     "documents": "documents",

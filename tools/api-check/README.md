@@ -28,17 +28,20 @@ python tools/api-check/check_coverage.py --write  # also (re)write COVERAGE.md
 ```
 
 `--all` is the **full** version map: it auto-extracts every endpoint resource and
-query-filter key from `client.py` and checks each across all 13 versions, so no
+query-filter key from `client.py` and checks each across all 14 versions, so no
 access is missed as the client grows. It flags anything introduced after 16.0
 (e.g. `workspaces` from 17.0 — used by the favorite tools — and `project_phases`
 from 16.1). Resources whose v3 API lives in a separate module engine
 (`documents`, `file_links`, `grids`, `job_statuses`, `time_entries`) are reported
-as `module` since the sparse checkout omits `modules/`; they are CE and verified
-at runtime instead. The curated default run (without `--all`) stays the
-pass/fail gate; `--all` is the exhaustive audit. Maintain `RESOURCE_ALIASES` /
-`FILTER_ALIASES` / `MODULE_RESOURCES` when a name doesn't line up.
+as `module` rather than source-verified: `fetch-sources.sh` does fetch each
+module's `lib/api/v3` subtree, but this tool doesn't parse per-module
+route/representer files, only the top-level `lib/api/v3` tree — they are CE
+and verified at runtime instead (see `docker/test/`). The curated default run
+(without `--all`) stays the pass/fail gate; `--all` is the exhaustive audit.
+Maintain `RESOURCE_ALIASES` / `FILTER_ALIASES` / `MODULE_RESOURCES` when a name
+doesn't line up.
 
-`check_coverage.py` classifies each of OpenProject's ~53 v3 resources as
+`check_coverage.py` classifies each of OpenProject's ~76 v3 resources as
 **covered**, **GAP (CE)** (a plain top-level CE resource we don't use yet),
 **subresource** (reached via a parent path), **enterprise**, or **internal**.
 The CE/Enterprise split is not cleanly derivable from source (heterogeneous
@@ -60,12 +63,12 @@ tag, delete the corresponding directory and re-run.
 ## Pinned versions
 
 `fetch-sources.sh` clones the latest patch of every minor release from 16.0 to
-17.5 (`VERSIONS` array), so the check runs as a **version matrix**: each symbol's
-presence is shown across all 13 columns, pinpointing exactly which release
+17.6 (`VERSIONS` array), so the check runs as a **version matrix**: each symbol's
+presence is shown across all 14 columns, pinpointing exactly which release
 introduced or dropped it. As of this writing:
 
 ```
-16.0  16.1  16.2  16.3  16.4  16.5  16.6  17.0  17.1  17.2  17.3  17.4  17.5
+16.0  16.1  16.2  16.3  16.4  16.5  16.6  17.0  17.1  17.2  17.3  17.4  17.5  17.6
 ```
 
 The matrix confirms that of every API symbol the client uses, only `displayId`

@@ -1004,8 +1004,8 @@ def _merge_prefill(pairs: list[tuple[Client, Path | None]]) -> dict[str, str]:
     per-source-then-cross-source resolution in :func:`_merge_scope_prefill`,
     since a plain field-wise merge of this dict would lose per-source priority
     once a new-key value from one source and a legacy-key value from another
-    end up side by side in the same merged dict (see OPM-125 review). Pass
-    pairs LOWEST priority first (globals), HIGHEST last (project/cwd).
+    end up side by side in the same merged dict. Pass pairs LOWEST priority
+    first (globals), HIGHEST last (project/cwd).
     """
     merged: dict[str, str] = {}
     for client, target in pairs:
@@ -1028,8 +1028,8 @@ def _merge_scope_prefill(pairs: list[tuple[Client, Path | None]]) -> tuple[str, 
     ``_merge_prefill`` does for other fields) would let a lower-priority
     source's new key sit next to a higher-priority source's legacy key in the
     same dict, with no way to tell which source either came from — silently
-    picking the new key regardless of source priority (see OPM-125 review).
-    Instead, each source is resolved (new key wins over legacy within that
+    picking the new key regardless of source priority. Instead, each source
+    is resolved (new key wins over legacy within that
     source) independently, and only the last source that defines ANY relevant
     key — new or legacy — contributes its resolved value, so a higher-priority
     source always wins outright, even with an empty value. Pairs must be
@@ -1047,7 +1047,7 @@ def _merge_scope_prefill(pairs: list[tuple[Client, Path | None]]) -> tuple[str, 
     return read_value, write_value, read_used_legacy, write_used_legacy
 
 
-# ── live connection test + preview/confirm (OPM-121, folded into OPM-128) ──────
+# ── live connection test + preview/confirm ──────────────────────────────────
 
 
 class ConnectionCheck(NamedTuple):
@@ -1201,7 +1201,7 @@ def _collect_credentials(
                 board_write = False
         else:
             # Quick mode: one write-scope choice replaces the yes/no gate above
-            # entirely — no overlapping decisions (OPM-55).
+            # entirely — no overlapping decisions.
             write_scope_class = _classify_write_scope(existing, write_projects_existing=write_projects_existing)
             is_custom = write_scope_class == "custom"
             allowed_choices = ["none", "work-packages", "all"] + (["keep"] if is_custom else [])
@@ -1603,7 +1603,7 @@ def _apply_changes(
         _write_mcp_json(env, generic_target, command)
 
 
-# ── minimal-diff config writing (OPM-128) ───────────────────────────────────────
+# ── minimal-diff config writing ──────────────────────────────────────────────
 
 # Materialized once, at import time (cheap — no I/O): every optional field's
 # real runtime default, from the single source of truth (Settings.from_env

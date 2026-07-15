@@ -470,7 +470,7 @@ def test_empty_attachment_root_is_accepted_at_config_time() -> None:
     assert settings.attachment_root == ""
 
 
-# ── legacy_env_warnings (OPM-128) ────────────────────────────────────────────────
+# ── legacy_env_warnings ───────────────────────────────────────────────────────────
 
 
 def test_legacy_env_warnings_empty_when_no_legacy_vars_present() -> None:
@@ -556,7 +556,7 @@ def test_openproject_tools_is_ignored_by_effective_settings() -> None:
 
 
 def test_core_five_legacy_names_now_take_effect_with_no_warning() -> None:
-    # The 5 pre-OPM-126 individual booleans are current again, not legacy.
+    # The 5 individual booleans are current, not legacy.
     env = {
         "OPENPROJECT_BASE_URL": "https://op.example.com",
         "OPENPROJECT_API_TOKEN": "token-value",

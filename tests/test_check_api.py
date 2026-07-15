@@ -15,7 +15,7 @@ _spec.loader.exec_module(check_api)
 
 @pytest.fixture(autouse=True)
 def _stub_versions(monkeypatch):
-    # OPM-145 tests exercise run_full_coverage()'s pass/fail logic in isolation,
+    # These tests exercise run_full_coverage()'s pass/fail logic in isolation,
     # not the real .op-sources checkout — _resource_present/_filter_present are
     # monkeypatched per test instead of hitting the filesystem.
     monkeypatch.setattr(check_api, "VERSIONS", ["16.0", "17.0", "17.6"])

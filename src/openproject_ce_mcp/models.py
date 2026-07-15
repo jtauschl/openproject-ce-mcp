@@ -1457,8 +1457,8 @@ class EmojiReactionListResult:
 
 @dataclass
 class EmojiReactionWriteResult:
-    """Confirm-gated toggle result (OPM-124). Deliberately its own type rather
-    than EmojiReactionListResult (which stays a pure read shape used by
+    """Confirm-gated toggle result. Deliberately its own type rather than
+    EmojiReactionListResult (which stays a pure read shape used by
     list_work_package_reactions) — the exact add/remove outcome is not known
     ahead of the actual PATCH, so the preview state only describes the
     toggle's nature, not its resulting reaction list."""
@@ -1475,7 +1475,7 @@ class EmojiReactionWriteResult:
 
 @dataclass
 class NotificationMarkResult:
-    """Confirm-gated mark-as-read result (OPM-124). No OpenProject dry-run
+    """Confirm-gated mark-as-read result. No OpenProject dry-run
     endpoint exists for this action, so ``ready=True`` in the preview state
     means only "the request is valid and will be sent once confirmed" — not
     that OpenProject has validated it server-side."""

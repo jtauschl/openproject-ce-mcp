@@ -197,7 +197,7 @@ async def test_explicit_empty_write_scope_blocks_project_scoped_write() -> None:
 
 @pytest.mark.asyncio
 async def test_empty_read_projects_denies_project_scoped_read() -> None:
-    # OPM-125: the true production default (no scope override at all) must deny,
+    # The true production default (no scope override at all) must deny,
     # not allow — constructed directly, not via make_settings()'s permissive default.
     settings = Settings(
         base_url="https://op.example.com",
@@ -453,11 +453,9 @@ def _membership_settings() -> Settings:
 
 @pytest.mark.asyncio
 async def test_update_membership_returns_preview_when_not_confirmed() -> None:
-    """Characterization test (OPM-124 prerequisite): update_membership's
-    preview/commit shape had no dedicated test before the _finalize_write
-    refactor — this locks in its identity fields (membership_id, project)
-    and preview message before the generic helper replaces the hand-written
-    _finalize_membership_write body."""
+    """Characterization test for update_membership's preview/commit shape — locks in
+    its identity fields (membership_id, project) and preview message so future
+    refactors of the underlying write helper don't change them silently."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/memberships/3" and request.method == "GET":
@@ -897,7 +895,7 @@ async def test_hidden_fields_support_wildcards_for_principal_reads() -> None:
         {"id": 5, "_type": "User", "name": "Alice", "login": "alice", "email": "alice@example.com"}
     )
 
-    # OPM-72: hidden fields are tagged (not nulled). The wildcard patterns match
+    # Hidden fields are tagged (not nulled). The wildcard patterns match
     # name/email/url; the values remain on the dataclass, and the serialization seam
     # removes exactly these keys from the response.
     assert principal._hidden_keys == frozenset({"name", "email", "url"})
@@ -1160,7 +1158,7 @@ async def test_list_work_packages_resolves_type_and_version_filters() -> None:
             filters = json.loads(request.url.params.get("filters", "[]"))
             filter_keys = [list(f.keys())[0] for f in filters]
             assert "project_id" in filter_keys
-            # Changed to type_id/version_id per source verification (OPM-51)
+            # Filter keys use type_id/version_id per OpenProject's source-defined filter keys
             assert "type_id" in filter_keys
             assert "version_id" in filter_keys
             return httpx.Response(
@@ -1765,7 +1763,7 @@ async def test_update_work_package_reparents_via_parent_link() -> None:
                 request=request,
             )
         if request.url.path == "/api/v3/work_packages/7" and request.method == "GET":
-            # OPM-139: the new parent's own project must be allowlist-checked before
+            # The new parent's own project must be allowlist-checked before
             # it can be linked.
             return httpx.Response(
                 200,
@@ -2033,7 +2031,7 @@ async def test_update_work_package_clears_version_with_null_href() -> None:
 
 @pytest.mark.asyncio
 async def test_update_work_package_clears_sprint_with_null_href() -> None:
-    # OPM-104: sprint uses the generic CLEAR sentinel (not a new CLEAR_SPRINT), and
+    # Sprint uses the generic CLEAR sentinel (not a dedicated CLEAR_SPRINT), and
     # must send _links.sprint = {"href": None} without trying to resolve "none".
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
@@ -2117,7 +2115,7 @@ async def test_update_work_package_clears_sprint_with_null_href() -> None:
 
 @pytest.mark.asyncio
 async def test_update_work_package_resolves_sprint_by_name() -> None:
-    # OPM-104: a sprint name resolves to an id via list_project_sprints (the
+    # A sprint name resolves to an id via list_project_sprints (the
     # work package's own project), mirroring how _resolve_version_id resolves
     # version names via list_versions.
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -2591,7 +2589,7 @@ async def test_create_relation_and_delete_relation_work_when_enabled() -> None:
                 request=request,
             )
         if request.url.path == "/api/v3/work_packages/55" and request.method == "GET":
-            # OPM-139: the relation target's own project must be allowlist-checked too.
+            # The relation target's own project must be allowlist-checked too.
             return httpx.Response(
                 200,
                 json={"id": 55, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
@@ -2686,7 +2684,7 @@ async def test_create_subtask_uses_parent_link_in_form_payload() -> None:
                 request=request,
             )
         if request.url.path == "/api/v3/projects/1" and request.method == "GET":
-            # OPM-144: _resolve_type_id now always authorizes the project by fetching
+            # _resolve_type_id always authorizes the project by fetching
             # it, even when the project ref is already numeric.
             return httpx.Response(
                 200,
@@ -3455,7 +3453,7 @@ async def test_time_entry_crud_and_activity_listing() -> None:
                 request=request,
             )
         if request.url.path == "/api/v3/work_packages/55" and request.method == "GET":
-            # OPM-139: list_time_entries' work_package_id filter is now allowlist-checked.
+            # list_time_entries' work_package_id filter is allowlist-checked.
             return httpx.Response(
                 200,
                 json={"id": 55, "_links": {"project": {"href": "/api/v3/projects/6", "title": "Demo"}}},
@@ -4155,10 +4153,10 @@ async def test_list_projects_reports_filtered_total_when_allowlist_drops_items()
 
 @pytest.mark.asyncio
 async def test_list_projects_walks_multiple_server_pages_when_allowlist_thins_first_page() -> None:
-    # OPM-100 regression test: page 1 (server pageSize=2) has zero allowed projects,
-    # page 2 has the one allowed project. The old code advanced server_offset by a
-    # full page SIZE (not by 1 page) and compared it to the item total, so it gave
-    # up after page 1 even though page 2 held the match. offset/pageSize below mirror
+    # Regression test: page 1 (server pageSize=2) has zero allowed projects,
+    # page 2 has the one allowed project. Pagination must advance server_offset by
+    # one page (not a full page SIZE) compared against the item total, so it keeps
+    # scanning past page 1 until page 2's match is found. offset/pageSize below mirror
     # real OpenProject 1-based-page semantics.
     import dataclasses
 
@@ -4233,7 +4231,7 @@ async def test_list_projects_walks_multiple_server_pages_when_allowlist_thins_fi
 
 @pytest.mark.asyncio
 async def test_list_projects_cross_call_pagination_does_not_skip_or_duplicate() -> None:
-    # OPM-107: a single raw server page (max_page_size=50, well above the 3 allowed
+    # A single raw server page (max_page_size=50, well above the 3 allowed
     # projects below) yields more allowed matches (3) than effective_limit (2) needs.
     # offset=1 must stop mid-page and report truncated=True/next_offset=2 without
     # discarding the leftover match; offset=2 must resume exactly at that leftover
@@ -4671,7 +4669,7 @@ async def test_views_categories_and_attachments() -> None:
         read_projects=("demo",),
         write_projects=("demo",),
         enable_work_package_write=True,
-        attachment_root=os.getcwd(),  # OPM-127: uploads need a configured root
+        attachment_root=os.getcwd(),  # uploads need a configured root
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -4864,9 +4862,9 @@ async def test_version_crud_uses_form_endpoints_and_commit_paths() -> None:
 
 @pytest.mark.asyncio
 async def test_list_boards_returns_empty_under_empty_read_projects() -> None:
-    # OPM-125 regression: previously use_client_side_filtering was gated on
-    # `bool(allowed_projects)`, so an empty (deny-all) scope skipped filtering
-    # entirely and leaked every board from every project unfiltered.
+    # Regression guard: use_client_side_filtering must not be gated on
+    # `bool(allowed_projects)` — an empty (deny-all) scope must still filter,
+    # not skip filtering and leak every board from every project unfiltered.
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/queries":
             return httpx.Response(
@@ -5192,7 +5190,7 @@ async def test_create_work_package_resolves_schema_backed_fields_and_custom_fiel
                 request=request,
             )
         if request.url.path == "/api/v3/projects/1" and request.method == "GET":
-            # OPM-144: _resolve_type_id now always authorizes the project by fetching
+            # _resolve_type_id always authorizes the project by fetching
             # it, even when the project ref is already numeric.
             return httpx.Response(
                 200,
@@ -5638,7 +5636,7 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
 
 @pytest.mark.asyncio
 async def test_create_user_returns_preview_when_not_confirmed() -> None:
-    # OPM-142: create_user must round-trip through the real users/form endpoint,
+    # create_user must round-trip through the real users/form endpoint,
     # even with admin writes disabled locally — form validation is a read-only
     # preview, same as every other form-based create_*/update_* tool.
     calls: list[tuple[str, str]] = []
@@ -5923,8 +5921,8 @@ async def test_user_preferences_get_and_update() -> None:
 
 @pytest.mark.asyncio
 async def test_get_my_preferences_denied_without_personal_read() -> None:
-    """OPM-126: get_my_preferences now has a client-side gate matching its new
-    registry-level "personal" gate — previously it had zero runtime checks."""
+    """get_my_preferences has a client-side gate matching its
+    registry-level "personal" gate."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         raise AssertionError("no request must be issued without personal read enabled")
@@ -5937,8 +5935,7 @@ async def test_get_my_preferences_denied_without_personal_read() -> None:
 
 @pytest.mark.asyncio
 async def test_update_my_preferences_denied_without_personal_write() -> None:
-    """OPM-126: update_my_preferences is now gated by "personal" write, unlike
-    its previous always-on behavior."""
+    """update_my_preferences is gated by "personal" write."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         raise AssertionError("no request must be issued without personal write enabled")
@@ -6068,9 +6065,10 @@ async def test_help_texts_and_working_days() -> None:
 
 @pytest.mark.asyncio
 async def test_list_relations_returns_empty_under_empty_read_projects() -> None:
-    # OPM-125 regression: previously `allowlisted` was gated on
-    # `self.settings.allowed_projects` truthiness, so an empty (deny-all)
-    # scope skipped the per-item check and leaked every relation unfiltered.
+    # Regression guard: `allowlisted` must not be gated on
+    # `self.settings.allowed_projects` truthiness — an empty (deny-all)
+    # scope must still run the per-item check, not skip it and leak every
+    # relation unfiltered.
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/relations" and request.method == "GET":
             return httpx.Response(
@@ -6467,7 +6465,7 @@ async def test_create_version_rejects_validation_error() -> None:
 )
 @pytest.mark.asyncio
 async def test_create_board_global_requires_fully_open_scope(read_projects, project, should_deny) -> None:
-    # OPM-125: an unscoped (global) board can only be verified when BOTH read
+    # An unscoped (global) board can only be verified when BOTH read
     # and write are fully open — write_projects=("*",) alone is not enough,
     # since write must still be a subset of read. A project-bound board is
     # unaffected by this stricter global-board rule.
@@ -7428,8 +7426,8 @@ async def test_get_work_package_unknown_reference_maps_404_to_not_found() -> Non
 
 @pytest.mark.asyncio
 async def test_resolve_work_package_id_fetches_and_validates_both_reference_shapes() -> None:
-    # OPM-139: both a numeric id and a semantic ref now fetch the WP to validate its
-    # project against the allowlist — neither shape short-circuits any more.
+    # Both a numeric id and a semantic ref fetch the WP to validate its
+    # project against the allowlist — neither shape short-circuits.
     requests: list[str] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -8039,8 +8037,8 @@ async def test_list_notifications_allows_all_under_wildcard_scope() -> None:
 
 @pytest.mark.asyncio
 async def test_list_notifications_denied_by_personal_read_not_work_package_read() -> None:
-    """OPM-126: list_notifications' home scope moved from "work_package" to
-    "personal" — enable_work_package_read=True must no longer be sufficient,
+    """list_notifications' home scope is "personal", not "work_package" —
+    enable_work_package_read=True must not be sufficient on its own,
     and enable_personal_read=False must deny it even with every other read on."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -8067,7 +8065,7 @@ async def test_list_notifications_denied_by_personal_read_not_work_package_read(
 
 @pytest.mark.asyncio
 async def test_list_notifications_resolves_work_package_notification_without_project_link() -> None:
-    # OPM-125 regression: a notification with a work-package resource link but
+    # A notification with a work-package resource link but
     # no project link of its own must be resolved via the work package, not
     # trusted as "no project link therefore personal/global".
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -8318,9 +8316,9 @@ async def test_create_work_package_reminder_posts_and_normalizes() -> None:
 
 @pytest.mark.asyncio
 async def test_update_reminder_denies_malformed_remindable_link_even_under_open_scope() -> None:
-    # OPM-125: deliberate tightening — an unresolvable remindable link must be
-    # denied even under a fully open READ_PROJECTS=*/WRITE_PROJECTS=* scope
-    # (previously a fastpath skipped this check entirely when scope was open).
+    # An unresolvable remindable link must be denied even under a fully open
+    # READ_PROJECTS=*/WRITE_PROJECTS=* scope — an open scope must not bypass
+    # this check.
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/reminders/7":
             return httpx.Response(200, json={"_links": {}}, request=request)
@@ -8429,7 +8427,7 @@ async def test_list_work_packages_version_status_builds_filter() -> None:
     await client.list_work_packages(version_status="closed")
 
     filters = json.loads(captured["filters"])
-    # Changed to version_id per source verification (OPM-51)
+    # Filter key is version_id per OpenProject's source-defined filter key
     version_filter = next(f for f in filters if "version_id" in f)
     assert version_filter["version_id"]["operator"] == "c"
     assert version_filter["version_id"]["values"] == []
@@ -8596,7 +8594,7 @@ async def test_attachment_rejects_symlink_escape(tmp_path) -> None:
 
 
 async def test_attachment_root_empty_refuses_upload(tmp_path) -> None:
-    """OPM-127: no OPENPROJECT_ATTACHMENT_ROOT means uploads are disabled, not cwd."""
+    """No OPENPROJECT_ATTACHMENT_ROOT means uploads are disabled, not cwd."""
     settings = _base_settings(enable_work_package_write=True)  # attachment_root defaults to ""
     client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
     some_file = tmp_path / "note.txt"
@@ -8878,7 +8876,7 @@ async def test_delete_file_link_allows_write_project() -> None:
     await client.aclose()
 
 
-# OPM-74: User content delimiting tests
+# User content delimiting tests
 
 
 def test_delimit_user_content_wraps_non_empty_text():
@@ -9032,7 +9030,7 @@ async def test_wiki_page_content_delimited():
     await client.aclose()
 
 
-# OPM-74: Additional edge case tests
+# Additional edge case tests
 
 
 def test_delimit_user_content_handles_injection_attempt():
@@ -9102,7 +9100,7 @@ async def test_work_package_subject_not_delimited():
     await client.aclose()
 
 
-# OPM-81: Date filter tests
+# Date filter tests
 
 
 @pytest.mark.asyncio
@@ -9260,7 +9258,7 @@ async def test_search_work_packages_date_filters() -> None:
 
 
 # ============================================================================
-# OPM-51: Payload-Shape Contract Tests
+# Payload-Shape Contract Tests
 # ============================================================================
 # These tests verify that our filter keys and payload assumptions match
 # the actual OpenProject source code definitions, preventing regressions.
@@ -9268,7 +9266,7 @@ async def test_search_work_packages_date_filters() -> None:
 
 @pytest.mark.asyncio
 async def test_list_work_packages_type_filter_uses_correct_key() -> None:
-    """Verify type filter uses type_id key per source definition (OPM-51).
+    """Verify type filter uses type_id key per source definition.
 
     OpenProject CE 17.5 app/models/queries/work_packages/filter/type_filter.rb
     defines: def self.key → :type_id
@@ -9318,7 +9316,7 @@ async def test_list_work_packages_type_filter_uses_correct_key() -> None:
 
 @pytest.mark.asyncio
 async def test_list_work_packages_version_filter_uses_correct_key() -> None:
-    """Verify version filter uses version_id key per source definition (OPM-51).
+    """Verify version filter uses version_id key per source definition.
 
     OpenProject CE 17.5 app/models/queries/work_packages/filter/version_filter.rb
     defines: def self.key → :version_id
@@ -9374,7 +9372,7 @@ async def test_list_work_packages_version_filter_uses_correct_key() -> None:
 
 @pytest.mark.asyncio
 async def test_group_members_is_flat_array() -> None:
-    """Verify group detail members render as flat array (OPM-51).
+    """Verify group detail members render as flat array.
 
     OpenProject CE 17.5 lib/api/v3/groups/group_representer.rb uses
     associated_resources :users, as: :members
@@ -9419,7 +9417,7 @@ async def test_group_members_is_flat_array() -> None:
 
 @pytest.mark.asyncio
 async def test_hidden_sprint_fields_are_tagged_and_dropped_from_payload() -> None:
-    # OPM-101: sprints support OPENPROJECT_HIDE_SPRINT_FIELDS like every other entity.
+    # Sprints support OPENPROJECT_HIDE_SPRINT_FIELDS like every other entity.
     client = OpenProjectClient(
         _base_settings(hidden_fields={"sprint": ("defining_workspace",)}),
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
@@ -9454,7 +9452,7 @@ async def test_hidden_sprint_fields_are_tagged_and_dropped_from_payload() -> Non
 
 @pytest.mark.asyncio
 async def test_hidden_work_package_scheduling_fields_are_tagged_and_dropped_from_payload() -> None:
-    # OPM-89: scheduling/derived fields (scheduleManually, ignoreNonWorkingDays,
+    # Scheduling/derived fields (scheduleManually, ignoreNonWorkingDays,
     # derivedStartDate, derivedDueDate, percentageDone, derivedPercentageDone, readonly)
     # respect OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS like every other work_package field.
     client = OpenProjectClient(
@@ -9498,8 +9496,7 @@ async def test_hidden_work_package_scheduling_fields_are_tagged_and_dropped_from
 
 @pytest.mark.asyncio
 async def test_hidden_status_fields_are_tagged_and_dropped_from_payload() -> None:
-    # OPM-89: status gains OPENPROJECT_HIDE_STATUS_FIELDS support (previously status
-    # had no hide-field wiring at all, unlike every other entity).
+    # Status supports OPENPROJECT_HIDE_STATUS_FIELDS, like every other entity.
     client = OpenProjectClient(
         _base_settings(hidden_fields={"status": ("default_done_ratio",)}),
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
@@ -9532,8 +9529,7 @@ async def test_hidden_status_fields_are_tagged_and_dropped_from_payload() -> Non
 
 @pytest.mark.asyncio
 async def test_hidden_type_fields_are_tagged_and_dropped_from_payload() -> None:
-    # OPM-89: type gains OPENPROJECT_HIDE_TYPE_FIELDS support (previously type
-    # had no hide-field wiring at all, unlike every other entity).
+    # Type supports OPENPROJECT_HIDE_TYPE_FIELDS, like every other entity.
     client = OpenProjectClient(
         _base_settings(hidden_fields={"type": ("updated_at",)}),
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
@@ -9564,7 +9560,7 @@ async def test_hidden_type_fields_are_tagged_and_dropped_from_payload() -> None:
 
 @pytest.mark.asyncio
 async def test_hidden_version_fields_are_tagged_and_dropped_from_payload() -> None:
-    # OPM-89: createdAt/updatedAt added to VersionSummary/Detail, respecting the
+    # createdAt/updatedAt on VersionSummary/Detail respect the
     # existing OPENPROJECT_HIDE_VERSION_FIELDS wiring.
     client = OpenProjectClient(
         _base_settings(hidden_fields={"version": ("updated_at",)}),
@@ -9597,7 +9593,7 @@ async def test_hidden_version_fields_are_tagged_and_dropped_from_payload() -> No
 
 @pytest.mark.asyncio
 async def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() -> None:
-    # OPM-89: createdAt/updatedAt added to MembershipSummary, respecting the
+    # createdAt/updatedAt on MembershipSummary respect the
     # existing OPENPROJECT_HIDE_MEMBERSHIP_FIELDS wiring.
     client = OpenProjectClient(
         _base_settings(hidden_fields={"membership": ("created_at",)}),
@@ -9624,8 +9620,8 @@ async def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() ->
 
 @pytest.mark.asyncio
 async def test_hidden_watcher_fields_are_tagged_and_dropped_from_payload() -> None:
-    # OPM-141: normalize_watcher never applied OPENPROJECT_HIDE_WATCHER_FIELDS,
-    # unlike every other normalize_* method for user-identifying data.
+    # normalize_watcher applies OPENPROJECT_HIDE_WATCHER_FIELDS,
+    # like every other normalize_* method for user-identifying data.
     client = OpenProjectClient(
         _base_settings(hidden_fields={"watcher": ("login",)}),
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
@@ -9651,7 +9647,7 @@ async def test_hidden_watcher_fields_are_tagged_and_dropped_from_payload() -> No
 
 @pytest.mark.asyncio
 async def test_hidden_user_fields_are_tagged_and_dropped_from_payload() -> None:
-    # OPM-89: firstName/lastName exposed as read fields, echoing what create_user/
+    # firstName/lastName are exposed as read fields, echoing what create_user/
     # update_user already write. Respects existing OPENPROJECT_HIDE_USER_FIELDS wiring.
     client = OpenProjectClient(
         _base_settings(hidden_fields={"user": ("firstname",)}),
@@ -9680,7 +9676,7 @@ async def test_hidden_user_fields_are_tagged_and_dropped_from_payload() -> None:
 
 @pytest.mark.asyncio
 async def test_hidden_category_fields_are_tagged_and_dropped_from_payload() -> None:
-    # OPM-89: defaultAssignee exposed as a HAL-link pair (id/name), same pattern as
+    # defaultAssignee is exposed as a HAL-link pair (id/name), same pattern as
     # parent_id/parent_name on Project. Respects existing OPENPROJECT_HIDE_CATEGORY_FIELDS.
     client = OpenProjectClient(
         _base_settings(hidden_fields={"category": ("default_assignee",)}),
@@ -9712,7 +9708,7 @@ async def test_hidden_category_fields_are_tagged_and_dropped_from_payload() -> N
 
 @pytest.mark.asyncio
 async def test_hidden_project_favorited_field_is_tagged_and_dropped_from_payload() -> None:
-    # OPM-89: favorited exposed as a per-token read field on ProjectSummary. Not a
+    # favorited is exposed as a per-token read field on ProjectSummary. Not a
     # write-behavior change — add_project_favorite/remove_project_favorite already
     # own the write side. Respects existing OPENPROJECT_HIDE_PROJECT_FIELDS wiring.
     client = OpenProjectClient(
@@ -9744,7 +9740,7 @@ async def test_list_sprints_normalizes_backlogs_collection() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/sprints" and request.method == "GET":
             assert request.url.params["offset"] == "1"
-            # OPM-108: fetches up to settings.max_results (not the caller's limit) in one
+            # Fetches up to settings.max_results (not the caller's limit) in one
             # request, then paginates the filtered survivors in memory.
             assert request.url.params["pageSize"] == "100"
             return httpx.Response(
@@ -9825,7 +9821,7 @@ async def test_list_project_sprints_resolves_project_and_allows_empty_collection
 
 @pytest.mark.asyncio
 async def test_list_project_sprints_filters_sprints_outside_allowed_projects() -> None:
-    # OPM-98: a sprint shared into an allowed project can still be *defined* by a
+    # A sprint shared into an allowed project can still be *defined* by a
     # different, disallowed project. list_project_sprints must filter those out the
     # same way list_sprints already does via _sprint_payload_allowed.
     import dataclasses
@@ -9900,13 +9896,13 @@ async def test_list_project_sprints_filters_sprints_outside_allowed_projects() -
 
 @pytest.mark.asyncio
 async def test_list_versions_global_backfills_after_allowlist_filter() -> None:
-    # OPM-108: the global endpoint has no project filter, so results are filtered
+    # The global endpoint has no project filter, so results are filtered
     # client-side against the allowlist. Fetching only one page sized to the caller's
     # limit could return a page that looks sparser than reality once filtered. This
-    # returns 6 raw items (3 allowed, 3 disallowed, interleaved) with limit=2 — under the
-    # old pageSize=limit logic the server would only ever have been asked for 2 raw items
-    # at a time and could easily return 0-2 allowed ones; the fix fetches all 6 in one
-    # request (pageSize=settings.max_results) and paginates the 3 filtered survivors.
+    # returns 6 raw items (3 allowed, 3 disallowed, interleaved) with limit=2 —
+    # a naive pageSize=limit request would only ever ask the server for 2 raw items
+    # at a time and could easily return 0-2 allowed ones; instead all 6 must be fetched
+    # in one request (pageSize=settings.max_results), paginating the 3 filtered survivors.
     import dataclasses
 
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
@@ -10237,8 +10233,8 @@ async def test_list_groups_search_overfetches_and_filters_then_paginates() -> No
 
 @pytest.mark.asyncio
 async def test_list_sprints_backfills_after_allowlist_filter() -> None:
-    # OPM-108: same fix as list_versions above, applied to the always-filtered
-    # list_sprints (sprints can be shared cross-project via Backlogs sharing).
+    # Same allowlist-safe pagination as list_versions above, applied to the
+    # always-filtered list_sprints (sprints can be shared cross-project via Backlogs sharing).
     import dataclasses
 
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
@@ -10299,9 +10295,9 @@ async def test_list_sprints_backfills_after_allowlist_filter() -> None:
 
 @pytest.mark.asyncio
 async def test_list_project_sprints_backfills_after_allowlist_filter() -> None:
-    # OPM-108: same fix as above, applied to list_project_sprints — still filtered
+    # Same allowlist-safe pagination as above, applied to list_project_sprints — still filtered
     # client-side despite being project-scoped, because a sprint shared into this
-    # project can be *defined* by a different, possibly disallowed project (OPM-98).
+    # project can be *defined* by a different, possibly disallowed project.
     import dataclasses
 
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
@@ -10428,7 +10424,7 @@ async def test_list_sprints_translates_missing_backlogs_module() -> None:
 
 @pytest.mark.asyncio
 async def test_emoji_reaction_toggle_uses_activity_work_package_link_shape() -> None:
-    """Verify activity -> workPackage link shape before toggling reactions (OPM-51).
+    """Verify activity -> workPackage link shape before toggling reactions.
 
     OpenProject returns the owning work package as _links.workPackage.href on the
     activity. The client must follow that link to enforce project write scope
@@ -10472,7 +10468,7 @@ async def test_emoji_reaction_toggle_uses_activity_work_package_link_shape() -> 
 
 @pytest.mark.asyncio
 async def test_file_link_delete_uses_container_work_package_link_shape() -> None:
-    """Verify file-link container link shape before deleting (OPM-51).
+    """Verify file-link container link shape before deleting.
 
     OpenProject file links expose the attached work package via
     _links.container.href. The client must resolve that container work package
@@ -10522,7 +10518,7 @@ async def test_file_link_delete_uses_container_work_package_link_shape() -> None
 
 @pytest.mark.asyncio
 async def test_time_entry_semantic_work_package_ref_uses_numeric_entity_href_shape() -> None:
-    """Verify semantic WP refs become numeric HAL entity hrefs (OPM-51)."""
+    """Verify semantic WP refs become numeric HAL entity hrefs."""
     captured: dict[str, dict] = {}
     requests: list[tuple[str, str]] = []
 
@@ -10560,7 +10556,7 @@ async def test_time_entry_semantic_work_package_ref_uses_numeric_entity_href_sha
 
 @pytest.mark.asyncio
 async def test_work_package_relations_use_canonical_involved_filter_shape() -> None:
-    """Verify relation reads use GET /relations with involved filter (OPM-51)."""
+    """Verify relation reads use GET /relations with involved filter."""
     captured: dict[str, str] = {}
     requests: list[tuple[str, str]] = []
 
@@ -10613,7 +10609,7 @@ async def test_work_package_relations_use_canonical_involved_filter_shape() -> N
 
 @pytest.mark.asyncio
 async def test_global_relations_allowlist_checks_from_and_to_link_shapes() -> None:
-    """Verify global relation listing validates both endpoint links (OPM-51)."""
+    """Verify global relation listing validates both endpoint links."""
     work_package_projects = {10: "demo", 11: "demo", 20: "other", 30: "demo", 31: "other"}
     fetched_work_packages: list[int] = []
 

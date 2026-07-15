@@ -184,7 +184,7 @@ CLEAR_VERSION = object()
 # historical reasons; new clearable fields share this one.
 CLEAR = object()
 
-# Type variables for the generic write-finalizer (_finalize_write, OPM-124/OPM-57).
+# Type variables for the generic write-finalizer (_finalize_write).
 DetailT = TypeVar("DetailT")
 ResultT = TypeVar("ResultT")
 
@@ -292,8 +292,8 @@ class OpenProjectClient:
         if search:
             filters.append({"name_and_identifier": {"operator": "~", "values": [search]}})
 
-        # OPM-82: fetch multiple pages if needed to collect `limit` allowed projects.
-        # OPM-107: `offset` paginates in units of `effective_limit`, which can differ
+        # Fetch multiple pages if needed to collect `limit` allowed projects.
+        # `offset` paginates in units of `effective_limit`, which can differ
         # from the server's own page size (`max_page_size`) — the two spaces can't be
         # conflated into one server-side offset. So every call re-scans from server
         # page 1, skipping the first `(offset - 1) * effective_limit` already-seen
@@ -679,7 +679,7 @@ class OpenProjectClient:
             # No server-side name/login/email filter exists for /users, so over-fetch
             # up to settings.max_results in one request and paginate the filtered
             # survivors in memory instead of trusting the server's pre-filter total
-            # (same pattern as list_versions' project-scoped-with-search branch, OPM-135).
+            # (same pattern as list_versions' project-scoped-with-search branch).
             payload = await self._get(
                 "users",
                 params={"offset": "1", "pageSize": str(self.settings.max_results)},
@@ -2086,7 +2086,7 @@ class OpenProjectClient:
             priority_id = await self._resolve_priority_id(priority)
             filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
 
-        # Date filters (OPM-81)
+        # Date filters
         # Mutual exclusivity: can't use both _on and _between for same field
         if created_on and created_between:
             raise InvalidInputError("Cannot specify both created_on and created_between")
@@ -2204,7 +2204,7 @@ class OpenProjectClient:
             # Use official filter key per source (version_filter.rb:def self.key → :version_id)
             filters.append({"version_id": {"operator": status_operator, "values": []}})
 
-        # Extended filters (OPM-67)
+        # Extended filters
         # assignee_me takes precedence for backward compatibility
         if assignee and not assignee_me:
             assignee_id = await self._resolve_principal_id(assignee)
@@ -2218,7 +2218,7 @@ class OpenProjectClient:
             priority_id = await self._resolve_priority_id(priority)
             filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
 
-        # Date filters (OPM-81)
+        # Date filters
         # Mutual exclusivity: can't use both _on and _between for same field
         if created_on and created_between:
             raise InvalidInputError("Cannot specify both created_on and created_between")
@@ -3064,7 +3064,7 @@ class OpenProjectClient:
                 if isinstance(item, dict)
             ]
         else:
-            # OPM-108: the global endpoint has no project filter, so results are filtered
+            # The global endpoint has no project filter, so results are filtered
             # client-side against OPENPROJECT_READ_PROJECTS. A single page sized to the
             # caller's limit could look sparser than reality after filtering; fetch up to
             # settings.max_results in one request and paginate the filtered survivors in memory
@@ -3112,7 +3112,7 @@ class OpenProjectClient:
     ) -> SprintListResult:
         self._ensure_read_enabled("project")
         effective_limit = self._resolve_limit(limit)
-        # OPM-108: results are always filtered client-side against the allowlist (sprints can
+        # Results are always filtered client-side against the allowlist (sprints can
         # be shared cross-project via Backlogs sharing). Fetch up to settings.max_results in
         # one request and paginate the filtered survivors in memory, same pattern as
         # list_views/list_documents, so a restrictive allowlist can't produce a sparse page.
@@ -3156,9 +3156,9 @@ class OpenProjectClient:
         project_payload = await self._get_project_payload(project)
         project_id = int(project_payload["id"])
         effective_limit = self._resolve_limit(limit)
-        # OPM-108: even though this is project-scoped, results are still filtered client-side
+        # Even though this is project-scoped, results are still filtered client-side
         # (a sprint shared into this project can be *defined* by a different, possibly
-        # disallowed project — OPM-98). Fetch up to settings.max_results in one request and
+        # disallowed project). Fetch up to settings.max_results in one request and
         # paginate the filtered survivors in memory, same pattern as list_views/list_documents,
         # so a restrictive allowlist can't produce a sparse page. Bounded by max_results — not
         # a full multi-page walk across every server page.
@@ -3620,7 +3620,7 @@ class OpenProjectClient:
         if not confirm:
             # The resulting add/remove state is not predicted here — OpenProject
             # decides that server-side and doing so ourselves would need an extra
-            # lookup. The preview names the toggle's nature instead (OPM-124).
+            # lookup. The preview names the toggle's nature instead.
             return EmojiReactionWriteResult(
                 action="toggle_reaction",
                 confirmed=False,
@@ -4105,7 +4105,7 @@ class OpenProjectClient:
         self._ensure_write_enabled("personal")
         if not confirm:
             # No OpenProject dry-run endpoint exists for this action — this is a
-            # client-side preview only (OPM-124): ready=True means the request is
+            # client-side preview only: ready=True means the request is
             # valid and will be sent once confirmed, not that OpenProject has
             # already validated it.
             return NotificationMarkResult(
@@ -6651,7 +6651,7 @@ class OpenProjectClient:
         success_message: str,
     ) -> ResultT:
         """Shared rejected/preview/committed state machine for the 7 form-based
-        write finalizers (OPM-57/OPM-124). Each entity differs in its identity
+        write finalizers. Each entity differs in its identity
         field(s), write scope, and normalizer — those are parameterized here,
         not the messages, which callers supply verbatim so no wording changes.
 
@@ -7486,8 +7486,8 @@ class OpenProjectClient:
         launch the server). This bounds which local files a caller can upload,
         so a malicious/confused agent cannot exfiltrate arbitrary host files
         (e.g. the API token in .mcp.json, SSH keys, /etc/passwd). tools.py also
-        only registers create_work_package_attachment when this is set
-        (OPM-127); this check is defense-in-depth for a caller that constructs
+        only registers create_work_package_attachment when this is set;
+        this check is defense-in-depth for a caller that constructs
         OpenProjectClient directly, bypassing that registration gate (as
         several tests in test_client.py already do).
         """
@@ -7661,7 +7661,7 @@ class OpenProjectClient:
         dataclass field, so it never appears in the schema/output). The
         serialization seam (tools._to_payload) reads it and drops those keys
         entirely from the response — hidden fields cost neither their key name nor
-        a null value (OPM-72). Stamping is possible because the response dataclasses
+        a null value. Stamping is possible because the response dataclasses
         are not frozen.
         """
         if not is_dataclass(value):
@@ -7855,7 +7855,7 @@ class OpenProjectClient:
 
         Needed where the numeric id itself is required (e.g. a relation filter or a
         client-side equality check) rather than a request path. A numeric reference
-        no longer short-circuits (OPM-139): it now triggers a fetch of the work
+        does not short-circuit: it always triggers a fetch of the work
         package too, so its project can be validated against the allowlist before
         its ``id`` is read back. A project-prefixed identifier is resolved the same
         way, but additionally only works on OpenProject 17.5+ (and requires the

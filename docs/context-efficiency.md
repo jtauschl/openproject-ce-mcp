@@ -20,7 +20,7 @@ target that auto-syncs.
 ## Response size
 
 Measured against the same three representative work packages (token ≈
-bytes/4), reproducible with [`tools/measure-context.py`](../tools/measure-context.py)
+bytes/4), reproducible with [`tools/measure-context.py`](https://github.com/jtauschl/openproject-ce-mcp/blob/main/tools/measure-context.py)
 against a local Docker test instance:
 
 | Response | Tokens | vs. raw API |

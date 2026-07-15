@@ -158,7 +158,7 @@ def create_app(settings: Settings) -> FastMCP:
 
     # log_level MUST be passed here: FastMCP.__init__ runs configure_logging() with
     # its own default (INFO) and installs a stderr handler, so omitting it lets the
-    # SDK win the race and our OPENPROJECT_LOG_LEVEL never takes effect (OPM-62).
+    # SDK win the race and our OPENPROJECT_LOG_LEVEL never takes effect.
     mcp = FastMCP(
         "OpenProject CE MCP",
         instructions=instructions,
@@ -174,7 +174,7 @@ def create_app(settings: Settings) -> FastMCP:
     # Force the root logger level explicitly. basicConfig (used by both FastMCP and
     # our configure_logging) is a no-op once a handler exists, so an explicit
     # setLevel is what actually holds the configured level regardless of install
-    # order — this is the real fix for OPM-62.
+    # order.
     logging.getLogger().setLevel(getattr(logging, settings.log_level))
     register_tools(mcp, settings)
     return mcp

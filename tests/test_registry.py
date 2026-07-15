@@ -1,4 +1,4 @@
-"""Parity test: every tool classified in tools.py (OPM-123) must appear in docs/tools.md."""
+"""Parity test: every tool classified in tools.py must appear in docs/tools.md."""
 
 import re
 from pathlib import Path
@@ -9,7 +9,7 @@ TOOLS_MD = Path(__file__).parent.parent / "docs" / "tools.md"
 
 
 def _registered_tool_names() -> set[str]:
-    """Every tool name known to the classification constants (OPM-123).
+    """Every tool name known to the classification constants.
 
     register_tools() no longer contains hand-written `tool(name)` calls to
     parse — it iterates `enabled_tool_names()`, which resolves names through

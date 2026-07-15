@@ -93,12 +93,13 @@ def tool_exposure_violations(
 
 
 # Old env-var name -> its replacement. Never read for a value — Settings.from_env
-# has zero legacy-name handling, by design (see OPM-125's fail-closed rename);
-# this map exists only to WARN, once per detected old name, from every entry
-# point that inspects raw env (doctor.py and server.py's real startup path —
-# OPM-128 closed the gap where only doctor warned, not the actual running
-# server). Order is deterministic (dict insertion order) so warning output is
-# stable across calls.
+# has zero legacy-name handling, by design (fail-closed rename: an unset or
+# renamed legacy variable denies access rather than defaulting to allow); this
+# map exists only to WARN, once per detected old name, from every entry point
+# that inspects raw env (doctor.py and server.py's real startup path, so the
+# warning fires whether the server is inspected or actually running). Order is
+# deterministic (dict insertion order) so warning output is stable across
+# calls.
 _LEGACY_ENV_VAR_MAP: dict[str, str] = {
     "OPENPROJECT_ALLOWED_PROJECTS": "OPENPROJECT_READ_PROJECTS",
     "OPENPROJECT_ALLOWED_PROJECTS_READ": "OPENPROJECT_READ_PROJECTS",
@@ -444,7 +445,7 @@ def configure_logging(level: str) -> None:
         format="%(levelname)s %(name)s %(message)s",
     )
     # basicConfig is a no-op once a handler is already installed (e.g. by FastMCP),
-    # so set the level explicitly to make it actually take effect (OPM-62).
+    # so set the level explicitly to make it actually take effect.
     logging.getLogger().setLevel(numeric_level)
 
 

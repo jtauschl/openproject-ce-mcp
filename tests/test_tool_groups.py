@@ -1,8 +1,8 @@
-"""Architecture tests for the OPM-123/OPM-126 tool classification in tools.py.
+"""Architecture tests for the tool classification in tools.py.
 
 These are structural/name-based invariants over the classification constants
-(READ_TOOLS_BY_SCOPE — including the "personal"/"extended" groups added by
-OPM-126 — WRITE_TOOLS_BY_SCOPE, PERSONAL_MUTATION_TOOLS, ADMIN_WRITE_TOOLS,
+(READ_TOOLS_BY_SCOPE — including the "personal"/"extended" groups —
+WRITE_TOOLS_BY_SCOPE, PERSONAL_MUTATION_TOOLS, ADMIN_WRITE_TOOLS,
 ADDITIONAL_READ_SCOPES_BY_TOOL) and over enabled_tool_names().
 
 Expectations are computed independently from the classification constants,
@@ -170,8 +170,8 @@ def test_enabled_tool_names_is_duplicate_free_and_ordered() -> None:
 
 
 def test_default_settings_exclude_personal_tools() -> None:
-    # OPM-126: "personal" is opt-in only, not part of the compatible unset
-    # default — unlike OPM-123, where get_my_preferences was unconditional.
+    # "personal" is opt-in only, not part of the compatible unset default —
+    # get_my_preferences is not exposed unconditionally.
     names = set(tools.enabled_tool_names(make_settings()))
     assert "get_my_preferences" not in names
     assert "list_notifications" not in names
@@ -306,7 +306,7 @@ def test_metadata_tools_need_their_additional_read_scopes_too() -> None:
     assert independent <= partial
 
 
-# ── "personal" AND-gate (OPM-126) — NOT the independent read/write pattern ──
+# ── "personal" AND-gate — NOT the independent read/write pattern ────────────
 #
 # Unlike every other scope (see test_write_delta_uses_all_reads_on_baseline /
 # test_admin_write_toggle_is_independent, where a write flag alone exposes its
@@ -341,7 +341,7 @@ def test_work_package_write_no_longer_couples_to_notification_mark_read() -> Non
     assert "mark_all_notifications_read" not in delta
 
 
-# ── attachment-upload AND-gate (OPM-127) — same bespoke-branch shape as the
+# ── attachment-upload AND-gate — same bespoke-branch shape as the
 # "personal" AND-gate above, but scope-flag AND a non-empty config string,
 # not scope-flag AND scope-flag.
 

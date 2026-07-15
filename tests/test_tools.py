@@ -1589,7 +1589,7 @@ async def test_bulk_create_work_packages_tool_passes_validated_items() -> None:
     assert received[0]["project"] == "demo"
     assert received[0]["subject"] == "WP 1"
     assert received[0]["start_date"] == "2026-01-01"
-    # Normalized to a string ref by _validate_optional_work_package_ref (OPM-76).
+    # Normalized to a string ref by _validate_optional_work_package_ref.
     assert received[0]["parent_work_package_id"] == "7"
     assert received[1]["type"] == "Feature"
 
@@ -1658,7 +1658,7 @@ async def test_bulk_update_work_packages_tool_passes_validated_items() -> None:
     )
 
     assert len(received) == 2
-    # Ids normalized to string refs by _validate_work_package_ref (OPM-76).
+    # Ids normalized to string refs by _validate_work_package_ref.
     assert received[0]["work_package_id"] == "10"
     assert received[0]["subject"] == "New title"
     assert received[0]["status"] == "In progress"
@@ -1672,7 +1672,7 @@ async def test_bulk_update_work_packages_tool_passes_validated_items() -> None:
 
 @pytest.mark.asyncio
 async def test_bulk_update_work_packages_tool_accepts_each_duration_field_alone() -> None:
-    # Regression guard for OPM-133: each of estimated_time/remaining_time/duration
+    # Regression guard: each of estimated_time/remaining_time/duration
     # must independently satisfy the "at least one field" check, not just when
     # combined with an already-supported field like subject/status.
     received: list = []
@@ -1728,7 +1728,7 @@ def test_validate_work_package_ref_rejects_invalid() -> None:
 
 
 def test_validate_positive_int_is_type_safe() -> None:
-    # A wrong JSON type must raise a clean ValueError, not a raw TypeError (OPM-76).
+    # A wrong JSON type must raise a clean ValueError, not a raw TypeError.
     for bad in ("5", "abc", None, True, False, 1.5):
         with pytest.raises(ValueError, match="must be an integer"):
             _validate_positive_int(bad, field_name="x")  # type: ignore[arg-type]
@@ -1779,7 +1779,7 @@ async def test_bulk_work_packages_accept_semantic_refs() -> None:
             }
 
     # A project-prefixed ref must be accepted by the bulk tools, not only the
-    # single-item tools (OPM-76): previously it failed the whole batch with a raw
+    # single-item tools: previously it failed the whole batch with a raw
     # TypeError from the int validator.
     await bulk_update_work_packages(
         FakeContext(StubClient()),  # type: ignore[arg-type]

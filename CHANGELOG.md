@@ -33,7 +33,7 @@ development baseline.
 - **Work-package scheduling fields**: `scheduleManually`,
   `ignoreNonWorkingDays`, derived start/due date, percentage done, `readonly`.
 - **Clearing nullable associations via `'none'`** now works consistently
-  across assignee, responsible, category, project_phase, and parent.
+  across assignee, responsible, category, project phase, version, and sprint.
 - **Backlogs sprint support**: read tools plus a writable/clearable sprint
   link on `update_work_package`, for instances with the Backlogs module.
 - **`doctor` command**: diagnoses setup end to end — binary resolution,
@@ -64,28 +64,27 @@ development baseline.
   empty/unset scope now denies all project-scoped access instead of allowing
   it — `*` must be set explicitly to keep the old "allow everything"
   behavior. **If your config only sets the old variable names, upgrading
-  will silently deny all project-scoped access** — update to the new names
-  first. This also fixes two data-leak bugs where an empty scope skipped
+  will deny all project-scoped access**, with a startup/`doctor` warning
+  naming the exact replacement variable — update to the new names first.
+  This also fixes two data-leak bugs where an empty scope skipped
   filtering entirely instead of denying, and adds project-scope filtering to
   two list tools that previously had none.
-- **Breaking: tool exposure is individual booleans again, plus a new
-  `OPENPROJECT_ENABLE_ADMIN_READ` scope.** `OPENPROJECT_ENABLE_PROJECT_READ`,
-  `_WORK_PACKAGE_READ`, `_MEMBERSHIP_READ`, `_VERSION_READ`, `_BOARD_READ`
-  (default `true`) are current variables again; `OPENPROJECT_ENABLE_EXTENDED_READ`
-  (renamed from `OPENPROJECT_ENABLE_METADATA_TOOLS`) and the new
-  `OPENPROJECT_ENABLE_PERSONAL_READ`/`OPENPROJECT_ENABLE_ADMIN_READ` default
-  `false`. `OPENPROJECT_TOOLS` (the brief-lived comma-separated-list design)
-  and `OPENPROJECT_ENABLE_METADATA_TOOLS` are now silently ignored if left
-  set in an old config (a startup/`doctor` warning names the exact
-  replacement). `list_users`/`get_user`/`list_groups`/`get_group`/
-  `list_principals` moved from the always-on membership scope to the new,
-  opt-in `OPENPROJECT_ENABLE_ADMIN_READ` — this instance-wide user/group
-  listing (PII: names, logins, emails) is no longer visible by default.
-  Personal-data tools (own preferences, notification mutations) still need
-  `OPENPROJECT_ENABLE_PERSONAL_READ=true` plus
-  `OPENPROJECT_ENABLE_PERSONAL_WRITE=true` for writes (renamed from
-  `OPENPROJECT_PERSONAL_WRITE` for naming consistency with every other write
-  flag; the old name is now a warned, ignored legacy alias).
+- **Breaking: personal, administrative, and extended read tools now have
+  dedicated opt-in scopes.** The existing project, work-package,
+  membership, version, and board read flags remain available with their
+  previous defaults.
+
+  The new `OPENPROJECT_ENABLE_PERSONAL_READ`,
+  `OPENPROJECT_ENABLE_ADMIN_READ`, and `OPENPROJECT_ENABLE_EXTENDED_READ`
+  settings default to `false`. Personal preferences and notifications,
+  instance-wide user/group listings, and rarely-used metadata/reference
+  tools are therefore no longer exposed by default.
+
+  Administrative writes now require both `OPENPROJECT_ENABLE_ADMIN_READ=true`
+  and `OPENPROJECT_ENABLE_ADMIN_WRITE=true`. Existing `0.2.3` configurations
+  with administrative writes enabled must add the new admin-read setting.
+  Personal-data mutations use the new `OPENPROJECT_ENABLE_PERSONAL_WRITE`
+  setting together with `OPENPROJECT_ENABLE_PERSONAL_READ`.
 - **Breaking: the 5 project-scoped write flags
   (`OPENPROJECT_ENABLE_PROJECT_WRITE`, `_WORK_PACKAGE_WRITE`,
   `_MEMBERSHIP_WRITE`, `_VERSION_WRITE`, `_BOARD_WRITE`) now default `true`
@@ -95,29 +94,27 @@ development baseline.
   (empty/unset denies all project-scoped writes) — so this makes a granted
   project scope immediately usable across all 5 categories without also
   toggling 5 separate flags; set one to `false` to carve out an exception.
-  `OPENPROJECT_ENABLE_PERSONAL_WRITE` and `OPENPROJECT_ENABLE_ADMIN_WRITE` are
-  unaffected and still default `false`, since neither has a project-scope
-  safety net. Project-scoped write tools are now also only *registered* when
-  both `OPENPROJECT_READ_PROJECTS` and `OPENPROJECT_WRITE_PROJECTS` are
-  non-empty, so an unconfigured install's tool catalog stays small and
-  read-only despite the new write defaults.
+  `OPENPROJECT_ENABLE_ADMIN_WRITE` continues to default to `false`. The new
+  `OPENPROJECT_ENABLE_PERSONAL_WRITE` setting also defaults to `false`.
+  Neither has a project-scope safety net. Project-scoped write tools are now
+  also only *registered* when both `OPENPROJECT_READ_PROJECTS` and
+  `OPENPROJECT_WRITE_PROJECTS` are non-empty, so an unconfigured install's
+  tool catalog stays small and read-only despite the new write defaults.
 - **Breaking: the local-attachment root no longer falls back to the current
   working directory when unset.** An empty/unset `OPENPROJECT_ATTACHMENT_ROOT`
   now disables local uploads entirely instead of defaulting to an
   unpredictable path; a configured root must be absolute.
-- **`configure` and `doctor` reworked**: a live connection test and full
-  preview now run behind one final confirm (fixing an ordering bug where
-  config removals could run before credentials were collected), the wizard
-  writes only values that deviate from the default, legacy-variable
-  warnings now also show at server startup, and a new `--non-interactive`
-  flag supports scripted installs.
+- **`configure` was reworked**: a live connection test and full preview now
+  run behind one final confirm (fixing an ordering bug where config
+  removals could run before credentials were collected), the wizard writes
+  only values that deviate from the default, legacy-variable warnings now
+  also show at server startup, and a new `--non-interactive` flag supports
+  scripted installs.
 - **Trimmed list/write responses to reduce context.** Confirmed writes no
   longer repeat the raw request payload, list results drop derivable
   fields, and a new `select` parameter returns only the requested row
   fields on the main list/search tools.
 - **Hidden fields are now omitted entirely instead of being nulled out.**
-- **Metadata/reference tools are now opt-in** instead of always registered,
-  cutting the fixed schema cost paid on every request.
 - **Long work-package text is read in full on single-item reads**, while
   list responses stay length-bounded.
 - **Simplified the setup flow**: the `configure` wizard now has explicit
@@ -125,7 +122,7 @@ development baseline.
   projects, and a single project-scoped write-scope choice) and `--advanced`
   (the full questionnaire, including personal-data and admin writes) modes
   instead of one runtime "advanced options?" prompt; install docs now lead
-  with `uv tool install`.
+  with `pipx`.
 - **Improved tool descriptions and validation error messages** to reduce
   agent retry loops.
 
@@ -183,9 +180,6 @@ development baseline.
   near-duplicate implementations.
 - Wizard tests now match prompts by their text instead of positional
   order, so reordering a prompt can't silently misalign answers.
-- Evaluated the remaining runtime-tuning variables (timeouts, page sizes,
-  retries, log level) and the field-hiding variables; both stay as-is, no
-  functional change.
 - The API-drift checker (`tools/api-check/check_api.py --all`) now fails
   with a nonzero exit code when a client-used resource or filter is missing
   from the latest pinned OpenProject version, instead of always exiting 0
@@ -205,6 +199,24 @@ development baseline.
   regenerate them.
 - Added a "why use this MCP" summary to README, and reordered it ahead of
   the scope/limitations section.
+- **Restructured the client setup docs into a hub** (`docs/clients.md`) with
+  one guide per client, each verified against that client's own official
+  documentation and updated with its actual recommended credential-handling
+  pattern instead of a one-size-fits-all example: Claude Code's native
+  private Local scope, VS Code's `${input:...}` prompt-and-store variables,
+  Codex's `env_vars` environment-forwarding, and Cursor's `${env:...}`
+  references for a local STDIO server — each shown alongside what this
+  package's `configure` wizard actually writes today.
+
+### Scope
+
+- Meetings and recurring meetings, Backlogs buckets, cost entries and cost
+  types, forum posts, storage and project-storage administration,
+  GitHub/GitLab linkage, per-user schedule overrides, and wiki page links are
+  not yet covered.
+- Nextcloud file links attached to work packages remain supported; the
+  uncovered storage scope concerns administration of storage connections and
+  their project assignments.
 
 ---
 

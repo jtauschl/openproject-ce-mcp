@@ -409,7 +409,7 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
     # the agent with a stable [category] prefix.
     #
     # Tools that return a list/write/bulk result are routed through _to_payload for
-    # context reduction (OPM-65/66/71): payload is dropped on confirmed writes,
+    # context reduction: payload is dropped on confirmed writes,
     # count/truncated on lists, and `select` trims rows. Those tools are registered
     # with structured_output=False so FastMCP does not build a fixed dataclass
     # output schema — it serializes the trimmed dict we return verbatim, letting us
@@ -419,7 +419,7 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
     #
     # When any hide-field config is active, every dataclass-returning tool is
     # trimmed too, so single-entity reads (get_*) can drop hidden keys entirely
-    # rather than emit them as null (OPM-72). This only widens schema loss when the
+    # rather than emit them as null. This only widens schema loss when the
     # operator opted into hiding.
     hide_active = bool(settings.hidden_fields)
 
@@ -1471,7 +1471,7 @@ async def get_work_package(
 ) -> WorkPackageDetail:
     """Get a work package by id, including its full description.
 
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"),
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"),
     not UI display number (e.g., 51).
 
     The description is returned in full by default (single work packages are not
@@ -1497,7 +1497,7 @@ async def get_work_packages(
     Failed fetches are reported individually without stopping the batch.
     Maximum 100 IDs per batch.
 
-    ids: internal ids (e.g., 952) or display_ids (e.g., "OPM-51"),
+    ids: internal ids (e.g., 952) or display_ids (e.g., "PROJ-51"),
     not UI display numbers. Duplicate IDs are automatically deduplicated.
 
     select restricts each result's work_package to the given fields (e.g.
@@ -1560,7 +1560,7 @@ async def create_work_package(
     """Prepare or create a work package.
 
     The tool validates the payload first. Set confirm=true to write.
-    assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number to nest the new work package under a parent.
+    assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number to nest the new work package under a parent.
     estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'PT30M' for 30 minutes). Day-based formats like 'P1D' are not supported by OpenProject.
     """
     client = _client_from_context(ctx)
@@ -1631,7 +1631,7 @@ async def update_work_package(
     """Prepare or update a work package.
 
     The tool validates the patch first. Set confirm=true to write.
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
     estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours) or None to leave unchanged. Day-based formats like 'P1D' are not supported by OpenProject.
     """
@@ -1897,7 +1897,7 @@ async def delete_work_package(
     """Prepare or delete a work package.
 
     The tool previews the target first. Set confirm=true to delete.
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -1924,7 +1924,7 @@ async def create_subtask(
     """Prepare or create a subtask under an existing work package.
 
     The tool validates the payload first. Set confirm=true to write.
-    parent_work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    parent_work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_parent_id = _validate_work_package_ref(parent_work_package_id, field_name="parent_work_package_id")
@@ -1971,7 +1971,7 @@ async def add_work_package_comment(
     """Prepare or add a comment to a work package.
 
     The tool only writes when confirm=true. notify=false avoids change emails by default.
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -1998,7 +1998,7 @@ async def create_work_package_relation(
 ) -> RelationWriteResult:
     """Prepare or create a relation between work packages.
 
-    Both work_package_id and related_to_work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    Both work_package_id and related_to_work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     relation_type: relates, duplicates, duplicated, blocks, blocked, precedes, follows, includes, partof, requires, required.
     """
     client = _client_from_context(ctx)
@@ -2350,7 +2350,7 @@ async def list_work_package_attachments(
 ) -> AttachmentListResult:
     """List attachments on a work package.
 
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2376,7 +2376,7 @@ async def create_work_package_attachment(
 ) -> AttachmentWriteResult:
     """Prepare or upload an attachment to a work package.
 
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_work_package_id = _validate_work_package_ref(work_package_id)
@@ -2421,7 +2421,7 @@ async def list_time_entries(
 ) -> TimeEntryListResult:
     """List time entries with optional project, work package, user, and date filters.
 
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -2473,7 +2473,7 @@ async def create_time_entry(
 ) -> TimeEntryWriteResult:
     """Prepare or create a time entry.
 
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     start_time/end_time are ISO 8601 date-times and require the instance setting
     "allow tracking of start and end times"; they are ignored otherwise.
     """
@@ -2576,7 +2576,7 @@ async def get_work_package_relations(
 ) -> RelationListResult:
     """Get all relations for a work package (blocks, relates to, duplicates, etc.).
 
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2591,7 +2591,7 @@ async def get_work_package_activities(
 ) -> ActivityListResult:
     """Get the activity log for a work package, most recent first.
 
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
 
     Comments are capped by default to keep the log compact; pass ``text_limit``
     to widen (or ``0``-based semantics via a larger value) the per-comment cap.
@@ -2615,7 +2615,7 @@ async def list_work_package_reactions(
 ) -> EmojiReactionListResult:
     """List emoji reactions across a work package's comment activities.
 
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2658,7 +2658,7 @@ async def create_work_package_reminder(
 
     `remind_at` is an ISO 8601 date-time (e.g. 2026-12-01T09:00:00Z). Only one
     active reminder per work package is allowed; creating a second one fails.
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2798,7 +2798,7 @@ async def list_work_package_watchers(
 ) -> WatcherListResult:
     """List watchers of a work package.
 
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2813,7 +2813,7 @@ async def add_work_package_watcher(
 ) -> WatcherWriteResult:
     """Prepare or add a watcher to a work package.
 
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_wp_id = _validate_work_package_ref(work_package_id)
@@ -2829,7 +2829,7 @@ async def remove_work_package_watcher(
 ) -> WatcherWriteResult:
     """Prepare or remove a watcher from a work package.
 
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_wp_id = _validate_work_package_ref(work_package_id)
@@ -3026,7 +3026,7 @@ async def list_work_package_file_links(
 ) -> FileLinkListResult:
     """List Nextcloud file links attached to a work package (Community Edition).
 
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "OPM-51"), not UI display number.
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -3323,18 +3323,18 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None) -> Any:
     Recursively turns dataclass instances into dicts while applying structural
     omissions that would otherwise cost fixed context on every call:
 
-    - **payload** (OPM-66): dropped from a write result once ``confirmed`` is true
+    - **payload**: dropped from a write result once ``confirmed`` is true
       (the success case), since the normalized ``result`` already carries the same
       information. It stays on preview/validation-error results, where the agent
       still needs it. Applied recursively, so nested bulk items are trimmed too.
-    - **count / truncated** (OPM-71): dropped from list results — both are derivable
+    - **count / truncated**: dropped from list results — both are derivable
       (``count == len(results)``, ``truncated == next_offset is not None``).
-    - **hidden keys** (OPM-72): removed entirely (not nulled) when the client tagged
+    - **hidden keys**: removed entirely (not nulled) when the client tagged
       the instance with ``_hidden_keys``.
 
-    ``select`` (OPM-65) is applied to the top-level ``results`` rows, keeping
+    ``select`` is applied to the top-level ``results`` rows, keeping
     just the requested fields per row. For a row type registered in
-    ``_SELECT_NESTED_FIELD`` (OPM-134, e.g. a batch-read item that wraps a
+    ``_SELECT_NESTED_FIELD`` (e.g. a batch-read item that wraps a
     single work package rather than being one), ``select`` instead trims that
     nested entity — the row's own wrapper fields (id/success/error) are kept
     regardless of ``select``.
@@ -3600,7 +3600,7 @@ def _validate_work_package_ref(value: str, *, field_name: str = "work_package_id
         return normalized
     if not WORK_PACKAGE_REF_RE.fullmatch(normalized):
         raise ValueError(
-            f"{field_name}: use internal id (e.g., 952) or display_id (e.g., 'OPM-51'), "
+            f"{field_name}: use internal id (e.g., 952) or display_id (e.g., 'PROJ-51'), "
             f"not UI display number (e.g., 51)."
         )
     return normalized
@@ -3707,7 +3707,7 @@ def _validate_optional_non_negative_int(value: int | None, *, field_name: str) -
     if value is None:
         return None
     # Type-safe: MCP args arrive as JSON, so a wrong type (e.g. "5", True) must
-    # yield a clean ValueError, not a raw TypeError from the comparison (OPM-76).
+    # yield a clean ValueError, not a raw TypeError from the comparison.
     # bool is an int subclass, so reject it explicitly.
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(f"{field_name} must be an integer.")
@@ -3933,8 +3933,8 @@ def _validate_offset(offset: int) -> int:
 
 def _validate_positive_int(value: int, *, field_name: str) -> int:
     # Type-safe: MCP args arrive as JSON, so a wrong type (e.g. "5", None, True)
-    # must yield a clean ValueError, not a raw TypeError from the comparison
-    # (OPM-76). bool is an int subclass, so reject it explicitly.
+    # must yield a clean ValueError, not a raw TypeError from the comparison.
+    # bool is an int subclass, so reject it explicitly.
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(f"{field_name} must be an integer.")
     if value < 1:
@@ -3942,7 +3942,7 @@ def _validate_positive_int(value: int, *, field_name: str) -> int:
     return value
 
 
-# Resolves every classified tool name (OPM-123) to its actual function object.
+# Resolves every classified tool name to its actual function object.
 # Derived directly from the classification constants rather than listed a
 # second time, so it can never silently diverge from them — a misspelled or
 # renamed tool name raises KeyError here at import time instead of a tool

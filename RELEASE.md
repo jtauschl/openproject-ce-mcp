@@ -29,7 +29,14 @@ as part of the review (see section 1).
 ## 1. Tracker completeness & scope
 
 - Fetch every work package filed under the target version, all statuses —
-  confirm all are Closed, none New/In Progress.
+  confirm all are Closed, none New/In Progress. **Exception:** exactly one
+  work package may represent the release's own publish orchestration (e.g.
+  "Prepare and publish vX.Y.Z"); that WP may legitimately be New or In
+  Progress at review time, since it cannot close until the publish it
+  describes has actually happened. It should be moved to In Progress once
+  this review starts. Every other delivery/defect WP under the target
+  version must still be Closed before Go — this exception does not extend to
+  any actual feature or fix work.
 - Diff WP subjects against the commit log: every ticket referenced in a
   commit should have a corresponding closed WP. The reverse is not a strict
   1:1 — a WP with no code change (a decision doc, a roadmap/classification
@@ -91,6 +98,16 @@ since the previous release tag:
 - Check any explicitly-known stale references (version numbers, historical
   examples) in context before "fixing" them — a historical example citing an
   older version is often legitimate, not automatically stale.
+- **Comment/docstring hygiene.** Code comments, docstrings, test comments, and
+  tooling comments must be publication-ready: concise, technically meaningful,
+  and free of internal tracker IDs, work-package references, private review
+  history, or machine-local evidence. A comment that explains a non-obvious
+  technical reason ("why this AND-gate, not an independent toggle") stays; the
+  ticket number, review round, or implementation-phase label that originally
+  motivated it does not. This does not apply to a work-package identifier used
+  purely as a public, illustrative example of the display-id format (e.g. a
+  `PROJ-123`-style placeholder in a filter or parameter doc) — that is
+  documentation content, not an internal tracker citation.
 
 ## 3. Main goal verification
 

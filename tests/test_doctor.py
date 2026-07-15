@@ -161,9 +161,8 @@ def test_env_config_with_settings_override(make_doctor_settings):
 
 
 def test_env_config_scope_summary_shows_personal_write(capsys, monkeypatch):
-    """OPM-128: OPENPROJECT_ENABLE_PERSONAL_WRITE was previously invisible in
-    doctor's output — the scope summary must now surface it (and the other
-    write flags) so "why is a write tool missing" is diagnosable without
+    """The scope summary must surface OPENPROJECT_ENABLE_PERSONAL_WRITE (and the
+    other write flags) so "why is a write tool missing" is diagnosable without
     reading source."""
     from openproject_ce_mcp.doctor import _check_env_config
 
@@ -219,8 +218,8 @@ def test_env_config_warns_on_http_url(capsys, make_doctor_settings, monkeypatch)
 def test_env_config_warns_on_legacy_tool_exposure_vars(capsys, monkeypatch):
     """Should warn when the legacy comma-separated tool-exposure variable is present.
 
-    OPM-128: the warning names the specific old variable AND its replacement
-    (not a generic "legacy tool-exposure variables" grouped message).
+    The warning names the specific old variable AND its replacement (not a
+    generic "legacy tool-exposure variables" grouped message).
     """
     from openproject_ce_mcp.doctor import _check_env_config
 
@@ -239,8 +238,8 @@ def test_env_config_warns_on_legacy_tool_exposure_vars(capsys, monkeypatch):
 
 
 def test_env_config_warns_on_legacy_project_scope_vars(capsys, monkeypatch):
-    """OPM-128: same per-name warning for the project-scope legacy vars — this
-    path had no dedicated test before (only the tool-exposure one did)."""
+    """Same per-name warning applies to the project-scope legacy vars, not just
+    the tool-exposure one."""
     from openproject_ce_mcp.doctor import _check_env_config
 
     monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://test.example.com")
@@ -340,7 +339,7 @@ async def test_api_connectivity_success(make_doctor_settings, mock_success_trans
 @pytest.mark.asyncio
 async def test_api_connectivity_preserves_real_scope_flags(make_doctor_settings, mock_success_transport, capsys):
     """The diagnostic settings must carry forward real enable_*_read/write
-    flags, not silently fall back to dataclass defaults (OPM-157): a
+    flags, not silently fall back to dataclass defaults: a
     membership-read-disabled config must fail the connectivity check the
     same way the running server would, not report false success."""
     from openproject_ce_mcp.doctor import _check_api_connectivity

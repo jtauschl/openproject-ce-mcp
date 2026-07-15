@@ -112,7 +112,7 @@ safety net for them.
 | `OPENPROJECT_ENABLE_MEMBERSHIP_WRITE` | no | `true` | Project membership create/update/delete. has no effect without a non-empty `OPENPROJECT_WRITE_PROJECTS` |
 | `OPENPROJECT_ENABLE_VERSION_WRITE` | no | `true` | Version create/update/delete. has no effect without a non-empty `OPENPROJECT_WRITE_PROJECTS` |
 | `OPENPROJECT_ENABLE_BOARD_WRITE` | no | `true` | Board create/update/delete. has no effect without a non-empty `OPENPROJECT_WRITE_PROJECTS` |
-| `OPENPROJECT_ENABLE_PERSONAL_WRITE` | no | `false` | Personal-data mutations (update your own preferences, mark notifications read). Requires `OPENPROJECT_ENABLE_PERSONAL_READ=true`; unlike the other write flags, `personal` also gates the paired reads, so both must be true together for these tools to appear |
+| `OPENPROJECT_ENABLE_PERSONAL_WRITE` | no | `false` | Personal-data mutations (update your own preferences, mark notifications read). Personal read tools require only `OPENPROJECT_ENABLE_PERSONAL_READ=true`; personal mutations require both the read and write flags together |
 
 `OPENPROJECT_ENABLE_ADMIN_WRITE` is documented under
 [Security / Privacy](#security--privacy) below.

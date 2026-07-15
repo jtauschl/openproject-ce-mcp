@@ -64,8 +64,8 @@ def test_defaults_no_write_tools() -> None:
 
 
 def test_update_my_preferences_absent_by_default() -> None:
-    """OPM-126: "personal" is opt-in only — update_my_preferences is no longer
-    unconditionally registered like it was pre-OPM-126."""
+    """ "personal" is opt-in only — update_my_preferences is not
+    unconditionally registered."""
     mcp = create_app(make_settings())
     names = _tool_names(mcp)
     assert "update_my_preferences" not in names
@@ -158,7 +158,7 @@ def test_enable_membership_read_false_removes_membership_tools() -> None:
 
 
 def test_enable_membership_read_false_removes_previously_ungated_tools() -> None:
-    """OPM-123 regression guard: get_current_user/list_actions/list_capabilities were
+    """Regression guard: get_current_user/list_actions/list_capabilities were
     always registered regardless of any flag, despite their client method enforcing
     _ensure_read_enabled("principal"/"membership") at call time — a tool visible but
     failing on every call. They now correctly disappear together with the rest of
@@ -206,7 +206,7 @@ def test_enable_work_package_write_adds_wp_write_tools() -> None:
     assert "create_time_entry" in names
     assert "update_relation" in names
     assert "delete_file_link" in names
-    # work_package write alone is no longer sufficient for attachment uploads (OPM-127)
+    # work_package write alone is no longer sufficient for attachment uploads
     assert "create_work_package_attachment" not in names
     # Other write scopes remain locked
     assert "create_project" not in names
@@ -406,7 +406,7 @@ def test_serverinfo_version_is_our_version() -> None:
 
 def test_create_app_applies_log_level(monkeypatch) -> None:
     """OPENPROJECT_LOG_LEVEL takes effect: create_app forces the root level so
-    FastMCP's default INFO does not leak SDK request logs (OPM-62)."""
+    FastMCP's default INFO does not leak SDK request logs."""
     import logging
 
     root = logging.getLogger()
@@ -549,7 +549,7 @@ def test_main_doctor_help_prints_help_not_runs_checks(monkeypatch, capsys) -> No
     assert "[FAIL]" not in out
 
 
-# ── legacy env-var warnings at real server startup (OPM-128) ────────────────────
+# ── legacy env-var warnings at real server startup ───────────────────────────────
 
 
 class _StubApp:
@@ -559,9 +559,8 @@ class _StubApp:
 
 def test_run_server_warns_on_legacy_env_var(monkeypatch, capsys) -> None:
     # Unlike doctor (a separate, manually-invoked command), the real server
-    # startup path previously had zero legacy-var awareness — this is the gap
-    # OPM-128 closed after this repo's own project config silently failed
-    # closed on the old names with no diagnostic anywhere.
+    # startup path also emits legacy-var warnings, so a project config silently
+    # relying on the old names produces a diagnostic instead of failing silent.
     monkeypatch.setenv("OPENPROJECT_BASE_URL", "https://op.example.com")
     monkeypatch.setenv("OPENPROJECT_API_TOKEN", "tok")
     monkeypatch.setenv("OPENPROJECT_ALLOWED_PROJECTS_READ", "OPM")

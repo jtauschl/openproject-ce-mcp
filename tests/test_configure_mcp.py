@@ -309,7 +309,7 @@ class _AnswerBook:
     """Matches queued answers to wizard prompts by prompt content, not call order.
 
     Each key is a literal substring expected to appear in exactly one live prompt's
-    text (checked on every call, not just at construction time — see OPM-132: a
+    text (checked on every call, not just at construction time — a
     construction-time-only "is one key nested in another" check would miss two
     independent keys that both happen to match the same longer prompt). A key's
     value is a single answer or a queue: a validation retry loop that reprompts
@@ -903,7 +903,7 @@ def test_merge_prefill_field_wise_priority(tmp_path: Path) -> None:
 
 def test_merge_prefill_empty_project_token_does_not_blank_global_token(tmp_path: Path) -> None:
     # Presence-based override is a deliberate exception for project-scope keys
-    # only (OPM-125) — an empty OPENPROJECT_API_TOKEN in a higher-priority
+    # only — an empty OPENPROJECT_API_TOKEN in a higher-priority
     # source must NOT blank out a real token from a lower-priority one.
     global_f = tmp_path / "global.json"
     global_f.write_text(json.dumps({"mcpServers": {"openproject": {"env": {"OPENPROJECT_API_TOKEN": "gtok"}}}}))
@@ -926,7 +926,7 @@ def _scope_clients(tmp_path: Path, global_env: dict, project_env: dict) -> tuple
 
 
 def test_merge_scope_prefill_source_priority_beats_new_vs_legacy_key_choice(tmp_path: Path) -> None:
-    # OPM-125 review: a higher-priority source's LEGACY key must still win over
+    # A higher-priority source's LEGACY key must still win over
     # a lower-priority source's NEW key — source priority is resolved first,
     # new-vs-legacy only within a single source. Merging all sources' raw keys
     # into one dict first (as a plain field-wise merge would) loses this
@@ -1151,10 +1151,10 @@ def _run_main(
     masks a genuine failure. Pass ``strict=False`` to skip the consumed-check on a
     normal exit too, for a test that deliberately over-registers answers.
 
-    Always passes ``interactive`` explicitly (OPM-128) — relying on pytest's
+    Always passes ``interactive`` explicitly — relying on pytest's
     stdin/stdout not being a tty would work today, but is incidental, not
     guaranteed, and would silently start making real network calls (the
-    OPM-121/128 connection test) if it ever stopped holding. Defaults to
+    connection test) if it ever stopped holding. Defaults to
     False; pass ``interactive=True`` for tests exercising the connection-test/
     preview/confirm flow itself, in which case ``c._test_connection`` should
     also be monkeypatched (a real network call must never happen in tests).
@@ -1184,8 +1184,8 @@ def _run_main(
 # advanced flow but don't care about these specific values merge one or both of
 # these in with "" (keep-default) answers, rather than retyping all 16-21 keys
 # — and rather than relying on iterator-exhaustion padding the way the old
-# positional lists did, which is exactly the silent-absorption failure mode
-# OPM-132 removes.
+# positional lists did, which was a silent-absorption failure mode that keying
+# answers by prompt content removes.
 _WRITE_CONTROL_DEFAULTS: dict[str, str] = {
     "Enable work-package writes": "",
     "Enable project writes": "",
@@ -1490,9 +1490,9 @@ def test_main_basic_setup_safe_advanced_defaults(monkeypatch, tmp_path: Path) ->
 
 
 def test_main_fresh_setup_defaults_read_projects_to_empty_not_wildcard(monkeypatch, tmp_path: Path) -> None:
-    # OPM-125: a brand-new setup (no prefill, no legacy keys) must start
-    # fail-closed like the runtime default, not silently suggest "*". OPM-128:
-    # that default is also what minimal-diff writing omits — assert both the
+    # A brand-new setup (no prefill, no legacy keys) must start
+    # fail-closed like the runtime default, not silently suggest "*". That
+    # default is also what minimal-diff writing omits — assert both the
     # omission and the resolved (still fail-closed) effective value.
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
     answers = {
@@ -1547,7 +1547,7 @@ def test_main_write_access_no_disables_write_flags(monkeypatch, tmp_path: Path) 
 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
-    # OPM-128: all of these end up at their default (empty/false), so
+    # All of these end up at their default (empty/false), so
     # minimal-diff writing omits them from the file — assert the resolved
     # effective values instead of the (now-absent) raw keys.
     assert "OPENPROJECT_WRITE_PROJECTS" not in env
@@ -1613,7 +1613,7 @@ def test_main_write_access_enter_keeps_existing_scope(monkeypatch, tmp_path: Pat
 
 
 def test_main_migrates_legacy_only_project_scope_keys(monkeypatch, tmp_path: Path) -> None:
-    # OPM-125: an existing config with ONLY the old ALLOWED_PROJECTS_* keys must
+    # An existing config with ONLY the old ALLOWED_PROJECTS_* keys must
     # still prefill correctly (not silently fall back to "*") and the output must
     # use only the new key names.
     target = tmp_path / ".mcp.json"
@@ -1651,7 +1651,7 @@ def test_main_migrates_legacy_only_project_scope_keys(monkeypatch, tmp_path: Pat
 
 
 def test_main_explicit_empty_new_key_overrides_nonempty_legacy_key(monkeypatch, tmp_path: Path) -> None:
-    # OPM-125: presence, not truthiness, decides the prefill — a deliberately
+    # Presence, not truthiness, decides the prefill — a deliberately
     # empty OPENPROJECT_READ_PROJECTS/_WRITE_PROJECTS must win over a nonempty
     # legacy value, not silently resurrect it.
     target = tmp_path / ".mcp.json"
@@ -1688,7 +1688,7 @@ def test_main_explicit_empty_new_key_overrides_nonempty_legacy_key(monkeypatch, 
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
     # Both resolve to empty (the default) — the empty new key won, not the
-    # nonempty legacy value — so OPM-128's minimal-diff writing omits both.
+    # nonempty legacy value — so minimal-diff writing omits both.
     assert "OPENPROJECT_READ_PROJECTS" not in env
     assert "OPENPROJECT_WRITE_PROJECTS" not in env
     settings = c.Settings.from_env(env)
@@ -1699,7 +1699,7 @@ def test_main_explicit_empty_new_key_overrides_nonempty_legacy_key(monkeypatch, 
 def test_main_write_access_yes_defaults_write_controls_on(monkeypatch, tmp_path: Path) -> None:
     # Choosing the "all" write scope in quick mode enables every write-group
     # flag (project/membership/work_package/version/board). There is no
-    # auto-confirm prompt anymore (OPM-124): every write/delete always
+    # auto-confirm prompt anymore: every write/delete always
     # requires explicit confirm=true, no operator-level bypass exists.
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
 
@@ -1773,7 +1773,7 @@ def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, 
     assert env["OPENPROJECT_RETRY_MAX_DELAY"] == "30"
 
 
-# ── quick/advanced mode (OPM-55) ─────────────────────────────────────────────
+# ── quick/advanced mode ─────────────────────────────────────────────
 
 
 def test_main_quick_write_scope_none_disables_all_write_flags(monkeypatch, tmp_path: Path) -> None:
@@ -2393,7 +2393,7 @@ def test_main_advanced_setup_prompts_for_optional_values(monkeypatch, tmp_path: 
     assert env["OPENPROJECT_RETRY_BASE_DELAY"] == "0.5"
 
 
-# ── Wizard reconciliation + validation (OPM-126 review rounds 3-7) ─────────────
+# ── Wizard reconciliation + validation ─────────────
 
 
 def test_main_advanced_deselecting_group_disables_existing_write_flag(monkeypatch, tmp_path: Path) -> None:
@@ -2481,7 +2481,7 @@ def test_main_personal_write_forced_false_when_personal_group_absent_in_advanced
     data = json.loads(target.read_text())
     env = data["mcpServers"]["openproject"]["env"]
     assert "OPENPROJECT_ENABLE_PERSONAL_READ" not in env
-    # personal_write is forced to false (the default) — OPM-128's minimal-diff
+    # personal_write is forced to false (the default) — minimal-diff
     # writing therefore omits the key entirely.
     assert "OPENPROJECT_ENABLE_PERSONAL_WRITE" not in env
     assert c.Settings.from_env(env).enable_personal_write is False
@@ -2576,9 +2576,9 @@ def test_wizard_invariant_generated_config_always_parses_with_settings_from_env(
 def test_main_ctrl_c_exits_130_no_traceback(monkeypatch, capsys) -> None:
     # Ctrl+C during a prompt → clean "Cancelled" message + exit 130, no traceback.
     # This is the one deliberate, documented exception to the "no direct
-    # builtins.input patch outside _AnswerBook" rule (see OPM-132): raising an
+    # builtins.input patch outside _AnswerBook" rule: raising an
     # exception isn't an "answer" _AnswerBook's string/string-queue API can
-    # express, and it isn't the positional-fragility class OPM-132 targets.
+    # express, and it isn't the kind of positional-fragility that rule guards against.
     monkeypatch.setattr(c, "_check_python", lambda: None)
     monkeypatch.setattr(c, "_installed_mode", lambda: True)
     monkeypatch.setattr(c, "_install_deps", lambda *a, **k: None)
@@ -2595,7 +2595,7 @@ def test_main_ctrl_c_exits_130_no_traceback(monkeypatch, capsys) -> None:
     assert "Cancelled" in capsys.readouterr().err
 
 
-# ── _test_connection (OPM-121/128) ──────────────────────────────────────────────
+# ── _test_connection ──────────────────────────────────────────────
 
 _CONNECTION_ENV = {"OPENPROJECT_BASE_URL": "https://op.example.com", "OPENPROJECT_API_TOKEN": "tok"}
 
@@ -2661,13 +2661,13 @@ def test_connection_invalid_settings_returns_config_error_without_network_call()
     assert called["v"] is False, "must not attempt a network call for invalid settings"
 
 
-# ── interactive connection test + preview/confirm (OPM-121/128) ────────────────
+# ── interactive connection test + preview/confirm ────────────────
 
 
 def test_main_interactive_declined_confirm_leaves_everything_unchanged(monkeypatch, tmp_path: Path, capsys) -> None:
-    # OPM-128 regression: removals used to execute immediately after target
-    # selection, before any credentials/preview — a declined confirm must now
-    # leave BOTH the removal and the write as no-ops, proving the reorder fix.
+    # Removals execute only after credentials/preview, not immediately after
+    # target selection — a declined confirm must leave BOTH the removal and
+    # the write as no-ops.
     # Also exercises a mixed remove(global) + create(project) preview in one go.
     gtarget = tmp_path / ".claude.json"
     gtarget.write_text(json.dumps({"mcpServers": {"openproject": {"env": ENV}}}))
@@ -2950,7 +2950,7 @@ def test_main_non_interactive_flag_forces_skip_even_with_real_stdin(monkeypatch,
     book.assert_consumed()  # no "Proceed with these changes?" key needed — never asked
 
 
-# ── _minimal_env (OPM-128 minimal-diff config writing) ──────────────────────────
+# ── _minimal_env (minimal-diff config writing) ──────────────────────────
 
 # Every optional field explicitly set to its own default's string form — proves
 # _minimal_env recognizes "explicitly set but equal to default" (not just

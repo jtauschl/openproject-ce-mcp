@@ -3,7 +3,7 @@
 WARNING — these fixtures build a FULLY WRITE-ENABLED client (every
 ``enable_*_write`` flag on) and the write tests create and DELETE real data.
 Every write/delete call passes ``confirm=True`` explicitly — there is no
-auto-confirm setting (OPM-124). Run them ONLY against a disposable test instance or a
+auto-confirm setting. Run them ONLY against a disposable test instance or a
 throwaway test project. NEVER point ``OPENPROJECT_BASE_URL`` /
 ``OPENPROJECT_API_TOKEN`` at a production instance or a project whose data you care
 about — a failed cleanup, a bug, or an interrupted run can leave or destroy data.
@@ -63,6 +63,7 @@ def _integration_settings() -> Settings | None:
         log_level="WARNING",
         read_projects=(test_project,),
         write_projects=(test_project,),
+        enable_admin_read=True,
         enable_admin_write=True,
         enable_project_write=True,
         enable_work_package_write=True,

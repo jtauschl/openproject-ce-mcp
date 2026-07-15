@@ -1,4 +1,4 @@
-"""Executable tests for the source-install/uninstall launcher scripts (OPM-167).
+"""Executable tests for the source-install/uninstall launcher scripts.
 
 Marked ``launcher`` -- excluded from the default ``pytest`` run (see
 pyproject.toml's ``addopts``) and run only in the ubuntu-only ``launchers``

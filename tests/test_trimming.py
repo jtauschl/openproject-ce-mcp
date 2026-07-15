@@ -1,4 +1,4 @@
-"""Tests for the context-reduction serialization seam (OPM-65/66/71/72).
+"""Tests for the context-reduction serialization seam.
 
 The seam (``_to_payload`` + the trimming ``tool()`` wrapper) turns a result
 dataclass into a trimmed plain dict: it drops ``payload`` on confirmed writes,
@@ -146,7 +146,7 @@ def test_returns_trimmable_false_for_single_entity_reads() -> None:
     assert _returns_trimmable(get_status) is False
 
 
-# ── OPM-71: count / truncated dropped from list results ───────────────────────
+# ── count / truncated dropped from list results ───────────────────────────────
 
 
 def test_list_result_drops_count_and_truncated() -> None:
@@ -156,7 +156,7 @@ def test_list_result_drops_count_and_truncated() -> None:
     assert "truncated" not in out
 
 
-# ── OPM-66: payload dropped only on confirmed writes ──────────────────────────
+# ── payload dropped only on confirmed writes ──────────────────────────────────
 
 
 def test_confirmed_write_drops_payload_keeps_result() -> None:
@@ -187,7 +187,7 @@ def test_bulk_drops_nested_item_payload_on_confirm() -> None:
     assert out["items"][0]["result"]["confirmed"] is True
 
 
-# ── OPM-65: select trims result rows ──────────────────────────────────────────
+# ── select trims result rows ──────────────────────────────────────────────────
 
 
 def test_select_keeps_only_requested_row_fields() -> None:
@@ -217,7 +217,7 @@ def test_normalize_select_shapes_kwarg() -> None:
     assert _normalize_select(["id", " subject "]) == frozenset({"id", "subject"})
 
 
-# ── OPM-134: select trims the nested work_package on batch reads ──────────────
+# ── select trims the nested work_package on batch reads ──────────────────────
 
 
 def test_batch_read_select_trims_nested_work_package_fields() -> None:
@@ -252,7 +252,7 @@ def test_returns_trimmable_true_for_batch_read() -> None:
     assert _returns_trimmable(get_work_packages) is True
 
 
-# ── OPM-72 forward-compat: _hidden_keys removed entirely ──────────────────────
+# ── forward-compat: _hidden_keys removed entirely ─────────────────────────────
 
 
 def test_hidden_keys_attribute_removes_keys() -> None:
@@ -333,7 +333,7 @@ def test_list_tools_expose_select_param() -> None:
         assert "select" in json.dumps(tools[name].parameters), name
 
 
-# ── OPM-72: single-entity reads are trimmed only when hide-fields are active ──
+# ── single-entity reads are trimmed only when hide-fields are active ─────────
 
 
 def test_single_entity_read_keeps_schema_without_hide_config() -> None:
