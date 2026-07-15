@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from types import SimpleNamespace
 
@@ -10,9 +11,12 @@ from openproject_ce_mcp.client import CLEAR, CLEAR_PARENT, CLEAR_VERSION, OpenPr
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.tools import (
     _validate_optional_non_negative_int,
+    _validate_optional_text,
+    _validate_optional_update_text,
     _validate_optional_user_ref,
     _validate_optional_work_package_ref,
     _validate_positive_int,
+    _validate_required_text,
     _validate_work_package_ref,
     add_project_favorite,
     add_work_package_comment,
@@ -24,6 +28,7 @@ from openproject_ce_mcp.tools import (
     create_grid,
     create_group,
     create_news,
+    create_project,
     create_subtask,
     create_time_entry,
     create_user,
@@ -106,6 +111,7 @@ from openproject_ce_mcp.tools import (
     update_group,
     update_news,
     update_project,
+    update_relation,
     update_reminder,
     update_time_entry,
     update_user,
@@ -217,6 +223,32 @@ async def test_get_work_package_returns_compact_summary() -> None:
     assert result.relations_url == "https://op.example.com/api/v3/work_packages/42/relations"
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_project_tool_does_not_raise_on_rejected_validation_preview() -> None:
+    """A rejected validation preview (ready=False, validation_errors populated)
+    is a normal tool result, not an exception. This secures the local
+    precondition for the MCP envelope's isError staying False on such a
+    result; it does not exercise the FastMCP protocol layer itself.
+    """
+
+    class StubClient:
+        async def create_project(self, **kwargs):
+            return SimpleNamespace(
+                ready=False,
+                validation_errors={"identifier": "has already been taken"},
+            )
+
+    result = await create_project(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        name="Demo",
+        identifier="demo",
+        confirm=True,
+    )
+
+    assert result.ready is False
+    assert result.validation_errors == {"identifier": "has already been taken"}
 
 
 @pytest.mark.asyncio
@@ -514,6 +546,97 @@ async def test_update_project_tool_maps_none_parent_to_clear_sentinel() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_project_tool_treats_empty_description_as_not_provided() -> None:
+    # Deliberately kept trade-off: create-tool semantics are untouched by the
+    # update-only clearing fix. An explicit "" on create still means "no
+    # description given" and must not be sent to OpenProject as an empty value.
+    class StubClient:
+        async def create_project(self, **kwargs):
+            return kwargs
+
+    result = await create_project(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        name="Demo",
+        identifier="demo",
+        description="",
+        confirm=True,
+    )
+
+    assert result["description"] is None
+
+
+@pytest.mark.asyncio
+async def test_create_project_tool_omits_description_from_http_payload_when_empty() -> None:
+    # End-to-end (tool -> client -> HTTP), not just the stub-level test above:
+    # confirms the empty description never reaches OpenProject as a "raw": ""
+    # value, all the way down to the actual outgoing request body.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/form" and request.method == "POST":
+            body = json.loads(request.content)
+            if not body:
+                # _build_project_write_payload's schema-fetch call, empty draft payload.
+                return httpx.Response(200, json={"_embedded": {"schema": {}}}, request=request)
+            assert "description" not in body
+            return httpx.Response(
+                200,
+                json={"_embedded": {"schema": {}, "payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    result = await create_project(
+        FakeContext(client),
+        name="Demo",
+        identifier="demo",
+        description="",
+        confirm=False,
+    )
+
+    assert result.ready is True
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_project_tool_clears_description_and_status_explanation() -> None:
+    # The bug lived in tools.py validation, not the client payload builder — a
+    # client-level test alone would already pass before the fix, since the
+    # builder correctly forwards "" once it actually receives one. This test
+    # exercises the real reported bug: the tool must pass "" through, not None.
+    class StubClient:
+        async def update_project(self, **kwargs):
+            return kwargs
+
+    result = await update_project(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        "demo",
+        description="",
+        status_explanation="",
+        confirm=True,
+    )
+
+    assert result["description"] == ""
+    assert result["status_explanation"] == ""
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_tool_clears_description() -> None:
+    class StubClient:
+        async def update_work_package(self, **kwargs):
+            return kwargs
+
+    result = await update_work_package(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        "42",
+        description="",
+        confirm=True,
+    )
+
+    assert result["description"] == ""
+
+
+@pytest.mark.asyncio
 async def test_update_work_package_tool_passes_real_version_name() -> None:
     class StubClient:
         async def update_work_package(self, **kwargs):
@@ -621,6 +744,24 @@ async def test_delete_relation_tool_passes_confirmation_flag() -> None:
 
     assert result["relation_id"] == 99
     assert result["confirm"] is True
+
+
+@pytest.mark.asyncio
+async def test_update_relation_tool_clears_description() -> None:
+    # The old falsy short-circuit (`if description else None`) meant an
+    # explicit "" never even reached validation; this must now clear.
+    class StubClient:
+        async def update_relation(self, **kwargs):
+            return kwargs
+
+    result = await update_relation(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        99,
+        description="",
+        confirm=True,
+    )
+
+    assert result["description"] == ""
 
 
 @pytest.mark.asyncio
@@ -1063,6 +1204,22 @@ async def test_time_entry_tools_pass_expected_arguments() -> None:
             start_time="09:00",
             confirm=False,
         )
+
+
+@pytest.mark.asyncio
+async def test_update_time_entry_tool_clears_comment() -> None:
+    class StubClient:
+        async def update_time_entry(self, **kwargs):
+            return kwargs
+
+    result = await update_time_entry(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        5,
+        comment="",
+        confirm=True,
+    )
+
+    assert result["comment"] == ""
 
 
 @pytest.mark.asyncio
@@ -1623,6 +1780,24 @@ async def test_bulk_update_work_packages_tool_validates_required_fields() -> Non
 
 
 @pytest.mark.asyncio
+async def test_bulk_update_work_packages_tool_clears_item_description() -> None:
+    # Per-item description has its own normalization pass distinct from
+    # update_work_package's — worth its own test rather than assuming it
+    # shares behavior just because it calls the same validator.
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            return kwargs
+
+    result = await bulk_update_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        items=[{"work_package_id": 1, "description": ""}],
+        confirm=True,
+    )
+
+    assert result["items"][0]["description"] == ""
+
+
+@pytest.mark.asyncio
 async def test_bulk_update_work_packages_tool_passes_validated_items() -> None:
     received: list = []
 
@@ -1745,6 +1920,31 @@ def test_validate_optional_non_negative_int_is_type_safe() -> None:
     with pytest.raises(ValueError, match="must be at least 0"):
         _validate_optional_non_negative_int(-1, field_name="x")
     assert _validate_optional_non_negative_int(0, field_name="x") == 0
+
+
+def test_validate_optional_text_still_collapses_empty_string_to_none() -> None:
+    # Regression guard: create-tool semantics are intentionally unchanged by the
+    # update-only clearing fix — an explicit "" still means "not provided".
+    assert _validate_optional_text("", field_name="description", max_length=10) is None
+    assert _validate_optional_text("   ", field_name="description", max_length=10) is None
+    assert _validate_optional_text(None, field_name="description", max_length=10) is None
+    assert _validate_optional_text("hi", field_name="description", max_length=10) == "hi"
+
+
+def test_validate_optional_update_text_preserves_empty_string() -> None:
+    assert _validate_optional_update_text("", field_name="description", max_length=10) == ""
+    assert _validate_optional_update_text("   ", field_name="description", max_length=10) == ""
+    assert _validate_optional_update_text(None, field_name="description", max_length=10) is None
+    assert _validate_optional_update_text("hi", field_name="description", max_length=10) == "hi"
+    with pytest.raises(ValueError, match="must be at most 10 characters"):
+        _validate_optional_update_text("way too long a value", field_name="description", max_length=10)
+
+
+def test_validate_required_text_still_rejects_empty_string() -> None:
+    with pytest.raises(ValueError, match="comment is required"):
+        _validate_required_text("", field_name="comment", max_length=100)
+    with pytest.raises(ValueError, match="comment is required"):
+        _validate_required_text("   ", field_name="comment", max_length=100)
 
 
 @pytest.mark.asyncio

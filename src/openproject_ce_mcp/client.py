@@ -6,7 +6,7 @@ import logging
 import mimetypes
 from collections.abc import Awaitable, Callable
 from dataclasses import fields as dataclass_fields
-from dataclasses import is_dataclass
+from dataclasses import is_dataclass, replace
 from fnmatch import fnmatch, fnmatchcase
 from pathlib import Path
 from typing import Any, TypeVar
@@ -2618,33 +2618,39 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> BulkWorkPackageWriteResult:
         item_results: list[BulkWorkPackageItemResult] = []
-        for i, item in enumerate(items):
-            try:
-                result = await self.create_work_package(
-                    project=item["project"],
-                    type=item["type"],
-                    subject=item["subject"],
-                    description=item.get("description"),
-                    version=item.get("version"),
-                    project_phase=item.get("project_phase"),
-                    assignee=item.get("assignee"),
-                    responsible=item.get("responsible"),
-                    priority=item.get("priority"),
-                    category=item.get("category"),
-                    custom_fields=item.get("custom_fields"),
-                    parent_work_package_id=item.get("parent_work_package_id"),
-                    start_date=item.get("start_date"),
-                    due_date=item.get("due_date"),
-                    confirm=confirm,
-                )
-                if not result.ready:
-                    item_results.append(
-                        BulkWorkPackageItemResult(index=i, success=False, error=result.message, result=result)
+        try:
+            for i, item in enumerate(items):
+                try:
+                    result = await self.create_work_package(
+                        project=item["project"],
+                        type=item["type"],
+                        subject=item["subject"],
+                        description=item.get("description"),
+                        version=item.get("version"),
+                        project_phase=item.get("project_phase"),
+                        assignee=item.get("assignee"),
+                        responsible=item.get("responsible"),
+                        priority=item.get("priority"),
+                        category=item.get("category"),
+                        custom_fields=item.get("custom_fields"),
+                        parent_work_package_id=item.get("parent_work_package_id"),
+                        start_date=item.get("start_date"),
+                        due_date=item.get("due_date"),
+                        confirm=confirm,
                     )
-                else:
-                    item_results.append(BulkWorkPackageItemResult(index=i, success=True, error=None, result=result))
-            except Exception as exc:
-                item_results.append(BulkWorkPackageItemResult(index=i, success=False, error=str(exc), result=None))
+                    if not result.ready:
+                        item_results.append(
+                            BulkWorkPackageItemResult(index=i, success=False, error=result.message, result=result)
+                        )
+                    else:
+                        item_results.append(BulkWorkPackageItemResult(index=i, success=True, error=None, result=result))
+                except Exception as exc:
+                    item_results.append(BulkWorkPackageItemResult(index=i, success=False, error=str(exc), result=None))
+        except asyncio.CancelledError:
+            _log_bulk_cancellation(
+                "bulk_create_work_packages", confirm=confirm, total=len(items), item_results=item_results
+            )
+            raise
 
         succeeded = sum(1 for r in item_results if r.success)
         failed = len(item_results) - succeeded
@@ -2679,37 +2685,43 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> BulkWorkPackageWriteResult:
         item_results: list[BulkWorkPackageItemResult] = []
-        for i, item in enumerate(items):
-            try:
-                result = await self.update_work_package(
-                    work_package_id=item["work_package_id"],
-                    subject=item.get("subject"),
-                    description=item.get("description"),
-                    type=item.get("type"),
-                    version=item.get("version"),
-                    project_phase=item.get("project_phase"),
-                    status=item.get("status"),
-                    assignee=item.get("assignee"),
-                    responsible=item.get("responsible"),
-                    priority=item.get("priority"),
-                    category=item.get("category"),
-                    custom_fields=item.get("custom_fields"),
-                    parent_work_package_id=item.get("parent_work_package_id"),
-                    start_date=item.get("start_date"),
-                    due_date=item.get("due_date"),
-                    estimated_time=item.get("estimated_time"),
-                    remaining_time=item.get("remaining_time"),
-                    duration=item.get("duration"),
-                    confirm=confirm,
-                )
-                if not result.ready:
-                    item_results.append(
-                        BulkWorkPackageItemResult(index=i, success=False, error=result.message, result=result)
+        try:
+            for i, item in enumerate(items):
+                try:
+                    result = await self.update_work_package(
+                        work_package_id=item["work_package_id"],
+                        subject=item.get("subject"),
+                        description=item.get("description"),
+                        type=item.get("type"),
+                        version=item.get("version"),
+                        project_phase=item.get("project_phase"),
+                        status=item.get("status"),
+                        assignee=item.get("assignee"),
+                        responsible=item.get("responsible"),
+                        priority=item.get("priority"),
+                        category=item.get("category"),
+                        custom_fields=item.get("custom_fields"),
+                        parent_work_package_id=item.get("parent_work_package_id"),
+                        start_date=item.get("start_date"),
+                        due_date=item.get("due_date"),
+                        estimated_time=item.get("estimated_time"),
+                        remaining_time=item.get("remaining_time"),
+                        duration=item.get("duration"),
+                        confirm=confirm,
                     )
-                else:
-                    item_results.append(BulkWorkPackageItemResult(index=i, success=True, error=None, result=result))
-            except Exception as exc:
-                item_results.append(BulkWorkPackageItemResult(index=i, success=False, error=str(exc), result=None))
+                    if not result.ready:
+                        item_results.append(
+                            BulkWorkPackageItemResult(index=i, success=False, error=result.message, result=result)
+                        )
+                    else:
+                        item_results.append(BulkWorkPackageItemResult(index=i, success=True, error=None, result=result))
+                except Exception as exc:
+                    item_results.append(BulkWorkPackageItemResult(index=i, success=False, error=str(exc), result=None))
+        except asyncio.CancelledError:
+            _log_bulk_cancellation(
+                "bulk_update_work_packages", confirm=confirm, total=len(items), item_results=item_results
+            )
+            raise
 
         succeeded = sum(1 for r in item_results if r.success)
         failed = len(item_results) - succeeded
@@ -2779,6 +2791,21 @@ class OpenProjectClient:
                 "internal": internal,
             },
         )
+        # OpenProject can aggregate a new note into an existing, more recent
+        # journal entry (e.g. a prior status change) instead of always creating
+        # a fresh one. When that happens, this endpoint's response carries that
+        # other journal entry's field-change `details` and `createdAt` alongside
+        # the comment. There is no reliable signal to tell an aggregated
+        # response from a fresh one, so both are suppressed unconditionally -
+        # including for an ordinary, non-aggregated comment, which sacrifices
+        # its own correct timestamp too. `comment`/`user`/`id` are unaffected
+        # by this and still reflect the activities POST response.
+        normalized_activity = replace(
+            self.normalize_activity(activity),
+            details=None,
+            details_truncated=False,
+            created_at=None,
+        )
         return ActivityWriteResult(
             action="comment",
             confirmed=True,
@@ -2788,7 +2815,7 @@ class OpenProjectClient:
             work_package_id=work_package_id,
             payload=payload,
             validation_errors={},
-            result=self.normalize_activity(activity),
+            result=normalized_activity,
         )
 
     async def create_work_package_relation(
@@ -7992,6 +8019,53 @@ def _delimit_user_content(text: str | None) -> str | None:
 def _origin_from_url(url: str) -> str:
     parsed = urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _log_bulk_cancellation(
+    operation: str,
+    *,
+    confirm: bool,
+    total: int,
+    item_results: list[BulkWorkPackageItemResult],
+) -> None:
+    """Log what is actually known about a bulk create/update call cancelled mid-loop.
+
+    This is diagnostic logging only, for operators/support - it does not close
+    the gap that the MCP caller receives no result on cancellation (a raised
+    CancelledError and a normal return value are mutually exclusive). It must
+    not overclaim: whether the in-flight request at the time of cancellation
+    reached OpenProject is unknown, so that item is reported as "unknown
+    outcome", never as succeeded/written.
+    """
+    completed = len(item_results)
+    completed_range = f"0-{completed - 1}" if completed else "none"
+    if completed < total:
+        if confirm:
+            in_flight_desc = (
+                f"item at index {completed} has an unknown outcome (may have been in flight when "
+                "cancelled; not necessarily written to OpenProject)"
+            )
+        else:
+            in_flight_desc = (
+                f"item at index {completed} has an unknown validation outcome (was in flight when "
+                "cancelled); confirm=false means no item in this call could have been written to "
+                "OpenProject regardless"
+            )
+        not_started = max(0, total - completed - 1)
+    else:
+        in_flight_desc = "no item was in flight (all items already had a known outcome)"
+        not_started = 0
+    LOGGER.warning(
+        "%s cancelled (confirm=%s): %d/%d item(s) completed before cancellation (indices %s); "
+        "%s; %d item(s) were not yet attempted.",
+        operation,
+        confirm,
+        completed,
+        total,
+        completed_range,
+        in_flight_desc,
+        not_started,
+    )
 
 
 def _normalize_validation_errors(value: Any) -> dict[str, str]:

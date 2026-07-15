@@ -565,7 +565,11 @@ async def create_project(
     parent: str | None = None,
     confirm: bool = False,
 ) -> ProjectWriteResult:
-    """Prepare or create a project."""
+    """Prepare or create a project.
+
+    A rejected validation preview is not a tool error; inspect `ready` and
+    `validation_errors` in the result rather than the MCP error envelope.
+    """
     client = _client_from_context(ctx)
     safe_name = _validate_required_query(name, field_name="name", max_length=255)
     safe_identifier = _validate_project_identifier(identifier)
@@ -603,7 +607,11 @@ async def copy_project(
     parent: str | None = None,
     confirm: bool = False,
 ) -> ProjectCopyResult:
-    """Prepare or copy an existing project into a new project."""
+    """Prepare or copy an existing project into a new project.
+
+    A rejected validation preview is not a tool error; inspect `ready` and
+    `validation_errors` in the result rather than the MCP error envelope.
+    """
     client = _client_from_context(ctx)
     safe_source_project = _validate_project_ref(source_project)
     safe_name = _validate_required_query(name, field_name="name", max_length=255)
@@ -656,14 +664,16 @@ async def update_project(
     """Prepare or update a project.
 
     Pass 'none' to parent to make the project top-level (remove its parent).
+    A rejected validation preview is not a tool error; inspect `ready` and
+    `validation_errors` in the result rather than the MCP error envelope.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
     safe_name = _validate_optional_query(name, field_name="name", max_length=255)
     safe_identifier = _validate_optional_project_identifier(identifier)
-    safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
+    safe_description = _validate_optional_update_text(description, field_name="description", max_length=10_000)
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
-    safe_status_explanation = _validate_optional_text(
+    safe_status_explanation = _validate_optional_update_text(
         status_explanation, field_name="status_explanation", max_length=10_000
     )
     # parent: 'none' (any case) makes the project top-level; otherwise a project ref.
@@ -1098,7 +1108,7 @@ async def update_document(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(document_id, field_name="document_id")
     safe_title = _validate_optional_query(title, field_name="title", max_length=255)
-    safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
+    safe_description = _validate_optional_update_text(description, field_name="description", max_length=10_000)
     if not any(value is not None for value in (safe_title, safe_description)):
         raise ValueError("At least one field to update is required.")
     return await _run_tool(
@@ -1185,8 +1195,8 @@ async def update_news(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(news_id, field_name="news_id")
     safe_title = _validate_optional_query(title, field_name="title", max_length=255)
-    safe_summary = _validate_optional_text(summary, field_name="summary", max_length=500)
-    safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
+    safe_summary = _validate_optional_update_text(summary, field_name="summary", max_length=500)
+    safe_description = _validate_optional_update_text(description, field_name="description", max_length=10_000)
     if not any(value is not None for value in (safe_title, safe_summary, safe_description)):
         raise ValueError("At least one field to update is required.")
     return await _run_tool(
@@ -1568,6 +1578,8 @@ async def create_work_package(
     The tool validates the payload first. Set confirm=true to write.
     assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number to nest the new work package under a parent.
     estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'PT30M' for 30 minutes). Day-based formats like 'P1D' are not supported by OpenProject.
+    A rejected validation preview is not a tool error; inspect `ready` and
+    `validation_errors` in the result rather than the MCP error envelope.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
@@ -1640,11 +1652,13 @@ async def update_work_package(
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
     estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours) or None to leave unchanged. Day-based formats like 'P1D' are not supported by OpenProject.
+    A rejected validation preview is not a tool error; inspect `ready` and
+    `validation_errors` in the result rather than the MCP error envelope.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
     safe_subject = _validate_optional_query(subject, field_name="subject", max_length=255)
-    safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
+    safe_description = _validate_optional_update_text(description, field_name="description", max_length=10_000)
     safe_type = _validate_optional_query(type, field_name="type", max_length=100)
     # version: 'none' (any case) clears the assigned version; otherwise a version name/id.
     safe_version = _validate_optional_version(version)
@@ -1736,7 +1750,18 @@ async def bulk_create_work_packages(
 
     With confirm=false (default) all items are validated and a preview is returned.
     With confirm=true all items are created. Failed items are reported in the result — the operation
-    continues for remaining items regardless of individual failures.
+    continues for remaining items regardless of individual failures. A rejected
+    item's validation is not a tool error; inspect each item's `success`,
+    `error`, and nested `result` rather than the MCP error envelope.
+
+    A per-item timeout is reported as that item's failure and does not stop
+    the loop. If this call is cancelled outright (e.g. the host cancels the
+    request), items already created beforehand remain on the server; items not
+    yet attempted are not created. No result summary is returned in that case
+    (the call ends via cancellation, not a normal return) — use
+    list_work_packages/get_work_package afterward to determine what was
+    actually written. This operation is not atomic; OpenProject CE has no
+    batch/transaction endpoint.
     """
     client = _client_from_context(ctx)
     if not items:
@@ -1803,7 +1828,18 @@ async def bulk_update_work_packages(
 
     With confirm=false (default) all items are validated and a preview is returned.
     With confirm=true all items are updated. Failed items are reported in the result — the operation
-    continues for remaining items regardless of individual failures.
+    continues for remaining items regardless of individual failures. A rejected
+    item's validation is not a tool error; inspect each item's `success`,
+    `error`, and nested `result` rather than the MCP error envelope.
+
+    A per-item timeout is reported as that item's failure and does not stop
+    the loop. If this call is cancelled outright (e.g. the host cancels the
+    request), items already updated beforehand remain on the server; items not
+    yet attempted are not updated. No result summary is returned in that case
+    (the call ends via cancellation, not a normal return) — use
+    list_work_packages/get_work_package afterward to determine what was
+    actually written. This operation is not atomic; OpenProject CE has no
+    batch/transaction endpoint.
     """
     client = _client_from_context(ctx)
     if not items:
@@ -1817,7 +1853,7 @@ async def bulk_update_work_packages(
             raise ValueError(f"items[{i}].work_package_id is required.")
         safe_id = _validate_work_package_ref(work_package_id, field_name=f"items[{i}].work_package_id")
         safe_subject = _validate_optional_query(item.get("subject"), field_name=f"items[{i}].subject", max_length=255)
-        safe_description = _validate_optional_text(
+        safe_description = _validate_optional_update_text(
             item.get("description"), field_name=f"items[{i}].description", max_length=10_000
         )
         safe_type = _validate_optional_query(item.get("type"), field_name=f"items[{i}].type", max_length=100)
@@ -1978,6 +2014,13 @@ async def add_work_package_comment(
 
     The tool only writes when confirm=true. notify=false avoids change emails by default.
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+    The result never includes `details`/`created_at`, even on an ordinary,
+    non-aggregated comment: OpenProject can aggregate a new comment into an
+    existing, more recent journal entry (e.g. a prior status change) instead
+    of always creating a fresh one, which would otherwise surface that
+    unrelated change's details and timestamp here — and there is no reliable
+    way to tell an aggregated response from a fresh one, so both fields are
+    omitted unconditionally rather than only when aggregation is suspected.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2102,7 +2145,11 @@ async def create_version(
     sharing: str | None = None,
     confirm: bool = False,
 ) -> VersionWriteResult:
-    """Prepare or create a version for a project."""
+    """Prepare or create a version for a project.
+
+    A rejected validation preview is not a tool error; inspect `ready` and
+    `validation_errors` in the result rather than the MCP error envelope.
+    """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
     safe_name = _validate_required_query(name, field_name="name", max_length=60)
@@ -2140,11 +2187,15 @@ async def update_version(
     sharing: str | None = None,
     confirm: bool = False,
 ) -> VersionWriteResult:
-    """Prepare or update a version."""
+    """Prepare or update a version.
+
+    A rejected validation preview is not a tool error; inspect `ready` and
+    `validation_errors` in the result rather than the MCP error envelope.
+    """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(version_id, field_name="version_id")
     safe_name = _validate_optional_query(name, field_name="name", max_length=60)
-    safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
+    safe_description = _validate_optional_update_text(description, field_name="description", max_length=10_000)
     safe_start_date = _validate_optional_date(start_date, field_name="start_date")
     safe_end_date = _validate_optional_date(end_date, field_name="end_date")
     safe_status = _validate_optional_choice(status, field_name="status", allowed_values={"open", "locked", "closed"})
@@ -2534,7 +2585,7 @@ async def update_time_entry(
     safe_spent_on = _validate_optional_date(spent_on, field_name="spent_on")
     safe_start_time = _validate_optional_datetime(start_time, field_name="start_time")
     safe_end_time = _validate_optional_datetime(end_time, field_name="end_time")
-    safe_comment = _validate_optional_text(comment, field_name="comment", max_length=10_000)
+    safe_comment = _validate_optional_update_text(comment, field_name="comment", max_length=10_000)
     if not any(
         value is not None
         for value in (
@@ -2691,7 +2742,7 @@ async def update_reminder(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(reminder_id, field_name="reminder_id")
     safe_remind_at = _validate_optional_datetime(remind_at, field_name="remind_at")
-    safe_note = _validate_optional_text(note, field_name="note", max_length=2000)
+    safe_note = _validate_optional_update_text(note, field_name="note", max_length=2000)
     return await _run_tool(
         client.update_reminder(
             reminder_id=safe_id,
@@ -3238,7 +3289,7 @@ async def update_relation(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(relation_id, field_name="relation_id")
     safe_type = _validate_relation_type(relation_type) if relation_type else None
-    safe_desc = _validate_optional_query(description, field_name="description", max_length=500) if description else None
+    safe_desc = _validate_optional_update_text(description, field_name="description", max_length=500)
     return await _run_tool(
         client.update_relation(
             relation_id=safe_id,
@@ -3513,6 +3564,23 @@ def _validate_optional_text(value: str | None, *, field_name: str, max_length: i
     normalized = value.strip()
     if not normalized:
         return None
+    if len(normalized) > max_length:
+        raise ValueError(f"{field_name} must be at most {max_length} characters.")
+    return normalized
+
+
+def _validate_optional_update_text(value: str | None, *, field_name: str, max_length: int) -> str | None:
+    """Like _validate_optional_text, but preserves an explicit empty string.
+
+    None still means "not provided, leave unchanged"; an explicit "" means
+    "clear this field" and is passed through as "" instead of collapsing to
+    None. Use only for persisted, genuinely clearable update fields — not for
+    create tools (where "" traditionally means "no value given") or transient
+    fields like a membership notification message.
+    """
+    if value is None:
+        return None
+    normalized = value.strip()
     if len(normalized) > max_length:
         raise ValueError(f"{field_name} must be at most {max_length} characters.")
     return normalized

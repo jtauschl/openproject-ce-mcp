@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
 import re
 
@@ -2575,6 +2577,72 @@ async def test_add_work_package_comment_writes_after_confirmation_when_enabled()
     assert result.confirmed is True
     assert result.result is not None
     assert result.result.comment == "<user-content>Please verify on staging.</user-content>"
+    # created_at is suppressed unconditionally, even for this ordinary,
+    # non-aggregated response with a plausible createdAt of its own - there is
+    # no reliable way to tell an aggregated response from a fresh one, so this
+    # deliberately sacrifices a correct timestamp in the common case too.
+    assert result.result.created_at is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_add_work_package_comment_suppresses_aggregated_journal_details() -> None:
+    """OpenProject can merge a new note into an existing journal (e.g. a prior
+    status change), returning that journal's unrelated `details`/`createdAt`
+    on the activities POST. The comment-add result must not surface either.
+    """
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/activities" and request.method == "POST":
+            return httpx.Response(
+                201,
+                json={
+                    "id": 78,
+                    "_type": "Activity::Comment",
+                    "version": 4,
+                    "comment": {"raw": "Looks good to me."},
+                    "_links": {"user": {"title": "OpenProject Bot"}},
+                    "createdAt": "2026-01-01T09:00:00Z",
+                    "details": [{"format": "custom", "raw": "New → In progress"}],
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = make_settings()
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url=settings.base_url,
+        api_token=settings.api_token,
+        enable_work_package_write=True,
+        timeout=settings.timeout,
+        verify_ssl=settings.verify_ssl,
+        default_page_size=settings.default_page_size,
+        max_page_size=settings.max_page_size,
+        max_results=settings.max_results,
+        log_level=settings.log_level,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.add_work_package_comment(
+        work_package_id=42,
+        comment="Looks good to me.",
+        confirm=True,
+    )
+
+    assert result.result is not None
+    assert result.result.comment == "<user-content>Looks good to me.</user-content>"
+    assert result.result.details is None
+    assert result.result.details_truncated is False
+    assert result.result.created_at is None
 
     await client.aclose()
 
@@ -3632,6 +3700,56 @@ async def test_time_entry_crud_and_activity_listing() -> None:
     assert updated.result is not None and updated.result.hours == "PT2H"
     assert deleted.time_entry_id == 10
 
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_time_entry_clears_comment_in_http_payload() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/time_entries/10" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 10,
+                    "hours": "PT1H30M",
+                    "spentOn": "2026-03-20",
+                    "ongoing": False,
+                    "comment": {"raw": "Initial implementation"},
+                    "_links": {
+                        "self": {"href": "/api/v3/time_entries/10"},
+                        "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                        "activity": {"href": "/api/v3/time_entries/activities/3", "title": "Development"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/time_entries/10" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body == {"comment": {"format": "markdown", "raw": ""}}
+            return httpx.Response(
+                200,
+                json={
+                    "id": 10,
+                    "hours": "PT1H30M",
+                    "spentOn": "2026-03-20",
+                    "ongoing": False,
+                    "comment": {"raw": ""},
+                    "_links": {
+                        "self": {"href": "/api/v3/time_entries/10"},
+                        "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                        "activity": {"href": "/api/v3/time_entries/activities/3", "title": "Development"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_work_package_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.update_time_entry(time_entry_id=10, comment="", confirm=True)
+
+    assert result.confirmed is True
     await client.aclose()
 
 
@@ -6997,6 +7115,85 @@ async def test_bulk_create_work_packages_partial_failure() -> None:
 
 
 @pytest.mark.asyncio
+async def test_bulk_create_work_packages_reraises_cancelled_error_with_diagnostic_log(caplog) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path in {"/api/v3/projects/demo", "/api/v3/projects/1"}:
+            return _make_project_response(request)
+        if request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": "Task"}]}}, request=request)
+        if request.url.path == "/api/v3/projects/1/versions":
+            return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
+        if request.url.path == "/api/v3/projects/1/work_packages/form":
+            body = json.loads(request.content)
+            if body.get("subject") == "Cancel me":
+                raise asyncio.CancelledError()
+            return _make_wp_form_response(request, body)
+        raise AssertionError(f"Unexpected: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with caplog.at_level(logging.WARNING, logger="openproject_ce_mcp.client"):
+        with pytest.raises(asyncio.CancelledError):
+            await client.bulk_create_work_packages(
+                items=[
+                    {"project": "demo", "type": "Task", "subject": "Good WP"},
+                    {"project": "demo", "type": "Task", "subject": "Cancel me"},
+                    {"project": "demo", "type": "Task", "subject": "Never attempted"},
+                ],
+                confirm=False,
+            )
+
+    log_message = next(r.message for r in caplog.records if "bulk_create_work_packages cancelled" in r.message)
+    assert "1/3 item(s) completed before cancellation (indices 0-0)" in log_message
+    assert "item at index 1 has an unknown validation outcome" in log_message
+    assert "confirm=false means no item in this call could have been written to OpenProject regardless" in log_message
+    assert "1 item(s) were not yet attempted" in log_message
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_work_packages_cancelled_with_confirm_true_does_not_claim_preview_wording(
+    caplog,
+) -> None:
+    # With confirm=true a write may genuinely have reached OpenProject before
+    # cancellation, so the log must not use the confirm=false "nothing could
+    # have been written" wording here.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path in {"/api/v3/projects/demo", "/api/v3/projects/1"}:
+            return _make_project_response(request)
+        if request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": "Task"}]}}, request=request)
+        if request.url.path == "/api/v3/projects/1/versions":
+            return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
+        if request.url.path == "/api/v3/projects/1/work_packages/form":
+            body = json.loads(request.content)
+            if body.get("subject") == "Cancel me":
+                raise asyncio.CancelledError()
+            return _make_wp_form_response(request, body)
+        raise AssertionError(f"Unexpected: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with caplog.at_level(logging.WARNING, logger="openproject_ce_mcp.client"):
+        with pytest.raises(asyncio.CancelledError):
+            await client.bulk_create_work_packages(
+                items=[
+                    {"project": "demo", "type": "Task", "subject": "Cancel me"},
+                    {"project": "demo", "type": "Task", "subject": "Never attempted"},
+                ],
+                confirm=True,
+            )
+
+    log_message = next(r.message for r in caplog.records if "bulk_create_work_packages cancelled" in r.message)
+    assert "item at index 0 has an unknown outcome" in log_message
+    assert "not necessarily written to OpenProject" in log_message
+    assert "confirm=false" not in log_message
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_bulk_update_work_packages_preview_mode() -> None:
     captured: dict[str, dict] = {}
 
@@ -7117,6 +7314,55 @@ async def test_bulk_update_work_packages_continues_after_partial_failure() -> No
     assert result.items[0].success is False
     assert result.items[0].error is not None
     assert result.items[1].success is True
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_work_packages_reraises_cancelled_error_with_diagnostic_log(caplog) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/10" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 10,
+                    "subject": "Old 10",
+                    "lockVersion": 1,
+                    "_links": {
+                        "project": {"title": "Demo", "href": "/api/v3/projects/1"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "activities": {"href": "/api/v3/work_packages/10/activities"},
+                        "relations": {"href": "/api/v3/work_packages/10/relations"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/10/form":
+            body = json.loads(request.content)
+            return _make_wp_form_response(request, body)
+        if request.url.path == "/api/v3/work_packages/20" and request.method == "GET":
+            raise asyncio.CancelledError()
+        raise AssertionError(f"Unexpected: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with caplog.at_level(logging.WARNING, logger="openproject_ce_mcp.client"):
+        with pytest.raises(asyncio.CancelledError):
+            await client.bulk_update_work_packages(
+                items=[
+                    {"work_package_id": 10, "subject": "Should succeed"},
+                    {"work_package_id": 20, "subject": "Cancel me"},
+                    {"work_package_id": 30, "subject": "Never attempted"},
+                ],
+                confirm=False,
+            )
+
+    log_message = next(r.message for r in caplog.records if "bulk_update_work_packages cancelled" in r.message)
+    assert "1/3 item(s) completed before cancellation (indices 0-0)" in log_message
+    assert "item at index 1 has an unknown validation outcome" in log_message
+    assert "confirm=false means no item in this call could have been written to OpenProject regardless" in log_message
+    assert "1 item(s) were not yet attempted" in log_message
+
     await client.aclose()
 
 
@@ -7573,6 +7819,89 @@ async def test_update_project_denies_disallowed_parent_project() -> None:
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
         await client.update_project(project_ref="demo", parent="999", confirm=True)
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_project_clears_description_and_status_explanation() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/form" and request.method == "POST":
+            body = json.loads(request.content)
+            if not body:
+                # _build_project_write_payload first fetches the schema with an
+                # empty draft payload, before the real fields are filled in.
+                return httpx.Response(200, json={"_embedded": {"schema": {}}}, request=request)
+            assert body["description"] == {"format": "markdown", "raw": ""}
+            assert body["statusExplanation"] == {"format": "markdown", "raw": ""}
+            return httpx.Response(
+                200,
+                json={"_embedded": {"schema": {}, "payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body["description"] == {"format": "markdown", "raw": ""}
+            assert body["statusExplanation"] == {"format": "markdown", "raw": ""}
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo", "_links": {}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_project_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.update_project(
+        project_ref="demo",
+        description="",
+        status_explanation="",
+        confirm=True,
+    )
+
+    assert result.confirmed is True
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_project_none_description_leaves_field_untouched() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/form" and request.method == "POST":
+            body = json.loads(request.content)
+            assert "description" not in body
+            return httpx.Response(
+                200,
+                json={"_embedded": {"schema": {}, "payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert "description" not in body
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo", "_links": {}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_project_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.update_project(project_ref="demo", name="New Name", confirm=True)
+
+    assert result.confirmed is True
     await client.aclose()
 
 
