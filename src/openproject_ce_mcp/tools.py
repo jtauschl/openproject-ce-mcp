@@ -151,13 +151,16 @@ RELATION_TYPE_RE = re.compile(
 # scope is disabled, instead of staying visible and failing only when called.
 #
 # Tool visibility is controlled by individual read/write boolean env vars
-# (OPENPROJECT_ENABLE_<SCOPE>_READ / _WRITE), one pair per scope. Settings'
-# startup validation (config.py's _WRITE_DEPENDS_ON_READ) already refuses to
-# start the server if any scope's write flag is true while its paired read
-# flag is false — for every scope, not just "personal" — so by the time this
-# code runs, a scope's write flag being on already implies its read flag is
-# too. The generic write-scope loop below (WRITE_TOOLS_BY_SCOPE) therefore
-# only checks the write flag; it doesn't need to re-check read.
+# (OPENPROJECT_ENABLE_<SCOPE>_READ / _WRITE), one pair per scope.
+# Settings.from_env() validates (config.py's WRITE_GROUP_REQUIREMENTS +
+# tool_exposure_violations()) that every scope's write flag being true
+# requires its paired read flag to also be true — for every scope, not just
+# "personal" — and refuses to start the server otherwise. That guarantee only
+# holds for configs loaded through from_env(); a Settings instance built
+# directly (e.g. a test fixture) can still set write=True/read=False without
+# tripping it. Given a from_env()-loaded config, though, a scope's write flag
+# being on already implies its read flag is too, so the generic write-scope
+# loop below (WRITE_TOOLS_BY_SCOPE) only checks the write flag.
 #
 # "personal" is still handled separately rather than folded into
 # WRITE_TOOLS_BY_SCOPE: it isn't project-scoped (see _PROJECT_SCOPED_WRITE_SCOPES
