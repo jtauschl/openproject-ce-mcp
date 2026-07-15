@@ -72,6 +72,8 @@ include = [
   "/.mcp.json.example",
   "/README.md",
   "/CHANGELOG.md",
+  "/SECURITY.md",
+  "/RELEASE.md",
   "/LICENSE",
   "/pyproject.toml",
   "/uv.lock",
