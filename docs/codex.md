@@ -6,22 +6,50 @@
 
 ## Recommended setup
 
-Use `.codex/config.toml` in your project root (project-scoped). This allows
-different projects to have different OpenProject access and permissions.
-Codex loads project-scoped config files only when you trust the project. You
-do not need the Codex CLI installed for this setup if you use the IDE
-extension and edit the config file directly.
+Codex supports `env_vars` on an `mcp_servers` entry — a whitelist of
+environment variable names to forward from the process that launches Codex
+into the server's environment, instead of embedding their values in
+`.codex/config.toml`. For a private credential like an OpenProject API
+token, this keeps the token out of `.codex/config.toml`:
 
-## Automatic setup
+```toml
+[mcp_servers.openproject]
+command = "openproject-ce-mcp"
+env_vars = ["OPENPROJECT_API_TOKEN"]
 
-Run `openproject-ce-mcp configure`, answer the project-scoped gate, and select
-Codex — it writes `.codex/config.toml` for you, with only the values you set
-(everything else falls back to a safe default and is omitted from the file).
-See [Installation](installation.md) for installing the package first.
+[mcp_servers.openproject.env]
+OPENPROJECT_BASE_URL = "https://op.example.com"
+OPENPROJECT_READ_PROJECTS = "my-project,other-project"
+OPENPROJECT_WRITE_PROJECTS = "my-project"
+```
 
-## Manual setup
+`OPENPROJECT_API_TOKEN` must be set in the environment of the process that
+launches Codex — a shell profile is enough if Codex starts from that same
+initialized shell; a GUI/IDE launch may need an OS-level environment
+mechanism or a secret manager instead. If the variable isn't set when Codex
+starts, it isn't forwarded and the MCP server exits at startup with
+`OPENPROJECT_API_TOKEN is required.`, rather than silently running with an
+empty token. Only the token needs this treatment — the other, non-sensitive
+values can stay as literals in the `env` table as shown above.
 
-Create `.codex/config.toml` in your project root:
+Codex loads project-scoped config files (`.codex/config.toml`) only when you
+trust the project. You do not need the Codex CLI installed for this setup if
+you use the IDE extension and edit the config file directly.
+
+## Automatic setup provided by this package
+
+`openproject-ce-mcp configure` does not use `env_vars` — like every other
+client this tool supports, it writes a plain config file directly, with all
+values (including the token) as literals in `[mcp_servers.openproject.env]`.
+Run it, answer the project-scoped gate, and select Codex — it writes
+`.codex/config.toml` for you, with only the values you set (everything else
+falls back to a safe default and is omitted from the file). See
+[Installation](installation.md) for installing the package first.
+
+## Manual setup (matching this package's automatic `.codex/config.toml` output)
+
+If you'd rather reproduce what `configure` writes automatically, create
+`.codex/config.toml` in your project root:
 
 ```toml
 [mcp_servers.openproject]
@@ -61,7 +89,10 @@ MCP entry.
 
 ## Protect credentials
 
-**`.codex/config.toml` holds your API token.**
+With the `env_vars` pattern above, `.codex/config.toml` itself holds no
+secret. The current automatic setup (`configure`) writes the token directly
+into the file, and a manual setup that skips `env_vars` does the same — in
+both cases, protect it:
 
 ```bash
 chmod 600 .codex/config.toml
@@ -95,10 +126,14 @@ instead of scoping it per project, use the user-wide `config.toml`:
 - **Protect credentials:** `chmod 600 ~/.codex/config.toml` on macOS/Linux; on
   Windows restrict it to your user via **Properties → Security**.
 
-**Example:** Use the same config as above in `~/.codex/config.toml`.
+**Example:** For the recommended credential handling, use the `env_vars`
+configuration from "Recommended setup" in `~/.codex/config.toml`. You can
+also use the literal configuration instead, but then the file contains the
+token and must be protected accordingly.
 
-**Note:** All projects share the same credentials and permissions.
-Project-scoped setup (above) is the preferred method.
+**Note:** All projects share the same credentials and permissions. For
+credentials specifically, the `env_vars` pattern under "Recommended setup"
+above is preferred.
 
 ---
 

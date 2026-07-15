@@ -9,18 +9,50 @@ Cursor uses the same MCP config shape as Claude Code (`mcpServers` with
 
 ## Recommended setup
 
-Use `.cursor/mcp.json` in your project root (project-scoped). This allows
-different projects to have different OpenProject access and permissions.
+For a local STDIO server in the Cursor IDE, Cursor supports `${env:VAR_NAME}`
+as a placeholder in `env` values — it resolves to an already-set OS
+environment variable at launch instead of embedding the value in
+`.cursor/mcp.json`. For a private credential like an OpenProject API token,
+this keeps the token out of `.cursor/mcp.json`:
 
-## Automatic setup
+```json
+{
+  "mcpServers": {
+    "openproject": {
+      "command": "openproject-ce-mcp",
+      "env": {
+        "OPENPROJECT_BASE_URL": "https://op.example.com",
+        "OPENPROJECT_API_TOKEN": "${env:OPENPROJECT_API_TOKEN}",
+        "OPENPROJECT_READ_PROJECTS": "my-project,other-project",
+        "OPENPROJECT_WRITE_PROJECTS": "my-project"
+      }
+    }
+  }
+}
+```
 
-Run `openproject-ce-mcp configure`, answer the project-scoped gate, and select
+`OPENPROJECT_API_TOKEN` must be set in the environment of the process that
+launches Cursor — a shell profile is enough if Cursor starts from that same
+initialized shell; a GUI launch may need an OS-level environment mechanism or
+a secret manager instead. Restart Cursor afterward so it picks up the
+variable. `${env:...}` is Cursor's documented interpolation mechanism for
+keeping the token out of `mcp.json`; unlike VS Code, Cursor does not support
+`${input:...}` there. This guidance covers a local STDIO server in the Cursor
+IDE specifically — Cursor Agent CLI, Cloud Agents/Automations, and remote
+environments may resolve variables differently and aren't covered here.
+
+## Automatic setup provided by this package
+
+`openproject-ce-mcp configure` does not use `${env:...}` — like every other
+client this tool supports, it writes a plain config file directly, with the
+token as a literal value. Run it, answer the project-scoped gate, and select
 Cursor — it writes `.cursor/mcp.json` for you. See
 [Installation](installation.md) for installing the package first.
 
-## Manual setup
+## Manual setup (matching this package's automatic `.cursor/mcp.json` output)
 
-Create `.cursor/mcp.json`. The structure is identical to every other client
+If you'd rather reproduce what `configure` writes automatically, create
+`.cursor/mcp.json`. The structure is identical to every other client
 (root key `mcpServers`):
 
 ```json
@@ -46,7 +78,10 @@ or [Configuration](configuration.md).
 
 ## Protect credentials
 
-**`.cursor/mcp.json` holds your API token.**
+With the `${env:...}` pattern above, `.cursor/mcp.json` itself holds no
+secret. The current automatic setup (`configure`) writes the token directly
+into the file, and a manual setup that skips `${env:...}` does the same — in
+both cases, protect it:
 
 ```bash
 chmod 600 .cursor/mcp.json
@@ -66,7 +101,9 @@ Open the command palette and run "Reload Window". Then:
 
 Use `~/.cursor/mcp.json` (same content, same `chmod 600` credential
 protection) to make the server available in all projects instead of one.
-Project-scoped is preferred for per-project permissions.
+Project-scoped is preferred for per-project permissions; for credentials
+specifically, the `${env:...}` pattern under "Recommended setup" above is
+preferred either way.
 
 ## See also
 

@@ -44,6 +44,12 @@ produce it — it's set up manually via `claude mcp add`. See
 [Claude / Claude Code](claude.md) for that command and the reasoning behind
 it.
 
+Codex supports `env_vars` forwarding, and the local Cursor IDE supports
+`${env:...}` references for local STDIO servers — both keep the token out of
+the MCP configuration file itself. See their guides' "Recommended setup"
+sections for the manual patterns. `configure` still writes the token
+literally for both, the same way it does for every other client.
+
 Registration only points your client at the installed command; it is not a
 second install. Using more than one client (say Claude and Codex)? Create one
 config file per client; they sit side by side.
