@@ -151,19 +151,23 @@ RELATION_TYPE_RE = re.compile(
 # scope is disabled, instead of staying visible and failing only when called.
 #
 # Tool visibility is controlled by individual read/write boolean env vars
-# (OPENPROJECT_ENABLE_<SCOPE>_READ / _WRITE), one pair per scope, all
-# independent of each other except where noted below.
+# (OPENPROJECT_ENABLE_<SCOPE>_READ / _WRITE), one pair per scope. Settings'
+# startup validation (config.py's _WRITE_DEPENDS_ON_READ) already refuses to
+# start the server if any scope's write flag is true while its paired read
+# flag is false — for every scope, not just "personal" — so by the time this
+# code runs, a scope's write flag being on already implies its read flag is
+# too. The generic write-scope loop below (WRITE_TOOLS_BY_SCOPE) therefore
+# only checks the write flag; it doesn't need to re-check read.
 #
-# "personal" is NOT a normal write scope: the other scopes treat read and
-# write as independent axes (a write tool appears once its write flag is on,
-# regardless of the paired read flag). For "personal", the repo owner decided
-# that OPENPROJECT_ENABLE_PERSONAL_READ controls visibility of the WHOLE
-# personal surface (read AND write), with OPENPROJECT_ENABLE_PERSONAL_WRITE acting as
-# an additional gate only within that already-visible surface — an AND, not
-# an independent toggle. PERSONAL_MUTATION_TOOLS is therefore its own named
-# constant, handled by a bespoke branch in enabled_tool_names() rather than
-# being folded into WRITE_TOOLS_BY_SCOPE, which would run it through the
-# generic independent read/write iteration and lose the AND semantics.
+# "personal" is still handled separately rather than folded into
+# WRITE_TOOLS_BY_SCOPE: it isn't project-scoped (see _PROJECT_SCOPED_WRITE_SCOPES
+# below) and its mutation tools sit alongside a read surface
+# (get_my_preferences, list_notifications) that has no write-side
+# counterpart in WRITE_TOOLS_BY_SCOPE's shape. PERSONAL_MUTATION_TOOLS is
+# therefore its own named constant, gated by an explicit read+write check in
+# enabled_tool_names() — redundant with the startup invariant above, but kept
+# for the same clarity every scope's write flag getting checked at its own
+# call site provides.
 PERSONAL_MUTATION_TOOLS: tuple[str, ...] = (
     "update_my_preferences",
     "mark_notification_read",
@@ -388,9 +392,8 @@ def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
             continue
         include(tuple(name for name in names if additional_scopes_ok(name)))
 
-    # Bespoke AND-gate (not the generic independent read/write iteration above):
-    # personal mutations need BOTH "personal" visible AND OPENPROJECT_ENABLE_PERSONAL_WRITE
-    # on, see the constant's docstring-comment above.
+    # Handled separately from the generic write-scope loop above (not folded
+    # into WRITE_TOOLS_BY_SCOPE) — see the constant's docstring-comment above.
     if settings.read_enabled("personal") and settings.write_enabled("personal"):
         include(PERSONAL_MUTATION_TOOLS)
 
