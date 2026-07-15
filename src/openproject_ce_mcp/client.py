@@ -2791,6 +2791,7 @@ class OpenProjectClient:
                 "internal": internal,
             },
         )
+        activity = await self._fill_missing_activity_user(activity)
         # OpenProject can aggregate a new note into an existing, more recent
         # journal entry (e.g. a prior status change) instead of always creating
         # a fresh one. When that happens, this endpoint's response carries that
@@ -2798,9 +2799,10 @@ class OpenProjectClient:
         # the comment. There is no reliable signal to tell an aggregated
         # response from a fresh one, so both are suppressed unconditionally -
         # including for an ordinary, non-aggregated comment, which sacrifices
-        # its own correct timestamp too. `comment`/`user`/`id` are unaffected
-        # by this and still reflect the activities POST response.
-        normalized_activity = replace(
+        # its own correct timestamp too. `comment`/`id` are unaffected by this
+        # and still reflect the activities POST response.
+        normalized_activity = self._replace_and_restamp(
+            "activity",
             self.normalize_activity(activity),
             details=None,
             details_truncated=False,
@@ -2817,6 +2819,40 @@ class OpenProjectClient:
             validation_errors={},
             result=normalized_activity,
         )
+
+    async def _fill_missing_activity_user(self, activity: dict[str, Any]) -> dict[str, Any]:
+        """Best-effort: fill in a missing `_links.user` on a freshly-posted activity.
+
+        The activities POST response can be leaner than a subsequent GET and
+        omit `_links.user` entirely, even though the activity was persisted
+        correctly. Re-fetches the canonical activity by id and merges in its
+        `_links.user`. A failure here (404, permission, timeout, ...) must
+        never turn an already-successful write into a reported error, so it
+        is swallowed and just logged - the caller then simply keeps user
+        unset. Only attempted when the response carries a usable id (a
+        missing/unusable id is left to normalize_activity()'s existing
+        requirement for one) and when `user` isn't configured hidden for
+        activities anyway, since fetching it would just be discarded.
+        """
+        if self._field_hidden("activity", "user"):
+            return activity
+        activity_links = activity.get("_links", {})
+        activity_id = activity.get("id")
+        if _link_title(activity_links.get("user")) or not _is_usable_positive_id(activity_id):
+            return activity
+        try:
+            fetched_activity = await self._get(f"activities/{activity_id}")
+        except OpenProjectError:
+            LOGGER.warning(
+                "add_work_package_comment: fallback fetch of activity %s for a missing "
+                "user link failed; the comment was still saved, user stays unset.",
+                activity_id,
+            )
+            return activity
+        fetched_user_link = fetched_activity.get("_links", {}).get("user")
+        if not fetched_user_link:
+            return activity
+        return {**activity, "_links": {**activity_links, "user": fetched_user_link}}
 
     async def create_work_package_relation(
         self,
@@ -5360,6 +5396,9 @@ class OpenProjectClient:
                 derived_remaining_time=payload.get("derivedRemainingTime"),
                 duration=payload.get("duration"),
                 parent_id=_id_from_href(links.get("parent", {}).get("href")),
+                # Hierarchy links carry displayId from 17.5 (semantic mode); absent on
+                # older/classic instances, where this stays None.
+                parent_display_id=links.get("parent", {}).get("displayId"),
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
                 author=_link_title(links.get("author")),
@@ -7700,6 +7739,16 @@ class OpenProjectClient:
             value._hidden_keys = hidden
         return value
 
+    def _replace_and_restamp(self, entity: str, value: Any, **changes: Any) -> Any:
+        """Like ``dataclasses.replace()``, but preserves the ``_hidden_keys`` stamp.
+
+        ``dataclasses.replace()`` rebuilds the instance via the constructor,
+        which drops any ``_hidden_keys`` attribute ``_apply_hidden_fields``
+        previously stamped onto it - re-stamp so a configured hide-fields
+        entry still takes effect on the replaced instance.
+        """
+        return self._apply_hidden_fields(entity, replace(value, **changes))
+
     def _api_href(self, relative_path: str) -> str:
         return f"/{self._api_prefix.lstrip('/')}{relative_path.lstrip('/')}"
 
@@ -8175,6 +8224,15 @@ def _link_title(link: Any) -> str | None:
         return None
     title = link.get("title")
     return _trim_text(title, limit=SUBJECT_LIMIT)
+
+
+def _is_usable_positive_id(value: Any) -> bool:
+    """True for a positive int; bool is excluded even though it is technically
+    an int subclass. OpenProject's JSON API always emits ids as plain
+    integers, matching how every other id field in this file is handled
+    (e.g. ``int(payload["id"])``), so no string/numeric-string form is
+    accepted here."""
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
 def _next_offset(offset: int, limit: int, total: int) -> int | None:

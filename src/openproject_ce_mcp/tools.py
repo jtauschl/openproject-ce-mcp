@@ -1313,10 +1313,12 @@ async def search_work_packages(
     select restricts each result row to the given fields (e.g. ["id", "subject",
     "status"]); an invalid name returns the allowed set. Common fields: id,
     display_id, subject, type, status, priority, assignee, project, version,
-    parent_id, start_date, due_date, estimated_time, spent_time, created_at,
-    updated_at, author, category, description, schedule_manually,
-    derived_start_date, derived_due_date, percentage_done, derived_percentage_done,
-    readonly, ignore_non_working_days.
+    parent_id, parent_display_id, start_date, due_date, estimated_time,
+    spent_time, created_at, updated_at, author, category, description,
+    schedule_manually, derived_start_date, derived_due_date, percentage_done,
+    derived_percentage_done, readonly, ignore_non_working_days.
+    parent_display_id is only populated on OpenProject 17.5+ (semantic mode);
+    it stays null on older/classic instances even when parent_id is set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. total is the real
@@ -1418,10 +1420,12 @@ async def list_work_packages(
     select restricts each result row to the given fields (e.g. ["id", "subject",
     "status"]); an invalid name returns the allowed set. Common fields: id,
     display_id, subject, type, status, priority, assignee, project, version,
-    parent_id, start_date, due_date, estimated_time, spent_time, created_at,
-    updated_at, author, category, description, schedule_manually,
-    derived_start_date, derived_due_date, percentage_done, derived_percentage_done,
-    readonly, ignore_non_working_days.
+    parent_id, parent_display_id, start_date, due_date, estimated_time,
+    spent_time, created_at, updated_at, author, category, description,
+    schedule_manually, derived_start_date, derived_due_date, percentage_done,
+    derived_percentage_done, readonly, ignore_non_working_days.
+    parent_display_id is only populated on OpenProject 17.5+ (semantic mode);
+    it stays null on older/classic instances even when parent_id is set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. total is the real
@@ -2021,6 +2025,10 @@ async def add_work_package_comment(
     unrelated change's details and timestamp here — and there is no reliable
     way to tell an aggregated response from a fresh one, so both fields are
     omitted unconditionally rather than only when aggregation is suspected.
+    `user` is normally populated, but on rare cases where OpenProject's own
+    write response omits it, a best-effort follow-up lookup fills it in; if
+    that also comes back empty, `user` stays null even though the comment was
+    saved successfully.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)

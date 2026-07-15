@@ -282,6 +282,23 @@ async def test_get_work_packages_tool_does_not_forward_select_to_client() -> Non
 
 
 @pytest.mark.asyncio
+async def test_search_work_packages_tool_accepts_parent_display_id_select_field() -> None:
+    # parent_display_id was missing from WorkPackageSummary previously, so this
+    # select value used to raise "not a valid WorkPackageSummary field".
+    class StubClient:
+        async def search_work_packages(self, **kwargs):
+            return kwargs
+
+    result = await search_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        query="Feature",
+        select=["id", "parent_id", "parent_display_id"],
+    )
+
+    assert result["query"] == "Feature"
+
+
+@pytest.mark.asyncio
 async def test_search_work_packages_tool_passes_status_filter() -> None:
     class StubClient:
         async def search_work_packages(self, **kwargs):
