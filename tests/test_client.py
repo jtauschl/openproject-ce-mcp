@@ -1647,6 +1647,8 @@ async def test_update_work_package_writes_after_confirmation_when_enabled() -> N
                 json={"_embedded": {"elements": [{"id": 9, "name": "In progress"}]}},
                 request=request,
             )
+        if request.url.path == "/api/v3/statuses/9":
+            return httpx.Response(200, json={"id": 9, "name": "In progress", "isClosed": False}, request=request)
         if request.url.path == "/api/v3/work_packages/42/form":
             assert request.method == "POST"
             body = json.loads(request.content)
@@ -7560,6 +7562,8 @@ async def test_bulk_update_work_packages_preview_mode() -> None:
             return httpx.Response(
                 200, json={"_embedded": {"elements": [{"id": 5, "name": "In progress"}]}}, request=request
             )
+        if request.url.path == "/api/v3/statuses/5":
+            return httpx.Response(200, json={"id": 5, "name": "In progress", "isClosed": False}, request=request)
         raise AssertionError(f"Unexpected: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
@@ -9400,6 +9404,7 @@ async def test_copy_project_checks_destination_allowlist() -> None:
             return httpx.Response(
                 200,
                 json={
+                    "_type": "Project",
                     "id": 1,
                     "identifier": "src",
                     "name": "Source",
@@ -9427,6 +9432,7 @@ async def test_copy_project_checks_destination_allowlist() -> None:
             return httpx.Response(
                 200,
                 json={
+                    "_type": "Project",
                     "id": 1,
                     "identifier": "src",
                     "name": "Source",
@@ -11316,5 +11322,447 @@ async def test_global_relations_allowlist_checks_from_and_to_link_shapes() -> No
 
     assert [relation.id for relation in result.results] == [1]
     assert fetched_work_packages == [10, 11, 20, 30, 31]
+
+
+# ── _resolve_project_ref: project display-name fallback (Fix 1) ────────────────
+
+
+def _projects_search_handler(matches: list[dict], *, page_size: int = 50):
+    """Simulate GET /api/v3/projects, paginating an in-memory match list by offset/pageSize."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        offset = int(request.url.params.get("offset", "1"))
+        size = int(request.url.params.get("pageSize", str(page_size)))
+        start = (offset - 1) * size
+        page_items = matches[start : start + size]
+        elements = [
+            {"_type": "Project", "id": m["id"], "name": m["name"], "identifier": m.get("identifier")}
+            for m in page_items
+        ]
+        return httpx.Response(200, json={"total": len(matches), "_embedded": {"elements": elements}}, request=request)
+
+    return handler
+
+
+async def test_get_project_resolves_by_exact_identifier_without_search() -> None:
+    """Numeric id / identifier input never triggers the name-search fallback."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo":
+            return _make_project_response(request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
+    project = await client.get_project("demo")
+    assert project.identifier == "demo"
+    await client.aclose()
+
+
+async def test_get_project_resolves_by_exact_name_when_unique() -> None:
+    """A display name with no matching identifier falls back to a unique name search hit."""
+    search_handler = _projects_search_handler([{"id": 5, "name": "Website", "identifier": "web-1"}])
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/Website":
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+        if request.url.path == "/api/v3/projects" and request.method == "GET":
+            return search_handler(request)
+        if request.url.path == "/api/v3/projects/5":
+            return _make_project_response(request, project_id=5)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
+    project = await client.get_project("Website")
+    assert project.id == 5
+    await client.aclose()
+
+
+async def test_create_work_package_resolves_project_by_display_name() -> None:
+    """A representative write-path tool (create_work_package) resolving `project` by name."""
+    search_handler = _projects_search_handler([{"id": 1, "name": "My Project", "identifier": "demo"}])
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/My Project":
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+        if request.url.path == "/api/v3/projects" and request.method == "GET":
+            return search_handler(request)
+        if request.url.path in {"/api/v3/projects/1", "/api/v3/projects/demo"}:
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "My Project", "identifier": "demo", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(
+                200, json={"_embedded": {"elements": [{"id": 7, "name": "Feature"}]}}, request=request
+            )
+        if request.url.path == "/api/v3/projects/1/work_packages/form":
+            body = json.loads(request.content)
+            assert body["subject"] == "New idea"
+            return _make_wp_form_response(request, body)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
+    result = await client.create_work_package(project="My Project", type="Feature", subject="New idea", confirm=False)
+    assert result.ready
+    await client.aclose()
+
+
+async def test_create_work_package_by_display_name_still_enforces_write_allowlist() -> None:
+    """Resolving `project` by name must apply _ensure_project_write_allowed, not just read."""
+    search_handler = _projects_search_handler([{"id": 1, "name": "My Project", "identifier": "demo"}])
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/My Project":
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+        if request.url.path == "/api/v3/projects" and request.method == "GET":
+            return search_handler(request)
+        if request.url.path == "/api/v3/projects/1":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "My Project", "identifier": "demo", "_links": {}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    # "demo" is readable (so the name search can find it) but not writable.
+    settings = _base_settings(read_projects=("*",), write_projects=("other-project",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await client.create_work_package(project="My Project", type="Feature", subject="New idea", confirm=False)
+    await client.aclose()
+
+
+async def test_get_project_ambiguous_when_two_projects_share_exact_name() -> None:
+    """Two projects with the identical display name must not resolve silently."""
+    search_handler = _projects_search_handler(
+        [
+            {"id": 5, "name": "Website", "identifier": "web-1"},
+            {"id": 6, "name": "Website", "identifier": "web-2"},
+        ]
+    )
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/Website":
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+        if request.url.path == "/api/v3/projects" and request.method == "GET":
+            return search_handler(request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
+    with pytest.raises(InvalidInputError, match="ambiguous"):
+        await client.get_project("Website")
+    await client.aclose()
+
+
+async def test_get_project_not_found_when_no_name_match() -> None:
+    search_handler = _projects_search_handler([])
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/Nonexistent":
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+        if request.url.path == "/api/v3/projects" and request.method == "GET":
+            return search_handler(request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
+    with pytest.raises(NotFoundError):
+        await client.get_project("Nonexistent")
+    await client.aclose()
+
+
+async def test_get_project_resolves_exact_name_past_earlier_substring_matches() -> None:
+    """Earlier substring-only hits must not short-circuit the scan before the exact match."""
+    search_handler = _projects_search_handler(
+        [
+            {"id": 1, "name": "Website Redesign", "identifier": "web-redesign"},
+            {"id": 2, "name": "Website Migration", "identifier": "web-migration"},
+            {"id": 5, "name": "Website", "identifier": "web-1"},
+        ]
+    )
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/Website":
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+        if request.url.path == "/api/v3/projects" and request.method == "GET":
+            return search_handler(request)
+        if request.url.path == "/api/v3/projects/5":
+            return _make_project_response(request, project_id=5)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
+    project = await client.get_project("Website")
+    assert project.id == 5
+    await client.aclose()
+
+
+async def test_get_project_ambiguous_when_search_capped_before_exhaustion() -> None:
+    """Hitting the page cap while still truncated must never fabricate uniqueness."""
+    # 300 substring-only matches (none exact), far more than max_page_size(50) * the
+    # search's page cap (5) can exhaust — every page stays truncated=True.
+    matches = [{"id": i, "name": f"Website Clone {i}", "identifier": f"web-clone-{i}"} for i in range(300)]
+    search_handler = _projects_search_handler(matches)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/Website":
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+        if request.url.path == "/api/v3/projects" and request.method == "GET":
+            return search_handler(request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
+    with pytest.raises(InvalidInputError, match="ambiguous"):
+        await client.get_project("Website")
+    await client.aclose()
+
+
+# ── update_work_package: percentage_done + auto-derivation on close (Fix 4) ────
+
+
+async def test_update_work_package_sets_percentage_done_explicitly() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "lockVersion": 1,
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            assert body["percentageDone"] == 40
+            return _make_wp_form_response(request, body)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
+    result = await client.update_work_package(work_package_id=42, percentage_done=40, confirm=False)
+    assert result.ready
+    await client.aclose()
+
+
+async def test_update_work_package_autofills_progress_on_close_when_writable() -> None:
+    form_calls = {"count": 0}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "lockVersion": 1,
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/statuses":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 9, "name": "Closed"}]}}, request=request)
+        if request.url.path == "/api/v3/statuses/9":
+            return httpx.Response(200, json={"id": 9, "name": "Closed", "isClosed": True}, request=request)
+        if request.url.path == "/api/v3/work_packages/42/form":
+            form_calls["count"] += 1
+            body = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Form",
+                    "_embedded": {
+                        "payload": body,
+                        "validationErrors": {},
+                        "schema": {
+                            "percentageDone": {"writable": True},
+                            "remainingTime": {"writable": True},
+                        },
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
+    result = await client.update_work_package(work_package_id=42, status="Closed", confirm=False)
+    assert result.ready
+    assert result.payload["percentageDone"] == 100
+    assert result.payload["remainingTime"] == "PT0H"
+    # First form POST (without the auto-filled fields) + second POST once the schema
+    # confirmed writability — never more than that.
+    assert form_calls["count"] == 2
+    await client.aclose()
+
+
+async def test_update_work_package_skips_autofill_when_schema_not_writable() -> None:
+    """Status-based progress mode (OpenProject derives these itself) — must not error, must not add fields."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "lockVersion": 1,
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/statuses":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 9, "name": "Closed"}]}}, request=request)
+        if request.url.path == "/api/v3/statuses/9":
+            return httpx.Response(200, json={"id": 9, "name": "Closed", "isClosed": True}, request=request)
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            assert "percentageDone" not in body
+            assert "remainingTime" not in body
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Form",
+                    "_embedded": {
+                        "payload": body,
+                        "validationErrors": {},
+                        "schema": {
+                            "percentageDone": {"writable": False},
+                            "remainingTime": {"writable": False},
+                        },
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
+    result = await client.update_work_package(work_package_id=42, status="Closed", confirm=False)
+    assert result.ready
+    await client.aclose()
+
+
+async def test_update_work_package_preserves_explicit_values_on_close() -> None:
+    """Explicit percentage_done/remaining_time always win, even when closing."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "lockVersion": 1,
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/statuses":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 9, "name": "Closed"}]}}, request=request)
+        if request.url.path == "/api/v3/statuses/9":
+            return httpx.Response(200, json={"id": 9, "name": "Closed", "isClosed": True}, request=request)
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            assert body["percentageDone"] == 50
+            assert body["remainingTime"] == "PT5H"
+            return _make_wp_form_response(request, body)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
+    result = await client.update_work_package(
+        work_package_id=42,
+        status="Closed",
+        percentage_done=50,
+        remaining_time="PT5H",
+        confirm=False,
+    )
+    assert result.ready
+    # Only one form POST: nothing was auto-filled since both fields were explicit.
+    await client.aclose()
+
+
+async def test_update_work_package_close_with_hidden_progress_fields_still_succeeds() -> None:
+    """A locally hidden percentage_done/remaining_time must not turn a plain close into an error."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "lockVersion": 1,
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/statuses":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 9, "name": "Closed"}]}}, request=request)
+        if request.url.path == "/api/v3/statuses/9":
+            return httpx.Response(200, json={"id": 9, "name": "Closed", "isClosed": True}, request=request)
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            assert "percentageDone" not in body
+            assert "remainingTime" not in body
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Form",
+                    "_embedded": {
+                        "payload": body,
+                        "validationErrors": {},
+                        "schema": {
+                            "percentageDone": {"writable": True},
+                            "remainingTime": {"writable": True},
+                        },
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(hidden_fields={"work_package": ("percentage_done", "remaining_time")})
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.update_work_package(work_package_id=42, status="Closed", confirm=False)
+    assert result.ready
+    await client.aclose()
+
+
+async def test_update_work_package_close_succeeds_with_work_package_read_disabled() -> None:
+    """Closing must not route the internal status lookup through get_status()'s read gate."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "lockVersion": 1,
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/statuses":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 9, "name": "Closed"}]}}, request=request)
+        if request.url.path == "/api/v3/statuses/9":
+            return httpx.Response(200, json={"id": 9, "name": "Closed", "isClosed": True}, request=request)
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Form",
+                    "_embedded": {
+                        "payload": body,
+                        "validationErrors": {},
+                        "schema": {
+                            "percentageDone": {"writable": True},
+                            "remainingTime": {"writable": True},
+                        },
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_work_package_read=False)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.update_work_package(work_package_id=42, status="Closed", confirm=False)
+    assert result.ready
+    assert result.payload["percentageDone"] == 100
+    await client.aclose()
 
     await client.aclose()

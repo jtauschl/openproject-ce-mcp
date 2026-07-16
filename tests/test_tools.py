@@ -11,6 +11,7 @@ from openproject_ce_mcp.client import CLEAR, CLEAR_PARENT, CLEAR_VERSION, OpenPr
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.tools import (
     _validate_optional_non_negative_int,
+    _validate_optional_percentage_done,
     _validate_optional_text,
     _validate_optional_update_text,
     _validate_optional_user_ref,
@@ -1843,6 +1844,7 @@ async def test_bulk_update_work_packages_tool_passes_validated_items() -> None:
                 "estimated_time": "PT8H",
                 "remaining_time": "PT3H",
                 "duration": "PT10H",
+                "percentage_done": 40,
             },
             {"work_package_id": 20, "due_date": "2026-12-31"},
         ],
@@ -1858,6 +1860,7 @@ async def test_bulk_update_work_packages_tool_passes_validated_items() -> None:
     assert received[0]["estimated_time"] == "PT8H"
     assert received[0]["remaining_time"] == "PT3H"
     assert received[0]["duration"] == "PT10H"
+    assert received[0]["percentage_done"] == 40
     assert received[1]["work_package_id"] == "20"
     assert received[1]["due_date"] == "2026-12-31"
 
@@ -1889,14 +1892,16 @@ async def test_bulk_update_work_packages_tool_accepts_each_duration_field_alone(
             {"work_package_id": 10, "estimated_time": "PT8H"},
             {"work_package_id": 20, "remaining_time": "PT3H"},
             {"work_package_id": 30, "duration": "PT10H"},
+            {"work_package_id": 40, "percentage_done": 0},
         ],
         confirm=True,
     )
 
-    assert len(received) == 3
+    assert len(received) == 4
     assert received[0]["estimated_time"] == "PT8H"
     assert received[1]["remaining_time"] == "PT3H"
     assert received[2]["duration"] == "PT10H"
+    assert received[3]["percentage_done"] == 0
 
 
 def test_validate_work_package_ref_accepts_numeric_and_semantic() -> None:
@@ -1937,6 +1942,19 @@ def test_validate_optional_non_negative_int_is_type_safe() -> None:
     with pytest.raises(ValueError, match="must be at least 0"):
         _validate_optional_non_negative_int(-1, field_name="x")
     assert _validate_optional_non_negative_int(0, field_name="x") == 0
+
+
+def test_validate_optional_percentage_done_is_type_safe_and_range_checked() -> None:
+    assert _validate_optional_percentage_done(None) is None
+    for bad in (True, 1.5, "50"):
+        with pytest.raises(ValueError, match="must be an integer"):
+            _validate_optional_percentage_done(bad)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="must be between 0 and 100"):
+        _validate_optional_percentage_done(-1)
+    with pytest.raises(ValueError, match="must be between 0 and 100"):
+        _validate_optional_percentage_done(101)
+    assert _validate_optional_percentage_done(0) == 0
+    assert _validate_optional_percentage_done(100) == 100
 
 
 def test_validate_optional_text_still_collapses_empty_string_to_none() -> None:

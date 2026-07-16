@@ -160,6 +160,12 @@ LOGGER = logging.getLogger(__name__)
 FORMATTABLE_LIMIT = 1_200
 SUBJECT_LIMIT = 255
 
+# Bound on how many search pages _resolve_project_by_name scans while resolving a project
+# display name to an id — protects against unbounded scans on instances with many
+# similarly-named projects; hitting this cap without a confirmed unique match is reported
+# as ambiguous rather than silently picking whatever was found so far.
+_PROJECT_NAME_SEARCH_MAX_PAGES = 5
+
 # Array truncation limits for work package hierarchy and activity details
 WORK_PACKAGE_CHILDREN_LIMIT = 50
 WORK_PACKAGE_ANCESTORS_LIMIT = 20
@@ -366,16 +372,12 @@ class OpenProjectClient:
 
     async def get_project(self, project_ref: str) -> ProjectSummary:
         self._ensure_read_enabled("project")
-        payload = await self._get(f"projects/{quote(project_ref, safe='')}")
-        if payload.get("_type") != "Project":
-            raise NotFoundError("OpenProject project not found.")
-        self._ensure_project_allowed(project_ref, payload=payload)
+        payload = await self._resolve_project_ref(project_ref, write=False)
         return self.normalize_project(payload)
 
     async def get_project_admin_context(self, project_ref: str) -> ProjectAdminContext:
         self._ensure_read_enabled("project")
-        payload = await self._get(f"projects/{quote(project_ref, safe='')}")
-        self._ensure_project_allowed(project_ref, payload=payload)
+        payload = await self._resolve_project_ref(project_ref, write=False)
         project = self.normalize_project(payload)
         form = await self._post(f"projects/{project.id}/form", json_body={"name": project.name})
         schema = form.get("_embedded", {}).get("schema", {})
@@ -398,8 +400,7 @@ class OpenProjectClient:
 
     async def get_project_configuration(self, project_ref: str) -> ProjectConfiguration:
         self._ensure_read_enabled("project")
-        payload = await self._get(f"projects/{quote(project_ref, safe='')}")
-        self._ensure_project_allowed(project_ref, payload=payload)
+        payload = await self._resolve_project_ref(project_ref, write=False)
         project = self.normalize_project(payload)
         configuration = await self._get(f"projects/{project.id}/configuration")
         return self.normalize_project_configuration(configuration, project=project)
@@ -453,8 +454,7 @@ class OpenProjectClient:
         parent: str | object | None = None,
         confirm: bool = False,
     ) -> ProjectWriteResult:
-        current = await self._get(f"projects/{quote(project_ref, safe='')}")
-        self._ensure_project_write_allowed(project_ref, payload=current)
+        current = await self._resolve_project_ref(project_ref, write=True)
         project = self.normalize_project(current)
         payload = await self._build_project_write_payload(
             name=name,
@@ -485,8 +485,7 @@ class OpenProjectClient:
         project_ref: str,
         confirm: bool = False,
     ) -> ProjectWriteResult:
-        payload_current = await self._get(f"projects/{quote(project_ref, safe='')}")
-        self._ensure_project_write_allowed(project_ref, payload=payload_current)
+        payload_current = await self._resolve_project_ref(project_ref, write=True)
         project = self.normalize_project(payload_current)
         payload = {"id": project.id, "identifier": project.identifier, "name": project.name}
         if not confirm:
@@ -531,8 +530,7 @@ class OpenProjectClient:
         parent: str | object | None = None,
         confirm: bool = False,
     ) -> ProjectCopyResult:
-        source_payload = await self._get(f"projects/{quote(source_project, safe='')}")
-        self._ensure_project_write_allowed(source_project, payload=source_payload)
+        source_payload = await self._resolve_project_ref(source_project, write=True)
         # Also validate the destination so a copy cannot create a project outside
         # the read/write allowlist (the source being allowed is not sufficient).
         self._ensure_project_write_candidate_allowed(identifier=identifier, name=name)
@@ -922,8 +920,7 @@ class OpenProjectClient:
 
     async def list_project_memberships(self, project_ref: str) -> MembershipListResult:
         self._ensure_read_enabled("membership")
-        project_payload = await self._get(f"projects/{quote(project_ref, safe='')}")
-        self._ensure_project_allowed(project_ref, payload=project_payload)
+        project_payload = await self._resolve_project_ref(project_ref, write=False)
         href = project_payload.get("_links", {}).get("memberships", {}).get("href")
         if not href:
             return MembershipListResult(count=0, results=[])
@@ -1051,8 +1048,7 @@ class OpenProjectClient:
         self._ensure_read_enabled("membership")
         self._ensure_read_enabled("principal")
         current_user = await self.get_current_user()
-        project_payload = await self._get(f"projects/{quote(project_ref, safe='')}")
-        self._ensure_project_allowed(project_ref, payload=project_payload)
+        project_payload = await self._resolve_project_ref(project_ref, write=False)
         project_summary = self.normalize_project(project_payload)
         memberships = await self.list_project_memberships(project_ref)
         my_membership = next((item for item in memberships.results if item.principal_id == current_user.id), None)
@@ -1134,8 +1130,7 @@ class OpenProjectClient:
             if isinstance(item, dict) and self._view_payload_allowed(item)
         ]
         if project is not None:
-            project_payload = await self._get(f"projects/{quote(project, safe='')}")
-            self._ensure_project_allowed(project, payload=project_payload)
+            project_payload = await self._resolve_project_ref(project, write=False)
             project_candidates = {
                 str(project_payload["id"]).casefold(),
                 (_trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
@@ -1197,8 +1192,7 @@ class OpenProjectClient:
         ]
 
         if project is not None:
-            project_payload = await self._get(f"projects/{quote(project, safe='')}")
-            self._ensure_project_allowed(project, payload=project_payload)
+            project_payload = await self._resolve_project_ref(project, write=False)
             project_candidates = {
                 str(project_payload["id"]).casefold(),
                 (_trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
@@ -1306,8 +1300,7 @@ class OpenProjectClient:
         ]
 
         if project is not None:
-            project_payload = await self._get(f"projects/{quote(project, safe='')}")
-            self._ensure_project_allowed(project, payload=project_payload)
+            project_payload = await self._resolve_project_ref(project, write=False)
             project_candidates = {
                 str(project_payload["id"]).casefold(),
                 (_trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
@@ -1361,8 +1354,7 @@ class OpenProjectClient:
         description: str | None = None,
         confirm: bool = False,
     ) -> NewsWriteResult:
-        project_payload = await self._get(f"projects/{quote(project, safe='')}")
-        self._ensure_project_write_allowed(project, payload=project_payload)
+        project_payload = await self._resolve_project_ref(project, write=True)
         project_id = str(project_payload["id"])
         self._ensure_field_writable("news", "title")
         payload: dict[str, Any] = {
@@ -1501,8 +1493,7 @@ class OpenProjectClient:
 
     async def list_categories(self, project_ref: str) -> CategoryListResult:
         self._ensure_read_enabled("project")
-        project_payload = await self._get(f"projects/{quote(project_ref, safe='')}")
-        self._ensure_project_allowed(project_ref, payload=project_payload)
+        project_payload = await self._resolve_project_ref(project_ref, write=False)
         project_id = int(project_payload["id"])
         payload = await self._get(f"projects/{project_id}/categories")
         project_name = _trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT)
@@ -1948,8 +1939,7 @@ class OpenProjectClient:
         self._ensure_read_enabled("project")
         self._ensure_read_enabled("work_package")
         self._ensure_read_enabled("version")
-        project_payload = await self._get(f"projects/{quote(project, safe='')}")
-        self._ensure_project_allowed(project, payload=project_payload)
+        project_payload = await self._resolve_project_ref(project, write=False)
         project_id = int(project_payload["id"])
         types_payload = await self._get(f"projects/{project_id}/types")
         available_types = [
@@ -2451,8 +2441,7 @@ class OpenProjectClient:
         duration: str | None = None,
         confirm: bool = False,
     ) -> WorkPackageWriteResult:
-        project_payload = await self._get(f"projects/{quote(project, safe='')}")
-        self._ensure_project_write_allowed(project, payload=project_payload)
+        project_payload = await self._resolve_project_ref(project, write=True)
         project_id = str(project_payload["id"])
         if parent_work_package_id is not None:
             # parent goes into a HAL link href, which resolves only by numeric id.
@@ -2562,6 +2551,7 @@ class OpenProjectClient:
         estimated_time: str | None = None,
         remaining_time: str | None = None,
         duration: str | None = None,
+        percentage_done: int | None = None,
         confirm: bool = False,
     ) -> WorkPackageWriteResult:
         work_package_id = self._work_package_ref(work_package_id)
@@ -2596,11 +2586,54 @@ class OpenProjectClient:
             estimated_time=estimated_time,
             remaining_time=remaining_time,
             duration=duration,
+            percentage_done=percentage_done,
             work_package_id=work_package_id,
             lock_version=lock_version,
         )
+
+        # Auto-derive percentageDone/remainingTime when the status is transitioning to a closed
+        # status and the caller didn't already supply them explicitly. Only attempted when status
+        # is actually changing, to avoid an extra lookup on every plain field update.
+        want_auto_percentage = percentage_done is None
+        want_auto_remaining = remaining_time is None
+        auto_percentage: int | None = None
+        auto_remaining: str | None = None
+        if status is not None and (want_auto_percentage or want_auto_remaining):
+            status_id = await self._resolve_status_id(status)
+            # Deliberately not using get_status() here: it calls
+            # _ensure_read_enabled("work_package"), which would incorrectly block this
+            # purely internal lookup (and thus the whole status-changing write) on
+            # instances that have work-package writes enabled but reads disabled.
+            status_payload = await self._get(f"statuses/{status_id}")
+            target_status = self.normalize_status(status_payload)
+            if target_status.is_closed:
+                auto_percentage = 100 if want_auto_percentage else None
+                auto_remaining = "PT0H" if want_auto_remaining else None
+
         payload["lockVersion"] = lock_version
         form = await self._post(f"work_packages/{work_package_id}/form", json_body=payload)
+
+        if auto_percentage is not None or auto_remaining is not None:
+            schema = form.get("_embedded", {}).get("schema", {})
+            changed = False
+            if (
+                auto_percentage is not None
+                and schema.get("percentageDone", {}).get("writable") is True
+                and not self._field_hidden("work_package", "percentage_done")
+            ):
+                payload["percentageDone"] = auto_percentage
+                changed = True
+            if (
+                auto_remaining is not None
+                and schema.get("remainingTime", {}).get("writable") is True
+                and not self._field_hidden("work_package", "remaining_time")
+            ):
+                payload["remainingTime"] = auto_remaining
+                changed = True
+            if changed:
+                payload["lockVersion"] = lock_version
+                form = await self._post(f"work_packages/{work_package_id}/form", json_body=payload)
+
         return await self._finalize_work_package_write(
             action="update",
             confirm=confirm,
@@ -2707,6 +2740,7 @@ class OpenProjectClient:
                         estimated_time=item.get("estimated_time"),
                         remaining_time=item.get("remaining_time"),
                         duration=item.get("duration"),
+                        percentage_done=item.get("percentage_done"),
                         confirm=confirm,
                     )
                     if not result.ready:
@@ -3276,8 +3310,7 @@ class OpenProjectClient:
         sharing: str | None = None,
         confirm: bool = False,
     ) -> VersionWriteResult:
-        project_payload = await self._get(f"projects/{quote(project, safe='')}")
-        self._ensure_project_write_allowed(project, payload=project_payload)
+        project_payload = await self._resolve_project_ref(project, write=True)
         payload = self._build_version_write_payload(
             project_id=str(project_payload["id"]),
             name=name,
@@ -6474,6 +6507,7 @@ class OpenProjectClient:
         estimated_time: str | None = None,
         remaining_time: str | None = None,
         duration: str | None = None,
+        percentage_done: int | None = None,
         work_package_id: int | None = None,
         lock_version: int | None = None,
     ) -> dict[str, Any]:
@@ -6502,6 +6536,9 @@ class OpenProjectClient:
         if remaining_time is not None:
             self._ensure_field_writable("work_package", "remaining_time")
             payload["remainingTime"] = remaining_time
+        if percentage_done is not None:
+            self._ensure_field_writable("work_package", "percentage_done")
+            payload["percentageDone"] = percentage_done
         if duration is not None:
             self._ensure_field_writable("work_package", "duration")
             payload["duration"] = duration
@@ -6971,12 +7008,90 @@ class OpenProjectClient:
         return payload
 
     async def _get_project_payload(self, project_ref: str, *, write: bool = False) -> dict[str, Any]:
-        payload = await self._get(f"projects/{quote(project_ref, safe='')}")
-        if write:
-            self._ensure_project_write_allowed(project_ref, payload=payload)
+        return await self._resolve_project_ref(project_ref, write=write)
+
+    async def _resolve_project_ref(self, project_ref: str, *, write: bool = False) -> dict[str, Any]:
+        """Resolve a project by numeric id, exact identifier, or (as a fallback) display name.
+
+        Numeric id / identifier is tried first via a direct GET (cheap, unchanged from before this
+        fallback existed). Only when that 404s do we fall back to a name search via list_projects.
+        Identifiers are unique in OpenProject by construction; display names are not, so an exact-name
+        match is only trusted once the search has confirmed there is no second project with that same
+        name (see _resolve_project_by_name for the exact algorithm).
+        """
+        try:
+            payload = await self._get(f"projects/{quote(project_ref, safe='')}")
+        except NotFoundError:
+            payload = None
         else:
-            self._ensure_project_allowed(project_ref, payload=payload)
-        return payload
+            if payload.get("_type") != "Project":
+                payload = None
+        if payload is not None:
+            if write:
+                self._ensure_project_write_allowed(project_ref, payload=payload)
+            else:
+                self._ensure_project_allowed(project_ref, payload=payload)
+            return payload
+        return await self._resolve_project_by_name(project_ref, write=write)
+
+    async def _resolve_project_by_name(self, project_ref: str, *, write: bool) -> dict[str, Any]:
+        normalized = " ".join(project_ref.split())
+        normalized_cf = normalized.casefold()
+        page_size = self.settings.max_results
+        exact_name_matches: list[ProjectSummary] = []
+        substring_matches: list[ProjectSummary] = []
+        exhausted = False
+        offset = 1
+        for _ in range(_PROJECT_NAME_SEARCH_MAX_PAGES):
+            page = await self.list_projects(search=normalized, offset=offset, limit=page_size)
+            for project in page.results:
+                identifier_cf = (project.identifier or "").casefold()
+                if identifier_cf == normalized_cf:
+                    # Identifiers are unique — an exact identifier match, wherever it turns up in the
+                    # search results, always wins immediately over any name/substring match.
+                    return await self._resolve_project_ref(str(project.id), write=write)
+                name_cf = (project.name or "").casefold()
+                if name_cf == normalized_cf:
+                    exact_name_matches.append(project)
+                else:
+                    substring_matches.append(project)
+            if len(exact_name_matches) >= 2:
+                break
+            if not page.truncated:
+                exhausted = True
+                break
+            offset += 1
+
+        if len(exact_name_matches) >= 2:
+            raise self._project_ambiguous_error(project_ref, exact_name_matches, exhausted=True)
+        if not exhausted:
+            # The page cap was hit before the search could confirm a unique match — never fabricate
+            # uniqueness here, since a later (unscanned) page could still contain a second exact-name
+            # match or an exact-identifier match that would change the outcome.
+            pending = exact_name_matches or substring_matches
+            raise self._project_ambiguous_error(project_ref, pending, exhausted=False)
+        if len(exact_name_matches) == 1:
+            return await self._resolve_project_ref(str(exact_name_matches[0].id), write=write)
+        if len(substring_matches) == 1:
+            return await self._resolve_project_ref(str(substring_matches[0].id), write=write)
+        if len(substring_matches) > 1:
+            raise self._project_ambiguous_error(project_ref, substring_matches, exhausted=True)
+        raise NotFoundError(f"OpenProject project '{project_ref}' was not found. Call list_projects.")
+
+    def _project_ambiguous_error(
+        self, project_ref: str, candidates: list[ProjectSummary], *, exhausted: bool
+    ) -> InvalidInputError:
+        shown = candidates[:10]
+        formatted = ", ".join(f"'{c.identifier or c.id}' (id {c.id}, name '{c.name}')" for c in shown)
+        if exhausted:
+            remainder = len(candidates) - len(shown)
+            suffix = f" (+{remainder} more)" if remainder > 0 else ""
+        else:
+            suffix = " (additional matches may exist)"
+        return InvalidInputError(
+            f"OpenProject project '{project_ref}' is ambiguous: {formatted}{suffix}. "
+            f"Use a numeric id or exact identifier, or call list_projects(search='{project_ref}')."
+        )
 
     async def _time_entry_activities_from_project(self, project_id: int) -> list[TimeEntryActivitySummary]:
         form = await self._post(
@@ -7753,10 +7868,7 @@ class OpenProjectClient:
         return f"/{self._api_prefix.lstrip('/')}{relative_path.lstrip('/')}"
 
     async def _resolve_project_id(self, project_ref: str) -> str:
-        payload = await self._get(f"projects/{quote(project_ref, safe='')}")
-        if payload.get("_type") != "Project":
-            raise NotFoundError("OpenProject project not found.")
-        self._ensure_project_allowed(project_ref, payload=payload)
+        payload = await self._resolve_project_ref(project_ref, write=False)
         return str(payload["id"])
 
     async def _resolve_principal_id(self, principal_ref: str) -> str:

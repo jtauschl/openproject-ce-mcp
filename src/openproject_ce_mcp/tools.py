@@ -1584,6 +1584,9 @@ async def create_work_package(
     estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'PT30M' for 30 minutes). Day-based formats like 'P1D' are not supported by OpenProject.
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope.
+    If you issue multiple create_work_package/create_subtask calls concurrently, OpenProject assigns IDs in
+    server completion order, not call order — use bulk_create_work_packages instead when relative
+    ID/creation order across a batch matters.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
@@ -1648,6 +1651,7 @@ async def update_work_package(
     estimated_time: str | None = None,
     remaining_time: str | None = None,
     duration: str | None = None,
+    percentage_done: int | None = None,
     confirm: bool = False,
 ) -> WorkPackageWriteResult:
     """Prepare or update a work package.
@@ -1655,7 +1659,10 @@ async def update_work_package(
     The tool validates the patch first. Set confirm=true to write.
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
-    estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours) or None to leave unchanged. Day-based formats like 'P1D' are not supported by OpenProject.
+    estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours) or None to leave unchanged. Day-based formats like 'P1D' are not supported by OpenProject. percentage_done is an integer 0-100.
+    Setting status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H when you
+    don't supply them explicitly and OpenProject's schema reports those fields as writable (on instances
+    using status-based progress calculation, OpenProject already derives them itself and this is skipped).
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope.
     """
@@ -1691,6 +1698,7 @@ async def update_work_package(
     safe_estimated_time = _validate_optional_duration(estimated_time, field_name="estimated_time")
     safe_remaining_time = _validate_optional_duration(remaining_time, field_name="remaining_time")
     safe_duration = _validate_optional_duration(duration, field_name="duration")
+    safe_percentage_done = _validate_optional_percentage_done(percentage_done)
     if not any(
         value is not None
         for value in (
@@ -1712,6 +1720,7 @@ async def update_work_package(
             safe_estimated_time,
             safe_remaining_time,
             safe_duration,
+            safe_percentage_done,
         )
     ):
         raise ValueError("At least one field to update is required.")
@@ -1736,6 +1745,7 @@ async def update_work_package(
             estimated_time=safe_estimated_time,
             remaining_time=safe_remaining_time,
             duration=safe_duration,
+            percentage_done=safe_percentage_done,
             confirm=confirm,
         )
     )
@@ -1766,6 +1776,10 @@ async def bulk_create_work_packages(
     list_work_packages/get_work_package afterward to determine what was
     actually written. This operation is not atomic; OpenProject CE has no
     batch/transaction endpoint.
+
+    Items are processed strictly sequentially in list order, and each result's index reflects that order —
+    use this tool instead of parallel create_work_package/create_subtask calls whenever the relative order
+    of a batch matters.
     """
     client = _client_from_context(ctx)
     if not items:
@@ -1828,7 +1842,10 @@ async def bulk_update_work_packages(
     Optional fields per item: `subject`, `description`, `type`, `version`, `project_phase`, `status`,
     `assignee`, `responsible`, `priority`, `category`, `custom_fields`, `parent_work_package_id`,
     `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`, `duration`
-    (ISO8601 duration strings in PT format, e.g. 'PT8H').
+    (ISO8601 duration strings in PT format, e.g. 'PT8H'), `percentage_done` (integer 0-100).
+    Setting an item's status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H
+    when that item doesn't supply them explicitly and OpenProject's schema reports those fields as
+    writable.
 
     With confirm=false (default) all items are validated and a preview is returned.
     With confirm=true all items are updated. Failed items are reported in the result — the operation
@@ -1887,6 +1904,9 @@ async def bulk_update_work_packages(
             item.get("remaining_time"), field_name=f"items[{i}].remaining_time"
         )
         safe_duration = _validate_optional_duration(item.get("duration"), field_name=f"items[{i}].duration")
+        safe_percentage_done = _validate_optional_percentage_done(
+            item.get("percentage_done"), field_name=f"items[{i}].percentage_done"
+        )
         if not any(
             v is not None
             for v in (
@@ -1907,6 +1927,7 @@ async def bulk_update_work_packages(
                 safe_estimated_time,
                 safe_remaining_time,
                 safe_duration,
+                safe_percentage_done,
             )
         ):
             raise ValueError(f"items[{i}]: at least one field to update is required.")
@@ -1930,6 +1951,7 @@ async def bulk_update_work_packages(
                 "estimated_time": safe_estimated_time,
                 "remaining_time": safe_remaining_time,
                 "duration": safe_duration,
+                "percentage_done": safe_percentage_done,
             }
         )
     return await _run_tool(client.bulk_update_work_packages(items=safe_items, confirm=confirm))
@@ -1971,6 +1993,8 @@ async def create_subtask(
 
     The tool validates the payload first. Set confirm=true to write.
     parent_work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+    Concurrent calls to this tool (or create_work_package) do not preserve call order in the resulting IDs;
+    use bulk_create_work_packages when order across several new items matters.
     """
     client = _client_from_context(ctx)
     safe_parent_id = _validate_work_package_ref(parent_work_package_id, field_name="parent_work_package_id")
@@ -2057,6 +2081,11 @@ async def create_work_package_relation(
 
     Both work_package_id and related_to_work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     relation_type: relates, duplicates, duplicated, blocks, blocked, precedes, follows, includes, partof, requires, required.
+    work_package_id becomes from_id and related_to_work_package_id becomes to_id; relation_type is stored
+    exactly as given and does not change depending on which work package's relations you later query (e.g.
+    a relation created with relation_type='precedes' always reads back as type='precedes', with from_id/to_id
+    unchanged) — to express "B follows A", pass relation_type='follows' explicitly (or swap the two work
+    package arguments), rather than expecting the inverse to appear automatically when read from the other side.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2642,6 +2671,8 @@ async def get_work_package_relations(
     """Get all relations for a work package (blocks, relates to, duplicates, etc.).
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+    A relation's type is exactly what it was created with and does not change depending on which work
+    package's relations you query; use from_id/to_id to see which work package is on which side.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -3280,7 +3311,12 @@ async def list_relations(
     ctx: Context,
     relation_type: str | None = None,
 ) -> RelationListResult:
-    """List all relations across the instance, optionally filtered by type (e.g. 'blocks', 'follows')."""
+    """List all relations across the instance, optionally filtered by type (e.g. 'blocks', 'follows').
+
+    type is exactly what the relation was created with (it does not change depending on which work
+    package's relations you're viewing) — use from_id/to_id to determine which work package is on which
+    side.
+    """
     client = _client_from_context(ctx)
     safe_type = _validate_relation_type(relation_type) if relation_type else None
     return await _run_tool(client.list_relations(relation_type=safe_type))
@@ -3657,10 +3693,13 @@ def _validate_project_ref(value: str) -> str:
     if normalized.isdigit():
         _validate_positive_int(int(normalized), field_name="project")
         return normalized
-    if not PROJECT_REF_RE.fullmatch(normalized):
-        raise ValueError(
-            "project: numeric id (e.g., 7) or identifier (e.g., 'opm-openproject-ce-mcp'), not display name. Call list_projects."
-        )
+    if PROJECT_REF_RE.fullmatch(normalized):
+        return normalized
+    # Not identifier-shaped (e.g. contains spaces) — pass through as a display-name
+    # candidate. Resolution (including "not found"/"ambiguous" errors) happens
+    # server-side in OpenProjectClient._resolve_project_ref, which can actually check.
+    if len(normalized) > 255:
+        raise ValueError("project must be 255 characters or fewer.")
     return normalized
 
 
@@ -3795,6 +3834,16 @@ def _validate_optional_non_negative_int(value: int | None, *, field_name: str) -
         raise ValueError(f"{field_name} must be an integer.")
     if value < 0:
         raise ValueError(f"{field_name} must be at least 0.")
+    return value
+
+
+def _validate_optional_percentage_done(value: int | None, *, field_name: str = "percentage_done") -> int | None:
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{field_name} must be an integer.")
+    if not 0 <= value <= 100:
+        raise ValueError(f"{field_name} must be between 0 and 100.")
     return value
 
 
