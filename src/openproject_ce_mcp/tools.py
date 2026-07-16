@@ -3339,7 +3339,14 @@ async def update_relation(
     description: str | None = None,
     confirm: bool = False,
 ) -> RelationUpdateResult:
-    """Prepare or update the type or description of a relation. Set confirm=true to write."""
+    """Prepare or update the type or description of a relation. Set confirm=true to write.
+
+    relation_type is subject to the same write-time canonicalization as create_work_package_relation:
+    setting it to a "reverse" pair member (precedes, blocked, duplicated, partof, required) rewrites the
+    stored relation to the paired canonical type (follows, blocks, duplicates, includes, requires) with
+    from_id/to_id swapped relative to the relation's existing from/to. Read the actual type/from_id/to_id
+    back afterward rather than assuming they match what was requested.
+    """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(relation_id, field_name="relation_id")
     safe_type = _validate_relation_type(relation_type) if relation_type else None

@@ -2599,7 +2599,9 @@ class OpenProjectClient:
         auto_percentage: int | None = None
         auto_remaining: str | None = None
         if status is not None and (want_auto_percentage or want_auto_remaining):
-            status_id = await self._resolve_status_id(status)
+            # Reuse the status id _build_write_payload already resolved for the status
+            # link (avoids a redundant name->id lookup when status is given by name).
+            status_id = _id_from_href(payload.get("_links", {}).get("status", {}).get("href"))
             # Deliberately not using get_status() here: it calls
             # _ensure_read_enabled("work_package"), which would incorrectly block this
             # purely internal lookup (and thus the whole status-changing write) on

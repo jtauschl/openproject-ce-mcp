@@ -11545,6 +11545,7 @@ async def test_update_work_package_sets_percentage_done_explicitly() -> None:
 
 async def test_update_work_package_autofills_progress_on_close_when_writable() -> None:
     form_calls = {"count": 0}
+    status_list_calls = {"count": 0}
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
@@ -11558,6 +11559,7 @@ async def test_update_work_package_autofills_progress_on_close_when_writable() -
                 request=request,
             )
         if request.url.path == "/api/v3/statuses":
+            status_list_calls["count"] += 1
             return httpx.Response(200, json={"_embedded": {"elements": [{"id": 9, "name": "Closed"}]}}, request=request)
         if request.url.path == "/api/v3/statuses/9":
             return httpx.Response(200, json={"id": 9, "name": "Closed", "isClosed": True}, request=request)
@@ -11589,6 +11591,10 @@ async def test_update_work_package_autofills_progress_on_close_when_writable() -
     # First form POST (without the auto-filled fields) + second POST once the schema
     # confirmed writability — never more than that.
     assert form_calls["count"] == 2
+    # Regression guard: the closed-status check reuses the status id _build_write_payload
+    # already resolved for the status link, instead of resolving "Closed" -> id a second
+    # time via a redundant GET /api/v3/statuses.
+    assert status_list_calls["count"] == 1
     await client.aclose()
 
 
