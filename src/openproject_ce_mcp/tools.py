@@ -2081,11 +2081,15 @@ async def create_work_package_relation(
 
     Both work_package_id and related_to_work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     relation_type: relates, duplicates, duplicated, blocks, blocked, precedes, follows, includes, partof, requires, required.
-    work_package_id becomes from_id and related_to_work_package_id becomes to_id; relation_type is stored
-    exactly as given and does not change depending on which work package's relations you later query (e.g.
-    a relation created with relation_type='precedes' always reads back as type='precedes', with from_id/to_id
-    unchanged) — to express "B follows A", pass relation_type='follows' explicitly (or swap the two work
-    package arguments), rather than expecting the inverse to appear automatically when read from the other side.
+    work_package_id becomes from_id and related_to_work_package_id becomes to_id — but OpenProject stores
+    only one canonical type per pair and silently rewrites the other: creating with relation_type='precedes'
+    (or 'blocked', 'duplicated', 'partof', 'required') is stored as the paired canonical type ('follows',
+    'blocks', 'duplicates', 'includes', 'requires' respectively) with from_id/to_id SWAPPED relative to
+    work_package_id/related_to_work_package_id. The canonical types themselves ('follows', 'blocks',
+    'duplicates', 'includes', 'requires', and non-directional 'relates') are stored exactly as given, with
+    from_id/to_id unswapped. This happens once at creation and does not depend on which work package's
+    relations you later query — always read the actual type/from_id/to_id from the response rather than
+    assuming they match what you requested.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2671,8 +2675,11 @@ async def get_work_package_relations(
     """Get all relations for a work package (blocks, relates to, duplicates, etc.).
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
-    A relation's type is exactly what it was created with and does not change depending on which work
-    package's relations you query; use from_id/to_id to see which work package is on which side.
+    type/from_id/to_id reflect how OpenProject actually stored the relation, which does not depend on
+    which work package's relations you query — but can differ from how it was originally requested, since
+    OpenProject canonicalizes some relation types at creation time (e.g. a relation requested as 'precedes'
+    is stored as 'follows' with from_id/to_id swapped; see create_work_package_relation). Use from_id/to_id
+    together with type, not the request you expect to have made, to determine the actual direction.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -3313,9 +3320,12 @@ async def list_relations(
 ) -> RelationListResult:
     """List all relations across the instance, optionally filtered by type (e.g. 'blocks', 'follows').
 
-    type is exactly what the relation was created with (it does not change depending on which work
-    package's relations you're viewing) — use from_id/to_id to determine which work package is on which
-    side.
+    type/from_id/to_id reflect how OpenProject actually stored the relation (it does not change depending
+    on which work package's relations you're viewing), which can differ from how it was originally
+    requested — OpenProject canonicalizes some relation types at creation time (e.g. a relation requested
+    as 'precedes' is stored as 'follows' with from_id/to_id swapped; see create_work_package_relation).
+    Filtering by relation_type matches the stored (canonical) type, not necessarily the type a caller
+    originally requested when creating it.
     """
     client = _client_from_context(ctx)
     safe_type = _validate_relation_type(relation_type) if relation_type else None
