@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import functools
 import re
 from collections.abc import Callable
@@ -128,7 +129,6 @@ from .models import (
     WorkPackageWriteResult,
 )
 
-DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # ISO 8601 date-time, e.g. 2026-12-01T09:00:00Z or with a +HH:MM offset.
 DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
 # Full ISO 8601 duration: either weeks alone ("P2W") or a year/month/day date part
@@ -1698,12 +1698,9 @@ async def update_work_package(
     safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
     safe_custom_fields = _validate_optional_custom_fields(custom_fields)
     # parent: 'none' (any case) clears the parent (top-level); otherwise a work package ref.
-    if parent is None:
-        safe_parent: int | str | object | None = None
-    elif parent.strip().lower() == "none":
-        safe_parent = CLEAR_PARENT
-    else:
-        safe_parent = _validate_work_package_ref(parent, field_name="parent")
+    safe_parent: int | str | object | None = _clearable(
+        parent, lambda v: _validate_work_package_ref(v, field_name="parent"), sentinel=CLEAR_PARENT
+    )
     safe_start_date = _validate_optional_date(start_date, field_name="start_date")
     safe_due_date = _validate_optional_date(due_date, field_name="due_date")
     # estimated_time/remaining_time/duration: 'none' (any case) clears the field;
@@ -3615,26 +3612,27 @@ def _validate_optional_version(value: str | None) -> str | object | None:
     Returns None to leave the version unchanged, CLEAR_VERSION to unassign it, or
     the validated version name/id. Mirrors the parent 'none' un-parenting sentinel.
     """
-    if value is None:
-        return None
-    if value.strip().lower() == "none":
-        return CLEAR_VERSION
-    return _validate_optional_query(value, field_name="version", max_length=100)
+    return _clearable(
+        value, lambda v: _validate_optional_query(v, field_name="version", max_length=100), sentinel=CLEAR_VERSION
+    )
 
 
-def _clearable(value: str | None, validate: Callable[[str], Any]) -> str | object | None:
+def _clearable(value: str | None, validate: Callable[[str], Any], *, sentinel: object = CLEAR) -> str | object | None:
     """Map a nullable optional argument to a clear sentinel or a validated value.
 
-    Returns None (leave unchanged), CLEAR (clear the field, for 'none' in any case),
-    or the result of ``validate(value)``. Shared by any field that supports clearing
-    via 'none' — both HAL-link associations (assignee, responsible, category,
+    Returns None (leave unchanged), ``sentinel`` (clear the field, for 'none' in any
+    case), or the result of ``validate(value)``. Shared by any field that supports
+    clearing via 'none' — both HAL-link associations (assignee, responsible, category,
     project_phase, sprint, project parent) and plain scalar fields (estimated_time,
     remaining_time, duration); ``validate`` decides what a non-'none' value means.
+    ``sentinel`` defaults to the generic ``CLEAR``; pass a field-specific sentinel
+    (e.g. ``CLEAR_VERSION``, ``CLEAR_PARENT``) where the caller needs to distinguish
+    which field was cleared.
     """
     if value is None:
         return None
     if value.strip().lower() == "none":
-        return CLEAR
+        return sentinel
     return validate(value)
 
 
@@ -3799,17 +3797,6 @@ def _validate_optional_user_or_principal_ref(value: str | None) -> str | None:
     return normalized
 
 
-def _validate_optional_date(value: str | None, *, field_name: str) -> str | None:
-    if value is None:
-        return None
-    normalized = value.strip()
-    if not normalized:
-        return None
-    if not DATE_RE.fullmatch(normalized):
-        raise ValueError(f"{field_name} must use YYYY-MM-DD format.")
-    return normalized
-
-
 def _validate_required_date(value: str, *, field_name: str) -> str:
     normalized = _validate_optional_date(value, field_name=field_name)
     if not normalized:
@@ -3897,8 +3884,6 @@ def _validate_optional_date(value: str | None, field_name: str) -> str | None:
     """Validate ISO 8601 date (YYYY-MM-DD)."""
     if value is None:
         return None
-    import datetime
-
     normalized = value.strip()
     try:
         datetime.date.fromisoformat(normalized)

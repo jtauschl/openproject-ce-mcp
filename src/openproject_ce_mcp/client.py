@@ -4645,11 +4645,7 @@ class OpenProjectClient:
         self._ensure_project_link_allowed(scope_link)
 
     def _grid_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        try:
-            self._ensure_grid_payload_allowed(payload)
-            return True
-        except PermissionDeniedError:
-            return False
+        return self._payload_allowed(lambda: self._ensure_grid_payload_allowed(payload))
 
     async def list_grids(self, *, scope: str | None = None) -> GridListResult:
         self._ensure_read_enabled("project")
@@ -7412,12 +7408,19 @@ class OpenProjectClient:
             f"OpenProject {scope.replace('_', ' ')} read support is disabled. Set {env_var}=true to allow reads."
         )
 
-    def _sprint_payload_allowed(self, payload: dict[str, Any]) -> bool:
+    def _payload_allowed(self, ensure: Callable[[], None]) -> bool:
+        """Run an `_ensure_*_allowed` check, turning PermissionDeniedError into False.
+
+        Shared by every bool-returning `_X_payload_allowed` wrapper in this class.
+        """
         try:
-            self._ensure_sprint_workspace_allowed(payload)
+            ensure()
             return True
         except PermissionDeniedError:
             return False
+
+    def _sprint_payload_allowed(self, payload: dict[str, Any]) -> bool:
+        return self._payload_allowed(lambda: self._ensure_sprint_workspace_allowed(payload))
 
     def _ensure_sprint_workspace_allowed(self, payload: dict[str, Any]) -> None:
         embedded = payload.get("_embedded", {}).get("definingWorkspace")
@@ -7469,11 +7472,7 @@ class OpenProjectClient:
             )
 
     def _project_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        try:
-            self._ensure_project_allowed(str(payload.get("id", "")), payload=payload)
-            return True
-        except PermissionDeniedError:
-            return False
+        return self._payload_allowed(lambda: self._ensure_project_allowed(str(payload.get("id", "")), payload=payload))
 
     def _project_name_allowed(self, project_name: str | None) -> bool:
         if _scope_allows_all(self.settings.read_projects):
@@ -7516,11 +7515,7 @@ class OpenProjectClient:
         self._ensure_project_write_link_allowed(project_link)
 
     def _board_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        try:
-            self._ensure_board_payload_allowed(payload)
-            return True
-        except PermissionDeniedError:
-            return False
+        return self._payload_allowed(lambda: self._ensure_board_payload_allowed(payload))
 
     def _ensure_view_payload_allowed(self, payload: dict[str, Any]) -> None:
         project_link = payload.get("_links", {}).get("project")
@@ -7531,21 +7526,13 @@ class OpenProjectClient:
         self._ensure_project_link_allowed(project_link)
 
     def _view_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        try:
-            self._ensure_view_payload_allowed(payload)
-            return True
-        except PermissionDeniedError:
-            return False
+        return self._payload_allowed(lambda: self._ensure_view_payload_allowed(payload))
 
     def _ensure_document_payload_allowed(self, payload: dict[str, Any]) -> None:
         self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
 
     def _document_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        try:
-            self._ensure_document_payload_allowed(payload)
-            return True
-        except PermissionDeniedError:
-            return False
+        return self._payload_allowed(lambda: self._ensure_document_payload_allowed(payload))
 
     def _ensure_document_write_payload_allowed(self, payload: dict[str, Any]) -> None:
         self._ensure_project_write_link_allowed(payload.get("_links", {}).get("project"))
@@ -7554,21 +7541,15 @@ class OpenProjectClient:
         self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
 
     def _news_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        try:
-            self._ensure_news_payload_allowed(payload)
-            return True
-        except PermissionDeniedError:
-            return False
+        return self._payload_allowed(lambda: self._ensure_news_payload_allowed(payload))
 
     def _ensure_news_write_payload_allowed(self, payload: dict[str, Any]) -> None:
         self._ensure_project_write_link_allowed(payload.get("_links", {}).get("project"))
 
     def _version_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        try:
-            self._ensure_project_link_allowed(payload.get("_links", {}).get("definingProject"))
-            return True
-        except PermissionDeniedError:
-            return False
+        return self._payload_allowed(
+            lambda: self._ensure_project_link_allowed(payload.get("_links", {}).get("definingProject"))
+        )
 
     def _project_ref_from_scope_href(self, scope_href: str | None) -> str | None:
         if not scope_href:
@@ -7582,18 +7563,14 @@ class OpenProjectClient:
         return unquote(tail.split("/", 1)[0])
 
     def _work_package_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        try:
-            self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
-            return True
-        except PermissionDeniedError:
-            return False
+        return self._payload_allowed(
+            lambda: self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
+        )
 
     def _time_entry_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        try:
-            self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
-            return True
-        except PermissionDeniedError:
-            return False
+        return self._payload_allowed(
+            lambda: self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
+        )
 
     def _project_candidates(
         self,

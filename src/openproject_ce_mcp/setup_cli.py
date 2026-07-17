@@ -1186,11 +1186,9 @@ def _collect_credentials(
                     "Writable projects (subset of readable)",
                     write_projects_default,
                 )
-                wp_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", True)
-                project_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_WRITE", True)
-                membership_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", True)
-                version_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_WRITE", True)
-                board_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_WRITE", True)
+                wp_write, project_write, membership_write, version_write, board_write = (
+                    _bool_from_env(existing, key, True) for key in _WRITE_SCOPE_FLAG_KEYS
+                )
             else:
                 write_projects = ""
                 print("Write access disabled — project-scoped writes are disabled.")
@@ -1244,11 +1242,9 @@ def _collect_credentials(
             elif write_scope_choice == "keep":
                 write_access = True
                 write_projects = existing_write_projects
-                wp_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", True)
-                project_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_PROJECT_WRITE", True)
-                membership_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", True)
-                version_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_VERSION_WRITE", True)
-                board_write = _bool_from_env(existing, "OPENPROJECT_ENABLE_BOARD_WRITE", True)
+                wp_write, project_write, membership_write, version_write, board_write = (
+                    _bool_from_env(existing, key, True) for key in _WRITE_SCOPE_FLAG_KEYS
+                )
             else:
                 write_access = True
                 write_projects_default = existing_write_projects or read_projects
@@ -1822,9 +1818,10 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
     # already covered by Claude Code's project write.
     generic_target: Path | None = None
     if write_generic_mcp_json:
-        generic_target = (
-            _resolve_mcp_json("local", installed) if installed else _resolve_mcp_json(None, installed=False)
-        )
+        # Both prior branches always resolved to the same project-local path
+        # regardless of `installed` (see _resolve_mcp_json's scope="local" case) —
+        # one unconditional call, not a dead installed-conditional.
+        generic_target = _resolve_mcp_json("local", installed)
 
     if interactive:
         proceed = _preview_changes(
