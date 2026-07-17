@@ -10,6 +10,7 @@ import pytest
 from openproject_ce_mcp.client import CLEAR, CLEAR_PARENT, CLEAR_VERSION, OpenProjectClient
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.tools import (
+    _validate_optional_duration,
     _validate_optional_non_negative_int,
     _validate_optional_percentage_done,
     _validate_optional_text,
@@ -512,7 +513,10 @@ async def test_update_work_package_tool_version_alone_satisfies_field_requiremen
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("field", ["assignee", "responsible", "category", "project_phase", "sprint"])
+@pytest.mark.parametrize(
+    "field",
+    ["assignee", "responsible", "category", "project_phase", "sprint", "estimated_time", "remaining_time", "duration"],
+)
 async def test_update_work_package_tool_maps_none_to_clear_sentinel(field) -> None:
     # 'none' on a nullable association field must reach the client as the CLEAR
     # sentinel (unassign), not the literal string "none".
@@ -1225,6 +1229,28 @@ async def test_time_entry_tools_pass_expected_arguments() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_time_entry_tool_accepts_day_based_hours() -> None:
+    # hours shares ISO8601_DURATION_RE with estimated_time/remaining_time/duration
+    # on work packages; day-based values must be accepted here too. Live-verified
+    # 2026-07-17 against real OpenProject 16.6: a time entry with hours="P1D" was
+    # created successfully and echoed back unchanged.
+    class StubClient:
+        async def create_time_entry(self, **kwargs):
+            return kwargs
+
+    result = await create_time_entry(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        project="demo",
+        activity="Development",
+        hours="P1D",
+        spent_on="2026-03-20",
+        confirm=True,
+    )
+
+    assert result["hours"] == "P1D"
+
+
+@pytest.mark.asyncio
 async def test_update_time_entry_tool_clears_comment() -> None:
     class StubClient:
         async def update_time_entry(self, **kwargs):
@@ -1902,6 +1928,76 @@ async def test_bulk_update_work_packages_tool_accepts_each_duration_field_alone(
     assert received[1]["remaining_time"] == "PT3H"
     assert received[2]["duration"] == "PT10H"
     assert received[3]["percentage_done"] == 0
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_work_packages_tool_maps_none_duration_to_clear_sentinel() -> None:
+    # 'none' on estimated_time/remaining_time/duration must reach the client as
+    # the CLEAR sentinel, not the literal string "none" (which would fail the
+    # ISO 8601 duration regex).
+    received: list = []
+
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            received.extend(kwargs["items"])
+            return {
+                "action": "bulk_update",
+                "total": len(kwargs["items"]),
+                "succeeded": len(kwargs["items"]),
+                "failed": 0,
+                "confirmed": kwargs["confirm"],
+                "requires_confirmation": not kwargs["confirm"],
+                "message": "ok",
+                "items": [],
+            }
+
+    await bulk_update_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        items=[
+            {"work_package_id": 10, "estimated_time": "none"},
+            {"work_package_id": 20, "remaining_time": "None"},
+            {"work_package_id": 30, "duration": "NONE"},
+        ],
+        confirm=True,
+    )
+
+    assert received[0]["estimated_time"] is CLEAR
+    assert received[1]["remaining_time"] is CLEAR
+    assert received[2]["duration"] is CLEAR
+
+
+def test_validate_optional_duration_accepts_date_part_units() -> None:
+    # Live-verified 2026-07-17 against real OpenProject 16.6 (Docker harness):
+    # day/week/month/year units and date+time combinations are accepted and
+    # echoed back unchanged, contrary to the regex's former PT-only restriction.
+    assert _validate_optional_duration("P1D", field_name="x") == "P1D"
+    assert _validate_optional_duration("P2W", field_name="x") == "P2W"
+    assert _validate_optional_duration("P1Y", field_name="x") == "P1Y"
+    assert _validate_optional_duration("P1M", field_name="x") == "P1M"
+    assert _validate_optional_duration("P1Y2M3D", field_name="x") == "P1Y2M3D"
+    assert _validate_optional_duration("P1Y2M3DT4H5M6S", field_name="x") == "P1Y2M3DT4H5M6S"
+    assert _validate_optional_duration("P1DT18H", field_name="x") == "P1DT18H"
+    # Time-only forms (the original supported shape) still work.
+    assert _validate_optional_duration("PT8H", field_name="x") == "PT8H"
+    assert _validate_optional_duration("PT1H30M", field_name="x") == "PT1H30M"
+
+
+def test_validate_optional_duration_rejects_week_combined_with_other_units() -> None:
+    # Live-verified 2026-07-17 against real OpenProject 16.6: "P1W2D" and
+    # "P2WT3H" are rejected by OpenProject itself ("Invalid format for
+    # property... Expected format like 'ISO 8601 duration'") — the week
+    # designator cannot combine with any other designator, per the ISO 8601
+    # standard's own week-format rule. The regex must reject these locally
+    # too, not silently accept something OpenProject itself refuses.
+    for bad in ("P1W2D", "P2WT3H", "P1YW", "P1W1Y"):
+        with pytest.raises(ValueError, match="must use a simple ISO 8601 duration"):
+            _validate_optional_duration(bad, field_name="x")
+
+
+def test_validate_optional_duration_rejects_malformed() -> None:
+    for bad in ("P", "PT", "PY", "P1", "1D", "PD1", "P1X"):
+        with pytest.raises(ValueError, match="must use a simple ISO 8601 duration"):
+            _validate_optional_duration(bad, field_name="x")
 
 
 def test_validate_work_package_ref_accepts_numeric_and_semantic() -> None:

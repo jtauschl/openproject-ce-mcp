@@ -131,7 +131,18 @@ from .models import (
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # ISO 8601 date-time, e.g. 2026-12-01T09:00:00Z or with a +HH:MM offset.
 DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
-ISO8601_DURATION_RE = re.compile(r"^P(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)$")
+# Full ISO 8601 duration: either weeks alone ("P2W") or a year/month/day date part
+# and/or a "T"-prefixed time part (hours/minutes/seconds) — the week designator
+# cannot combine with anything else, per the ISO 8601 standard's own week-format
+# rule. Live-verified 2026-07-17 against real OpenProject 16.6 (Docker test harness):
+# "P1D"/"P2W"/"P1Y"/"P1M"/"P1Y2M3D"/"P1DT18H" are all accepted and echoed back
+# unchanged (an earlier version of this regex rejected day-based values entirely,
+# based on an incorrect assumption), while "P1W2D"/"P2WT3H" (week mixed with
+# another designator) are rejected by OpenProject itself with a format error —
+# confirmed here too, not just assumed from the standard.
+ISO8601_DURATION_RE = re.compile(
+    r"^P(?:\d+W|(?=\d|T)(?:\d+Y)?(?:\d+M)?(?:\d+D)?(?:T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+S)?)?)$"
+)
 PROJECT_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 # A project-based work package reference: a project identifier followed by "-<number>"
 # (e.g. PROJ-123). The numeric form is handled separately before this pattern applies.
@@ -1581,7 +1592,7 @@ async def create_work_package(
 
     The tool validates the payload first. Set confirm=true to write.
     assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number to nest the new work package under a parent.
-    estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'PT30M' for 30 minutes). Day-based formats like 'P1D' are not supported by OpenProject.
+    estimated_time, remaining_time, duration accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'P1D' for 1 day, 'P2W' for 2 weeks).
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope.
     If you issue multiple create_work_package/create_subtask calls concurrently, OpenProject assigns IDs in
@@ -1659,7 +1670,7 @@ async def update_work_package(
     The tool validates the patch first. Set confirm=true to write.
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent re-parents the work package (numeric id or a PROJ-123 reference); pass 'none' to remove the parent and make it top-level. version accepts a version name/id, or 'none' to unassign the version. sprint accepts a Backlogs sprint name/id (requires the Backlogs module and OpenProject 17.3+), or 'none' to unassign it. Pass 'none' to assignee, responsible, category or project_phase to unassign that field. Omitted fields stay unchanged.
-    estimated_time, remaining_time, duration accept ISO8601 duration strings in PT format (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours) or None to leave unchanged. Day-based formats like 'P1D' are not supported by OpenProject. percentage_done is an integer 0-100.
+    estimated_time, remaining_time, duration accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'P1D' for 1 day); omit to leave unchanged, or pass 'none' to clear the field. percentage_done is an integer 0-100.
     Setting status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H when you
     don't supply them explicitly and OpenProject's schema reports those fields as writable (on instances
     using status-based progress calculation, OpenProject already derives them itself and this is skipped).
@@ -1695,9 +1706,11 @@ async def update_work_package(
         safe_parent = _validate_work_package_ref(parent, field_name="parent")
     safe_start_date = _validate_optional_date(start_date, field_name="start_date")
     safe_due_date = _validate_optional_date(due_date, field_name="due_date")
-    safe_estimated_time = _validate_optional_duration(estimated_time, field_name="estimated_time")
-    safe_remaining_time = _validate_optional_duration(remaining_time, field_name="remaining_time")
-    safe_duration = _validate_optional_duration(duration, field_name="duration")
+    # estimated_time/remaining_time/duration: 'none' (any case) clears the field;
+    # otherwise a validated ISO 8601 duration.
+    safe_estimated_time = _clearable_duration(estimated_time, field_name="estimated_time")
+    safe_remaining_time = _clearable_duration(remaining_time, field_name="remaining_time")
+    safe_duration = _clearable_duration(duration, field_name="duration")
     safe_percentage_done = _validate_optional_percentage_done(percentage_done)
     if not any(
         value is not None
@@ -1842,7 +1855,8 @@ async def bulk_update_work_packages(
     Optional fields per item: `subject`, `description`, `type`, `version`, `project_phase`, `status`,
     `assignee`, `responsible`, `priority`, `category`, `custom_fields`, `parent_work_package_id`,
     `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`, `duration`
-    (ISO8601 duration strings in PT format, e.g. 'PT8H'), `percentage_done` (integer 0-100).
+    (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'; pass 'none' to clear one of these),
+    `percentage_done` (integer 0-100).
     Setting an item's status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H
     when that item doesn't supply them explicitly and OpenProject's schema reports those fields as
     writable.
@@ -1897,13 +1911,11 @@ async def bulk_update_work_packages(
         )
         safe_start_date = _validate_optional_date(item.get("start_date"), field_name=f"items[{i}].start_date")
         safe_due_date = _validate_optional_date(item.get("due_date"), field_name=f"items[{i}].due_date")
-        safe_estimated_time = _validate_optional_duration(
-            item.get("estimated_time"), field_name=f"items[{i}].estimated_time"
-        )
-        safe_remaining_time = _validate_optional_duration(
-            item.get("remaining_time"), field_name=f"items[{i}].remaining_time"
-        )
-        safe_duration = _validate_optional_duration(item.get("duration"), field_name=f"items[{i}].duration")
+        # estimated_time/remaining_time/duration: 'none' (any case) clears the field;
+        # otherwise a validated ISO 8601 duration.
+        safe_estimated_time = _clearable_duration(item.get("estimated_time"), field_name=f"items[{i}].estimated_time")
+        safe_remaining_time = _clearable_duration(item.get("remaining_time"), field_name=f"items[{i}].remaining_time")
+        safe_duration = _clearable_duration(item.get("duration"), field_name=f"items[{i}].duration")
         safe_percentage_done = _validate_optional_percentage_done(
             item.get("percentage_done"), field_name=f"items[{i}].percentage_done"
         )
@@ -2572,6 +2584,7 @@ async def create_time_entry(
     """Prepare or create a time entry.
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+    hours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours, 'P1D' for 1 day).
     start_time/end_time are ISO 8601 date-times and require the instance setting
     "allow tracking of start and end times"; they are ignored otherwise.
     """
@@ -2617,7 +2630,11 @@ async def update_time_entry(
     ongoing: bool | None = None,
     confirm: bool = False,
 ) -> TimeEntryWriteResult:
-    """Prepare or update a time entry. start_time/end_time are ISO 8601 date-times."""
+    """Prepare or update a time entry.
+
+    hours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours, 'P1D' for 1 day).
+    start_time/end_time are ISO 8601 date-times.
+    """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(time_entry_id, field_name="time_entry_id")
     safe_user = _validate_optional_user_or_principal_ref(user)
@@ -3606,11 +3623,13 @@ def _validate_optional_version(value: str | None) -> str | object | None:
 
 
 def _clearable(value: str | None, validate: Callable[[str], Any]) -> str | object | None:
-    """Map a nullable association argument to a clear sentinel or a validated value.
+    """Map a nullable optional argument to a clear sentinel or a validated value.
 
-    Returns None (leave unchanged), CLEAR (unassign, for 'none' in any case), or the
-    result of ``validate(value)``. Shared by the fields that support clearing via
-    'none' (assignee, responsible, category, project_phase, project parent).
+    Returns None (leave unchanged), CLEAR (clear the field, for 'none' in any case),
+    or the result of ``validate(value)``. Shared by any field that supports clearing
+    via 'none' — both HAL-link associations (assignee, responsible, category,
+    project_phase, sprint, project parent) and plain scalar fields (estimated_time,
+    remaining_time, duration); ``validate`` decides what a non-'none' value means.
     """
     if value is None:
         return None
@@ -3830,6 +3849,16 @@ def _validate_required_duration(value: str, *, field_name: str) -> str:
     if not normalized:
         raise ValueError(f"{field_name} is required.")
     return normalized
+
+
+def _clearable_duration(value: str | None, *, field_name: str) -> str | object | None:
+    """Validate a duration argument, mapping 'none' (any case) to CLEAR.
+
+    Returns None to leave the field unchanged, CLEAR to clear it, or the validated
+    ISO 8601 duration. Shared by estimated_time/remaining_time/duration on
+    update_work_package and bulk_update_work_packages.
+    """
+    return _clearable(value, lambda v: _validate_optional_duration(v, field_name=field_name))
 
 
 def _validate_relation_type(value: str) -> str:

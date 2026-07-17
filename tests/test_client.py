@@ -11681,6 +11681,42 @@ async def test_update_work_package_preserves_explicit_values_on_close() -> None:
     await client.aclose()
 
 
+async def test_update_work_package_clears_duration_fields_via_clear_sentinel() -> None:
+    """CLEAR on estimated_time/remaining_time/duration must send an explicit null,
+    not be dropped from the payload (which would leave the field unchanged) or
+    forward the sentinel object itself."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "lockVersion": 1,
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            assert body["estimatedTime"] is None
+            assert body["remainingTime"] is None
+            assert body["duration"] is None
+            return _make_wp_form_response(request, body)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
+    result = await client.update_work_package(
+        work_package_id=42,
+        estimated_time=CLEAR,
+        remaining_time=CLEAR,
+        duration=CLEAR,
+        confirm=False,
+    )
+    assert result.ready
+    await client.aclose()
+
+
 async def test_update_work_package_close_with_hidden_progress_fields_still_succeeds() -> None:
     """A locally hidden percentage_done/remaining_time must not turn a plain close into an error."""
 

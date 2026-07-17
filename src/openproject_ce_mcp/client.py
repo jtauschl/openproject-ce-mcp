@@ -2548,9 +2548,9 @@ class OpenProjectClient:
         parent_work_package_id: int | str | object | None = None,
         start_date: str | None = None,
         due_date: str | None = None,
-        estimated_time: str | None = None,
-        remaining_time: str | None = None,
-        duration: str | None = None,
+        estimated_time: str | object | None = None,
+        remaining_time: str | object | None = None,
+        duration: str | object | None = None,
         percentage_done: int | None = None,
         confirm: bool = False,
     ) -> WorkPackageWriteResult:
@@ -6506,9 +6506,9 @@ class OpenProjectClient:
         parent_work_package_id: int | object | None = None,
         start_date: str | None = None,
         due_date: str | None = None,
-        estimated_time: str | None = None,
-        remaining_time: str | None = None,
-        duration: str | None = None,
+        estimated_time: str | object | None = None,
+        remaining_time: str | object | None = None,
+        duration: str | object | None = None,
         percentage_done: int | None = None,
         work_package_id: int | None = None,
         lock_version: int | None = None,
@@ -6532,16 +6532,25 @@ class OpenProjectClient:
         if due_date is not None:
             self._ensure_field_writable("work_package", "due_date")
             payload["dueDate"] = due_date
-        if estimated_time is not None:
+        if estimated_time is CLEAR:
+            self._ensure_field_writable("work_package", "estimated_time")
+            payload["estimatedTime"] = None
+        elif estimated_time is not None:
             self._ensure_field_writable("work_package", "estimated_time")
             payload["estimatedTime"] = estimated_time
-        if remaining_time is not None:
+        if remaining_time is CLEAR:
+            self._ensure_field_writable("work_package", "remaining_time")
+            payload["remainingTime"] = None
+        elif remaining_time is not None:
             self._ensure_field_writable("work_package", "remaining_time")
             payload["remainingTime"] = remaining_time
         if percentage_done is not None:
             self._ensure_field_writable("work_package", "percentage_done")
             payload["percentageDone"] = percentage_done
-        if duration is not None:
+        if duration is CLEAR:
+            self._ensure_field_writable("work_package", "duration")
+            payload["duration"] = None
+        elif duration is not None:
             self._ensure_field_writable("work_package", "duration")
             payload["duration"] = duration
         if type is not None:
