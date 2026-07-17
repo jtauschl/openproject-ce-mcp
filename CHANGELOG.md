@@ -33,9 +33,23 @@ development baseline.
 - **Work-package scheduling fields**: `scheduleManually`,
   `ignoreNonWorkingDays`, derived start/due date, percentage done, `readonly`.
 - **Clearing nullable associations via `'none'`** now works consistently
-  across assignee, responsible, category, project phase, version, and sprint.
+  across assignee, responsible, category, project phase, version, and sprint,
+  and `bulk_update_work_packages` gained the same sentinel for version/
+  project phase/assignee/responsible/category/parent that `update_work_package`
+  already had. `estimated_time`/`remaining_time`/`duration` also accept
+  `'none'` now, and their format check was widened from `PT`-only to the full
+  ISO 8601 duration grammar (`P1D`, `P2W`, `P1Y2M3D`, …), live-verified
+  against real OpenProject.
 - **Backlogs sprint support**: read tools plus a writable/clearable sprint
   link on `update_work_package`, for instances with the Backlogs module.
+- **`percentage_done` is now a writable parameter** on `update_work_package`/
+  `bulk_update_work_packages` (0-100), auto-filling to 100/`remaining_time=PT0H`
+  on a transition to a closed status when left unset and OpenProject reports
+  the fields as writable.
+- **`project` now falls back to a display-name match** when the numeric id/
+  identifier lookup fails, using the same non-ambiguous matching algorithm
+  `list_projects` already used — wired through all 18 call sites that accept
+  a project reference.
 - **`doctor` command**: diagnoses setup end to end — binary resolution,
   client config discovery, environment merging, live connectivity, tool
   registration.
@@ -128,7 +142,8 @@ development baseline.
 
 ### Fixed
 
-- **`OPENPROJECT_LOG_LEVEL` is no longer ignored.**
+- **`OPENPROJECT_LOG_LEVEL` is no longer ignored**, and `DEBUG` is now
+  accepted as a valid level (was wrongly rejected).
 - **Fixed type-unsafe id validators** that raised an unhelpful error for a
   JSON string, `None`, or boolean id; bulk work-package tools now accept
   the same semantic id references as single-item tools.
@@ -154,6 +169,27 @@ development baseline.
   `_DELETE` env vars**, matching the warning coverage every renamed legacy
   variable already had — a stale value left over from a pre-0.2.2 config no
   longer sits silently unflagged.
+- **`list_work_packages`/`search_work_packages` now expose `parent_display_id`**
+  on results, mirroring `get_work_package`'s single-item detail (the data was
+  already fetched, only unread).
+- **`add_work_package_comment` no longer leaves `user` unset** when
+  OpenProject's write response omits it (a best-effort follow-up lookup fills
+  it in), and no longer leaks an unrelated prior activity's field-change
+  details/timestamp when OpenProject merges the new comment into an existing,
+  more recent journal entry instead of creating a fresh one.
+- **8 update tools (`update_project`, `update_work_package` and
+  `bulk_update_work_packages`, `update_document`, `update_news`,
+  `update_version`, `update_time_entry`, `update_reminder`,
+  `update_relation`) can now actually clear a text field via an empty
+  string** — it previously collapsed silently to "not provided" and left the
+  field unchanged.
+- **Fixed an ambiguous-type-name resolution bug**: `_resolve_type_id` now
+  rejects two types sharing a name (case-insensitively) in the same project
+  instead of silently picking whichever the API returned first, matching the
+  existing ambiguity guard on principal/sprint resolution.
+- **Fixed a crash on non-string scalar values in bulk item fields**
+  (e.g. `bulk_update_work_packages(items=[{"assignee": 42}])` raised an
+  unhandled `AttributeError` instead of a clean validation error).
 
 ### Security
 
@@ -174,6 +210,17 @@ development baseline.
 - **Fixed a field-hiding gap**: watcher entries never respected
   `OPENPROJECT_HIDE_WATCHER_FIELDS`, unlike every other user-identifying
   field.
+- **Fixed a related field-hiding gap on activity/comment reads**: replacing a
+  field on a normalized activity via `dataclasses.replace()` silently dropped
+  the internal stamp that marks `OPENPROJECT_HIDE_ACTIVITY_FIELDS` entries,
+  un-hiding a field (e.g. a hidden user) that had already been redacted.
+- **Fixed a match-existence leak in list totals**: `list_work_packages`/
+  `search_work_packages`/`list_my_open_work_packages`'s `total` field could
+  reflect the server's real match count even when the query wasn't provably
+  restricted to `OPENPROJECT_READ_PROJECTS`, revealing that matches existed
+  in disallowed projects. It's now only trusted when the query is verifiably
+  scoped, and `next_offset`/`truncated` stay consistent with what `total`
+  actually discloses.
 
 ### Internal
 
