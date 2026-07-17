@@ -21,13 +21,23 @@ target that auto-syncs.
 
 Measured against the same three representative work packages (token ≈
 bytes/4), reproducible with [`tools/measure-context.py`](https://github.com/jtauschl/openproject-ce-mcp/blob/main/tools/measure-context.py)
-against a local Docker test instance:
+against a local Docker test instance. Covers list, single-read, search, a
+confirmed write, and batch operations — not just one call shape — each
+compared against the equivalent raw OpenProject REST API v3 (HAL) call(s):
 
-| Response | Tokens | vs. raw API |
-|---|---:|---:|
-| Raw OpenProject REST API v3 (HAL) | ~7,900 | baseline |
-| `list_work_packages` (MCP) | ~1,050 | **−87%** |
-| `list_work_packages` with `select` (5 fields) | ~120 | **−98%** |
+| Call | Raw API tokens | MCP tokens | vs. raw |
+|---|---:|---:|---:|
+| `list_work_packages` (3 rows) | ~7,950 | ~1,080 | **−86%** |
+| `list_work_packages` with `select` (5 fields) | ~7,950 | ~120 | **−98%** |
+| `get_work_package` (single read) | ~2,670 | ~430 | **−84%** |
+| `search_work_packages` | ~6,520 | ~745 | **−89%** |
+| `update_work_package` (confirmed write) | ~2,670 | ~490 | **−82%** |
+| `bulk_create_work_packages` (×5, vs. 5 raw POSTs) | ~11,585 | ~1,935 | **−83%** |
+| `bulk_update_work_packages` (×5, vs. 5 raw PATCHes) | ~11,580 | ~1,930 | **−83%** |
+
+The savings are consistent across call shapes — this isn't a one-off number
+for list responses specifically. `select` remains the largest additional,
+opt-in lever on top of the baseline MCP trimming.
 
 ## Tool catalog size
 

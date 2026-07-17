@@ -9,12 +9,12 @@ in README.md's "How it works" section). Two parts:
    comparison, with none enabled (read-only), and measures the serialized
    `tools/list` payload both with and without the opt-in metadata tools.
 
-2. **Response-size table** (raw API vs. `list_work_packages` vs. `select`) —
-   needs a live OpenProject instance with a few realistic work packages, since
-   payload size depends on real content (description length, populated
-   fields, custom fields) that a synthetic fixture can't responsibly claim to
-   represent. Point it at the local Docker test harness
-   (``docker/test/up.sh 17``, never production):
+2. **Response-size table** (raw API vs. list/get/search/update/bulk, each with
+   and without MCP trimming) — needs a live OpenProject instance with a few
+   realistic work packages, since payload size depends on real content
+   (description length, populated fields, custom fields) that a synthetic
+   fixture can't responsibly claim to represent. Point it at the local
+   Docker test harness (``docker/test/up.sh 17``, never production):
 
     OPENPROJECT_BASE_URL=http://localhost:8175 \\
     OPENPROJECT_API_TOKEN=... \\
@@ -25,9 +25,10 @@ in README.md's "How it works" section). Two parts:
    still runs, since it needs no live data.
 
    Part 2 creates three representative work packages in the target project
-   (realistic subjects/descriptions, not empty seed data) to measure against.
-   It does not delete them afterward — the Docker test project is disposable
-   by convention; don't point this at a real instance.
+   (realistic subjects/descriptions, not empty seed data) for the list/read/
+   search/update measurements, plus 5 more for the bulk-create/bulk-update
+   measurements. It does not delete any of them afterward — the Docker test
+   project is disposable by convention; don't point this at a real instance.
 
 Token counts throughout are the same bytes/4 approximation used elsewhere in
 this project's docs — a rough but consistent proxy, not an exact tokenizer
@@ -120,6 +121,13 @@ async def measure_tools_list() -> None:
     print()
 
 
+def _report(label: str, raw_bytes: int, mcp_bytes: int) -> None:
+    pct = round((1 - mcp_bytes / raw_bytes) * 100) if raw_bytes else 0
+    print(f"{label}:")
+    print(f"  Raw: {raw_bytes} bytes, ~{raw_bytes // 4} tokens")
+    print(f"  MCP: {mcp_bytes} bytes, ~{mcp_bytes // 4} tokens (-{pct}% vs. raw)\n")
+
+
 async def measure_response_sizes() -> None:
     base_url = os.environ.get("OPENPROJECT_BASE_URL")
     token = os.environ.get("OPENPROJECT_API_TOKEN")
@@ -135,8 +143,17 @@ async def measure_response_sizes() -> None:
 
     import httpx
 
-    settings = Settings.from_env({"OPENPROJECT_BASE_URL": base_url, "OPENPROJECT_API_TOKEN": token})
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": base_url,
+            "OPENPROJECT_API_TOKEN": token,
+            "OPENPROJECT_READ_PROJECTS": project,
+            "OPENPROJECT_WRITE_PROJECTS": project,
+            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
+        }
+    )
     client = OpenProjectClient(settings)
+    await client.initialize()
     auth = httpx.BasicAuth("apikey", token)
 
     created_ids = []
@@ -184,6 +201,104 @@ async def measure_response_sizes() -> None:
         f"\nCreated work packages {created_ids} in project '{project}' for this measurement; "
         "left in place (disposable test project)."
     )
+    print()
+
+    async with httpx.AsyncClient(base_url=base_url, auth=auth, verify=settings.verify_ssl) as http:
+        # --- Single read: get_work_package vs. GET /work_packages/{id} ---
+        single_id = created_ids[0]
+        resp = await http.get(f"/api/v3/work_packages/{single_id}")
+        resp.raise_for_status()
+        raw_single_bytes = len(json.dumps(resp.json()))
+        lock_version = resp.json()["lockVersion"]
+
+        detail = await client.get_work_package(single_id)
+        _report(
+            "get_work_package (single read)",
+            raw_single_bytes,
+            len(json.dumps(_to_payload(detail))),
+        )
+
+        # --- Search: search_work_packages vs. GET /work_packages?filters=subject_or_id ---
+        query = SAMPLE_WORK_PACKAGES[0][0].split()[0]  # first word of a known subject, guaranteed to match
+        project_href_id = resp.json()["_links"]["project"]["href"].rsplit("/", 1)[-1]
+        raw_filters = json.dumps(
+            [
+                {"subject_or_id": {"operator": "**", "values": [query]}},
+                {"project_id": {"operator": "=", "values": [project_href_id]}},
+            ]
+        )
+        resp = await http.get("/api/v3/work_packages", params={"filters": raw_filters})
+        resp.raise_for_status()
+        raw_search_bytes = len(json.dumps(resp.json()))
+
+        search_result = await client.search_work_packages(query=query, project=project)
+        _report(
+            f"search_work_packages ({len(search_result.results)} rows)",
+            raw_search_bytes,
+            len(json.dumps({"results": [_to_payload(r) for r in search_result.results]})),
+        )
+
+        # --- Confirmed single update: update_work_package vs. PATCH /work_packages/{id} ---
+        resp = await http.patch(
+            f"/api/v3/work_packages/{single_id}",
+            json={"lockVersion": lock_version, "percentageDone": 40},
+        )
+        resp.raise_for_status()
+        raw_update_bytes = len(json.dumps(resp.json()))
+
+        update_result = await client.update_work_package(work_package_id=single_id, percentage_done=60, confirm=True)
+        _report(
+            "update_work_package (confirmed write)",
+            raw_update_bytes,
+            len(json.dumps(_to_payload(update_result))),
+        )
+
+        # --- Bulk create ×5: bulk_create_work_packages vs. 5x POST /work_packages ---
+        # type "7" matches the numeric type id used for the raw POSTs above and below
+        # (same type as SAMPLE_WORK_PACKAGES) — avoids a name/id mismatch between the
+        # raw and MCP creation paths.
+        bulk_items = [{"project": project, "type": "7", "subject": f"Bulk-created sample {i}"} for i in range(1, 6)]
+        raw_bulk_create_bytes = 0
+        for item in bulk_items:
+            resp = await http.post(
+                f"/api/v3/projects/{project}/work_packages",
+                json={"subject": item["subject"], "_links": {"type": {"href": "/api/v3/types/7"}}},
+            )
+            resp.raise_for_status()
+            raw_bulk_create_bytes += len(json.dumps(resp.json()))
+
+        bulk_create_result = await client.bulk_create_work_packages(items=bulk_items, confirm=True)
+        created_ids.extend(
+            item.result.result.id
+            for item in bulk_create_result.items
+            if item.success and item.result and item.result.result
+        )
+        _report(
+            f"bulk_create_work_packages (x{len(bulk_items)}, vs. {len(bulk_items)} individual raw POSTs)",
+            raw_bulk_create_bytes,
+            len(json.dumps(_to_payload(bulk_create_result))),
+        )
+
+        # --- Bulk update ×5: bulk_update_work_packages vs. 5x PATCH /work_packages/{id} ---
+        bulk_target_ids = created_ids[-len(bulk_items) :]
+        raw_bulk_update_bytes = 0
+        for wp_id in bulk_target_ids:
+            resp = await http.get(f"/api/v3/work_packages/{wp_id}")
+            resp.raise_for_status()
+            wp_lock_version = resp.json()["lockVersion"]
+            resp = await http.patch(
+                f"/api/v3/work_packages/{wp_id}", json={"lockVersion": wp_lock_version, "percentageDone": 20}
+            )
+            resp.raise_for_status()
+            raw_bulk_update_bytes += len(json.dumps(resp.json()))
+
+        bulk_update_items = [{"work_package_id": wp_id, "percentage_done": 30} for wp_id in bulk_target_ids]
+        bulk_update_result = await client.bulk_update_work_packages(items=bulk_update_items, confirm=True)
+        _report(
+            f"bulk_update_work_packages (x{len(bulk_target_ids)}, vs. {len(bulk_target_ids)} individual raw PATCHes)",
+            raw_bulk_update_bytes,
+            len(json.dumps(_to_payload(bulk_update_result))),
+        )
 
     await client.aclose()
 
