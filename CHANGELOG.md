@@ -7,7 +7,7 @@ development baseline.
 
 ---
 
-## Unreleased
+## 0.3.0 – 2026-07-17
 
 ### Added
 
@@ -150,6 +150,10 @@ development baseline.
   create/update tool — a `confirm=false` call previously always reported the
   request as valid even when it would actually be rejected (e.g. a duplicate
   login or email).
+- **`doctor` now warns on the removed `OPENPROJECT_AUTO_CONFIRM_WRITE`/
+  `_DELETE` env vars**, matching the warning coverage every renamed legacy
+  variable already had — a stale value left over from a pre-0.2.2 config no
+  longer sits silently unflagged.
 
 ### Security
 
@@ -207,6 +211,13 @@ development baseline.
   Codex's `env_vars` environment-forwarding, and Cursor's `${env:...}`
   references for a local STDIO server — each shown alongside what this
   package's `configure` wizard actually writes today.
+- Clarified that a source install's `uninstall.sh`/`uninstall.ps1` only clean
+  up project-local client configs for the install directory itself, not
+  whatever project you actually work in; updated the OpenProject
+  compatibility line to distinguish source-audited (17.6) from
+  runtime-smoke-tested (17.5) versions; listed Cursor and Claude Desktop
+  alongside the other client config files in the credential-hygiene intro;
+  refreshed `docs/filters.md`'s stale 17.5 source citations to 17.6.
 
 ### Scope
 
