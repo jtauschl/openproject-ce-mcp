@@ -8,6 +8,7 @@ import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from typing import Literal, cast
 
 from mcp.server.fastmcp import FastMCP
 
@@ -164,7 +165,13 @@ def create_app(settings: Settings) -> FastMCP:
         instructions=instructions,
         json_response=True,
         lifespan=app_lifespan,
-        log_level=settings.log_level,
+        # Settings.log_level is `str`, but runtime-validated against a fixed set
+        # (config._parse_log_level) that's a subset of FastMCP's Literal — mypy
+        # can't see through that validation, hence the cast.
+        log_level=cast(
+            'Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]',
+            settings.log_level,
+        ),
     )
     # serverInfo.version (MCP MUST): FastMCP has no `version` constructor kwarg, so
     # set it on the low-level server. Without this the handshake reports the SDK's

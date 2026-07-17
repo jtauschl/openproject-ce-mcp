@@ -9,7 +9,7 @@ from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass, replace
 from fnmatch import fnmatch, fnmatchcase
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
@@ -2088,28 +2088,28 @@ class OpenProjectClient:
             raise InvalidInputError("Cannot specify both due_on and due_between")
 
         if created_on:
-            validated = self._validate_date_format(created_on, "created_on")
-            filters.append({"created_at": {"operator": "=d", "values": [validated]}})
+            validated_date = self._validate_date_format(created_on, "created_on")
+            filters.append({"created_at": {"operator": "=d", "values": [validated_date]}})
 
         if created_between:
-            validated = self._validate_date_range(created_between, "created_between")
-            filters.append({"created_at": {"operator": "<>d", "values": validated}})
+            validated_range = self._validate_date_range(created_between, "created_between")
+            filters.append({"created_at": {"operator": "<>d", "values": validated_range}})
 
         if updated_on:
-            validated = self._validate_date_format(updated_on, "updated_on")
-            filters.append({"updated_at": {"operator": "=d", "values": [validated]}})
+            validated_date = self._validate_date_format(updated_on, "updated_on")
+            filters.append({"updated_at": {"operator": "=d", "values": [validated_date]}})
 
         if updated_between:
-            validated = self._validate_date_range(updated_between, "updated_between")
-            filters.append({"updated_at": {"operator": "<>d", "values": validated}})
+            validated_range = self._validate_date_range(updated_between, "updated_between")
+            filters.append({"updated_at": {"operator": "<>d", "values": validated_range}})
 
         if due_on:
-            validated = self._validate_date_format(due_on, "due_on")
-            filters.append({"due_date": {"operator": "=d", "values": [validated]}})
+            validated_date = self._validate_date_format(due_on, "due_on")
+            filters.append({"due_date": {"operator": "=d", "values": [validated_date]}})
 
         if due_between:
-            validated = self._validate_date_range(due_between, "due_between")
-            filters.append({"due_date": {"operator": "<>d", "values": validated}})
+            validated_range = self._validate_date_range(due_between, "due_between")
+            filters.append({"due_date": {"operator": "<>d", "values": validated_range}})
 
         return await self._list_work_package_collection(
             project_id=project_id,
@@ -2220,28 +2220,28 @@ class OpenProjectClient:
             raise InvalidInputError("Cannot specify both due_on and due_between")
 
         if created_on:
-            validated = self._validate_date_format(created_on, "created_on")
-            filters.append({"created_at": {"operator": "=d", "values": [validated]}})
+            validated_date = self._validate_date_format(created_on, "created_on")
+            filters.append({"created_at": {"operator": "=d", "values": [validated_date]}})
 
         if created_between:
-            validated = self._validate_date_range(created_between, "created_between")
-            filters.append({"created_at": {"operator": "<>d", "values": validated}})
+            validated_range = self._validate_date_range(created_between, "created_between")
+            filters.append({"created_at": {"operator": "<>d", "values": validated_range}})
 
         if updated_on:
-            validated = self._validate_date_format(updated_on, "updated_on")
-            filters.append({"updated_at": {"operator": "=d", "values": [validated]}})
+            validated_date = self._validate_date_format(updated_on, "updated_on")
+            filters.append({"updated_at": {"operator": "=d", "values": [validated_date]}})
 
         if updated_between:
-            validated = self._validate_date_range(updated_between, "updated_between")
-            filters.append({"updated_at": {"operator": "<>d", "values": validated}})
+            validated_range = self._validate_date_range(updated_between, "updated_between")
+            filters.append({"updated_at": {"operator": "<>d", "values": validated_range}})
 
         if due_on:
-            validated = self._validate_date_format(due_on, "due_on")
-            filters.append({"due_date": {"operator": "=d", "values": [validated]}})
+            validated_date = self._validate_date_format(due_on, "due_on")
+            filters.append({"due_date": {"operator": "=d", "values": [validated_date]}})
 
         if due_between:
-            validated = self._validate_date_range(due_between, "due_between")
-            filters.append({"due_date": {"operator": "<>d", "values": validated}})
+            validated_range = self._validate_date_range(due_between, "due_between")
+            filters.append({"due_date": {"operator": "<>d", "values": validated_range}})
 
         return await self._list_work_package_collection(
             project_id=project_id,
@@ -2560,7 +2560,9 @@ class OpenProjectClient:
         if parent_work_package_id is not None and parent_work_package_id is not CLEAR_PARENT:
             # parent goes into a HAL link href, which resolves only by numeric id.
             # CLEAR_PARENT is a sentinel (un-parent) and must pass through unresolved.
-            parent_work_package_id = await self._resolve_work_package_id(parent_work_package_id)
+            # The `is not CLEAR_PARENT` check above rules this out at runtime, but
+            # mypy can't narrow away a sentinel object() instance from `object`.
+            parent_work_package_id = await self._resolve_work_package_id(cast("int | str", parent_work_package_id))
         current = await self._get(f"work_packages/{work_package_id}")
         project_id = _id_from_href(current.get("_links", {}).get("project", {}).get("href"))
         if project_id is None:
@@ -4919,9 +4921,8 @@ class OpenProjectClient:
         if relation_type is not None:
             params["filters"] = json.dumps([{"type": {"operator": "=", "values": [relation_type]}}])
         payload = await self._get("relations", params=params or None)
-        results = []
+        results: list[RelationSummary] = []
         allowlisted = not _scope_allows_all(self.settings.read_projects)
-        results = []
         # Cache project-allow decisions per work package so a batch of relations
         # between the same work packages doesn't refetch (mitigates N+1).
         wp_allowed: dict[str, bool] = {}
@@ -5090,7 +5091,7 @@ class OpenProjectClient:
         *,
         params: dict[str, str] | None = None,
         json_body: dict[str, Any] | None = None,
-        files: dict[str, tuple[str, str | bytes, str]] | None = None,
+        files: dict[str, tuple[str | None, str | bytes, str]] | None = None,
     ) -> httpx.Response:
         try:
             response = await self._http.request(method, path, params=params, json=json_body, files=files)
@@ -5234,7 +5235,7 @@ class OpenProjectClient:
     def normalize_user_detail(self, payload: dict[str, Any]) -> UserDetail:
         summary = self.normalize_user(payload)
         links = payload.get("_links", {})
-        groups = [_link_title(item) for item in links.get("groups", []) if isinstance(item, dict) and _link_title(item)]
+        groups = [title for item in links.get("groups", []) if isinstance(item, dict) and (title := _link_title(item))]
         auth_source = _link_title(links.get("authSource"))
         identity_url = self._link_to_web_url(links.get("showUser", {}).get("href"))
         return self._apply_hidden_fields(
@@ -6508,7 +6509,7 @@ class OpenProjectClient:
         remaining_time: str | object | None = None,
         duration: str | object | None = None,
         percentage_done: int | None = None,
-        work_package_id: int | None = None,
+        work_package_id: int | str | None = None,
         lock_version: int | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {}
@@ -6560,14 +6561,16 @@ class OpenProjectClient:
             links["version"] = {"href": None}
         elif version is not None:
             self._ensure_field_writable("work_package", "version")
-            version_id = await self._resolve_version_id(version, project=project)
+            # `is not CLEAR_VERSION`/`is not None` above rule this out at runtime;
+            # mypy can't narrow a sentinel object() instance out of `object`.
+            version_id = await self._resolve_version_id(cast(str, version), project=project)
             links["version"] = {"href": self._api_href(f"versions/{version_id}")}
         if sprint is CLEAR:
             self._ensure_field_writable("work_package", "sprint")
             links["sprint"] = {"href": None}
         elif sprint is not None:
             self._ensure_field_writable("work_package", "sprint")
-            sprint_id = await self._resolve_sprint_id(sprint, project=project)
+            sprint_id = await self._resolve_sprint_id(cast(str, sprint), project=project)
             links["sprint"] = {"href": self._api_href(f"sprints/{sprint_id}")}
         if status is not None:
             self._ensure_field_writable("work_package", "status")
@@ -6578,7 +6581,7 @@ class OpenProjectClient:
             links["assignee"] = {"href": None}
         elif assignee is not None:
             self._ensure_field_writable("work_package", "assignee")
-            assignee_id = await self._resolve_assignee_id(assignee)
+            assignee_id = await self._resolve_assignee_id(cast(str, assignee))
             links["assignee"] = {"href": self._api_href(f"users/{assignee_id}")}
         if parent_work_package_id is CLEAR_PARENT:
             self._ensure_field_writable("work_package", "parent")
@@ -6644,7 +6647,7 @@ class OpenProjectClient:
         *,
         project: str,
         type: str | None,
-        work_package_id: int | None,
+        work_package_id: int | str | None,
         draft_payload: dict[str, Any],
         lock_version: int | None = None,
     ) -> dict[str, Any]:
@@ -6778,7 +6781,11 @@ class OpenProjectClient:
         identity = identity_kwargs(payload)
 
         if not ready:
-            return result_cls(
+            # ResultT is an unbound TypeVar (each of the 7 write finalizers binds it to
+            # a different dataclass with different fields), so mypy can't verify these
+            # kwargs against result_cls's actual __init__ — identity_kwargs/
+            # committed_kwargs are written per call site to match result_cls exactly.
+            return result_cls(  # type: ignore[call-arg]
                 action=action,
                 confirmed=False,
                 requires_confirmation=not confirm,
@@ -6791,7 +6798,7 @@ class OpenProjectClient:
             )
 
         if not confirm:
-            return result_cls(
+            return result_cls(  # type: ignore[call-arg]
                 action=action,
                 confirmed=False,
                 requires_confirmation=True,
@@ -6809,7 +6816,7 @@ class OpenProjectClient:
         else:
             response = await self._post(write_path, json_body=payload)
         detail = normalize(response)
-        return result_cls(
+        return result_cls(  # type: ignore[call-arg]
             action=action,
             confirmed=True,
             requires_confirmation=False,
@@ -6829,7 +6836,7 @@ class OpenProjectClient:
         form: dict[str, Any],
         write_path: str,
         write_method: str = "POST",
-        work_package_id: int | None = None,
+        work_package_id: int | str | None = None,
         project_name: str | None = None,
         preview_message: str | None = None,
         success_message: str | None = None,
@@ -7032,9 +7039,8 @@ class OpenProjectClient:
             payload = await self._get(f"projects/{quote(project_ref, safe='')}")
         except NotFoundError:
             payload = None
-        else:
-            if payload.get("_type") != "Project":
-                payload = None
+        if payload is not None and payload.get("_type") != "Project":
+            payload = None
         if payload is not None:
             if write:
                 self._ensure_project_write_allowed(project_ref, payload=payload)
@@ -7247,7 +7253,7 @@ class OpenProjectClient:
             links["parent"] = {"href": None}
         elif parent is not None:
             self._ensure_field_writable("project", "parent")
-            parent_id = await self._resolve_project_id(parent)
+            parent_id = await self._resolve_project_id(cast(str, parent))
             links["parent"] = {"href": self._api_href(f"projects/{parent_id}")}
         if links:
             payload["_links"] = links
@@ -7841,7 +7847,9 @@ class OpenProjectClient:
             field_def.name for field_def in dataclass_fields(value) if self._field_hidden(entity, field_def.name)
         )
         if hidden:
-            value._hidden_keys = hidden
+            # Dynamic attribute, not a declared dataclass field (see docstring) —
+            # mypy's DataclassInstance protocol has no way to express this.
+            value._hidden_keys = hidden  # type: ignore[union-attr]
         return value
 
     def _replace_and_restamp(self, entity: str, value: Any, **changes: Any) -> Any:
@@ -7916,6 +7924,8 @@ class OpenProjectClient:
         matches = [str(item["id"]) for item in elements if str(item.get("name", "")).casefold() == type_ref.casefold()]
         if not matches:
             raise InvalidInputError(f"OpenProject type '{type_ref}' was not found in project '{project}'.")
+        if len(matches) > 1:
+            raise InvalidInputError(f"OpenProject type '{type_ref}' is ambiguous. Pass a numeric type id.")
         return matches[0]
 
     async def _resolve_version_id(self, version_ref: str, *, project: str | None) -> str:

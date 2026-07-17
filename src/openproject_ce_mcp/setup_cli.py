@@ -54,7 +54,7 @@ from openproject_ce_mcp.config import ConfigError, Settings, tool_exposure_viola
 try:
     import tomllib as _tomllib
 except ModuleNotFoundError:  # Python 3.10
-    _tomllib = None
+    _tomllib = None  # type: ignore[assignment]
 
 # This file lives at src/openproject_ce_mcp/setup_cli.py inside a checkout. The
 # repo root (two levels up) then contains pyproject.toml and the source tree;

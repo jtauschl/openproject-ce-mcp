@@ -67,6 +67,9 @@ def _run_doctor(
         # Can't proceed with API checks without valid settings
         print(f"\n{failures} check(s) failed.")
         return EXIT_FAILURE
+    # _check_env_config's `True` result always pairs with a resolved Settings
+    # (only the `(False, None)` failure path omits it).
+    assert settings is not None
 
     # Check 5: API connectivity (async)
     async def _api_check() -> bool:

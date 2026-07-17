@@ -1966,6 +1966,116 @@ async def test_bulk_update_work_packages_tool_maps_none_duration_to_clear_sentin
     assert received[2]["duration"] is CLEAR
 
 
+@pytest.mark.asyncio
+async def test_bulk_update_work_packages_tool_maps_none_to_clear_sentinel() -> None:
+    # 'none' on version/project_phase/assignee/responsible/category/
+    # parent_work_package_id must reach the client as the matching clear
+    # sentinel in bulk mode too, same as update_work_package already does.
+    received: list = []
+
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            received.extend(kwargs["items"])
+            return {
+                "action": "bulk_update",
+                "total": len(kwargs["items"]),
+                "succeeded": len(kwargs["items"]),
+                "failed": 0,
+                "confirmed": kwargs["confirm"],
+                "requires_confirmation": not kwargs["confirm"],
+                "message": "ok",
+                "items": [],
+            }
+
+    await bulk_update_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        items=[
+            {"work_package_id": 10, "version": "none"},
+            {"work_package_id": 20, "project_phase": "None"},
+            {"work_package_id": 30, "assignee": "NONE"},
+            {"work_package_id": 40, "responsible": "none"},
+            {"work_package_id": 50, "category": "none"},
+            {"work_package_id": 60, "parent_work_package_id": "none"},
+        ],
+        confirm=True,
+    )
+
+    assert received[0]["version"] is CLEAR_VERSION
+    assert received[1]["project_phase"] is CLEAR
+    assert received[2]["assignee"] is CLEAR
+    assert received[3]["responsible"] is CLEAR
+    assert received[4]["category"] is CLEAR
+    assert received[5]["parent_work_package_id"] is CLEAR_PARENT
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_work_packages_tool_accepts_numeric_parent_work_package_id() -> None:
+    # Regression guard: parent_work_package_id can legitimately be a JSON number
+    # (not a "none"-string), and _clearable must not choke trying to .strip() it.
+    received: list = []
+
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            received.extend(kwargs["items"])
+            return {
+                "action": "bulk_update",
+                "total": len(kwargs["items"]),
+                "succeeded": len(kwargs["items"]),
+                "failed": 0,
+                "confirmed": kwargs["confirm"],
+                "requires_confirmation": not kwargs["confirm"],
+                "message": "ok",
+                "items": [],
+            }
+
+    await bulk_update_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        items=[{"work_package_id": 10, "parent_work_package_id": 952}],
+        confirm=True,
+    )
+
+    assert received[0]["parent_work_package_id"] == "952"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["assignee", "responsible", "category", "project_phase", "version"])
+async def test_bulk_update_work_packages_tool_rejects_non_string_scalar_cleanly(field) -> None:
+    # Regression guard: a bare JSON number/bool for a field that expects a string
+    # (e.g. an LLM caller sending assignee=42 instead of assignee="42") must raise
+    # a clean [validation_error] ValueError, not an unhandled AttributeError from
+    # .split()/.strip() deep inside a validator.
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match="must be a string"):
+        await bulk_update_work_packages(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            items=[{"work_package_id": 10, field: 42}],
+            confirm=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_work_packages_tool_version_error_has_item_index() -> None:
+    # Regression guard: version's error message must be indexed like every
+    # sibling field in the same loop (items[1].version, not just "version"),
+    # so a caller can tell which item in the batch failed.
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match=r"items\[1\]\.version must be at most 100 characters"):
+        await bulk_update_work_packages(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            items=[
+                {"work_package_id": 10, "subject": "ok"},
+                {"work_package_id": 20, "version": "x" * 101},
+            ],
+            confirm=True,
+        )
+
+
 def test_validate_optional_duration_accepts_date_part_units() -> None:
     # Live-verified 2026-07-17 against real OpenProject 16.6 (Docker harness):
     # day/week/month/year units and date+time combinations are accepted and

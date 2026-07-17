@@ -1550,7 +1550,7 @@ async def get_work_packages(
 
     # Validate and deduplicate while preserving order
     seen = set()
-    unique_ids = []
+    unique_ids: list[int | str] = []
     for raw_id in ids:
         safe_id = _validate_work_package_ref(raw_id)
         normalized = str(safe_id)
@@ -1853,7 +1853,9 @@ async def bulk_update_work_packages(
     `assignee`, `responsible`, `priority`, `category`, `custom_fields`, `parent_work_package_id`,
     `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`, `duration`
     (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'; pass 'none' to clear one of these),
-    `percentage_done` (integer 0-100).
+    `percentage_done` (integer 0-100). Pass 'none' to `version`, `project_phase`, `assignee`,
+    `responsible`, `category` or `parent_work_package_id` to clear that field on the item, same as
+    `update_work_package`.
     Setting an item's status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H
     when that item doesn't supply them explicitly and OpenProject's schema reports those fields as
     writable.
@@ -1889,22 +1891,30 @@ async def bulk_update_work_packages(
             item.get("description"), field_name=f"items[{i}].description", max_length=10_000
         )
         safe_type = _validate_optional_query(item.get("type"), field_name=f"items[{i}].type", max_length=100)
-        safe_version = _validate_optional_query(item.get("version"), field_name=f"items[{i}].version", max_length=100)
-        safe_project_phase = _validate_optional_query(
-            item.get("project_phase"), field_name=f"items[{i}].project_phase", max_length=100
+        # version/project_phase/assignee/responsible/category/parent_work_package_id:
+        # 'none' (any case) clears the field; otherwise the normal validation applies.
+        safe_version = _validate_optional_version(item.get("version"), field_name=f"items[{i}].version")
+        safe_project_phase = _clearable(
+            item.get("project_phase"),
+            functools.partial(_validate_optional_query, field_name=f"items[{i}].project_phase", max_length=100),
         )
         safe_status = _validate_optional_query(item.get("status"), field_name=f"items[{i}].status", max_length=100)
-        safe_assignee = _validate_optional_user_ref(item.get("assignee"))
-        safe_responsible = _validate_optional_user_ref(item.get("responsible"), field_name="responsible")
+        safe_assignee = _clearable(item.get("assignee"), _validate_optional_user_ref)
+        safe_responsible = _clearable(
+            item.get("responsible"), functools.partial(_validate_optional_user_ref, field_name="responsible")
+        )
         safe_priority = _validate_optional_query(
             item.get("priority"), field_name=f"items[{i}].priority", max_length=100
         )
-        safe_category = _validate_optional_query(
-            item.get("category"), field_name=f"items[{i}].category", max_length=100
+        safe_category = _clearable(
+            item.get("category"),
+            functools.partial(_validate_optional_query, field_name=f"items[{i}].category", max_length=100),
         )
         safe_custom_fields = _validate_optional_custom_fields(item.get("custom_fields"))
-        safe_parent_work_package_id = _validate_optional_work_package_ref(
-            item.get("parent_work_package_id"), field_name=f"items[{i}].parent_work_package_id"
+        safe_parent_work_package_id: int | str | object | None = _clearable(
+            item.get("parent_work_package_id"),
+            functools.partial(_validate_work_package_ref, field_name=f"items[{i}].parent_work_package_id"),
+            sentinel=CLEAR_PARENT,
         )
         safe_start_date = _validate_optional_date(item.get("start_date"), field_name=f"items[{i}].start_date")
         safe_due_date = _validate_optional_date(item.get("due_date"), field_name=f"items[{i}].due_date")
@@ -3424,7 +3434,7 @@ def _return_model(fn: Any) -> type | None:
     """
     ann = fn.__annotations__.get("return")
     model = globals().get(ann) if isinstance(ann, str) else ann
-    return model if is_dataclass(model) else None
+    return model if isinstance(model, type) and is_dataclass(model) else None
 
 
 def _returns_dataclass(fn: Any) -> bool:
@@ -3598,6 +3608,12 @@ def _categorize_tool_errors(fn):
 def _validate_optional_query(value: str | None, *, field_name: str, max_length: int) -> str | None:
     if value is None:
         return None
+    if not isinstance(value, str):
+        # Reachable with a non-str JSON scalar (e.g. a bare number or bool) from
+        # bulk_update_work_packages' untyped `items: list[dict[str, Any]]` — MCP
+        # tool parameters are str-typed and coerced/rejected by FastMCP before
+        # reaching here, but a dict value has no such guarantee.
+        raise ValueError(f"{field_name} must be a string.")
     normalized = " ".join(value.split())
     if not normalized:
         return None
@@ -3606,18 +3622,22 @@ def _validate_optional_query(value: str | None, *, field_name: str, max_length: 
     return normalized
 
 
-def _validate_optional_version(value: str | None) -> str | object | None:
+def _validate_optional_version(value: str | None, *, field_name: str = "version") -> str | object | None:
     """Validate a version argument, mapping 'none' (any case) to CLEAR_VERSION.
 
     Returns None to leave the version unchanged, CLEAR_VERSION to unassign it, or
     the validated version name/id. Mirrors the parent 'none' un-parenting sentinel.
     """
     return _clearable(
-        value, lambda v: _validate_optional_query(v, field_name="version", max_length=100), sentinel=CLEAR_VERSION
+        value,
+        functools.partial(_validate_optional_query, field_name=field_name, max_length=100),
+        sentinel=CLEAR_VERSION,
     )
 
 
-def _clearable(value: str | None, validate: Callable[[str], Any], *, sentinel: object = CLEAR) -> str | object | None:
+def _clearable(
+    value: int | str | None, validate: Callable[[str], Any], *, sentinel: object = CLEAR
+) -> str | object | None:
     """Map a nullable optional argument to a clear sentinel or a validated value.
 
     Returns None (leave unchanged), ``sentinel`` (clear the field, for 'none' in any
@@ -3627,13 +3647,14 @@ def _clearable(value: str | None, validate: Callable[[str], Any], *, sentinel: o
     remaining_time, duration); ``validate`` decides what a non-'none' value means.
     ``sentinel`` defaults to the generic ``CLEAR``; pass a field-specific sentinel
     (e.g. ``CLEAR_VERSION``, ``CLEAR_PARENT``) where the caller needs to distinguish
-    which field was cleared.
+    which field was cleared. A numeric ``value`` (e.g. a work package ref given as an
+    int) can never be the 'none' sentinel string, so it always goes to ``validate``.
     """
     if value is None:
         return None
-    if value.strip().lower() == "none":
+    if isinstance(value, str) and value.strip().lower() == "none":
         return sentinel
-    return validate(value)
+    return validate(value)  # type: ignore[arg-type]
 
 
 def _validate_optional_text(value: str | None, *, field_name: str, max_length: int) -> str | None:
@@ -3746,7 +3767,7 @@ def _validate_project_identifier(value: str) -> str:
     return normalized
 
 
-def _validate_work_package_ref(value: str, *, field_name: str = "work_package_id") -> str:
+def _validate_work_package_ref(value: int | str, *, field_name: str = "work_package_id") -> str:
     normalized = " ".join(str(value).split())
     if not normalized:
         raise ValueError(f"{field_name} is required.")
@@ -3761,7 +3782,7 @@ def _validate_work_package_ref(value: str, *, field_name: str = "work_package_id
     return normalized
 
 
-def _validate_optional_work_package_ref(value: str | None, *, field_name: str = "work_package_id") -> str | None:
+def _validate_optional_work_package_ref(value: int | str | None, *, field_name: str = "work_package_id") -> str | None:
     if value is None:
         return None
     return _validate_work_package_ref(value, field_name=field_name)
@@ -3770,6 +3791,9 @@ def _validate_optional_work_package_ref(value: str | None, *, field_name: str = 
 def _validate_optional_user_ref(value: str | None, field_name: str = "assignee") -> str | None:
     if value is None:
         return None
+    if not isinstance(value, str):
+        # See _validate_optional_query for why this guard exists.
+        raise ValueError(f"{field_name} must be a string.")
     normalized = " ".join(value.split())
     if not normalized:
         return None

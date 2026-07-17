@@ -481,7 +481,10 @@ class WorkPackageWriteResult:
     requires_confirmation: bool
     ready: bool
     message: str
-    work_package_id: int | None
+    # A resolved work-package reference, e.g. from _work_package_ref: a numeric
+    # id or a project-prefixed display id (e.g. "PROJ-123"), passed through
+    # verbatim rather than always resolved to a number.
+    work_package_id: int | str | None
     project: str | None
     payload: dict[str, Any]
     validation_errors: dict[str, str]
@@ -515,7 +518,7 @@ class ActivityWriteResult:
     requires_confirmation: bool
     ready: bool
     message: str
-    work_package_id: int
+    work_package_id: int | str
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: ActivitySummary | None
@@ -934,7 +937,7 @@ class AttachmentWriteResult:
     ready: bool
     message: str
     attachment_id: int | None
-    work_package_id: int | None
+    work_package_id: int | str | None
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: AttachmentSummary | None
@@ -1241,7 +1244,7 @@ class WatcherWriteResult:
     requires_confirmation: bool
     ready: bool
     message: str
-    work_package_id: int
+    work_package_id: int | str
     watcher_user_id: int | None
     validation_errors: dict
     result: WatcherSummary | None

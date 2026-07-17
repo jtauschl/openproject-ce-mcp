@@ -8247,6 +8247,42 @@ async def test_resolve_type_id_denies_disallowed_project(project_ref: str) -> No
 
 
 @pytest.mark.asyncio
+async def test_resolve_type_id_rejects_ambiguous_name() -> None:
+    # OpenProject does not enforce unique type names within a project. Two types
+    # sharing a name (case-insensitively) must be rejected, not silently resolved
+    # to whichever one happened to come first in the list — matching the
+    # ambiguity guard every sibling resolver (_resolve_principal_id,
+    # _resolve_sprint_id) already has.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo"},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {"id": 1, "name": "Bug"},
+                            {"id": 2, "name": "bug"},
+                        ]
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="ambiguous"):
+        await client._resolve_type_id("Bug", project="demo")
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_resolve_version_id_numeric_project_ref_is_allowlist_checked_first() -> None:
     # A numeric, disallowed project ref must be denied via _get_project_payload
     # before any version-listing request is ever made.
