@@ -4,8 +4,8 @@
   <img src="../img/configuration.jpg" alt="A secure configuration console controlling project scopes, permissions, and filters." width="960">
 </p>
 
-Your client config (`.mcp.json`, `.codex/config.toml`, or `.vscode/mcp.json`)
-contains your API token. Treat it like a password. This repo gitignores
+Your client config (`.mcp.json`, `.codex/config.toml`, `.vscode/mcp.json`,
+`.cursor/mcp.json`, or `claude_desktop_config.json`) contains your API token. Treat it like a password. This repo gitignores
 `.mcp.json`, but when you place a project-scoped config in your **own**
 project, add it to that project's `.gitignore` so the token is never
 committed — choose your client-specific guide from [Clients](clients.md) for

@@ -4,7 +4,7 @@
   <img src="../img/work-package-filters.jpg" alt="Many work package records passing through layered filters into a precise result set." width="960">
 </p>
 
-Verified against OpenProject CE source code (versions 16.0–17.5).
+Verified against OpenProject CE source code (versions 16.0–17.6).
 
 This document describes all work package filter parameters available in `list_work_packages` and `search_work_packages` tools, their official API filter keys, supported operators, and implementation details.
 
@@ -37,7 +37,7 @@ This document describes all work package filter parameters available in `list_wo
 
 - **Used for:** status, priority, type, project
 - **Behavior:** Values required, no "none" option
-- **Source:** OpenProject CE 17.5 `app/models/queries/filters/strategies/list.rb`
+- **Source:** OpenProject CE 17.6 `app/models/queries/filters/strategies/list.rb`
 
 ### :list_optional
 
@@ -45,7 +45,7 @@ This document describes all work package filter parameters available in `list_wo
 
 - **Used for:** assigned_to, version
 - **Behavior:** Supports "exists" and "not exists" queries
-- **Source:** OpenProject CE 17.5 `app/models/queries/filters/strategies/list_optional.rb`
+- **Source:** OpenProject CE 17.6 `app/models/queries/filters/strategies/list_optional.rb`
 
 ### :date
 
@@ -53,7 +53,7 @@ This document describes all work package filter parameters available in `list_wo
 
 - **Used for:** due_date
 - **Behavior:** Full date and relative operators; can check for "no date set" with `!*`
-- **Source:** OpenProject CE 17.5 `app/models/queries/filters/strategies/date.rb`
+- **Source:** OpenProject CE 17.6 `app/models/queries/filters/strategies/date.rb`
 
 ### :datetime_past
 
@@ -61,7 +61,7 @@ This document describes all work package filter parameters available in `list_wo
 
 - **Used for:** created_at, updated_at
 - **Behavior:** Past-focused (no future operators); no "none" option (these fields always have values)
-- **Source:** OpenProject CE 17.5 `app/models/queries/filters/strategies/date_time_past.rb`
+- **Source:** OpenProject CE 17.6 `app/models/queries/filters/strategies/date_time_past.rb`
 
 ### :text
 
@@ -69,7 +69,7 @@ This document describes all work package filter parameters available in `list_wo
 
 - **Used for:** subject_or_id (in search)
 - **Behavior:** Pattern matching only
-- **Source:** OpenProject CE 17.5 `app/models/queries/filters/strategies/text.rb`
+- **Source:** OpenProject CE 17.6 `app/models/queries/filters/strategies/text.rb`
 
 ## Filter-Specific Custom Operators
 
@@ -80,14 +80,14 @@ Some filters extend their base strategy with custom operators via `available_ope
 - **Base strategy:** `:list` (=, !)
 - **Custom operators:** `o` (OpenWorkPackages), `c` (ClosedWorkPackages), `*` (All)
 - **Implementation:** Custom `operator_strategy` method
-- **Source:** OpenProject CE 17.5 `app/models/queries/work_packages/filter/status_filter.rb`
+- **Source:** OpenProject CE 17.6 `app/models/queries/work_packages/filter/status_filter.rb`
 
 ### VersionFilter (version_id)
 
 - **Base strategy:** `:list_optional` (=, !, *, !*)
 - **Custom operators:** `o` (OpenStatus), `c` (ClosedStatus), `l` (LockedStatus)
 - **Implementation:** Custom `operator_strategy` method
-- **Source:** OpenProject CE 17.5 `app/models/queries/work_packages/filter/version_filter.rb`
+- **Source:** OpenProject CE 17.6 `app/models/queries/work_packages/filter/version_filter.rb`
 
 ## Operator Reference
 
@@ -143,10 +143,10 @@ Date filter parameters are mutually exclusive per field:
 
 ## Source Verification
 
-All filter keys and operators verified against OpenProject CE 17.5 source code:
+All filter keys and operators verified against OpenProject CE 17.6 source code:
 - **Filter definitions:** `app/models/queries/work_packages/filter/*.rb`
 - **Strategy definitions:** `app/models/queries/filters/strategies/*.rb`
-- **Last verified:** 2026-07-09
+- **Last verified:** 2026-07-17 (unchanged between 17.5 and 17.6, confirmed byte-identical in `.op-sources`)
 - **Test coverage:** payload-shape contract tests in `tests/test_client.py`
 
 ## See Also

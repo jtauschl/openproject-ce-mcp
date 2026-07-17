@@ -539,6 +539,18 @@ def test_legacy_env_warnings_personal_write_points_at_enable_personal_write() ->
     assert len(warnings) == 1
     assert "OPENPROJECT_PERSONAL_WRITE" in warnings[0]
     assert "OPENPROJECT_ENABLE_PERSONAL_WRITE" in warnings[0]
+
+
+@pytest.mark.parametrize("var_name", ["OPENPROJECT_AUTO_CONFIRM_WRITE", "OPENPROJECT_AUTO_CONFIRM_DELETE"])
+def test_legacy_env_warnings_auto_confirm_vars_warn_with_no_replacement(var_name: str) -> None:
+    # These were removed outright (not renamed) — every write now unconditionally
+    # requires confirm=true, so there's no "use X instead" to point at.
+    warnings = legacy_env_warnings({var_name: "true"})
+    assert len(warnings) == 1
+    assert var_name in warnings[0]
+    assert "deprecated" in warnings[0]
+    assert "no replacement" in warnings[0] or "removed with no" in warnings[0]
+    assert "use" not in warnings[0].lower()  # no misleading "use X instead"
     assert "deprecated" in warnings[0]
 
 

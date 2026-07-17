@@ -210,13 +210,14 @@ development baseline.
 
 ### Scope
 
+- This release's CE completeness audit confirmed coverage across projects,
+  work packages, versions, boards, memberships, users/groups, and the other
+  core resources listed in `docs/architecture.md`. Nextcloud file links
+  attached to work packages are supported today.
 - Meetings and recurring meetings, Backlogs buckets, cost entries and cost
   types, forum posts, storage and project-storage administration,
   GitHub/GitLab linkage, per-user schedule overrides, and wiki page links are
-  not yet covered.
-- Nextcloud file links attached to work packages remain supported; the
-  uncovered storage scope concerns administration of storage connections and
-  their project assignments.
+  tracked for upcoming releases.
 
 ---
 

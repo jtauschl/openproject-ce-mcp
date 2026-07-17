@@ -491,7 +491,7 @@ async def get_project(
 ) -> ProjectSummary:
     """Get a compact project summary by id or identifier.
 
-    project: numeric id (e.g., 7) or identifier (e.g., "opm-openproject-ce-mcp"), not display name.
+    project: numeric id (e.g., 7) or identifier (e.g., "my-project"), not display name.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
@@ -2841,7 +2841,7 @@ async def add_project_favorite(
 ) -> FavoriteWriteResult:
     """Prepare or mark a project as a favorite; only writes when called again with confirm=true.
 
-    project: numeric id (e.g., 7) or identifier (e.g., "opm-openproject-ce-mcp"), not display name.
+    project: numeric id (e.g., 7) or identifier (e.g., "my-project"), not display name.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
@@ -2855,7 +2855,7 @@ async def remove_project_favorite(
 ) -> FavoriteWriteResult:
     """Prepare or remove a project from favorites; only writes when called again with confirm=true.
 
-    project: numeric id (e.g., 7) or identifier (e.g., "opm-openproject-ce-mcp"), not display name.
+    project: numeric id (e.g., 7) or identifier (e.g., "my-project"), not display name.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)

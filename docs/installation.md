@@ -16,7 +16,7 @@ asks and every environment variable it can set, see
 |---|---|
 | Python | 3.10 or later |
 | git | only for the "install from source" path (clones this repository) |
-| OpenProject | Community Edition 16.1 or later (reviewed for compatibility through 17.5), API v3 accessible |
+| OpenProject | Community Edition 16.1 or later (source-audited through 17.6, runtime-smoke-tested through 17.5), API v3 accessible |
 | OS | macOS 12+, Linux, or Windows 10/11 |
 
 ## Prepare your OpenProject instance
@@ -157,7 +157,13 @@ pipx uninstall openproject-ce-mcp   # or: uv tool uninstall openproject-ce-mcp
 
 If you installed from source, `uninstall.sh` / `uninstall.ps1` also remove the
 local environment (`.venv`, caches, the API-source clones) in addition to
-unregistering the client entries:
+unregistering the client entries — but note these scripts `cd` into the
+install directory first, so the project-local cleanup described above only
+covers that directory, not whatever project you actually work in. If you
+registered the server project-locally elsewhere, also run the source
+binary's `configure --uninstall` from that project directory (e.g.
+`~/openproject-ce-mcp/.venv/bin/openproject-ce-mcp configure --uninstall`
+on macOS/Linux) before removing the install directory.
 
 - **Windows:** `.\uninstall.ps1` (then remove the install dir if you want: `Remove-Item -Recurse -Force $env:USERPROFILE\openproject-ce-mcp`)
 - **macOS / Linux:** `~/openproject-ce-mcp/uninstall.sh`

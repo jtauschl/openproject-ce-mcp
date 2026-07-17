@@ -92,21 +92,24 @@ def tool_exposure_violations(
     return [entry for entry in WRITE_GROUP_REQUIREMENTS if write_flags.get(entry[0]) and not read_flags.get(entry[1])]
 
 
-# Old env-var name -> its replacement. Never read for a value — Settings.from_env
-# has zero legacy-name handling, by design (fail-closed rename: an unset or
-# renamed legacy variable denies access rather than defaulting to allow); this
-# map exists only to WARN, once per detected old name, from every entry point
+# Old env-var name -> its replacement, or None for a pure removal with no
+# replacement variable. Never read for a value — Settings.from_env has zero
+# legacy-name handling, by design (fail-closed rename: an unset or renamed
+# legacy variable denies access rather than defaulting to allow); this map
+# exists only to WARN, once per detected old name, from every entry point
 # that inspects raw env (doctor.py and server.py's real startup path, so the
 # warning fires whether the server is inspected or actually running). Order is
 # deterministic (dict insertion order) so warning output is stable across
 # calls.
-_LEGACY_ENV_VAR_MAP: dict[str, str] = {
+_LEGACY_ENV_VAR_MAP: dict[str, str | None] = {
     "OPENPROJECT_ALLOWED_PROJECTS": "OPENPROJECT_READ_PROJECTS",
     "OPENPROJECT_ALLOWED_PROJECTS_READ": "OPENPROJECT_READ_PROJECTS",
     "OPENPROJECT_ALLOWED_PROJECTS_WRITE": "OPENPROJECT_WRITE_PROJECTS",
     "OPENPROJECT_ENABLE_METADATA_TOOLS": "OPENPROJECT_ENABLE_EXTENDED_READ",
     "OPENPROJECT_TOOLS": "the individual OPENPROJECT_ENABLE_<GROUP>_READ variables",
     "OPENPROJECT_PERSONAL_WRITE": "OPENPROJECT_ENABLE_PERSONAL_WRITE",
+    "OPENPROJECT_AUTO_CONFIRM_WRITE": None,
+    "OPENPROJECT_AUTO_CONFIRM_DELETE": None,
 }
 
 
@@ -116,13 +119,22 @@ def legacy_env_warnings(env: Mapping[str, str]) -> list[str]:
     the operator knows exactly which variable to rename. Presence alone
     triggers a warning (matching prior behavior): a legacy var sitting
     alongside its already-correct replacement still warns, since its value is
-    silently ignored either way and that's worth flagging as dead config.
+    silently ignored either way and that's worth flagging as dead config. A
+    `None` replacement (a pure removal, e.g. the old auto-confirm flags) gets
+    its own message shape instead of a misleading "use None instead."
     """
-    return [
-        f"{old} is deprecated and ignored (fail-closed defaults still apply) — use {new} instead."
-        for old, new in _LEGACY_ENV_VAR_MAP.items()
-        if old in env
-    ]
+    warnings = []
+    for old, new in _LEGACY_ENV_VAR_MAP.items():
+        if old not in env:
+            continue
+        if new is None:
+            warnings.append(
+                f"{old} is deprecated and ignored — it was removed with no "
+                "replacement; every write now unconditionally requires confirm=true."
+            )
+        else:
+            warnings.append(f"{old} is deprecated and ignored (fail-closed defaults still apply) — use {new} instead.")
+    return warnings
 
 
 # Cap for a work-package description shown in list/summary results — a per-row
