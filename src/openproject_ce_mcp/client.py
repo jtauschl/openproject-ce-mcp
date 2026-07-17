@@ -183,11 +183,13 @@ CLEAR_PARENT = object()
 # rationale as CLEAR_PARENT — it must bypass version-name resolution.
 CLEAR_VERSION = object()
 
-# Generic "clear this association" sentinel for the remaining nullable HAL-link
-# fields (assignee, responsible, category, project_phase on work packages; parent on
-# projects). Distinguishes "unassign via _links.<field> = {"href": null}" from
-# "leave unchanged" (None). parent/version keep their own sentinels above for
-# historical reasons; new clearable fields share this one.
+# Generic "clear this field" sentinel, shared by both nullable HAL-link fields
+# (assignee, responsible, category, project_phase on work packages; parent on
+# projects — unassigned via _links.<field> = {"href": null}) and plain scalar
+# fields (estimated_time, remaining_time, duration — cleared via <field>: null
+# directly in the payload). Distinguishes "clear this field" from "leave
+# unchanged" (None). parent/version keep their own sentinels above for
+# historical reasons; every other clearable field shares this one.
 CLEAR = object()
 
 # Type variables for the generic write-finalizer (_finalize_write).
