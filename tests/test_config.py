@@ -358,6 +358,20 @@ def test_settings_from_env_rejects_invalid_log_level() -> None:
         )
 
 
+def test_settings_from_env_accepts_debug_log_level() -> None:
+    # Regression guard: DEBUG is a real Python logging level and is part of
+    # FastMCP's accepted log_level Literal, but was previously missing from
+    # this validator's allowed set and got wrongly rejected.
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com",
+            "OPENPROJECT_API_TOKEN": "token-value",
+            "OPENPROJECT_LOG_LEVEL": "debug",
+        }
+    )
+    assert settings.log_level == "DEBUG"
+
+
 def test_http_remote_base_url_warns(caplog) -> None:
     with caplog.at_level("WARNING"):
         settings = Settings.from_env(

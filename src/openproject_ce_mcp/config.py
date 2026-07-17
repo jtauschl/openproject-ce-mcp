@@ -528,7 +528,7 @@ def _parse_log_level(value: str | None, name: str, *, default: str) -> str:
     if value is None or not value.strip():
         return default
     normalized = value.strip().upper()
-    allowed = {"CRITICAL", "ERROR", "WARNING", "INFO"}
+    allowed = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}
     if normalized not in allowed:
         raise ConfigError(f"{name} must be one of: {', '.join(sorted(allowed))}.")
     return normalized
