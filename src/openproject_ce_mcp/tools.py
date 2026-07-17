@@ -1698,8 +1698,8 @@ async def update_work_package(
     safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
     safe_custom_fields = _validate_optional_custom_fields(custom_fields)
     # parent: 'none' (any case) clears the parent (top-level); otherwise a work package ref.
-    safe_parent: int | str | object | None = _clearable(
-        parent, lambda v: _validate_work_package_ref(v, field_name="parent"), sentinel=CLEAR_PARENT
+    safe_parent: int | str | object | None = _clearable_ref(
+        parent, functools.partial(_validate_work_package_ref, field_name="parent"), sentinel=CLEAR_PARENT
     )
     safe_start_date = _validate_optional_date(start_date, field_name="start_date")
     safe_due_date = _validate_optional_date(due_date, field_name="due_date")
@@ -1911,7 +1911,7 @@ async def bulk_update_work_packages(
             functools.partial(_validate_optional_query, field_name=f"items[{i}].category", max_length=100),
         )
         safe_custom_fields = _validate_optional_custom_fields(item.get("custom_fields"))
-        safe_parent_work_package_id: int | str | object | None = _clearable(
+        safe_parent_work_package_id: int | str | object | None = _clearable_ref(
             item.get("parent_work_package_id"),
             functools.partial(_validate_work_package_ref, field_name=f"items[{i}].parent_work_package_id"),
             sentinel=CLEAR_PARENT,
@@ -3635,9 +3635,7 @@ def _validate_optional_version(value: str | None, *, field_name: str = "version"
     )
 
 
-def _clearable(
-    value: int | str | None, validate: Callable[[str], Any], *, sentinel: object = CLEAR
-) -> str | object | None:
+def _clearable(value: str | None, validate: Callable[[str], Any], *, sentinel: object = CLEAR) -> str | object | None:
     """Map a nullable optional argument to a clear sentinel or a validated value.
 
     Returns None (leave unchanged), ``sentinel`` (clear the field, for 'none' in any
@@ -3646,15 +3644,39 @@ def _clearable(
     project_phase, sprint, project parent) and plain scalar fields (estimated_time,
     remaining_time, duration); ``validate`` decides what a non-'none' value means.
     ``sentinel`` defaults to the generic ``CLEAR``; pass a field-specific sentinel
-    (e.g. ``CLEAR_VERSION``, ``CLEAR_PARENT``) where the caller needs to distinguish
-    which field was cleared. A numeric ``value`` (e.g. a work package ref given as an
-    int) can never be the 'none' sentinel string, so it always goes to ``validate``.
+    (e.g. ``CLEAR_VERSION``) where the caller needs to distinguish which field was
+    cleared. Use ``_clearable_ref`` instead for a field whose validator genuinely
+    accepts a numeric value too (currently only work-package refs).
+
+    ``value`` is declared str-only: every real caller's field is str-typed at the MCP
+    tool boundary. A non-str scalar (e.g. a bare JSON number) can still reach here
+    from bulk_update_work_packages' untyped ``items: list[dict[str, Any]]`` — the
+    ``isinstance`` check below is a runtime safety net for that case (mypy sees `Any`
+    there and can't catch it statically), not something this function's own str-only
+    contract needs to express. The validator itself (e.g. `_validate_optional_query`)
+    is responsible for rejecting a non-str value cleanly if one slips through.
     """
     if value is None:
         return None
     if isinstance(value, str) and value.strip().lower() == "none":
         return sentinel
-    return validate(value)  # type: ignore[arg-type]
+    return validate(value)
+
+
+def _clearable_ref(
+    value: int | str | None, validate: Callable[[int | str], Any], *, sentinel: object = CLEAR
+) -> str | object | None:
+    """Like ``_clearable``, but for a validator that accepts a numeric ref directly.
+
+    Only ``_validate_work_package_ref`` needs this today (parent/
+    parent_work_package_id can legitimately be a JSON int, not just a display-id
+    string) — everything else goes through the str-only ``_clearable``.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip().lower() == "none":
+        return sentinel
+    return validate(value)
 
 
 def _validate_optional_text(value: str | None, *, field_name: str, max_length: int) -> str | None:

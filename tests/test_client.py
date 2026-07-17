@@ -21,6 +21,7 @@ from openproject_ce_mcp.client import (
     PermissionDeniedError,
     _extract_formattable_text,
     _extract_formattable_text_with_meta,
+    _narrow_cleared,
     _normalize_text,
     _trim_text,
     _trim_text_with_meta,
@@ -7698,6 +7699,24 @@ def test_extract_formattable_text_trims_large_payloads() -> None:
     assert trimmed is not None
     assert len(trimmed) <= 1200
     assert trimmed.endswith("…")
+
+
+def test_narrow_cleared_returns_the_resolved_value() -> None:
+    assert _narrow_cleared("PROJ-51", sentinel=CLEAR_PARENT) == "PROJ-51"
+    assert _narrow_cleared(952, sentinel=CLEAR_PARENT) == 952
+
+
+def test_narrow_cleared_rejects_none() -> None:
+    with pytest.raises(AssertionError, match="clear sentinel or None"):
+        _narrow_cleared(None, sentinel=CLEAR_VERSION)
+
+
+def test_narrow_cleared_rejects_the_sentinel_itself() -> None:
+    # This is the actual safety net the helper exists for: if an upstream
+    # `is not CLEAR_*` guard were ever accidentally dropped, the sentinel object
+    # itself could reach here instead of a real value.
+    with pytest.raises(AssertionError, match="clear sentinel or None"):
+        _narrow_cleared(CLEAR, sentinel=CLEAR)
 
 
 def test_trim_text_with_meta_reports_truncation_invariant() -> None:

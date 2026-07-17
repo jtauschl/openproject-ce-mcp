@@ -196,6 +196,26 @@ CLEAR = object()
 DetailT = TypeVar("DetailT")
 ResultT = TypeVar("ResultT")
 
+_NarrowT = TypeVar("_NarrowT")
+
+
+def _narrow_cleared(value: _NarrowT | object, *, sentinel: object = None) -> _NarrowT:
+    """Narrow a value after the caller has already ruled out None and a clear sentinel.
+
+    mypy cannot narrow a sentinel `object()` instance (CLEAR/CLEAR_VERSION/
+    CLEAR_PARENT) out of a wider union via `is not sentinel`/`is not None` checks —
+    from its static perspective the value's type is unchanged afterward, forcing a
+    bare `cast()` at each call site. This re-asserts the same invariant at the point
+    of use instead: a no-op if the caller's guard was correct (the common case), but
+    it fails loudly with a clear message if a future refactor ever removes or
+    reorders that guard, instead of silently forwarding the sentinel object into a
+    resolver several calls downstream, where it would surface as a confusing
+    'AttributeError' with no indication of the real cause.
+    """
+    if value is None or value is sentinel:
+        raise AssertionError(f"_narrow_cleared: expected a resolved value, got the clear sentinel or None: {value!r}")
+    return cast(_NarrowT, value)
+
 
 class OpenProjectError(Exception):
     """Base error for safe OpenProject failures."""
@@ -2560,9 +2580,9 @@ class OpenProjectClient:
         if parent_work_package_id is not None and parent_work_package_id is not CLEAR_PARENT:
             # parent goes into a HAL link href, which resolves only by numeric id.
             # CLEAR_PARENT is a sentinel (un-parent) and must pass through unresolved.
-            # The `is not CLEAR_PARENT` check above rules this out at runtime, but
-            # mypy can't narrow away a sentinel object() instance from `object`.
-            parent_work_package_id = await self._resolve_work_package_id(cast("int | str", parent_work_package_id))
+            parent_work_package_id = await self._resolve_work_package_id(
+                _narrow_cleared(parent_work_package_id, sentinel=CLEAR_PARENT)
+            )
         current = await self._get(f"work_packages/{work_package_id}")
         project_id = _id_from_href(current.get("_links", {}).get("project", {}).get("href"))
         if project_id is None:
@@ -6561,16 +6581,16 @@ class OpenProjectClient:
             links["version"] = {"href": None}
         elif version is not None:
             self._ensure_field_writable("work_package", "version")
-            # `is not CLEAR_VERSION`/`is not None` above rule this out at runtime;
-            # mypy can't narrow a sentinel object() instance out of `object`.
-            version_id = await self._resolve_version_id(cast(str, version), project=project)
+            version_id = await self._resolve_version_id(
+                _narrow_cleared(version, sentinel=CLEAR_VERSION), project=project
+            )
             links["version"] = {"href": self._api_href(f"versions/{version_id}")}
         if sprint is CLEAR:
             self._ensure_field_writable("work_package", "sprint")
             links["sprint"] = {"href": None}
         elif sprint is not None:
             self._ensure_field_writable("work_package", "sprint")
-            sprint_id = await self._resolve_sprint_id(cast(str, sprint), project=project)
+            sprint_id = await self._resolve_sprint_id(_narrow_cleared(sprint, sentinel=CLEAR), project=project)
             links["sprint"] = {"href": self._api_href(f"sprints/{sprint_id}")}
         if status is not None:
             self._ensure_field_writable("work_package", "status")
@@ -6581,7 +6601,7 @@ class OpenProjectClient:
             links["assignee"] = {"href": None}
         elif assignee is not None:
             self._ensure_field_writable("work_package", "assignee")
-            assignee_id = await self._resolve_assignee_id(cast(str, assignee))
+            assignee_id = await self._resolve_assignee_id(_narrow_cleared(assignee, sentinel=CLEAR))
             links["assignee"] = {"href": self._api_href(f"users/{assignee_id}")}
         if parent_work_package_id is CLEAR_PARENT:
             self._ensure_field_writable("work_package", "parent")
@@ -7253,7 +7273,7 @@ class OpenProjectClient:
             links["parent"] = {"href": None}
         elif parent is not None:
             self._ensure_field_writable("project", "parent")
-            parent_id = await self._resolve_project_id(cast(str, parent))
+            parent_id = await self._resolve_project_id(_narrow_cleared(parent, sentinel=CLEAR))
             links["parent"] = {"href": self._api_href(f"projects/{parent_id}")}
         if links:
             payload["_links"] = links
