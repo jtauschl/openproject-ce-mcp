@@ -2,8 +2,8 @@
 
 This is the checklist run before tagging and publishing a release. Copy it into
 a fresh review for the target version, fill in the bracketed placeholders, and
-work through the sections in order. Each section ends in a pass/fail signal;
-section 12 turns those into a single Go/No-Go decision.
+work through the sections in order. Record findings per section as you go;
+section 12 aggregates them into a single Go/No-Go decision.
 
 The review only produces a decision. Writing the changelog, bumping the
 version, committing, tagging, and pushing are separate follow-up steps that
@@ -127,11 +127,14 @@ verification, not just as a tooling health check.
   default, say so explicitly rather than calling this "the full suite").
   Run the excluded subset too if it's runnable locally (e.g. against a local
   test harness, never production), and note if it wasn't run and why.
-- **Check actual CI status on the last push**, not just local green —
-  `gh run list --branch main --limit 5` and `gh run view <run-id>` for
-  anything red. Local-green and CI-green are not the same thing; CI runs a
-  wider OS/Python matrix that can catch platform-specific bugs local runs
-  miss entirely.
+- **Check actual CI status for the exact release-candidate commit**, not
+  just local green or the latest branch run — resolve the candidate's SHA
+  (`git rev-parse HEAD`), then `gh run list --branch main --limit 5` and
+  `gh run view <run-id>` to confirm the run *for that SHA* is green. A later
+  push to `main`, or local commits not yet pushed, can make "the last run on
+  the branch" a different commit than the one under review. Local-green and
+  CI-green are not the same thing either; CI runs a wider OS/Python matrix
+  that can catch platform-specific bugs local runs miss entirely.
 - Spot-check newly added tests for real assertions, not placeholder/
   tautological ones.
 - Confirm any new live/smoke tests are wired to run against a local test
@@ -185,13 +188,18 @@ verification, not just as a tooling health check.
   since-simplified flow.
 - Confirm the architecture doc still matches what's implemented.
 - **Source-installer launchers** — confirm `get.sh`, `get.ps1`,
-  `uninstall.sh`, `uninstall.ps1`, and `configure_mcp.py` are covered by
-  their dedicated test suite (POSIX/PowerShell syntax checks, both
-  dependency-install paths — `uv sync` and venv+pip fallback — launcher→
-  interpreter handoff, and setup CLI argv dispatch) and that suite is
-  green; this review does not re-derive that coverage inline. Spot-check
-  README's documented destination paths and `DIR`/`$env:DIR` override
-  against the scripts' current content.
+  `uninstall.sh`, `uninstall.ps1`, and `configure_mcp.py` are covered across
+  both suites that carry this coverage, and that both are green: the
+  `launcher`-marked suite (`uv run pytest -m launcher`, run by CI's
+  `launchers` job) covers POSIX/PowerShell syntax checks, launcher→
+  interpreter handoff, and target paths; the default suite (section 4,
+  `uv run pytest`) separately covers `configure_mcp.py`'s dependency-install
+  paths — `uv sync` and venv+pip fallback — and setup CLI argv dispatch
+  (e.g. `main(["--uninstall"])`), since those tests carry no `launcher`
+  marker and won't run under `pytest -m launcher` alone. This review does
+  not re-derive that coverage inline. Spot-check README's documented
+  destination paths and `DIR`/`$env:DIR` override against the scripts'
+  current content.
 
 ## 8. Permission model consistency
 
@@ -300,9 +308,10 @@ verification, not just as a tooling health check.
   skips under specific, expected conditions) — don't let them hide inside a
   green run.
 - State the post-release rollback policy in one or two lines before Go, not
-  after something breaks (e.g.: this package's registry can't un-publish a
-  version, so recovery is a forward-fix patch release, not a yank-and-retry
-  — confirm this is still the intended policy, or state the actual one).
+  after something breaks (e.g.: PyPI allows yanking a release, but a yanked
+  version/filename can't be cleanly reused for a retry, so recovery is a
+  forward-fix patch release, not a yank-and-reupload — confirm this is still
+  the intended policy, or state the actual one).
 - **If No-Go:** list concrete blockers as new/updated tracker WPs; the
   review stops here. A short second pass follows once blockers are closed.
 - **If Go:** get explicit confirmation before doing anything further. Only
@@ -318,9 +327,11 @@ verification, not just as a tooling health check.
   5. Report back. Tagging/pushing remains a further step requiring its own
      explicit confirmation, after the release commit is reviewed — for this
      project, pushing a `vX.Y.Z` tag triggers `.github/workflows/publish.yml`,
-     which publishes to PyPI via trusted publishing. A PyPI release cannot be
-     un-published once uploaded (see the rollback note above), so this is the
-     one genuinely irreversible step in the whole process — confirm the
+     which publishes to PyPI via trusted publishing. A PyPI release's files
+     can't be reused or cleanly re-uploaded once published (yanking hides a
+     version but doesn't free the filename — see the rollback note above),
+     so this is the one genuinely irreversible step in the whole process —
+     confirm the
      artifact content check (section 9) and the tag-exactness check (step 4)
      both passed before giving that go-ahead. Closing the tracker version is
      a separate step after the publish succeeds.
