@@ -5,9 +5,8 @@ import json
 import logging
 import mimetypes
 from collections.abc import Awaitable, Callable
-from dataclasses import fields as dataclass_fields
-from dataclasses import is_dataclass, replace
-from fnmatch import fnmatch, fnmatchcase
+from dataclasses import replace
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any, TypeVar, cast
 from urllib.parse import quote, unquote, urljoin, urlparse
@@ -27,8 +26,11 @@ from .app.errors import (
 from .app.pagination import _next_offset
 from .app.pagination import paginate_client as _paginate_client
 from .app.pagination import paginate_server as _paginate_server
+from .app.policies import access as _access_policy
+from .app.policies import hidden_fields as _hidden_fields_policy
+from .app.policies import scope as _scope_policy
 from .app.ports.project_resolution import ProjectResolutionContext
-from .config import HIDE_FIELD_ENV_BY_ENTITY, READ_SCOPE_ENV_VAR, Settings
+from .config import Settings
 from .models import (
     ActionListResult,
     ActionSummary,
@@ -7435,40 +7437,17 @@ class OpenProjectClient:
         )
 
     def _ensure_write_enabled(self, scope: str) -> None:
-        if self.settings.write_enabled(scope):
-            return
-        scope_env = {
-            "project": "OPENPROJECT_ENABLE_PROJECT_WRITE",
-            "work_package": "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE",
-            "membership": "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE",
-            "version": "OPENPROJECT_ENABLE_VERSION_WRITE",
-            "board": "OPENPROJECT_ENABLE_BOARD_WRITE",
-            "personal": "OPENPROJECT_ENABLE_PERSONAL_WRITE",
-            "admin": "OPENPROJECT_ENABLE_ADMIN_WRITE",
-        }.get(scope, "the corresponding write-group setting")
-        raise PermissionDeniedError(
-            f"OpenProject {scope.replace('_', ' ')} write support is disabled. "
-            f"Set {scope_env}=true to allow confirmed writes."
-        )
+        _access_policy.ensure_write_enabled(scope, settings=self.settings)
 
     def _ensure_read_enabled(self, scope: str) -> None:
-        if self.settings.read_enabled(scope):
-            return
-        env_var = READ_SCOPE_ENV_VAR.get(scope, "the relevant OPENPROJECT_ENABLE_*_READ setting")
-        raise PermissionDeniedError(
-            f"OpenProject {scope.replace('_', ' ')} read support is disabled. Set {env_var}=true to allow reads."
-        )
+        _access_policy.ensure_read_enabled(scope, settings=self.settings)
 
     def _payload_allowed(self, ensure: Callable[[], None]) -> bool:
         """Run an `_ensure_*_allowed` check, turning PermissionDeniedError into False.
 
         Shared by every bool-returning `_X_payload_allowed` wrapper in this class.
         """
-        try:
-            ensure()
-            return True
-        except PermissionDeniedError:
-            return False
+        return _scope_policy.payload_allowed(ensure)
 
     def _sprint_payload_allowed(self, payload: dict[str, Any]) -> bool:
         return self._payload_allowed(lambda: self._ensure_sprint_workspace_allowed(payload))
@@ -7533,21 +7512,14 @@ class OpenProjectClient:
         return _scope_matches_candidates(self.settings.read_projects, {project_name.casefold()})
 
     def _ensure_project_link_allowed(self, link: Any) -> None:
-        if _scope_allows_all(self.settings.read_projects):
-            return
-        candidates = self._project_candidates(link=link)
-        if not _scope_matches_candidates(self.settings.read_projects, candidates):
-            raise PermissionDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
+        _scope_policy.ensure_project_link_allowed(
+            link, settings=self.settings, project_id_to_identifier=self._project_id_to_identifier
+        )
 
     def _ensure_project_write_link_allowed(self, link: Any) -> None:
-        self._ensure_project_link_allowed(link)
-        if _scope_allows_all(self.settings.write_projects):
-            return
-        candidates = self._project_candidates(link=link)
-        if not _scope_matches_candidates(self.settings.write_projects, candidates):
-            raise PermissionDeniedError(
-                "OpenProject writes to this project are disabled by OPENPROJECT_WRITE_PROJECTS."
-            )
+        _scope_policy.ensure_project_write_link_allowed(
+            link, settings=self.settings, project_id_to_identifier=self._project_id_to_identifier
+        )
 
     def _ensure_board_payload_allowed(self, payload: dict[str, Any]) -> None:
         project_link = payload.get("_links", {}).get("project")
@@ -7632,40 +7604,14 @@ class OpenProjectClient:
         identifier: str | None = None,
         name: str | None = None,
     ) -> set[str]:
-        candidates: set[str] = set()
-        for value in (project_ref, identifier, name):
-            if value:
-                candidates.add(str(value).casefold())
-        if payload is not None:
-            identifier_value = _trim_text(payload.get("identifier"), limit=SUBJECT_LIMIT)
-            name_value = _trim_text(payload.get("name"), limit=SUBJECT_LIMIT)
-            if identifier_value:
-                candidates.add(identifier_value.casefold())
-            if name_value:
-                candidates.add(name_value.casefold())
-            project_id = payload.get("id")
-            if project_id is not None:
-                candidates.add(str(project_id).casefold())
-        if isinstance(link, dict):
-            href = link.get("href")
-            title = link.get("title")
-            if href:
-                slug = _slug_from_href(href)
-                if slug:
-                    candidates.add(slug.casefold())
-                project_id = _id_from_href(href)
-                if project_id is not None:
-                    candidates.add(str(project_id).casefold())
-                    known_identifier = self._project_id_to_identifier.get(project_id)
-                    if known_identifier:
-                        candidates.add(known_identifier.casefold())
-            if title:
-                title_cf = str(title).casefold()
-                candidates.add(title_cf)
-                # Also add an identifier-style variant (spaces → hyphens) so that a project
-                # named "My Project" matches the pattern "my-project" (its likely identifier).
-                candidates.add(title_cf.replace(" ", "-"))
-        return {candidate for candidate in candidates if candidate}
+        return _scope_policy.project_candidates(
+            project_id_to_identifier=self._project_id_to_identifier,
+            project_ref=project_ref,
+            payload=payload,
+            link=link,
+            identifier=identifier,
+            name=name,
+        )
 
     def _link_matches_project_refs(self, link: Any, project_refs: set[str]) -> bool:
         return not self._project_candidates(link=link).isdisjoint(project_refs)
@@ -7779,43 +7725,16 @@ class OpenProjectClient:
             )
 
     def _hidden_patterns(self, entity: str) -> tuple[str, ...]:
-        configured = tuple(self.settings.hidden_fields.get(entity, ()))
-        legacy = {
-            "project": self.settings.hide_project_fields,
-            "work_package": self.settings.hide_work_package_fields,
-            "activity": self.settings.hide_activity_fields,
-        }.get(entity, ())
-        if not configured:
-            return legacy
-        if not legacy:
-            return configured
-        combined = list(configured)
-        for item in legacy:
-            if item not in combined:
-                combined.append(item)
-        return tuple(combined)
+        return _hidden_fields_policy.hidden_patterns(entity, settings=self.settings)
 
     def _normalize_hide_token(self, value: str) -> str:
-        return value.casefold().replace("-", "_").replace(" ", "_")
+        return _hidden_fields_policy.normalize_hide_token(value)
 
     def _field_hidden(self, entity: str, field_name: str) -> bool:
-        patterns = self._hidden_patterns(entity)
-        if not patterns:
-            return False
-        normalized = self._normalize_hide_token(field_name)
-        candidates = {normalized, normalized.replace("_", "")}
-        return any(
-            fnmatchcase(candidate, self._normalize_hide_token(pattern))
-            for pattern in patterns
-            for candidate in candidates
-        )
+        return _hidden_fields_policy.field_hidden(entity, field_name, settings=self.settings)
 
     def _ensure_field_writable(self, entity: str, field_name: str) -> None:
-        if not self._field_hidden(entity, field_name):
-            return
-        env_name = HIDE_FIELD_ENV_BY_ENTITY.get(entity)
-        source = env_name if env_name else "the configured hidden-field settings"
-        raise InvalidInputError(f"OpenProject field '{field_name}' is hidden by {source} and cannot be written.")
+        _hidden_fields_policy.ensure_field_writable(entity, field_name, settings=self.settings)
 
     def _visible_formattable_text(
         self,
@@ -7886,16 +7805,7 @@ class OpenProjectClient:
         a null value. Stamping is possible because the response dataclasses
         are not frozen.
         """
-        if not is_dataclass(value):
-            return value
-        hidden = frozenset(
-            field_def.name for field_def in dataclass_fields(value) if self._field_hidden(entity, field_def.name)
-        )
-        if hidden:
-            # Dynamic attribute, not a declared dataclass field (see docstring) —
-            # mypy's DataclassInstance protocol has no way to express this.
-            value._hidden_keys = hidden  # type: ignore[union-attr]
-        return value
+        return _hidden_fields_policy.apply_hidden_fields(entity, value, settings=self.settings)
 
     def _replace_and_restamp(self, entity: str, value: Any, **changes: Any) -> Any:
         """Like ``dataclasses.replace()``, but preserves the ``_hidden_keys`` stamp.
@@ -8427,22 +8337,10 @@ def _percentage_done(payload: dict[str, Any]) -> int | None:
     return payload.get("derivedPercentageDone")
 
 
-def _scope_allows_all(values: tuple[str, ...]) -> bool:
-    return any(item.strip() == "*" for item in values)
-
-
-def _scope_matches_candidates(scope: tuple[str, ...], candidates: set[str]) -> bool:
-    normalized_candidates = {candidate.casefold() for candidate in candidates if candidate}
-    if not normalized_candidates:
-        return False
-    if _scope_allows_all(scope):
-        return True
-    for raw_pattern in scope:
-        pattern = raw_pattern.strip().casefold()
-        if not pattern:
-            continue
-        for candidate in normalized_candidates:
-            # fnmatch is case-insensitive (not fnmatchcase) since both are casefolded
-            if fnmatch(candidate, pattern):
-                return True
-    return False
+# _scope_allows_all/_scope_matches_candidates: relocated to app/policies/scope.py
+# (ADR 0001, OPM-153 Slice 3). Rebound here rather than rewritten as wrapper
+# functions since both are pure module-level functions with no `self` — a direct
+# name rebind is behaviorally identical and requires zero changes at any of the
+# ~30 existing call sites across every domain.
+_scope_allows_all = _scope_policy.scope_allows_all
+_scope_matches_candidates = _scope_policy.scope_matches_candidates
