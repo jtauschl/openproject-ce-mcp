@@ -14,6 +14,7 @@ from urllib.parse import quote, unquote, urljoin, urlparse
 import httpx
 
 from . import __version__
+from .app.adapters import httpx_version_api as _httpx_version_api
 from .app.adapters.httpx_version_api import HttpxVersionApi
 
 # AuthenticationError: no longer referenced directly in this module (its only use was
@@ -30,13 +31,21 @@ from .app.errors import (
     TransportError,
 )
 from .app.pagination import _next_offset
-from .app.pagination import paginate_client as _paginate_client
-from .app.pagination import paginate_server as _paginate_server
+
+# _paginate_client/_paginate_server: no longer referenced directly in this module
+# (list_versions now delegates to VersionService; the pagination-math call sites
+# moved to app/resolvers/version_query.py), but re-exported deliberately -- existing
+# tests import them from here (`from openproject_ce_mcp.client import
+# _paginate_client, _paginate_server`) and must keep working.
+from .app.pagination import paginate_client as _paginate_client  # noqa: F401
+from .app.pagination import paginate_server as _paginate_server  # noqa: F401
 from .app.policies import access as _access_policy
 from .app.policies import hidden_fields as _hidden_fields_policy
 from .app.policies import scope as _scope_policy
 from .app.ports.project_resolution import ProjectResolutionContext
 from .app.ports.version_api import VersionApi
+from .app.resolvers.version_resolver import VersionResolver
+from .app.services.version_service import VersionService
 from .app.transport.errors import raise_for_status as _map_status_to_error
 from .app.transport.httpx_transport import HttpxTransport
 from .config import Settings
@@ -278,11 +287,27 @@ class OpenProjectClient:
             transport=transport,
         )
 
-        # ADR 0001 / OPM-153 Slice 4: HttpxTransport wraps the SAME httpx.AsyncClient
-        # constructed above (one connection pool, not two). Constructed here but not
-        # yet used by any public method -- list_versions/get_version/etc. still call
-        # the pre-existing inline implementation until Slice 5's facade cutover.
+        # ADR 0001 / OPM-153: HttpxTransport wraps the SAME httpx.AsyncClient
+        # constructed above (one connection pool, not two).
         self._version_api: VersionApi = HttpxVersionApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._version_service = VersionService(
+            api=self._version_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_project_ref=self._get_project_payload,
+            api_prefix=self._api_prefix,
+        )
+        # self._project_id_to_identifier is the same live dict object threaded into
+        # VersionService/VersionResolver -- initialize() (below) mutates it in place
+        # *after* __init__ runs, so both must see the populated cache without being
+        # reconstructed. dict(self._project_id_to_identifier) here would silently
+        # break allowlist-identifier recovery for Versions.
+        self._version_resolver = VersionResolver(
+            api=self._version_api,
+            resolve_project_ref=self._get_project_payload,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+        )
 
     async def initialize(self) -> None:
         # _project_id_to_identifier is consulted for BOTH read and write link-based
@@ -3175,87 +3200,12 @@ class OpenProjectClient:
         limit: int | None = None,
         context: ProjectResolutionContext | None = None,
     ) -> VersionListResult:
-        self._ensure_read_enabled("version")
-        effective_limit = self._resolve_limit(limit)
-        if project and not search:
-            # GET /api/v3/versions has no project filter; use the project-scoped endpoint.
-            # Access to the project is verified by _get_project_payload, so per-item
-            # allowlist checks are redundant and would fail because the definingProject
-            # link only carries the title (display name), not the identifier. No client-side
-            # filtering happens here, so exact server-side pagination is safe.
-            project_payload = await self._get_project_payload(project, context=context)
-            project_id = int(project_payload["id"])
-            params = {"offset": str(offset), "pageSize": str(effective_limit)}
-            payload = await self._get(f"projects/{project_id}/versions", params=params)
-            results = [
-                self.normalize_version(item)
-                for item in payload.get("_embedded", {}).get("elements", [])
-                if isinstance(item, dict)
-            ]
-            server_total = int(payload.get("total", len(results)))
-            next_offset, truncated = _paginate_server(offset=offset, limit=effective_limit, total=server_total)
-            return VersionListResult(
-                offset=offset,
-                limit=effective_limit,
-                total=server_total,
-                count=len(results),
-                next_offset=next_offset,
-                truncated=truncated,
-                results=results,
-            )
-
-        if project:
-            # search given: no server-side name filter exists for the project-scoped
-            # endpoint either, so over-fetch this project's versions and filter/paginate
-            # in memory instead of relying on exact server-side pagination.
-            project_payload = await self._get_project_payload(project, context=context)
-            project_id = int(project_payload["id"])
-            payload = await self._get(
-                f"projects/{project_id}/versions",
-                params={"offset": "1", "pageSize": str(self.settings.max_results)},
-            )
-            results = [
-                self.normalize_version(item)
-                for item in payload.get("_embedded", {}).get("elements", [])
-                if isinstance(item, dict)
-            ]
-        else:
-            # The global endpoint has no project filter, so results are filtered
-            # client-side against OPENPROJECT_READ_PROJECTS. A single page sized to the
-            # caller's limit could look sparser than reality after filtering; fetch up to
-            # settings.max_results in one request and paginate the filtered survivors in memory
-            # instead (same pattern as list_views/list_documents). Bounded by max_results — not a
-            # full multi-page walk across every server page.
-            payload = await self._get(
-                "versions",
-                params={"offset": "1", "pageSize": str(self.settings.max_results)},
-            )
-            results = [
-                self.normalize_version(item)
-                for item in payload.get("_embedded", {}).get("elements", [])
-                if isinstance(item, dict) and self._version_payload_allowed(item)
-            ]
-
-        if search:
-            search_key = search.casefold()
-            results = [item for item in results if search_key in (item.name or "").casefold()]
-
-        page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
-        return VersionListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(page),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=page,
+        return await self._version_service.list(
+            project=project, search=search, offset=offset, limit=limit, context=context
         )
 
     async def get_version(self, version_id: int) -> VersionDetail:
-        self._ensure_read_enabled("version")
-        payload = await self._get(f"versions/{version_id}")
-        self._ensure_project_link_allowed(payload.get("_links", {}).get("definingProject"))
-        return self.normalize_version_detail(payload)
+        return await self._version_service.get(version_id)
 
     async def list_sprints(
         self,
@@ -3367,25 +3317,15 @@ class OpenProjectClient:
         sharing: str | None = None,
         confirm: bool = False,
     ) -> VersionWriteResult:
-        project_payload = await self._resolve_project_ref(project, write=True)
-        payload = self._build_version_write_payload(
-            project_id=str(project_payload["id"]),
+        return await self._version_service.create(
+            project=project,
             name=name,
             description=description,
             start_date=start_date,
             end_date=end_date,
             status=status,
             sharing=sharing,
-        )
-        form = await self._post("versions/form", json_body=payload)
-        return await self._finalize_version_write(
-            action="create",
             confirm=confirm,
-            form=form,
-            write_path="versions",
-            project_name=project_payload.get("name"),
-            preview_message="OpenProject validated the version. Ask for confirmation, then call again with confirm=true to create it.",
-            success_message="Version created successfully.",
         )
 
     async def update_version(
@@ -3400,29 +3340,15 @@ class OpenProjectClient:
         sharing: str | None = None,
         confirm: bool = False,
     ) -> VersionWriteResult:
-        current = await self._get(f"versions/{version_id}")
-        defining_project = current.get("_links", {}).get("definingProject")
-        project_name = _link_title(defining_project)
-        self._ensure_project_write_link_allowed(defining_project)
-        payload = self._build_version_write_payload(
-            project_id=None,
+        return await self._version_service.update(
+            version_id=version_id,
             name=name,
             description=description,
             start_date=start_date,
             end_date=end_date,
             status=status,
             sharing=sharing,
-        )
-        form = await self._post(f"versions/{version_id}/form", json_body=payload)
-        return await self._finalize_version_write(
-            action="update",
             confirm=confirm,
-            form=form,
-            write_path=f"versions/{version_id}",
-            write_method="PATCH",
-            version_id=version_id,
-            project_name=project_name,
-            success_message="Version updated successfully.",
         )
 
     async def delete_version(
@@ -3431,40 +3357,7 @@ class OpenProjectClient:
         version_id: int,
         confirm: bool = False,
     ) -> VersionWriteResult:
-        current = await self._get(f"versions/{version_id}")
-        defining_project = current.get("_links", {}).get("definingProject")
-        self._ensure_project_write_link_allowed(defining_project)
-        detail = self.normalize_version_detail(current)
-        payload = {"id": detail.id, "name": detail.name}
-
-        if not confirm:
-            return VersionWriteResult(
-                action="delete",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject found the version. Ask for confirmation, then call again with confirm=true to delete it.",
-                version_id=detail.id,
-                project=detail.defining_project,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-
-        self._ensure_write_enabled("version")
-        await self._delete(f"versions/{version_id}")
-        return VersionWriteResult(
-            action="delete",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Version deleted successfully.",
-            version_id=detail.id,
-            project=detail.defining_project,
-            payload=payload,
-            validation_errors={},
-            result=detail,
-        )
+        return await self._version_service.delete(version_id=version_id, confirm=confirm)
 
     async def list_boards(
         self,
@@ -5626,42 +5519,12 @@ class OpenProjectClient:
         )
 
     def normalize_version(self, payload: dict[str, Any]) -> VersionSummary:
-        links = payload.get("_links", {})
-        return self._apply_hidden_fields(
-            "version",
-            VersionSummary(
-                id=int(payload["id"]),
-                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Version {payload['id']}",
-                status=payload.get("status"),
-                sharing=payload.get("sharing"),
-                start_date=payload.get("startDate"),
-                end_date=payload.get("endDate"),
-                defining_project=_link_title(links.get("definingProject")),
-                description=_extract_formattable_text(payload.get("description")),
-                url=self._web_url(f"versions/{payload['id']}"),
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-            ),
-        )
+        summary = _httpx_version_api.normalize_version(payload, base_url=self.settings.base_url)
+        return self._apply_hidden_fields("version", summary)
 
     def normalize_version_detail(self, payload: dict[str, Any]) -> VersionDetail:
-        summary = self.normalize_version(payload)
-        return self._apply_hidden_fields(
-            "version",
-            VersionDetail(
-                id=summary.id,
-                name=summary.name,
-                status=summary.status,
-                sharing=summary.sharing,
-                start_date=summary.start_date,
-                end_date=summary.end_date,
-                defining_project=summary.defining_project,
-                description=summary.description,
-                url=summary.url,
-                created_at=summary.created_at,
-                updated_at=summary.updated_at,
-            ),
-        )
+        detail = _httpx_version_api.normalize_version_detail(payload, base_url=self.settings.base_url)
+        return self._apply_hidden_fields("version", detail)
 
     def normalize_sprint(self, payload: dict[str, Any]) -> SprintSummary:
         links = payload.get("_links", {})
@@ -6893,45 +6756,6 @@ class OpenProjectClient:
             success_message=success_message or f"Work package {action}d successfully.",
         )
 
-    def _build_version_write_payload(
-        self,
-        *,
-        project_id: str | None,
-        name: str | None = None,
-        description: str | None = None,
-        start_date: str | None = None,
-        end_date: str | None = None,
-        status: str | None = None,
-        sharing: str | None = None,
-    ) -> dict[str, Any]:
-        payload: dict[str, Any] = {}
-        links: dict[str, dict[str, str]] = {}
-
-        if name is not None:
-            self._ensure_field_writable("version", "name")
-            payload["name"] = name
-        if description is not None:
-            self._ensure_field_writable("version", "description")
-            payload["description"] = {"format": "plain", "raw": description}
-        if start_date is not None:
-            self._ensure_field_writable("version", "start_date")
-            payload["startDate"] = start_date
-        if end_date is not None:
-            self._ensure_field_writable("version", "end_date")
-            payload["endDate"] = end_date
-        if status is not None:
-            self._ensure_field_writable("version", "status")
-            payload["status"] = status
-        if sharing is not None:
-            self._ensure_field_writable("version", "sharing")
-            payload["sharing"] = sharing
-        if project_id is not None:
-            self._ensure_field_writable("version", "defining_project")
-            links["definingProject"] = {"href": self._api_href(f"projects/{project_id}")}
-        if links:
-            payload["_links"] = links
-        return payload
-
     async def _build_board_write_payload(
         self,
         *,
@@ -7160,36 +6984,6 @@ class OpenProjectClient:
         activity_field = schema.get("activity", {})
         allowed = activity_field.get("_embedded", {}).get("allowedValues", [])
         return [self.normalize_time_entry_activity(item) for item in allowed if isinstance(item, dict)]
-
-    async def _finalize_version_write(
-        self,
-        *,
-        action: str,
-        confirm: bool,
-        form: dict[str, Any],
-        write_path: str,
-        write_method: str = "POST",
-        version_id: int | None = None,
-        project_name: str | None = None,
-        preview_message: str | None = None,
-        success_message: str | None = None,
-    ) -> VersionWriteResult:
-        return await self._finalize_write(
-            result_cls=VersionWriteResult,
-            action=action,
-            confirm=confirm,
-            form=form,
-            write_path=write_path,
-            write_method=write_method,
-            write_scope="version",
-            identity_kwargs=lambda _payload: {"version_id": version_id, "project": project_name},
-            normalize=self.normalize_version_detail,
-            committed_kwargs=lambda d: {"version_id": d.id, "project": d.defining_project},
-            rejected_message="OpenProject rejected the proposed version changes. Fix the validation errors before confirming.",
-            preview_message=preview_message
-            or "OpenProject validated the version change. Ask for confirmation, then call again with confirm=true to write it.",
-            success_message=success_message or f"Version {action}d successfully.",
-        )
 
     async def _finalize_board_write(
         self,
@@ -7565,11 +7359,6 @@ class OpenProjectClient:
     def _ensure_news_write_payload_allowed(self, payload: dict[str, Any]) -> None:
         self._ensure_project_write_link_allowed(payload.get("_links", {}).get("project"))
 
-    def _version_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        return self._payload_allowed(
-            lambda: self._ensure_project_link_allowed(payload.get("_links", {}).get("definingProject"))
-        )
-
     def _project_ref_from_scope_href(self, scope_href: str | None) -> str | None:
         if not scope_href:
             return None
@@ -7882,83 +7671,9 @@ class OpenProjectClient:
         return matches[0]
 
     async def _resolve_version_id(
-        self, version_ref: str, *, project: str | None, context: ProjectResolutionContext | None = None
+        self, version_ref: str, *, project: str | None = None, context: ProjectResolutionContext | None = None
     ) -> str:
-        if project is not None:
-            project_ref = project
-            if project_ref.isdigit():
-                # Must use _get_project_payload, not a raw self._get. The project
-                # fetch itself is unavoidable either way (the payload's id/identifier/
-                # name are what the allowlist check matches against) — the point is
-                # that _get_project_payload fetches AND checks together, so a denied
-                # project raises immediately and no FURTHER request (e.g. listing
-                # that project's versions) ever fires afterward.
-                project_payload = await self._get_project_payload(project_ref, context=context)
-                project_ref = project_payload.get("identifier") or project_ref
-
-            wanted_id = int(version_ref) if version_ref.isdigit() else None
-            name_matches: list[VersionSummary] = []
-            offset = 1
-            while True:
-                page = await self.list_versions(
-                    project=project_ref, offset=offset, limit=self.settings.max_page_size, context=context
-                )
-                if wanted_id is not None:
-                    if any(v.id == wanted_id for v in page.results):
-                        return version_ref
-                else:
-                    name_matches.extend(v for v in page.results if (v.name or "").casefold() == version_ref.casefold())
-                if page.next_offset is None:
-                    break
-                offset = page.next_offset
-
-            if wanted_id is not None:
-                raise InvalidInputError(f"OpenProject version '{version_ref}' is not available in project '{project}'.")
-            if not name_matches:
-                raise InvalidInputError(f"OpenProject version '{version_ref}' was not found in project '{project}'.")
-            if len(name_matches) > 1:
-                raise InvalidInputError(
-                    f"OpenProject version '{version_ref}' is ambiguous without a more specific filter. Pass a numeric version id."
-                )
-            return str(name_matches[0].id)
-
-        if version_ref.isdigit():
-            # No target project to check availability against — reached via a global,
-            # unscoped `version` filter on list_work_packages/search_work_packages
-            # (project is optional there). Deliberately conservative: falls back to a
-            # direct definingProject check, which can reject a version shared *into*
-            # an allowed project when that project isn't specified as the check
-            # target (no way to know which sharing context applies without one) — an
-            # accepted fail-closed trade-off for the project-less path, not a bug.
-            payload = await self._get(f"versions/{version_ref}")
-            self._ensure_project_link_allowed(payload.get("_links", {}).get("definingProject"))
-            return version_ref
-
-        # No project + name ref: pass search=version_ref rather than relying on our
-        # own post-hoc filtering, AND page-walk the search-filtered results. The
-        # global branch fetches up to max_results raw items, filters by `search`
-        # BEFORE slicing, but still slices the *filtered* result down to
-        # effective_limit (clamped to max_page_size) for the page it returns — a
-        # single call at offset=1 would still miss an exact match beyond the first
-        # max_page_size substring-matching candidates.
-        name_matches = []
-        offset = 1
-        while True:
-            page = await self.list_versions(
-                project=None, search=version_ref, offset=offset, limit=self.settings.max_page_size
-            )
-            name_matches.extend(v for v in page.results if (v.name or "").casefold() == version_ref.casefold())
-            if page.next_offset is None:
-                break
-            offset = page.next_offset
-
-        if not name_matches:
-            raise InvalidInputError(f"OpenProject version '{version_ref}' was not found.")
-        if len(name_matches) > 1:
-            raise InvalidInputError(
-                f"OpenProject version '{version_ref}' is ambiguous without a more specific filter. Pass a numeric version id."
-            )
-        return str(name_matches[0].id)
+        return await self._version_resolver.resolve_id(version_ref, project=project, context=context)
 
     async def _resolve_sprint_id(
         self, sprint_ref: str, *, project: str, context: ProjectResolutionContext | None = None
