@@ -1796,6 +1796,61 @@ async def test_bulk_create_work_packages_tool_passes_validated_items() -> None:
 
 
 @pytest.mark.asyncio
+async def test_bulk_create_work_packages_tool_rejects_unknown_item_field() -> None:
+    # OPM-215: an unsupported item key must fail loudly (indexed error), not be
+    # silently dropped.
+    class StubClient:
+        async def bulk_create_work_packages(self, **kwargs):
+            raise AssertionError("must not reach the client when an item has an unknown field")
+
+    with pytest.raises(ValueError, match=r"items\[0\] has unsupported field\(s\): totally_unknown_field"):
+        await bulk_create_work_packages(  # type: ignore[arg-type]
+            FakeContext(StubClient()),
+            items=[{"project": "demo", "type": "Task", "subject": "X", "totally_unknown_field": "oops"}],
+        )
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_work_packages_tool_passes_duration_fields() -> None:
+    # OPM-215: estimated_time/remaining_time/duration must survive validation and
+    # reach the client, matching create_work_package's existing behavior.
+    received: list = []
+
+    class StubClient:
+        async def bulk_create_work_packages(self, **kwargs):
+            received.extend(kwargs["items"])
+            return {
+                "action": "bulk_create",
+                "total": len(kwargs["items"]),
+                "succeeded": len(kwargs["items"]),
+                "failed": 0,
+                "confirmed": kwargs["confirm"],
+                "requires_confirmation": not kwargs["confirm"],
+                "message": "ok",
+                "items": [],
+            }
+
+    await bulk_create_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        items=[
+            {
+                "project": "demo",
+                "type": "Task",
+                "subject": "WP 1",
+                "estimated_time": "PT8H",
+                "remaining_time": "PT4H",
+                "duration": "P2D",
+            },
+        ],
+        confirm=False,
+    )
+
+    assert received[0]["estimated_time"] == "PT8H"
+    assert received[0]["remaining_time"] == "PT4H"
+    assert received[0]["duration"] == "P2D"
+
+
+@pytest.mark.asyncio
 async def test_bulk_update_work_packages_tool_validates_required_fields() -> None:
     class StubClient:
         async def bulk_update_work_packages(self, **kwargs):
@@ -1820,6 +1875,21 @@ async def test_bulk_update_work_packages_tool_validates_required_fields() -> Non
         await bulk_update_work_packages(  # type: ignore[arg-type]
             FakeContext(StubClient()),
             items=[{"work_package_id": 1, "estimated_time": "bogus"}],
+        )
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_work_packages_tool_rejects_unknown_item_field() -> None:
+    # OPM-216 (same bug class as OPM-215, but for bulk_update): an unsupported
+    # item key must fail loudly (indexed error), not be silently dropped.
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            raise AssertionError("must not reach the client when an item has an unknown field")
+
+    with pytest.raises(ValueError, match=r"items\[0\] has unsupported field\(s\): totally_unknown_field"):
+        await bulk_update_work_packages(  # type: ignore[arg-type]
+            FakeContext(StubClient()),
+            items=[{"work_package_id": 1, "totally_unknown_field": "oops"}],
         )
 
 

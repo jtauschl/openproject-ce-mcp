@@ -7330,6 +7330,129 @@ async def test_bulk_create_work_packages_preview_mode() -> None:
 
 
 @pytest.mark.asyncio
+async def test_bulk_create_work_packages_preview_forwards_duration_fields() -> None:
+    # OPM-215: bulk_create_work_packages used to silently drop estimated_time/
+    # remaining_time/duration instead of forwarding them to create_work_package.
+    posted_bodies: list[dict] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path in {"/api/v3/projects/demo", "/api/v3/projects/1"}:
+            return _make_project_response(request)
+        if request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": "Task"}]}}, request=request)
+        if request.url.path == "/api/v3/projects/1/versions":
+            return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
+        if request.url.path == "/api/v3/projects/1/work_packages/form":
+            body = json.loads(request.content)
+            posted_bodies.append(body)
+            return _make_wp_form_response(request, body)
+        raise AssertionError(f"Unexpected: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    result = await client.bulk_create_work_packages(
+        items=[
+            {
+                "project": "demo",
+                "type": "Task",
+                "subject": "WP 1",
+                "estimated_time": "PT8H",
+                "remaining_time": "PT4H",
+                "duration": "P2D",
+            },
+        ],
+        confirm=False,
+    )
+
+    assert result.succeeded == 1
+    assert posted_bodies[0]["estimatedTime"] == "PT8H"
+    assert posted_bodies[0]["remainingTime"] == "PT4H"
+    assert posted_bodies[0]["duration"] == "P2D"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_work_packages_confirm_forwards_duration_fields() -> None:
+    # OPM-215 follow-up: the preview test above only exercises confirm=False (the
+    # form-probe POST). Assert the same fields also reach the actual mutating
+    # create POST when confirm=True, and that the committed result reflects them
+    # (not just the outgoing request).
+    posted_create_bodies: list[dict] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path in {"/api/v3/projects/demo", "/api/v3/projects/1"}:
+            return _make_project_response(request)
+        if request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": "Task"}]}}, request=request)
+        if request.url.path == "/api/v3/projects/1/versions":
+            return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
+        if request.url.path == "/api/v3/projects/1/work_packages/form":
+            body = json.loads(request.content)
+            return _make_wp_form_response(request, body)
+        if request.url.path == "/api/v3/work_packages" and request.method == "POST":
+            body = json.loads(request.content)
+            posted_create_bodies.append(body)
+            return httpx.Response(
+                201,
+                json={
+                    "id": 99,
+                    "subject": body.get("subject", ""),
+                    "lockVersion": 1,
+                    "estimatedTime": body.get("estimatedTime"),
+                    "remainingTime": body.get("remainingTime"),
+                    "duration": body.get("duration"),
+                    "_links": {
+                        "project": {"title": "Demo", "href": "/api/v3/projects/1"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "activities": {"href": "/api/v3/work_packages/99/activities"},
+                        "relations": {"href": "/api/v3/work_packages/99/relations"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        read_projects=("*",),
+        write_projects=("*",),
+        enable_work_package_write=True,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.bulk_create_work_packages(
+        items=[
+            {
+                "project": "demo",
+                "type": "Task",
+                "subject": "WP 1",
+                "estimated_time": "PT8H",
+                "remaining_time": "PT4H",
+                "duration": "P2D",
+            },
+        ],
+        confirm=True,
+    )
+
+    assert result.succeeded == 1
+    assert posted_create_bodies[0]["estimatedTime"] == "PT8H"
+    assert posted_create_bodies[0]["remainingTime"] == "PT4H"
+    assert posted_create_bodies[0]["duration"] == "P2D"
+    committed = result.items[0].result
+    assert committed is not None and committed.result is not None
+    assert committed.result.estimated_time == "PT8H"
+    assert committed.result.remaining_time == "PT4H"
+    assert committed.result.duration == "P2D"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_bulk_create_work_packages_executes_with_confirm() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path in {"/api/v3/projects/demo", "/api/v3/projects/1"}:
