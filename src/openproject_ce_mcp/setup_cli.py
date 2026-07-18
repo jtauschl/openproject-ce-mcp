@@ -29,6 +29,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, NamedTuple
@@ -909,6 +910,51 @@ def _has_openproject_config(client: Client, target: Path | None) -> bool:
         return False
 
 
+def _offer_removal(
+    clients: list[Client], *, target_of: Callable[[Client], Path | None], scope_word: str
+) -> list[Client]:
+    """For each client with an existing openproject entry at target_of(client), ask
+    whether to remove it. Shared by the 3 structurally-identical "removal-only"
+    loops in _choose_targets (used whenever a gate's answer means "not
+    configuring this scope, but maybe remove what's already there").
+    """
+    to_remove: list[Client] = []
+    for client in clients:
+        target = target_of(client)
+        if _has_openproject_config(client, target) and _prompt_bool(
+            f"Remove existing {scope_word} {client.label} OpenProject config?", default=False
+        ):
+            to_remove.append(client)
+    return to_remove
+
+
+def _gate(
+    clients: list[Client],
+    *,
+    target_of: Callable[[Client], Path | None],
+    scope_word: str,
+    default_for: Callable[[Client], bool],
+) -> tuple[list[Client], list[Client]]:
+    """For each client, ask whether to configure it at target_of(client); if not,
+    and it has an existing openproject entry there, ask whether to remove it
+    instead. Shared by Gate 1's and Gate 2's "configure" branches in
+    _choose_targets -- structurally identical aside from the target getter,
+    the scope word used in the removal prompt, and each client's default answer
+    to the "configure?" prompt.
+    """
+    configure: list[Client] = []
+    remove: list[Client] = []
+    for client in clients:
+        target = target_of(client)
+        if _prompt_bool(f"  Configure {client.label}? ({target})", default=default_for(client)):
+            configure.append(client)
+        elif _has_openproject_config(client, target) and _prompt_bool(
+            f"  Remove existing {scope_word} {client.label} OpenProject config?", default=False
+        ):
+            remove.append(client)
+    return configure, remove
+
+
 def _choose_targets(clients: list[Client]) -> tuple[list[Client], list[Client], list[Client], list[Client]]:
     """Two independent gates deciding WHERE to configure the server.
 
@@ -938,33 +984,18 @@ def _choose_targets(clients: list[Client]) -> tuple[list[Client], list[Client], 
         print()
 
     global_clients: list[Client] = []
-    remove_global_clients: list[Client] = []
     project_clients: list[Client] = []
-    remove_project_clients: list[Client] = []
     if detected and _prompt_bool("Configure globally (user-wide)?", default=False):
-        for client in detected:
-            if _prompt_bool(f"  Configure {client.label}? ({client.target})", default=True):
-                global_clients.append(client)
-            elif _has_openproject_config(client, client.target) and _prompt_bool(
-                f"  Remove existing global {client.label} OpenProject config?",
-                default=False,
-            ):
-                remove_global_clients.append(client)
+        global_clients, remove_global_clients = _gate(
+            detected, target_of=lambda c: c.target, scope_word="global", default_for=lambda _c: True
+        )
     else:
-        for client in detected:
-            if _has_openproject_config(client, client.target) and _prompt_bool(
-                f"Remove existing global {client.label} OpenProject config?",
-                default=False,
-            ):
-                remove_global_clients.append(client)
+        remove_global_clients = _offer_removal(detected, target_of=lambda c: c.target, scope_word="global")
 
     if global_clients:
-        for client in project_capable:
-            if _has_openproject_config(client, client.project_target) and _prompt_bool(
-                f"Remove existing project-scoped {client.label} OpenProject config?",
-                default=False,
-            ):
-                remove_project_clients.append(client)
+        remove_project_clients = _offer_removal(
+            project_capable, target_of=lambda c: c.project_target, scope_word="project-scoped"
+        )
         return global_clients, project_clients, remove_global_clients, remove_project_clients
 
     detected_keys = {c.key for c in detected}
@@ -972,25 +1003,19 @@ def _choose_targets(clients: list[Client]) -> tuple[list[Client], list[Client], 
     if _prompt_bool("Configure project-scoped (this directory)?", default=False):
         print("  This writes config files into the current directory (they contain")
         print("  your API token — keep them out of version control).")
-        for client in project_capable:
-            # Default yes if this client is detected; also default yes for Claude
-            # Code when nothing else project-capable is detected, so a user standing
-            # in a project doesn't end up with nothing written.
-            default = client.key in detected_keys or (client.key == "claude-code" and not detected_project)
-            if _prompt_bool(f"  Configure {client.label}? ({client.project_target})", default=default):
-                project_clients.append(client)
-            elif _has_openproject_config(client, client.project_target) and _prompt_bool(
-                f"  Remove existing project-scoped {client.label} OpenProject config?",
-                default=False,
-            ):
-                remove_project_clients.append(client)
+        # Default yes if a client is detected; also default yes for Claude Code
+        # when nothing else project-capable is detected, so a user standing in a
+        # project doesn't end up with nothing written.
+        project_clients, remove_project_clients = _gate(
+            project_capable,
+            target_of=lambda c: c.project_target,
+            scope_word="project-scoped",
+            default_for=lambda c: c.key in detected_keys or (c.key == "claude-code" and not detected_project),
+        )
     else:
-        for client in project_capable:
-            if _has_openproject_config(client, client.project_target) and _prompt_bool(
-                f"Remove existing project-scoped {client.label} OpenProject config?",
-                default=False,
-            ):
-                remove_project_clients.append(client)
+        remove_project_clients = _offer_removal(
+            project_capable, target_of=lambda c: c.project_target, scope_word="project-scoped"
+        )
 
     return global_clients, project_clients, remove_global_clients, remove_project_clients
 
@@ -1126,6 +1151,53 @@ def _test_connection(env: dict[str, str], *, transport: httpx.AsyncBaseTransport
 
 
 _MAX_CREDENTIAL_ATTEMPTS = 3
+
+
+# One row per configurable tool-exposure group. Shared by env-dict construction
+# and the preview display, both of which already work from dict-shaped state
+# (read_flags/write_flags, and the final env dict respectively) by the time
+# they run. The interactive-prompts block in _collect_credentials is NOT
+# driven by this table -- its per-group conditional write-gating (project/
+# work_package/membership/version/board writes only prompt if write_access;
+# personal/admin writes prompt unconditionally; extended has no write at all)
+# and varying prompt detail resist a safe, behavior-preserving loop without a
+# larger rewrite of that function's named-local state model.
+class _ToolGroup(NamedTuple):
+    key: str  # matches the read_flags/write_flags dict keys' "{key}_read"/"{key}_write"
+    read_env_var: str
+    read_label: str
+    write: tuple[str, str] | None  # (env var, preview label), or None if no write counterpart
+
+
+_TOOL_GROUPS: tuple[_ToolGroup, ...] = (
+    _ToolGroup(
+        "project", "OPENPROJECT_ENABLE_PROJECT_READ", "projects", ("OPENPROJECT_ENABLE_PROJECT_WRITE", "Project")
+    ),
+    _ToolGroup(
+        "work_package",
+        "OPENPROJECT_ENABLE_WORK_PACKAGE_READ",
+        "work-packages",
+        ("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", "Work-package"),
+    ),
+    _ToolGroup(
+        "membership",
+        "OPENPROJECT_ENABLE_MEMBERSHIP_READ",
+        "memberships",
+        ("OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", "Membership"),
+    ),
+    _ToolGroup(
+        "version", "OPENPROJECT_ENABLE_VERSION_READ", "versions", ("OPENPROJECT_ENABLE_VERSION_WRITE", "Version")
+    ),
+    _ToolGroup("board", "OPENPROJECT_ENABLE_BOARD_READ", "boards", ("OPENPROJECT_ENABLE_BOARD_WRITE", "Board")),
+    _ToolGroup(
+        "personal",
+        "OPENPROJECT_ENABLE_PERSONAL_READ",
+        "personal",
+        ("OPENPROJECT_ENABLE_PERSONAL_WRITE", "Personal-data"),
+    ),
+    _ToolGroup("admin", "OPENPROJECT_ENABLE_ADMIN_READ", "admin", ("OPENPROJECT_ENABLE_ADMIN_WRITE", "Admin")),
+    _ToolGroup("extended", "OPENPROJECT_ENABLE_EXTENDED_READ", "extended", None),
+)
 
 
 def _collect_credentials(
@@ -1400,6 +1472,7 @@ def _collect_credentials(
             "board_read": enable_board_read,
             "personal_read": enable_personal_read,
             "admin_read": enable_admin_read,
+            "extended_read": enable_metadata_tools,
         }
         original_write_flags = {
             "project_write": project_write,
@@ -1422,26 +1495,19 @@ def _collect_credentials(
         personal_write = write_flags["personal_write"]
         admin_write = write_flags["admin_write"]
 
+        tool_env: dict[str, str] = {}
+        for group in _TOOL_GROUPS:
+            tool_env[group.read_env_var] = str(read_flags[f"{group.key}_read"]).lower()
+            if group.write is not None:
+                write_env_var, _write_label = group.write
+                tool_env[write_env_var] = str(write_flags[f"{group.key}_write"]).lower()
+
         env: dict[str, str] = {
             "OPENPROJECT_BASE_URL": base_url,
             "OPENPROJECT_API_TOKEN": token,
             "OPENPROJECT_READ_PROJECTS": read_projects,
             "OPENPROJECT_WRITE_PROJECTS": write_projects,
-            "OPENPROJECT_ENABLE_PROJECT_READ": str(enable_project_read).lower(),
-            "OPENPROJECT_ENABLE_PROJECT_WRITE": str(project_write).lower(),
-            "OPENPROJECT_ENABLE_WORK_PACKAGE_READ": str(enable_work_package_read).lower(),
-            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": str(wp_write).lower(),
-            "OPENPROJECT_ENABLE_MEMBERSHIP_READ": str(enable_membership_read).lower(),
-            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE": str(membership_write).lower(),
-            "OPENPROJECT_ENABLE_VERSION_READ": str(enable_version_read).lower(),
-            "OPENPROJECT_ENABLE_VERSION_WRITE": str(version_write).lower(),
-            "OPENPROJECT_ENABLE_BOARD_READ": str(enable_board_read).lower(),
-            "OPENPROJECT_ENABLE_BOARD_WRITE": str(board_write).lower(),
-            "OPENPROJECT_ENABLE_PERSONAL_READ": str(enable_personal_read).lower(),
-            "OPENPROJECT_ENABLE_PERSONAL_WRITE": str(personal_write).lower(),
-            "OPENPROJECT_ENABLE_ADMIN_READ": str(enable_admin_read).lower(),
-            "OPENPROJECT_ENABLE_ADMIN_WRITE": str(admin_write).lower(),
-            "OPENPROJECT_ENABLE_EXTENDED_READ": str(enable_metadata_tools).lower(),
+            **tool_env,
             "OPENPROJECT_HIDE_PROJECT_FIELDS": hide_project,
             "OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS": hide_wp,
             "OPENPROJECT_HIDE_ACTIVITY_FIELDS": hide_activity,
@@ -1538,28 +1604,12 @@ def _preview_changes(
         # the file's minimalism must never reduce what the user was told.
         print(f"  Read projects: {env['OPENPROJECT_READ_PROJECTS'] or 'none (fail-closed)'}")
         print(f"  Write projects: {env['OPENPROJECT_WRITE_PROJECTS'] or 'none (fail-closed)'}")
-        read_groups = [
-            label
-            for label, key in (
-                ("projects", "OPENPROJECT_ENABLE_PROJECT_READ"),
-                ("work-packages", "OPENPROJECT_ENABLE_WORK_PACKAGE_READ"),
-                ("memberships", "OPENPROJECT_ENABLE_MEMBERSHIP_READ"),
-                ("versions", "OPENPROJECT_ENABLE_VERSION_READ"),
-                ("boards", "OPENPROJECT_ENABLE_BOARD_READ"),
-                ("personal", "OPENPROJECT_ENABLE_PERSONAL_READ"),
-                ("admin", "OPENPROJECT_ENABLE_ADMIN_READ"),
-                ("extended", "OPENPROJECT_ENABLE_EXTENDED_READ"),
-            )
-            if env[key] == "true"
-        ]
+        read_groups = [group.read_label for group in _TOOL_GROUPS if env[group.read_env_var] == "true"]
         print(f"  Tool exposure: {', '.join(read_groups) or 'none'}")
-        print(f"  Project writes: {env['OPENPROJECT_ENABLE_PROJECT_WRITE']}")
-        print(f"  Work-package writes: {env['OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE']}")
-        print(f"  Membership writes: {env['OPENPROJECT_ENABLE_MEMBERSHIP_WRITE']}")
-        print(f"  Version writes: {env['OPENPROJECT_ENABLE_VERSION_WRITE']}")
-        print(f"  Board writes: {env['OPENPROJECT_ENABLE_BOARD_WRITE']}")
-        print(f"  Personal-data writes: {env['OPENPROJECT_ENABLE_PERSONAL_WRITE']}")
-        print(f"  Admin writes: {env['OPENPROJECT_ENABLE_ADMIN_WRITE']}")
+        for group in _TOOL_GROUPS:
+            if group.write is not None:
+                write_env_var, write_label = group.write
+                print(f"  {write_label} writes: {env[write_env_var]}")
         if env["OPENPROJECT_VERIFY_SSL"] == "false":
             print("  ! TLS verification disabled (OPENPROJECT_VERIFY_SSL=false)")
         if env["OPENPROJECT_BASE_URL"].startswith("http://"):
