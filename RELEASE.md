@@ -321,10 +321,17 @@ verification, not just as a tooling health check.
      the version description's claims before moving on.
   2. Bump the version everywhere it's declared (package manifest, any
      in-package version constant, anything else that mirrors it).
-  3. Commit locally — no push without a separate explicit go-ahead.
-  4. **Tag exactness** — before tagging, confirm the current commit hash is
+  3. **Lockfile sync** — run `uv lock` (or `uv sync`) right after the version
+     bump, then confirm the lockfile's own entry for this package reflects
+     the new version (e.g. `grep -A2 'name = "<package>"' uv.lock` shows the
+     bumped `version`). A version-bump commit that skips this leaves the
+     lockfile stale until a later release's Dependency/lock sanity check
+     (section 9) catches the drift — regenerate and verify it here instead,
+     as part of the same commit as step 4.
+  4. Commit locally — no push without a separate explicit go-ahead.
+  5. **Tag exactness** — before tagging, confirm the current commit hash is
      exactly the one that passed this review, not any later local change.
-  5. Report back. Tagging/pushing remains a further step requiring its own
+  6. Report back. Tagging/pushing remains a further step requiring its own
      explicit confirmation, after the release commit is reviewed — for this
      project, pushing a `vX.Y.Z` tag triggers `.github/workflows/publish.yml`,
      which publishes to PyPI via trusted publishing. A PyPI release's files
@@ -332,10 +339,10 @@ verification, not just as a tooling health check.
      version but doesn't free the filename — see the rollback note above),
      so this is the one genuinely irreversible step in the whole process —
      confirm the
-     artifact content check (section 9) and the tag-exactness check (step 4)
+     artifact content check (section 9) and the tag-exactness check (step 5)
      both passed before giving that go-ahead. Closing the tracker version is
      a separate step after the publish succeeds.
-  6. **Verify the publish** — before creating the GitHub Release: confirm
+  7. **Verify the publish** — before creating the GitHub Release: confirm
      the `publish.yml` run for this tag succeeded (`gh run list`/
      `gh run view`), confirm the new version's files are visible on PyPI,
      and in a fresh temporary environment `pip install <package>==<X.Y.Z>`
@@ -343,7 +350,7 @@ verification, not just as a tooling health check.
      covers that) and re-run the same console-script `--help`/`--version`
      smoke as section 9. This is the only check that exercises the artifact
      users actually receive.
-  7. **Create a GitHub Release** for the new tag, after the PyPI publish
+  8. **Create a GitHub Release** for the new tag, after the PyPI publish
      succeeds. `publish.yml` only builds and publishes to PyPI — it does not
      create a GitHub Release object — but every prior tagged version has one,
      created manually out-of-band. Keep doing this for consistent release
