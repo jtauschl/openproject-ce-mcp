@@ -14,8 +14,14 @@ from urllib.parse import quote, unquote, urljoin, urlparse
 import httpx
 
 from . import __version__
+from .app.adapters.httpx_version_api import HttpxVersionApi
+
+# AuthenticationError: no longer referenced directly in this module (its only use was
+# inside _raise_for_status, now delegated to app.transport.errors.raise_for_status),
+# but re-exported deliberately -- existing callers/tests import it from here (e.g.
+# `from openproject_ce_mcp.client import AuthenticationError`) and must keep working.
 from .app.errors import (
-    AuthenticationError,
+    AuthenticationError,  # noqa: F401
     InvalidInputError,
     NotFoundError,
     OpenProjectError,
@@ -30,6 +36,9 @@ from .app.policies import access as _access_policy
 from .app.policies import hidden_fields as _hidden_fields_policy
 from .app.policies import scope as _scope_policy
 from .app.ports.project_resolution import ProjectResolutionContext
+from .app.ports.version_api import VersionApi
+from .app.transport.errors import raise_for_status as _map_status_to_error
+from .app.transport.httpx_transport import HttpxTransport
 from .config import Settings
 from .models import (
     ActionListResult,
@@ -268,6 +277,12 @@ class OpenProjectClient:
             follow_redirects=True,
             transport=transport,
         )
+
+        # ADR 0001 / OPM-153 Slice 4: HttpxTransport wraps the SAME httpx.AsyncClient
+        # constructed above (one connection pool, not two). Constructed here but not
+        # yet used by any public method -- list_versions/get_version/etc. still call
+        # the pre-existing inline implementation until Slice 5's facade cutover.
+        self._version_api: VersionApi = HttpxVersionApi(HttpxTransport(self._http), base_url=settings.base_url)
 
     async def initialize(self) -> None:
         # _project_id_to_identifier is consulted for BOTH read and write link-based
@@ -5142,31 +5157,12 @@ class OpenProjectClient:
     def _raise_for_status(self, response: httpx.Response) -> None:
         if response.status_code < 400:
             return
-
         payload: dict[str, Any] = {}
         try:
             payload = response.json()
         except ValueError:
             payload = {}
-
-        message = str(payload.get("message") or "").strip()
-        status_code = response.status_code
-        if status_code == 401:
-            raise AuthenticationError("OpenProject authentication failed.")
-        if status_code == 403:
-            lowered = message.lower()
-            if "token" in lowered or "authenticate" in lowered:
-                raise AuthenticationError("OpenProject authentication failed.")
-            raise PermissionDeniedError("OpenProject denied access to this resource.")
-        if status_code == 404:
-            raise NotFoundError("OpenProject resource not found.")
-        if status_code in {400, 409, 422}:
-            safe_message = message or "OpenProject rejected the request."
-            raise InvalidInputError(safe_message)
-        if 500 <= status_code < 600:
-            LOGGER.warning("OpenProject server error: status=%s", status_code)
-            raise OpenProjectServerError("OpenProject returned a server error.")
-        raise OpenProjectServerError(f"OpenProject request failed with status {status_code}.")
+        _map_status_to_error(response.status_code, payload)
 
     def _resolve_limit(self, requested_limit: int | None) -> int:
         limit = requested_limit or self.settings.default_page_size
