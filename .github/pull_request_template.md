@@ -12,7 +12,7 @@
 
 ## Checklist
 
-- [ ] Tests added or updated (`tests/test_client.py`, `tests/test_tools.py`)
+- [ ] Tests added or updated (`tests/`, especially `tests/unit/` for client/tool behavior)
 - [ ] All tests pass: `uv run pytest tests/ -v` or `.venv/bin/python -m pytest tests/ -v`
 - [ ] `docs/tools.md` updated if tools were added/removed/renamed
 - [ ] `README.md` tool count updated if changed

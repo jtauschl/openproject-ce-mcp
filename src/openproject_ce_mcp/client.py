@@ -7686,7 +7686,7 @@ class OpenProjectClient:
         only registers create_work_package_attachment when this is set;
         this check is defense-in-depth for a caller that constructs
         OpenProjectClient directly, bypassing that registration gate (as
-        several tests in test_client.py already do).
+        several tests in tests/unit/ already do).
         """
         configured = self.settings.attachment_root
         if not configured:
