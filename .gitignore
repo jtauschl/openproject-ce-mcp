@@ -37,3 +37,6 @@ CONTINUE.md
 
 # Internal review notes
 SELF_REVIEW.md
+
+# Internal design docs (reference OPM ticket IDs — private tracker, not public)
+docs/adr/
