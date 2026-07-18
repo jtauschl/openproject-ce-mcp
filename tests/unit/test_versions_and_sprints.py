@@ -9,8 +9,41 @@ from _client_test_helpers import make_settings
 from openproject_ce_mcp.client import (
     NotFoundError,
     OpenProjectClient,
+    _paginate_client,
+    _paginate_server,
 )
 from openproject_ce_mcp.config import Settings
+
+
+def test_paginate_server_derives_truncated_from_next_offset() -> None:
+    # OPM-210: truncated and next_offset used to be two independently written
+    # (but logically identical) expressions per list method -- this locks in
+    # that they're now one derivation, for every boundary case.
+    next_offset, truncated = _paginate_server(offset=1, limit=10, total=25)
+    assert (next_offset, truncated) == (2, True)
+
+    next_offset, truncated = _paginate_server(offset=3, limit=10, total=25)
+    assert (next_offset, truncated) == (None, False)
+
+    # Exact boundary: offset*limit == total means nothing left, not truncated.
+    next_offset, truncated = _paginate_server(offset=2, limit=10, total=20)
+    assert (next_offset, truncated) == (None, False)
+
+
+def test_paginate_client_slices_and_derives_envelope_from_local_results() -> None:
+    results = list(range(25))
+
+    page, total, next_offset, truncated = _paginate_client(offset=1, limit=10, results=results)
+    assert page == list(range(0, 10))
+    assert (total, next_offset, truncated) == (25, 2, True)
+
+    page, total, next_offset, truncated = _paginate_client(offset=3, limit=10, results=results)
+    assert page == list(range(20, 25))
+    assert (total, next_offset, truncated) == (25, None, False)
+
+    page, total, next_offset, truncated = _paginate_client(offset=1, limit=10, results=[])
+    assert page == []
+    assert (total, next_offset, truncated) == (0, None, False)
 
 
 @pytest.mark.asyncio
