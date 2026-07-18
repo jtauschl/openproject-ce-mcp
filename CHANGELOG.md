@@ -7,6 +7,26 @@ development baseline.
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`bulk_update_work_packages` now supports `sprint`** (name/id, or `'none'`
+  to clear), matching the field support `update_work_package` already had for
+  single items.
+
+### Changed
+
+- **Bulk work-package writes reuse resolved project/type/version/sprint
+  lookups across items targeting the same project**, reducing redundant API
+  calls for large batches.
+- **Server startup no longer enriches the initial instructions with the
+  instance's live feature flags.** This data remains available via the
+  `get_instance_configuration` tool; the change removes a network call from
+  server startup.
+
+---
+
 ## 0.3.1 – 2026-07-18
 
 ### Fixed

@@ -262,26 +262,30 @@ verification, not just as a tooling health check.
   Record explicitly whether a build-provenance attestation (e.g.
   `actions/attest-build-provenance`) is produced — if not, that's a
   standing accepted gap to note here, not to silently skip.
-- Confirm whether a changelog section for the target version already exists:
-  if absent, it gets written fresh in section 12; if a draft already exists,
-  don't blindly overwrite it — check whether it's an approved draft (then
-  refine it in section 12) or a stale/unreviewed leftover (flag it as a
-  finding rather than editing it silently).
+- The changelog is maintained continuously as a `## [Unreleased]` section
+  (Keep a Changelog style) — confirm it exists and has been kept roughly in
+  sync with what actually shipped since the previous release tag. An empty or
+  missing `[Unreleased]` section when real user-visible changes did land is a
+  finding (entries were forgotten along the way), not something to silently
+  backfill here — flag it, then let section 12 step 1 do the actual
+  reconciliation pass.
 
 ## 10. Release notes & version-description consistency
 
 - The changelog, the tracker's version description, and any separately-
   published release notes (if the publish workflow creates one — see
   section 9) should tell the same story at appropriate detail depth per
-  audience. They don't need identical wording, just no contradictions. At
-  review time (before the changelog is drafted), this section just confirms
-  which of these text sources actually exist for this project and records
-  that fact — it can't yet diff content that doesn't exist.
-- Once Go/No-Go is reached and the changelog is drafted (section 12, step
-  1), diff its bullet list against the version description's claims
-  (already cross-checked in section 1) as part of that same follow-up step —
-  not as a separate review action, since the changelog doesn't exist until
-  then.
+  audience. They don't need identical wording, just no contradictions.
+  Unlike the version-description cross-check in section 1, the changelog
+  side of this already has content to diff against by review time — it's the
+  accumulated `## [Unreleased]` section, not something drafted from scratch
+  at the end.
+- Diff the `[Unreleased]` bullet list against the version description's
+  claims (already cross-checked in section 1) now, as part of this review —
+  not deferred to section 12, since the content already exists. Section 12
+  step 1 then only does the rename + final reconciliation pass (anything
+  that landed since the last time `[Unreleased]` was touched, any wording
+  that needs positive-reframing before it ships), not first-draft writing.
 
 ## 11. Client/consumer config & environment-variable compatibility
 
@@ -316,9 +320,12 @@ verification, not just as a tooling health check.
   review stops here. A short second pass follows once blockers are closed.
 - **If Go:** get explicit confirmation before doing anything further. Only
   then, as a distinct follow-up (not part of the review itself):
-  1. Write the changelog section for this release from the closed WPs /
-     commit log — positive framing only. Then do section 10's diff against
-     the version description's claims before moving on.
+  1. Finalize the changelog: read the accumulated `## [Unreleased]` section
+     against the closed WPs / commit log one last time (anything landed but
+     never noted, positive framing throughout — section 10's diff already
+     happened during the review, this is just the final pass), then rename
+     `## [Unreleased]` to `## X.Y.Z – YYYY-MM-DD` and add a fresh empty
+     `## [Unreleased]` above it for the next round of work.
   2. Bump the version everywhere it's declared (package manifest, any
      in-package version constant, anything else that mirrors it).
   3. **Lockfile sync** — run `uv lock` (or `uv sync`) right after the version
