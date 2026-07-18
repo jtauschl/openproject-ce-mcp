@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 
 import httpx
@@ -13,6 +14,91 @@ from openproject_ce_mcp.client import (
     _paginate_server,
 )
 from openproject_ce_mcp.config import Settings
+from openproject_ce_mcp.models import (
+    ProjectListResult,
+    SprintListResult,
+    VersionListResult,
+    VersionSummary,
+    WorkPackageListResult,
+)
+
+
+def test_version_list_result_shape_is_locked_and_matches_the_shared_page_envelope() -> None:
+    """OPM-211: locks in VersionListResult's current serialized shape before any
+    future PageResult[T] base-class migration (OPM-48's broader 35-class scope).
+
+    Also confirms the "would PageResult[T] fit" question for this one class:
+    VersionListResult's field set (name, order, and declared type) is byte-for-
+    byte identical to ProjectListResult/WorkPackageListResult/SprintListResult's
+    first 6 fields -- a genuine shared contract already, not just similar naming
+    -- so a shared generic envelope would fit this class without reshaping it.
+    """
+    fields = [(f.name, f.type) for f in dataclasses.fields(VersionListResult)]
+    assert fields == [
+        ("offset", "int"),
+        ("limit", "int"),
+        ("total", "int"),
+        ("count", "int"),
+        ("next_offset", "int | None"),
+        ("truncated", "bool"),
+        ("results", "list[VersionSummary]"),
+    ]
+
+    # (name, declared type) for the shared envelope, not just names -- two
+    # classes could share field names in the same order with incompatible
+    # types and still pass a names-only check.
+    shared_envelope = fields[:6]
+    for other in (ProjectListResult, WorkPackageListResult, SprintListResult):
+        other_fields = [(f.name, f.type) for f in dataclasses.fields(other)]
+        assert other_fields[:6] == shared_envelope
+
+    # Full serialized snapshot (values, not just keys) -- dataclass inheritance
+    # could otherwise silently reorder, drop, or default a field without the
+    # declaration-only check above catching it.
+    instance = VersionListResult(
+        offset=1,
+        limit=10,
+        total=1,
+        count=1,
+        next_offset=None,
+        truncated=False,
+        results=[
+            VersionSummary(
+                id=1,
+                name="v1.0",
+                status="open",
+                sharing=None,
+                start_date=None,
+                end_date=None,
+                defining_project=None,
+                description=None,
+                url="https://op.example.com/versions/1",
+            )
+        ],
+    )
+    assert dataclasses.asdict(instance) == {
+        "offset": 1,
+        "limit": 10,
+        "total": 1,
+        "count": 1,
+        "next_offset": None,
+        "truncated": False,
+        "results": [
+            {
+                "id": 1,
+                "name": "v1.0",
+                "status": "open",
+                "sharing": None,
+                "start_date": None,
+                "end_date": None,
+                "defining_project": None,
+                "description": None,
+                "url": "https://op.example.com/versions/1",
+                "created_at": None,
+                "updated_at": None,
+            }
+        ],
+    }
 
 
 def test_paginate_server_derives_truncated_from_next_offset() -> None:
