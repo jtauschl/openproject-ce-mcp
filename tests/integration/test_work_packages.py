@@ -174,6 +174,28 @@ async def test_bulk_create_work_packages(client: OpenProjectClient, test_project
     assert result.succeeded >= 1  # at least one should succeed
 
 
+async def test_bulk_create_work_packages_applies_duration_fields(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    # OPM-215: estimated_time/remaining_time/duration used to be silently dropped
+    # by bulk_create_work_packages instead of applied.
+    items = [
+        {
+            "project": test_project,
+            "type": "Task",
+            "subject": f"{_SUBJECT_BULK} duration",
+            "estimated_time": "PT8H",
+        },
+    ]
+    result = await client.bulk_create_work_packages(items=items, confirm=True)
+    assert result.succeeded == 1
+    item = result.items[0]
+    assert item.result is not None and item.result.work_package_id is not None
+    wp_ids.append(item.result.work_package_id)
+    assert item.result.result is not None
+    assert item.result.result.estimated_time == "PT8H"
+
+
 async def test_list_work_package_watchers(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
     result = await client.create_work_package(
         project=test_project,
