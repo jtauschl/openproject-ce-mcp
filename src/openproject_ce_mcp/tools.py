@@ -1761,6 +1761,29 @@ async def update_work_package(
     )
 
 
+_BULK_CREATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(
+    {
+        "project",
+        "type",
+        "subject",
+        "description",
+        "version",
+        "project_phase",
+        "assignee",
+        "responsible",
+        "priority",
+        "category",
+        "custom_fields",
+        "parent_work_package_id",
+        "start_date",
+        "due_date",
+        "estimated_time",
+        "remaining_time",
+        "duration",
+    }
+)
+
+
 async def bulk_create_work_packages(
     ctx: Context,
     items: list[dict[str, Any]],
@@ -1770,7 +1793,10 @@ async def bulk_create_work_packages(
 
     Each item in `items` must contain `project`, `type`, and `subject`. Optional fields per item:
     `description`, `version`, `project_phase`, `assignee`, `responsible`, `priority`, `category`,
-    `custom_fields`, `parent_work_package_id`, `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD).
+    `custom_fields`, `parent_work_package_id`, `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD),
+    `estimated_time`, `remaining_time`, `duration` (ISO8601 duration strings, e.g. 'PT8H' or 'P1D').
+    An item containing any other key is rejected with an indexed validation error rather than
+    silently dropping the unrecognized field.
 
     With confirm=false (default) all items are validated and a preview is returned.
     With confirm=true all items are created. Failed items are reported in the result — the operation
@@ -1798,6 +1824,9 @@ async def bulk_create_work_packages(
     for i, item in enumerate(items):
         if not isinstance(item, dict):
             raise ValueError(f"items[{i}] must be an object.")
+        unknown_keys = set(item) - _BULK_CREATE_WORK_PACKAGE_ITEM_FIELDS
+        if unknown_keys:
+            raise ValueError(f"items[{i}] has unsupported field(s): {', '.join(sorted(unknown_keys))}.")
         project = item.get("project")
         type_ = item.get("type")
         subject = item.get("subject")
@@ -1836,9 +1865,41 @@ async def bulk_create_work_packages(
                 "parent_work_package_id": safe_parent_work_package_id,
                 "start_date": _validate_optional_date(item.get("start_date"), field_name=f"items[{i}].start_date"),
                 "due_date": _validate_optional_date(item.get("due_date"), field_name=f"items[{i}].due_date"),
+                "estimated_time": _validate_optional_duration(
+                    item.get("estimated_time"), field_name=f"items[{i}].estimated_time"
+                ),
+                "remaining_time": _validate_optional_duration(
+                    item.get("remaining_time"), field_name=f"items[{i}].remaining_time"
+                ),
+                "duration": _validate_optional_duration(item.get("duration"), field_name=f"items[{i}].duration"),
             }
         )
     return await _run_tool(client.bulk_create_work_packages(items=safe_items, confirm=confirm))
+
+
+_BULK_UPDATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(
+    {
+        "work_package_id",
+        "subject",
+        "description",
+        "type",
+        "version",
+        "project_phase",
+        "status",
+        "assignee",
+        "responsible",
+        "priority",
+        "category",
+        "custom_fields",
+        "parent_work_package_id",
+        "start_date",
+        "due_date",
+        "estimated_time",
+        "remaining_time",
+        "duration",
+        "percentage_done",
+    }
+)
 
 
 async def bulk_update_work_packages(
@@ -1855,7 +1916,8 @@ async def bulk_update_work_packages(
     (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'; pass 'none' to clear one of these),
     `percentage_done` (integer 0-100). Pass 'none' to `version`, `project_phase`, `assignee`,
     `responsible`, `category` or `parent_work_package_id` to clear that field on the item, same as
-    `update_work_package`.
+    `update_work_package`. An item containing any other key is rejected with an indexed validation
+    error rather than silently dropping the unrecognized field.
     Setting an item's status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H
     when that item doesn't supply them explicitly and OpenProject's schema reports those fields as
     writable.
@@ -1882,6 +1944,9 @@ async def bulk_update_work_packages(
     for i, item in enumerate(items):
         if not isinstance(item, dict):
             raise ValueError(f"items[{i}] must be an object.")
+        unknown_keys = set(item) - _BULK_UPDATE_WORK_PACKAGE_ITEM_FIELDS
+        if unknown_keys:
+            raise ValueError(f"items[{i}] has unsupported field(s): {', '.join(sorted(unknown_keys))}.")
         work_package_id = item.get("work_package_id")
         if work_package_id is None:
             raise ValueError(f"items[{i}].work_package_id is required.")
