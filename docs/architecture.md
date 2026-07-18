@@ -11,13 +11,24 @@ OpenProject CE MCP is intentionally small and flat. The codebase keeps transport
 ```text
 src/openproject_ce_mcp/
 ├── config.py            environment loading, validation, and safe defaults
-├── client.py             OpenProject API client: auth, timeouts, pagination, normalization, error mapping
+├── client.py             OpenProject API client facade: auth, timeouts, most domains'
+│                         pagination/normalization/error mapping, plus one-line
+│                         delegations to app/ for the Versions domain (see below)
 ├── retry_transport.py    HTTP retry with backoff for transient failures
 ├── models.py             compact dataclasses returned to MCP clients
 ├── tools.py              validated MCP tool handlers
 ├── server.py             FastMCP server bootstrap and lifecycle management
 ├── setup_cli.py          the interactive `configure` command
-└── doctor.py             the `doctor` diagnostics command
+├── doctor.py             the `doctor` diagnostics command
+└── app/                  layered architecture pilot -- see "Layered architecture" below
+    ├── errors.py         shared exception types (re-exported from client.py)
+    ├── pagination.py     shared pagination-envelope helpers (re-exported from client.py)
+    ├── policies/         pure, no-I/O scope/allowlist/hidden-field checks
+    ├── transport/        HttpxTransport (the only module here that imports httpx)
+    ├── ports/            narrow per-domain API port Protocols
+    ├── adapters/         concrete HTTP implementations of those ports
+    ├── resolvers/        semantic-reference-to-id resolution + shared query logic
+    └── services/         per-domain Application Services (orchestration + preview/confirm)
 ```
 
 ## Layers
@@ -63,6 +74,47 @@ This is the main policy boundary of the project.
 - Wires FastMCP to the tool set.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
+
+## Layered architecture (pilot: Versions)
+
+`client.py` stays the small, flat facade described above for most domains, but the
+Versions domain (`list_versions`, `get_version`, `create_version`, `update_version`,
+`delete_version`) has been migrated into `app/` as a pilot for a stricter layered
+structure, validating the pattern before any other domain follows:
+
+```text
+tools.py (MCP presentation)
+    -> Application Services (app/services/)
+        -> Policies (app/policies/, no I/O)
+        -> Resolvers (app/resolvers/, I/O only via a port)
+            -> Domain API ports/adapters (app/ports/, app/adapters/)
+                -> Transport port -> HttpxTransport (app/transport/)
+```
+
+- **Policies** are pure functions (scope/allowlist matching, hidden-field masking,
+  read/write gates) with no I/O — every `OpenProjectClient` method that used to
+  implement this logic directly (`_ensure_read_enabled`, `_project_candidates`,
+  `_apply_hidden_fields`, etc.) is now a one-line delegating wrapper, so **every**
+  domain benefits from a single, dependency-free, directly-unit-testable source of
+  truth for this security-relevant logic — not just Versions.
+- **Ports** are narrow, per-domain Protocols (e.g. `VersionApi`) — no universal
+  gateway. **Adapters** are the concrete HTTP implementation of a port, translating
+  HAL payloads into the compact dataclasses from `models.py`.
+- **Resolvers** turn a semantic reference (a version name, a numeric id) into a
+  concrete id, using only a port — never an Application Service.
+- **Application Services** (e.g. `VersionService`) orchestrate a single use case:
+  Policy checks, Resolver calls, port calls, and the preview/confirm write state
+  machine. They depend on a port's Protocol type, never a concrete adapter.
+- `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under
+  `app/` that imports `httpx`; `client.py`'s own HTTP calls for the ~50 still-flat
+  domains, and `retry_transport.py`, are unaffected and keep importing it directly.
+- `OpenProjectClient` remains a 100%-compatible facade throughout: its public method
+  signatures for Versions are unchanged, and `tools.py` requires no changes at all.
+
+Remaining domains stay exactly as described in the flat model above; migrating them
+is deliberately out of scope until the pilot's lessons inform a second migration.
+An `ast`-based test (`tests/test_architecture_boundaries.py`) enforces the layer
+directions above and confines `httpx` to `HttpxTransport`.
 
 ## Naming conventions
 
@@ -197,11 +249,15 @@ The tradeoff is that `client.py` is large and policy-heavy. That is intentional 
 
 ## Future split points
 
-If the project grows further, likely extraction candidates are:
+The Policies extraction (scope checks, hidden-field enforcement) is done, for every
+domain — see "Layered architecture" above. Remaining candidates, once the Versions
+pilot's lessons justify a second migration:
 
+- migrating additional domains through the same `app/` layers, one at a time,
+  starting with the ones the pilot's own dependencies already touch (Projects, since
+  every domain's resolvers call into its still-flat resolution logic)
 - separate modules for project-scoped content like news/documents/views
 - separate modules for work-package writes and schema handling
-- a dedicated policy module for scope checks and hidden-field enforcement
 - dedicated integration-test helpers around form endpoints and live smoke tests
 
 ## See also
