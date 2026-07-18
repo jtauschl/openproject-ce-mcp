@@ -7,6 +7,7 @@ from _client_test_helpers import _base_settings
 from openproject_ce_mcp.client import (
     OpenProjectClient,
     PermissionDeniedError,
+    ProjectResolutionContext,
 )
 from openproject_ce_mcp.config import Settings
 
@@ -343,6 +344,48 @@ async def test_write_link_allowlist_recognizes_identifier_after_initialize_with_
     client._ensure_project_write_link_allowed({"href": "/api/v3/projects/7", "title": "OPM OpenProject CE MCP"})
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_project_resolution_context_caches_per_ref_and_write_flag() -> None:
+    calls: list[tuple[str, bool]] = []
+
+    async def resolve(project_ref: str, *, write: bool = False) -> dict:
+        calls.append((project_ref, write))
+        return {"id": int(project_ref), "identifier": f"P{project_ref}"}
+
+    context = ProjectResolutionContext(resolve)
+
+    first = await context.resolve("1", write=False)
+    second = await context.resolve("1", write=False)
+    assert first is second
+    assert calls == [("1", False)]
+
+    # A different write flag for the same ref is a distinct key -- read passing
+    # must never be assumed to mean write also passes.
+    await context.resolve("1", write=True)
+    assert calls == [("1", False), ("1", True)]
+
+    # A different project is never served from the first project's cache entry.
+    await context.resolve("2", write=False)
+    assert calls == [("1", False), ("1", True), ("2", False)]
+
+
+@pytest.mark.asyncio
+async def test_project_resolution_context_seed_prevents_a_redundant_resolve() -> None:
+    calls: list[tuple[str, bool]] = []
+
+    async def resolve(project_ref: str, *, write: bool = False) -> dict:
+        calls.append((project_ref, write))
+        return {"id": int(project_ref)}
+
+    context = ProjectResolutionContext(resolve)
+    context.seed("1", {"id": 1, "identifier": "demo"}, write=False)
+
+    result = await context.resolve("1", write=False)
+
+    assert result == {"id": 1, "identifier": "demo"}
+    assert calls == []
 
 
 @pytest.mark.asyncio

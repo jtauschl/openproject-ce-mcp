@@ -245,6 +245,64 @@ class TransportError(OpenProjectError):
     """The request could not reach OpenProject safely."""
 
 
+class ProjectResolutionContext:
+    """Request-scoped cache for resolved project payloads.
+
+    Lifetime is bounded to a single top-level call (e.g. one
+    create_work_package/update_work_package/create_subtask invocation) --
+    construct a new instance per call, never store one on self, and never
+    reuse one across calls that might touch different projects (a bulk
+    operation's items, for instance, each get their own context, not one
+    shared across the whole batch).
+
+    Still performs the real resolve-and-allowlist-check on first use of each
+    (project_ref, write) pair; this only avoids repeating that same fetch for
+    a ref+scope already resolved earlier in the same top-level call -- it
+    never skips a check outright.
+    """
+
+    def __init__(self, resolve: Callable[..., Awaitable[dict[str, Any]]]) -> None:
+        self._resolve = resolve
+        self._cache: dict[tuple[str, bool], dict[str, Any]] = {}
+
+    async def resolve(self, project_ref: str, *, write: bool = False) -> dict[str, Any]:
+        key = (project_ref, write)
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+        payload = await self._resolve(project_ref, write=write)
+        self._store(payload, write=write, extra_ref=project_ref)
+        return payload
+
+    def seed(self, project_ref: str, payload: dict[str, Any], *, write: bool = False) -> None:
+        """Pre-populate the cache from a resolution the caller already performed.
+
+        A write=True resolution already implies the read check passed too
+        (write allowlist checks always check read first), so a caller that
+        resolved with write=True may safely seed both keys with the same
+        payload -- callers that only resolved a read should only seed write=False.
+        """
+        self._store(payload, write=write, extra_ref=project_ref)
+
+    def _store(self, payload: dict[str, Any], *, write: bool, extra_ref: str | None = None) -> None:
+        # A resolved payload is cached under every alias it's actually known by
+        # (the ref used to look it up, its numeric id, its identifier) -- not
+        # "cross-project reuse", since these all name the same already-checked
+        # project. This matters because some resolvers translate a numeric ref
+        # to the identifier internally (_resolve_version_id) before making a
+        # further call; without this, that translated ref would miss the cache
+        # and trigger a second, redundant fetch of the same project.
+        refs = {extra_ref} if extra_ref else set()
+        project_id = payload.get("id")
+        if project_id is not None:
+            refs.add(str(project_id))
+        identifier = payload.get("identifier")
+        if identifier:
+            refs.add(identifier)
+        for ref in refs:
+            self._cache[(ref, write)] = payload
+
+
 class OpenProjectClient:
     """Small OpenProject API client with optional guarded write support."""
 
@@ -2190,9 +2248,12 @@ class OpenProjectClient:
             )
         filters: list[dict[str, Any]] = []
         project_id: int | None = None
+        # Bounded to this single call: avoids re-fetching/re-checking the same
+        # project when both type and version filters are given alongside project.
+        resolution_context = ProjectResolutionContext(self._resolve_project_ref)
         total_is_scope_safe = _scope_allows_all(self.settings.read_projects)
         if project is not None:
-            project_payload = await self._get_project_payload(project)
+            project_payload = await self._get_project_payload(project, context=resolution_context)
             project_id = int(project_payload["id"])
             filters.append({"project_id": {"operator": "=", "values": [str(project_id)]}})
             total_is_scope_safe = True
@@ -2211,12 +2272,12 @@ class OpenProjectClient:
             current_user = await self.get_current_user()
             filters.append({"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}})
         if type:
-            type_id = await self._resolve_type_id(type, project=project)
+            type_id = await self._resolve_type_id(type, project=project, context=resolution_context)
             # Use official filter key per source (type_filter.rb:def self.key → :type_id)
             # PropertyNameConverter tolerates "type" but may break in future versions
             filters.append({"type_id": {"operator": "=", "values": [type_id]}})
         if version:
-            version_id = await self._resolve_version_id(version, project=project)
+            version_id = await self._resolve_version_id(version, project=project, context=resolution_context)
             # Use official filter key per source (version_filter.rb:def self.key → :version_id)
             # PropertyNameConverter tolerates "version" but may break in future versions
             filters.append({"version_id": {"operator": "=", "values": [version_id]}})
@@ -2477,6 +2538,12 @@ class OpenProjectClient:
     ) -> WorkPackageWriteResult:
         project_payload = await self._resolve_project_ref(project, write=True)
         project_id = str(project_payload["id"])
+        # write=True already implies read=True passed (write checks read first),
+        # so both keys are safe to seed from the same payload -- this is what lets
+        # the type/version resolvers below reuse it instead of re-fetching.
+        resolution_context = ProjectResolutionContext(self._resolve_project_ref)
+        resolution_context.seed(project_id, project_payload, write=True)
+        resolution_context.seed(project_id, project_payload, write=False)
         if parent_work_package_id is not None:
             # parent goes into a HAL link href, which resolves only by numeric id.
             parent_work_package_id = await self._resolve_work_package_id(parent_work_package_id)
@@ -2498,6 +2565,7 @@ class OpenProjectClient:
             estimated_time=estimated_time,
             remaining_time=remaining_time,
             duration=duration,
+            project_context=resolution_context,
         )
         form = await self._post(f"projects/{project_id}/work_packages/form", json_body=payload)
         return await self._finalize_work_package_write(
@@ -2536,6 +2604,7 @@ class OpenProjectClient:
             raise OpenProjectServerError("OpenProject work package is missing a project link.")
         self._ensure_project_write_link_allowed(parent.get("_links", {}).get("project"))
 
+        resolution_context = ProjectResolutionContext(self._resolve_project_ref)
         payload = await self._build_write_payload(
             project=str(project_id),
             type=type,
@@ -2551,6 +2620,7 @@ class OpenProjectClient:
             parent_work_package_id=parent_numeric_id,
             start_date=start_date,
             due_date=due_date,
+            project_context=resolution_context,
         )
         form = await self._post(f"projects/{project_id}/work_packages/form", json_body=payload)
         return await self._finalize_work_package_write(
@@ -2601,6 +2671,7 @@ class OpenProjectClient:
             raise OpenProjectServerError("OpenProject work package is missing a project link.")
         self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
 
+        resolution_context = ProjectResolutionContext(self._resolve_project_ref)
         lock_version = current.get("lockVersion")
         payload = await self._build_write_payload(
             project=str(project_id),
@@ -2625,6 +2696,7 @@ class OpenProjectClient:
             percentage_done=percentage_done,
             work_package_id=work_package_id,
             lock_version=lock_version,
+            project_context=resolution_context,
         )
 
         # Auto-derive percentageDone/remainingTime when the status is transitioning to a closed
@@ -3157,6 +3229,7 @@ class OpenProjectClient:
         search: str | None = None,
         offset: int = 1,
         limit: int | None = None,
+        context: ProjectResolutionContext | None = None,
     ) -> VersionListResult:
         self._ensure_read_enabled("version")
         effective_limit = self._resolve_limit(limit)
@@ -3166,7 +3239,7 @@ class OpenProjectClient:
             # allowlist checks are redundant and would fail because the definingProject
             # link only carries the title (display name), not the identifier. No client-side
             # filtering happens here, so exact server-side pagination is safe.
-            project_payload = await self._get_project_payload(project)
+            project_payload = await self._get_project_payload(project, context=context)
             project_id = int(project_payload["id"])
             params = {"offset": str(offset), "pageSize": str(effective_limit)}
             payload = await self._get(f"projects/{project_id}/versions", params=params)
@@ -3176,13 +3249,14 @@ class OpenProjectClient:
                 if isinstance(item, dict)
             ]
             server_total = int(payload.get("total", len(results)))
+            next_offset, truncated = _paginate_server(offset=offset, limit=effective_limit, total=server_total)
             return VersionListResult(
                 offset=offset,
                 limit=effective_limit,
                 total=server_total,
                 count=len(results),
-                next_offset=_next_offset(offset, effective_limit, server_total),
-                truncated=server_total > offset * effective_limit,
+                next_offset=next_offset,
+                truncated=truncated,
                 results=results,
             )
 
@@ -3190,7 +3264,7 @@ class OpenProjectClient:
             # search given: no server-side name filter exists for the project-scoped
             # endpoint either, so over-fetch this project's versions and filter/paginate
             # in memory instead of relying on exact server-side pagination.
-            project_payload = await self._get_project_payload(project)
+            project_payload = await self._get_project_payload(project, context=context)
             project_id = int(project_payload["id"])
             payload = await self._get(
                 f"projects/{project_id}/versions",
@@ -3222,17 +3296,14 @@ class OpenProjectClient:
             search_key = search.casefold()
             results = [item for item in results if search_key in (item.name or "").casefold()]
 
-        total = len(results)
-        start = (offset - 1) * effective_limit
-        end = start + effective_limit
-        page = results[start:end]
+        page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
         return VersionListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=len(page),
-            next_offset=offset + 1 if end < total else None,
-            truncated=end < total,
+            next_offset=next_offset,
+            truncated=truncated,
             results=page,
         )
 
@@ -3289,9 +3360,10 @@ class OpenProjectClient:
         *,
         offset: int = 1,
         limit: int | None = None,
+        context: ProjectResolutionContext | None = None,
     ) -> SprintListResult:
         self._ensure_read_enabled("project")
-        project_payload = await self._get_project_payload(project)
+        project_payload = await self._get_project_payload(project, context=context)
         project_id = int(project_payload["id"])
         effective_limit = self._resolve_limit(limit)
         # Even though this is project-scoped, results are still filtered client-side
@@ -6546,6 +6618,7 @@ class OpenProjectClient:
         percentage_done: int | None = None,
         work_package_id: int | str | None = None,
         lock_version: int | None = None,
+        project_context: ProjectResolutionContext | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {}
         links: dict[str, dict[str, str | None]] = {}
@@ -6589,7 +6662,7 @@ class OpenProjectClient:
             payload["duration"] = duration
         if type is not None:
             self._ensure_field_writable("work_package", "type")
-            type_id = await self._resolve_type_id(type, project=project)
+            type_id = await self._resolve_type_id(type, project=project, context=project_context)
             links["type"] = {"href": self._api_href(f"types/{type_id}")}
         if version is CLEAR_VERSION:
             self._ensure_field_writable("work_package", "version")
@@ -6597,7 +6670,7 @@ class OpenProjectClient:
         elif version is not None:
             self._ensure_field_writable("work_package", "version")
             version_id = await self._resolve_version_id(
-                _narrow_cleared(version, sentinel=CLEAR_VERSION), project=project
+                _narrow_cleared(version, sentinel=CLEAR_VERSION), project=project, context=project_context
             )
             links["version"] = {"href": self._api_href(f"versions/{version_id}")}
         if sprint is CLEAR:
@@ -6605,7 +6678,9 @@ class OpenProjectClient:
             links["sprint"] = {"href": None}
         elif sprint is not None:
             self._ensure_field_writable("work_package", "sprint")
-            sprint_id = await self._resolve_sprint_id(_narrow_cleared(sprint, sentinel=CLEAR), project=project)
+            sprint_id = await self._resolve_sprint_id(
+                _narrow_cleared(sprint, sentinel=CLEAR), project=project, context=project_context
+            )
             links["sprint"] = {"href": self._api_href(f"sprints/{sprint_id}")}
         if status is not None:
             self._ensure_field_writable("work_package", "status")
@@ -7058,7 +7133,15 @@ class OpenProjectClient:
             payload["_links"] = links
         return payload
 
-    async def _get_project_payload(self, project_ref: str, *, write: bool = False) -> dict[str, Any]:
+    async def _get_project_payload(
+        self,
+        project_ref: str,
+        *,
+        write: bool = False,
+        context: ProjectResolutionContext | None = None,
+    ) -> dict[str, Any]:
+        if context is not None:
+            return await context.resolve(project_ref, write=write)
         return await self._resolve_project_ref(project_ref, write=write)
 
     async def _resolve_project_ref(self, project_ref: str, *, write: bool = False) -> dict[str, Any]:
@@ -7946,13 +8029,15 @@ class OpenProjectClient:
             raise InvalidInputError("At least one role is required.")
         return hrefs
 
-    async def _resolve_type_id(self, type_ref: str, *, project: str | None) -> str:
+    async def _resolve_type_id(
+        self, type_ref: str, *, project: str | None, context: ProjectResolutionContext | None = None
+    ) -> str:
         if type_ref.isdigit():
             return type_ref
         if not project:
             raise InvalidInputError("type names require a project filter. Pass a numeric type id or set project.")
 
-        project_payload = await self._get_project_payload(project)
+        project_payload = await self._get_project_payload(project, context=context)
         project_id = str(project_payload["id"])
         payload = await self._get(f"projects/{project_id}/types")
         elements = payload.get("_embedded", {}).get("elements", [])
@@ -7963,7 +8048,9 @@ class OpenProjectClient:
             raise InvalidInputError(f"OpenProject type '{type_ref}' is ambiguous. Pass a numeric type id.")
         return matches[0]
 
-    async def _resolve_version_id(self, version_ref: str, *, project: str | None) -> str:
+    async def _resolve_version_id(
+        self, version_ref: str, *, project: str | None, context: ProjectResolutionContext | None = None
+    ) -> str:
         if project is not None:
             project_ref = project
             if project_ref.isdigit():
@@ -7973,14 +8060,16 @@ class OpenProjectClient:
                 # that _get_project_payload fetches AND checks together, so a denied
                 # project raises immediately and no FURTHER request (e.g. listing
                 # that project's versions) ever fires afterward.
-                project_payload = await self._get_project_payload(project_ref)
+                project_payload = await self._get_project_payload(project_ref, context=context)
                 project_ref = project_payload.get("identifier") or project_ref
 
             wanted_id = int(version_ref) if version_ref.isdigit() else None
             name_matches: list[VersionSummary] = []
             offset = 1
             while True:
-                page = await self.list_versions(project=project_ref, offset=offset, limit=self.settings.max_page_size)
+                page = await self.list_versions(
+                    project=project_ref, offset=offset, limit=self.settings.max_page_size, context=context
+                )
                 if wanted_id is not None:
                     if any(v.id == wanted_id for v in page.results):
                         return version_ref
@@ -8038,7 +8127,9 @@ class OpenProjectClient:
             )
         return str(name_matches[0].id)
 
-    async def _resolve_sprint_id(self, sprint_ref: str, *, project: str) -> str:
+    async def _resolve_sprint_id(
+        self, sprint_ref: str, *, project: str, context: ProjectResolutionContext | None = None
+    ) -> str:
         if sprint_ref.isdigit():
             try:
                 payload = await self._get(f"sprints/{sprint_ref}")
@@ -8049,7 +8140,7 @@ class OpenProjectClient:
             self._ensure_sprint_workspace_allowed(payload)
             return sprint_ref
 
-        sprints = await self.list_project_sprints(project, offset=1, limit=self.settings.max_results)
+        sprints = await self.list_project_sprints(project, offset=1, limit=self.settings.max_results, context=context)
         matches = [str(item.id) for item in sprints.results if (item.name or "").casefold() == sprint_ref.casefold()]
         if not matches:
             raise InvalidInputError(f"OpenProject sprint '{sprint_ref}' was not found in project '{project}'.")
@@ -8386,6 +8477,33 @@ def _next_offset(offset: int, limit: int, total: int) -> int | None:
     if offset * limit >= total:
         return None
     return offset + 1
+
+
+def _paginate_server(*, offset: int, limit: int, total: int) -> tuple[int | None, bool]:
+    """next_offset/truncated for a page the server already sliced (offset/pageSize sent
+    as request params, `total` trusted as reported).
+
+    Single source of truth for a pair that used to be written as two separately
+    worded (but logically identical) expressions per list method -- `truncated`
+    is exactly "next_offset is not None", derived here instead of re-derived.
+    """
+    next_offset = _next_offset(offset, limit, total)
+    return next_offset, next_offset is not None
+
+
+def _paginate_client(*, offset: int, limit: int, results: list[Any]) -> tuple[list[Any], int, int | None, bool]:
+    """Slice an already-fetched, already-filtered in-memory list into one page.
+
+    Returns (page, total, next_offset, truncated). `total` is len(results) --
+    the filtered candidate set already held locally, not a server-reported
+    total. Same next_offset/truncated relationship as _paginate_server.
+    """
+    total = len(results)
+    start = (offset - 1) * limit
+    end = start + limit
+    page = results[start:end]
+    next_offset, truncated = _paginate_server(offset=offset, limit=limit, total=total)
+    return page, total, next_offset, truncated
 
 
 def _id_from_href(href: str | None) -> int | None:

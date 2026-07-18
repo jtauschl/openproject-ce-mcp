@@ -1465,8 +1465,12 @@ async def test_create_subtask_uses_parent_link_in_form_payload() -> None:
                 request=request,
             )
         if request.url.path == "/api/v3/projects/1" and request.method == "GET":
-            # _resolve_type_id always authorizes the project by fetching
-            # it, even when the project ref is already numeric.
+            # Unlike create_work_package, create_subtask only knows the parent's
+            # numeric project id from its link (no full payload up front), so its
+            # ProjectResolutionContext (OPM-205) starts empty -- _resolve_type_id's
+            # project fetch below is a real, still-necessary first request. It
+            # would only be skipped on a *second* resolution of the same project
+            # within this same call (e.g. if version were also given here).
             return httpx.Response(
                 200,
                 json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo"},
@@ -1531,8 +1535,11 @@ async def test_create_work_package_resolves_schema_backed_fields_and_custom_fiel
                 request=request,
             )
         if request.url.path == "/api/v3/projects/1" and request.method == "GET":
-            # _resolve_type_id always authorizes the project by fetching
-            # it, even when the project ref is already numeric.
+            # Not actually hit anymore for this numeric project ref: create_work_package's
+            # ProjectResolutionContext (OPM-205) is seeded from the initial project
+            # resolution, so _resolve_type_id's own project fetch is served from that
+            # cache instead of re-requesting it. Kept in the handler in case a future
+            # change reintroduces the extra fetch.
             return httpx.Response(
                 200,
                 json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo"},
@@ -1649,6 +1656,63 @@ async def test_create_work_package_resolves_schema_backed_fields_and_custom_fiel
     assert result.payload["_links"]["projectPhase"]["href"] == "/api/v3/project_phases/5"
     assert result.payload["customField10"] == 8
     assert result.payload["_links"]["customField11"]["href"] == "/api/v3/custom_options/20"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_work_package_resolves_project_only_once_for_type_and_version_together() -> None:
+    # OPM-205: before ProjectResolutionContext, create_work_package's own
+    # project resolution, then _resolve_type_id's, then _resolve_version_id's
+    # each independently re-fetched (and re-allowlist-checked) the same
+    # already-resolved project. With both type and version given, this proves
+    # exactly one GET for the project.
+    project_get_calls = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal project_get_calls
+        if request.url.path == "/api/v3/projects/demo":
+            project_get_calls += 1
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo"},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1" and request.method == "GET":
+            project_get_calls += 1
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo"},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": "Task"}]}}, request=request)
+        if request.url.path == "/api/v3/projects/1/versions":
+            return httpx.Response(
+                200,
+                json={"total": 1, "_embedded": {"elements": [{"id": 3, "name": "v1.0"}]}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/work_packages/form":
+            body = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    result = await client.create_work_package(
+        project="demo",
+        type="Task",
+        version="v1.0",
+        subject="Only one project fetch",
+        confirm=False,
+    )
+
+    assert result.ready is True
+    assert project_get_calls == 1
 
     await client.aclose()
 
