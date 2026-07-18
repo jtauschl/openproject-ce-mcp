@@ -24,6 +24,9 @@ from .app.errors import (
     PermissionDeniedError,
     TransportError,
 )
+from .app.pagination import _next_offset
+from .app.pagination import paginate_client as _paginate_client
+from .app.pagination import paginate_server as _paginate_server
 from .app.ports.project_resolution import ProjectResolutionContext
 from .config import HIDE_FIELD_ENV_BY_ENTITY, READ_SCOPE_ENV_VAR, Settings
 from .models import (
@@ -8395,39 +8398,6 @@ def _is_usable_positive_id(value: Any) -> bool:
     (e.g. ``int(payload["id"])``), so no string/numeric-string form is
     accepted here."""
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
-
-
-def _next_offset(offset: int, limit: int, total: int) -> int | None:
-    if offset * limit >= total:
-        return None
-    return offset + 1
-
-
-def _paginate_server(*, offset: int, limit: int, total: int) -> tuple[int | None, bool]:
-    """next_offset/truncated for a page the server already sliced (offset/pageSize sent
-    as request params, `total` trusted as reported).
-
-    Single source of truth for a pair that used to be written as two separately
-    worded (but logically identical) expressions per list method -- `truncated`
-    is exactly "next_offset is not None", derived here instead of re-derived.
-    """
-    next_offset = _next_offset(offset, limit, total)
-    return next_offset, next_offset is not None
-
-
-def _paginate_client(*, offset: int, limit: int, results: list[Any]) -> tuple[list[Any], int, int | None, bool]:
-    """Slice an already-fetched, already-filtered in-memory list into one page.
-
-    Returns (page, total, next_offset, truncated). `total` is len(results) --
-    the filtered candidate set already held locally, not a server-reported
-    total. Same next_offset/truncated relationship as _paginate_server.
-    """
-    total = len(results)
-    start = (offset - 1) * limit
-    end = start + limit
-    page = results[start:end]
-    next_offset, truncated = _paginate_server(offset=offset, limit=limit, total=total)
-    return page, total, next_offset, truncated
 
 
 def _id_from_href(href: str | None) -> int | None:
