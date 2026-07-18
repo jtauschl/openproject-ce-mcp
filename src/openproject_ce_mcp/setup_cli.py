@@ -52,7 +52,7 @@ from openproject_ce_mcp.config import ConfigError, Settings, tool_exposure_viola
 # we use it to *validate* merged TOML before writing; when absent we fall back to
 # the text-level checks in _merge_codex_toml.
 try:
-    import tomllib as _tomllib
+    import tomllib as _tomllib  # type: ignore[import-not-found]
 except ModuleNotFoundError:  # Python 3.10
     _tomllib = None  # type: ignore[assignment]
 

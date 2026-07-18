@@ -157,7 +157,7 @@ def _check_config_parsing(client_configs: list[tuple]) -> tuple[bool, dict[str, 
             elif client.fmt == "toml":
                 # On Python 3.10 without tomllib, we can't parse Codex TOML
                 try:
-                    import tomllib
+                    import tomllib  # type: ignore[import-not-found]
 
                     config = tomllib.loads(target.read_text())
                     has_entry = "openproject" in config.get("mcp_servers", {})

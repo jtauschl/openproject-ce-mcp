@@ -115,3 +115,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["SIM"]  # Testcode darf ausführlicher sein
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src/openproject_ce_mcp"]
