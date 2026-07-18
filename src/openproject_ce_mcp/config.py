@@ -253,30 +253,14 @@ class Settings:
         api_token = _require_non_empty(env.get("OPENPROJECT_API_TOKEN"), "OPENPROJECT_API_TOKEN")
         read_projects = _parse_csv(env.get("OPENPROJECT_READ_PROJECTS"))
         write_projects = _parse_csv(env.get("OPENPROJECT_WRITE_PROJECTS"))
-        enable_project_read = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_PROJECT_READ"), "OPENPROJECT_ENABLE_PROJECT_READ", default=True
-        )
-        enable_work_package_read = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_WORK_PACKAGE_READ"), "OPENPROJECT_ENABLE_WORK_PACKAGE_READ", default=True
-        )
-        enable_membership_read = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_MEMBERSHIP_READ"), "OPENPROJECT_ENABLE_MEMBERSHIP_READ", default=True
-        )
-        enable_version_read = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_VERSION_READ"), "OPENPROJECT_ENABLE_VERSION_READ", default=True
-        )
-        enable_board_read = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_BOARD_READ"), "OPENPROJECT_ENABLE_BOARD_READ", default=True
-        )
-        enable_personal_read = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_PERSONAL_READ"), "OPENPROJECT_ENABLE_PERSONAL_READ", default=False
-        )
-        enable_admin_read = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_ADMIN_READ"), "OPENPROJECT_ENABLE_ADMIN_READ", default=False
-        )
-        enable_metadata_tools = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_EXTENDED_READ"), "OPENPROJECT_ENABLE_EXTENDED_READ", default=False
-        )
+        enable_project_read = _bool_env(env, "OPENPROJECT_ENABLE_PROJECT_READ", default=True)
+        enable_work_package_read = _bool_env(env, "OPENPROJECT_ENABLE_WORK_PACKAGE_READ", default=True)
+        enable_membership_read = _bool_env(env, "OPENPROJECT_ENABLE_MEMBERSHIP_READ", default=True)
+        enable_version_read = _bool_env(env, "OPENPROJECT_ENABLE_VERSION_READ", default=True)
+        enable_board_read = _bool_env(env, "OPENPROJECT_ENABLE_BOARD_READ", default=True)
+        enable_personal_read = _bool_env(env, "OPENPROJECT_ENABLE_PERSONAL_READ", default=False)
+        enable_admin_read = _bool_env(env, "OPENPROJECT_ENABLE_ADMIN_READ", default=False)
+        enable_metadata_tools = _bool_env(env, "OPENPROJECT_ENABLE_EXTENDED_READ", default=False)
         hidden_fields = {
             entity: patterns
             for entity, env_name in HIDE_FIELD_ENV_BY_ENTITY.items()
@@ -286,45 +270,17 @@ class Settings:
         hide_work_package_fields = hidden_fields.get("work_package", ())
         hide_activity_fields = hidden_fields.get("activity", ())
         hide_custom_fields = _parse_csv(env.get("OPENPROJECT_HIDE_CUSTOM_FIELDS"))
-        enable_project_write = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_PROJECT_WRITE"),
-            "OPENPROJECT_ENABLE_PROJECT_WRITE",
-            default=True,
-        )
-        enable_work_package_write = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE"),
-            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE",
-            default=True,
-        )
-        enable_membership_write = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_MEMBERSHIP_WRITE"),
-            "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE",
-            default=True,
-        )
-        enable_version_write = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_VERSION_WRITE"),
-            "OPENPROJECT_ENABLE_VERSION_WRITE",
-            default=True,
-        )
-        enable_board_write = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_BOARD_WRITE"),
-            "OPENPROJECT_ENABLE_BOARD_WRITE",
-            default=True,
-        )
-        enable_personal_write = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_PERSONAL_WRITE"),
-            "OPENPROJECT_ENABLE_PERSONAL_WRITE",
-            default=False,
-        )
-        enable_admin_write = _parse_bool(
-            env.get("OPENPROJECT_ENABLE_ADMIN_WRITE"),
-            "OPENPROJECT_ENABLE_ADMIN_WRITE",
-            default=False,
-        )
-        timeout = _parse_float(env.get("OPENPROJECT_TIMEOUT"), "OPENPROJECT_TIMEOUT", default=12.0, minimum=1.0)
-        verify_ssl = _parse_bool(env.get("OPENPROJECT_VERIFY_SSL"), "OPENPROJECT_VERIFY_SSL", default=True)
-        default_page_size = _parse_int(
-            env.get("OPENPROJECT_DEFAULT_PAGE_SIZE"),
+        enable_project_write = _bool_env(env, "OPENPROJECT_ENABLE_PROJECT_WRITE", default=True)
+        enable_work_package_write = _bool_env(env, "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE", default=True)
+        enable_membership_write = _bool_env(env, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", default=True)
+        enable_version_write = _bool_env(env, "OPENPROJECT_ENABLE_VERSION_WRITE", default=True)
+        enable_board_write = _bool_env(env, "OPENPROJECT_ENABLE_BOARD_WRITE", default=True)
+        enable_personal_write = _bool_env(env, "OPENPROJECT_ENABLE_PERSONAL_WRITE", default=False)
+        enable_admin_write = _bool_env(env, "OPENPROJECT_ENABLE_ADMIN_WRITE", default=False)
+        timeout = _float_env(env, "OPENPROJECT_TIMEOUT", default=12.0, minimum=1.0)
+        verify_ssl = _bool_env(env, "OPENPROJECT_VERIFY_SSL", default=True)
+        default_page_size = _int_env(
+            env,
             "OPENPROJECT_DEFAULT_PAGE_SIZE",
             # 10, not 20: measured OPM lists are ~44% description bytes, so page size
             # is the strongest lever on list context. 10 halves it while still showing
@@ -332,25 +288,10 @@ class Settings:
             default=10,
             minimum=1,
         )
-        max_page_size = _parse_int(
-            env.get("OPENPROJECT_MAX_PAGE_SIZE"),
-            "OPENPROJECT_MAX_PAGE_SIZE",
-            default=50,
-            minimum=1,
-        )
-        max_results = _parse_int(
-            env.get("OPENPROJECT_MAX_RESULTS"),
-            "OPENPROJECT_MAX_RESULTS",
-            default=100,
-            minimum=1,
-        )
+        max_page_size = _int_env(env, "OPENPROJECT_MAX_PAGE_SIZE", default=50, minimum=1)
+        max_results = _int_env(env, "OPENPROJECT_MAX_RESULTS", default=100, minimum=1)
         log_level = _parse_log_level(env.get("OPENPROJECT_LOG_LEVEL"), "OPENPROJECT_LOG_LEVEL", default="WARNING")
-        text_limit = _parse_int(
-            env.get("OPENPROJECT_TEXT_LIMIT"),
-            "OPENPROJECT_TEXT_LIMIT",
-            default=DEFAULT_TEXT_LIMIT,
-            minimum=1,
-        )
+        text_limit = _int_env(env, "OPENPROJECT_TEXT_LIMIT", default=DEFAULT_TEXT_LIMIT, minimum=1)
         if text_limit > TEXT_LIMIT_MAX:
             raise ConfigError(f"OPENPROJECT_TEXT_LIMIT must not exceed {TEXT_LIMIT_MAX}.")
         attachment_root = (env.get("OPENPROJECT_ATTACHMENT_ROOT") or "").strip()
@@ -360,26 +301,11 @@ class Settings:
                 "or ~/uploads) — a relative path would resolve against the server's current "
                 "working directory, which this phase removes as an implicit fallback."
             )
-        max_retries = _parse_int(
-            env.get("OPENPROJECT_MAX_RETRIES"),
-            "OPENPROJECT_MAX_RETRIES",
-            default=3,
-            minimum=0,
-        )
+        max_retries = _int_env(env, "OPENPROJECT_MAX_RETRIES", default=3, minimum=0)
         if max_retries > 10:
             raise ConfigError("OPENPROJECT_MAX_RETRIES must not exceed 10.")
-        retry_base_delay = _parse_float(
-            env.get("OPENPROJECT_RETRY_BASE_DELAY"),
-            "OPENPROJECT_RETRY_BASE_DELAY",
-            default=1.0,
-            minimum=0.0,
-        )
-        retry_max_delay = _parse_float(
-            env.get("OPENPROJECT_RETRY_MAX_DELAY"),
-            "OPENPROJECT_RETRY_MAX_DELAY",
-            default=60.0,
-            minimum=0.0,
-        )
+        retry_base_delay = _float_env(env, "OPENPROJECT_RETRY_BASE_DELAY", default=1.0, minimum=0.0)
+        retry_max_delay = _float_env(env, "OPENPROJECT_RETRY_MAX_DELAY", default=60.0, minimum=0.0)
         if retry_max_delay < retry_base_delay:
             raise ConfigError("OPENPROJECT_RETRY_MAX_DELAY must be >= OPENPROJECT_RETRY_BASE_DELAY.")
 
@@ -504,6 +430,12 @@ def _parse_bool(value: str | None, name: str, *, default: bool) -> bool:
     raise ConfigError(f"{name} must be a boolean value.")
 
 
+def _bool_env(env: Mapping[str, str], name: str, *, default: bool) -> bool:
+    """`_parse_bool(env.get(name), name, ...)` -- every call site otherwise repeats
+    the env var name once to look it up and again for the error message."""
+    return _parse_bool(env.get(name), name, default=default)
+
+
 def _parse_csv(value: str | None) -> tuple[str, ...]:
     if value is None or not value.strip():
         return ()
@@ -524,6 +456,10 @@ def _parse_int(value: str | None, name: str, *, default: int, minimum: int) -> i
     return parsed
 
 
+def _int_env(env: Mapping[str, str], name: str, *, default: int, minimum: int) -> int:
+    return _parse_int(env.get(name), name, default=default, minimum=minimum)
+
+
 def _parse_float(value: str | None, name: str, *, default: float, minimum: float) -> float:
     if value is None or not value.strip():
         return default
@@ -534,6 +470,10 @@ def _parse_float(value: str | None, name: str, *, default: float, minimum: float
     if parsed < minimum:
         raise ConfigError(f"{name} must be at least {minimum}.")
     return parsed
+
+
+def _float_env(env: Mapping[str, str], name: str, *, default: float, minimum: float) -> float:
+    return _parse_float(env.get(name), name, default=default, minimum=minimum)
 
 
 def _parse_log_level(value: str | None, name: str, *, default: str) -> str:

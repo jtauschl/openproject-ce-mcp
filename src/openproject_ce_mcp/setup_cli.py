@@ -192,24 +192,26 @@ def _home() -> Path:
     return Path.home()
 
 
+def _platform_config_root() -> Path:
+    """Per-OS root for user-wide app config directories (APPDATA / Application
+    Support / XDG-ish .config). Shared by every user-wide client config path
+    below, which only differ in the path segments under this root.
+    """
+    if _IS_WINDOWS:
+        return Path(os.environ.get("APPDATA", _home() / "AppData" / "Roaming"))
+    if _IS_MACOS:
+        return _home() / "Library" / "Application Support"
+    return _home() / ".config"
+
+
 def _vscode_user_mcp_path() -> Path:
     """User-wide MCP config for VS Code (GitHub Copilot)."""
-    if _IS_WINDOWS:
-        base = Path(os.environ.get("APPDATA", _home() / "AppData" / "Roaming"))
-        return base / "Code" / "User" / "mcp.json"
-    if _IS_MACOS:
-        return _home() / "Library" / "Application Support" / "Code" / "User" / "mcp.json"
-    return _home() / ".config" / "Code" / "User" / "mcp.json"
+    return _platform_config_root() / "Code" / "User" / "mcp.json"
 
 
 def _claude_desktop_path() -> Path:
     """User-wide MCP config for the standalone Claude Desktop app."""
-    if _IS_WINDOWS:
-        base = Path(os.environ.get("APPDATA", _home() / "AppData" / "Roaming"))
-        return base / "Claude" / "claude_desktop_config.json"
-    if _IS_MACOS:
-        return _home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
-    return _home() / ".config" / "Claude" / "claude_desktop_config.json"
+    return _platform_config_root() / "Claude" / "claude_desktop_config.json"
 
 
 def _server_entry(command: str, env: dict[str, str], *, stdio: bool) -> dict:
@@ -322,6 +324,13 @@ def _strip_codex_openproject(existing: str) -> str:
     return "\n".join(out)
 
 
+def _openproject_server_entry(data: dict, root_key: str) -> dict:
+    """Navigate to the ``openproject`` server entry under ``root_key`` in a parsed
+    JSON/TOML client config, tolerating a missing root key or entry (returns {}).
+    """
+    return data.get(root_key, {}).get("openproject", {})
+
+
 def _merge_codex_toml(existing: str, command: str, env: dict[str, str]) -> str:
     """Preserve the rest of the Codex config, replacing only the openproject table.
 
@@ -338,7 +347,7 @@ def _merge_codex_toml(existing: str, command: str, env: dict[str, str]) -> str:
             data = _tomllib.loads(merged)
         except _tomllib.TOMLDecodeError as exc:
             raise CodexMergeError(f"merged Codex config is not valid TOML ({exc})") from exc
-        server = data.get("mcp_servers", {}).get("openproject", {})
+        server = _openproject_server_entry(data, "mcp_servers")
         if server.get("command") != command:
             raise CodexMergeError("merged Codex config did not round-trip openproject")
     return merged
@@ -518,16 +527,10 @@ def _write_client_config(client: Client, command: str, env: dict[str, str], *, t
             print(f"    Leaving it untouched. Add the server by hand — see {client.doc}.")
             return False
         print(f"  · Updating {target} (existing settings are preserved).")
-        _backup(target)
     else:
         merged = client.merge("", command, env)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(merged, encoding="utf-8")
-    if not _IS_WINDOWS:
-        target.chmod(0o600)
+    _write_config_file(target, merged)
     print(f"  ✓ Wrote {target}")
-    _git_warning_for_unignored_file(target)
-    _git_warning_for_unignored_file(target.with_name(f"{target.name}.bak.example"))
     return True
 
 
@@ -670,9 +673,9 @@ def _read_client_env(client: Client, *, target: Path | None = None) -> dict[str,
             if _tomllib is None:
                 return {}
             data = _tomllib.loads(text)
-            return data.get("mcp_servers", {}).get("openproject", {}).get("env", {})
+            return _openproject_server_entry(data, "mcp_servers").get("env", {})
         data = json.loads(text)
-        return data.get(client.root_key, {}).get("openproject", {}).get("env", {})
+        return _openproject_server_entry(data, client.root_key).get("env", {})
     except Exception:
         return {}
 
@@ -734,6 +737,23 @@ def _git_warning_for_unignored_file(path: Path) -> None:
     print("    It contains credentials; add it and its backups to .gitignore before committing.")
 
 
+def _write_config_file(path: Path, text: str, *, backup: bool = True) -> None:
+    """Shared shape behind _write_client_config/_write_mcp_json: back up an
+    existing file, ensure the parent directory exists, write the new text,
+    tighten permissions to 0o600 (POSIX only), then warn if the file (or its
+    timestamped-backup-example path) looks unignored by Git. Callers print
+    their own success message afterward — the wording differs between them.
+    """
+    if backup and path.exists():
+        _backup(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    if not _IS_WINDOWS:
+        path.chmod(0o600)
+    _git_warning_for_unignored_file(path)
+    _git_warning_for_unignored_file(path.with_name(f"{path.name}.bak.example"))
+
+
 def _write_mcp_json(env: dict[str, str], mcp_json: Path, command: str) -> None:
     existing = mcp_json.read_text(encoding="utf-8") if mcp_json.exists() else ""
     # Merge first: if the existing file has an unexpected shape, _merge_json
@@ -745,15 +765,8 @@ def _write_mcp_json(env: dict[str, str], mcp_json: Path, command: str) -> None:
         print(f"Could not update {mcp_json}: {exc}", file=sys.stderr)
         print("Left it untouched. Fix or remove the file by hand, then re-run.", file=sys.stderr)
         return
-    if mcp_json.exists():
-        _backup(mcp_json)
-    mcp_json.parent.mkdir(parents=True, exist_ok=True)
-    mcp_json.write_text(merged, encoding="utf-8")
-    if not _IS_WINDOWS:
-        mcp_json.chmod(0o600)
+    _write_config_file(mcp_json, merged)
     print(f"Written: {mcp_json}")
-    _git_warning_for_unignored_file(mcp_json)
-    _git_warning_for_unignored_file(mcp_json.with_name(f"{mcp_json.name}.bak.example"))
 
 
 # ── prompts ───────────────────────────────────────────────────────────────────
