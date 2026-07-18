@@ -274,6 +274,78 @@ async def test_write_is_always_a_subset_of_read_scope(check) -> None:
 
 
 @pytest.mark.asyncio
+async def test_initialize_skips_project_fetch_when_both_scopes_allow_all() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("*",), write_projects=("*",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    await client.initialize()
+
+    assert client._project_id_to_identifier == {}
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_initialize_populates_identifier_cache_for_restricted_write_scope_even_when_read_is_open() -> None:
+    # Regression: initialize() used to bail out entirely whenever read_projects
+    # allowed all, without considering that write_projects might still be
+    # restricted and need the id->identifier cache for link-based matching
+    # (_project_candidates only has the numeric id + display name from an
+    # embedded HAL link, never the identifier itself, unless this cache fills
+    # it in). READ="*" + WRITE="OPM" is exactly the config that exposed this.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/projects"
+        return httpx.Response(
+            200,
+            json={
+                "_embedded": {
+                    "elements": [
+                        {"id": 7, "identifier": "OPM", "name": "OPM OpenProject CE MCP"},
+                        {"id": 16, "identifier": "ENC", "name": "ENC Encore ST"},
+                    ]
+                }
+            },
+            request=request,
+        )
+
+    settings = _base_settings(read_projects=("*",), write_projects=("OPM",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    await client.initialize()
+
+    assert client._project_id_to_identifier == {7: "OPM"}
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_write_link_allowlist_recognizes_identifier_after_initialize_with_open_read_scope() -> None:
+    # End-to-end proof of the same regression: a work-package-style embedded
+    # project link (numeric id + display name only, no identifier field) must
+    # be recognized against an identifier-based WRITE_PROJECTS entry once
+    # initialize() has run, even though READ_PROJECTS is wide open.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/projects"
+        return httpx.Response(
+            200,
+            json={"_embedded": {"elements": [{"id": 7, "identifier": "OPM", "name": "OPM OpenProject CE MCP"}]}},
+            request=request,
+        )
+
+    settings = _base_settings(read_projects=("*",), write_projects=("OPM",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    await client.initialize()
+
+    # Must not raise: the embedded link only carries id + title, exactly like a
+    # real work package's "_links.project", and "OPM" (the identifier) is only
+    # resolvable via the cache initialize() just populated.
+    client._ensure_project_write_link_allowed({"href": "/api/v3/projects/7", "title": "OPM OpenProject CE MCP"})
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_project_wildcard_patterns_match_identifier_and_title() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/mcp-test":
