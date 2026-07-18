@@ -570,6 +570,27 @@ async def get_project_configuration(
     return await _run_tool(client.get_project_configuration(safe_project))
 
 
+def _validate_project_descriptive_fields(
+    *,
+    description: str | None,
+    status: str | None,
+    status_explanation: str | None,
+    parent: str | None,
+) -> dict[str, Any]:
+    """Shared field validation for create_project/copy_project -- byte-identical
+    in both (plain, non-clearable validators). update_project uses different
+    validator functions for these same field names and is NOT covered here.
+    """
+    return {
+        "description": _validate_optional_text(description, field_name="description", max_length=10_000),
+        "status": _validate_optional_query(status, field_name="status", max_length=100),
+        "status_explanation": _validate_optional_text(
+            status_explanation, field_name="status_explanation", max_length=10_000
+        ),
+        "parent": _validate_optional_project_ref(parent),
+    }
+
+
 async def create_project(
     ctx: Context,
     name: str,
@@ -590,22 +611,19 @@ async def create_project(
     client = _client_from_context(ctx)
     safe_name = _validate_required_query(name, field_name="name", max_length=255)
     safe_identifier = _validate_project_identifier(identifier)
-    safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
-    safe_status = _validate_optional_query(status, field_name="status", max_length=100)
-    safe_status_explanation = _validate_optional_text(
-        status_explanation, field_name="status_explanation", max_length=10_000
+    common = _validate_project_descriptive_fields(
+        description=description, status=status, status_explanation=status_explanation, parent=parent
     )
-    safe_parent = _validate_optional_project_ref(parent)
     return await _run_tool(
         client.create_project(
             name=safe_name,
             identifier=safe_identifier,
-            description=safe_description,
+            description=common["description"],
             public=public,
             active=active,
-            status=safe_status,
-            status_explanation=safe_status_explanation,
-            parent=safe_parent,
+            status=common["status"],
+            status_explanation=common["status_explanation"],
+            parent=common["parent"],
             confirm=confirm,
         )
     )
@@ -633,23 +651,20 @@ async def copy_project(
     safe_source_project = _validate_project_ref(source_project)
     safe_name = _validate_required_query(name, field_name="name", max_length=255)
     safe_identifier = _validate_project_identifier(identifier)
-    safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
-    safe_status = _validate_optional_query(status, field_name="status", max_length=100)
-    safe_status_explanation = _validate_optional_text(
-        status_explanation, field_name="status_explanation", max_length=10_000
+    common = _validate_project_descriptive_fields(
+        description=description, status=status, status_explanation=status_explanation, parent=parent
     )
-    safe_parent = _validate_optional_project_ref(parent)
     return await _run_tool(
         client.copy_project(
             source_project=safe_source_project,
             name=safe_name,
             identifier=safe_identifier,
-            description=safe_description,
+            description=common["description"],
             public=public,
             active=active,
-            status=safe_status,
-            status_explanation=safe_status_explanation,
-            parent=safe_parent,
+            status=common["status"],
+            status_explanation=common["status_explanation"],
+            parent=common["parent"],
             confirm=confirm,
         )
     )
@@ -1562,6 +1577,55 @@ async def get_work_packages(
     return await _run_tool(client.get_work_packages(ids=unique_ids, text_limit=safe_text_limit))
 
 
+def _validate_work_package_create_fields(
+    *,
+    description: str | None,
+    version: str | None,
+    project_phase: str | None,
+    assignee: str | None,
+    responsible: str | None,
+    priority: str | None,
+    category: str | None,
+    custom_fields: dict[str, Any] | None,
+    start_date: str | None,
+    due_date: str | None,
+    estimated_time: str | None = None,
+    remaining_time: str | None = None,
+    duration: str | None = None,
+    field_prefix: str = "",
+    assignee_field_name: str | None = None,
+    responsible_field_name: str | None = None,
+) -> dict[str, Any]:
+    """Shared optional-field validation for create_work_package/create_subtask/
+    bulk_create_work_packages' per-item block. No clearing semantics here --
+    create has nothing to clear, every field is a plain optional value.
+
+    assignee_field_name/responsible_field_name default to the prefixed name
+    like every other field, but bulk_create_work_packages passes the literal
+    unprefixed "assignee"/"responsible" to reproduce its existing (OPM-218)
+    behavior verbatim -- not fixed here, that's a separate ticket.
+    """
+    return {
+        "description": _validate_optional_text(description, field_name=f"{field_prefix}description", max_length=10_000),
+        "version": _validate_optional_query(version, field_name=f"{field_prefix}version", max_length=100),
+        "project_phase": _validate_optional_query(
+            project_phase, field_name=f"{field_prefix}project_phase", max_length=100
+        ),
+        "assignee": _validate_optional_user_ref(assignee, field_name=assignee_field_name or f"{field_prefix}assignee"),
+        "responsible": _validate_optional_user_ref(
+            responsible, field_name=responsible_field_name or f"{field_prefix}responsible"
+        ),
+        "priority": _validate_optional_query(priority, field_name=f"{field_prefix}priority", max_length=100),
+        "category": _validate_optional_query(category, field_name=f"{field_prefix}category", max_length=100),
+        "custom_fields": _validate_optional_custom_fields(custom_fields),
+        "start_date": _validate_optional_date(start_date, field_name=f"{field_prefix}start_date"),
+        "due_date": _validate_optional_date(due_date, field_name=f"{field_prefix}due_date"),
+        "estimated_time": _validate_optional_duration(estimated_time, field_name=f"{field_prefix}estimated_time"),
+        "remaining_time": _validate_optional_duration(remaining_time, field_name=f"{field_prefix}remaining_time"),
+        "duration": _validate_optional_duration(duration, field_name=f"{field_prefix}duration"),
+    }
+
+
 async def create_work_package(
     ctx: Context,
     project: str,
@@ -1598,42 +1662,122 @@ async def create_work_package(
     safe_project = _validate_project_ref(project)
     safe_type = _validate_required_query(type, field_name="type", max_length=100)
     safe_subject = _validate_required_query(subject, field_name="subject", max_length=255)
-    safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
-    safe_version = _validate_optional_query(version, field_name="version", max_length=100)
-    safe_project_phase = _validate_optional_query(project_phase, field_name="project_phase", max_length=100)
-    safe_assignee = _validate_optional_user_ref(assignee)
-    safe_responsible = _validate_optional_user_ref(responsible, field_name="responsible")
-    safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
-    safe_category = _validate_optional_query(category, field_name="category", max_length=100)
-    safe_custom_fields = _validate_optional_custom_fields(custom_fields)
+    common = _validate_work_package_create_fields(
+        description=description,
+        version=version,
+        project_phase=project_phase,
+        assignee=assignee,
+        responsible=responsible,
+        priority=priority,
+        category=category,
+        custom_fields=custom_fields,
+        start_date=start_date,
+        due_date=due_date,
+        estimated_time=estimated_time,
+        remaining_time=remaining_time,
+        duration=duration,
+    )
     safe_parent = _validate_optional_work_package_ref(parent, field_name="parent")
-    safe_start_date = _validate_optional_date(start_date, field_name="start_date")
-    safe_due_date = _validate_optional_date(due_date, field_name="due_date")
-    safe_estimated_time = _validate_optional_duration(estimated_time, field_name="estimated_time")
-    safe_remaining_time = _validate_optional_duration(remaining_time, field_name="remaining_time")
-    safe_duration = _validate_optional_duration(duration, field_name="duration")
     return await _run_tool(
         client.create_work_package(
             project=safe_project,
             type=safe_type,
             subject=safe_subject,
-            description=safe_description,
-            version=safe_version,
-            project_phase=safe_project_phase,
-            assignee=safe_assignee,
-            responsible=safe_responsible,
-            priority=safe_priority,
-            category=safe_category,
-            custom_fields=safe_custom_fields,
+            description=common["description"],
+            version=common["version"],
+            project_phase=common["project_phase"],
+            assignee=common["assignee"],
+            responsible=common["responsible"],
+            priority=common["priority"],
+            category=common["category"],
+            custom_fields=common["custom_fields"],
             parent_work_package_id=safe_parent,
-            start_date=safe_start_date,
-            due_date=safe_due_date,
-            estimated_time=safe_estimated_time,
-            remaining_time=safe_remaining_time,
-            duration=safe_duration,
+            start_date=common["start_date"],
+            due_date=common["due_date"],
+            estimated_time=common["estimated_time"],
+            remaining_time=common["remaining_time"],
+            duration=common["duration"],
             confirm=confirm,
         )
     )
+
+
+def _validate_work_package_update_fields(
+    *,
+    subject: str | None,
+    description: str | None,
+    type: str | None,
+    version: str | None,
+    sprint: str | None,
+    project_phase: str | None,
+    status: str | None,
+    assignee: str | None,
+    responsible: str | None,
+    priority: str | None,
+    category: str | None,
+    custom_fields: dict[str, Any] | None,
+    parent: str | None,
+    start_date: str | None,
+    due_date: str | None,
+    estimated_time: str | None,
+    remaining_time: str | None,
+    duration: str | None,
+    percentage_done: int | None,
+    field_prefix: str = "",
+    parent_field_name: str = "parent",
+    assignee_field_name: str | None = None,
+    responsible_field_name: str | None = None,
+) -> dict[str, Any]:
+    """Shared field validation for update_work_package/bulk_update_work_packages'
+    per-item block. Most fields are wrapped in _clearable/_clearable_ref/
+    _clearable_duration -- 'none' (any case) clears the field, matching the
+    single-call update_work_package tool's documented convention.
+
+    assignee_field_name/responsible_field_name default to the prefixed name
+    like every other field, but bulk_update_work_packages passes the literal
+    unprefixed "assignee"/"responsible" to reproduce its existing (OPM-218)
+    behavior verbatim -- not fixed here, that's a separate ticket.
+    """
+    return {
+        "subject": _validate_optional_query(subject, field_name=f"{field_prefix}subject", max_length=255),
+        "description": _validate_optional_update_text(
+            description, field_name=f"{field_prefix}description", max_length=10_000
+        ),
+        "type": _validate_optional_query(type, field_name=f"{field_prefix}type", max_length=100),
+        "version": _validate_optional_version(version, field_name=f"{field_prefix}version"),
+        "sprint": _clearable(
+            sprint, lambda v: _validate_optional_query(v, field_name=f"{field_prefix}sprint", max_length=100)
+        ),
+        "project_phase": _clearable(
+            project_phase,
+            lambda v: _validate_optional_query(v, field_name=f"{field_prefix}project_phase", max_length=100),
+        ),
+        "status": _validate_optional_query(status, field_name=f"{field_prefix}status", max_length=100),
+        "assignee": _clearable(
+            assignee,
+            lambda v: _validate_optional_user_ref(v, field_name=assignee_field_name or f"{field_prefix}assignee"),
+        ),
+        "responsible": _clearable(
+            responsible,
+            lambda v: _validate_optional_user_ref(v, field_name=responsible_field_name or f"{field_prefix}responsible"),
+        ),
+        "priority": _validate_optional_query(priority, field_name=f"{field_prefix}priority", max_length=100),
+        "category": _clearable(
+            category, lambda v: _validate_optional_query(v, field_name=f"{field_prefix}category", max_length=100)
+        ),
+        "custom_fields": _validate_optional_custom_fields(custom_fields),
+        "parent": _clearable_ref(
+            parent, functools.partial(_validate_work_package_ref, field_name=parent_field_name), sentinel=CLEAR_PARENT
+        ),
+        "start_date": _validate_optional_date(start_date, field_name=f"{field_prefix}start_date"),
+        "due_date": _validate_optional_date(due_date, field_name=f"{field_prefix}due_date"),
+        "estimated_time": _clearable_duration(estimated_time, field_name=f"{field_prefix}estimated_time"),
+        "remaining_time": _clearable_duration(remaining_time, field_name=f"{field_prefix}remaining_time"),
+        "duration": _clearable_duration(duration, field_name=f"{field_prefix}duration"),
+        "percentage_done": _validate_optional_percentage_done(
+            percentage_done, field_name=f"{field_prefix}percentage_done"
+        ),
+    }
 
 
 async def update_work_package(
@@ -1674,80 +1818,53 @@ async def update_work_package(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
-    safe_subject = _validate_optional_query(subject, field_name="subject", max_length=255)
-    safe_description = _validate_optional_update_text(description, field_name="description", max_length=10_000)
-    safe_type = _validate_optional_query(type, field_name="type", max_length=100)
-    # version: 'none' (any case) clears the assigned version; otherwise a version name/id.
-    safe_version = _validate_optional_version(version)
-    # sprint: 'none' (any case) clears the assigned sprint; otherwise a sprint name/id.
-    safe_sprint = _clearable(sprint, lambda v: _validate_optional_query(v, field_name="sprint", max_length=100))
-    safe_status = _validate_optional_query(status, field_name="status", max_length=100)
-    # assignee/responsible/category/project_phase: 'none' (any case) unassigns the
-    # field; otherwise the normal validation applies.
-    safe_assignee = _clearable(assignee, lambda v: _validate_optional_user_ref(v))
-    safe_responsible = _clearable(responsible, lambda v: _validate_optional_user_ref(v, field_name="responsible"))
-    safe_category = _clearable(category, lambda v: _validate_optional_query(v, field_name="category", max_length=100))
-    safe_project_phase = _clearable(
-        project_phase, lambda v: _validate_optional_query(v, field_name="project_phase", max_length=100)
+    common = _validate_work_package_update_fields(
+        subject=subject,
+        description=description,
+        type=type,
+        version=version,
+        sprint=sprint,
+        project_phase=project_phase,
+        status=status,
+        assignee=assignee,
+        responsible=responsible,
+        priority=priority,
+        category=category,
+        custom_fields=custom_fields,
+        parent=parent,
+        start_date=start_date,
+        due_date=due_date,
+        estimated_time=estimated_time,
+        remaining_time=remaining_time,
+        duration=duration,
+        percentage_done=percentage_done,
     )
-    safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
-    safe_custom_fields = _validate_optional_custom_fields(custom_fields)
-    # parent: 'none' (any case) clears the parent (top-level); otherwise a work package ref.
-    safe_parent: int | str | object | None = _clearable_ref(
-        parent, functools.partial(_validate_work_package_ref, field_name="parent"), sentinel=CLEAR_PARENT
-    )
-    safe_start_date = _validate_optional_date(start_date, field_name="start_date")
-    safe_due_date = _validate_optional_date(due_date, field_name="due_date")
-    # estimated_time/remaining_time/duration: 'none' (any case) clears the field;
-    # otherwise a validated ISO 8601 duration.
-    safe_estimated_time = _clearable_duration(estimated_time, field_name="estimated_time")
-    safe_remaining_time = _clearable_duration(remaining_time, field_name="remaining_time")
-    safe_duration = _clearable_duration(duration, field_name="duration")
-    safe_percentage_done = _validate_optional_percentage_done(percentage_done)
     _require_at_least_one(
-        safe_subject,
-        safe_description,
-        safe_type,
-        safe_version,
-        safe_sprint,
-        safe_project_phase,
-        safe_status,
-        safe_assignee,
-        safe_responsible,
-        safe_priority,
-        safe_category,
-        safe_custom_fields,
-        safe_parent,
-        safe_start_date,
-        safe_due_date,
-        safe_estimated_time,
-        safe_remaining_time,
-        safe_duration,
-        safe_percentage_done,
+        *common.values(),
         message="At least one field to update is required.",
     )
     return await _run_tool(
         client.update_work_package(
             work_package_id=safe_id,
-            subject=safe_subject,
-            description=safe_description,
-            type=safe_type,
-            version=safe_version,
-            sprint=safe_sprint,
-            project_phase=safe_project_phase,
-            status=safe_status,
-            assignee=safe_assignee,
-            responsible=safe_responsible,
-            priority=safe_priority,
-            category=safe_category,
-            custom_fields=safe_custom_fields,
-            parent_work_package_id=safe_parent,
-            start_date=safe_start_date,
-            due_date=safe_due_date,
-            estimated_time=safe_estimated_time,
-            remaining_time=safe_remaining_time,
-            duration=safe_duration,
-            percentage_done=safe_percentage_done,
+            subject=common["subject"],
+            description=common["description"],
+            type=common["type"],
+            version=common["version"],
+            sprint=common["sprint"],
+            project_phase=common["project_phase"],
+            status=common["status"],
+            assignee=common["assignee"],
+            responsible=common["responsible"],
+            priority=common["priority"],
+            category=common["category"],
+            custom_fields=common["custom_fields"],
+            parent_work_package_id=common["parent"],
+            start_date=common["start_date"],
+            due_date=common["due_date"],
+            estimated_time=common["estimated_time"],
+            remaining_time=common["remaining_time"],
+            duration=common["duration"],
+            percentage_done=common["percentage_done"],
             confirm=confirm,
         )
     )
@@ -1831,39 +1948,46 @@ async def bulk_create_work_packages(
             raise ValueError(f"items[{i}].type is required.")
         if not subject:
             raise ValueError(f"items[{i}].subject is required.")
+        common = _validate_work_package_create_fields(
+            description=item.get("description"),
+            version=item.get("version"),
+            project_phase=item.get("project_phase"),
+            assignee=item.get("assignee"),
+            responsible=item.get("responsible"),
+            priority=item.get("priority"),
+            category=item.get("category"),
+            custom_fields=item.get("custom_fields"),
+            start_date=item.get("start_date"),
+            due_date=item.get("due_date"),
+            estimated_time=item.get("estimated_time"),
+            remaining_time=item.get("remaining_time"),
+            duration=item.get("duration"),
+            field_prefix=f"items[{i}].",
+            # OPM-218 (pre-existing quirk, preserved verbatim, not fixed by OPM-47):
+            # unlike every sibling field here, assignee/responsible errors are
+            # NOT indexed with "items[{i}].".
+            assignee_field_name="assignee",
+            responsible_field_name="responsible",
+        )
         safe_items.append(
             {
                 "project": _validate_project_ref(str(project)),
                 "type": _validate_required_query(str(type_), field_name=f"items[{i}].type", max_length=100),
                 "subject": _validate_required_query(str(subject), field_name=f"items[{i}].subject", max_length=255),
-                "description": _validate_optional_text(
-                    item.get("description"), field_name=f"items[{i}].description", max_length=10_000
-                ),
-                "version": _validate_optional_query(
-                    item.get("version"), field_name=f"items[{i}].version", max_length=100
-                ),
-                "project_phase": _validate_optional_query(
-                    item.get("project_phase"), field_name=f"items[{i}].project_phase", max_length=100
-                ),
-                "assignee": _validate_optional_user_ref(item.get("assignee")),
-                "responsible": _validate_optional_user_ref(item.get("responsible"), field_name="responsible"),
-                "priority": _validate_optional_query(
-                    item.get("priority"), field_name=f"items[{i}].priority", max_length=100
-                ),
-                "category": _validate_optional_query(
-                    item.get("category"), field_name=f"items[{i}].category", max_length=100
-                ),
-                "custom_fields": _validate_optional_custom_fields(item.get("custom_fields")),
+                "description": common["description"],
+                "version": common["version"],
+                "project_phase": common["project_phase"],
+                "assignee": common["assignee"],
+                "responsible": common["responsible"],
+                "priority": common["priority"],
+                "category": common["category"],
+                "custom_fields": common["custom_fields"],
                 "parent_work_package_id": safe_parent_work_package_id,
-                "start_date": _validate_optional_date(item.get("start_date"), field_name=f"items[{i}].start_date"),
-                "due_date": _validate_optional_date(item.get("due_date"), field_name=f"items[{i}].due_date"),
-                "estimated_time": _validate_optional_duration(
-                    item.get("estimated_time"), field_name=f"items[{i}].estimated_time"
-                ),
-                "remaining_time": _validate_optional_duration(
-                    item.get("remaining_time"), field_name=f"items[{i}].remaining_time"
-                ),
-                "duration": _validate_optional_duration(item.get("duration"), field_name=f"items[{i}].duration"),
+                "start_date": common["start_date"],
+                "due_date": common["due_date"],
+                "estimated_time": common["estimated_time"],
+                "remaining_time": common["remaining_time"],
+                "duration": common["duration"],
             }
         )
     return await _run_tool(client.bulk_create_work_packages(items=safe_items, confirm=confirm))
@@ -1945,95 +2069,60 @@ async def bulk_update_work_packages(
         if work_package_id is None:
             raise ValueError(f"items[{i}].work_package_id is required.")
         safe_id = _validate_work_package_ref(work_package_id, field_name=f"items[{i}].work_package_id")
-        safe_subject = _validate_optional_query(item.get("subject"), field_name=f"items[{i}].subject", max_length=255)
-        safe_description = _validate_optional_update_text(
-            item.get("description"), field_name=f"items[{i}].description", max_length=10_000
-        )
-        safe_type = _validate_optional_query(item.get("type"), field_name=f"items[{i}].type", max_length=100)
-        # version/project_phase/assignee/responsible/category/parent_work_package_id:
-        # 'none' (any case) clears the field; otherwise the normal validation applies.
-        safe_version = _validate_optional_version(item.get("version"), field_name=f"items[{i}].version")
-        # sprint: 'none' (any case) clears the assigned sprint; otherwise a sprint name/id.
-        safe_sprint = _clearable(
-            item.get("sprint"),
-            functools.partial(_validate_optional_query, field_name=f"items[{i}].sprint", max_length=100),
-        )
-        safe_project_phase = _clearable(
-            item.get("project_phase"),
-            functools.partial(_validate_optional_query, field_name=f"items[{i}].project_phase", max_length=100),
-        )
-        safe_status = _validate_optional_query(item.get("status"), field_name=f"items[{i}].status", max_length=100)
-        safe_assignee = _clearable(item.get("assignee"), _validate_optional_user_ref)
-        safe_responsible = _clearable(
-            item.get("responsible"), functools.partial(_validate_optional_user_ref, field_name="responsible")
-        )
-        safe_priority = _validate_optional_query(
-            item.get("priority"), field_name=f"items[{i}].priority", max_length=100
-        )
-        safe_category = _clearable(
-            item.get("category"),
-            functools.partial(_validate_optional_query, field_name=f"items[{i}].category", max_length=100),
-        )
-        safe_custom_fields = _validate_optional_custom_fields(item.get("custom_fields"))
-        safe_parent_work_package_id: int | str | object | None = _clearable_ref(
-            item.get("parent_work_package_id"),
-            functools.partial(_validate_work_package_ref, field_name=f"items[{i}].parent_work_package_id"),
-            sentinel=CLEAR_PARENT,
-        )
-        safe_start_date = _validate_optional_date(item.get("start_date"), field_name=f"items[{i}].start_date")
-        safe_due_date = _validate_optional_date(item.get("due_date"), field_name=f"items[{i}].due_date")
-        # estimated_time/remaining_time/duration: 'none' (any case) clears the field;
-        # otherwise a validated ISO 8601 duration.
-        safe_estimated_time = _clearable_duration(item.get("estimated_time"), field_name=f"items[{i}].estimated_time")
-        safe_remaining_time = _clearable_duration(item.get("remaining_time"), field_name=f"items[{i}].remaining_time")
-        safe_duration = _clearable_duration(item.get("duration"), field_name=f"items[{i}].duration")
-        safe_percentage_done = _validate_optional_percentage_done(
-            item.get("percentage_done"), field_name=f"items[{i}].percentage_done"
+        common = _validate_work_package_update_fields(
+            subject=item.get("subject"),
+            description=item.get("description"),
+            type=item.get("type"),
+            version=item.get("version"),
+            sprint=item.get("sprint"),
+            project_phase=item.get("project_phase"),
+            status=item.get("status"),
+            assignee=item.get("assignee"),
+            responsible=item.get("responsible"),
+            priority=item.get("priority"),
+            category=item.get("category"),
+            custom_fields=item.get("custom_fields"),
+            parent=item.get("parent_work_package_id"),
+            start_date=item.get("start_date"),
+            due_date=item.get("due_date"),
+            estimated_time=item.get("estimated_time"),
+            remaining_time=item.get("remaining_time"),
+            duration=item.get("duration"),
+            percentage_done=item.get("percentage_done"),
+            field_prefix=f"items[{i}].",
+            parent_field_name=f"items[{i}].parent_work_package_id",
+            # OPM-218 (pre-existing quirk, preserved verbatim, not fixed by OPM-47):
+            # unlike every sibling field here, assignee/responsible errors are
+            # NOT indexed with "items[{i}].".
+            assignee_field_name="assignee",
+            responsible_field_name="responsible",
         )
         _require_at_least_one(
-            safe_subject,
-            safe_description,
-            safe_type,
-            safe_version,
-            safe_sprint,
-            safe_project_phase,
-            safe_status,
-            safe_assignee,
-            safe_responsible,
-            safe_priority,
-            safe_category,
-            safe_custom_fields,
-            safe_start_date,
-            safe_due_date,
-            safe_parent_work_package_id,
-            safe_estimated_time,
-            safe_remaining_time,
-            safe_duration,
-            safe_percentage_done,
+            *common.values(),
             message=f"items[{i}]: at least one field to update is required.",
         )
         safe_items.append(
             {
                 "work_package_id": safe_id,
-                "subject": safe_subject,
-                "description": safe_description,
-                "type": safe_type,
-                "version": safe_version,
-                "sprint": safe_sprint,
-                "project_phase": safe_project_phase,
-                "status": safe_status,
-                "assignee": safe_assignee,
-                "responsible": safe_responsible,
-                "priority": safe_priority,
-                "category": safe_category,
-                "custom_fields": safe_custom_fields,
-                "parent_work_package_id": safe_parent_work_package_id,
-                "start_date": safe_start_date,
-                "due_date": safe_due_date,
-                "estimated_time": safe_estimated_time,
-                "remaining_time": safe_remaining_time,
-                "duration": safe_duration,
-                "percentage_done": safe_percentage_done,
+                "subject": common["subject"],
+                "description": common["description"],
+                "type": common["type"],
+                "version": common["version"],
+                "sprint": common["sprint"],
+                "project_phase": common["project_phase"],
+                "status": common["status"],
+                "assignee": common["assignee"],
+                "responsible": common["responsible"],
+                "priority": common["priority"],
+                "category": common["category"],
+                "custom_fields": common["custom_fields"],
+                "parent_work_package_id": common["parent"],
+                "start_date": common["start_date"],
+                "due_date": common["due_date"],
+                "estimated_time": common["estimated_time"],
+                "remaining_time": common["remaining_time"],
+                "duration": common["duration"],
+                "percentage_done": common["percentage_done"],
             }
         )
     return await _run_tool(client.bulk_update_work_packages(items=safe_items, confirm=confirm))
@@ -2082,31 +2171,33 @@ async def create_subtask(
     safe_parent_id = _validate_work_package_ref(parent_work_package_id, field_name="parent_work_package_id")
     safe_type = _validate_required_query(type, field_name="type", max_length=100)
     safe_subject = _validate_required_query(subject, field_name="subject", max_length=255)
-    safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
-    safe_version = _validate_optional_query(version, field_name="version", max_length=100)
-    safe_project_phase = _validate_optional_query(project_phase, field_name="project_phase", max_length=100)
-    safe_assignee = _validate_optional_user_ref(assignee)
-    safe_responsible = _validate_optional_user_ref(responsible, field_name="responsible")
-    safe_priority = _validate_optional_query(priority, field_name="priority", max_length=100)
-    safe_category = _validate_optional_query(category, field_name="category", max_length=100)
-    safe_custom_fields = _validate_optional_custom_fields(custom_fields)
-    safe_start_date = _validate_optional_date(start_date, field_name="start_date")
-    safe_due_date = _validate_optional_date(due_date, field_name="due_date")
+    common = _validate_work_package_create_fields(
+        description=description,
+        version=version,
+        project_phase=project_phase,
+        assignee=assignee,
+        responsible=responsible,
+        priority=priority,
+        category=category,
+        custom_fields=custom_fields,
+        start_date=start_date,
+        due_date=due_date,
+    )
     return await _run_tool(
         client.create_subtask(
             parent_work_package_id=safe_parent_id,
             type=safe_type,
             subject=safe_subject,
-            description=safe_description,
-            version=safe_version,
-            project_phase=safe_project_phase,
-            assignee=safe_assignee,
-            responsible=safe_responsible,
-            priority=safe_priority,
-            category=safe_category,
-            custom_fields=safe_custom_fields,
-            start_date=safe_start_date,
-            due_date=safe_due_date,
+            description=common["description"],
+            version=common["version"],
+            project_phase=common["project_phase"],
+            assignee=common["assignee"],
+            responsible=common["responsible"],
+            priority=common["priority"],
+            category=common["category"],
+            custom_fields=common["custom_fields"],
+            start_date=common["start_date"],
+            due_date=common["due_date"],
             confirm=confirm,
         )
     )
@@ -2255,6 +2346,29 @@ async def get_version(
     return await _run_tool(client.get_version(safe_id))
 
 
+def _validate_version_schedule_fields(
+    *,
+    start_date: str | None,
+    end_date: str | None,
+    status: str | None,
+    sharing: str | None,
+) -> dict[str, Any]:
+    """Shared field validation for create_version/update_version -- byte-identical
+    in both, unlike work-packages: these 4 fields have no clearable-vs-plain
+    split between create and update.
+    """
+    return {
+        "start_date": _validate_optional_date(start_date, field_name="start_date"),
+        "end_date": _validate_optional_date(end_date, field_name="end_date"),
+        "status": _validate_optional_choice(status, field_name="status", allowed_values={"open", "locked", "closed"}),
+        "sharing": _validate_optional_choice(
+            sharing,
+            field_name="sharing",
+            allowed_values={"none", "descendants", "hierarchy", "tree"},
+        ),
+    }
+
+
 async def create_version(
     ctx: Context,
     project: str,
@@ -2275,23 +2389,16 @@ async def create_version(
     safe_project = _validate_project_ref(project)
     safe_name = _validate_required_query(name, field_name="name", max_length=60)
     safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
-    safe_start_date = _validate_optional_date(start_date, field_name="start_date")
-    safe_end_date = _validate_optional_date(end_date, field_name="end_date")
-    safe_status = _validate_optional_choice(status, field_name="status", allowed_values={"open", "locked", "closed"})
-    safe_sharing = _validate_optional_choice(
-        sharing,
-        field_name="sharing",
-        allowed_values={"none", "descendants", "hierarchy", "tree"},
-    )
+    common = _validate_version_schedule_fields(start_date=start_date, end_date=end_date, status=status, sharing=sharing)
     return await _run_tool(
         client.create_version(
             project=safe_project,
             name=safe_name,
             description=safe_description,
-            start_date=safe_start_date,
-            end_date=safe_end_date,
-            status=safe_status,
-            sharing=safe_sharing,
+            start_date=common["start_date"],
+            end_date=common["end_date"],
+            status=common["status"],
+            sharing=common["sharing"],
             confirm=confirm,
         )
     )
@@ -2317,21 +2424,14 @@ async def update_version(
     safe_id = _validate_positive_int(version_id, field_name="version_id")
     safe_name = _validate_optional_query(name, field_name="name", max_length=60)
     safe_description = _validate_optional_update_text(description, field_name="description", max_length=10_000)
-    safe_start_date = _validate_optional_date(start_date, field_name="start_date")
-    safe_end_date = _validate_optional_date(end_date, field_name="end_date")
-    safe_status = _validate_optional_choice(status, field_name="status", allowed_values={"open", "locked", "closed"})
-    safe_sharing = _validate_optional_choice(
-        sharing,
-        field_name="sharing",
-        allowed_values={"none", "descendants", "hierarchy", "tree"},
-    )
+    common = _validate_version_schedule_fields(start_date=start_date, end_date=end_date, status=status, sharing=sharing)
     _require_at_least_one(
         safe_name,
         safe_description,
-        safe_start_date,
-        safe_end_date,
-        safe_status,
-        safe_sharing,
+        common["start_date"],
+        common["end_date"],
+        common["status"],
+        common["sharing"],
         message="At least one field to update is required.",
     )
     return await _run_tool(
@@ -2339,10 +2439,10 @@ async def update_version(
             version_id=safe_id,
             name=safe_name,
             description=safe_description,
-            start_date=safe_start_date,
-            end_date=safe_end_date,
-            status=safe_status,
-            sharing=safe_sharing,
+            start_date=common["start_date"],
+            end_date=common["end_date"],
+            status=common["status"],
+            sharing=common["sharing"],
             confirm=confirm,
         )
     )
@@ -2389,6 +2489,33 @@ async def get_board(
     return await _run_tool(client.get_board(safe_id))
 
 
+def _validate_board_query_fields(
+    *,
+    project: str | None,
+    group_by: str | None,
+    columns: list[str] | None,
+    sort_by: list[str] | None,
+    highlighted_attributes: list[str] | None,
+    filters: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Shared field validation for create_board/update_board -- byte-identical
+    in both.
+    """
+    return {
+        "project": _validate_optional_project_ref(project),
+        "group_by": _validate_optional_query(group_by, field_name="group_by", max_length=120),
+        "columns": _validate_optional_string_list(columns, field_name="columns", max_items=50, item_max_length=120),
+        "sort_by": _validate_optional_string_list(sort_by, field_name="sort_by", max_items=20, item_max_length=120),
+        "highlighted_attributes": _validate_optional_string_list(
+            highlighted_attributes,
+            field_name="highlighted_attributes",
+            max_items=20,
+            item_max_length=120,
+        ),
+        "filters": _validate_optional_filter_list(filters),
+    }
+
+
 async def create_board(
     ctx: Context,
     name: str,
@@ -2409,32 +2536,29 @@ async def create_board(
     """Prepare or create a saved OpenProject board/query."""
     client = _client_from_context(ctx)
     safe_name = _validate_required_query(name, field_name="name", max_length=255)
-    safe_project = _validate_optional_project_ref(project)
-    safe_group_by = _validate_optional_query(group_by, field_name="group_by", max_length=120)
-    safe_columns = _validate_optional_string_list(columns, field_name="columns", max_items=50, item_max_length=120)
-    safe_sort_by = _validate_optional_string_list(sort_by, field_name="sort_by", max_items=20, item_max_length=120)
-    safe_highlighted = _validate_optional_string_list(
-        highlighted_attributes,
-        field_name="highlighted_attributes",
-        max_items=20,
-        item_max_length=120,
+    common = _validate_board_query_fields(
+        project=project,
+        group_by=group_by,
+        columns=columns,
+        sort_by=sort_by,
+        highlighted_attributes=highlighted_attributes,
+        filters=filters,
     )
-    safe_filters = _validate_optional_filter_list(filters)
     return await _run_tool(
         client.create_board(
             name=safe_name,
-            project=safe_project,
+            project=common["project"],
             public=public,
             starred=starred,
             hidden=hidden,
             include_subprojects=include_subprojects,
             show_hierarchies=show_hierarchies,
             timeline_visible=timeline_visible,
-            group_by=safe_group_by,
-            columns=safe_columns,
-            sort_by=safe_sort_by,
-            highlighted_attributes=safe_highlighted,
-            filters=safe_filters,
+            group_by=common["group_by"],
+            columns=common["columns"],
+            sort_by=common["sort_by"],
+            highlighted_attributes=common["highlighted_attributes"],
+            filters=common["filters"],
             confirm=confirm,
         )
     )
@@ -2462,49 +2586,46 @@ async def update_board(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(board_id, field_name="board_id")
     safe_name = _validate_optional_query(name, field_name="name", max_length=255)
-    safe_project = _validate_optional_project_ref(project)
-    safe_group_by = _validate_optional_query(group_by, field_name="group_by", max_length=120)
-    safe_columns = _validate_optional_string_list(columns, field_name="columns", max_items=50, item_max_length=120)
-    safe_sort_by = _validate_optional_string_list(sort_by, field_name="sort_by", max_items=20, item_max_length=120)
-    safe_highlighted = _validate_optional_string_list(
-        highlighted_attributes,
-        field_name="highlighted_attributes",
-        max_items=20,
-        item_max_length=120,
+    common = _validate_board_query_fields(
+        project=project,
+        group_by=group_by,
+        columns=columns,
+        sort_by=sort_by,
+        highlighted_attributes=highlighted_attributes,
+        filters=filters,
     )
-    safe_filters = _validate_optional_filter_list(filters)
     _require_at_least_one(
         safe_name,
-        safe_project,
+        common["project"],
         public,
         starred,
         hidden,
         include_subprojects,
         show_hierarchies,
         timeline_visible,
-        safe_group_by,
-        safe_columns,
-        safe_sort_by,
-        safe_highlighted,
-        safe_filters,
+        common["group_by"],
+        common["columns"],
+        common["sort_by"],
+        common["highlighted_attributes"],
+        common["filters"],
         message="At least one field to update is required.",
     )
     return await _run_tool(
         client.update_board(
             board_id=safe_id,
             name=safe_name,
-            project=safe_project,
+            project=common["project"],
             public=public,
             starred=starred,
             hidden=hidden,
             include_subprojects=include_subprojects,
             show_hierarchies=show_hierarchies,
             timeline_visible=timeline_visible,
-            group_by=safe_group_by,
-            columns=safe_columns,
-            sort_by=safe_sort_by,
-            highlighted_attributes=safe_highlighted,
-            filters=safe_filters,
+            group_by=common["group_by"],
+            columns=common["columns"],
+            sort_by=common["sort_by"],
+            highlighted_attributes=common["highlighted_attributes"],
+            filters=common["filters"],
             confirm=confirm,
         )
     )

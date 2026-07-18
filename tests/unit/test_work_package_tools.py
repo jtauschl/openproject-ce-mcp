@@ -801,6 +801,69 @@ async def test_bulk_update_work_packages_tool_version_error_has_item_index() -> 
 
 
 @pytest.mark.asyncio
+async def test_bulk_create_work_packages_assignee_error_lacks_item_index() -> None:
+    # Pre-existing quirk (OPM-218, deliberately preserved by OPM-47's dedup, not
+    # fixed here): unlike every sibling field in this loop, assignee's error is
+    # NOT indexed with "items[{i}]." -- this test locks in that current (wrong)
+    # behavior so a future refactor can't silently "fix" it as a side effect.
+    class StubClient:
+        async def bulk_create_work_packages(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match=r"^assignee: 'me' or numeric user id"):
+        await bulk_create_work_packages(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            items=[{"project": "demo", "type": "Task", "subject": "ok", "assignee": "not-a-user"}],
+            confirm=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_work_packages_responsible_error_lacks_item_index() -> None:
+    # Same pre-existing quirk (OPM-218) as assignee, for responsible.
+    class StubClient:
+        async def bulk_create_work_packages(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match=r"^responsible: 'me' or numeric user id"):
+        await bulk_create_work_packages(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            items=[{"project": "demo", "type": "Task", "subject": "ok", "responsible": "not-a-user"}],
+            confirm=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_work_packages_assignee_error_lacks_item_index() -> None:
+    # Same pre-existing quirk (OPM-218) as the two bulk_create tests above.
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match=r"^assignee: 'me' or numeric user id"):
+        await bulk_update_work_packages(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            items=[{"work_package_id": 10, "assignee": "not-a-user"}],
+            confirm=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_work_packages_responsible_error_lacks_item_index() -> None:
+    # Same pre-existing quirk (OPM-218) as the tests above, for responsible.
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match=r"^responsible: 'me' or numeric user id"):
+        await bulk_update_work_packages(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            items=[{"work_package_id": 10, "responsible": "not-a-user"}],
+            confirm=True,
+        )
+
+
+@pytest.mark.asyncio
 async def test_bulk_work_packages_accept_semantic_refs() -> None:
     received: dict = {}
 
