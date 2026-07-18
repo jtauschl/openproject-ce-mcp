@@ -7,6 +7,29 @@ development baseline.
 
 ---
 
+## 0.3.1 – 2026-07-18
+
+### Fixed
+
+- **`bulk_create_work_packages`/`bulk_update_work_packages` no longer silently
+  drop unrecognized item fields.** Each tool now validates every item's keys
+  and rejects any item containing an unsupported or misspelled field with an
+  indexed error, instead of quietly ignoring it.
+- **`bulk_create_work_packages` no longer drops `estimated_time`/
+  `remaining_time`/`duration` on every item.** These three fields are now
+  forwarded to the underlying work-package create, matching the single-item
+  `create_work_package` tool's existing support for them.
+- **A broad `OPENPROJECT_READ_PROJECTS` combined with a narrower
+  `OPENPROJECT_WRITE_PROJECTS` could incorrectly deny a legitimate write.**
+  Startup project-identifier resolution used to skip itself whenever read
+  access was unrestricted, without accounting for a separately restricted
+  write scope — so a write validated only against an embedded project
+  reference (as most work-package writes are) could fail to recognize a
+  project identifier that was, in fact, correctly allowed. Startup resolution
+  now runs whenever either scope is restricted.
+
+---
+
 ## 0.3.0 – 2026-07-17
 
 ### Added
