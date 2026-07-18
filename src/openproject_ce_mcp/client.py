@@ -283,7 +283,17 @@ class OpenProjectClient:
         )
 
     async def initialize(self) -> None:
-        if not self.settings.read_projects or _scope_allows_all(self.settings.read_projects):
+        # _project_id_to_identifier is consulted for BOTH read and write link-based
+        # allowlist matching (see _project_candidates), so population must not skip
+        # just because read_projects is wide-open — a wide-open read scope combined
+        # with a restricted write_projects (e.g. READ="*", WRITE="OPM") still needs
+        # this cache, or write-side identifier matching on an embedded project link
+        # silently fails to recognize a valid identifier candidate.
+        read_scope = self.settings.read_projects
+        write_scope = self.settings.write_projects
+        read_needs_lookup = bool(read_scope) and not _scope_allows_all(read_scope)
+        write_needs_lookup = bool(write_scope) and not _scope_allows_all(write_scope)
+        if not read_needs_lookup and not write_needs_lookup:
             return
         try:
             payload = await self._get("projects", params={"pageSize": "500"})
@@ -299,7 +309,9 @@ class OpenProjectClient:
                     project_name.casefold(),
                     project_name.casefold().replace(" ", "-"),
                 }
-                if _scope_matches_candidates(self.settings.read_projects, candidates):
+                if (read_needs_lookup and _scope_matches_candidates(read_scope, candidates)) or (
+                    write_needs_lookup and _scope_matches_candidates(write_scope, candidates)
+                ):
                     self._project_id_to_identifier[project_id] = project_identifier
         except Exception:
             pass
