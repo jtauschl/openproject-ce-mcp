@@ -1,7 +1,5 @@
 """Tests for dynamic tool registration in create_app()."""
 
-import pytest
-
 import openproject_ce_mcp.server as server
 from openproject_ce_mcp import __version__
 from openproject_ce_mcp.config import Settings
@@ -422,50 +420,24 @@ def test_create_app_applies_log_level(monkeypatch) -> None:
         root.setLevel(original_level)
 
 
-@pytest.mark.allow_feature_flag_fetch
-def test_fetch_active_feature_flags_swallows_errors(monkeypatch) -> None:
-    """A failing instance fetch returns None instead of raising — startup stays safe."""
-
-    async def _boom(self):
-        raise RuntimeError("instance unreachable")
-
-    monkeypatch.setattr(server.OpenProjectClient, "get_instance_configuration", _boom)
-    assert server._fetch_active_feature_flags(make_settings()) is None
-
-
-@pytest.mark.allow_feature_flag_fetch
-async def test_fetch_active_feature_flags_skips_cleanly_inside_a_running_loop(recwarn) -> None:
-    """A caller that builds create_app() from inside its own event loop (e.g.
-    tools/measure-context.py, which calls it from an async function under
-    asyncio.run(main())) must not trip asyncio.run()'s "cannot nest" error —
-    that would create the fetch coroutine and then abandon it unawaited,
-    leaving a RuntimeWarning behind. Detect the running loop up front and
-    skip the fetch instead. This test itself runs inside pytest-asyncio's
-    event loop, reproducing the same nested-loop scenario."""
-    result = server._fetch_active_feature_flags(make_settings())
-    assert result is None
-    assert not any("was never awaited" in str(w.message) for w in recwarn.list)
-
-
-def test_instructions_fall_back_to_static_without_flags() -> None:
-    """With no reachable flags (autouse offline stub) instructions are exactly the static text."""
+def test_instructions_are_static() -> None:
+    """create_app() builds instructions from the static text only, unconditionally."""
     mcp = create_app(make_settings())
     assert mcp._mcp_server.instructions == server.CE_INSTRUCTIONS
 
 
-@pytest.mark.allow_feature_flag_fetch
-def test_instructions_include_live_feature_flags(monkeypatch) -> None:
-    """When the instance is reachable, its active feature flags are appended."""
-    monkeypatch.setattr(
-        server,
-        "_fetch_active_feature_flags",
-        lambda settings: ["boardView", "teamPlannerModuleActive"],
-    )
+def test_create_app_makes_no_network_call(monkeypatch) -> None:
+    """create_app() must never touch the network. Patch the transport to raise on
+    any call, so a reintroduced fetch would fail this test loudly instead of
+    passing by accident."""
+    import httpx
+
+    async def _boom(self, *args, **kwargs):
+        raise AssertionError("unexpected network call from create_app()")
+
+    monkeypatch.setattr(httpx.AsyncClient, "request", _boom)
     mcp = create_app(make_settings())
-    instructions = mcp._mcp_server.instructions or ""
-    assert "Active feature flags on this instance" in instructions
-    assert "boardView" in instructions
-    assert "teamPlannerModuleActive" in instructions
+    assert mcp._mcp_server.instructions == server.CE_INSTRUCTIONS
 
 
 # ── console entry-point dispatch ───────────────────────────────────────────────

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import logging
 import os
 import sys
@@ -91,50 +90,6 @@ here, not missing — set `OPENPROJECT_ENABLE_EXTENDED_READ=true` to expose them
 """
 
 
-def _fetch_active_feature_flags(settings: Settings) -> list[str] | None:
-    """Best-effort, one-shot fetch of the instance's active feature flags.
-
-    Returns the flags, or ``None`` if the instance cannot be reached / read. Must
-    never block or crash server start — same fault-tolerant philosophy as
-    ``OpenProjectClient.initialize`` (which swallows startup errors).
-    """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        pass
-    else:
-        # create_app() is normally called synchronously (no loop running yet),
-        # which is what asyncio.run() below requires. A caller that builds the
-        # app from inside its own event loop (e.g. tools/measure-context.py)
-        # can't nest asyncio.run() here, and there's no safe sync fallback —
-        # skip this best-effort enrichment rather than raise or leave a
-        # never-awaited coroutine behind.
-        return None
-
-    async def _run() -> list[str] | None:
-        client = OpenProjectClient(settings)
-        try:
-            config = await client.get_instance_configuration()
-            return list(config.active_feature_flags)
-        finally:
-            await client.aclose()
-
-    try:
-        return asyncio.run(_run())
-    except Exception:  # noqa: BLE001 — never let handshake enrichment break startup
-        logging.getLogger(__name__).debug("instance configuration fetch failed", exc_info=True)
-        return None
-
-
-def _build_instructions(settings: Settings) -> str:
-    """Static CE guidance, enriched with the instance's live feature flags when reachable."""
-    flags = _fetch_active_feature_flags(settings)
-    if not flags:
-        return CE_INSTRUCTIONS
-    flag_list = ", ".join(sorted(flags))
-    return f"{CE_INSTRUCTIONS}\n## Active feature flags on this instance\n\n{flag_list}\n"
-
-
 @dataclass(slots=True)
 class AppContext:
     settings: Settings
@@ -152,17 +107,12 @@ def create_app(settings: Settings) -> FastMCP:
         finally:
             await client.aclose()
 
-    # The feature-flag fetch must happen before FastMCP construction: `instructions`
-    # is passed to the constructor and injected into the initialize response, while
-    # `app_lifespan` only runs later on client connect — too late to shape it.
-    instructions = _build_instructions(settings)
-
     # log_level MUST be passed here: FastMCP.__init__ runs configure_logging() with
     # its own default (INFO) and installs a stderr handler, so omitting it lets the
     # SDK win the race and our OPENPROJECT_LOG_LEVEL never takes effect.
     mcp = FastMCP(
         "OpenProject CE MCP",
-        instructions=instructions,
+        instructions=CE_INSTRUCTIONS,
         json_response=True,
         lifespan=app_lifespan,
         # Settings.log_level is `str`, but runtime-validated against a fixed set

@@ -66,3 +66,30 @@ class ProjectResolutionContext:
             refs.add(identifier)
         for ref in refs:
             self._cache[(ref, write)] = payload
+
+
+class WorkPackageResolutionContext:
+    """Adds an id-level cache for resolved type/version/sprint references on top
+    of a ProjectResolutionContext (composition, not inheritance -- OPM-26's ADR
+    left that choice open, and composition keeps this cache layer decoupled
+    from ProjectResolutionContext's own implementation).
+
+    Same lifetime rule as ProjectResolutionContext: bounded to a single
+    top-level call by default (create_work_package/update_work_package each
+    construct their own when the caller doesn't supply one). A bulk operation
+    may deliberately share ONE instance across all of its items -- safe to do
+    because the id cache is keyed by (project, kind, ref), so items touching
+    different projects within the same bulk call never share a resolution
+    across projects. Discard the instance once the (bulk) call ends; never
+    reuse one across separate top-level calls.
+    """
+
+    def __init__(self, project_context: ProjectResolutionContext) -> None:
+        self.project_context = project_context
+        self._ids: dict[tuple[str, str, str], str] = {}
+
+    def get_id(self, kind: str, project: str, ref: str) -> str | None:
+        return self._ids.get((project, kind, ref))
+
+    def store_id(self, kind: str, project: str, ref: str, resolved_id: str) -> None:
+        self._ids[(project, kind, ref)] = resolved_id

@@ -128,6 +128,14 @@ from .models import (
     WorkPackageSummary,
     WorkPackageWriteResult,
 )
+from .tools_validation import (
+    _require_at_least_one,
+    _validate_limit,
+    _validate_list_query_params,
+    _validate_offset,
+    _validate_optional_query,
+    _validate_positive_int,
+)
 
 # ISO 8601 date-time, e.g. 2026-12-01T09:00:00Z or with a +HH:MM offset.
 DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
@@ -478,9 +486,7 @@ async def list_projects(
     would need an extra full walk. Page until next_offset is null.
     """
     client = _client_from_context(ctx)
-    safe_search = _validate_optional_query(search, field_name="search", max_length=100)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
+    safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     _validate_select(select, row_type=ProjectSummary)
     return await _run_tool(client.list_projects(search=safe_search, offset=safe_offset, limit=safe_limit))
 
@@ -689,20 +695,17 @@ async def update_project(
     )
     # parent: 'none' (any case) makes the project top-level; otherwise a project ref.
     safe_parent = _clearable(parent, lambda v: _validate_optional_project_ref(v))
-    if not any(
-        value is not None
-        for value in (
-            safe_name,
-            safe_identifier,
-            safe_description,
-            public,
-            active,
-            safe_status,
-            safe_status_explanation,
-            safe_parent,
-        )
-    ):
-        raise ValueError("At least one field to update is required.")
+    _require_at_least_one(
+        safe_name,
+        safe_identifier,
+        safe_description,
+        public,
+        active,
+        safe_status,
+        safe_status_explanation,
+        safe_parent,
+        message="At least one field to update is required.",
+    )
     return await _run_tool(
         client.update_project(
             project_ref=safe_project,
@@ -748,9 +751,7 @@ async def list_principals(
     next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
-    safe_search = _validate_optional_query(search, field_name="search", max_length=100)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
+    safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     return await _run_tool(client.list_principals(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
@@ -771,9 +772,7 @@ async def list_users(
     next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
-    safe_search = _validate_optional_query(search, field_name="search", max_length=100)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
+    safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     _validate_select(select, row_type=UserSummary)
     return await _run_tool(client.list_users(search=safe_search, offset=safe_offset, limit=safe_limit))
 
@@ -800,9 +799,7 @@ async def list_groups(
     next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
-    safe_search = _validate_optional_query(search, field_name="search", max_length=100)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
+    safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     return await _run_tool(client.list_groups(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
@@ -1120,8 +1117,7 @@ async def update_document(
     safe_id = _validate_positive_int(document_id, field_name="document_id")
     safe_title = _validate_optional_query(title, field_name="title", max_length=255)
     safe_description = _validate_optional_update_text(description, field_name="description", max_length=10_000)
-    if not any(value is not None for value in (safe_title, safe_description)):
-        raise ValueError("At least one field to update is required.")
+    _require_at_least_one(safe_title, safe_description, message="At least one field to update is required.")
     return await _run_tool(
         client.update_document(
             document_id=safe_id,
@@ -1146,9 +1142,7 @@ async def list_news(
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
-    safe_search = _validate_optional_query(search, field_name="search", max_length=100)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
+    safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     return await _run_tool(
         client.list_news(
             project=safe_project,
@@ -1208,8 +1202,9 @@ async def update_news(
     safe_title = _validate_optional_query(title, field_name="title", max_length=255)
     safe_summary = _validate_optional_update_text(summary, field_name="summary", max_length=500)
     safe_description = _validate_optional_update_text(description, field_name="description", max_length=10_000)
-    if not any(value is not None for value in (safe_title, safe_summary, safe_description)):
-        raise ValueError("At least one field to update is required.")
+    _require_at_least_one(
+        safe_title, safe_summary, safe_description, message="At least one field to update is required."
+    )
     return await _run_tool(
         client.update_news(
             news_id=safe_id,
@@ -1709,31 +1704,28 @@ async def update_work_package(
     safe_remaining_time = _clearable_duration(remaining_time, field_name="remaining_time")
     safe_duration = _clearable_duration(duration, field_name="duration")
     safe_percentage_done = _validate_optional_percentage_done(percentage_done)
-    if not any(
-        value is not None
-        for value in (
-            safe_subject,
-            safe_description,
-            safe_type,
-            safe_version,
-            safe_sprint,
-            safe_project_phase,
-            safe_status,
-            safe_assignee,
-            safe_responsible,
-            safe_priority,
-            safe_category,
-            safe_custom_fields,
-            safe_parent,
-            safe_start_date,
-            safe_due_date,
-            safe_estimated_time,
-            safe_remaining_time,
-            safe_duration,
-            safe_percentage_done,
-        )
-    ):
-        raise ValueError("At least one field to update is required.")
+    _require_at_least_one(
+        safe_subject,
+        safe_description,
+        safe_type,
+        safe_version,
+        safe_sprint,
+        safe_project_phase,
+        safe_status,
+        safe_assignee,
+        safe_responsible,
+        safe_priority,
+        safe_category,
+        safe_custom_fields,
+        safe_parent,
+        safe_start_date,
+        safe_due_date,
+        safe_estimated_time,
+        safe_remaining_time,
+        safe_duration,
+        safe_percentage_done,
+        message="At least one field to update is required.",
+    )
     return await _run_tool(
         client.update_work_package(
             work_package_id=safe_id,
@@ -1884,6 +1876,7 @@ _BULK_UPDATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(
         "description",
         "type",
         "version",
+        "sprint",
         "project_phase",
         "status",
         "assignee",
@@ -1910,11 +1903,12 @@ async def bulk_update_work_packages(
     """Update multiple work packages in one call.
 
     Each item in `items` must contain `work_package_id`. At least one other field must be present per item.
-    Optional fields per item: `subject`, `description`, `type`, `version`, `project_phase`, `status`,
+    Optional fields per item: `subject`, `description`, `type`, `version`, `sprint` (Backlogs sprint
+    name/id, requires the Backlogs module and OpenProject 17.3+), `project_phase`, `status`,
     `assignee`, `responsible`, `priority`, `category`, `custom_fields`, `parent_work_package_id`,
     `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`, `duration`
     (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'; pass 'none' to clear one of these),
-    `percentage_done` (integer 0-100). Pass 'none' to `version`, `project_phase`, `assignee`,
+    `percentage_done` (integer 0-100). Pass 'none' to `version`, `sprint`, `project_phase`, `assignee`,
     `responsible`, `category` or `parent_work_package_id` to clear that field on the item, same as
     `update_work_package`. An item containing any other key is rejected with an indexed validation
     error rather than silently dropping the unrecognized field.
@@ -1959,6 +1953,11 @@ async def bulk_update_work_packages(
         # version/project_phase/assignee/responsible/category/parent_work_package_id:
         # 'none' (any case) clears the field; otherwise the normal validation applies.
         safe_version = _validate_optional_version(item.get("version"), field_name=f"items[{i}].version")
+        # sprint: 'none' (any case) clears the assigned sprint; otherwise a sprint name/id.
+        safe_sprint = _clearable(
+            item.get("sprint"),
+            functools.partial(_validate_optional_query, field_name=f"items[{i}].sprint", max_length=100),
+        )
         safe_project_phase = _clearable(
             item.get("project_phase"),
             functools.partial(_validate_optional_query, field_name=f"items[{i}].project_phase", max_length=100),
@@ -1991,30 +1990,28 @@ async def bulk_update_work_packages(
         safe_percentage_done = _validate_optional_percentage_done(
             item.get("percentage_done"), field_name=f"items[{i}].percentage_done"
         )
-        if not any(
-            v is not None
-            for v in (
-                safe_subject,
-                safe_description,
-                safe_type,
-                safe_version,
-                safe_project_phase,
-                safe_status,
-                safe_assignee,
-                safe_responsible,
-                safe_priority,
-                safe_category,
-                safe_custom_fields,
-                safe_start_date,
-                safe_due_date,
-                safe_parent_work_package_id,
-                safe_estimated_time,
-                safe_remaining_time,
-                safe_duration,
-                safe_percentage_done,
-            )
-        ):
-            raise ValueError(f"items[{i}]: at least one field to update is required.")
+        _require_at_least_one(
+            safe_subject,
+            safe_description,
+            safe_type,
+            safe_version,
+            safe_sprint,
+            safe_project_phase,
+            safe_status,
+            safe_assignee,
+            safe_responsible,
+            safe_priority,
+            safe_category,
+            safe_custom_fields,
+            safe_start_date,
+            safe_due_date,
+            safe_parent_work_package_id,
+            safe_estimated_time,
+            safe_remaining_time,
+            safe_duration,
+            safe_percentage_done,
+            message=f"items[{i}]: at least one field to update is required.",
+        )
         safe_items.append(
             {
                 "work_package_id": safe_id,
@@ -2022,6 +2019,7 @@ async def bulk_update_work_packages(
                 "description": safe_description,
                 "type": safe_type,
                 "version": safe_version,
+                "sprint": safe_sprint,
                 "project_phase": safe_project_phase,
                 "status": safe_status,
                 "assignee": safe_assignee,
@@ -2241,9 +2239,7 @@ async def list_versions(
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
-    safe_search = _validate_optional_query(search, field_name="search", max_length=100)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
+    safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     return await _run_tool(
         client.list_versions(project=safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
     )
@@ -2329,11 +2325,15 @@ async def update_version(
         field_name="sharing",
         allowed_values={"none", "descendants", "hierarchy", "tree"},
     )
-    if not any(
-        value is not None
-        for value in (safe_name, safe_description, safe_start_date, safe_end_date, safe_status, safe_sharing)
-    ):
-        raise ValueError("At least one field to update is required.")
+    _require_at_least_one(
+        safe_name,
+        safe_description,
+        safe_start_date,
+        safe_end_date,
+        safe_status,
+        safe_sharing,
+        message="At least one field to update is required.",
+    )
     return await _run_tool(
         client.update_version(
             version_id=safe_id,
@@ -2373,9 +2373,7 @@ async def list_boards(
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
-    safe_search = _validate_optional_query(search, field_name="search", max_length=100)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
+    safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     return await _run_tool(
         client.list_boards(project=safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
     )
@@ -2475,25 +2473,22 @@ async def update_board(
         item_max_length=120,
     )
     safe_filters = _validate_optional_filter_list(filters)
-    if not any(
-        value is not None
-        for value in (
-            safe_name,
-            safe_project,
-            public,
-            starred,
-            hidden,
-            include_subprojects,
-            show_hierarchies,
-            timeline_visible,
-            safe_group_by,
-            safe_columns,
-            safe_sort_by,
-            safe_highlighted,
-            safe_filters,
-        )
-    ):
-        raise ValueError("At least one field to update is required.")
+    _require_at_least_one(
+        safe_name,
+        safe_project,
+        public,
+        starred,
+        hidden,
+        include_subprojects,
+        show_hierarchies,
+        timeline_visible,
+        safe_group_by,
+        safe_columns,
+        safe_sort_by,
+        safe_highlighted,
+        safe_filters,
+        message="At least one field to update is required.",
+    )
     return await _run_tool(
         client.update_board(
             board_id=safe_id,
@@ -2716,20 +2711,17 @@ async def update_time_entry(
     safe_start_time = _validate_optional_datetime(start_time, field_name="start_time")
     safe_end_time = _validate_optional_datetime(end_time, field_name="end_time")
     safe_comment = _validate_optional_update_text(comment, field_name="comment", max_length=10_000)
-    if not any(
-        value is not None
-        for value in (
-            safe_user,
-            safe_activity,
-            safe_hours,
-            safe_spent_on,
-            safe_start_time,
-            safe_end_time,
-            safe_comment,
-            ongoing,
-        )
-    ):
-        raise ValueError("At least one field to update is required.")
+    _require_at_least_one(
+        safe_user,
+        safe_activity,
+        safe_hours,
+        safe_spent_on,
+        safe_start_time,
+        safe_end_time,
+        safe_comment,
+        ongoing,
+        message="At least one field to update is required.",
+    )
     return await _run_tool(
         client.update_time_entry(
             time_entry_id=safe_id,
@@ -3119,8 +3111,15 @@ async def update_user(
     safe_firstname = _validate_optional_query(firstname, field_name="firstname", max_length=255)
     safe_lastname = _validate_optional_query(lastname, field_name="lastname", max_length=255)
     safe_language = _validate_optional_query(language, field_name="language", max_length=10)
-    if all(v is None for v in (safe_login, safe_email, safe_firstname, safe_lastname, admin, safe_language)):
-        raise ValueError("At least one field must be provided to update.")
+    _require_at_least_one(
+        safe_login,
+        safe_email,
+        safe_firstname,
+        safe_lastname,
+        admin,
+        safe_language,
+        message="At least one field must be provided to update.",
+    )
     return await _run_tool(
         client.update_user(
             safe_id,
@@ -3192,8 +3191,9 @@ async def update_group(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(group_id, field_name="group_id")
     safe_name = _validate_optional_query(name, field_name="name", max_length=255)
-    if all(v is None for v in (safe_name, add_user_ids, remove_user_ids)):
-        raise ValueError("At least one field must be provided to update.")
+    _require_at_least_one(
+        safe_name, add_user_ids, remove_user_ids, message="At least one field must be provided to update."
+    )
     return await _run_tool(
         client.update_group(
             safe_id, name=safe_name, add_user_ids=add_user_ids, remove_user_ids=remove_user_ids, confirm=confirm
@@ -3301,8 +3301,9 @@ async def update_grid(
     safe_column_count = (
         _validate_positive_int(column_count, field_name="column_count") if column_count is not None else None
     )
-    if safe_name is None and safe_row_count is None and safe_column_count is None:
-        raise ValueError("At least one field to update is required.")
+    _require_at_least_one(
+        safe_name, safe_row_count, safe_column_count, message="At least one field to update is required."
+    )
     return await _run_tool(
         client.update_grid(
             grid_id=safe_id,
@@ -3668,23 +3669,6 @@ def _categorize_tool_errors(fn):
             raise ValueError(_prefix("validation_error", str(exc))) from exc
 
     return wrapper
-
-
-def _validate_optional_query(value: str | None, *, field_name: str, max_length: int) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        # Reachable with a non-str JSON scalar (e.g. a bare number or bool) from
-        # bulk_update_work_packages' untyped `items: list[dict[str, Any]]` — MCP
-        # tool parameters are str-typed and coerced/rejected by FastMCP before
-        # reaching here, but a dict value has no such guarantee.
-        raise ValueError(f"{field_name} must be a string.")
-    normalized = " ".join(value.split())
-    if not normalized:
-        return None
-    if len(normalized) > max_length:
-        raise ValueError(f"{field_name} must be at most {max_length} characters.")
-    return normalized
 
 
 def _validate_optional_version(value: str | None, *, field_name: str = "version") -> str | object | None:
@@ -4192,27 +4176,6 @@ def _validate_optional_choice(
         allowed = ", ".join(sorted(allowed_values))
         raise ValueError(f"{field_name} must be one of: {allowed}.")
     return normalized
-
-
-def _validate_limit(limit: int | None) -> int | None:
-    if limit is None:
-        return None
-    return _validate_positive_int(limit, field_name="limit")
-
-
-def _validate_offset(offset: int) -> int:
-    return _validate_positive_int(offset, field_name="offset")
-
-
-def _validate_positive_int(value: int, *, field_name: str) -> int:
-    # Type-safe: MCP args arrive as JSON, so a wrong type (e.g. "5", None, True)
-    # must yield a clean ValueError, not a raw TypeError from the comparison.
-    # bool is an int subclass, so reject it explicitly.
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise ValueError(f"{field_name} must be an integer.")
-    if value < 1:
-        raise ValueError(f"{field_name} must be at least 1.")
-    return value
 
 
 # Resolves every classified tool name to its actual function object.

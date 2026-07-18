@@ -90,7 +90,6 @@ addopts = "-m 'not integration and not launcher'"
 markers = [
     "integration: tests against a live OpenProject instance (requires env vars)",
     "launcher: executable tests of the source-install/uninstall launcher scripts (ubuntu-only, see .github/workflows/test.yml's launchers job)",
-    "allow_feature_flag_fetch: opt out of the offline feature-flag stub in conftest",
 ]
 
 [tool.ruff]

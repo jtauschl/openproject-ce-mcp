@@ -31,18 +31,12 @@ from .app.errors import (
     TransportError,
 )
 from .app.pagination import _next_offset
-
-# _paginate_client/_paginate_server: no longer referenced directly in this module
-# (list_versions now delegates to VersionService; the pagination-math call sites
-# moved to app/resolvers/version_query.py), but re-exported deliberately -- existing
-# tests import them from here (`from openproject_ce_mcp.client import
-# _paginate_client, _paginate_server`) and must keep working.
-from .app.pagination import paginate_client as _paginate_client  # noqa: F401
-from .app.pagination import paginate_server as _paginate_server  # noqa: F401
+from .app.pagination import paginate_client as _paginate_client
+from .app.pagination import paginate_server as _paginate_server
 from .app.policies import access as _access_policy
 from .app.policies import hidden_fields as _hidden_fields_policy
 from .app.policies import scope as _scope_policy
-from .app.ports.project_resolution import ProjectResolutionContext
+from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
 from .app.ports.version_api import VersionApi
 from .app.resolvers.version_resolver import VersionResolver
 from .app.services.version_service import VersionService
@@ -1210,25 +1204,24 @@ class OpenProjectClient:
         if view_type is not None:
             results = [item for item in results if (item.type or "").casefold() == view_type.casefold()]
 
-        total = len(results)
-        start = (offset - 1) * effective_limit
-        end = start + effective_limit
-        page = results[start:end]
+        page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
         return ViewListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=len(page),
-            next_offset=offset + 1 if end < total else None,
-            truncated=end < total,
+            next_offset=next_offset,
+            truncated=truncated,
             results=page,
         )
 
     async def get_view(self, view_id: int) -> ViewDetail:
-        self._ensure_read_enabled("project")
-        payload = await self._get(f"views/{view_id}")
-        self._ensure_view_payload_allowed(payload)
-        return self.normalize_view_detail(payload)
+        return await self._fetch_and_normalize_detail(
+            scope="project",
+            path=f"views/{view_id}",
+            ensure_fn=self._ensure_view_payload_allowed,
+            normalize_fn=self.normalize_view_detail,
+        )
 
     async def list_documents(
         self,
@@ -1270,25 +1263,24 @@ class OpenProjectClient:
                 )
             ]
 
-        total = len(results)
-        start = (offset - 1) * effective_limit
-        end = start + effective_limit
-        page = results[start:end]
+        page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
         return DocumentListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=len(page),
-            next_offset=offset + 1 if end < total else None,
-            truncated=end < total,
+            next_offset=next_offset,
+            truncated=truncated,
             results=page,
         )
 
     async def get_document(self, document_id: int) -> DocumentDetail:
-        self._ensure_read_enabled("project")
-        payload = await self._get(f"documents/{document_id}")
-        self._ensure_document_payload_allowed(payload)
-        return self.normalize_document_detail(payload)
+        return await self._fetch_and_normalize_detail(
+            scope="project",
+            path=f"documents/{document_id}",
+            ensure_fn=self._ensure_document_payload_allowed,
+            normalize_fn=self.normalize_document_detail,
+        )
 
     async def update_document(
         self,
@@ -1386,25 +1378,24 @@ class OpenProjectClient:
                 if search_key in (item.title or "").casefold() or search_key in (item.summary or "").casefold()
             ]
 
-        total = len(results)
-        start = (offset - 1) * effective_limit
-        end = start + effective_limit
-        page = results[start:end]
+        page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
         return NewsListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=len(page),
-            next_offset=offset + 1 if end < total else None,
-            truncated=end < total,
+            next_offset=next_offset,
+            truncated=truncated,
             results=page,
         )
 
     async def get_news(self, news_id: int) -> NewsDetail:
-        self._ensure_read_enabled("project")
-        payload = await self._get(f"news/{news_id}")
-        self._ensure_news_payload_allowed(payload)
-        return self.normalize_news_detail(payload)
+        return await self._fetch_and_normalize_detail(
+            scope="project",
+            path=f"news/{news_id}",
+            ensure_fn=self._ensure_news_payload_allowed,
+            normalize_fn=self.normalize_news_detail,
+        )
 
     async def create_news(
         self,
@@ -1795,17 +1786,14 @@ class OpenProjectClient:
         if spent_on_to is not None:
             results = [item for item in results if item.spent_on is not None and item.spent_on <= spent_on_to]
 
-        total = len(results)
-        start = (offset - 1) * effective_limit
-        end = start + effective_limit
-        page = results[start:end]
+        page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
         return TimeEntryListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=len(page),
-            next_offset=offset + 1 if end < total else None,
-            truncated=end < total,
+            next_offset=next_offset,
+            truncated=truncated,
             results=page,
         )
 
@@ -2504,15 +2492,26 @@ class OpenProjectClient:
         remaining_time: str | None = None,
         duration: str | None = None,
         confirm: bool = False,
+        wp_context: WorkPackageResolutionContext | None = None,
     ) -> WorkPackageWriteResult:
-        project_payload = await self._resolve_project_ref(project, write=True)
+        # When a caller shares a wp_context across a bulk batch, route this resolve
+        # through its cache too -- items sharing the same project then only trigger
+        # one real project fetch for the whole batch, not one per item. With no
+        # wp_context (the default, single-call case) this is exactly the raw
+        # self._resolve_project_ref(project, write=True) call from before OPM-206.
+        project_payload = await self._get_project_payload(
+            project, write=True, context=wp_context.project_context if wp_context is not None else None
+        )
         project_id = str(project_payload["id"])
+        # Default: a fresh context per call, same as before OPM-206. A bulk caller
+        # (bulk_create_work_packages) passes one shared across all its items instead.
+        if wp_context is None:
+            wp_context = WorkPackageResolutionContext(ProjectResolutionContext(self._resolve_project_ref))
         # write=True already implies read=True passed (write checks read first),
         # so both keys are safe to seed from the same payload -- this is what lets
         # the type/version resolvers below reuse it instead of re-fetching.
-        resolution_context = ProjectResolutionContext(self._resolve_project_ref)
-        resolution_context.seed(project_id, project_payload, write=True)
-        resolution_context.seed(project_id, project_payload, write=False)
+        wp_context.project_context.seed(project_id, project_payload, write=True)
+        wp_context.project_context.seed(project_id, project_payload, write=False)
         if parent_work_package_id is not None:
             # parent goes into a HAL link href, which resolves only by numeric id.
             parent_work_package_id = await self._resolve_work_package_id(parent_work_package_id)
@@ -2534,7 +2533,7 @@ class OpenProjectClient:
             estimated_time=estimated_time,
             remaining_time=remaining_time,
             duration=duration,
-            project_context=resolution_context,
+            resolution_context=wp_context,
         )
         form = await self._post(f"projects/{project_id}/work_packages/form", json_body=payload)
         return await self._finalize_work_package_write(
@@ -2573,7 +2572,7 @@ class OpenProjectClient:
             raise OpenProjectServerError("OpenProject work package is missing a project link.")
         self._ensure_project_write_link_allowed(parent.get("_links", {}).get("project"))
 
-        resolution_context = ProjectResolutionContext(self._resolve_project_ref)
+        wp_context = WorkPackageResolutionContext(ProjectResolutionContext(self._resolve_project_ref))
         payload = await self._build_write_payload(
             project=str(project_id),
             type=type,
@@ -2589,7 +2588,7 @@ class OpenProjectClient:
             parent_work_package_id=parent_numeric_id,
             start_date=start_date,
             due_date=due_date,
-            project_context=resolution_context,
+            resolution_context=wp_context,
         )
         form = await self._post(f"projects/{project_id}/work_packages/form", json_body=payload)
         return await self._finalize_work_package_write(
@@ -2626,6 +2625,7 @@ class OpenProjectClient:
         duration: str | object | None = None,
         percentage_done: int | None = None,
         confirm: bool = False,
+        wp_context: WorkPackageResolutionContext | None = None,
     ) -> WorkPackageWriteResult:
         work_package_id = self._work_package_ref(work_package_id)
         if parent_work_package_id is not None and parent_work_package_id is not CLEAR_PARENT:
@@ -2640,7 +2640,10 @@ class OpenProjectClient:
             raise OpenProjectServerError("OpenProject work package is missing a project link.")
         self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
 
-        resolution_context = ProjectResolutionContext(self._resolve_project_ref)
+        # Default: a fresh context per call, same as before OPM-206. A bulk caller
+        # (bulk_update_work_packages) passes one shared across all its items instead.
+        if wp_context is None:
+            wp_context = WorkPackageResolutionContext(ProjectResolutionContext(self._resolve_project_ref))
         lock_version = current.get("lockVersion")
         payload = await self._build_write_payload(
             project=str(project_id),
@@ -2665,7 +2668,7 @@ class OpenProjectClient:
             percentage_done=percentage_done,
             work_package_id=work_package_id,
             lock_version=lock_version,
-            project_context=resolution_context,
+            resolution_context=wp_context,
         )
 
         # Auto-derive percentageDone/remainingTime when the status is transitioning to a closed
@@ -2730,6 +2733,11 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> BulkWorkPackageWriteResult:
         item_results: list[BulkWorkPackageItemResult] = []
+        # Shared across every item in this bulk call (see WorkPackageResolutionContext):
+        # items in the same project skip repeating the same project fetch and
+        # type/version name->id lookups. Discarded once this call returns -- never
+        # reused across separate bulk_create_work_packages calls.
+        wp_context = WorkPackageResolutionContext(ProjectResolutionContext(self._resolve_project_ref))
         try:
             for i, item in enumerate(items):
                 try:
@@ -2752,6 +2760,7 @@ class OpenProjectClient:
                         remaining_time=item.get("remaining_time"),
                         duration=item.get("duration"),
                         confirm=confirm,
+                        wp_context=wp_context,
                     )
                     if not result.ready:
                         item_results.append(
@@ -2800,6 +2809,11 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> BulkWorkPackageWriteResult:
         item_results: list[BulkWorkPackageItemResult] = []
+        # Shared across every item in this bulk call (see WorkPackageResolutionContext):
+        # items in the same project skip repeating the same project fetch and
+        # type/version name->id lookups. Discarded once this call returns -- never
+        # reused across separate bulk_update_work_packages calls.
+        wp_context = WorkPackageResolutionContext(ProjectResolutionContext(self._resolve_project_ref))
         try:
             for i, item in enumerate(items):
                 try:
@@ -2809,6 +2823,7 @@ class OpenProjectClient:
                         description=item.get("description"),
                         type=item.get("type"),
                         version=item.get("version"),
+                        sprint=item.get("sprint"),
                         project_phase=item.get("project_phase"),
                         status=item.get("status"),
                         assignee=item.get("assignee"),
@@ -2824,6 +2839,7 @@ class OpenProjectClient:
                         duration=item.get("duration"),
                         percentage_done=item.get("percentage_done"),
                         confirm=confirm,
+                        wp_context=wp_context,
                     )
                     if not result.ready:
                         item_results.append(
@@ -3234,17 +3250,14 @@ class OpenProjectClient:
             for item in payload.get("_embedded", {}).get("elements", [])
             if isinstance(item, dict) and self._sprint_payload_allowed(item)
         ]
-        total = len(results)
-        start = (offset - 1) * effective_limit
-        end = start + effective_limit
-        page = results[start:end]
+        page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
         return SprintListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=len(page),
-            next_offset=offset + 1 if end < total else None,
-            truncated=end < total,
+            next_offset=next_offset,
+            truncated=truncated,
             results=page,
         )
 
@@ -3280,30 +3293,25 @@ class OpenProjectClient:
             for item in payload.get("_embedded", {}).get("elements", [])
             if isinstance(item, dict) and self._sprint_payload_allowed(item)
         ]
-        total = len(results)
-        start = (offset - 1) * effective_limit
-        end = start + effective_limit
-        page = results[start:end]
+        page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
         return SprintListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=len(page),
-            next_offset=offset + 1 if end < total else None,
-            truncated=end < total,
+            next_offset=next_offset,
+            truncated=truncated,
             results=page,
         )
 
     async def get_sprint(self, sprint_id: int) -> SprintDetail:
-        self._ensure_read_enabled("project")
-        try:
-            payload = await self._get(f"sprints/{sprint_id}")
-        except NotFoundError as exc:
-            raise NotFoundError(
-                "OpenProject sprint not found, or the Backlogs module / sprint API is unavailable."
-            ) from exc
-        self._ensure_sprint_workspace_allowed(payload)
-        return self.normalize_sprint_detail(payload)
+        return await self._fetch_and_normalize_detail(
+            scope="project",
+            path=f"sprints/{sprint_id}",
+            ensure_fn=self._ensure_sprint_workspace_allowed,
+            normalize_fn=self.normalize_sprint_detail,
+            not_found_message="OpenProject sprint not found, or the Backlogs module / sprint API is unavailable.",
+        )
 
     async def create_version(
         self,
@@ -3396,17 +3404,16 @@ class OpenProjectClient:
             if search:
                 search_key = search.casefold()
                 filtered = [item for item in filtered if search_key in (item.name or "").casefold()]
-            total = len(filtered)
-            start = (offset - 1) * effective_limit
-            end = start + effective_limit
-            results = filtered[start:end]
+            results, total, next_offset, truncated = _paginate_client(
+                offset=offset, limit=effective_limit, results=filtered
+            )
             return BoardListResult(
                 offset=offset,
                 limit=effective_limit,
                 total=total,
                 count=len(results),
-                next_offset=offset + 1 if end < total else None,
-                truncated=end < total,
+                next_offset=next_offset,
+                truncated=truncated,
                 results=results,
             )
 
@@ -3419,21 +3426,24 @@ class OpenProjectClient:
         )
         results = [self.normalize_board(item) for item in payload.get("_embedded", {}).get("elements", [])]
         total = int(payload.get("total", len(results)))
+        next_offset, truncated = _paginate_server(offset=offset, limit=effective_limit, total=total)
         return BoardListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=len(results),
-            next_offset=_next_offset(offset, effective_limit, total),
-            truncated=total > offset * effective_limit,
+            next_offset=next_offset,
+            truncated=truncated,
             results=results,
         )
 
     async def get_board(self, board_id: int) -> BoardDetail:
-        self._ensure_read_enabled("board")
-        payload = await self._get(f"queries/{board_id}")
-        self._ensure_board_payload_allowed(payload)
-        return self.normalize_board_detail(payload)
+        return await self._fetch_and_normalize_detail(
+            scope="board",
+            path=f"queries/{board_id}",
+            ensure_fn=self._ensure_board_payload_allowed,
+            normalize_fn=self.normalize_board_detail,
+        )
 
     async def create_board(
         self,
@@ -4775,19 +4785,12 @@ class OpenProjectClient:
         """Render plain or markdown text to HTML via the OpenProject API."""
         self._ensure_read_enabled("work_package")
         endpoint = "render/markdown" if format == "markdown" else "render/plain"
-        url = f"{self.settings.base_url}/api/v3/{endpoint}"
-        try:
-            response = await self._http.post(
-                url,
-                content=text.encode("utf-8"),
-                headers={"Content-Type": "text/plain"},
-            )
-        except httpx.TimeoutException as exc:
-            raise TransportError("OpenProject request timed out.") from exc
-        except httpx.HTTPError as exc:
-            raise TransportError("Could not reach OpenProject.") from exc
-        self._raise_for_status(response)
-        data = response.json()
+        data = await self._request_json(
+            "POST",
+            endpoint,
+            content=text.encode("utf-8"),
+            headers={"Content-Type": "text/plain"},
+        )
         return RenderedText(
             format=format,
             raw=text,
@@ -4959,6 +4962,29 @@ class OpenProjectClient:
     async def _get(self, path: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
         return await self._request_json("GET", path, params=params)
 
+    async def _fetch_and_normalize_detail(
+        self,
+        *,
+        scope: str,
+        path: str,
+        ensure_fn: Callable[[dict[str, Any]], None],
+        normalize_fn: Callable[[dict[str, Any]], DetailT],
+        not_found_message: str | None = None,
+    ) -> DetailT:
+        """Shared shape behind the simple `get_X_detail` methods: check read access,
+        fetch the payload, enforce the entity's allow-check, then normalize it.
+        """
+        self._ensure_read_enabled(scope)
+        if not_found_message is not None:
+            try:
+                payload = await self._get(path)
+            except NotFoundError as exc:
+                raise NotFoundError(not_found_message) from exc
+        else:
+            payload = await self._get(path)
+        ensure_fn(payload)
+        return normalize_fn(payload)
+
     async def _post(
         self,
         path: str,
@@ -5021,8 +5047,12 @@ class OpenProjectClient:
         *,
         params: dict[str, str] | None = None,
         json_body: dict[str, Any] | None = None,
+        content: bytes | str | None = None,
+        headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        response = await self._request(method, path, params=params, json_body=json_body)
+        response = await self._request(
+            method, path, params=params, json_body=json_body, content=content, headers=headers
+        )
         try:
             return response.json()
         except ValueError as exc:
@@ -5036,9 +5066,13 @@ class OpenProjectClient:
         params: dict[str, str] | None = None,
         json_body: dict[str, Any] | None = None,
         files: dict[str, tuple[str | None, str | bytes, str]] | None = None,
+        content: bytes | str | None = None,
+        headers: dict[str, str] | None = None,
     ) -> httpx.Response:
         try:
-            response = await self._http.request(method, path, params=params, json=json_body, files=files)
+            response = await self._http.request(
+                method, path, params=params, json=json_body, files=files, content=content, headers=headers
+            )
         except httpx.TimeoutException as exc:
             raise TransportError("OpenProject request timed out.") from exc
         except httpx.HTTPError as exc:
@@ -6406,8 +6440,9 @@ class OpenProjectClient:
         percentage_done: int | None = None,
         work_package_id: int | str | None = None,
         lock_version: int | None = None,
-        project_context: ProjectResolutionContext | None = None,
+        resolution_context: WorkPackageResolutionContext | None = None,
     ) -> dict[str, Any]:
+        project_context = resolution_context.project_context if resolution_context is not None else None
         payload: dict[str, Any] = {}
         links: dict[str, dict[str, str | None]] = {}
 
@@ -6450,15 +6485,26 @@ class OpenProjectClient:
             payload["duration"] = duration
         if type is not None:
             self._ensure_field_writable("work_package", "type")
-            type_id = await self._resolve_type_id(type, project=project, context=project_context)
+            type_id = await self._resolve_wp_ref_id(
+                "type",
+                type,
+                project=project,
+                cache=resolution_context,
+                resolve=lambda: self._resolve_type_id(type, project=project, context=project_context),
+            )
             links["type"] = {"href": self._api_href(f"types/{type_id}")}
         if version is CLEAR_VERSION:
             self._ensure_field_writable("work_package", "version")
             links["version"] = {"href": None}
         elif version is not None:
             self._ensure_field_writable("work_package", "version")
-            version_id = await self._resolve_version_id(
-                _narrow_cleared(version, sentinel=CLEAR_VERSION), project=project, context=project_context
+            version_ref: str = _narrow_cleared(version, sentinel=CLEAR_VERSION)
+            version_id = await self._resolve_wp_ref_id(
+                "version",
+                version_ref,
+                project=project,
+                cache=resolution_context,
+                resolve=lambda: self._resolve_version_id(version_ref, project=project, context=project_context),
             )
             links["version"] = {"href": self._api_href(f"versions/{version_id}")}
         if sprint is CLEAR:
@@ -6466,8 +6512,13 @@ class OpenProjectClient:
             links["sprint"] = {"href": None}
         elif sprint is not None:
             self._ensure_field_writable("work_package", "sprint")
-            sprint_id = await self._resolve_sprint_id(
-                _narrow_cleared(sprint, sentinel=CLEAR), project=project, context=project_context
+            sprint_ref: str = _narrow_cleared(sprint, sentinel=CLEAR)
+            sprint_id = await self._resolve_wp_ref_id(
+                "sprint",
+                sprint_ref,
+                project=project,
+                cache=resolution_context,
+                resolve=lambda: self._resolve_sprint_id(sprint_ref, project=project, context=project_context),
             )
             links["sprint"] = {"href": self._api_href(f"sprints/{sprint_id}")}
         if status is not None:
@@ -6519,6 +6570,7 @@ class OpenProjectClient:
                 work_package_id=work_package_id,
                 draft_payload=payload,
                 lock_version=lock_version,
+                project_context=project_context,
             )
             if responsible is not None and responsible is not CLEAR:
                 self._ensure_field_writable("work_package", "responsible")
@@ -6548,6 +6600,7 @@ class OpenProjectClient:
         work_package_id: int | str | None,
         draft_payload: dict[str, Any],
         lock_version: int | None = None,
+        project_context: ProjectResolutionContext | None = None,
     ) -> dict[str, Any]:
         if work_package_id is not None:
             # OpenProject 17.x rejects the work-package form endpoint with a
@@ -6563,7 +6616,12 @@ class OpenProjectClient:
         schema_payload = dict(draft_payload)
         schema_links = dict(schema_payload.get("_links", {}))
         if type is not None and "type" not in schema_links:
-            type_id = await self._resolve_type_id(type, project=project)
+            # Latent/unreachable in current call patterns: _build_write_payload
+            # already puts "type" in schema_links whenever `type` is given, so this
+            # branch only fires for a hypothetical future caller that doesn't. Still
+            # threaded through for consistency with every other resolver call in
+            # this flow (see OPM-206).
+            type_id = await self._resolve_type_id(type, project=project, context=project_context)
             schema_links["type"] = {"href": self._api_href(f"types/{type_id}")}
         if schema_links:
             schema_payload["_links"] = schema_links
@@ -7650,6 +7708,31 @@ class OpenProjectClient:
         if not hrefs:
             raise InvalidInputError("At least one role is required.")
         return hrefs
+
+    async def _resolve_wp_ref_id(
+        self,
+        kind: str,
+        ref: str,
+        *,
+        project: str,
+        cache: WorkPackageResolutionContext | None,
+        resolve: Callable[[], Awaitable[str]],
+    ) -> str:
+        """Cache-then-resolve wrapper around _resolve_type_id/_resolve_version_id/
+        _resolve_sprint_id. When `cache` is shared across a bulk call's items (see
+        WorkPackageResolutionContext), a repeated name->id lookup for the same
+        (project, kind, ref) is skipped instead of re-querying OpenProject once per
+        item. The resolvers themselves are unchanged -- this is purely a wrapping
+        layer around them.
+        """
+        if cache is not None:
+            cached = cache.get_id(kind, project, ref)
+            if cached is not None:
+                return cached
+        resolved = await resolve()
+        if cache is not None:
+            cache.store_id(kind, project, ref, resolved)
+        return resolved
 
     async def _resolve_type_id(
         self, type_ref: str, *, project: str | None, context: ProjectResolutionContext | None = None
