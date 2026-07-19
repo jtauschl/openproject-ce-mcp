@@ -11793,7 +11793,12 @@ async def test_update_work_package_sets_percentage_done_explicitly() -> None:
     await client.aclose()
 
 
-async def test_update_work_package_autofills_progress_on_close_when_writable() -> None:
+async def test_update_work_package_autofills_progress_on_close_without_estimate() -> None:
+    """OpenProject's own validation requires remainingTime to be null/absent
+    (not "PT0H") when the work package has no estimatedTime -- live-verified
+    against real OpenProject: submitting "PT0H" here gets rejected with
+    "must stay empty". The GET response below deliberately has no
+    estimatedTime, matching that case."""
     form_calls = {"count": 0}
     status_list_calls = {"count": 0}
 
@@ -11837,7 +11842,7 @@ async def test_update_work_package_autofills_progress_on_close_when_writable() -
     result = await client.update_work_package(work_package_id=42, status="Closed", confirm=False)
     assert result.ready
     assert result.payload["percentageDone"] == 100
-    assert result.payload["remainingTime"] == "PT0H"
+    assert result.payload["remainingTime"] is None
     # First form POST (without the auto-filled fields) + second POST once the schema
     # confirmed writability — never more than that.
     assert form_calls["count"] == 2
@@ -11845,6 +11850,103 @@ async def test_update_work_package_autofills_progress_on_close_when_writable() -
     # already resolved for the status link, instead of resolving "Closed" -> id a second
     # time via a redundant GET /api/v3/statuses.
     assert status_list_calls["count"] == 1
+    await client.aclose()
+
+
+async def test_update_work_package_autofills_progress_on_close_with_existing_estimate() -> None:
+    """Opposite of the no-estimate case above: when the work package already
+    has an estimatedTime (from the pre-write GET, not this call's own
+    params), remainingTime must autofill to "PT0H", not null -- live-verified:
+    submitting null here gets rejected with "must be 0h"."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "lockVersion": 1,
+                    "estimatedTime": "PT8H",
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/statuses":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 9, "name": "Closed"}]}}, request=request)
+        if request.url.path == "/api/v3/statuses/9":
+            return httpx.Response(200, json={"id": 9, "name": "Closed", "isClosed": True}, request=request)
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Form",
+                    "_embedded": {
+                        "payload": body,
+                        "validationErrors": {},
+                        "schema": {
+                            "percentageDone": {"writable": True},
+                            "remainingTime": {"writable": True},
+                        },
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
+    result = await client.update_work_package(work_package_id=42, status="Closed", confirm=False)
+    assert result.ready
+    assert result.payload["percentageDone"] == 100
+    assert result.payload["remainingTime"] == "PT0H"
+    await client.aclose()
+
+
+async def test_update_work_package_autofills_progress_using_this_calls_own_new_estimate() -> None:
+    """The "effective estimate" check must prefer THIS call's own estimated_time
+    param over the pre-write GET's value -- a caller setting an estimate for
+    the first time while also closing the status should autofill "PT0H", not
+    null, even though the GET response has no estimatedTime yet."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "lockVersion": 1,
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/statuses":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 9, "name": "Closed"}]}}, request=request)
+        if request.url.path == "/api/v3/statuses/9":
+            return httpx.Response(200, json={"id": 9, "name": "Closed", "isClosed": True}, request=request)
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Form",
+                    "_embedded": {
+                        "payload": body,
+                        "validationErrors": {},
+                        "schema": {
+                            "percentageDone": {"writable": True},
+                            "remainingTime": {"writable": True},
+                        },
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
+    result = await client.update_work_package(work_package_id=42, status="Closed", estimated_time="PT4H", confirm=False)
+    assert result.ready
+    assert result.payload["percentageDone"] == 100
+    assert result.payload["remainingTime"] == "PT0H"
     await client.aclose()
 
 

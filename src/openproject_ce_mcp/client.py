@@ -2633,7 +2633,7 @@ class OpenProjectClient:
         want_auto_percentage = percentage_done is None
         want_auto_remaining = remaining_time is None
         auto_percentage: int | None = None
-        auto_remaining: str | None = None
+        auto_remaining: str | object | None = None
         if status is not None and (want_auto_percentage or want_auto_remaining):
             # Reuse the status id _build_write_payload already resolved for the status
             # link (avoids a redundant name->id lookup when status is given by name).
@@ -2646,7 +2646,19 @@ class OpenProjectClient:
             target_status = self.normalize_status(status_payload)
             if target_status.is_closed:
                 auto_percentage = 100 if want_auto_percentage else None
-                auto_remaining = "PT0H" if want_auto_remaining else None
+                if want_auto_remaining:
+                    # OpenProject's own validation requires the OPPOSITE target
+                    # depending on whether an estimate exists: remainingTime must be
+                    # exactly "PT0H" when estimatedTime is set, but must be null/absent
+                    # when it isn't -- live-verified against real OpenProject (a bare
+                    # "PT0H" gets rejected with "must stay empty" on an estimate-less
+                    # work package). "Effective" estimate: this same call's own
+                    # estimated_time if it set one, else the work package's existing
+                    # value from the pre-write GET.
+                    effective_estimated_time = (
+                        payload.get("estimatedTime") if "estimatedTime" in payload else current.get("estimatedTime")
+                    )
+                    auto_remaining = "PT0H" if effective_estimated_time else CLEAR
 
         payload["lockVersion"] = lock_version
         form = await self._post(f"work_packages/{work_package_id}/form", json_body=payload)
@@ -2666,7 +2678,7 @@ class OpenProjectClient:
                 and schema.get("remainingTime", {}).get("writable") is True
                 and not self._field_hidden("work_package", "remaining_time")
             ):
-                payload["remainingTime"] = auto_remaining
+                payload["remainingTime"] = None if auto_remaining is CLEAR else auto_remaining
                 changed = True
             if changed:
                 payload["lockVersion"] = lock_version

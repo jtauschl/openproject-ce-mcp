@@ -15,6 +15,11 @@ development baseline.
   even when a date was genuinely set.** OpenProject reports a milestone's
   date under a different field than it does for every other work-package
   type, which this server did not previously read.
+- **Closing a work package with no `estimated_time` set was rejected on the
+  first attempt.** `update_work_package`/`bulk_update_work_packages` always
+  auto-filled `remaining_time` to `PT0H` on a transition to a closed status,
+  but OpenProject requires the opposite value (`null`, not `PT0H`) when the
+  work package has no estimate — the common case for simple tasks.
 
 ---
 
