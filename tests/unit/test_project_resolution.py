@@ -176,6 +176,16 @@ async def test_update_project_denies_disallowed_parent_project() -> None:
 # test_get_project_resolves_by_exact_name_when_unique,
 # test_create_work_package_by_display_name_still_enforces_write_allowlist) plus the
 # ambiguous-name write-path test directly below this matrix.
+#
+# OPM-209 extended this matrix with "membership"/"board"/"version" operations
+# (previously only "read"/"write" against project itself), specifically to prove
+# the property holds through domains beyond project, and -- for "version" -- through
+# the app/-layer delegation (VersionService/project-ref resolution wiring), not
+# just legacy client.py code. This proves the *stronger* zero-follow-up-requests
+# guarantee for a representative handful of domains; the complementary, exhaustive
+# but weaker (authorization-precedes-only-the-mutating-call) check across all 55
+# registered write tools lives in
+# test_write_confirm_contracts.py::test_write_tool_denies_when_its_write_scope_is_disabled.
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "project_ref,read_projects,write_projects,operation,expect_error,expected_request_count",
@@ -192,6 +202,24 @@ async def test_update_project_denies_disallowed_parent_project() -> None:
         pytest.param("1", ("*",), ("*",), "write", None, 3, id="numeric_id-write_allowed"),
         pytest.param("demo", ("*",), ("other",), "write", "WRITE", 1, id="identifier-read_only-write_denied"),
         pytest.param("demo", ("*",), ("*",), "write", None, 3, id="identifier-write_allowed"),
+        # membership: create_membership resolves+write-checks the project first (1
+        # request, and where it fails on denial), then resolves role hrefs (GET
+        # /api/v3/roles, unconditional even for a numeric role ref) and posts the
+        # membership preview form — 3 requests when allowed.
+        pytest.param("demo", ("*",), ("other",), "membership", "WRITE", 1, id="membership-write_denied"),
+        pytest.param("demo", ("*",), ("*",), "membership", None, 3, id="membership-write_allowed"),
+        # board: create_board resolves+write-checks the project (1 request, and
+        # where it fails on denial), then _build_board_write_payload separately
+        # resolves the project id again (same URL, a second request) before posting
+        # the board preview form — 3 requests when allowed.
+        pytest.param("1", ("*",), ("other",), "board", "WRITE", 1, id="board-write_denied"),
+        pytest.param("1", ("*",), ("*",), "board", None, 3, id="board-write_allowed"),
+        # version: routed through app/services/version_service.py (the OPM-153
+        # pilot's app/-layer delegation, not legacy client.py code) — resolves+
+        # write-checks the project (1 request, and where it fails on denial), then
+        # posts the version preview form — 2 requests when allowed.
+        pytest.param("demo", ("*",), ("other",), "version", "WRITE", 1, id="version-write_denied"),
+        pytest.param("demo", ("*",), ("*",), "version", None, 2, id="version-write_allowed"),
     ],
 )
 async def test_project_resolution_policy_matrix(
@@ -212,25 +240,51 @@ async def test_project_resolution_policy_matrix(
             return _make_project_response(request, project_id=1)
         if request.url.path == "/api/v3/projects/1/form" and request.method == "POST":
             return httpx.Response(200, json={"_embedded": {"schema": {}}}, request=request)
+        if request.url.path == "/api/v3/roles" and request.method == "GET":
+            return httpx.Response(200, json={"_embedded": {"elements": []}}, request=request)
+        if request.url.path == "/api/v3/memberships/form" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={"_embedded": {"payload": {"_links": {"roles": [{"href": "/api/v3/roles/2"}]}}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/queries/form" and request.method == "POST":
+            return httpx.Response(
+                200, json={"_embedded": {"payload": {"name": "Board"}, "validationErrors": {}}}, request=request
+            )
+        if request.url.path == "/api/v3/versions/form" and request.method == "POST":
+            return httpx.Response(
+                200, json={"_embedded": {"payload": {"name": "v1.0"}, "validationErrors": {}}}, request=request
+            )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = dataclasses.replace(make_settings(), read_projects=read_projects, write_projects=write_projects)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    if expect_error is None:
+    async def call() -> None:
         if operation == "read":
             project = await client.get_project(project_ref)
             assert project.id == 1
-        else:
+        elif operation == "write":
             result = await client.update_project(project_ref=project_ref, confirm=False)
             assert result.ready
+        elif operation == "membership":
+            result = await client.create_membership(project=project_ref, principal="5", roles=["2"], confirm=False)
+            assert result.ready
+        elif operation == "board":
+            result = await client.create_board(name="Board", project=project_ref, confirm=False)
+            assert result.ready
+        else:
+            assert operation == "version"
+            result = await client.create_version(project=project_ref, name="v1.0", confirm=False)
+            assert result.ready
+
+    if expect_error is None:
+        await call()
     else:
         env_var = "OPENPROJECT_READ_PROJECTS" if expect_error == "READ" else "OPENPROJECT_WRITE_PROJECTS"
         with pytest.raises(PermissionDeniedError, match=env_var):
-            if operation == "read":
-                await client.get_project(project_ref)
-            else:
-                await client.update_project(project_ref=project_ref, confirm=False)
+            await call()
 
     assert len(requests_seen) == expected_request_count, (
         f"expected {expected_request_count} request(s), got {requests_seen}"

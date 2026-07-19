@@ -114,7 +114,16 @@ tools.py (MCP presentation)
 Remaining domains stay exactly as described in the flat model above; migrating them
 is deliberately out of scope until the pilot's lessons inform a second migration.
 An `ast`-based test (`tests/test_architecture_boundaries.py`) enforces the layer
-directions above and confines `httpx` to `HttpxTransport`.
+directions above, confines `httpx` to `HttpxTransport`, forbids importing `fastmcp`
+or reading environment variables directly anywhere under `app/`, and checks that
+every `app/services/`/`app/resolvers/` class depends on a port `Protocol`, never a
+concrete adapter. These checks are directory-driven, not Versions-specific, so a
+second domain's migration needs no test changes to stay covered. Complementary
+behavioral-contract tests (`tests/unit/test_write_confirm_contracts.py`,
+`tests/unit/test_write_payload_equivalence.py`) prove, for every registered
+write/delete MCP tool, that writes stay preview-only until confirmed, that no
+mutating call happens before confirmation or without the required write scope, and
+that the previewed and actually-sent payloads match.
 
 ## Naming conventions
 
