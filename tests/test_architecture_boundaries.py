@@ -103,11 +103,56 @@ def test_httpx_importers_outside_app_match_the_known_allow_list() -> None:
     assert offenders == set()
 
 
-def test_tools_module_never_imports_from_app_directly() -> None:
-    tree = ast.parse((SRC / "tools.py").read_text())
+def _app_import_violations(source: str) -> list[str]:
+    """Find imports of the `app/` package in `source`, in any of the three forms
+    Python allows (OPM-219): absolute `ast.ImportFrom`, relative `ast.ImportFrom`
+    (as used from a package-root file like tools.py, so level == 1), and bare
+    `ast.Import`. An earlier version of this check only inspected absolute
+    `ast.ImportFrom` nodes, so `from .app.presentation import x` or
+    `import openproject_ce_mcp.app.presentation` silently passed.
+    """
+    tree = ast.parse(source)
+    violations: list[str] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("openproject_ce_mcp.app"):
-            raise AssertionError(f"tools.py must not import from app/ directly: {ast.dump(node)}")
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "openproject_ce_mcp.app" or alias.name.startswith("openproject_ce_mcp.app."):
+                    violations.append(ast.dump(node))
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 0 and node.module and node.module.startswith("openproject_ce_mcp.app"):
+                violations.append(ast.dump(node))
+            elif node.level == 1 and (
+                (node.module and (node.module == "app" or node.module.startswith("app.")))
+                or (node.module is None and any(alias.name == "app" for alias in node.names))
+            ):
+                violations.append(ast.dump(node))
+    return violations
+
+
+def test_tools_module_never_imports_from_app_directly() -> None:
+    violations = _app_import_violations((SRC / "tools.py").read_text())
+    assert violations == [], f"tools.py must not import from app/ directly: {violations}"
+
+
+def test_app_import_violation_detector_catches_absolute_import_from() -> None:
+    assert _app_import_violations("from openproject_ce_mcp.app.presentation import _to_payload\n")
+
+
+def test_app_import_violation_detector_catches_relative_import_from() -> None:
+    assert _app_import_violations("from .app.presentation import _to_payload\n")
+
+
+def test_app_import_violation_detector_catches_relative_bare_app_import() -> None:
+    assert _app_import_violations("from . import app\n")
+
+
+def test_app_import_violation_detector_catches_bare_import() -> None:
+    assert _app_import_violations("import openproject_ce_mcp.app.presentation\n")
+
+
+def test_app_import_violation_detector_ignores_unrelated_imports() -> None:
+    source = "from .models import ProjectSummary\nimport json\nfrom . import presentation\n"
+    assert _app_import_violations(source) == []
 
 
 def test_app_layer_dependencies_are_one_directional() -> None:
