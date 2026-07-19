@@ -15,7 +15,7 @@ Two tools that keep this MCP honest against the OpenProject API:
 ## Usage
 
 ```bash
-tools/api-check/fetch-sources.sh        # clone OP source for each version (once)
+tools/api-check/fetch-sources.sh        # clone OP source for each version; re-run anytime to sync sparse-checkout paths
 
 python tools/api-check/check_api.py     # curated version matrix; exit 1 on unexpected drift
 python tools/api-check/check_api.py --verbose   # also list matching symbols
@@ -50,8 +50,17 @@ the script reconciles edge cases and the live probe is the tie-breaker. Update
 that table when a resource is reclassified.
 
 `fetch-sources.sh` makes shallow, sparse clones (only the API subtrees) into
-`.op-sources/<version>/`, which is gitignored. To refresh after bumping a pinned
-tag, delete the corresponding directory and re-run.
+`.op-sources/<version>/`, which is gitignored. Two different refresh cases:
+- **Widened `SPARSE_PATHS`** (a new `Assumption` needs a subtree not yet
+  fetched): just re-run the script. For a version already cloned, it now runs
+  `git sparse-checkout set --no-cone` again with the current `SPARSE_PATHS`,
+  which pulls in any newly-added path in place (the clones use
+  `--filter=blob:none`, so git lazily fetches only the newly-needed blobs) —
+  no deletion needed.
+- **Bumped pinned tag** (a `VERSIONS` entry now points at a different release):
+  `sparse-checkout set` does not move the checked-out commit, only which paths
+  are populated from it. Delete the corresponding `.op-sources/<version>/`
+  directory and re-run so it re-clones at the new tag.
 
 ## What it does and does not catch
 

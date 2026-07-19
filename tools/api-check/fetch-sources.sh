@@ -43,6 +43,7 @@ SPARSE_PATHS=(
   "/app/models/emoji_reaction.rb"   # EMOJI_MAP enum values
   "/app/models/version.rb"          # VERSION_STATUSES
   "modules/*/lib/api/v3"            # every module's API subtree (Backlogs, Meetings, etc.)
+  "modules/*/lib/open_project/*/patches/api"  # module patches to core representers (e.g. Backlogs' sprint link on work packages)
 )
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -54,7 +55,8 @@ for entry in "${VERSIONS[@]}"; do
   tag="${entry#*:}"
   dest="$DEST_BASE/$ver"
   if [ -d "$dest/.git" ]; then
-    echo "[$ver] already present ($(git -C "$dest" describe --tags 2>/dev/null || echo '?')), skipping. Remove $dest to refresh."
+    echo "[$ver] already present ($(git -C "$dest" describe --tags 2>/dev/null || echo '?')), syncing sparse-checkout paths."
+    git -C "$dest" sparse-checkout set --no-cone "${SPARSE_PATHS[@]}"
     continue
   fi
   echo "[$ver] cloning $tag (sparse, shallow) -> $dest"

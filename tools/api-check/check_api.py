@@ -94,6 +94,11 @@ class Assumption:
 # their own files.
 _PATH_HELPER = "lib/api/v3/utilities/path_helper.rb"
 _WP_FILTERS = "app/models/queries/work_packages/filter"
+_BACKLOGS_SPRINTS = "modules/backlogs/lib/api/v3/sprints"
+_WP_REPRESENTER = "lib/api/v3/work_packages/work_package_representer.rb"
+_USER_REPRESENTER = "lib/api/v3/users/user_representer.rb"
+_VERSION_REPRESENTER = "lib/api/v3/versions/version_representer.rb"
+_MEMBERSHIP_REPRESENTER = "lib/api/v3/memberships/membership_representer.rb"
 
 ASSUMPTIONS: list[Assumption] = [
     # --- Endpoint paths the client builds (checked against the path helper) ---
@@ -114,14 +119,79 @@ ASSUMPTIONS: list[Assumption] = [
     Assumption(
         "semantic identifier model", "field", "semantic_id?", subtree="app/models/work_package", present_from="17.4"
     ),  # model lands in 17.4; setting activates it in 17.5
+    # --- OPM-89 field batch: response fields never backfilled into this list
+    # when they were added to the client. Patterns include the declaring macro
+    # (property/date_property/date_time_property/link), not just the bare field
+    # name, and subtree is the specific representer file, not its whole
+    # resource directory -- a bare name like "readonly" or "created_at" would
+    # still match comments/other methods/unrelated files in the wider
+    # directory even if the actual response-field declaration were removed,
+    # which would prove nothing. Macro names confirmed identical from 16.0
+    # through 17.6 for every entry below (spot-checked both ends of the matrix).
+    Assumption("scheduleManually field", "field", "property :schedule_manually", subtree=_WP_REPRESENTER),
+    Assumption("ignoreNonWorkingDays field", "field", "property :ignore_non_working_days", subtree=_WP_REPRESENTER),
+    Assumption("derivedStartDate field", "field", "date_property :derived_start_date", subtree=_WP_REPRESENTER),
+    Assumption("derivedDueDate field", "field", "date_property :derived_due_date", subtree=_WP_REPRESENTER),
+    # Rendered "percentageDone" in JSON; the Ruby property is done_ratio.
+    Assumption("percentageDone field", "field", "property :done_ratio", subtree=_WP_REPRESENTER),
+    Assumption("derivedPercentageDone field", "field", "property :derived_done_ratio", subtree=_WP_REPRESENTER),
+    Assumption("readonly field", "field", "property :readonly", subtree=_WP_REPRESENTER),
+    # Ruby source spells these without an underscore (firstname/lastname), not
+    # first_name/last_name.
+    Assumption("firstName field", "field", "property :firstname", subtree=_USER_REPRESENTER),
+    Assumption("lastName field", "field", "property :lastname", subtree=_USER_REPRESENTER),
+    # A `link`, not a `property` -- the camelCase name is the Ruby symbol too.
+    Assumption(
+        "defaultAssignee field",
+        "field",
+        "link :defaultAssignee",
+        subtree="lib/api/v3/categories/category_representer.rb",
+    ),
+    Assumption(
+        "favorited field",
+        "field",
+        "property :favorited",
+        subtree="lib/api/v3/projects/project_representer.rb",
+        present_from="17.0",
+    ),  # absent 16.0-16.6
+    Assumption("version createdAt field", "field", "date_time_property :created_at", subtree=_VERSION_REPRESENTER),
+    Assumption("version updatedAt field", "field", "date_time_property :updated_at", subtree=_VERSION_REPRESENTER),
+    Assumption(
+        "membership createdAt field", "field", "date_time_property :created_at", subtree=_MEMBERSHIP_REPRESENTER
+    ),
+    Assumption(
+        "membership updatedAt field", "field", "date_time_property :updated_at", subtree=_MEMBERSHIP_REPRESENTER
+    ),
     # --- Query filters the client builds ---
     # Present in both lines. Note: this filter matches subject text and the
     # numeric id, NOT the project-based displayId — which is why resolving a
     # semantic reference via this filter fails (see _resolve_work_package_id).
     Assumption("subject_or_id filter", "filter", "subject_or_id_filter.rb", subtree=_WP_FILTERS),
     Assumption("status_id filter", "filter", "status_filter.rb", subtree=_WP_FILTERS),
+    # OPM-67: check the registered filter key itself (self.key), not just that
+    # a similarly-named file exists -- the file could survive a key rename.
+    Assumption("assigned_to_id filter", "filter", ":assigned_to_id", subtree=f"{_WP_FILTERS}/assigned_to_filter.rb"),
+    Assumption("priority_id filter", "filter", ":priority_id", subtree=f"{_WP_FILTERS}/priority_filter.rb"),
+    Assumption("type_id filter", "filter", ":type_id", subtree=f"{_WP_FILTERS}/type_filter.rb"),
     Assumption(
         "involved (relations) filter", "filter", "involved_filter.rb", subtree="app/models/queries/relations/filters"
+    ),
+    # OPM-80/81: date-filter operators "=d"/"<>d". Check the literal registered
+    # symbol in its specific operator file, not just that a similarly-named
+    # file exists -- the wrong thing to prove would be "some file named
+    # on_date.rb still exists" when what the client depends on is the exact
+    # operator string it sends.
+    Assumption(
+        "on_date (=d) filter operator",
+        "filter",
+        'set_symbol "=d"',
+        subtree="app/models/queries/operators/on_date.rb",
+    ),
+    Assumption(
+        "between_date (<>d) filter operator",
+        "filter",
+        'set_symbol "<>d"',
+        subtree="app/models/queries/operators/between_date.rb",
     ),
     # --- Endpoints/operators behind the CE coverage-expansion tools. Each has a
     # different minimum version, recorded so the matrix flags a tool used on too
@@ -136,6 +206,40 @@ ASSUMPTIONS: list[Assumption] = [
         "open_status.rb",
         subtree="app/models/queries/operators/versions",
         present_from="16.4",
+    ),
+    # --- OPM-86: Backlogs sprint endpoints + the work-package-side write link.
+    # Collection and detail are independent route blocks in the same file, so
+    # each gets its own entry rather than one that only proves the file exists.
+    Assumption(
+        "sprints collection endpoint",
+        "path",
+        "resources :sprints",
+        subtree=f"{_BACKLOGS_SPRINTS}/sprints_api.rb",
+        present_from="17.3",
+    ),
+    Assumption(
+        "sprints detail endpoint",
+        "path",
+        "route_param :id",
+        subtree=f"{_BACKLOGS_SPRINTS}/sprints_api.rb",
+        present_from="17.3",
+    ),
+    Assumption(
+        "projects/{id}/sprints endpoint",
+        "path",
+        "resources :sprints",
+        subtree=f"{_BACKLOGS_SPRINTS}/sprints_by_project_api.rb",
+        present_from="17.3",
+    ),
+    # Checks the setter itself, not just `resource :sprint` -- a bare
+    # `resource :sprint` match would only prove the link is rendered, not that
+    # it's writable, which is what the client actually depends on.
+    Assumption(
+        "sprint work-package write link",
+        "field",
+        "associated_resource_default_setter(:sprint, :sprint, :sprint)",
+        subtree="modules/backlogs/lib/open_project/backlogs/patches/api/work_package_representer.rb",
+        present_from="17.3",
     ),
 ]
 
