@@ -15,6 +15,34 @@ class SortCriterion(NamedTuple):
 
 
 @dataclass
+class PageResult:
+    """Shared pagination envelope (OPM-48). Deliberately NOT Generic[T] with
+    `results` on the base -- a dataclass field typed `list[~T]` on a generic
+    base stays that way at runtime even when a subclass parametrizes it, which
+    would degrade the MCP output schema for `results.items` to an untyped `{}`
+    instead of a concrete $ref. Each subclass instead redeclares its own
+    concretely-typed `results` field, keeping field order (envelope fields
+    first, then results) identical to every pre-existing declaration.
+    """
+
+    offset: int
+    limit: int
+    total: int
+    count: int
+    next_offset: int | None
+    truncated: bool
+
+
+@dataclass
+class CollectionResult:
+    """Shared bare-collection envelope (OPM-48). See PageResult for why this
+    is not Generic[T] with `results` on the base.
+    """
+
+    count: int
+
+
+@dataclass
 class ProjectSummary:
     id: int
     name: str
@@ -35,13 +63,7 @@ class ProjectSummary:
 
 
 @dataclass
-class ProjectListResult:
-    offset: int
-    limit: int
-    total: int
-    count: int
-    next_offset: int | None
-    truncated: bool
+class ProjectListResult(PageResult):
     results: list[ProjectSummary]
 
 
@@ -53,8 +75,7 @@ class RoleSummary:
 
 
 @dataclass
-class RoleListResult:
-    count: int
+class RoleListResult(CollectionResult):
     results: list[RoleSummary]
 
 
@@ -75,8 +96,7 @@ class MembershipSummary:
 
 
 @dataclass
-class MembershipListResult:
-    count: int
+class MembershipListResult(CollectionResult):
     results: list[MembershipSummary]
 
 
@@ -168,13 +188,7 @@ class PrincipalSummary:
 
 
 @dataclass
-class PrincipalListResult:
-    offset: int
-    limit: int
-    total: int
-    count: int
-    next_offset: int | None
-    truncated: bool
+class PrincipalListResult(PageResult):
     results: list[PrincipalSummary]
 
 
@@ -217,13 +231,7 @@ class UserDetail:
 
 
 @dataclass
-class UserListResult:
-    offset: int
-    limit: int
-    total: int
-    count: int
-    next_offset: int | None
-    truncated: bool
+class UserListResult(PageResult):
     results: list[UserSummary]
 
 
@@ -254,13 +262,7 @@ class GroupDetail:
 
 
 @dataclass
-class GroupListResult:
-    offset: int
-    limit: int
-    total: int
-    count: int
-    next_offset: int | None
-    truncated: bool
+class GroupListResult(PageResult):
     results: list[GroupSummary]
 
 
@@ -274,13 +276,7 @@ class ActionSummary:
 
 
 @dataclass
-class ActionListResult:
-    offset: int
-    limit: int
-    total: int
-    count: int
-    next_offset: int | None
-    truncated: bool
+class ActionListResult(PageResult):
     results: list[ActionSummary]
 
 
@@ -297,13 +293,7 @@ class CapabilitySummary:
 
 
 @dataclass
-class CapabilityListResult:
-    offset: int
-    limit: int
-    total: int
-    count: int
-    next_offset: int | None
-    truncated: bool
+class CapabilityListResult(PageResult):
     results: list[CapabilitySummary]
 
 
@@ -539,13 +529,7 @@ class RelationWriteResult:
 
 
 @dataclass
-class WorkPackageListResult:
-    offset: int
-    limit: int
-    total: int
-    count: int
-    next_offset: int | None
-    truncated: bool
+class WorkPackageListResult(PageResult):
     results: list[WorkPackageSummary]
 
 
@@ -587,18 +571,11 @@ class VersionSummary:
 
 
 @dataclass
-class VersionDetail:
-    id: int
-    name: str
-    status: str | None
-    sharing: str | None
-    start_date: str | None
-    end_date: str | None
-    defining_project: str | None
-    description: str | None
-    url: str
-    created_at: str | None = None
-    updated_at: str | None = None
+class VersionDetail(VersionSummary):
+    """Identical field shape to VersionSummary today; kept as a distinct
+    subclass (not a bare alias) so __name__/import path/MCP output schema
+    title for get_version stay exactly as they are (OPM-48).
+    """
 
 
 @dataclass
@@ -616,13 +593,7 @@ class VersionWriteResult:
 
 
 @dataclass
-class VersionListResult:
-    offset: int
-    limit: int
-    total: int
-    count: int
-    next_offset: int | None
-    truncated: bool
+class VersionListResult(PageResult):
     results: list[VersionSummary]
 
 
@@ -657,13 +628,7 @@ class SprintDetail:
 
 
 @dataclass
-class SprintListResult:
-    offset: int
-    limit: int
-    total: int
-    count: int
-    next_offset: int | None
-    truncated: bool
+class SprintListResult(PageResult):
     results: list[SprintSummary]
 
 
@@ -735,13 +700,7 @@ class BoardWriteResult:
 
 
 @dataclass
-class BoardListResult:
-    offset: int
-    limit: int
-    total: int
-    count: int
-    next_offset: int | None
-    truncated: bool
+class BoardListResult(PageResult):
     results: list[BoardSummary]
 
 
@@ -779,13 +738,7 @@ class ViewDetail:
 
 
 @dataclass
-class ViewListResult:
-    offset: int
-    limit: int
-    total: int
-    count: int
-    next_offset: int | None
-    truncated: bool
+class ViewListResult(PageResult):
     results: list[ViewSummary]
 
 
@@ -831,8 +784,7 @@ class QueryFilterInstanceSchemaSummary:
 
 
 @dataclass
-class QueryFilterInstanceSchemaListResult:
-    count: int
+class QueryFilterInstanceSchemaListResult(CollectionResult):
     results: list[QueryFilterInstanceSchemaSummary]
 
 
@@ -849,8 +801,7 @@ class CategorySummary:
 
 
 @dataclass
-class CategoryListResult:
-    count: int
+class CategoryListResult(CollectionResult):
     results: list[CategorySummary]
 
 
@@ -896,13 +847,7 @@ class DocumentWriteResult:
 
 
 @dataclass
-class DocumentListResult:
-    offset: int
-    limit: int
-    total: int
-    count: int
-    next_offset: int | None
-    truncated: bool
+class DocumentListResult(PageResult):
     results: list[DocumentSummary]
 
 
@@ -924,8 +869,7 @@ class AttachmentSummary:
 
 
 @dataclass
-class AttachmentListResult:
-    count: int
+class AttachmentListResult(CollectionResult):
     results: list[AttachmentSummary]
 
 
@@ -969,8 +913,7 @@ class ProjectPhaseDefinition:
 
 
 @dataclass
-class ProjectPhaseDefinitionListResult:
-    count: int
+class ProjectPhaseDefinitionListResult(CollectionResult):
     results: list[ProjectPhaseDefinition]
 
 
@@ -1000,8 +943,7 @@ class TimeEntryActivitySummary:
 
 
 @dataclass
-class TimeEntryActivityListResult:
-    count: int
+class TimeEntryActivityListResult(CollectionResult):
     results: list[TimeEntryActivitySummary]
 
 
@@ -1040,13 +982,7 @@ class TimeEntryWriteResult:
 
 
 @dataclass
-class TimeEntryListResult:
-    offset: int
-    limit: int
-    total: int
-    count: int
-    next_offset: int | None
-    truncated: bool
+class TimeEntryListResult(PageResult):
     results: list[TimeEntrySummary]
 
 
@@ -1070,8 +1006,7 @@ class RelationSummary:
 
 
 @dataclass
-class RelationListResult:
-    count: int
+class RelationListResult(CollectionResult):
     results: list[RelationSummary]
 
 
@@ -1090,8 +1025,7 @@ class ActivitySummary:
 
 
 @dataclass
-class ActivityListResult:
-    count: int
+class ActivityListResult(CollectionResult):
     results: list[ActivitySummary]
 
 
@@ -1111,18 +1045,11 @@ class NewsSummary:
 
 
 @dataclass
-class NewsDetail:
-    id: int
-    title: str
-    summary: str | None
-    description: str | None
-    project_id: int | None
-    project: str | None
-    author: str | None
-    created_at: str | None
-    can_update: bool
-    can_delete: bool
-    url: str
+class NewsDetail(NewsSummary):
+    """Identical field shape to NewsSummary today; kept as a distinct subclass
+    (not a bare alias) so __name__/import path/MCP output schema title for
+    get_news stay exactly as they are (OPM-48).
+    """
 
 
 @dataclass
@@ -1140,13 +1067,7 @@ class NewsWriteResult:
 
 
 @dataclass
-class NewsListResult:
-    offset: int
-    limit: int
-    total: int
-    count: int
-    next_offset: int | None
-    truncated: bool
+class NewsListResult(PageResult):
     results: list[NewsSummary]
 
 
@@ -1183,8 +1104,7 @@ class StatusSummary:
 
 
 @dataclass
-class StatusListResult:
-    count: int
+class StatusListResult(CollectionResult):
     results: list[StatusSummary]
 
 
@@ -1199,8 +1119,7 @@ class PrioritySummary:
 
 
 @dataclass
-class PriorityListResult:
-    count: int
+class PriorityListResult(CollectionResult):
     results: list[PrioritySummary]
 
 
@@ -1218,8 +1137,7 @@ class TypeSummary:
 
 
 @dataclass
-class TypeListResult:
-    count: int
+class TypeListResult(CollectionResult):
     results: list[TypeSummary]
 
 
@@ -1232,8 +1150,7 @@ class WatcherSummary:
 
 
 @dataclass
-class WatcherListResult:
-    count: int
+class WatcherListResult(CollectionResult):
     results: list[WatcherSummary]
 
 
@@ -1309,8 +1226,7 @@ class FileLinkSummary:
 
 
 @dataclass
-class FileLinkListResult:
-    count: int
+class FileLinkListResult(CollectionResult):
     results: list[FileLinkSummary]
 
 
@@ -1339,8 +1255,7 @@ class GridSummary:
 
 
 @dataclass
-class GridListResult:
-    count: int
+class GridListResult(CollectionResult):
     results: list[GridSummary]
 
 
@@ -1397,8 +1312,7 @@ class HelpTextSummary:
 
 
 @dataclass
-class HelpTextListResult:
-    count: int
+class HelpTextListResult(CollectionResult):
     results: list[HelpTextSummary]
 
 
@@ -1410,8 +1324,7 @@ class WorkingDay:
 
 
 @dataclass
-class WorkingDayListResult:
-    count: int
+class WorkingDayListResult(CollectionResult):
     results: list[WorkingDay]
 
 
@@ -1422,8 +1335,7 @@ class NonWorkingDay:
 
 
 @dataclass
-class NonWorkingDayListResult:
-    count: int
+class NonWorkingDayListResult(CollectionResult):
     results: list[NonWorkingDay]
 
 
@@ -1454,8 +1366,7 @@ class EmojiReactionSummary:
 
 
 @dataclass
-class EmojiReactionListResult:
-    count: int
+class EmojiReactionListResult(CollectionResult):
     results: list[EmojiReactionSummary]
 
 
@@ -1503,8 +1414,7 @@ class ReminderSummary:
 
 
 @dataclass
-class ReminderListResult:
-    count: int
+class ReminderListResult(CollectionResult):
     results: list[ReminderSummary]
 
 
