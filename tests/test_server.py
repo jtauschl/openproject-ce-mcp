@@ -38,6 +38,22 @@ ALL_WRITE_OFF = {
 }
 
 
+def test_ce_instructions_are_not_duplicated_into_any_tool_description() -> None:
+    """OPM-213: live Codex tool discovery reportedly saw the server-level CE
+    instructions repeated in every tool's own metadata/description. Guards
+    against this server (or a future change to it) ever introducing that --
+    server.instructions must stay the single carrier of this text, sent once
+    in the `initialize` response, never copied into a tool's own description.
+    """
+    mcp = create_app(make_settings(**ALL_WRITE_OFF, enable_metadata_tools=True))
+    assert mcp.instructions == server.CE_INSTRUCTIONS
+
+    needle = "Community Edition (CE)"  # distinctive substring, implausible false positive
+    assert needle in server.CE_INSTRUCTIONS
+    offenders = [t.name for t in mcp._tool_manager.list_tools() if needle in (t.description or "")]
+    assert offenders == []
+
+
 def test_defaults_contain_read_tools() -> None:
     mcp = create_app(make_settings())
     names = _tool_names(mcp)

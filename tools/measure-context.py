@@ -47,8 +47,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from openproject_ce_mcp.client import OpenProjectClient  # noqa: E402
 from openproject_ce_mcp.config import Settings  # noqa: E402
-from openproject_ce_mcp.server import create_app  # noqa: E402
-from openproject_ce_mcp.tools import _to_payload  # noqa: E402
+from openproject_ce_mcp.presentation import _to_payload  # noqa: E402
+from openproject_ce_mcp.server import CE_INSTRUCTIONS, create_app  # noqa: E402
+
+# A substring of CE_INSTRUCTIONS distinctive enough that a false-positive match
+# elsewhere is implausible -- used by measure_tools_list's OPM-213 check below.
+_CE_INSTRUCTIONS_NEEDLE = "Community Edition (CE)"
 
 WRITE_ENV = {
     "OPENPROJECT_READ_PROJECTS": "*",
@@ -118,6 +122,31 @@ async def measure_tools_list() -> None:
         payload = [t.model_dump(exclude_none=True, mode="json") for t in tools]
         raw = json.dumps({"tools": payload})
         print(f"{label}: {len(tools)} tools, {len(raw)} bytes, ~{len(raw) // 4} tokens")
+    print()
+
+    # OPM-213: live Codex tool discovery reportedly saw the server-level CE
+    # instructions repeated in every tool's own metadata/description. Verify
+    # server.instructions is carried exactly once (the spec-standard `initialize`
+    # field) and never duplicated into any individual tool's `description` --
+    # confirming the duplication, if real, is not introduced by this server or
+    # by FastMCP's Tool.description construction (which is built from each
+    # function's own docstring, never referencing `instructions`).
+    print("=== OPM-213: server instructions vs. per-tool descriptions ===\n")
+    settings = Settings.from_env({**BASE_ENV, **WRITE_ENV, "OPENPROJECT_ENABLE_EXTENDED_READ": "true"})
+    app = create_app(settings)
+    tools = await app.list_tools()
+    payload = [t.model_dump(exclude_none=True, mode="json") for t in tools]
+    server_instructions = app._mcp_server.instructions  # type: ignore[attr-defined]
+    duplicated_into = [t["name"] for t in payload if _CE_INSTRUCTIONS_NEEDLE in (t.get("description") or "")]
+    raw = json.dumps({"tools": payload})
+    hypothetical = len(raw) + len(tools) * len(CE_INSTRUCTIONS)
+    print(f"server.instructions is CE_INSTRUCTIONS: {server_instructions == CE_INSTRUCTIONS}")
+    print(f"tools whose description duplicates it: {duplicated_into or 'none'}")
+    print(
+        f"tools/list as sent by this server: {len(raw)} bytes, ~{len(raw) // 4} tokens "
+        f"(if a client duplicated instructions into every one of {len(tools)} tool descriptions "
+        f"instead, that would be ~{hypothetical // 4} tokens, {round(hypothetical / len(raw), 1)}x)"
+    )
     print()
 
 
