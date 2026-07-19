@@ -168,3 +168,11 @@ uv run pytest
 See [Development](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/development.md) for the full test suite (unit,
 integration, and Docker test instances) and [RELEASE.md](https://github.com/jtauschl/openproject-ce-mcp/blob/main/RELEASE.md) for the
 maintainer release process.
+
+---
+
+## License
+
+MIT — see [LICENSE](https://github.com/jtauschl/openproject-ce-mcp/blob/main/LICENSE). A single top-level license file
+covers the whole project; individual source files don't carry per-file copyright headers, matching common practice for
+MIT-licensed Python packages.
