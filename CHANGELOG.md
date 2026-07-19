@@ -45,6 +45,10 @@ development baseline.
   `assignee`/`responsible` validation errors indexed per item** (e.g.
   `items[0].assignee`), like every sibling field, instead of the unprefixed
   field name.
+- **Milestone work packages always showed `start_date`/`due_date` as `null`,
+  even when a date was genuinely set.** OpenProject reports a milestone's
+  date under a different field than it does for every other work-package
+  type, which this server did not previously read.
 
 ---
 
