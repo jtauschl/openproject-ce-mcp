@@ -1,6 +1,6 @@
 # API source-check
 
-Two tools that keep this MCP honest against the OpenProject API:
+Three tools that keep this MCP honest against the OpenProject API:
 
 - **`check_api.py`** — verifies, offline, that the API symbols the client depends
   on (paths, fields, filters) still exist in each OpenProject version. Guards
@@ -11,6 +11,11 @@ Two tools that keep this MCP honest against the OpenProject API:
 - **`check_coverage.py`** — reports how much of the Community Edition API the
   client covers, combining the source inventory, the client's used resources,
   and an optional live CE probe. Writes `COVERAGE.md`.
+- **`check_field_completeness.py`** — the reverse direction from `check_api.py`:
+  enumerates every data-bearing field a CE representer declares for a checked
+  resource and reports which ones this client has never modeled at all, instead
+  of verifying fields it already depends on still exist. Writes
+  `FIELD_COMPLETENESS.md`.
 
 ## Usage
 
@@ -25,6 +30,10 @@ python tools/api-check/check_api.py --all       # auto-map EVERY resource + filt
 # CE probe (a CE instance), otherwise the live column is skipped.
 python tools/api-check/check_coverage.py          # coverage matrix to stdout
 python tools/api-check/check_coverage.py --write  # also (re)write COVERAGE.md
+
+python tools/api-check/check_field_completeness.py             # untriaged findings + summary tally; exit 1 if any
+python tools/api-check/check_field_completeness.py --verbose   # full per-field table, all statuses
+python tools/api-check/check_field_completeness.py --write     # also (re)write FIELD_COMPLETENESS.md
 ```
 
 `--all` is the **full** version map: it auto-extracts every endpoint resource and
@@ -110,3 +119,61 @@ checked against `lib/api/v3/utilities/path_helper.rb` (the canonical path list,
 more robust than per-resource `*_api.rb` files), and response fields use the
 Ruby property name (snake_case, e.g. `lock_version`) which the representer
 renders as camelCase JSON (`lockVersion`).
+
+## `check_field_completeness.py` — the reverse-drift guard
+
+Checks six resources (work_package, user, category, project, version,
+membership) against a single pinned source version (`SOURCE_VERSION`,
+currently 17.6). Each field a CE representer declares is classified:
+
+- **COVERED** — modeled on the resource's `Summary`/`Detail` dataclass(es) in
+  `models.py`.
+- **EXCLUDED** — deliberately not modeled, per a curated, reason-bearing
+  `FieldExclusion` entry in `check_field_completeness.py` (Enterprise-only,
+  large embedded object, custom-field-pending, or other internal/write-only
+  field).
+- **UNTRIAGED** — neither of the above: real drift requiring a decision (add a
+  model field, or add a `FieldExclusion` with a reason). Exit code reflects
+  only this — a green run (exit 0) is a claim that every upstream field has
+  been consciously triaged, not that everything is exposed; a nonzero exit
+  with a clearly documented `FIELD_COMPLETENESS.md` untriaged list is a valid,
+  expected state, not necessarily a failure to fix before committing.
+
+**Catches:** a new upstream field on a checked resource that's neither modeled
+nor recorded in `EXCLUSIONS` — the class of drift `check_api.py` structurally
+cannot see, since it only ever checks symbols someone already thought to add.
+
+**Does NOT catch:** behaviour/semantics changes; dynamically-injected custom
+fields (`customFieldN`, never statically declared in source — the utility that
+injects them per-installation, `custom_field_injector.rb`, is DB-config-driven,
+not source-derivable); module-`prepend` conditional fields (e.g. Backlogs'
+`position`/`story_points` patches on work packages — deferred, not checked);
+Enterprise gating (confirmed not reliably derivable from source — only one
+inline `EnterpriseToken.allows_to?(...)` guard exists tree-wide across the
+fetched subtree, on an unrelated resource — so Enterprise exclusions are
+hand-curated against this server's own documented EE-only list, not grepped);
+runtime-hidden fields (`app/policies/hidden_fields.py`'s `OPENPROJECT_HIDE_*`
+mechanism is an orthogonal axis — it can only hide/reveal a field that's
+already a declared dataclass field, so a modeled-but-runtime-hidden field
+still counts as COVERED here, not UNTRIAGED).
+
+**A resource's field set can span more than one file — this composition is
+hand-curated, not auto-resolved.** CE representers use Ruby inheritance and
+module `include` to declare fields across files (e.g. `user` pulls in
+`principal_representer.rb` via `UserRepresenter < PrincipalRepresenter`;
+`work_package` pulls in two mixin files, `attachable_representer_mixin.rb` and
+`timestamped_representer.rb`). Each `ResourceCheck.source_files` tuple in
+`check_field_completeness.py` was built by manually reading its representer's
+own `class ... < ...`/`include ...` lines and following any that themselves
+declare `property`/`date_property`/etc. macros (a module that only provides
+the macro *DSL*, like `API::Decorators::DateProperty`, is not a field source
+and is not listed). If OpenProject changes a checked resource's base class or
+adds/removes a field-bearing mixin, `source_files` must be manually
+re-verified — the tool does not parse Ruby class/include graphs itself. The
+same maintenance discipline applies to `NAVIGATION_LINKS` (which HAL `link`
+declarations are pure navigation/action affordances vs. genuine single-value
+data relations, like `category`'s `link :defaultAssignee` or `user`'s
+`link :auth_source`) — an unrecognized link defaults to being treated as a
+candidate data field (surfacing as UNTRIAGED) rather than being silently
+ignored, so a real new data-only link can never go permanently unnoticed the
+way a blanket "all links are navigation" rule would allow.
