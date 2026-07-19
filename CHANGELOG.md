@@ -56,6 +56,11 @@ development baseline.
   real SSO identity property**, instead of duplicating the already-present
   `url` field (both previously resolved to the identical web link). It is
   now `null` unless the account is provisioned via SSO/OmniAuth.
+- **Closing a work package with no `estimated_time` set was rejected on the
+  first attempt.** `update_work_package`/`bulk_update_work_packages` always
+  auto-filled `remaining_time` to `PT0H` on a transition to a closed status,
+  but OpenProject requires the opposite value (`null`, not `PT0H`) when the
+  work package has no estimate — the common case for simple tasks.
 
 ---
 
