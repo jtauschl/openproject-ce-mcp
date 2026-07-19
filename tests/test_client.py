@@ -12058,3 +12058,75 @@ async def test_update_work_package_close_succeeds_with_work_package_read_disable
     await client.aclose()
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_normalize_work_package_summary_uses_date_field_for_milestones() -> None:
+    """OPM (0.3.2 hotfix): OpenProject's work_package_representer.rb omits
+    startDate/dueDate entirely for milestone-type work packages and reports
+    the single day under `date` instead -- confirmed live against a milestone
+    created via this client. Without reading `date`, every milestone
+    normalized to start_date=None, due_date=None even with a real date set.
+    """
+    client = OpenProjectClient(
+        make_settings(),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+    payload = {
+        "id": 1,
+        "subject": "Launch",
+        "date": "2026-08-17",
+        "_links": {"type": {"title": "Milestone"}},
+    }
+
+    summary = client.normalize_work_package_summary(payload)
+    assert summary.start_date == "2026-08-17"
+    assert summary.due_date == "2026-08-17"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_normalize_work_package_detail_uses_date_field_for_milestones() -> None:
+    client = OpenProjectClient(
+        make_settings(),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+    payload = {
+        "id": 1,
+        "subject": "Launch",
+        "date": "2026-08-17",
+        "_links": {"type": {"title": "Milestone"}},
+    }
+
+    detail = client.normalize_work_package_detail(payload)
+    assert detail.start_date == "2026-08-17"
+    assert detail.due_date == "2026-08-17"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_normalize_work_package_prefers_start_date_due_date_over_milestone_date_field() -> None:
+    """Regression guard: a non-milestone work package with real startDate/
+    dueDate values must never be overridden by a `date` key, even if one were
+    somehow also present -- the milestone fallback only kicks in when both
+    startDate and dueDate are absent."""
+    client = OpenProjectClient(
+        make_settings(),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+    payload = {
+        "id": 1,
+        "subject": "Regular task",
+        "startDate": "2026-08-01",
+        "dueDate": "2026-08-10",
+        "date": "2026-08-17",
+        "_links": {"type": {"title": "Task"}},
+    }
+
+    summary = client.normalize_work_package_summary(payload)
+    assert summary.start_date == "2026-08-01"
+    assert summary.due_date == "2026-08-10"
+
+    await client.aclose()
