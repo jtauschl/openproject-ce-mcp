@@ -37,6 +37,7 @@ from .models import (
     BoardDetail,
     BoardListResult,
     BoardWriteResult,
+    BulkWorkPackageItemResult,
     BulkWorkPackageWriteResult,
     CapabilityListResult,
     CategoryListResult,
@@ -1593,17 +1594,10 @@ def _validate_work_package_create_fields(
     remaining_time: str | None = None,
     duration: str | None = None,
     field_prefix: str = "",
-    assignee_field_name: str | None = None,
-    responsible_field_name: str | None = None,
 ) -> dict[str, Any]:
     """Shared optional-field validation for create_work_package/create_subtask/
     bulk_create_work_packages' per-item block. No clearing semantics here --
     create has nothing to clear, every field is a plain optional value.
-
-    assignee_field_name/responsible_field_name default to the prefixed name
-    like every other field, but bulk_create_work_packages passes the literal
-    unprefixed "assignee"/"responsible" to reproduce its existing (OPM-218)
-    behavior verbatim -- not fixed here, that's a separate ticket.
     """
     return {
         "description": _validate_optional_text(description, field_name=f"{field_prefix}description", max_length=10_000),
@@ -1611,10 +1605,8 @@ def _validate_work_package_create_fields(
         "project_phase": _validate_optional_query(
             project_phase, field_name=f"{field_prefix}project_phase", max_length=100
         ),
-        "assignee": _validate_optional_user_ref(assignee, field_name=assignee_field_name or f"{field_prefix}assignee"),
-        "responsible": _validate_optional_user_ref(
-            responsible, field_name=responsible_field_name or f"{field_prefix}responsible"
-        ),
+        "assignee": _validate_optional_user_ref(assignee, field_name=f"{field_prefix}assignee"),
+        "responsible": _validate_optional_user_ref(responsible, field_name=f"{field_prefix}responsible"),
         "priority": _validate_optional_query(priority, field_name=f"{field_prefix}priority", max_length=100),
         "category": _validate_optional_query(category, field_name=f"{field_prefix}category", max_length=100),
         "custom_fields": _validate_optional_custom_fields(custom_fields),
@@ -1725,18 +1717,11 @@ def _validate_work_package_update_fields(
     percentage_done: int | None,
     field_prefix: str = "",
     parent_field_name: str = "parent",
-    assignee_field_name: str | None = None,
-    responsible_field_name: str | None = None,
 ) -> dict[str, Any]:
     """Shared field validation for update_work_package/bulk_update_work_packages'
     per-item block. Most fields are wrapped in _clearable/_clearable_ref/
     _clearable_duration -- 'none' (any case) clears the field, matching the
     single-call update_work_package tool's documented convention.
-
-    assignee_field_name/responsible_field_name default to the prefixed name
-    like every other field, but bulk_update_work_packages passes the literal
-    unprefixed "assignee"/"responsible" to reproduce its existing (OPM-218)
-    behavior verbatim -- not fixed here, that's a separate ticket.
     """
     return {
         "subject": _validate_optional_query(subject, field_name=f"{field_prefix}subject", max_length=255),
@@ -1754,12 +1739,10 @@ def _validate_work_package_update_fields(
         ),
         "status": _validate_optional_query(status, field_name=f"{field_prefix}status", max_length=100),
         "assignee": _clearable(
-            assignee,
-            lambda v: _validate_optional_user_ref(v, field_name=assignee_field_name or f"{field_prefix}assignee"),
+            assignee, lambda v: _validate_optional_user_ref(v, field_name=f"{field_prefix}assignee")
         ),
         "responsible": _clearable(
-            responsible,
-            lambda v: _validate_optional_user_ref(v, field_name=responsible_field_name or f"{field_prefix}responsible"),
+            responsible, lambda v: _validate_optional_user_ref(v, field_name=f"{field_prefix}responsible")
         ),
         "priority": _validate_optional_query(priority, field_name=f"{field_prefix}priority", max_length=100),
         "category": _clearable(
@@ -1896,6 +1879,7 @@ _BULK_CREATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(
 async def bulk_create_work_packages(
     ctx: Context,
     items: list[dict[str, Any]],
+    select: list[str] | None = None,
     confirm: bool = False,
 ) -> BulkWorkPackageWriteResult:
     """Create multiple work packages in one call.
@@ -1913,6 +1897,14 @@ async def bulk_create_work_packages(
     item's validation is not a tool error; inspect each item's `success`,
     `error`, and nested `result` rather than the MCP error envelope.
 
+    select restricts each item's nested result to the given fields (e.g.
+    ["ready", "work_package_id"]); an invalid name returns the allowed set. The
+    index/success/error fields on each item are always included regardless of
+    select, so you can still tell which items succeeded. For batches with many
+    items or long descriptions, set select proactively — an unconfirmed preview
+    echoes each item's full proposed payload, and an unbounded batch can exceed
+    the tool-result size limit and get redirected to a file.
+
     A per-item timeout is reported as that item's failure and does not stop
     the loop. If this call is cancelled outright (e.g. the host cancels the
     request), items already created beforehand remain on the server; items not
@@ -1929,6 +1921,7 @@ async def bulk_create_work_packages(
     client = _client_from_context(ctx)
     if not items:
         raise ValueError("items must not be empty.")
+    _validate_select(select, row_type=WorkPackageWriteResult)
     safe_items: list[dict[str, Any]] = []
     for i, item in enumerate(items):
         if not isinstance(item, dict):
@@ -1963,11 +1956,6 @@ async def bulk_create_work_packages(
             remaining_time=item.get("remaining_time"),
             duration=item.get("duration"),
             field_prefix=f"items[{i}].",
-            # OPM-218 (pre-existing quirk, preserved verbatim, not fixed by OPM-47):
-            # unlike every sibling field here, assignee/responsible errors are
-            # NOT indexed with "items[{i}].".
-            assignee_field_name="assignee",
-            responsible_field_name="responsible",
         )
         safe_items.append(
             {
@@ -2022,6 +2010,7 @@ _BULK_UPDATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(
 async def bulk_update_work_packages(
     ctx: Context,
     items: list[dict[str, Any]],
+    select: list[str] | None = None,
     confirm: bool = False,
 ) -> BulkWorkPackageWriteResult:
     """Update multiple work packages in one call.
@@ -2046,6 +2035,14 @@ async def bulk_update_work_packages(
     item's validation is not a tool error; inspect each item's `success`,
     `error`, and nested `result` rather than the MCP error envelope.
 
+    select restricts each item's nested result to the given fields (e.g.
+    ["ready", "work_package_id"]); an invalid name returns the allowed set. The
+    index/success/error fields on each item are always included regardless of
+    select, so you can still tell which items succeeded. For batches with many
+    items or long descriptions, set select proactively — an unconfirmed preview
+    echoes each item's full proposed payload, and an unbounded batch can exceed
+    the tool-result size limit and get redirected to a file.
+
     A per-item timeout is reported as that item's failure and does not stop
     the loop. If this call is cancelled outright (e.g. the host cancels the
     request), items already updated beforehand remain on the server; items not
@@ -2058,6 +2055,7 @@ async def bulk_update_work_packages(
     client = _client_from_context(ctx)
     if not items:
         raise ValueError("items must not be empty.")
+    _validate_select(select, row_type=WorkPackageWriteResult)
     safe_items: list[dict[str, Any]] = []
     for i, item in enumerate(items):
         if not isinstance(item, dict):
@@ -2091,11 +2089,6 @@ async def bulk_update_work_packages(
             percentage_done=item.get("percentage_done"),
             field_prefix=f"items[{i}].",
             parent_field_name=f"items[{i}].parent_work_package_id",
-            # OPM-218 (pre-existing quirk, preserved verbatim, not fixed by OPM-47):
-            # unlike every sibling field here, assignee/responsible errors are
-            # NOT indexed with "items[{i}].".
-            assignee_field_name="assignee",
-            responsible_field_name="responsible",
         )
         _require_at_least_one(
             *common.values(),
@@ -3661,19 +3654,24 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None) -> Any:
     - **hidden keys**: removed entirely (not nulled) when the client tagged
       the instance with ``_hidden_keys``.
 
-    ``select`` is applied to the top-level ``results`` rows, keeping
-    just the requested fields per row. For a row type registered in
-    ``_SELECT_NESTED_FIELD`` (e.g. a batch-read item that wraps a
-    single work package rather than being one), ``select`` instead trims that
-    nested entity — the row's own wrapper fields (id/success/error) are kept
-    regardless of ``select``.
+    ``select`` is applied to the top-level row list — ``results`` for list reads,
+    or ``items`` for bulk write results — keeping just the requested fields per
+    row. For a row type registered in ``_SELECT_NESTED_FIELD`` (e.g. a batch-read
+    item that wraps a single work package, or a bulk item that wraps a single
+    write result, rather than being the entity itself), ``select`` instead trims
+    that nested entity — the row's own wrapper fields (id/success/error, or
+    index/success/error) are kept regardless of ``select``.
 
     Non-dataclass values pass through unchanged, so tools (and test stubs) that
     already return plain dicts are untouched.
     """
     if is_dataclass(value) and not isinstance(value, type):
         drop_payload = getattr(value, "confirmed", None) is True and _has_field(value, "payload")
-        is_list_result = _has_field(value, "results")
+        # "results" (list reads) and "items" (bulk writes) are the two row-list
+        # field names the seam knows about. count/truncated are results-only —
+        # BulkWorkPackageWriteResult carries total/succeeded/failed instead.
+        row_field_name = "results" if _has_field(value, "results") else "items" if _has_field(value, "items") else None
+        is_list_result = row_field_name == "results"
         hidden = getattr(value, "_hidden_keys", ())
         out: dict[str, Any] = {}
         for f in dataclass_fields(value):
@@ -3685,7 +3683,7 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None) -> Any:
             if is_list_result and name in ("count", "truncated"):
                 continue
             child = getattr(value, name)
-            if is_list_result and name == "results" and select is not None:
+            if name == row_field_name and select is not None:
                 out[name] = [_select_fields(row, select) for row in child]
             else:
                 out[name] = _to_payload(child)
@@ -3705,10 +3703,11 @@ def _has_field(value: Any, name: str) -> bool:
 
 # Rows that wrap a single nested entity instead of being the entity itself.
 # `select` trims the nested entity; the row's own wrapper fields (id/success/
-# error) always survive, since a batch caller needs them to correlate results
-# regardless of which entity fields it asked for.
+# error, or index/success/error) always survive, since a batch caller needs
+# them to correlate results regardless of which entity fields it asked for.
 _SELECT_NESTED_FIELD: dict[type, str] = {
     BatchWorkPackageReadItemResult: "work_package",
+    BulkWorkPackageItemResult: "result",
 }
 
 

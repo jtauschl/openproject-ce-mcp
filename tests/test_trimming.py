@@ -10,10 +10,14 @@ dataclass into a trimmed plain dict: it drops ``payload`` on confirmed writes,
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
+from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from openproject_ce_mcp import models as m
+from openproject_ce_mcp.client import OpenProjectClient
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.server import create_app
 from openproject_ce_mcp.tools import (
@@ -22,6 +26,7 @@ from openproject_ce_mcp.tools import (
     _to_payload,
     _validate_select,
     bulk_create_work_packages,
+    bulk_update_work_packages,
     create_work_package,
     get_status,
     get_work_package,
@@ -252,6 +257,59 @@ def test_returns_trimmable_true_for_batch_read() -> None:
     assert _returns_trimmable(get_work_packages) is True
 
 
+# ── select trims the nested result on bulk writes (OPM-155) ──────────────────
+
+
+def _bulk_write(*, items=None) -> m.BulkWorkPackageWriteResult:
+    items = (
+        items
+        if items is not None
+        else [m.BulkWorkPackageItemResult(index=0, success=True, error=None, result=_wp_write(confirmed=False))]
+    )
+    return m.BulkWorkPackageWriteResult(
+        action="bulk_create",
+        confirmed=False,
+        requires_confirmation=True,
+        total=len(items),
+        succeeded=sum(1 for item in items if item.success),
+        failed=sum(1 for item in items if not item.success),
+        message="ok",
+        items=items,
+    )
+
+
+def test_bulk_select_none_keeps_full_preview_payload() -> None:
+    out = _to_payload(_bulk_write())
+    assert "payload" in out["items"][0]["result"]
+
+
+def test_bulk_select_trims_nested_result_fields() -> None:
+    out = _to_payload(_bulk_write(), select=frozenset({"ready", "work_package_id"}))
+    row = out["items"][0]
+    assert sorted(row["result"]) == ["ready", "work_package_id"]
+    # wrapper fields always survive, regardless of select
+    assert sorted(row) == ["error", "index", "result", "success"]
+
+
+def test_bulk_select_skips_failed_items_without_crash() -> None:
+    items = [
+        m.BulkWorkPackageItemResult(index=0, success=True, error=None, result=_wp_write(confirmed=False)),
+        m.BulkWorkPackageItemResult(index=1, success=False, error="boom", result=None),
+    ]
+    out = _to_payload(_bulk_write(items=items), select=frozenset({"ready", "work_package_id"}))
+    assert out["items"][1]["result"] is None
+    assert out["items"][1]["error"] == "boom"
+
+
+def test_validate_select_rejects_unknown_field_for_work_package_write_result() -> None:
+    with pytest.raises(ValueError, match="not a valid WorkPackageWriteResult field"):
+        _validate_select(["bogus"], row_type=m.WorkPackageWriteResult)
+
+
+def test_returns_trimmable_true_for_bulk_update() -> None:
+    assert _returns_trimmable(bulk_update_work_packages) is True
+
+
 # ── forward-compat: _hidden_keys removed entirely ─────────────────────────────
 
 
@@ -329,8 +387,76 @@ def test_list_tools_expose_select_param() -> None:
         "list_projects",
         "list_users",
         "get_work_packages",
+        "bulk_create_work_packages",
+        "bulk_update_work_packages",
     ]:
         assert "select" in json.dumps(tools[name].parameters), name
+
+
+# ── select is actually threaded through the registered wrapper (OPM-155) ──────
+#
+# The test above only proves `select` is *published* in a tool's schema. It
+# does NOT prove tools.py:459-460 (the register_tools() trimming wrapper)
+# actually *reads* the kwarg and applies it via _to_payload -- and the
+# _to_payload unit tests further up only prove the mechanism works in
+# isolation, not that it's really wired up for these two tools. This test
+# calls the real registered callable (`Tool.fn`, confirmed by inspection to be
+# the `trimming` wrapper from register_tools, not the raw tool function -- it
+# returns a plain dict, not a dataclass) through a real OpenProjectClient, so
+# it's the one assertion that proves the full path end-to-end. One bulk tool
+# is enough: both share the same return type and the same generic wrapper
+# mechanism: their own signatures/validators are already covered separately
+# above.
+
+
+@dataclass
+class _FakeAppContext:
+    client: OpenProjectClient
+
+
+class _FakeContext:
+    def __init__(self, client: OpenProjectClient) -> None:
+        self.request_context = SimpleNamespace(lifespan_context=_FakeAppContext(client=client))
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_work_packages_select_is_threaded_through_the_registered_wrapper() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
+        if request.method == "GET" and request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": "Task"}]}}, request=request)
+        if request.method == "POST" and request.url.path == "/api/v3/projects/1/work_packages/form":
+            body = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _make_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    fn = _tools(create_app(settings))["bulk_create_work_packages"].fn
+
+    result = await fn(
+        _FakeContext(client),
+        items=[{"project": "demo", "type": "Task", "subject": "WP 1"}],
+        select=["ready", "work_package_id"],
+        confirm=False,
+    )
+
+    assert isinstance(result, dict)  # proves _to_payload ran, not a raw dataclass
+    row = result["items"][0]
+    assert sorted(row["result"]) == ["ready", "work_package_id"]
+    # wrapper fields always survive, regardless of select
+    assert sorted(k for k in row if k != "result") == ["error", "index", "success"]
+
+    await client.aclose()
 
 
 # ── single-entity reads are trimmed only when hide-fields are active ─────────

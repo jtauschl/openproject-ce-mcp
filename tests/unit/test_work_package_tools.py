@@ -801,16 +801,15 @@ async def test_bulk_update_work_packages_tool_version_error_has_item_index() -> 
 
 
 @pytest.mark.asyncio
-async def test_bulk_create_work_packages_assignee_error_lacks_item_index() -> None:
-    # Pre-existing quirk (OPM-218, deliberately preserved by OPM-47's dedup, not
-    # fixed here): unlike every sibling field in this loop, assignee's error is
-    # NOT indexed with "items[{i}]." -- this test locks in that current (wrong)
-    # behavior so a future refactor can't silently "fix" it as a side effect.
+async def test_bulk_create_work_packages_assignee_error_is_indexed_by_item() -> None:
+    # OPM-218 fix: assignee's error is now indexed with "items[{i}]." like every
+    # sibling field in this loop, so a multi-item bulk call can tell which item
+    # failed.
     class StubClient:
         async def bulk_create_work_packages(self, **kwargs):
             return kwargs
 
-    with pytest.raises(ValueError, match=r"^assignee: 'me' or numeric user id"):
+    with pytest.raises(ValueError, match=r"^items\[0\]\.assignee: 'me' or numeric user id"):
         await bulk_create_work_packages(
             FakeContext(StubClient()),  # type: ignore[arg-type]
             items=[{"project": "demo", "type": "Task", "subject": "ok", "assignee": "not-a-user"}],
@@ -819,13 +818,13 @@ async def test_bulk_create_work_packages_assignee_error_lacks_item_index() -> No
 
 
 @pytest.mark.asyncio
-async def test_bulk_create_work_packages_responsible_error_lacks_item_index() -> None:
-    # Same pre-existing quirk (OPM-218) as assignee, for responsible.
+async def test_bulk_create_work_packages_responsible_error_is_indexed_by_item() -> None:
+    # OPM-218 fix, for responsible.
     class StubClient:
         async def bulk_create_work_packages(self, **kwargs):
             return kwargs
 
-    with pytest.raises(ValueError, match=r"^responsible: 'me' or numeric user id"):
+    with pytest.raises(ValueError, match=r"^items\[0\]\.responsible: 'me' or numeric user id"):
         await bulk_create_work_packages(
             FakeContext(StubClient()),  # type: ignore[arg-type]
             items=[{"project": "demo", "type": "Task", "subject": "ok", "responsible": "not-a-user"}],
@@ -834,13 +833,13 @@ async def test_bulk_create_work_packages_responsible_error_lacks_item_index() ->
 
 
 @pytest.mark.asyncio
-async def test_bulk_update_work_packages_assignee_error_lacks_item_index() -> None:
-    # Same pre-existing quirk (OPM-218) as the two bulk_create tests above.
+async def test_bulk_update_work_packages_assignee_error_is_indexed_by_item() -> None:
+    # OPM-218 fix, same as the two bulk_create tests above.
     class StubClient:
         async def bulk_update_work_packages(self, **kwargs):
             return kwargs
 
-    with pytest.raises(ValueError, match=r"^assignee: 'me' or numeric user id"):
+    with pytest.raises(ValueError, match=r"^items\[0\]\.assignee: 'me' or numeric user id"):
         await bulk_update_work_packages(
             FakeContext(StubClient()),  # type: ignore[arg-type]
             items=[{"work_package_id": 10, "assignee": "not-a-user"}],
@@ -849,17 +848,83 @@ async def test_bulk_update_work_packages_assignee_error_lacks_item_index() -> No
 
 
 @pytest.mark.asyncio
-async def test_bulk_update_work_packages_responsible_error_lacks_item_index() -> None:
-    # Same pre-existing quirk (OPM-218) as the tests above, for responsible.
+async def test_bulk_update_work_packages_responsible_error_is_indexed_by_item() -> None:
+    # OPM-218 fix, for responsible.
     class StubClient:
         async def bulk_update_work_packages(self, **kwargs):
             return kwargs
 
-    with pytest.raises(ValueError, match=r"^responsible: 'me' or numeric user id"):
+    with pytest.raises(ValueError, match=r"^items\[0\]\.responsible: 'me' or numeric user id"):
         await bulk_update_work_packages(
             FakeContext(StubClient()),  # type: ignore[arg-type]
             items=[{"work_package_id": 10, "responsible": "not-a-user"}],
             confirm=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_work_packages_accepts_select() -> None:
+    # OPM-155: select is validated by the tool function but not forwarded to the
+    # client -- the actual field-dropping happens one layer up, in the FastMCP
+    # registration wrapper's _to_payload call (see tests/test_trimming.py's
+    # wrapper-integration test for that). This test only proves the tool
+    # function accepts and validates select without erroring.
+    class StubClient:
+        async def bulk_create_work_packages(self, **kwargs):
+            return {"action": "bulk_create", "items": []}
+
+    result = await bulk_create_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        items=[{"project": "demo", "type": "Task", "subject": "ok"}],
+        select=["ready", "work_package_id"],
+        confirm=False,
+    )
+    assert result["action"] == "bulk_create"
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_work_packages_rejects_invalid_select_field() -> None:
+    class StubClient:
+        async def bulk_create_work_packages(self, **kwargs):
+            return {"action": "bulk_create", "items": []}
+
+    with pytest.raises(ValueError, match="not a valid WorkPackageWriteResult field"):
+        await bulk_create_work_packages(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            items=[{"project": "demo", "type": "Task", "subject": "ok"}],
+            select=["bogus"],
+            confirm=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_work_packages_accepts_select() -> None:
+    # Same split as the bulk_create test above: validation only, not threading.
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            return {"action": "bulk_update", "items": []}
+
+    result = await bulk_update_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        items=[{"work_package_id": 10, "subject": "New"}],
+        select=["ready", "work_package_id"],
+        confirm=False,
+    )
+    assert result["action"] == "bulk_update"
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_work_packages_rejects_invalid_select_field() -> None:
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            return {"action": "bulk_update", "items": []}
+
+    with pytest.raises(ValueError, match="not a valid WorkPackageWriteResult field"):
+        await bulk_update_work_packages(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            items=[{"work_package_id": 10, "subject": "New"}],
+            select=["bogus"],
+            confirm=False,
         )
 
 
