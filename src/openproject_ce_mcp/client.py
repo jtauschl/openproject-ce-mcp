@@ -5215,6 +5215,24 @@ class OpenProjectClient:
             ),
         )
 
+    def _work_package_dates(self, payload: dict[str, Any]) -> tuple[str | None, str | None]:
+        """(start_date, due_date) for a work package, accounting for milestones.
+
+        OpenProject's work_package_representer.rb omits `startDate`/`dueDate`
+        entirely for milestone-type work packages (`skip_render` when
+        `represented.milestone?`) and instead reports the single day under a
+        separate `date` key, whose own getter reads the underlying `due_date`
+        value. Without this, every milestone work package normalizes to
+        start_date=None, due_date=None even when it has a real date set --
+        confirmed live against a milestone created via this client itself.
+        """
+        start_date = payload.get("startDate")
+        due_date = payload.get("dueDate")
+        if start_date is None and due_date is None and payload.get("date") is not None:
+            milestone_date = payload["date"]
+            return milestone_date, milestone_date
+        return start_date, due_date
+
     def normalize_work_package_summary(self, payload: dict[str, Any]) -> WorkPackageSummary:
         links = payload.get("_links", {})
         # Summaries stay single-line, capped at settings.text_limit (OPENPROJECT_TEXT_LIMIT,
@@ -5225,6 +5243,7 @@ class OpenProjectClient:
             payload.get("description"), "work_package", "description", limit=self.settings.text_limit
         )
         description = _delimit_user_content(description)
+        start_date, due_date = self._work_package_dates(payload)
         return self._apply_hidden_fields(
             "work_package",
             WorkPackageSummary(
@@ -5240,8 +5259,8 @@ class OpenProjectClient:
                 project=_link_title(links.get("project")),
                 version=_link_title(links.get("version")),
                 sprint=_link_title(links.get("sprint")),
-                start_date=payload.get("startDate"),
-                due_date=payload.get("dueDate"),
+                start_date=start_date,
+                due_date=due_date,
                 percentage_complete=_percentage_done(payload),
                 description=description,
                 has_description=description is not None,
@@ -5310,6 +5329,7 @@ class OpenProjectClient:
             ]
             ancestors_truncated = len(ancestors_raw) > WORK_PACKAGE_ANCESTORS_LIMIT
 
+        start_date, due_date = self._work_package_dates(payload)
         return self._apply_hidden_fields(
             "work_package",
             WorkPackageDetail(
@@ -5329,8 +5349,8 @@ class OpenProjectClient:
                 # Hierarchy links carry displayId from 17.5 (semantic mode); absent on
                 # older/classic instances, where this stays None.
                 parent_display_id=links.get("parent", {}).get("displayId"),
-                start_date=payload.get("startDate"),
-                due_date=payload.get("dueDate"),
+                start_date=start_date,
+                due_date=due_date,
                 percentage_complete=_percentage_done(payload),
                 lock_version=payload.get("lockVersion"),
                 description=description,
