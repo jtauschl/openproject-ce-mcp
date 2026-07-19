@@ -15,6 +15,7 @@ from openproject_ce_mcp.client import (
     _extract_formattable_text,
     _extract_formattable_text_with_meta,
     _narrow_cleared,
+    _normalize_links,
     _normalize_text,
     _trim_text,
     _trim_text_with_meta,
@@ -803,3 +804,124 @@ def test_normalize_user_detail_identity_url_is_none_without_sso_despite_showuser
     detail = client.normalize_user_detail(payload)
 
     assert detail.identity_url is None
+
+
+# --- OPM-190: _normalize_links -----------------------------------------------
+
+
+def test_normalize_links_replaces_explicit_null_at_top_level() -> None:
+    payload = {"id": 1, "_links": None}
+    assert _normalize_links(payload) == {"id": 1, "_links": {}}
+
+
+def test_normalize_links_leaves_absent_links_absent() -> None:
+    # Must NOT introduce a `_links` key that wasn't there -- the existing
+    # `payload.get("_links", {})` absent-key default already handles this
+    # case correctly; only an explicit null needs fixing.
+    payload = {"id": 1}
+    assert _normalize_links(payload) == {"id": 1}
+
+
+def test_normalize_links_leaves_populated_links_untouched() -> None:
+    payload = {"id": 1, "_links": {"project": {"title": "Demo"}}}
+    result = _normalize_links(payload)
+    assert result["_links"] == {"project": {"title": "Demo"}}
+
+
+def test_normalize_links_recurses_into_nested_dicts_and_lists() -> None:
+    payload = {
+        "_links": None,
+        "_embedded": {
+            "elements": [
+                {"id": 1, "_links": None},
+                {"id": 2, "_links": {"project": {"title": "Demo"}}},
+                {"id": 3},
+            ]
+        },
+    }
+    result = _normalize_links(payload)
+    assert result["_links"] == {}
+    elements = result["_embedded"]["elements"]
+    assert elements[0]["_links"] == {}
+    assert elements[1]["_links"] == {"project": {"title": "Demo"}}
+    assert "_links" not in elements[2]
+
+
+def test_normalize_links_leaves_unrelated_null_fields_alone() -> None:
+    payload = {"id": 1, "description": None, "_links": None}
+    result = _normalize_links(payload)
+    assert result["description"] is None
+    assert result["_links"] == {}
+
+
+@pytest.mark.asyncio
+async def test_explicit_null_links_survives_list_work_packages_end_to_end() -> None:
+    """OPM-190: proves the fix at the actual integration point (_request_json
+    -> _normalize_links, before any normalizer sees the payload), not just
+    the pure helper in isolation. Without it, the second element's
+    `payload.get("_links", {})` read inside normalize_work_package_summary
+    would return None instead of {}, and the following `.get("project")`
+    would raise AttributeError.
+    """
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "total": 2,
+                "_embedded": {
+                    "elements": [
+                        {"id": 1, "subject": "Has links", "_links": {"project": {"title": "Demo"}}},
+                        {"id": 2, "subject": "Null links", "_links": None},
+                    ]
+                },
+            },
+            request=request,
+        )
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.list_work_packages()
+
+    assert result.results[0].project == "Demo"
+    assert result.results[1].project is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_explicit_null_links_survives_attachment_multipart_upload(tmp_path) -> None:
+    """OPM-190: _post_multipart (attachment upload) bypasses _request_json with
+    its own inline response.json() call -- a separate path that must be
+    normalized too, or this one call site would still be exposed.
+    """
+    file_path = tmp_path / "note.txt"
+    file_path.write_text("hello")
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/configuration" and request.method == "GET":
+            return httpx.Response(200, json={"maximumAttachmentFileSize": 5000}, request=request)
+        if request.url.path == "/api/v3/work_packages/42/attachments" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={"id": 99, "title": "note.txt", "fileName": "note.txt", "_links": None},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_work_package_write=True, attachment_root=str(tmp_path))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.create_work_package_attachment(work_package_id=42, file_path=str(file_path), confirm=True)
+
+    assert result.confirmed is True
+    assert result.result is not None
+    assert result.result.download_url is None
+
+    await client.aclose()

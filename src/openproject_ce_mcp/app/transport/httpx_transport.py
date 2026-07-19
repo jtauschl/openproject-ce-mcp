@@ -14,6 +14,24 @@ from ..errors import OpenProjectServerError, TransportError
 from .errors import raise_for_status
 
 
+def _normalize_links(value: Any) -> Any:
+    """Recursively replace an explicit ``"_links": null`` with ``{}``
+    throughout a parsed HAL+JSON response body, mutating in place. Verbatim
+    duplicate of client.py's `_normalize_links` (OPM-190) -- see this
+    module's own docstring for why this file duplicates client.py's
+    behavior instead of importing it.
+    """
+    if isinstance(value, dict):
+        if "_links" in value and value["_links"] is None:
+            value["_links"] = {}
+        for v in value.values():
+            _normalize_links(v)
+    elif isinstance(value, list):
+        for item in value:
+            _normalize_links(item)
+    return value
+
+
 class HttpxTransport:
     """Wraps the SAME httpx.AsyncClient instance OpenProjectClient.__init__ already
     constructs (ADR 0001, "httpx confinement") -- one connection pool, not two.
@@ -52,7 +70,7 @@ class HttpxTransport:
     ) -> dict[str, Any]:
         response = await self._request(method, path, params=params, json_body=json_body)
         try:
-            return response.json()
+            return _normalize_links(response.json())
         except ValueError as exc:
             raise OpenProjectServerError("OpenProject returned invalid JSON.") from exc
 

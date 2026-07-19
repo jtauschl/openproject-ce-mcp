@@ -61,6 +61,10 @@ development baseline.
   auto-filled `remaining_time` to `PT0H` on a transition to a closed status,
   but OpenProject requires the opposite value (`null`, not `PT0H`) when the
   work package has no estimate — the common case for simple tasks.
+- **Hardened reads of a response's `_links` object against an explicit
+  `null`** (as opposed to the key being absent, which was already handled).
+  No confirmed case of OpenProject actually sending this has been observed;
+  this is defensive hardening, not a fix for an observed failure.
 
 ---
 

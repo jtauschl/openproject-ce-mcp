@@ -163,6 +163,54 @@ async def test_delete_issues_delete_request() -> None:
         await api.delete(8)  # must not raise
 
 
+@pytest.mark.asyncio
+async def test_get_survives_explicit_null_links_at_top_level() -> None:
+    """OPM-190: HttpxTransport._request_json normalizes an explicit
+    `"_links": null` to `{}` before any adapter code sees it -- without that,
+    `_record`'s `payload.get("_links", {}).get("definingProject")` would
+    raise AttributeError on the `.get("definingProject")` call.
+    """
+    payload = _version_payload()
+    payload["_links"] = None
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/versions/8"
+        return httpx.Response(200, json=payload, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxVersionApi(HttpxTransport(http_client), base_url=BASE_URL)
+        record = await api.get(8)
+
+    assert record.summary.id == 8
+    assert record.summary.defining_project is None
+    assert record.defining_project_link is None
+
+
+@pytest.mark.asyncio
+async def test_list_global_survives_explicit_null_links_nested_in_a_collection_element() -> None:
+    """Proves the app-layer's separately duplicated _normalize_links actually
+    recurses -- a version that only normalized the top level of the response
+    would still crash here, since `list_global`'s elements live under
+    `_embedded.elements[i]`, not at the response's own top level.
+    """
+    element = _version_payload(version_id=3)
+    element["_links"] = None
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/versions"
+        return httpx.Response(200, json={"_embedded": {"elements": [element]}}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxVersionApi(HttpxTransport(http_client), base_url=BASE_URL)
+        page = await api.list_global(offset=1, page_size=100)
+
+    assert len(page.records) == 1
+    record = page.records[0]
+    assert record.summary.id == 3
+    assert record.summary.defining_project is None
+    assert record.defining_project_link is None
+
+
 @pytest.mark.parametrize(
     ("status_code", "body", "expected_exception"),
     [
