@@ -543,32 +543,16 @@ class OpenProjectClient:
         payload_current = await self._resolve_project_ref(project_ref, write=True)
         project = self.normalize_project(payload_current)
         payload = {"id": project.id, "identifier": project.identifier, "name": project.name}
-        if not confirm:
-            return ProjectWriteResult(
-                action="delete",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject found the project. Ask for confirmation, then call again with confirm=true to delete it.",
-                project_id=project.id,
-                project=project.name,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        self._ensure_write_enabled("project")
-        await self._delete(f"projects/{project.id}")
-        return ProjectWriteResult(
-            action="delete",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Project deleted successfully.",
-            project_id=project.id,
-            project=project.name,
-            payload=payload,
-            validation_errors={},
-            result=project,
+        return await self._finalize_delete(
+            result_cls=ProjectWriteResult,
+            confirm=confirm,
+            result_kwargs={"project_id": project.id, "project": project.name, "payload": payload},
+            preview_result=None,
+            commit_result=project,
+            write_scope="project",
+            delete_path=f"projects/{project.id}",
+            preview_message="OpenProject found the project. Ask for confirmation, then call again with confirm=true to delete it.",
+            success_message="Project deleted successfully.",
         )
 
     async def copy_project(
@@ -708,13 +692,14 @@ class OpenProjectClient:
         )
         results = [self.normalize_principal(item) for item in payload.get("_embedded", {}).get("elements", [])]
         total = int(payload.get("total", len(results)))
+        next_offset, truncated = _paginate_server(offset=offset, limit=effective_limit, total=total)
         return PrincipalListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=len(results),
-            next_offset=_next_offset(offset, effective_limit, total),
-            truncated=total > offset * effective_limit,
+            next_offset=next_offset,
+            truncated=truncated,
             results=results,
         )
 
@@ -750,17 +735,16 @@ class OpenProjectClient:
                 or search_key in (item.login or "").casefold()
                 or search_key in (item.email or "").casefold()
             ]
-            total = len(results)
-            start = (offset - 1) * effective_limit
-            end = start + effective_limit
-            page = results[start:end]
+            page, total, next_offset, truncated = _paginate_client(
+                offset=offset, limit=effective_limit, results=results
+            )
             return UserListResult(
                 offset=offset,
                 limit=effective_limit,
                 total=total,
                 count=len(page),
-                next_offset=offset + 1 if end < total else None,
-                truncated=end < total,
+                next_offset=next_offset,
+                truncated=truncated,
                 results=page,
             )
 
@@ -777,13 +761,14 @@ class OpenProjectClient:
             if isinstance(item, dict)
         ]
         total = int(payload.get("total", len(results)))
+        next_offset, truncated = _paginate_server(offset=offset, limit=effective_limit, total=total)
         return UserListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=len(results),
-            next_offset=_next_offset(offset, effective_limit, total),
-            truncated=total > offset * effective_limit,
+            next_offset=next_offset,
+            truncated=truncated,
             results=results,
         )
 
@@ -815,17 +800,16 @@ class OpenProjectClient:
             ]
             search_key = search.casefold()
             results = [item for item in results if search_key in (item.name or "").casefold()]
-            total = len(results)
-            start = (offset - 1) * effective_limit
-            end = start + effective_limit
-            page = results[start:end]
+            page, total, next_offset, truncated = _paginate_client(
+                offset=offset, limit=effective_limit, results=results
+            )
             return GroupListResult(
                 offset=offset,
                 limit=effective_limit,
                 total=total,
                 count=len(page),
-                next_offset=offset + 1 if end < total else None,
-                truncated=end < total,
+                next_offset=next_offset,
+                truncated=truncated,
                 results=page,
             )
 
@@ -842,13 +826,14 @@ class OpenProjectClient:
             if isinstance(item, dict)
         ]
         total = int(payload.get("total", len(results)))
+        next_offset, truncated = _paginate_server(offset=offset, limit=effective_limit, total=total)
         return GroupListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=len(results),
-            next_offset=_next_offset(offset, effective_limit, total),
-            truncated=total > offset * effective_limit,
+            next_offset=next_offset,
+            truncated=truncated,
             results=results,
         )
 
@@ -878,13 +863,14 @@ class OpenProjectClient:
             if isinstance(item, dict)
         ]
         total = int(payload.get("total", len(results)))
+        next_offset, truncated = _paginate_server(offset=offset, limit=effective_limit, total=total)
         return ActionListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=len(results),
-            next_offset=_next_offset(offset, effective_limit, total),
-            truncated=total > offset * effective_limit,
+            next_offset=next_offset,
+            truncated=truncated,
             results=results,
         )
 
@@ -920,13 +906,14 @@ class OpenProjectClient:
             if isinstance(item, dict)
         ]
         total = int(payload.get("total", len(results)))
+        next_offset, truncated = _paginate_server(offset=offset, limit=effective_limit, total=total)
         return CapabilityListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=len(results),
-            next_offset=_next_offset(offset, effective_limit, total),
-            truncated=total > offset * effective_limit,
+            next_offset=next_offset,
+            truncated=truncated,
             results=results,
         )
 
@@ -1070,32 +1057,16 @@ class OpenProjectClient:
             "principal": membership.principal_name,
             "roles": membership.role_names,
         }
-        if not confirm:
-            return MembershipWriteResult(
-                action="delete",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject found the membership. Ask for confirmation, then call again with confirm=true to delete it.",
-                membership_id=membership.id,
-                project=membership.project_name,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        self._ensure_write_enabled("membership")
-        await self._delete(f"memberships/{membership_id}")
-        return MembershipWriteResult(
-            action="delete",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Membership deleted successfully.",
-            membership_id=membership.id,
-            project=membership.project_name,
-            payload=payload,
-            validation_errors={},
-            result=membership,
+        return await self._finalize_delete(
+            result_cls=MembershipWriteResult,
+            confirm=confirm,
+            result_kwargs={"membership_id": membership.id, "project": membership.project_name, "payload": payload},
+            preview_result=None,
+            commit_result=membership,
+            write_scope="membership",
+            delete_path=f"memberships/{membership_id}",
+            preview_message="OpenProject found the membership. Ask for confirmation, then call again with confirm=true to delete it.",
+            success_message="Membership deleted successfully.",
         )
 
     async def get_my_project_access(self, project_ref: str) -> ProjectAccessSummary:
@@ -1518,32 +1489,16 @@ class OpenProjectClient:
         self._ensure_news_write_payload_allowed(current)
         detail = self.normalize_news_detail(current)
         payload = {"id": detail.id, "title": detail.title}
-        if not confirm:
-            return NewsWriteResult(
-                action="delete",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject found the news entry. Ask for confirmation, then call again with confirm=true to delete it.",
-                news_id=detail.id,
-                project=detail.project,
-                payload=payload,
-                validation_errors={},
-                result=detail,
-            )
-        self._ensure_write_enabled("project")
-        await self._delete(f"news/{news_id}")
-        return NewsWriteResult(
-            action="delete",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="News deleted successfully.",
-            news_id=detail.id,
-            project=detail.project,
-            payload=payload,
-            validation_errors={},
-            result=detail,
+        return await self._finalize_delete(
+            result_cls=NewsWriteResult,
+            confirm=confirm,
+            result_kwargs={"news_id": detail.id, "project": detail.project, "payload": payload},
+            preview_result=detail,
+            commit_result=detail,
+            write_scope="project",
+            delete_path=f"news/{news_id}",
+            preview_message="OpenProject found the news entry. Ask for confirmation, then call again with confirm=true to delete it.",
+            success_message="News deleted successfully.",
         )
 
     async def get_wiki_page(self, wiki_page_id: int) -> WikiPageDetail:
@@ -1669,33 +1624,20 @@ class OpenProjectClient:
             "fileName": attachment.file_name,
             "fileSize": attachment.file_size,
         }
-        if not confirm:
-            return AttachmentWriteResult(
-                action="delete",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject found the attachment. Ask for confirmation, then call again with confirm=true to delete it.",
-                attachment_id=attachment.id,
-                work_package_id=work_package_id,
-                payload=preview_payload,
-                validation_errors={},
-                result=attachment,
-            )
-
-        self._ensure_write_enabled("work_package")
-        await self._delete(f"attachments/{attachment_id}")
-        return AttachmentWriteResult(
-            action="delete",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Attachment deleted successfully.",
-            attachment_id=attachment.id,
-            work_package_id=work_package_id,
-            payload=preview_payload,
-            validation_errors={},
-            result=None,
+        return await self._finalize_delete(
+            result_cls=AttachmentWriteResult,
+            confirm=confirm,
+            result_kwargs={
+                "attachment_id": attachment.id,
+                "work_package_id": work_package_id,
+                "payload": preview_payload,
+            },
+            preview_result=attachment,
+            commit_result=None,
+            write_scope="work_package",
+            delete_path=f"attachments/{attachment_id}",
+            preview_message="OpenProject found the attachment. Ask for confirmation, then call again with confirm=true to delete it.",
+            success_message="Attachment deleted successfully.",
         )
 
     async def list_time_entry_activities(self) -> TimeEntryActivityListResult:
@@ -1960,32 +1902,16 @@ class OpenProjectClient:
         self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
         detail = self.normalize_time_entry(current)
         payload = {"id": detail.id, "hours": detail.hours, "spentOn": detail.spent_on}
-        if not confirm:
-            return TimeEntryWriteResult(
-                action="delete",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject found the time entry. Ask for confirmation, then call again with confirm=true to delete it.",
-                time_entry_id=detail.id,
-                project=detail.project,
-                payload=payload,
-                validation_errors={},
-                result=detail,
-            )
-        self._ensure_write_enabled("work_package")
-        await self._delete(f"time_entries/{time_entry_id}")
-        return TimeEntryWriteResult(
-            action="delete",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Time entry deleted successfully.",
-            time_entry_id=detail.id,
-            project=detail.project,
-            payload=payload,
-            validation_errors={},
-            result=None,
+        return await self._finalize_delete(
+            result_cls=TimeEntryWriteResult,
+            confirm=confirm,
+            result_kwargs={"time_entry_id": detail.id, "project": detail.project, "payload": payload},
+            preview_result=detail,
+            commit_result=None,
+            write_scope="work_package",
+            delete_path=f"time_entries/{time_entry_id}",
+            preview_message="OpenProject found the time entry. Ask for confirmation, then call again with confirm=true to delete it.",
+            success_message="Time entry deleted successfully.",
         )
 
     async def get_project_work_package_context(
@@ -2312,6 +2238,42 @@ class OpenProjectClient:
             total_is_scope_safe=total_is_scope_safe,
         )
 
+    def _work_package_collection_page(
+        self,
+        *,
+        offset: int,
+        limit: int,
+        total_is_scope_safe: bool,
+        server_total: int,
+        raw_elements: list[dict[str, Any]],
+        raw_items: list[dict[str, Any]],
+        results: list[WorkPackageSummary],
+    ) -> tuple[int, int | None, bool]:
+        """Shared total/next_offset/truncated derivation for the two work-package
+        collection endpoints (_list_work_package_collection,
+        list_my_open_work_packages). The server total is only safe to expose
+        when the query itself was provably restricted to the allowed scope
+        server-side (total_is_scope_safe) -- a clean current page is NOT
+        sufficient on its own, since a later page could still contain
+        disallowed-project matches that the total would otherwise leak the
+        existence of. The per-page equality check stays as defense in depth
+        against a scoped query somehow still returning a disallowed item.
+        """
+        total_trustworthy = total_is_scope_safe and len(raw_items) == len(raw_elements)
+        if total_trustworthy:
+            next_offset, truncated = _paginate_server(offset=offset, limit=limit, total=server_total)
+            return server_total, next_offset, truncated
+        # Pagination hints must not be derived from the untrustworthy server
+        # total either -- that would leak the existence of disallowed-project
+        # matches just as much as exposing the total itself. "Is there more to
+        # page through" is instead based purely on whether this raw server
+        # page came back full, which reveals nothing beyond what any paginated
+        # API already implies.
+        total = len(results)
+        next_offset = (offset + 1) if len(raw_elements) == limit else None
+        truncated = len(raw_elements) == limit
+        return total, next_offset, truncated
+
     async def _list_work_package_collection(
         self,
         *,
@@ -2358,28 +2320,15 @@ class OpenProjectClient:
         raw_items = [item for item in raw_elements if self._work_package_payload_allowed(item)]
         results = [self.normalize_work_package_summary(item) for item in raw_items]
         server_total = int(payload.get("total", len(results)))
-        # The server total is only safe to expose when the query itself was
-        # provably restricted to the allowed scope server-side (total_is_scope_safe,
-        # set by the caller) — a clean current page is NOT sufficient on its own,
-        # since a later page could still contain disallowed-project matches that
-        # the total would otherwise leak the existence of. The per-page equality
-        # check stays as defense in depth against a scoped query somehow still
-        # returning a disallowed item.
-        total_trustworthy = total_is_scope_safe and len(raw_items) == len(raw_elements)
-        if total_trustworthy:
-            total = server_total
-            next_offset = _next_offset(offset, limit, server_total)
-            truncated = server_total > offset * limit
-        else:
-            # Pagination hints must not be derived from the untrustworthy server
-            # total either — that would leak the existence of disallowed-project
-            # matches just as much as exposing the total itself. "Is there more
-            # to page through" is instead based purely on whether this raw server
-            # page came back full, which reveals nothing beyond what any
-            # paginated API already implies.
-            total = len(results)
-            next_offset = (offset + 1) if len(raw_elements) == limit else None
-            truncated = len(raw_elements) == limit
+        total, next_offset, truncated = self._work_package_collection_page(
+            offset=offset,
+            limit=limit,
+            total_is_scope_safe=total_is_scope_safe,
+            server_total=server_total,
+            raw_elements=raw_elements,
+            raw_items=raw_items,
+            results=results,
+        )
         return WorkPackageListResult(
             offset=offset,
             limit=limit,
@@ -3064,42 +3013,17 @@ class OpenProjectClient:
         current = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
         detail = self.normalize_work_package_detail(current)
-
-        if not confirm:
-            return WorkPackageWriteResult(
-                action="delete",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to delete this work package. Ask for confirmation, then call again with confirm=true.",
-                work_package_id=detail.id,
-                project=detail.project,
-                payload={
-                    "id": detail.id,
-                    "subject": detail.subject,
-                    "lockVersion": detail.lock_version,
-                },
-                validation_errors={},
-                result=detail,
-            )
-
-        self._ensure_write_enabled("work_package")
-        await self._delete(f"work_packages/{work_package_id}")
-        return WorkPackageWriteResult(
-            action="delete",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Work package deleted successfully.",
-            work_package_id=detail.id,
-            project=detail.project,
-            payload={
-                "id": detail.id,
-                "subject": detail.subject,
-                "lockVersion": detail.lock_version,
-            },
-            validation_errors={},
-            result=None,
+        payload = {"id": detail.id, "subject": detail.subject, "lockVersion": detail.lock_version}
+        return await self._finalize_delete(
+            result_cls=WorkPackageWriteResult,
+            confirm=confirm,
+            result_kwargs={"work_package_id": detail.id, "project": detail.project, "payload": payload},
+            preview_result=detail,
+            commit_result=None,
+            write_scope="work_package",
+            delete_path=f"work_packages/{work_package_id}",
+            preview_message="OpenProject is ready to delete this work package. Ask for confirmation, then call again with confirm=true.",
+            success_message="Work package deleted successfully.",
         )
 
     async def delete_relation(
@@ -3122,33 +3046,16 @@ class OpenProjectClient:
             "from_id": normalized.from_id,
             "to_id": normalized.to_id,
         }
-        if not confirm:
-            return RelationWriteResult(
-                action="delete",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to delete this relation. Ask for confirmation, then call again with confirm=true.",
-                relation_id=normalized.id,
-                work_package_id=normalized.from_id,
-                payload=payload,
-                validation_errors={},
-                result=normalized,
-            )
-
-        self._ensure_write_enabled("work_package")
-        await self._delete(f"relations/{relation_id}")
-        return RelationWriteResult(
-            action="delete",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Relation deleted successfully.",
-            relation_id=normalized.id,
-            work_package_id=normalized.from_id,
-            payload=payload,
-            validation_errors={},
-            result=None,
+        return await self._finalize_delete(
+            result_cls=RelationWriteResult,
+            confirm=confirm,
+            result_kwargs={"relation_id": normalized.id, "work_package_id": normalized.from_id, "payload": payload},
+            preview_result=normalized,
+            commit_result=None,
+            write_scope="work_package",
+            delete_path=f"relations/{relation_id}",
+            preview_message="OpenProject is ready to delete this relation. Ask for confirmation, then call again with confirm=true.",
+            success_message="Relation deleted successfully.",
         )
 
     async def list_my_open_work_packages(
@@ -3189,23 +3096,18 @@ class OpenProjectClient:
         server_total = int(payload.get("total", len(results)))
         # This query has no server-side project filter at all, so the server total
         # counts matches across every project regardless of the allowlist — only
-        # trust it when the scope is unrestricted. A clean current page is NOT
-        # sufficient: a later page could still contain disallowed-project matches
-        # that the total would otherwise leak the existence of.
+        # trust it when the scope is unrestricted (see _work_package_collection_page
+        # for why a clean current page alone isn't sufficient either).
         total_is_scope_safe = _scope_allows_all(self.settings.read_projects)
-        total_trustworthy = total_is_scope_safe and len(raw_items) == len(raw_elements)
-        if total_trustworthy:
-            total = server_total
-            next_offset = _next_offset(offset, effective_limit, server_total)
-            truncated = server_total > offset * effective_limit
-        else:
-            # See _list_work_package_collection: pagination hints must not be
-            # derived from the untrustworthy server total either. Base "is there
-            # more to page through" purely on whether this raw server page came
-            # back full.
-            total = len(results)
-            next_offset = (offset + 1) if len(raw_elements) == effective_limit else None
-            truncated = len(raw_elements) == effective_limit
+        total, next_offset, truncated = self._work_package_collection_page(
+            offset=offset,
+            limit=effective_limit,
+            total_is_scope_safe=total_is_scope_safe,
+            server_total=server_total,
+            raw_elements=raw_elements,
+            raw_items=raw_items,
+            results=results,
+        )
         return WorkPackageListResult(
             offset=offset,
             limit=effective_limit,
@@ -3573,34 +3475,16 @@ class OpenProjectClient:
         self._ensure_board_write_payload_allowed(current)
         detail = self.normalize_board_detail(current)
         payload = {"id": detail.id, "name": detail.name}
-
-        if not confirm:
-            return BoardWriteResult(
-                action="delete",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject found the board. Ask for confirmation, then call again with confirm=true to delete it.",
-                board_id=detail.id,
-                project=detail.project,
-                payload=payload,
-                validation_errors={},
-                result=detail,
-            )
-
-        self._ensure_write_enabled("board")
-        await self._delete(f"queries/{board_id}")
-        return BoardWriteResult(
-            action="delete",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Board deleted successfully.",
-            board_id=detail.id,
-            project=detail.project,
-            payload=payload,
-            validation_errors={},
-            result=detail,
+        return await self._finalize_delete(
+            result_cls=BoardWriteResult,
+            confirm=confirm,
+            result_kwargs={"board_id": detail.id, "project": detail.project, "payload": payload},
+            preview_result=detail,
+            commit_result=detail,
+            write_scope="board",
+            delete_path=f"queries/{board_id}",
+            preview_message="OpenProject found the board. Ask for confirmation, then call again with confirm=true to delete it.",
+            success_message="Board deleted successfully.",
         )
 
     async def get_work_package_relations(self, work_package_id: int | str) -> RelationListResult:
@@ -3864,30 +3748,16 @@ class OpenProjectClient:
 
     async def delete_reminder(self, *, reminder_id: int, confirm: bool = False) -> ReminderWriteResult:
         await self._ensure_reminder_project_write_allowed(reminder_id)
-        if not confirm:
-            return ReminderWriteResult(
-                action="delete",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to delete this reminder. Ask for confirmation, then call again with confirm=true.",
-                reminder_id=reminder_id,
-                payload={},
-                validation_errors={},
-                result=None,
-            )
-        self._ensure_write_enabled("work_package")
-        await self._delete(f"reminders/{reminder_id}")
-        return ReminderWriteResult(
-            action="delete",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Reminder deleted successfully.",
-            reminder_id=reminder_id,
-            payload={},
-            validation_errors={},
-            result=None,
+        return await self._finalize_delete(
+            result_cls=ReminderWriteResult,
+            confirm=confirm,
+            result_kwargs={"reminder_id": reminder_id, "payload": {}},
+            preview_result=None,
+            commit_result=None,
+            write_scope="work_package",
+            delete_path=f"reminders/{reminder_id}",
+            preview_message="OpenProject is ready to delete this reminder. Ask for confirmation, then call again with confirm=true.",
+            success_message="Reminder deleted successfully.",
         )
 
     # --- Project favorites (via the workspaces endpoint) ---
@@ -4158,11 +4028,7 @@ class OpenProjectClient:
         links = payload.get("_links", {})
         project_link = links.get("project")
         if isinstance(project_link, dict):
-            try:
-                self._ensure_project_link_allowed(project_link)
-                return True
-            except PermissionDeniedError:
-                return False
+            return self._payload_allowed(lambda: self._ensure_project_link_allowed(project_link))
         resource_link = links.get("resource")
         resource_href = resource_link.get("href") if isinstance(resource_link, dict) else None
         if isinstance(resource_href, str) and "work_packages/" in resource_href:
@@ -4313,31 +4179,21 @@ class OpenProjectClient:
         *,
         confirm: bool = False,
     ) -> UserWriteResult:
+        # Checked unconditionally (not just on confirm) since there's no prior GET
+        # to gate an unauthorized preview request on -- preserved as-is below,
+        # write_scope on the helper call is a harmless redundant re-check.
         self._ensure_write_enabled("admin")
         payload = {"id": user_id}
-        if not confirm:
-            return UserWriteResult(
-                action="delete",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to delete the user. Ask for confirmation, then call again with confirm=true.",
-                user_id=user_id,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        await self._delete(f"users/{user_id}")
-        return UserWriteResult(
-            action="delete",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="User deleted successfully.",
-            user_id=user_id,
-            payload=payload,
-            validation_errors={},
-            result=None,
+        return await self._finalize_delete(
+            result_cls=UserWriteResult,
+            confirm=confirm,
+            result_kwargs={"user_id": user_id, "payload": payload},
+            preview_result=None,
+            commit_result=None,
+            write_scope="admin",
+            delete_path=f"users/{user_id}",
+            preview_message="OpenProject is ready to delete the user. Ask for confirmation, then call again with confirm=true.",
+            success_message="User deleted successfully.",
         )
 
     async def lock_user(
@@ -4520,31 +4376,19 @@ class OpenProjectClient:
         *,
         confirm: bool = False,
     ) -> GroupWriteResult:
+        # Checked unconditionally, same reasoning as delete_user above.
         self._ensure_write_enabled("admin")
         payload = {"id": group_id}
-        if not confirm:
-            return GroupWriteResult(
-                action="delete",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to delete the group. Ask for confirmation, then call again with confirm=true.",
-                group_id=group_id,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        await self._delete(f"groups/{group_id}")
-        return GroupWriteResult(
-            action="delete",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Group deleted successfully.",
-            group_id=group_id,
-            payload=payload,
-            validation_errors={},
-            result=None,
+        return await self._finalize_delete(
+            result_cls=GroupWriteResult,
+            confirm=confirm,
+            result_kwargs={"group_id": group_id, "payload": payload},
+            preview_result=None,
+            commit_result=None,
+            write_scope="admin",
+            delete_path=f"groups/{group_id}",
+            preview_message="OpenProject is ready to delete the group. Ask for confirmation, then call again with confirm=true.",
+            success_message="Group deleted successfully.",
         )
 
     # --- File Links ---
@@ -4582,30 +4426,16 @@ class OpenProjectClient:
             self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
         else:
             self._ensure_project_write_link_allowed(None)
-        if not confirm:
-            return FileLinkWriteResult(
-                action="delete",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject found the file link. Ask for confirmation, then call again with confirm=true to delete it.",
-                file_link_id=file_link.id,
-                work_package_id=work_package_id,
-                validation_errors={},
-                result=file_link,
-            )
-        self._ensure_write_enabled("work_package")
-        await self._delete(f"file_links/{file_link_id}")
-        return FileLinkWriteResult(
-            action="delete",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="File link deleted successfully.",
-            file_link_id=file_link.id,
-            work_package_id=work_package_id,
-            validation_errors={},
-            result=None,
+        return await self._finalize_delete(
+            result_cls=FileLinkWriteResult,
+            confirm=confirm,
+            result_kwargs={"file_link_id": file_link.id, "work_package_id": work_package_id},
+            preview_result=file_link,
+            commit_result=None,
+            write_scope="work_package",
+            delete_path=f"file_links/{file_link_id}",
+            preview_message="OpenProject found the file link. Ask for confirmation, then call again with confirm=true to delete it.",
+            success_message="File link deleted successfully.",
         )
 
     # --- Grids ---
@@ -4713,33 +4543,16 @@ class OpenProjectClient:
             await self._get_project_payload(project_ref, write=True)
         detail = self.normalize_grid(current)
         scope = current.get("_links", {}).get("scope", {}).get("href")
-
-        if not confirm:
-            return GridWriteResult(
-                action="delete",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject found the grid. Ask for confirmation, then call again with confirm=true to delete it.",
-                grid_id=detail.id,
-                scope=scope,
-                payload={"id": detail.id},
-                validation_errors={},
-                result=None,
-            )
-        self._ensure_write_enabled("project")
-        await self._delete(f"grids/{grid_id}")
-        return GridWriteResult(
-            action="delete",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Grid deleted successfully.",
-            grid_id=detail.id,
-            scope=scope,
-            payload={"id": detail.id},
-            validation_errors={},
-            result=None,
+        return await self._finalize_delete(
+            result_cls=GridWriteResult,
+            confirm=confirm,
+            result_kwargs={"grid_id": detail.id, "scope": scope, "payload": {"id": detail.id}},
+            preview_result=None,
+            commit_result=None,
+            write_scope="project",
+            delete_path=f"grids/{grid_id}",
+            preview_message="OpenProject found the grid. Ask for confirmation, then call again with confirm=true to delete it.",
+            success_message="Grid deleted successfully.",
         )
 
     # --- User Preferences ---
@@ -4924,11 +4737,9 @@ class OpenProjectClient:
             return False
         # Do NOT swallow server/transport errors as "not allowed" — a transient
         # 5xx must not silently drop a relation the caller is entitled to see.
-        try:
-            self._ensure_project_link_allowed(work_package.get("_links", {}).get("project"))
-            return True
-        except PermissionDeniedError:
-            return False
+        return self._payload_allowed(
+            lambda: self._ensure_project_link_allowed(work_package.get("_links", {}).get("project"))
+        )
 
     async def update_relation(
         self,
@@ -6799,6 +6610,58 @@ class OpenProjectClient:
             validation_errors={},
             result=detail,
             **committed_kwargs(detail),
+        )
+
+    async def _finalize_delete(
+        self,
+        *,
+        result_cls: type[ResultT],
+        action: str = "delete",
+        confirm: bool,
+        result_kwargs: dict[str, Any],
+        preview_result: Any,
+        commit_result: Any,
+        write_scope: str,
+        delete_path: str,
+        preview_message: str,
+        success_message: str,
+    ) -> ResultT:
+        """Shared preview/committed state machine for the 13 GET-then-delete
+        finalizers. Each entity's pre-delete setup (GET, allowlist check,
+        normalization) is genuinely heterogeneous -- e.g. delete_attachment
+        needs the return value of its allow-check for the result identity,
+        delete_user/delete_group do no GET at all -- so that setup stays at
+        each call site unchanged. Only the identical "preview or commit"
+        branching is shared here. result_kwargs carries whatever extra fields
+        that entity's Result dataclass actually declares (identity fields,
+        and payload where the class has one -- not every Result class has a
+        payload field, e.g. FileLinkWriteResult does not).
+        """
+        if not confirm:
+            # ResultT is an unbound TypeVar (each of the 13 delete methods binds it to
+            # a different dataclass with different fields, assembled per call site in
+            # result_kwargs) -- mypy can't verify this statically, same as _finalize_write.
+            return result_cls(  # type: ignore[call-arg]
+                action=action,
+                confirmed=False,
+                requires_confirmation=True,
+                ready=True,
+                message=preview_message,
+                validation_errors={},
+                result=preview_result,
+                **result_kwargs,
+            )
+        self._ensure_write_enabled(write_scope)
+        await self._delete(delete_path)
+        return result_cls(  # type: ignore[call-arg]
+            action=action,
+            confirmed=True,
+            requires_confirmation=False,
+            ready=True,
+            message=success_message,
+            validation_errors={},
+            result=commit_result,
+            **result_kwargs,
         )
 
     async def _finalize_work_package_write(
