@@ -24,6 +24,9 @@ development baseline.
 - **`bulk_create_work_packages`/`bulk_update_work_packages` gain a `select`
   parameter** to shrink an unconfirmed preview's echoed payload, matching the
   `select` support already available on list/read tools.
+- **`get_project` now returns the project's ancestor chain (`ancestors`)**,
+  same shape as the existing `WorkPackageDetail.ancestors`. `list_projects`
+  rows stay on the leaner existing shape, unchanged.
 
 ### Changed
 
@@ -49,6 +52,10 @@ development baseline.
   even when a date was genuinely set.** OpenProject reports a milestone's
   date under a different field than it does for every other work-package
   type, which this server did not previously read.
+- **Breaking: `get_user`'s `identity_url` field now reflects OpenProject's
+  real SSO identity property**, instead of duplicating the already-present
+  `url` field (both previously resolved to the identical web link). It is
+  now `null` unless the account is provisioned via SSO/OmniAuth.
 
 ---
 

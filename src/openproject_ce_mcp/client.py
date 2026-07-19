@@ -110,6 +110,7 @@ from .models import (
     ProjectAdminContext,
     ProjectConfiguration,
     ProjectCopyResult,
+    ProjectDetail,
     ProjectFieldSchema,
     ProjectListResult,
     ProjectPhase,
@@ -196,6 +197,7 @@ _PROJECT_NAME_SEARCH_MAX_PAGES = 5
 # Array truncation limits for work package hierarchy and activity details
 WORK_PACKAGE_CHILDREN_LIMIT = 50
 WORK_PACKAGE_ANCESTORS_LIMIT = 20
+PROJECT_ANCESTORS_LIMIT = 20
 ACTIVITY_DETAILS_LIMIT = 20
 BATCH_READ_MAX_IDS = 100
 
@@ -426,10 +428,10 @@ class OpenProjectClient:
             results=results,
         )
 
-    async def get_project(self, project_ref: str) -> ProjectSummary:
+    async def get_project(self, project_ref: str) -> ProjectDetail:
         self._ensure_read_enabled("project")
         payload = await self._resolve_project_ref(project_ref, write=False)
-        return self.normalize_project(payload)
+        return self.normalize_project_detail(payload)
 
     async def get_project_admin_context(self, project_ref: str) -> ProjectAdminContext:
         self._ensure_read_enabled("project")
@@ -5008,6 +5010,42 @@ class OpenProjectClient:
             ),
         )
 
+    def normalize_project_detail(self, payload: dict[str, Any]) -> ProjectDetail:
+        summary = self.normalize_project(payload)
+        links = payload.get("_links", {})
+        ancestors_raw = links.get("ancestors", [])
+        ancestors = None
+        ancestors_truncated = False
+        if ancestors_raw:
+            ancestors = [
+                {"href": a.get("href"), "title": a.get("title"), "display_id": a.get("displayId")}
+                for a in ancestors_raw[:PROJECT_ANCESTORS_LIMIT]
+            ]
+            ancestors_truncated = len(ancestors_raw) > PROJECT_ANCESTORS_LIMIT
+        return self._apply_hidden_fields(
+            "project",
+            ProjectDetail(
+                id=summary.id,
+                name=summary.name,
+                identifier=summary.identifier,
+                active=summary.active,
+                description=summary.description,
+                url=summary.url,
+                public=summary.public,
+                status=summary.status,
+                status_explanation=summary.status_explanation,
+                parent_id=summary.parent_id,
+                parent_name=summary.parent_name,
+                created_at=summary.created_at,
+                updated_at=summary.updated_at,
+                can_update=summary.can_update,
+                can_delete=summary.can_delete,
+                favorited=summary.favorited,
+                ancestors=ancestors,
+                ancestors_truncated=ancestors_truncated,
+            ),
+        )
+
     def normalize_role(self, payload: dict[str, Any]) -> RoleSummary:
         return self._apply_hidden_fields(
             "role",
@@ -5062,7 +5100,11 @@ class OpenProjectClient:
         links = payload.get("_links", {})
         groups = [title for item in links.get("groups", []) if isinstance(item, dict) and (title := _link_title(item))]
         auth_source = _link_title(links.get("authSource"))
-        identity_url = self._link_to_web_url(links.get("showUser", {}).get("href"))
+        # OPM-221: the real `identityUrl` API property (OmniAuth/SSO subject),
+        # a top-level property -- not the `showUser` HAL link, which just
+        # duplicates the already-modeled `url` field (both resolve to the same
+        # /users/{id} web path).
+        identity_url = payload.get("identityUrl")
         return self._apply_hidden_fields(
             "user",
             UserDetail(

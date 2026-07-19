@@ -18,7 +18,7 @@ work_package   description                formattable_property     COVERED    �
 work_package   scheduleManually           property                 COVERED    —
 work_package   startDate                  date_property            COVERED    —
 work_package   dueDate                    date_property            COVERED    —
-work_package   date                       date_property            UNTRIAGED  —
+work_package   date                       date_property            EXCLUDED   internal_other
 work_package   derivedStartDate           date_property            COVERED    —
 work_package   derivedDueDate             date_property            COVERED    —
 work_package   estimatedTime              property                 COVERED    —
@@ -38,7 +38,7 @@ work_package   type                       associated_resource      COVERED    �
 work_package   priority                   associated_resource      COVERED    —
 work_package   project                    associated_project       COVERED    —
 work_package   projectPhase               resource                 COVERED    —
-work_package   projectPhaseDefinition     link                     UNTRIAGED  —
+work_package   projectPhaseDefinition     link                     EXCLUDED   internal_other
 work_package   status                     associated_resource      COVERED    —
 work_package   author                     associated_resource      COVERED    —
 work_package   responsible                associated_resource      COVERED    —
@@ -48,9 +48,8 @@ work_package   parent                     associated_resource      COVERED    �
 work_package   budget                     associated_resource      EXCLUDED   enterprise
 work_package   customActions              resources                EXCLUDED   enterprise
 work_package   attachments                property                 EXCLUDED   large_embedded
-work_package   _meta                      property                 UNTRIAGED  —
-work_package   attributesByTimestamp      property                 UNTRIAGED  —
-user           showUser                   link                     COVERED    —
+work_package   _meta                      property                 EXCLUDED   enterprise
+work_package   attributesByTimestamp      property                 EXCLUDED   enterprise
 user           authSource                 link                     COVERED    —
 user           login                      property                 COVERED    —
 user           admin                      property                 COVERED    —
@@ -60,7 +59,7 @@ user           lastName                   property                 COVERED    �
 user           email                      property                 COVERED    —
 user           avatar                     property                 COVERED    —
 user           status                     property                 COVERED    —
-user           identityUrl                property                 UNTRIAGED  —
+user           identityUrl                property                 COVERED    —
 user           language                   property                 COVERED    —
 user           password                   property                 EXCLUDED   internal_other
 user           currentPassword            property                 EXCLUDED   internal_other
@@ -71,7 +70,7 @@ category       project                    link                     COVERED    �
 category       defaultAssignee            link                     COVERED    —
 category       id                         property                 COVERED    —
 category       name                       property                 COVERED    —
-project        ancestors                  links                    UNTRIAGED  —
+project        ancestors                  links                    COVERED    —
 project        parent                     associated_project       COVERED    —
 project        id                         property                 COVERED    —
 project        identifier                 property                 COVERED    —
@@ -101,19 +100,12 @@ membership     roles                      associated_resources     COVERED    �
 membership     createdAt                  date_time_property       COVERED    —
 membership     updatedAt                  date_time_property       COVERED    —
 
-Summary: resources=6, checked_fields=93, covered=81, excluded=6, untriaged=6
+Summary: resources=6, checked_fields=92, covered=82, excluded=10, untriaged=0
 ```
 
 ## Untriaged drift
 
-Every field below is a real CE representer field with no model coverage and no recorded exclusion. Resolve each by adding a model field or a `FieldExclusion` entry with a reason.
-
-- `work_package.date` (date_property `:date`)
-- `work_package.projectPhaseDefinition` (link `:projectPhaseDefinition`)
-- `work_package._meta` (property `:_meta`)
-- `work_package.attributesByTimestamp` (property `:attributes_by_timestamp`)
-- `user.identityUrl` (property `:identity_url`)
-- `project.ancestors` (links `:ancestors`)
+_None — every checked field is modeled or has a documented exclusion._
 
 ## Intentional exclusions
 
@@ -121,11 +113,15 @@ Every field below is a real CE representer field with no model coverage and no r
 
 - `work_package.budget` — Budgets is Enterprise-only per this server's CE-only policy; associated_resource :budget (work_package_representer.rb:613) has no representer-level EnterpriseToken guard, so this can't be auto-derived.
 - `work_package.customActions` — Custom Actions is Enterprise-only per the CE-only policy (resources :customActions, work_package_representer.rb:625).
+- `work_package._meta` — Backs the Enterprise-only Baseline Comparisons feature (TimestampedRepresenter, gated by timestamps_active?); never appears in any response this server produces, since nothing here requests historic timestamps.
+- `work_package.attributesByTimestamp` — Same Enterprise-only Baseline Comparisons feature as _meta above (TimestampedRepresenter, property :attributes_by_timestamp, timestamps_active? gated).
 
 ### internal_other
 
 - `user.password` — Write-only property (getter: ->(*) {}, render_nil: false) -- never appears in a read response, per user_representer.rb's own '# Write-only properties' comment.
 - `user.currentPassword` — Write-only property (getter: ->(*) {}, render_nil: false), same as password.
+- `work_package.date` — Milestone-only date_property (work_package_representer.rb:380, getter: default_date_getter(:due_date)); OPM-223 normalizes it into start_date/due_date at runtime (both get the same value for a milestone) rather than modeling a separate field -- a deliberate composite/semantic mapping, not an unmodeled field.
+- `work_package.projectPhaseDefinition` — Secondary link to the phase *definition* record (link :projectPhaseDefinition), distinct from the already-modeled project_phase value/name. list_project_phase_definitions/get_project_phase_definition already provide independent definition lookups; not worth a second WorkPackageDetail field.
 
 ### large_embedded
 

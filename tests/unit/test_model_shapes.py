@@ -209,3 +209,45 @@ async def test_page_result_and_collection_result_keep_concrete_element_types() -
         ref_name = items_schema["$ref"].rsplit("/", 1)[-1]
         assert ref_name in ref_defs
         assert ref_defs[ref_name]["title"] == expected_ref_name
+
+
+@pytest.mark.asyncio
+async def test_project_detail_ancestors_boundary_in_mcp_schema() -> None:
+    """OPM-221: get_project (ProjectDetail) exposes ancestors/ancestors_truncated;
+    list_projects rows (ProjectSummary) and ProjectWriteResult.result (also
+    ProjectSummary) must NOT -- proves the Detail/Summary split actually holds
+    at the schema boundary, not just in the dataclass definitions.
+    """
+    mcp = FastMCP("shape-test")
+
+    @mcp.tool()
+    def project_detail_probe() -> models.ProjectDetail:
+        return _dummy_instance(models.ProjectDetail)
+
+    @mcp.tool()
+    def project_list_probe() -> models.ProjectListResult:
+        return _dummy_instance(models.ProjectListResult)
+
+    @mcp.tool()
+    def project_write_probe() -> models.ProjectWriteResult:
+        return _dummy_instance(models.ProjectWriteResult)
+
+    tools = {t.name: t for t in await mcp.list_tools()}
+
+    detail_schema = tools["project_detail_probe"].outputSchema
+    assert "ancestors" in detail_schema["properties"]
+    assert "ancestors_truncated" in detail_schema["properties"]
+
+    list_schema = tools["project_list_probe"].outputSchema
+    items_ref = list_schema["properties"]["results"]["items"]["$ref"]
+    project_summary_schema = list_schema["$defs"][items_ref.rsplit("/", 1)[-1]]
+    assert project_summary_schema["title"] == "ProjectSummary"
+    assert "ancestors" not in project_summary_schema["properties"]
+
+    write_schema = tools["project_write_probe"].outputSchema
+    result_field = write_schema["properties"]["result"]
+    result_refs = [entry["$ref"] for entry in result_field.get("anyOf", []) if "$ref" in entry]
+    assert result_refs, f"expected a $ref among result's anyOf branches, got {result_field!r}"
+    result_summary_schema = write_schema["$defs"][result_refs[0].rsplit("/", 1)[-1]]
+    assert result_summary_schema["title"] == "ProjectSummary"
+    assert "ancestors" not in result_summary_schema["properties"]

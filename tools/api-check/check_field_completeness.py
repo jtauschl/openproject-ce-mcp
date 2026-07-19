@@ -136,7 +136,7 @@ RESOURCE_CHECKS: list[ResourceCheck] = [
     ResourceCheck(
         name="project",
         source_files=("lib/api/v3/projects/project_representer.rb",),
-        model_types=("ProjectSummary",),  # no separate Detail; get_project returns ProjectSummary
+        model_types=("ProjectSummary", "ProjectDetail"),
     ),
     ResourceCheck(
         name="version",
@@ -154,15 +154,14 @@ RESOURCE_CHECKS: list[ResourceCheck] = [
 # camelize(field_name) rule gets wrong: composite id+display pairs that both
 # derive from one representer field (parent_id/parent_display_id -> parent),
 # and Ruby-side names that don't round-trip through simple camelCase
-# (identity_url -> showUser, firstname -> firstName since Ruby's own
-# `as:` override doesn't camelize-derive from "firstname").
+# (firstname -> firstName since Ruby's own `as:` override doesn't
+# camelize-derive from "firstname").
 RENAME_MAP: dict[tuple[str, str], str] = {
     ("work_package", "parent_id"): "parent",
     ("work_package", "parent_display_id"): "parent",
     ("category", "default_assignee_id"): "defaultAssignee",
     ("category", "default_assignee"): "defaultAssignee",
     ("category", "project_id"): "project",
-    ("user", "identity_url"): "showUser",
     ("user", "firstname"): "firstName",
     ("user", "lastname"): "lastName",
     ("user", "avatar_url"): "avatar",
@@ -233,6 +232,7 @@ NAVIGATION_LINKS: frozenset[str] = frozenset(
         "types",  # collection href to the project's enabled work-package types
         "projectStorages",  # collection href, same kind as storages
         "availableInProjects",  # action-like lookup link (find projects a version could share into), not the version's own data
+        "showUser",  # web-UI navigation href to view the user's profile page, already modeled as UserSummary/UserDetail.url
     }
 )
 
@@ -280,6 +280,41 @@ EXCLUSIONS: list[FieldExclusion] = [
         "currentPassword",
         ExclusionCategory.INTERNAL_OTHER,
         "Write-only property (getter: ->(*) {}, render_nil: false), same as password.",
+    ),
+    FieldExclusion(
+        "work_package",
+        "date",
+        ExclusionCategory.INTERNAL_OTHER,
+        "Milestone-only date_property (work_package_representer.rb:380, getter: "
+        "default_date_getter(:due_date)); OPM-223 normalizes it into start_date/"
+        "due_date at runtime (both get the same value for a milestone) rather than "
+        "modeling a separate field -- a deliberate composite/semantic mapping, not "
+        "an unmodeled field.",
+    ),
+    FieldExclusion(
+        "work_package",
+        "projectPhaseDefinition",
+        ExclusionCategory.INTERNAL_OTHER,
+        "Secondary link to the phase *definition* record (link :projectPhaseDefinition), "
+        "distinct from the already-modeled project_phase value/name. "
+        "list_project_phase_definitions/get_project_phase_definition already provide "
+        "independent definition lookups; not worth a second WorkPackageDetail field.",
+    ),
+    FieldExclusion(
+        "work_package",
+        "_meta",
+        ExclusionCategory.ENTERPRISE,
+        "Backs the Enterprise-only Baseline Comparisons feature (TimestampedRepresenter, "
+        "gated by timestamps_active?); never appears in any response this server "
+        "produces, since nothing here requests historic timestamps.",
+    ),
+    FieldExclusion(
+        "work_package",
+        "attributesByTimestamp",
+        ExclusionCategory.ENTERPRISE,
+        "Same Enterprise-only Baseline Comparisons feature as _meta above "
+        "(TimestampedRepresenter, property :attributes_by_timestamp, "
+        "timestamps_active? gated).",
     ),
 ]
 _EXCLUSION_INDEX: dict[tuple[str, str], FieldExclusion] = {(e.resource, e.wire_name): e for e in EXCLUSIONS}

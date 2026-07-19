@@ -717,3 +717,89 @@ def test_normalize_work_package_prefers_start_date_due_date_over_milestone_date_
     summary = client.normalize_work_package_summary(payload)
     assert summary.start_date == "2026-08-01"
     assert summary.due_date == "2026-08-10"
+
+
+def test_normalize_project_detail_builds_ancestors_from_links() -> None:
+    """OPM-221: get_project's ancestors, mirroring WorkPackageDetail.ancestors
+    (same shape, same client.py-side truncation pattern)."""
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    payload = {
+        "id": 9,
+        "name": "Sub Project",
+        "identifier": "sub-project",
+        "_links": {
+            "ancestors": [
+                {"href": "/api/v3/projects/1", "title": "Root", "displayId": None},
+                {"href": "/api/v3/projects/5", "title": "Mid", "displayId": None},
+            ]
+        },
+    }
+
+    detail = client.normalize_project_detail(payload)
+
+    assert detail.ancestors == [
+        {"href": "/api/v3/projects/1", "title": "Root", "display_id": None},
+        {"href": "/api/v3/projects/5", "title": "Mid", "display_id": None},
+    ]
+    assert detail.ancestors_truncated is False
+    # Summary fields still populated identically to normalize_project.
+    assert detail.id == 9
+    assert detail.identifier == "sub-project"
+
+
+def test_normalize_project_detail_truncates_long_ancestor_chains() -> None:
+    from openproject_ce_mcp.client import PROJECT_ANCESTORS_LIMIT
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    ancestors = [{"href": f"/api/v3/projects/{i}", "title": f"P{i}"} for i in range(PROJECT_ANCESTORS_LIMIT + 5)]
+    payload = {"id": 1, "name": "Deep", "_links": {"ancestors": ancestors}}
+
+    detail = client.normalize_project_detail(payload)
+
+    assert detail.ancestors is not None
+    assert len(detail.ancestors) == PROJECT_ANCESTORS_LIMIT
+    assert detail.ancestors_truncated is True
+
+
+def test_normalize_project_detail_leaves_ancestors_none_when_absent() -> None:
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    payload = {"id": 1, "name": "Top", "_links": {}}
+
+    detail = client.normalize_project_detail(payload)
+
+    assert detail.ancestors is None
+    assert detail.ancestors_truncated is False
+
+
+def test_normalize_user_detail_reads_identity_url_from_the_real_property() -> None:
+    """OPM-221: identity_url now sources OpenProject's real identityUrl
+    property (top-level, not a _links entry), not the showUser link -- which
+    duplicated the already-modeled `url` field."""
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    payload = {
+        "id": 5,
+        "name": "SSO User",
+        "identityUrl": "https://idp.example.com/subjects/abc123",
+        "_links": {"showUser": {"href": "/users/5"}},
+    }
+
+    detail = client.normalize_user_detail(payload)
+
+    assert detail.identity_url == "https://idp.example.com/subjects/abc123"
+
+
+def test_normalize_user_detail_identity_url_is_none_without_sso_despite_showuser_link() -> None:
+    """Regression guard: a populated showUser link must NOT resurrect the old
+    derivation -- identity_url is null whenever the real property is absent,
+    even though showUser is present (confirmed live: every account has a
+    showUser link, only SSO-provisioned accounts have identityUrl)."""
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    payload = {
+        "id": 5,
+        "name": "Local User",
+        "_links": {"showUser": {"href": "/users/5"}},
+    }
+
+    detail = client.normalize_user_detail(payload)
+
+    assert detail.identity_url is None

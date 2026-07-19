@@ -149,10 +149,11 @@ def test_multi_file_source_union():
     assert by_wire["b"].status == "UNTRIAGED"
 
 
-def test_work_package_date_field_is_untriaged_against_the_real_model():
-    # Regression guard for the tool's demonstration finding: milestone-only
-    # `date_property :date` (work_package_representer.rb:380) has no
-    # corresponding field on the real WorkPackageSummary/WorkPackageDetail.
+def test_work_package_date_field_is_excluded_as_composite_mapping():
+    # OPM-223 normalizes milestone-only `date_property :date`
+    # (work_package_representer.rb:380) into start_date/due_date at runtime
+    # instead of modeling a separate field -- a curated FieldExclusion
+    # (composite/semantic mapping), not an unmodeled field left UNTRIAGED.
     from openproject_ce_mcp import models
 
     rc = cfc.ResourceCheck(
@@ -164,7 +165,7 @@ def test_work_package_date_field_is_untriaged_against_the_real_model():
 
     assert len(findings) == 1
     assert findings[0].wire_name == "date"
-    assert findings[0].status == "UNTRIAGED"
+    assert findings[0].status == "EXCLUDED"
 
 
 # --- exit-code policy -----------------------------------------------------

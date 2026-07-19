@@ -63,6 +63,17 @@ class ProjectSummary:
 
 
 @dataclass
+class ProjectDetail(ProjectSummary):
+    """Single-project read (get_project) only -- list_projects/ProjectListResult
+    stays on the leaner ProjectSummary so list responses don't carry every
+    row's ancestor chain (OPM-221, mirrors WorkPackageDetail.ancestors).
+    """
+
+    ancestors: list[dict[str, str]] | None = None
+    ancestors_truncated: bool = False
+
+
+@dataclass
 class ProjectListResult(PageResult):
     results: list[ProjectSummary]
 

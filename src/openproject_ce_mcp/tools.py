@@ -76,6 +76,7 @@ from .models import (
     ProjectAdminContext,
     ProjectConfiguration,
     ProjectCopyResult,
+    ProjectDetail,
     ProjectListResult,
     ProjectPhase,
     ProjectPhaseDefinition,
@@ -494,8 +495,8 @@ async def list_projects(
 async def get_project(
     ctx: Context,
     project: str,
-) -> ProjectSummary:
-    """Get a compact project summary by id or identifier.
+) -> ProjectDetail:
+    """Get a project by id or identifier, including its ancestor chain.
 
     project: numeric id (e.g., 7) or identifier (e.g., "my-project"), not display name.
     """
