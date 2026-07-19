@@ -216,6 +216,33 @@ def test_exit_code_two_with_write_flag_does_not_write(tmp_path, monkeypatch):
     assert not write_target.exists()
 
 
+def test_exit_code_two_when_a_single_curated_source_file_is_missing(tmp_path, monkeypatch, capsys):
+    # .op-sources/<version>/ itself exists (unlike the two tests above), but
+    # one specific ResourceCheck.source_files entry doesn't -- an incomplete
+    # sparse checkout or a stale source_files entry, not "no sources at all".
+    # This used to escape as an uncaught RuntimeError/traceback defaulting to
+    # exit 1, indistinguishable from the documented "real UNTRIAGED findings"
+    # exit 1 -- caught in review.
+    (tmp_path / cfc.SOURCE_VERSION).mkdir()
+    monkeypatch.setattr(cfc, "SOURCES", tmp_path)
+    monkeypatch.setattr(
+        cfc,
+        "RESOURCE_CHECKS",
+        [cfc.ResourceCheck(name="widget", source_files=("does/not/exist.rb",), model_types=())],
+    )
+    write_target = tmp_path / "FIELD_COMPLETENESS.md"
+    monkeypatch.setattr(cfc, "FIELD_COMPLETENESS_MD", write_target)
+    monkeypatch.setattr(sys, "argv", ["check_field_completeness.py", "--write"])
+
+    result = cfc.main()
+
+    assert result == 2
+    stderr = capsys.readouterr().err
+    assert "source_files entry missing" in stderr
+    assert "widget" in stderr
+    assert not write_target.exists()
+
+
 # --- exclusion table hygiene -----------------------------------------------
 
 

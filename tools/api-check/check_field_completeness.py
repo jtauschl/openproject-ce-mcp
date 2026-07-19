@@ -440,6 +440,18 @@ def _findings_for_resource(rc: ResourceCheck, texts: list[str], model_module: An
     return findings
 
 
+class MissingSourceError(RuntimeError):
+    """A curated ResourceCheck.source_files entry doesn't exist under the pinned version.
+
+    Distinct from a plain RuntimeError so `main()` can catch exactly this
+    case (an incomplete sparse checkout or a stale source_files entry) and
+    report it as the same kind of "sources aren't usable" condition as a
+    missing .op-sources/<version>/ directory entirely -- exit 2, not an
+    uncaught traceback defaulting to exit 1, which would be indistinguishable
+    from the documented "real UNTRIAGED findings" exit 1.
+    """
+
+
 def build_findings() -> list[Finding]:
     findings: list[Finding] = []
     for rc in RESOURCE_CHECKS:
@@ -447,7 +459,7 @@ def build_findings() -> list[Finding]:
         for sf in rc.source_files:
             path = SOURCES / SOURCE_VERSION / sf
             if not path.exists():
-                raise RuntimeError(
+                raise MissingSourceError(
                     f"check_field_completeness: curated source_files entry missing for "
                     f"resource {rc.name!r}: {sf} (checked {path}). Either "
                     f".op-sources/{SOURCE_VERSION}/ needs tools/api-check/fetch-sources.sh, "
@@ -547,7 +559,11 @@ def main() -> int:
         print(f"error: missing source clone {SOURCE_VERSION}. Run tools/api-check/fetch-sources.sh", file=sys.stderr)
         return 2
 
-    findings = build_findings()
+    try:
+        findings = build_findings()
+    except MissingSourceError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
     print(render(findings, verbose=args.verbose))
     print(render_untriaged_block(findings))
