@@ -224,6 +224,7 @@ DetailT = TypeVar("DetailT")
 ResultT = TypeVar("ResultT")
 
 _NarrowT = TypeVar("_NarrowT")
+_FetchT = TypeVar("_FetchT")
 
 
 def _narrow_cleared(value: _NarrowT | object, *, sentinel: object = None) -> _NarrowT:
@@ -1133,6 +1134,39 @@ class OpenProjectClient:
         self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
         return self.normalize_project_phase(payload)
 
+    async def _fetch_bounded_and_paginate(
+        self,
+        *,
+        path: str,
+        params_extra: dict[str, str] | None,
+        normalize: Callable[[dict[str, Any]], _FetchT],
+        item_allowed: Callable[[dict[str, Any]], bool] | None,
+        post_filter: Callable[[list[_FetchT]], list[_FetchT]] | None,
+        offset: int,
+        limit: int,
+    ) -> tuple[list[_FetchT], int, int | None, bool]:
+        """Fetch one bounded page (pageSize=settings.max_results), normalize + filter
+        the raw elements, apply an optional post-normalize filter (e.g. project/
+        search predicates), then paginate the survivors in memory via
+        _paginate_client. Shared by every list method that must over-fetch and
+        filter client-side (allowlist/search) rather than trust server-side
+        paging, so a restrictive filter can't produce a sparse page. Any
+        NotFoundError re-wrap (sprints/project_sprints) stays at the call site,
+        not here.
+        """
+        params = {"offset": "1", "pageSize": str(self.settings.max_results)}
+        if params_extra:
+            params.update(params_extra)
+        payload = await self._get(path, params=params)
+        results = [
+            normalize(item)
+            for item in payload.get("_embedded", {}).get("elements", [])
+            if isinstance(item, dict) and (item_allowed is None or item_allowed(item))
+        ]
+        if post_filter is not None:
+            results = post_filter(results)
+        return _paginate_client(offset=offset, limit=limit, results=results)
+
     async def list_views(
         self,
         *,
@@ -1144,18 +1178,7 @@ class OpenProjectClient:
     ) -> ViewListResult:
         self._ensure_read_enabled("project")
         effective_limit = self._resolve_limit(limit)
-        payload = await self._get(
-            "views",
-            params={
-                "offset": "1",
-                "pageSize": str(self.settings.max_results),
-            },
-        )
-        results = [
-            self.normalize_view(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._view_payload_allowed(item)
-        ]
+        project_candidates: set[str] | None = None
         if project is not None:
             project_payload = await self._resolve_project_ref(project, write=False)
             project_candidates = {
@@ -1163,23 +1186,35 @@ class OpenProjectClient:
                 (_trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
                 (_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or "").casefold(),
             }
-            results = [
-                item
-                for item in results
-                if not project_candidates.isdisjoint(
-                    {
-                        str(item.project_id).casefold() if item.project_id is not None else "",
-                        (item.project or "").casefold(),
-                    }
-                )
-            ]
-        if view_type is not None:
-            results = [item for item in results if (item.type or "").casefold() == view_type.casefold()]
-        if search is not None:
-            search_key = search.casefold()
-            results = [item for item in results if search_key in (item.name or "").casefold()]
 
-        page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
+        def post_filter(results: list[ViewSummary]) -> list[ViewSummary]:
+            if project_candidates is not None:
+                results = [
+                    item
+                    for item in results
+                    if not project_candidates.isdisjoint(
+                        {
+                            str(item.project_id).casefold() if item.project_id is not None else "",
+                            (item.project or "").casefold(),
+                        }
+                    )
+                ]
+            if view_type is not None:
+                results = [item for item in results if (item.type or "").casefold() == view_type.casefold()]
+            if search is not None:
+                search_key = search.casefold()
+                results = [item for item in results if search_key in (item.name or "").casefold()]
+            return results
+
+        page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
+            path="views",
+            params_extra=None,
+            normalize=self.normalize_view,
+            item_allowed=self._view_payload_allowed,
+            post_filter=post_filter,
+            offset=offset,
+            limit=effective_limit,
+        )
         return ViewListResult(
             offset=offset,
             limit=effective_limit,
@@ -1208,19 +1243,7 @@ class OpenProjectClient:
     ) -> DocumentListResult:
         self._ensure_read_enabled("project")
         effective_limit = self._resolve_limit(limit)
-        payload = await self._get(
-            "documents",
-            params={
-                "offset": "1",
-                "pageSize": str(self.settings.max_results),
-            },
-        )
-        results = [
-            self.normalize_document(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._document_payload_allowed(item)
-        ]
-
+        project_candidates: set[str] | None = None
         if project is not None:
             project_payload = await self._resolve_project_ref(project, write=False)
             project_candidates = {
@@ -1228,22 +1251,33 @@ class OpenProjectClient:
                 (_trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
                 (_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or "").casefold(),
             }
-            results = [
-                item
-                for item in results
-                if not project_candidates.isdisjoint(
-                    {
-                        str(item.project_id).casefold() if item.project_id is not None else "",
-                        (item.project or "").casefold(),
-                    }
-                )
-            ]
 
-        if search is not None:
-            search_key = search.casefold()
-            results = [item for item in results if search_key in (item.title or "").casefold()]
+        def post_filter(results: list[DocumentSummary]) -> list[DocumentSummary]:
+            if project_candidates is not None:
+                results = [
+                    item
+                    for item in results
+                    if not project_candidates.isdisjoint(
+                        {
+                            str(item.project_id).casefold() if item.project_id is not None else "",
+                            (item.project or "").casefold(),
+                        }
+                    )
+                ]
+            if search is not None:
+                search_key = search.casefold()
+                results = [item for item in results if search_key in (item.title or "").casefold()]
+            return results
 
-        page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
+        page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
+            path="documents",
+            params_extra=None,
+            normalize=self.normalize_document,
+            item_allowed=self._document_payload_allowed,
+            post_filter=post_filter,
+            offset=offset,
+            limit=effective_limit,
+        )
         return DocumentListResult(
             offset=offset,
             limit=effective_limit,
@@ -1319,19 +1353,7 @@ class OpenProjectClient:
     ) -> NewsListResult:
         self._ensure_read_enabled("project")
         effective_limit = self._resolve_limit(limit)
-        payload = await self._get(
-            "news",
-            params={
-                "offset": "1",
-                "pageSize": str(self.settings.max_results),
-            },
-        )
-        results = [
-            self.normalize_news(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._news_payload_allowed(item)
-        ]
-
+        project_candidates: set[str] | None = None
         if project is not None:
             project_payload = await self._resolve_project_ref(project, write=False)
             project_candidates = {
@@ -1339,26 +1361,37 @@ class OpenProjectClient:
                 (_trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
                 (_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or "").casefold(),
             }
-            results = [
-                item
-                for item in results
-                if not project_candidates.isdisjoint(
-                    {
-                        str(item.project_id).casefold() if item.project_id is not None else "",
-                        (item.project or "").casefold(),
-                    }
-                )
-            ]
 
-        if search is not None:
-            search_key = search.casefold()
-            results = [
-                item
-                for item in results
-                if search_key in (item.title or "").casefold() or search_key in (item.summary or "").casefold()
-            ]
+        def post_filter(results: list[NewsSummary]) -> list[NewsSummary]:
+            if project_candidates is not None:
+                results = [
+                    item
+                    for item in results
+                    if not project_candidates.isdisjoint(
+                        {
+                            str(item.project_id).casefold() if item.project_id is not None else "",
+                            (item.project or "").casefold(),
+                        }
+                    )
+                ]
+            if search is not None:
+                search_key = search.casefold()
+                results = [
+                    item
+                    for item in results
+                    if search_key in (item.title or "").casefold() or search_key in (item.summary or "").casefold()
+                ]
+            return results
 
-        page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
+        page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
+            path="news",
+            params_extra=None,
+            normalize=self.normalize_news,
+            item_allowed=self._news_payload_allowed,
+            post_filter=post_filter,
+            offset=offset,
+            limit=effective_limit,
+        )
         return NewsListResult(
             offset=offset,
             limit=effective_limit,
@@ -1707,37 +1740,35 @@ class OpenProjectClient:
                 user_name = user
 
         effective_limit = self._resolve_limit(limit)
-        payload = await self._get(
-            "time_entries",
-            params={
-                "offset": "1",
-                "pageSize": str(self.settings.max_results),
-            },
-        )
-        raw_entries = [
-            item
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._time_entry_payload_allowed(item)
-        ]
-        if project_candidates:
-            raw_entries = [
-                item
-                for item in raw_entries
-                if self._link_matches_project_refs(item.get("_links", {}).get("project"), project_candidates)
-            ]
-        results = [self.normalize_time_entry(item) for item in raw_entries]
-        if work_package_id is not None:
-            results = [
-                item for item in results if item.entity_type == "WorkPackage" and item.entity_id == work_package_id
-            ]
-        if user_name is not None:
-            results = [item for item in results if (item.user or "").casefold() == (user_name or "").casefold()]
-        if spent_on_from is not None:
-            results = [item for item in results if item.spent_on is not None and item.spent_on >= spent_on_from]
-        if spent_on_to is not None:
-            results = [item for item in results if item.spent_on is not None and item.spent_on <= spent_on_to]
 
-        page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
+        def item_allowed(item: dict[str, Any]) -> bool:
+            return self._time_entry_payload_allowed(item) and (
+                not project_candidates
+                or self._link_matches_project_refs(item.get("_links", {}).get("project"), project_candidates)
+            )
+
+        def post_filter(results: list[TimeEntrySummary]) -> list[TimeEntrySummary]:
+            if work_package_id is not None:
+                results = [
+                    item for item in results if item.entity_type == "WorkPackage" and item.entity_id == work_package_id
+                ]
+            if user_name is not None:
+                results = [item for item in results if (item.user or "").casefold() == (user_name or "").casefold()]
+            if spent_on_from is not None:
+                results = [item for item in results if item.spent_on is not None and item.spent_on >= spent_on_from]
+            if spent_on_to is not None:
+                results = [item for item in results if item.spent_on is not None and item.spent_on <= spent_on_to]
+            return results
+
+        page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
+            path="time_entries",
+            params_extra=None,
+            normalize=self.normalize_time_entry,
+            item_allowed=item_allowed,
+            post_filter=post_filter,
+            offset=offset,
+            limit=effective_limit,
+        )
         return TimeEntryListResult(
             offset=offset,
             limit=effective_limit,
@@ -3143,29 +3174,32 @@ class OpenProjectClient:
     ) -> SprintListResult:
         self._ensure_read_enabled("project")
         effective_limit = self._resolve_limit(limit)
+
         # Results are always filtered client-side against the allowlist (sprints can
         # be shared cross-project via Backlogs sharing). Fetch up to settings.max_results in
         # one request and paginate the filtered survivors in memory, same pattern as
         # list_views/list_documents, so a restrictive allowlist can't produce a sparse page.
         # Bounded by max_results — not a full multi-page walk across every server page.
+        def post_filter(results: list[SprintSummary]) -> list[SprintSummary]:
+            if search is not None:
+                search_key = search.casefold()
+                results = [item for item in results if search_key in (item.name or "").casefold()]
+            return results
+
         try:
-            payload = await self._get(
-                "sprints",
-                params={"offset": "1", "pageSize": str(self.settings.max_results)},
+            page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
+                path="sprints",
+                params_extra=None,
+                normalize=self.normalize_sprint,
+                item_allowed=self._sprint_payload_allowed,
+                post_filter=post_filter,
+                offset=offset,
+                limit=effective_limit,
             )
         except NotFoundError as exc:
             raise NotFoundError(
                 "OpenProject sprints require the Backlogs module and OpenProject 17.3 or newer."
             ) from exc
-        results = [
-            self.normalize_sprint(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._sprint_payload_allowed(item)
-        ]
-        if search is not None:
-            search_key = search.casefold()
-            results = [item for item in results if search_key in (item.name or "").casefold()]
-        page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
         return SprintListResult(
             offset=offset,
             limit=effective_limit,
@@ -3189,30 +3223,33 @@ class OpenProjectClient:
         project_payload = await self._get_project_payload(project, context=context)
         project_id = int(project_payload["id"])
         effective_limit = self._resolve_limit(limit)
+
         # Even though this is project-scoped, results are still filtered client-side
         # (a sprint shared into this project can be *defined* by a different, possibly
         # disallowed project). Fetch up to settings.max_results in one request and
         # paginate the filtered survivors in memory, same pattern as list_views/list_documents,
         # so a restrictive allowlist can't produce a sparse page. Bounded by max_results — not
         # a full multi-page walk across every server page.
+        def post_filter(results: list[SprintSummary]) -> list[SprintSummary]:
+            if search is not None:
+                search_key = search.casefold()
+                results = [item for item in results if search_key in (item.name or "").casefold()]
+            return results
+
         try:
-            payload = await self._get(
-                f"projects/{project_id}/sprints",
-                params={"offset": "1", "pageSize": str(self.settings.max_results)},
+            page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
+                path=f"projects/{project_id}/sprints",
+                params_extra=None,
+                normalize=self.normalize_sprint,
+                item_allowed=self._sprint_payload_allowed,
+                post_filter=post_filter,
+                offset=offset,
+                limit=effective_limit,
             )
         except NotFoundError as exc:
             raise NotFoundError(
                 "OpenProject project sprints require the Backlogs module and OpenProject 17.3 or newer."
             ) from exc
-        results = [
-            self.normalize_sprint(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._sprint_payload_allowed(item)
-        ]
-        if search is not None:
-            search_key = search.casefold()
-            results = [item for item in results if search_key in (item.name or "").casefold()]
-        page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
         return SprintListResult(
             offset=offset,
             limit=effective_limit,
@@ -3309,22 +3346,23 @@ class OpenProjectClient:
                     (_trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
                     (_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or "").casefold(),
                 }
-            payload = await self._get(
-                "queries",
-                params={
-                    "offset": "1",
-                    "pageSize": str(self.settings.max_results),
-                },
-            )
-            raw_queries = payload.get("_embedded", {}).get("elements", [])
-            filtered = [self.normalize_board(item) for item in raw_queries if self._board_payload_allowed(item)]
-            if project is not None:
-                filtered = [item for item in filtered if self._board_matches_project(item, project_candidates)]
-            if search:
-                search_key = search.casefold()
-                filtered = [item for item in filtered if search_key in (item.name or "").casefold()]
-            results, total, next_offset, truncated = _paginate_client(
-                offset=offset, limit=effective_limit, results=filtered
+
+            def post_filter(filtered: list[BoardSummary]) -> list[BoardSummary]:
+                if project is not None:
+                    filtered = [item for item in filtered if self._board_matches_project(item, project_candidates)]
+                if search:
+                    search_key = search.casefold()
+                    filtered = [item for item in filtered if search_key in (item.name or "").casefold()]
+                return filtered
+
+            results, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
+                path="queries",
+                params_extra=None,
+                normalize=self.normalize_board,
+                item_allowed=self._board_payload_allowed,
+                post_filter=post_filter,
+                offset=offset,
+                limit=effective_limit,
             )
             return BoardListResult(
                 offset=offset,
