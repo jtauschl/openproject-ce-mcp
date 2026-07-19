@@ -110,11 +110,11 @@ async def test_search_work_packages_tool_accepts_parent_display_id_select_field(
 
     result = await search_work_packages(
         FakeContext(StubClient()),  # type: ignore[arg-type]
-        query="Feature",
+        search="Feature",
         select=["id", "parent_id", "parent_display_id"],
     )
 
-    assert result["query"] == "Feature"
+    assert result["search"] == "Feature"
 
 
 @pytest.mark.asyncio
@@ -125,7 +125,7 @@ async def test_search_work_packages_tool_passes_status_filter() -> None:
 
     result = await search_work_packages(
         FakeContext(StubClient()),  # type: ignore[arg-type]
-        query="Feature",
+        search="Feature",
         project="demo",
         status="In progress",
         open_only=True,
@@ -133,7 +133,7 @@ async def test_search_work_packages_tool_passes_status_filter() -> None:
         limit=10,
     )
 
-    assert result["query"] == "Feature"
+    assert result["search"] == "Feature"
     assert result["project"] == "demo"
     assert result["status"] == "In progress"
     assert result["open_only"] is True
@@ -762,6 +762,93 @@ async def test_bulk_update_work_packages_tool_accepts_numeric_parent_work_packag
 
 
 @pytest.mark.asyncio
+async def test_bulk_update_work_packages_tool_accepts_parent_alias() -> None:
+    # `parent` is accepted as an alias for `parent_work_package_id`, matching
+    # update_work_package's own parameter name — must reach the client under
+    # the same parent_work_package_id key either way.
+    received: list = []
+
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            received.extend(kwargs["items"])
+            return {
+                "action": "bulk_update",
+                "total": len(kwargs["items"]),
+                "succeeded": len(kwargs["items"]),
+                "failed": 0,
+                "confirmed": kwargs["confirm"],
+                "requires_confirmation": not kwargs["confirm"],
+                "message": "ok",
+                "items": [],
+            }
+
+    await bulk_update_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        items=[{"work_package_id": 10, "parent": "952"}],
+        confirm=True,
+    )
+
+    assert received[0]["parent_work_package_id"] == "952"
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_work_packages_tool_parent_alias_maps_none_to_clear_sentinel() -> None:
+    # The parent alias must support the documented clear semantics too, not
+    # just setting a normal reference.
+    received: list = []
+
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            received.extend(kwargs["items"])
+            return {
+                "action": "bulk_update",
+                "total": len(kwargs["items"]),
+                "succeeded": len(kwargs["items"]),
+                "failed": 0,
+                "confirmed": kwargs["confirm"],
+                "requires_confirmation": not kwargs["confirm"],
+                "message": "ok",
+                "items": [],
+            }
+
+    await bulk_update_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        items=[{"work_package_id": 60, "parent": "none"}],
+        confirm=True,
+    )
+
+    assert received[0]["parent_work_package_id"] is CLEAR_PARENT
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_work_packages_tool_rejects_both_parent_aliases() -> None:
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match=r"items\[0\] must not specify both parent and parent_work_package_id"):
+        await bulk_update_work_packages(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            items=[{"work_package_id": 10, "parent": "952", "parent_work_package_id": "952"}],
+            confirm=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_work_packages_tool_invalid_parent_alias_reports_own_field_name() -> None:
+    class StubClient:
+        async def bulk_update_work_packages(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match=r"items\[0\]\.parent"):
+        await bulk_update_work_packages(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            items=[{"work_package_id": 10, "parent": 0}],
+            confirm=True,
+        )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("field", ["assignee", "responsible", "category", "project_phase", "version"])
 async def test_bulk_update_work_packages_tool_rejects_non_string_scalar_cleanly(field) -> None:
     # Regression guard: a bare JSON number/bool for a field that expects a string
@@ -978,3 +1065,47 @@ async def test_bulk_work_packages_accept_semantic_refs() -> None:
     assert received["create"][0]["parent_work_package_id"] == "OPM-7"
     with pytest.raises(ValueError, match="must be at least 1"):
         _validate_work_package_ref("0")
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_work_packages_tool_accepts_parent_alias() -> None:
+    # `parent` is accepted as an alias for `parent_work_package_id`, matching
+    # create_work_package's own parameter name — must reach the client under
+    # the same parent_work_package_id key either way.
+    received: list = []
+
+    class StubClient:
+        async def bulk_create_work_packages(self, **kwargs):
+            received.extend(kwargs["items"])
+            return {
+                "action": "bulk_create",
+                "total": len(kwargs["items"]),
+                "succeeded": len(kwargs["items"]),
+                "failed": 0,
+                "confirmed": kwargs["confirm"],
+                "requires_confirmation": not kwargs["confirm"],
+                "message": "ok",
+                "items": [],
+            }
+
+    await bulk_create_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        items=[{"project": "demo", "type": "Task", "subject": "X", "parent": "OPM-7"}],
+        confirm=True,
+    )
+
+    assert received[0]["parent_work_package_id"] == "OPM-7"
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_work_packages_tool_rejects_both_parent_aliases() -> None:
+    class StubClient:
+        async def bulk_create_work_packages(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match=r"items\[0\] must not specify both parent and parent_work_package_id"):
+        await bulk_create_work_packages(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            items=[{"project": "demo", "type": "Task", "subject": "X", "parent": "7", "parent_work_package_id": "7"}],
+            confirm=True,
+        )

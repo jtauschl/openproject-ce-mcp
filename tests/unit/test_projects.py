@@ -824,7 +824,7 @@ async def test_project_scoped_reads_accept_numeric_project_ids_when_allowed_by_n
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    searched = await client.search_work_packages(query="Scoped", project="6")
+    searched = await client.search_work_packages(search="Scoped", project="6")
     listed = await client.list_work_packages(project="6")
     versions = await client.list_versions(project="6")
     boards = await client.list_boards(project="6")
@@ -1047,6 +1047,68 @@ async def test_views_categories_and_attachments() -> None:
     assert created_preview.ready is True
     assert created.attachment_id == 6
     assert deleted.attachment_id == 5
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_views_search_filters_by_name_substring() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/views" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {"id": 1, "_type": "Views::TeamPlanner", "name": "Planner View", "_links": {}},
+                            {"id": 2, "_type": "Views::Work", "name": "My Work", "_links": {}},
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    page = await client.list_views(search="planner")
+
+    assert [v.id for v in page.results] == [1]
+    assert page.total == 1
+
+    no_match = await client.list_views(search="nonexistent")
+    assert no_match.results == []
+    assert no_match.total == 0
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_documents_search_filters_by_title_substring() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/documents" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {"id": 1, "title": "Architecture Overview", "_links": {}},
+                            {"id": 2, "title": "Onboarding Guide", "_links": {}},
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    page = await client.list_documents(search="architecture")
+
+    assert [d.id for d in page.results] == [1]
+    assert page.total == 1
+
+    no_match = await client.list_documents(search="nonexistent")
+    assert no_match.results == []
+    assert no_match.total == 0
 
     await client.aclose()
 

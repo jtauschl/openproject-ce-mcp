@@ -1167,6 +1167,7 @@ class OpenProjectClient:
         *,
         project: str | None = None,
         view_type: str | None = None,
+        search: str | None = None,
         offset: int = 1,
         limit: int | None = None,
     ) -> ViewListResult:
@@ -1203,6 +1204,9 @@ class OpenProjectClient:
             ]
         if view_type is not None:
             results = [item for item in results if (item.type or "").casefold() == view_type.casefold()]
+        if search is not None:
+            search_key = search.casefold()
+            results = [item for item in results if search_key in (item.name or "").casefold()]
 
         page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
         return ViewListResult(
@@ -1227,6 +1231,7 @@ class OpenProjectClient:
         self,
         *,
         project: str | None = None,
+        search: str | None = None,
         offset: int = 1,
         limit: int | None = None,
     ) -> DocumentListResult:
@@ -1262,6 +1267,10 @@ class OpenProjectClient:
                     }
                 )
             ]
+
+        if search is not None:
+            search_key = search.casefold()
+            results = [item for item in results if search_key in (item.title or "").casefold()]
 
         page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
         return DocumentListResult(
@@ -2069,7 +2078,7 @@ class OpenProjectClient:
     async def search_work_packages(
         self,
         *,
-        query: str,
+        search: str,
         project: str | None = None,
         status: str | None = None,
         open_only: bool = False,
@@ -2099,7 +2108,7 @@ class OpenProjectClient:
                 truncated=False,
                 results=[],
             )
-        filters: list[dict[str, Any]] = [{"subject_or_id": {"operator": "**", "values": [query]}}]
+        filters: list[dict[str, Any]] = [{"subject_or_id": {"operator": "**", "values": [search]}}]
         project_id: int | None = None
         total_is_scope_safe = _scope_allows_all(self.settings.read_projects)
         if project is not None:
@@ -3226,6 +3235,7 @@ class OpenProjectClient:
     async def list_sprints(
         self,
         *,
+        search: str | None = None,
         offset: int = 1,
         limit: int | None = None,
     ) -> SprintListResult:
@@ -3250,6 +3260,9 @@ class OpenProjectClient:
             for item in payload.get("_embedded", {}).get("elements", [])
             if isinstance(item, dict) and self._sprint_payload_allowed(item)
         ]
+        if search is not None:
+            search_key = search.casefold()
+            results = [item for item in results if search_key in (item.name or "").casefold()]
         page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
         return SprintListResult(
             offset=offset,
@@ -3265,6 +3278,7 @@ class OpenProjectClient:
         self,
         project: str,
         *,
+        search: str | None = None,
         offset: int = 1,
         limit: int | None = None,
         context: ProjectResolutionContext | None = None,
@@ -3293,6 +3307,9 @@ class OpenProjectClient:
             for item in payload.get("_embedded", {}).get("elements", [])
             if isinstance(item, dict) and self._sprint_payload_allowed(item)
         ]
+        if search is not None:
+            search_key = search.casefold()
+            results = [item for item in results if search_key in (item.name or "").casefold()]
         page, total, next_offset, truncated = _paginate_client(offset=offset, limit=effective_limit, results=results)
         return SprintListResult(
             offset=offset,

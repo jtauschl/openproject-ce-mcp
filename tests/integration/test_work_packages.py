@@ -19,7 +19,7 @@ async def test_list_work_packages(client: OpenProjectClient, test_project: str) 
 
 
 async def test_search_work_packages(client: OpenProjectClient) -> None:
-    result = await client.search_work_packages(query="test")
+    result = await client.search_work_packages(search="test")
     assert result is not None
 
 

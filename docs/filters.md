@@ -21,7 +21,7 @@ This document describes all work package filter parameters available in `list_wo
 | version | version_id | :list_optional | = | =, !, *, !* | Filter by version ID |
 | version_status | version_id | :list_optional (custom) | o, c, l | o, c, l, =, !, *, !* | o=open, c=closed, l=locked (VersionFilter adds o/c/l operators) |
 | project | project_id | :list | = | =, ! | Filter by project ID |
-| query | subject_or_id | :text | ** | ~, !~ | Free text search (search_work_packages only) |
+| search | subject_or_id | :text | ** | ~, !~ | Free text search (search_work_packages only) |
 | created_on | created_at | :datetime_past | =d | >t-, <t-, t-, t, w, =d, <>d | Single date exact match |
 | created_between | created_at | :datetime_past | <>d | >t-, <t-, t-, t, w, =d, <>d | Date range |
 | updated_on | updated_at | :datetime_past | =d | >t-, <t-, t-, t, w, =d, <>d | Single date exact match |

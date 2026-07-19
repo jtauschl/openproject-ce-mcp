@@ -363,7 +363,7 @@ async def test_job_document_news_and_wiki_tools_pass_arguments() -> None:
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
     job = await get_job_status(ctx, 77)
-    documents = await list_documents(ctx, project="demo")
+    documents = await list_documents(ctx, project="demo", search="architecture")
     document = await get_document(ctx, 5)
     document_update = await update_document(ctx, 5, title="Architecture", confirm=True)
     news_list = await list_news(ctx, project="demo", search="release")
@@ -375,6 +375,7 @@ async def test_job_document_news_and_wiki_tools_pass_arguments() -> None:
 
     assert job["job_status_id"] == 77
     assert documents["project"] == "demo"
+    assert documents["search"] == "architecture"
     assert document["document_id"] == 5
     assert document_update["document_id"] == 5
     assert document_update["confirm"] is True
@@ -444,12 +445,12 @@ async def test_sprint_tools_pass_expected_arguments() -> None:
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
-    listed = await list_sprints(ctx, offset=2, limit=5)
-    project_listed = await list_project_sprints(ctx, project="demo", offset=3, limit=4)
+    listed = await list_sprints(ctx, search="0.4", offset=2, limit=5)
+    project_listed = await list_project_sprints(ctx, project="demo", search="0.4", offset=3, limit=4)
     detail = await get_sprint(ctx, 7)
 
-    assert listed == {"offset": 2, "limit": 5}
-    assert project_listed == {"project": "demo", "offset": 3, "limit": 4}
+    assert listed == {"search": "0.4", "offset": 2, "limit": 5}
+    assert project_listed == {"project": "demo", "search": "0.4", "offset": 3, "limit": 4}
     assert detail["sprint_id"] == 7
 
 
@@ -550,7 +551,7 @@ async def test_view_category_and_attachment_tools_pass_expected_arguments(tmp_pa
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
-    views = await list_views(ctx, project="demo", type="Views::TeamPlanner")
+    views = await list_views(ctx, project="demo", type="Views::TeamPlanner", search="planner")
     view = await get_view(ctx, 12)
     categories = await list_categories(ctx, "demo")
     category = await get_category(ctx, "demo", 3)
@@ -561,6 +562,7 @@ async def test_view_category_and_attachment_tools_pass_expected_arguments(tmp_pa
 
     assert views["project"] == "demo"
     assert views["view_type"] == "Views::TeamPlanner"
+    assert views["search"] == "planner"
     assert view["view_id"] == 12
     assert categories["project"] == "demo"
     assert category["project_ref"] == "demo"

@@ -542,6 +542,76 @@ async def test_list_project_sprints_resolves_project_and_allows_empty_collection
 
 
 @pytest.mark.asyncio
+async def test_list_sprints_search_filters_by_name_substring() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/sprints" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {"id": 1, "name": "0.3.0 Release Finalization"},
+                            {"id": 2, "name": "0.4.0 Kickoff"},
+                            {"id": 3, "name": "Backlog"},
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    page = await client.list_sprints(search="0.3")
+
+    assert [s.id for s in page.results] == [1]
+    assert page.total == 1
+
+    no_match = await client.list_sprints(search="nonexistent")
+    assert no_match.results == []
+    assert no_match.total == 0
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_project_sprints_search_filters_by_name_substring() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 7, "identifier": "demo", "name": "Demo", "active": True},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/7/sprints" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {"id": 1, "name": "Sprint 1"},
+                            {"id": 2, "name": "Sprint 2"},
+                            {"id": 3, "name": "Backlog"},
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    page = await client.list_project_sprints("demo", search="sprint")
+
+    assert [s.id for s in page.results] == [1, 2]
+    assert page.total == 2
+
+    no_match = await client.list_project_sprints("demo", search="nonexistent")
+    assert no_match.results == []
+    assert no_match.total == 0
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_project_sprints_filters_sprints_outside_allowed_projects() -> None:
     # A sprint shared into an allowed project can still be *defined* by a
     # different, disallowed project. list_project_sprints must filter those out the

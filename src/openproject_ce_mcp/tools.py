@@ -507,10 +507,11 @@ async def get_project(
 
 async def list_sprints(
     ctx: Context,
+    search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
 ) -> SprintListResult:
-    """List Backlogs sprints visible to the current token.
+    """List Backlogs sprints visible to the current token, optionally filtered by name search.
 
     Requires the OpenProject Backlogs module; unavailable instances return a clear not-found message.
 
@@ -518,27 +519,28 @@ async def list_sprints(
     next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
-    return await _run_tool(client.list_sprints(offset=safe_offset, limit=safe_limit))
+    safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
+    return await _run_tool(client.list_sprints(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
 async def list_project_sprints(
     ctx: Context,
     project: str,
+    search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
 ) -> SprintListResult:
-    """List Backlogs sprints for a project by id or identifier.
+    """List Backlogs sprints for a project by id or identifier, optionally filtered by name search.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
-    return await _run_tool(client.list_project_sprints(safe_project, offset=safe_offset, limit=safe_limit))
+    safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
+    return await _run_tool(
+        client.list_project_sprints(safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
+    )
 
 
 async def get_sprint(
@@ -1060,10 +1062,11 @@ async def list_views(
     ctx: Context,
     project: str | None = None,
     type: str | None = None,
+    search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
 ) -> ViewListResult:
-    """List saved OpenProject views, optionally filtered by project or view subtype.
+    """List saved OpenProject views, optionally filtered by project, view subtype, or name search.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -1071,12 +1074,12 @@ async def list_views(
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_type = _validate_optional_query(type, field_name="type", max_length=120)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
+    safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     return await _run_tool(
         client.list_views(
             project=safe_project,
             view_type=safe_type,
+            search=safe_search,
             offset=safe_offset,
             limit=safe_limit,
         )
@@ -1096,19 +1099,21 @@ async def get_view(
 async def list_documents(
     ctx: Context,
     project: str | None = None,
+    search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
 ) -> DocumentListResult:
-    """List documents, optionally filtered to a single project.
+    """List documents, optionally filtered to a single project or by title search.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
-    return await _run_tool(client.list_documents(project=safe_project, offset=safe_offset, limit=safe_limit))
+    safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
+    return await _run_tool(
+        client.list_documents(project=safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
+    )
 
 
 async def get_document(
@@ -1289,7 +1294,7 @@ async def get_project_work_package_context(
 
 async def search_work_packages(
     ctx: Context,
-    query: str,
+    search: str,
     project: str | None = None,
     status: str | None = None,
     open_only: bool = False,
@@ -1353,7 +1358,7 @@ async def search_work_packages(
     next_offset is null either way.
     """
     client = _client_from_context(ctx)
-    safe_query = _validate_required_query(query, field_name="query", max_length=120)
+    safe_search = _validate_required_query(search, field_name="search", max_length=120)
     safe_project = _validate_optional_project_ref(project)
     safe_status = _validate_optional_query(status, field_name="status", max_length=100)
     safe_assignee = _validate_optional_user_or_principal_ref(assignee)
@@ -1371,7 +1376,7 @@ async def search_work_packages(
     _validate_select(select, row_type=WorkPackageSummary)
     return await _run_tool(
         client.search_work_packages(
-            query=safe_query,
+            search=safe_search,
             project=safe_project,
             status=safe_status,
             open_only=open_only,
@@ -1853,6 +1858,17 @@ async def update_work_package(
     )
 
 
+def _resolve_bulk_parent_field(item: dict[str, Any], index: int) -> tuple[Any, str]:
+    """Resolve a bulk item's parent value, accepting `parent` as an alias for `parent_work_package_id`."""
+    has_parent = "parent" in item
+    has_parent_wp_id = "parent_work_package_id" in item
+    if has_parent and has_parent_wp_id:
+        raise ValueError(f"items[{index}] must not specify both parent and parent_work_package_id.")
+    if has_parent:
+        return item["parent"], f"items[{index}].parent"
+    return item.get("parent_work_package_id"), f"items[{index}].parent_work_package_id"
+
+
 _BULK_CREATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(
     {
         "project",
@@ -1866,6 +1882,7 @@ _BULK_CREATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(
         "priority",
         "category",
         "custom_fields",
+        "parent",
         "parent_work_package_id",
         "start_date",
         "due_date",
@@ -1886,10 +1903,11 @@ async def bulk_create_work_packages(
 
     Each item in `items` must contain `project`, `type`, and `subject`. Optional fields per item:
     `description`, `version`, `project_phase`, `assignee`, `responsible`, `priority`, `category`,
-    `custom_fields`, `parent_work_package_id`, `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD),
-    `estimated_time`, `remaining_time`, `duration` (ISO8601 duration strings, e.g. 'PT8H' or 'P1D').
-    An item containing any other key is rejected with an indexed validation error rather than
-    silently dropping the unrecognized field.
+    `custom_fields`, `parent_work_package_id` (or `parent`, an alias for the same field, matching
+    `create_work_package`'s naming — do not specify both on the same item), `start_date`
+    (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`, `duration`
+    (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'). An item containing any other key is
+    rejected with an indexed validation error rather than silently dropping the unrecognized field.
 
     With confirm=false (default) all items are validated and a preview is returned.
     With confirm=true all items are created. Failed items are reported in the result — the operation
@@ -1932,9 +1950,8 @@ async def bulk_create_work_packages(
         project = item.get("project")
         type_ = item.get("type")
         subject = item.get("subject")
-        safe_parent_work_package_id = _validate_optional_work_package_ref(
-            item.get("parent_work_package_id"), field_name=f"items[{i}].parent_work_package_id"
-        )
+        parent_value, parent_field_name = _resolve_bulk_parent_field(item, i)
+        safe_parent_work_package_id = _validate_optional_work_package_ref(parent_value, field_name=parent_field_name)
         if not project:
             raise ValueError(f"items[{i}].project is required.")
         if not type_:
@@ -1996,6 +2013,7 @@ _BULK_UPDATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(
         "priority",
         "category",
         "custom_fields",
+        "parent",
         "parent_work_package_id",
         "start_date",
         "due_date",
@@ -2018,13 +2036,14 @@ async def bulk_update_work_packages(
     Each item in `items` must contain `work_package_id`. At least one other field must be present per item.
     Optional fields per item: `subject`, `description`, `type`, `version`, `sprint` (Backlogs sprint
     name/id, requires the Backlogs module and OpenProject 17.3+), `project_phase`, `status`,
-    `assignee`, `responsible`, `priority`, `category`, `custom_fields`, `parent_work_package_id`,
-    `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`, `duration`
-    (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'; pass 'none' to clear one of these),
-    `percentage_done` (integer 0-100). Pass 'none' to `version`, `sprint`, `project_phase`, `assignee`,
-    `responsible`, `category` or `parent_work_package_id` to clear that field on the item, same as
-    `update_work_package`. An item containing any other key is rejected with an indexed validation
-    error rather than silently dropping the unrecognized field.
+    `assignee`, `responsible`, `priority`, `category`, `custom_fields`, `parent_work_package_id` (or
+    `parent`, an alias for the same field, matching `update_work_package`'s naming — do not specify
+    both on the same item), `start_date` (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`,
+    `remaining_time`, `duration` (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'; pass 'none' to clear
+    one of these), `percentage_done` (integer 0-100). Pass 'none' to `version`, `sprint`,
+    `project_phase`, `assignee`, `responsible`, `category`, `parent_work_package_id`, or `parent` to
+    clear that field on the item, same as `update_work_package`. An item containing any other key is
+    rejected with an indexed validation error rather than silently dropping the unrecognized field.
     Setting an item's status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H
     when that item doesn't supply them explicitly and OpenProject's schema reports those fields as
     writable.
@@ -2067,6 +2086,7 @@ async def bulk_update_work_packages(
         if work_package_id is None:
             raise ValueError(f"items[{i}].work_package_id is required.")
         safe_id = _validate_work_package_ref(work_package_id, field_name=f"items[{i}].work_package_id")
+        parent_value, parent_field_name = _resolve_bulk_parent_field(item, i)
         common = _validate_work_package_update_fields(
             subject=item.get("subject"),
             description=item.get("description"),
@@ -2080,7 +2100,7 @@ async def bulk_update_work_packages(
             priority=item.get("priority"),
             category=item.get("category"),
             custom_fields=item.get("custom_fields"),
-            parent=item.get("parent_work_package_id"),
+            parent=parent_value,
             start_date=item.get("start_date"),
             due_date=item.get("due_date"),
             estimated_time=item.get("estimated_time"),
@@ -2088,7 +2108,7 @@ async def bulk_update_work_packages(
             duration=item.get("duration"),
             percentage_done=item.get("percentage_done"),
             field_prefix=f"items[{i}].",
-            parent_field_name=f"items[{i}].parent_work_package_id",
+            parent_field_name=parent_field_name,
         )
         _require_at_least_one(
             *common.values(),

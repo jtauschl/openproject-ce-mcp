@@ -33,8 +33,8 @@ A subset of rarely-used metadata tools — the `get_query_*` schema tools, `rend
 | `get_project` | Fetch a compact project summary by id or identifier |
 | `get_project_admin_context` | Return project admin metadata such as lifecycle statuses, parent project options, and writable fields |
 | `get_project_configuration` | Return project-scoped configuration such as internal comment support |
-| `list_sprints` | List Backlogs sprints visible to the current token (requires Backlogs/OpenProject 17.3+) |
-| `list_project_sprints` | List Backlogs sprints for a project by id or identifier |
+| `list_sprints` | List Backlogs sprints visible to the current token (requires Backlogs/OpenProject 17.3+), with an optional name search filter |
+| `list_project_sprints` | List Backlogs sprints for a project by id or identifier, with an optional name search filter |
 | `get_sprint` | Fetch a Backlogs sprint by id |
 | `create_project` | Validate and then create a project; only writes when called again with `confirm=true` |
 | `copy_project` | Validate and then copy an existing project into a new project; only starts the copy job when called again with `confirm=true` |
@@ -137,14 +137,14 @@ Same gating as [Users](#users) above: reads need
 
 | Tool | Description |
 |---|---|
-| `list_views` | List saved OpenProject views, optionally filtered by project or view subtype |
+| `list_views` | List saved OpenProject views, optionally filtered by project, view subtype, or name search |
 | `get_view` | Fetch a single OpenProject view by id |
 
 ## Documents
 
 | Tool | Description |
 |---|---|
-| `list_documents` | List documents globally or filtered to a specific project |
+| `list_documents` | List documents globally or filtered to a specific project, with an optional title search filter |
 | `get_document` | Fetch a single document by id |
 | `update_document` | Validate and then update a document title or description; only writes when called again with `confirm=true` |
 

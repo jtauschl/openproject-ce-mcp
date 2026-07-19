@@ -33,7 +33,7 @@ async def test_search_work_packages_uses_supported_subject_or_id_operator() -> N
     transport = httpx.MockTransport(handler)
     client = OpenProjectClient(make_settings(), transport=transport)
 
-    result = await client.search_work_packages(query="Feature")
+    result = await client.search_work_packages(search="Feature")
 
     assert result.count == 0
 
@@ -77,7 +77,7 @@ async def test_search_work_packages_accepts_status_filter() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(routed_handler))
 
-    result = await client.search_work_packages(query="Feature", status="In progress")
+    result = await client.search_work_packages(search="Feature", status="In progress")
 
     assert result.count == 0
     assert status_calls["count"] == 1
@@ -250,7 +250,7 @@ async def test_search_work_packages_returns_parent_display_id_when_present() -> 
 
     client = OpenProjectClient(_base_settings(read_projects=("*",)), transport=httpx.MockTransport(handler))
 
-    result = await client.search_work_packages(query="Block D")
+    result = await client.search_work_packages(search="Block D")
 
     assert result.results[0].parent_id == 7
     assert result.results[0].parent_display_id == "EMTB-7"
@@ -443,7 +443,7 @@ async def test_search_work_packages_falls_back_to_page_count_without_explicit_pr
         )
 
     client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
-    result = await client.search_work_packages(query="A", limit=5)
+    result = await client.search_work_packages(search="A", limit=5)
 
     assert result.total == 1
     assert result.count == 1
@@ -475,7 +475,7 @@ async def test_search_work_packages_exposes_real_total_with_explicit_project() -
         )
 
     client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
-    result = await client.search_work_packages(query="A", project="demo", limit=5)
+    result = await client.search_work_packages(search="A", project="demo", limit=5)
 
     assert result.total == 5
     assert result.count == 1
@@ -545,7 +545,7 @@ async def test_list_work_packages_returns_empty_without_request_even_with_projec
 async def test_search_work_packages_returns_empty_without_request_under_empty_read_projects() -> None:
     client = OpenProjectClient(_empty_scope_settings(), transport=httpx.MockTransport(_no_request_handler))
 
-    result = await client.search_work_packages(query="demo")
+    result = await client.search_work_packages(search="demo")
 
     assert result.count == 0
     assert result.results == []
@@ -1040,7 +1040,7 @@ async def test_search_work_packages_date_filters() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    await client.search_work_packages(query="test", updated_on="2024-07-09")
+    await client.search_work_packages(search="test", updated_on="2024-07-09")
 
     filters = json.loads(captured["filters"])
     # Should have both subject_or_id filter and updated_at filter

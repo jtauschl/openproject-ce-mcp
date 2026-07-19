@@ -11,12 +11,26 @@ development baseline.
 
 ### Added
 
+- **`list_documents`, `list_views`, `list_sprints`, and `list_project_sprints`
+  gain a `search` parameter**, matching the same name-substring pattern as
+  `list_versions`/`list_boards`/`list_news`.
 - **`bulk_update_work_packages` now supports `sprint`** (name/id, or `'none'`
   to clear), matching the field support `update_work_package` already had for
   single items.
+- **`bulk_create_work_packages`/`bulk_update_work_packages` item fields now
+  accept `parent`** as well as `parent_work_package_id` for the identical
+  "attach to parent" concept, matching `create_work_package`/
+  `update_work_package`'s naming.
+- **`bulk_create_work_packages`/`bulk_update_work_packages` gain a `select`
+  parameter** to shrink an unconfirmed preview's echoed payload, matching the
+  `select` support already available on list/read tools.
 
 ### Changed
 
+- **Breaking: `search_work_packages`'s `query` parameter is renamed to
+  `search`** (both the MCP tool parameter and the underlying Python client
+  method's keyword argument), matching the naming used by `list_projects`,
+  `list_versions`, `list_boards`, and other search-capable tools.
 - **Bulk work-package writes reuse resolved project/type/version/sprint
   lookups across items targeting the same project**, reducing redundant API
   calls for large batches.
@@ -24,6 +38,13 @@ development baseline.
   instance's live feature flags.** This data remains available via the
   `get_instance_configuration` tool; the change removes a network call from
   server startup.
+
+### Fixed
+
+- **`bulk_create_work_packages`/`bulk_update_work_packages` now report
+  `assignee`/`responsible` validation errors indexed per item** (e.g.
+  `items[0].assignee`), like every sibling field, instead of the unprefixed
+  field name.
 
 ---
 

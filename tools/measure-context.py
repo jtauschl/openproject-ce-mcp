@@ -231,7 +231,7 @@ async def measure_response_sizes() -> None:
         resp.raise_for_status()
         raw_search_bytes = len(json.dumps(resp.json()))
 
-        search_result = await client.search_work_packages(query=query, project=project)
+        search_result = await client.search_work_packages(search=query, project=project)
         _report(
             f"search_work_packages ({len(search_result.results)} rows)",
             raw_search_bytes,
