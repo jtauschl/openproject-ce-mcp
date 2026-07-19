@@ -43,6 +43,27 @@ class CollectionResult:
 
 
 @dataclass
+class ConfirmationHeader:
+    """Shared confirm-gated write/delete header (OPM-222). Deliberately just
+    these 5 fields -- the ones genuinely common to all matching write
+    results. payload/validation_errors/result are NOT here: identity fields
+    vary in name/count/type and always sit between the header and payload,
+    and result's type differs per subclass, so a wider shared base would
+    either reorder every subclass's fields for no functional reason or
+    reintroduce the Generic[T] schema-degradation problem OPM-48 already
+    rejected for `results` (see PageResult). BulkWorkPackageWriteResult is
+    deliberately excluded from this hierarchy -- it lacks `ready` and is
+    batch-shaped, not a single confirm-gated action.
+    """
+
+    action: str
+    confirmed: bool
+    requires_confirmation: bool
+    ready: bool
+    message: str
+
+
+@dataclass
 class ProjectSummary:
     id: int
     name: str
@@ -112,12 +133,7 @@ class MembershipListResult(CollectionResult):
 
 
 @dataclass
-class ProjectWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class ProjectWriteResult(ConfirmationHeader):
     project_id: int | None
     project: str | None
     payload: dict[str, Any]
@@ -126,12 +142,7 @@ class ProjectWriteResult:
 
 
 @dataclass
-class ProjectCopyResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class ProjectCopyResult(ConfirmationHeader):
     source_project_id: int | None
     source_project: str | None
     payload: dict[str, Any]
@@ -159,12 +170,7 @@ class JobStatusDetail:
 
 
 @dataclass
-class MembershipWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class MembershipWriteResult(ConfirmationHeader):
     membership_id: int | None
     project: str | None
     payload: dict[str, Any]
@@ -476,12 +482,7 @@ class WorkPackageDetail:
 
 
 @dataclass
-class WorkPackageWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class WorkPackageWriteResult(ConfirmationHeader):
     # A resolved work-package reference, e.g. from _work_package_ref: a numeric
     # id or a project-prefixed display id (e.g. "PROJ-123"), passed through
     # verbatim rather than always resolved to a number.
@@ -513,12 +514,7 @@ class BulkWorkPackageWriteResult:
 
 
 @dataclass
-class ActivityWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class ActivityWriteResult(ConfirmationHeader):
     work_package_id: int | str
     payload: dict[str, Any]
     validation_errors: dict[str, str]
@@ -526,12 +522,7 @@ class ActivityWriteResult:
 
 
 @dataclass
-class RelationWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class RelationWriteResult(ConfirmationHeader):
     relation_id: int | None
     work_package_id: int | None
     payload: dict[str, Any]
@@ -590,12 +581,7 @@ class VersionDetail(VersionSummary):
 
 
 @dataclass
-class VersionWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class VersionWriteResult(ConfirmationHeader):
     version_id: int | None
     project: str | None
     payload: dict[str, Any]
@@ -697,12 +683,7 @@ class BoardDetail:
 
 
 @dataclass
-class BoardWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class BoardWriteResult(ConfirmationHeader):
     board_id: int | None
     project: str | None
     payload: dict[str, Any]
@@ -844,12 +825,7 @@ class DocumentDetail:
 
 
 @dataclass
-class DocumentWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class DocumentWriteResult(ConfirmationHeader):
     document_id: int | None
     project: str | None
     payload: dict[str, Any]
@@ -885,12 +861,7 @@ class AttachmentListResult(CollectionResult):
 
 
 @dataclass
-class AttachmentWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class AttachmentWriteResult(ConfirmationHeader):
     attachment_id: int | None
     work_package_id: int | str | None
     payload: dict[str, Any]
@@ -979,12 +950,7 @@ class TimeEntrySummary:
 
 
 @dataclass
-class TimeEntryWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class TimeEntryWriteResult(ConfirmationHeader):
     time_entry_id: int | None
     project: str | None
     payload: dict[str, Any]
@@ -1064,12 +1030,7 @@ class NewsDetail(NewsSummary):
 
 
 @dataclass
-class NewsWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class NewsWriteResult(ConfirmationHeader):
     news_id: int | None
     project: str | None
     payload: dict[str, Any]
@@ -1166,12 +1127,7 @@ class WatcherListResult(CollectionResult):
 
 
 @dataclass
-class WatcherWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class WatcherWriteResult(ConfirmationHeader):
     work_package_id: int | str
     watcher_user_id: int | None
     validation_errors: dict
@@ -1200,12 +1156,7 @@ class NotificationListResult:
 
 
 @dataclass
-class UserWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class UserWriteResult(ConfirmationHeader):
     user_id: int | None
     payload: dict
     validation_errors: dict
@@ -1213,12 +1164,7 @@ class UserWriteResult:
 
 
 @dataclass
-class GroupWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class GroupWriteResult(ConfirmationHeader):
     group_id: int | None
     payload: dict
     validation_errors: dict
@@ -1242,12 +1188,7 @@ class FileLinkListResult(CollectionResult):
 
 
 @dataclass
-class FileLinkWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class FileLinkWriteResult(ConfirmationHeader):
     file_link_id: int | None
     work_package_id: int
     validation_errors: dict
@@ -1271,12 +1212,7 @@ class GridListResult(CollectionResult):
 
 
 @dataclass
-class GridWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class GridWriteResult(ConfirmationHeader):
     grid_id: int | None
     scope: str | None
     payload: dict[str, Any]
@@ -1297,12 +1233,7 @@ class UserPreferences:
 
 
 @dataclass
-class UserPreferencesWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class UserPreferencesWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     result: UserPreferences | None
 
@@ -1357,12 +1288,7 @@ class CustomOptionSummary:
 
 
 @dataclass
-class RelationUpdateResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class RelationUpdateResult(ConfirmationHeader):
     relation_id: int | None
     payload: dict[str, Any]
     result: RelationSummary | None
@@ -1382,35 +1308,25 @@ class EmojiReactionListResult(CollectionResult):
 
 
 @dataclass
-class EmojiReactionWriteResult:
+class EmojiReactionWriteResult(ConfirmationHeader):
     """Confirm-gated toggle result. Deliberately its own type rather than
     EmojiReactionListResult (which stays a pure read shape used by
     list_work_package_reactions) — the exact add/remove outcome is not known
     ahead of the actual PATCH, so the preview state only describes the
     toggle's nature, not its resulting reaction list."""
 
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
     activity_id: int
     reaction: str
     result: EmojiReactionListResult | None
 
 
 @dataclass
-class NotificationMarkResult:
+class NotificationMarkResult(ConfirmationHeader):
     """Confirm-gated mark-as-read result. No OpenProject dry-run
     endpoint exists for this action, so ``ready=True`` in the preview state
     means only "the request is valid and will be sent once confirmed" — not
     that OpenProject has validated it server-side."""
 
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
     notification_id: int | None  # None means "all unread notifications"
 
 
@@ -1430,12 +1346,7 @@ class ReminderListResult(CollectionResult):
 
 
 @dataclass
-class ReminderWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class ReminderWriteResult(ConfirmationHeader):
     reminder_id: int | None
     payload: dict[str, Any]
     validation_errors: dict[str, str]
@@ -1443,11 +1354,6 @@ class ReminderWriteResult:
 
 
 @dataclass
-class FavoriteWriteResult:
-    action: str
-    confirmed: bool
-    requires_confirmation: bool
-    ready: bool
-    message: str
+class FavoriteWriteResult(ConfirmationHeader):
     project_id: int | None
     project: str | None

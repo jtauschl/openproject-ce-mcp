@@ -1,12 +1,13 @@
-"""Snapshot/shape tests for the OPM-48 ListResult consolidation.
+"""Snapshot/shape tests for the OPM-48 ListResult consolidation and the
+OPM-222 ConfirmationHeader (WriteResult family) consolidation.
 
 Guards against the two failure modes a base-class migration could silently
 introduce: (1) field order / serialization drift on any of the 36
-`*ListResult` classes, and (2) loss of concrete element typing on the
-`results` field, which a naive `Generic[T]` base (rejected during planning)
-would have caused -- verified here by literally reproducing that rejected
-shape and showing it degrades the MCP output schema, then showing our actual
-non-generic PageResult/CollectionResult bases do not.
+`*ListResult` classes or 24 confirm-gated write-result classes, and (2) loss
+of concrete element/result typing, which a naive `Generic[T]` base (rejected
+during OPM-48 planning) would have caused -- verified here by literally
+reproducing that rejected shape and showing it degrades the MCP output
+schema, then showing our actual non-generic bases do not.
 """
 
 from __future__ import annotations
@@ -122,6 +123,361 @@ def test_list_result_to_payload_drops_count_and_truncated(name: str) -> None:
     assert "truncated" not in out
     expected_keys = [f for f in EXPECTED_FIELD_ORDER[name] if f not in ("count", "truncated")]
     assert list(out.keys()) == expected_keys
+
+
+# --- OPM-222: ConfirmationHeader (WriteResult family) ----------------------
+
+# The 21 `*WriteResult`-suffixed classes plus 3 same-shaped-but-differently-
+# named classes (ProjectCopyResult, RelationUpdateResult, NotificationMarkResult)
+# that OPM-222 classified. Discovery mirrors _all_list_result_classes()'s
+# suffix filter, widened by an explicit small set for the 3 non-suffix names
+# -- unlike *ListResult, this family doesn't share one common suffix.
+_EXTRA_CONFIRMATION_HEADER_CLASSES = frozenset({"ProjectCopyResult", "RelationUpdateResult", "NotificationMarkResult"})
+
+
+def _all_write_result_classes() -> dict[str, type]:
+    return {
+        name: getattr(models, name)
+        for name in dir(models)
+        if name.endswith("WriteResult") or name in _EXTRA_CONFIRMATION_HEADER_CLASSES
+    }
+
+
+# Captured from `main` before the OPM-222 ConfirmationHeader migration landed
+# (via `dataclasses.fields()` on every class below) -- the source of truth
+# this test protects. Do not "fix" this fixture to match a future change
+# without confirming the new field order is actually intended.
+# BulkWorkPackageWriteResult is included as a fixed control: OPM-222
+# deliberately leaves it unconsolidated (no `ready` field, batch-shaped), so
+# its entry must never gain a ConfirmationHeader-shaped prefix.
+EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
+    "ActivityWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "work_package_id",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+    "AttachmentWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "attachment_id",
+        "work_package_id",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+    "BoardWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "board_id",
+        "project",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+    "BulkWorkPackageWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "total",
+        "succeeded",
+        "failed",
+        "message",
+        "items",
+    ],
+    "DocumentWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "document_id",
+        "project",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+    "EmojiReactionWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "activity_id",
+        "reaction",
+        "result",
+    ],
+    "FavoriteWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "project_id",
+        "project",
+    ],
+    "FileLinkWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "file_link_id",
+        "work_package_id",
+        "validation_errors",
+        "result",
+    ],
+    "GridWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "grid_id",
+        "scope",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+    "GroupWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "group_id",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+    "MembershipWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "membership_id",
+        "project",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+    "NewsWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "news_id",
+        "project",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+    "NotificationMarkResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "notification_id",
+    ],
+    "ProjectCopyResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "source_project_id",
+        "source_project",
+        "payload",
+        "validation_errors",
+        "job_status_id",
+        "job_status_url",
+    ],
+    "ProjectWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "project_id",
+        "project",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+    "RelationUpdateResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "relation_id",
+        "payload",
+        "result",
+    ],
+    "RelationWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "relation_id",
+        "work_package_id",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+    "ReminderWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "reminder_id",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+    "TimeEntryWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "time_entry_id",
+        "project",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+    "UserPreferencesWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "payload",
+        "result",
+    ],
+    "UserWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "user_id",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+    "VersionWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "version_id",
+        "project",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+    "WatcherWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "work_package_id",
+        "watcher_user_id",
+        "validation_errors",
+        "result",
+    ],
+    "WorkPackageWriteResult": [
+        "action",
+        "confirmed",
+        "requires_confirmation",
+        "ready",
+        "message",
+        "work_package_id",
+        "project",
+        "payload",
+        "validation_errors",
+        "result",
+    ],
+}
+
+
+def test_every_write_result_class_is_captured_in_the_fixture() -> None:
+    found = set(_all_write_result_classes())
+    assert found == set(EXPECTED_WRITE_RESULT_FIELD_ORDER), (
+        f"WriteResult-family classes changed since the fixture was captured: "
+        f"added={found - set(EXPECTED_WRITE_RESULT_FIELD_ORDER)} "
+        f"removed={set(EXPECTED_WRITE_RESULT_FIELD_ORDER) - found}"
+    )
+
+
+@pytest.mark.parametrize("name", sorted(EXPECTED_WRITE_RESULT_FIELD_ORDER))
+def test_write_result_field_order_unchanged(name: str) -> None:
+    cls = getattr(models, name)
+    actual = [f.name for f in dataclass_fields(cls)]
+    assert actual == EXPECTED_WRITE_RESULT_FIELD_ORDER[name]
+
+
+def test_confirmation_header_subclasses_are_registered() -> None:
+    for name in sorted(EXPECTED_WRITE_RESULT_FIELD_ORDER):
+        if name == "BulkWorkPackageWriteResult":
+            continue
+        cls = getattr(models, name)
+        assert issubclass(cls, models.ConfirmationHeader), f"{name} should subclass ConfirmationHeader"
+    assert not issubclass(models.BulkWorkPackageWriteResult, models.ConfirmationHeader), (
+        "BulkWorkPackageWriteResult is deliberately excluded (no `ready` field, batch-shaped)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_confirmation_header_result_field_keeps_concrete_type_in_mcp_schema() -> None:
+    """Proves introducing ConfirmationHeader doesn't affect MCP output schema
+    generation for `result` (a scalar Optional[Concrete] field, so the right
+    template is test_project_detail_ancestors_boundary_in_mcp_schema's
+    anyOf/$ref check, not the results.items list check used for PageResult/
+    CollectionResult's `results` field).
+    """
+    mcp = FastMCP("shape-test")
+
+    @mcp.tool()
+    def project_write_probe() -> models.ProjectWriteResult:
+        return _dummy_instance(models.ProjectWriteResult)
+
+    @mcp.tool()
+    def favorite_write_probe() -> models.FavoriteWriteResult:
+        return _dummy_instance(models.FavoriteWriteResult)
+
+    tools = {t.name: t for t in await mcp.list_tools()}
+
+    write_schema = tools["project_write_probe"].outputSchema
+    assert list(write_schema["properties"]) == EXPECTED_WRITE_RESULT_FIELD_ORDER["ProjectWriteResult"]
+    result_field = write_schema["properties"]["result"]
+    result_refs = [entry["$ref"] for entry in result_field.get("anyOf", []) if "$ref" in entry]
+    assert result_refs, f"expected a $ref among result's anyOf branches, got {result_field!r}"
+    result_summary_schema = write_schema["$defs"][result_refs[0].rsplit("/", 1)[-1]]
+    assert result_summary_schema["title"] == "ProjectSummary"
+
+    favorite_schema = tools["favorite_write_probe"].outputSchema
+    assert list(favorite_schema["properties"]) == EXPECTED_WRITE_RESULT_FIELD_ORDER["FavoriteWriteResult"]
 
 
 _RejectedT = typing.TypeVar("_RejectedT")
