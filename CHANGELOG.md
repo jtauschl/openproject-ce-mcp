@@ -7,6 +7,17 @@ development baseline.
 
 ---
 
+## 0.3.2 – 2026-07-19
+
+### Fixed
+
+- **Milestone work packages always showed `start_date`/`due_date` as `null`,
+  even when a date was genuinely set.** OpenProject reports a milestone's
+  date under a different field than it does for every other work-package
+  type, which this server did not previously read.
+
+---
+
 ## 0.3.1 – 2026-07-18
 
 ### Fixed
