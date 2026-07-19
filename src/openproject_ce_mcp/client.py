@@ -43,6 +43,7 @@ from .app.services.version_service import VersionService
 from .app.transport.errors import raise_for_status as _map_status_to_error
 from .app.transport.httpx_transport import HttpxTransport
 from .config import Settings
+from .hal import normalize_links
 from .models import (
     ActionListResult,
     ActionSummary,
@@ -337,8 +338,13 @@ class OpenProjectClient:
                     write_needs_lookup and _scope_matches_candidates(write_scope, candidates)
                 ):
                     self._project_id_to_identifier[project_id] = project_identifier
-        except Exception:
-            pass
+        except OpenProjectError as exc:
+            LOGGER.warning(
+                "initialize: failed to fetch the project list for identifier-cache "
+                "population; identifier-based allowlist matching may reject valid "
+                "projects until the server is restarted and initialization succeeds: %s",
+                exc,
+            )
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -8074,29 +8080,9 @@ def _extract_formattable_text_with_meta(
     return _trim_text_with_meta(raw, limit=limit, preserve_newlines=preserve_newlines)
 
 
-def _normalize_links(value: Any) -> Any:
-    """Recursively replace an explicit ``"_links": null`` with ``{}``
-    throughout a parsed HAL+JSON response body, mutating in place. HAL+JSON
-    convention says `_links` is always an object; this guards the
-    (unconfirmed but plausible) case where OpenProject emits an explicit
-    null instead, so every existing `payload.get("_links", {})` read
-    downstream keeps working via its "absent key" default rather than
-    raising AttributeError on the following `.get` (OPM-190).
-    """
-    if isinstance(value, dict):
-        if "_links" in value and value["_links"] is None:
-            value["_links"] = {}
-        for v in value.values():
-            _normalize_links(v)
-    elif isinstance(value, list):
-        for item in value:
-            _normalize_links(item)
-    return value
-
-
 def _parse_response_json(response: httpx.Response) -> dict[str, Any]:
     try:
-        return _normalize_links(response.json())
+        return normalize_links(response.json())
     except ValueError as exc:
         raise OpenProjectServerError("OpenProject returned invalid JSON.") from exc
 

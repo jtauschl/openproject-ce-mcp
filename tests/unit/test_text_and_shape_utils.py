@@ -15,7 +15,6 @@ from openproject_ce_mcp.client import (
     _extract_formattable_text,
     _extract_formattable_text_with_meta,
     _narrow_cleared,
-    _normalize_links,
     _normalize_text,
     _trim_text,
     _trim_text_with_meta,
@@ -806,58 +805,15 @@ def test_normalize_user_detail_identity_url_is_none_without_sso_despite_showuser
     assert detail.identity_url is None
 
 
-# --- OPM-190: _normalize_links -----------------------------------------------
-
-
-def test_normalize_links_replaces_explicit_null_at_top_level() -> None:
-    payload = {"id": 1, "_links": None}
-    assert _normalize_links(payload) == {"id": 1, "_links": {}}
-
-
-def test_normalize_links_leaves_absent_links_absent() -> None:
-    # Must NOT introduce a `_links` key that wasn't there -- the existing
-    # `payload.get("_links", {})` absent-key default already handles this
-    # case correctly; only an explicit null needs fixing.
-    payload = {"id": 1}
-    assert _normalize_links(payload) == {"id": 1}
-
-
-def test_normalize_links_leaves_populated_links_untouched() -> None:
-    payload = {"id": 1, "_links": {"project": {"title": "Demo"}}}
-    result = _normalize_links(payload)
-    assert result["_links"] == {"project": {"title": "Demo"}}
-
-
-def test_normalize_links_recurses_into_nested_dicts_and_lists() -> None:
-    payload = {
-        "_links": None,
-        "_embedded": {
-            "elements": [
-                {"id": 1, "_links": None},
-                {"id": 2, "_links": {"project": {"title": "Demo"}}},
-                {"id": 3},
-            ]
-        },
-    }
-    result = _normalize_links(payload)
-    assert result["_links"] == {}
-    elements = result["_embedded"]["elements"]
-    assert elements[0]["_links"] == {}
-    assert elements[1]["_links"] == {"project": {"title": "Demo"}}
-    assert "_links" not in elements[2]
-
-
-def test_normalize_links_leaves_unrelated_null_fields_alone() -> None:
-    payload = {"id": 1, "description": None, "_links": None}
-    result = _normalize_links(payload)
-    assert result["description"] is None
-    assert result["_links"] == {}
+# --- OPM-190: hal.normalize_links integration (pure-function tests moved to
+# tests/unit/test_hal.py alongside the OPM-190 architecture follow-up
+# extraction of normalize_links into its own shared module) -------------------
 
 
 @pytest.mark.asyncio
 async def test_explicit_null_links_survives_list_work_packages_end_to_end() -> None:
     """OPM-190: proves the fix at the actual integration point (_request_json
-    -> _normalize_links, before any normalizer sees the payload), not just
+    -> hal.normalize_links, before any normalizer sees the payload), not just
     the pure helper in isolation. Without it, the second element's
     `payload.get("_links", {})` read inside normalize_work_package_summary
     would return None instead of {}, and the following `.get("project")`

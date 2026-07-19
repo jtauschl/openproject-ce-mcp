@@ -26,6 +26,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 SRC = Path(__file__).resolve().parent.parent / "src" / "openproject_ce_mcp"
 APP = SRC / "app"
 
@@ -132,6 +134,75 @@ def _app_import_violations(source: str) -> list[str]:
 def test_tools_module_never_imports_from_app_directly() -> None:
     violations = _app_import_violations((SRC / "tools.py").read_text())
     assert violations == [], f"tools.py must not import from app/ directly: {violations}"
+
+
+_HAL_ALLOWED_ABSOLUTE_ROOTS = {"__future__", "typing"}
+
+
+def _hal_import_violations(source: str) -> list[str]:
+    """Allowlist, not a denylist (an earlier denylist version -- `client`/
+    `openproject_ce_mcp.app`/`app`/`httpx` prefixes -- missed several real
+    forms: it compared only `alias.name.split(".")[0]`, i.e. the leading
+    `openproject_ce_mcp` component, against the full `openproject_ce_mcp.app`
+    prefix, so `import openproject_ce_mcp.app.foo`/`import
+    openproject_ce_mcp.client`/`from openproject_ce_mcp import client` all
+    passed uncaught; and `from . import client` has its target in
+    `node.names`, not `node.module`, which the denylist never inspected).
+    hal.py's actual invariant is narrower and simpler to state correctly as
+    an allowlist: it may import ONLY `__future__`/`typing` (the only two
+    names it currently needs) plus, implicitly, nothing else -- so ANY
+    relative import (necessarily reaching back into this package) and ANY
+    absolute import whose top-level root isn't in the allowlist is a
+    violation, with no prefix-matching required.
+    """
+    tree = ast.parse(source)
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] not in _HAL_ALLOWED_ABSOLUTE_ROOTS:
+                    violations.append(ast.dump(node))
+        elif isinstance(node, ast.ImportFrom):
+            if node.level >= 1:
+                # Any relative import reaches back into this package -- never allowed.
+                violations.append(ast.dump(node))
+            elif (node.module or "").split(".")[0] not in _HAL_ALLOWED_ABSOLUTE_ROOTS:
+                violations.append(ast.dump(node))
+    return violations
+
+
+def test_hal_module_stays_neutral() -> None:
+    """hal.py (OPM-190 architecture follow-up) is a shared-kernel module imported by
+    both client.py and app/transport/httpx_transport.py -- neither of which
+    may import from the other. It only stays a valid shared dependency for
+    both sides as long as it imports nothing from either. This guards against
+    the module silently regaining a dependency that would recreate the exact
+    duplication this refactor removed.
+    """
+    violations = _hal_import_violations((SRC / "hal.py").read_text())
+    assert violations == [], f"hal.py must only import from {_HAL_ALLOWED_ABSOLUTE_ROOTS}: {violations}"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from . import client\n",
+        "from .client import X\n",
+        "import openproject_ce_mcp.client\n",
+        "from openproject_ce_mcp import client\n",
+        "import openproject_ce_mcp.app.foo\n",
+        "from openproject_ce_mcp.app import foo\n",
+        "import httpx\n",
+        "from httpx import Response\n",
+    ],
+)
+def test_hal_import_violation_detector_catches_every_disallowed_form(source: str) -> None:
+    assert _hal_import_violations(source)
+
+
+def test_hal_import_violation_detector_allows_future_and_typing() -> None:
+    source = "from __future__ import annotations\nfrom typing import Any\n"
+    assert _hal_import_violations(source) == []
 
 
 def test_app_import_violation_detector_catches_absolute_import_from() -> None:

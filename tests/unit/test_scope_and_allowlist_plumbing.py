@@ -321,6 +321,48 @@ async def test_initialize_populates_identifier_cache_for_restricted_write_scope_
 
 
 @pytest.mark.asyncio
+async def test_initialize_logs_and_survives_an_expected_transport_failure(caplog) -> None:
+    # OPM-190-adjacent hardening: initialize()'s identifier-cache fetch used to
+    # swallow every exception silently (bare `except Exception: pass`). An
+    # OpenProjectError-family failure (transport/API) must now be logged with
+    # its concrete cause, not just a generic "something failed" message, and
+    # initialize() must still return normally rather than crash server startup.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("boom", request=request)
+
+    settings = _base_settings(read_projects=("*",), write_projects=("OPM",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    try:
+        with caplog.at_level("WARNING"):
+            await client.initialize()
+        assert client._project_id_to_identifier == {}
+        [record] = [r for r in caplog.records if "identifier-cache" in r.message]
+        assert "Could not reach OpenProject" in record.message
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_initialize_propagates_an_unexpected_programming_error() -> None:
+    # The narrowed `except OpenProjectError` must NOT catch a real programming
+    # error -- that's the actual behavior change from the old bare `except
+    # Exception: pass`, which used to hide bugs here just as readily as
+    # legitimate transport failures.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise RuntimeError("boom")
+
+    settings = _base_settings(read_projects=("*",), write_projects=("OPM",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    try:
+        with pytest.raises(RuntimeError, match="boom"):
+            await client.initialize()
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_write_link_allowlist_recognizes_identifier_after_initialize_with_open_read_scope() -> None:
     # End-to-end proof of the same regression: a work-package-style embedded
     # project link (numeric id + display name only, no identifier field) must

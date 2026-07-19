@@ -188,10 +188,10 @@ async def test_get_survives_explicit_null_links_at_top_level() -> None:
 
 @pytest.mark.asyncio
 async def test_list_global_survives_explicit_null_links_nested_in_a_collection_element() -> None:
-    """Proves the app-layer's separately duplicated _normalize_links actually
-    recurses -- a version that only normalized the top level of the response
-    would still crash here, since `list_global`'s elements live under
-    `_embedded.elements[i]`, not at the response's own top level.
+    """Proves HttpxTransport actually exercises hal.normalize_links'
+    recursion through this layer, not just its top level -- `list_global`'s
+    elements live under `_embedded.elements[i]`, not at the response's own
+    top level.
     """
     element = _version_payload(version_id=3)
     element["_links"] = None
