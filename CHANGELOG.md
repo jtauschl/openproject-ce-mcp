@@ -48,23 +48,30 @@ development baseline.
   `assignee`/`responsible` validation errors indexed per item** (e.g.
   `items[0].assignee`), like every sibling field, instead of the unprefixed
   field name.
-- **Milestone work packages always showed `start_date`/`due_date` as `null`,
-  even when a date was genuinely set.** OpenProject reports a milestone's
-  date under a different field than it does for every other work-package
-  type, which this server did not previously read.
 - **Breaking: `get_user`'s `identity_url` field now reflects OpenProject's
   real SSO identity property**, instead of duplicating the already-present
   `url` field (both previously resolved to the identical web link). It is
   now `null` unless the account is provisioned via SSO/OmniAuth.
+- **Hardened reads of a response's `_links` object against an explicit
+  `null`** (as opposed to the key being absent, which was already handled).
+  No confirmed case of OpenProject actually sending this has been observed;
+  this is defensive hardening, not a fix for an observed failure.
+
+---
+
+## 0.3.2 – 2026-07-20
+
+### Fixed
+
+- **Milestone work packages always showed `start_date`/`due_date` as `null`,
+  even when a date was genuinely set.** OpenProject reports a milestone's
+  date under a different field than it does for every other work-package
+  type, which this server did not previously read.
 - **Closing a work package with no `estimated_time` set was rejected on the
   first attempt.** `update_work_package`/`bulk_update_work_packages` always
   auto-filled `remaining_time` to `PT0H` on a transition to a closed status,
   but OpenProject requires the opposite value (`null`, not `PT0H`) when the
   work package has no estimate — the common case for simple tasks.
-- **Hardened reads of a response's `_links` object against an explicit
-  `null`** (as opposed to the key being absent, which was already handled).
-  No confirmed case of OpenProject actually sending this has been observed;
-  this is defensive hardening, not a fix for an observed failure.
 
 ---
 
