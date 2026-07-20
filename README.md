@@ -105,6 +105,10 @@ openproject-ce-mcp configure
 openproject-ce-mcp --version
 ```
 
+`uv tool install openproject-ce-mcp` and `pip install openproject-ce-mcp` work
+the same way if you'd rather not use `pipx` — see [Advanced install alternatives](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/installation.md#advanced-install-alternatives)
+(also covers `uvx` for a zero-install run).
+
 `configure` collects your OpenProject URL, API token, and project scope, then
 writes the config for the MCP client(s) you choose. Project-scoped is
 recommended: the server is then available only in the current project.
