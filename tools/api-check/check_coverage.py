@@ -162,11 +162,22 @@ def _client_resources() -> set[str]:
     """First path segment of every request path / HAL href in the client."""
     text = CLIENT.read_text()
     used: set[str] = set()
-    for path in re.findall(r'self\._(?:get|post|patch|delete)\(\s*f?"([^"]+)"', text):
-        seg = path.lstrip("/").split("/")[0]
-        seg = re.sub(r"\{.*?\}", "", seg)
-        if re.fullmatch(r"[a-z_]+", seg):
-            used.add(seg)
+    # Direct self._get/_post/_patch/_delete(...) calls, plus the path=/write_path=/
+    # delete_path= keyword arguments passed to the shared bounded-fetch/detail/
+    # write/delete helpers (_fetch_bounded_and_paginate, _fetch_and_normalize_detail,
+    # _finalize_write, _finalize_delete). A resource reached only through one of
+    # these helpers, with no other literal self._get(...) call site elsewhere,
+    # would otherwise be silently undercounted as unused.
+    path_patterns = (
+        r'self\._(?:get|post|patch|delete)\(\s*f?"([^"]+)"',
+        r'\b(?:path|write_path|delete_path)=\s*f?"([^"]+)"',
+    )
+    for pattern in path_patterns:
+        for path in re.findall(pattern, text):
+            seg = path.lstrip("/").split("/")[0]
+            seg = re.sub(r"\{.*?\}", "", seg)
+            if re.fullmatch(r"[a-z_]+", seg):
+                used.add(seg)
     used |= set(re.findall(r'_api_href\(f?"([a-z_]+)', text))
     return used
 

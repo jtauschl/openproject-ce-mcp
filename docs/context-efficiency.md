@@ -64,11 +64,12 @@ once — `tools/measure-context.py` verifies no registered tool's own
 `test_ce_instructions_are_not_duplicated_into_any_tool_description` in
 `tests/test_server.py`, pins this). If a client duplicated them into every
 tool description instead, the worst-case `tools/list` payload above would
-balloon roughly 4x. A live Codex tool-discovery session was observed doing
-exactly that (OPM-213) — attributed to the client's own MCP-to-function-
-schema translation (many function-calling APIs have no separate slot for
-server-wide notes), not to this server or to FastMCP's `Tool.description`
-construction (built solely from each function's own docstring). No local
+balloon roughly 4x. This has been observed happening in practice with a
+real MCP client during tool discovery — attributed to the client's own
+MCP-to-function-schema translation (many function-calling APIs have no
+separate slot for server-wide notes), not to this server or to FastMCP's
+`Tool.description` construction (built solely from each function's own
+docstring). No local
 workaround was added — copying instructions into every tool description here
 would just make the non-duplicating case duplicate too.
 

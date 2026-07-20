@@ -25,6 +25,25 @@ def test_resource_alias_is_recognized_as_covered(monkeypatch):
     assert tally == {"covered": 1}
 
 
+def test_client_resources_detects_helper_keyword_path_arguments(tmp_path, monkeypatch):
+    # OPM-1439: list_views/get_view reach the "views" resource only via
+    # path="views" / path=f"views/{id}" keyword arguments to the shared
+    # bounded-fetch/detail helpers, never a direct self._get("views"...) call.
+    # "views" has no other call site to fall back on, so it was the one
+    # resource silently undercounted as unused until path=/write_path=/
+    # delete_path= keyword arguments were also matched.
+    synthetic_client = tmp_path / "client.py"
+    synthetic_client.write_text(
+        "async def list_views(self):\n"
+        '    return await self._fetch_bounded_and_paginate(path="views")\n'
+        "async def get_view(self, view_id):\n"
+        '    return await self._fetch_and_normalize_detail(path=f"views/{view_id}")\n'
+    )
+    monkeypatch.setattr(check_coverage, "CLIENT", synthetic_client)
+
+    assert "views" in check_coverage._client_resources()
+
+
 def test_unaliased_unused_resource_is_review_without_live_probe(monkeypatch):
     monkeypatch.setattr(check_coverage, "_source_resources", lambda: ["mystery_resource"])
     monkeypatch.setattr(check_coverage, "_client_resources", lambda: set())
