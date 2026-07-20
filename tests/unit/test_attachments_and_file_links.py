@@ -138,3 +138,29 @@ async def test_delete_file_link_allows_write_project() -> None:
     assert result.confirmed is True
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_delete_file_link_reports_none_work_package_id_when_container_unresolvable() -> None:
+    # OPM-1453: a file link with no resolvable container used to fake a work_package_id
+    # of 0 (a real-looking id) instead of reporting "unknown/none" as None.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/file_links/5" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 5, "_links": {"self": {"href": "/api/v3/file_links/5"}}},  # no "container" link
+                request=request,
+            )
+        if request.url.path == "/api/v3/file_links/5" and request.method == "DELETE":
+            return httpx.Response(204, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_work_package_write=True, write_projects=("*",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.delete_file_link(5, confirm=True)
+
+    assert result.work_package_id is None
+    assert result.confirmed is True
+
+    await client.aclose()

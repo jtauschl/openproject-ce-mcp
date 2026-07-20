@@ -33,16 +33,18 @@ class _FakeVersionApi:
         self.list_for_project_calls: list[tuple[int, int, int]] = []
         self.list_global_calls: list[tuple[int, int]] = []
 
-    async def list_for_project(self, project_id: int, *, offset: int, page_size: int) -> VersionPage:
+    async def list_for_project(
+        self, project_id: int, *, offset: int, page_size: int, text_limit: int | None = None
+    ) -> VersionPage:
         self.list_for_project_calls.append((project_id, offset, page_size))
         server_total = self._server_total if self._server_total is not None else len(self._records)
         return VersionPage(records=self._records, server_total=server_total)
 
-    async def list_global(self, *, offset: int, page_size: int) -> VersionPage:
+    async def list_global(self, *, offset: int, page_size: int, text_limit: int | None = None) -> VersionPage:
         self.list_global_calls.append((offset, page_size))
         return VersionPage(records=self._records, server_total=None)
 
-    async def get(self, version_id: int): ...
+    async def get(self, version_id: int, *, text_limit: int | None = None): ...
     async def create_form(self, payload): ...
     async def update_form(self, version_id, payload): ...
     async def commit_create(self, payload): ...

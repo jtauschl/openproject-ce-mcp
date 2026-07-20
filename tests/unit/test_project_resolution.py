@@ -478,6 +478,54 @@ async def test_resolve_version_id_numeric_project_ref_is_allowlist_checked_first
 
 
 @pytest.mark.asyncio
+async def test_resolve_sprint_id_by_name_found_on_real_second_server_page() -> None:
+    # OPM-1451 (follow-up): _resolve_sprint_id must page-walk the SERVER itself
+    # (real offset/pageSize per request), not just re-slice a single bounded
+    # fetch in memory -- list_project_sprints's _fetch_bounded_and_paginate
+    # always requests server offset=1/pageSize=max_results and paginates that
+    # one fixed result locally, so calling it again with a different offset
+    # would just re-fetch the SAME first server page every time. A project
+    # with more sprints than max_results would then never be fully searched.
+    # This test uses more sprints than max_results (12 > 10) specifically to
+    # catch a resolver that just re-slices one bounded fetch instead of truly
+    # paging the server.
+    def page(n: int, count: int, total: int) -> dict:
+        start = (n - 1) * count
+        return {
+            "total": total,
+            "_embedded": {
+                "elements": [
+                    {"id": i, "name": f"Sprint {i}", "_links": {}} for i in range(start + 1, start + count + 1)
+                ]
+            },
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo", "active": True},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/sprints" and request.method == "GET":
+            offset = int(request.url.params["offset"])
+            assert request.url.params["pageSize"] == "2"
+            # 6 real server pages of 2 (total=12) -- page 6 holds Sprint 11/12,
+            # beyond max_results=10, unreachable by a bounded-fetch-then-local-slice approach.
+            assert 1 <= offset <= 6
+            return httpx.Response(200, json=page(offset, 2, total=12), request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(default_page_size=2, max_page_size=2, max_results=10)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    resolved = await client._resolve_sprint_id("Sprint 12", project="demo")
+
+    assert resolved == "12"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_resolve_version_id_project_scoped_shared_version_found_on_second_page() -> None:
     # A version defined in a disallowed project, but shared into the (allowed) target
     # project, must resolve by numeric id AND by name, even when it only appears on

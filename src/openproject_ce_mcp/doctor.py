@@ -140,7 +140,7 @@ def _check_config_parsing(client_configs: list[tuple]) -> tuple[bool, dict[str, 
     (later configs override earlier ones). Client config env wins over process env
     (applied in _check_env_config) — this is what the MCP client will actually use.
     """
-    from .setup_cli import _read_client_env
+    from .setup_cli import _read_client_env, _tomllib
 
     all_ok = True
     merged_env: dict[str, str] = {}
@@ -156,14 +156,11 @@ def _check_config_parsing(client_configs: list[tuple]) -> tuple[bool, dict[str, 
                 has_entry = "openproject" in config.get(root_key, {})
             elif client.fmt == "toml":
                 # On Python 3.10 without tomllib, we can't parse Codex TOML
-                try:
-                    import tomllib  # type: ignore[import-not-found]
-
-                    config = tomllib.loads(target.read_text())
-                    has_entry = "openproject" in config.get("mcp_servers", {})
-                except ModuleNotFoundError:
+                if _tomllib is None:
                     print(f"[WARN] {client.label}: Codex TOML requires Python 3.11+ ({target.name})", file=sys.stderr)
                     continue
+                config = _tomllib.loads(target.read_text())
+                has_entry = "openproject" in config.get("mcp_servers", {})
             else:
                 print(f"[FAIL] {client.label}: unknown format {client.fmt} ({target.name})", file=sys.stderr)
                 all_ok = False

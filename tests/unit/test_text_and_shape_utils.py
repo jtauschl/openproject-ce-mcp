@@ -170,6 +170,120 @@ def test_normalize_activity_returns_full_comment_by_default() -> None:
     assert activity.comment_length == 3000
 
 
+def test_normalize_activity_details_are_delimited_and_drop_duplicate_html() -> None:
+    # OPM-1448/OPM-1460: details[] previously bypassed delimiting entirely and
+    # carried both "raw" and "html" copies of the same change description.
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    activity = client.normalize_activity(
+        {
+            "id": 7,
+            "_type": "Activity",
+            "_links": {"user": {"title": "Bot"}},
+            "details": [{"format": "custom", "raw": "Status changed", "html": "<i>Status changed</i>"}],
+        }
+    )
+
+    assert activity.details == [{"raw": "<user-content>Status changed</user-content>"}]
+
+
+def test_normalize_project_description_and_status_explanation_are_delimited() -> None:
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    project = client.normalize_project(
+        {
+            "id": 1,
+            "name": "Demo",
+            "identifier": "demo",
+            "description": {"raw": "hello"},
+            "statusExplanation": {"raw": "on track"},
+            "_links": {},
+        }
+    )
+
+    assert project.description == "<user-content>hello</user-content>"
+    assert project.status_explanation == "<user-content>on track</user-content>"
+
+
+def test_normalize_project_description_is_capped_at_list_context_default() -> None:
+    # OPM-1457: list rows (normalize_project) cap at settings.text_limit
+    # (default 500), like WorkPackageSummary, with truncation metadata.
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    long_description = "d" * 900
+
+    project = client.normalize_project(
+        {"id": 1, "name": "Demo", "identifier": "demo", "description": {"raw": long_description}, "_links": {}}
+    )
+
+    assert project.description is not None
+    assert project.description.startswith("<user-content>")
+    assert project.description_truncated is True
+    assert project.description_length == 900
+
+
+@pytest.mark.asyncio
+async def test_get_project_returns_full_description_by_default_get_projects_caps_it() -> None:
+    # OPM-1457: single-project reads (get_project) are uncapped by default,
+    # like get_work_package; list_projects rows stay capped at text_limit.
+    long_description = "d" * 900
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Project",
+                    "id": 1,
+                    "name": "Demo",
+                    "identifier": "demo",
+                    "description": {"raw": long_description},
+                    "_links": {},
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    detail = await client.get_project("demo")
+
+    assert detail.description is not None
+    assert len(detail.description) == 900 + len("<user-content></user-content>")
+    assert detail.description_truncated is False
+
+    await client.aclose()
+
+
+def test_normalize_document_description_is_delimited() -> None:
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    payload = {"id": 1, "title": "Spec", "description": {"raw": "secret plan"}, "_links": {}}
+
+    summary = client.normalize_document(payload)
+    detail = client.normalize_document_detail(payload)
+
+    assert summary.description == "<user-content>secret plan</user-content>"
+    assert detail.description == "<user-content>secret plan</user-content>"
+
+
+def test_normalize_time_entry_comment_is_delimited() -> None:
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    entry = client.normalize_time_entry(
+        {"id": 1, "comment": {"raw": "worked on it"}, "_links": {}},
+    )
+
+    assert entry.comment == "<user-content>worked on it</user-content>"
+
+
+def test_normalize_version_description_is_delimited() -> None:
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    version = client.normalize_version({"id": 1, "name": "1.0", "description": {"raw": "release notes"}, "_links": {}})
+
+    assert version.description == "<user-content>release notes</user-content>"
+
+
 def test_summary_cap_follows_text_limit_setting() -> None:
     # OPENPROJECT_TEXT_LIMIT (settings.text_limit) drives the list-preview cap.
     import dataclasses
@@ -591,9 +705,11 @@ async def test_work_package_relations_use_canonical_involved_filter_shape() -> N
     assert filters == [{"involved": {"operator": "=", "values": ["55"]}}]
     assert result.count == 1
     assert result.results[0].id == 12
+    # Only the resolve + relations fetch — the redundant get_work_package(55)
+    # round-trip (OPM-1455) was removed since _resolve_work_package_id already
+    # confirmed existence/ACL access for the anchor work package.
     assert requests == [
         ("GET", "/api/v3/work_packages/PROJ-7"),
-        ("GET", "/api/v3/work_packages/55"),
         ("GET", "/api/v3/relations"),
     ]
 
@@ -663,6 +779,128 @@ async def test_global_relations_allowlist_checks_from_and_to_link_shapes() -> No
 
     assert [relation.id for relation in result.results] == [1]
     assert fetched_work_packages == [10, 11, 20, 30, 31]
+
+
+@pytest.mark.asyncio
+async def test_get_work_package_relations_filters_out_of_scope_other_side() -> None:
+    """OPM-1449: get_work_package_relations must not leak the id/subject of a
+    linked work package whose project is outside READ_PROJECTS, even though
+    the anchor work package itself is in an allowed project."""
+    work_package_projects = {10: "demo", 11: "demo", 20: "other"}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations" and request.method == "GET":
+            filters = json.loads(request.url.params.get("filters", "[]"))
+            assert filters == [{"involved": {"operator": "=", "values": ["10"]}}]
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 1,
+                                "type": "relates",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/10", "title": "A"},
+                                    "to": {"href": "/api/v3/work_packages/11", "title": "B"},
+                                },
+                            },
+                            {
+                                "id": 2,
+                                "type": "relates",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/10", "title": "A"},
+                                    "to": {"href": "/api/v3/work_packages/20", "title": "Secret"},
+                                },
+                            },
+                        ]
+                    }
+                },
+                request=request,
+            )
+        match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if match:
+            work_package_id = int(match.group(1))
+            return httpx.Response(
+                200,
+                json={
+                    "id": work_package_id,
+                    "_links": {"project": {"title": work_package_projects[work_package_id]}},
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.get_work_package_relations(10)
+
+    assert [relation.id for relation in result.results] == [1]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_work_package_relations_paginates_allowed_results() -> None:
+    # OPM-1456: get_work_package_relations previously returned every relation
+    # in one unbounded response. Pagination is applied to the ACL-filtered
+    # survivors (not the raw server page), so a restrictive allowlist can't
+    # produce a sparse page -- same pattern as list_project_sprints.
+    #
+    # OPM-1456 follow-up (P1, third review round): the /relations request itself
+    # previously omitted pageSize entirely, so it silently relied on the server's
+    # default page size instead of settings.max_results -- every call re-fetched
+    # that same default first page and re-sliced it locally, making relations
+    # past the default page permanently unreachable. Assert the bounded-fetch
+    # params are actually sent, same as _fetch_bounded_and_paginate.
+    settings = make_settings()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations" and request.method == "GET":
+            assert request.url.params["offset"] == "1"
+            assert request.url.params["pageSize"] == str(settings.max_results)
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": i,
+                                "type": "relates",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/10", "title": "A"},
+                                    "to": {"href": f"/api/v3/work_packages/{i}", "title": f"WP {i}"},
+                                },
+                            }
+                            for i in (11, 12, 13)
+                        ]
+                    }
+                },
+                request=request,
+            )
+        match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if match:
+            return httpx.Response(
+                200,
+                json={"id": int(match.group(1)), "_links": {"project": {"title": "demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    page1 = await client.get_work_package_relations(10, offset=1, limit=2)
+    assert [r.to_id for r in page1.results] == [11, 12]
+    assert page1.total == 3
+    assert page1.next_offset == 2
+    assert page1.truncated is True
+
+    page2 = await client.get_work_package_relations(10, offset=2, limit=2)
+    assert [r.to_id for r in page2.results] == [13]
+    assert page2.next_offset is None
+
+    await client.aclose()
 
 
 def test_normalize_work_package_summary_uses_date_field_for_milestones() -> None:

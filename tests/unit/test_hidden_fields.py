@@ -67,8 +67,6 @@ async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
     assert visible_project.description is None
     assert hidden_description_wp.description is None
     assert activity.comment is None
-    assert client._project_name_allowed("Demo") is True
-    assert client._project_name_allowed("Other") is False
 
     await client.aclose()
 
@@ -493,6 +491,60 @@ async def test_hidden_version_fields_are_tagged_and_dropped_from_payload() -> No
 
 
 @pytest.mark.asyncio
+async def test_hidden_version_description_also_suppresses_truncation_metadata() -> None:
+    # A hidden "description" must also blank description_truncated/description_length
+    # -- otherwise the real length of hidden content would still leak through those
+    # two sibling fields even though "description" itself is dropped (OPM-1451 follow-up).
+    # The adapter computes them before hidden-field masking exists (masking is a
+    # VersionService concern, per ADR 0001), so this can only be caught end-to-end
+    # through get_version/list_versions, not via a direct normalize_version() call.
+    long_description = "d" * 900
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/versions/1" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 1, "name": "1.0", "description": {"raw": long_description}, "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/versions" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [{"id": 1, "name": "1.0", "description": {"raw": long_description}, "_links": {}}]
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(
+        _base_settings(hidden_fields={"version": ("description",)}),
+        transport=httpx.MockTransport(handler),
+    )
+
+    detail = await client.get_version(1)
+    # description_truncated/description_length are blanked on the object itself
+    # (not just dropped at serialization, since their field NAMES don't match
+    # the "description" hide pattern -- without the fix they'd still carry the
+    # real truncation state of hidden content).
+    assert detail.description_truncated is False
+    assert detail.description_length is None
+    serialized_detail = _to_payload(detail)
+    assert "description" not in serialized_detail  # dropped by name, like updated_at above
+    assert serialized_detail["description_truncated"] is False
+    assert serialized_detail["description_length"] is None
+
+    page = await client.list_versions()
+    summary = page.results[0]
+    assert summary.description_truncated is False
+    assert summary.description_length is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() -> None:
     # createdAt/updatedAt on MembershipSummary respect the
     # existing OPENPROJECT_HIDE_MEMBERSHIP_FIELDS wiring.
@@ -515,6 +567,51 @@ async def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() ->
     assert membership.updated_at == "2026-06-01T00:00:00Z"
     serialized = _to_payload(membership)
     assert "created_at" not in serialized
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hidden_file_link_and_grid_fields_are_tagged_and_dropped_from_payload() -> None:
+    # normalize_file_link/normalize_grid previously never called
+    # _apply_hidden_fields at all, so OPENPROJECT_HIDE_FIELDS for these two
+    # entities was a silent no-op (OPM-1459).
+    client = OpenProjectClient(
+        _base_settings(hidden_fields={"file_link": ("storage_name",), "grid": ("scope",)}),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+
+    file_link = client.normalize_file_link(
+        {
+            "id": 1,
+            "title": "spec.pdf",
+            "createdAt": "2026-01-01T00:00:00Z",
+            "updatedAt": "2026-06-01T00:00:00Z",
+            "_links": {"storage": {"href": "/api/v3/storages/1", "title": "Nextcloud"}},
+        }
+    )
+    assert file_link._hidden_keys == frozenset({"storage_name"})
+    assert file_link.storage_name == "Nextcloud"  # preserved on the dataclass
+    assert file_link.storage_id == 1
+    serialized_file_link = _to_payload(file_link)
+    assert "storage_name" not in serialized_file_link
+    assert serialized_file_link["storage_id"] == 1
+
+    grid = client.normalize_grid(
+        {
+            "id": 2,
+            "rowCount": 4,
+            "columnCount": 3,
+            "createdAt": "2026-01-01T00:00:00Z",
+            "updatedAt": "2026-06-01T00:00:00Z",
+            "_links": {"scope": {"href": "/api/v3/projects/1"}},
+        }
+    )
+    assert grid._hidden_keys == frozenset({"scope"})
+    assert grid.scope == "/api/v3/projects/1"  # preserved on the dataclass
+    serialized_grid = _to_payload(grid)
+    assert "scope" not in serialized_grid
+    assert serialized_grid["row_count"] == 4
 
     await client.aclose()
 

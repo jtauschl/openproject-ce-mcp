@@ -698,3 +698,67 @@ async def test_time_entry_semantic_work_package_ref_uses_numeric_entity_href_sha
     ]
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_time_entries_comment_capped_at_text_limit() -> None:
+    # OPM-1457: list rows cap comment at settings.text_limit (default 500),
+    # like list_projects/list_work_packages, with truncation metadata.
+    long_comment = "c" * 900
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/time_entries" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 1,
+                                "comment": {"raw": long_comment},
+                                "_links": {},
+                            }
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    page = await client.list_time_entries()
+
+    assert page.results[0].comment is not None
+    assert page.results[0].comment_truncated is True
+    assert page.results[0].comment_length == 900
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_time_entry_returns_full_comment_by_default() -> None:
+    # OPM-1457: single-time-entry reads are uncapped by default, like
+    # get_work_package/get_project/get_version; text_limit is an opt-in override.
+    long_comment = "c" * 1500
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/time_entries/1" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 1, "comment": {"raw": long_comment}, "_links": {}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    full = await client.get_time_entry(1)
+    assert full.comment is not None
+    assert len(full.comment) == 1500 + len("<user-content></user-content>")
+    assert full.comment_truncated is False
+
+    capped = await client.get_time_entry(1, text_limit=50)
+    assert capped.comment_truncated is True
+    assert capped.comment_length == 1500
+
+    await client.aclose()

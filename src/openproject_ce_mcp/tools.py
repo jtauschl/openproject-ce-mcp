@@ -28,6 +28,7 @@ from .config import TEXT_LIMIT_MAX, Settings
 from .models import (
     ActionListResult,
     ActivityListResult,
+    ActivitySummary,
     ActivityWriteResult,
     AttachmentListResult,
     AttachmentSummary,
@@ -35,6 +36,7 @@ from .models import (
     BatchWorkPackageReadResult,
     BoardDetail,
     BoardListResult,
+    BoardSummary,
     BoardWriteResult,
     BulkWorkPackageWriteResult,
     CapabilityListResult,
@@ -44,17 +46,21 @@ from .models import (
     CustomOptionSummary,
     DocumentDetail,
     DocumentListResult,
+    DocumentSummary,
     DocumentWriteResult,
     EmojiReactionListResult,
+    EmojiReactionSummary,
     EmojiReactionWriteResult,
     FavoriteWriteResult,
     FileLinkListResult,
+    FileLinkSummary,
     FileLinkWriteResult,
     GridListResult,
     GridSummary,
     GridWriteResult,
     GroupDetail,
     GroupListResult,
+    GroupSummary,
     GroupWriteResult,
     HelpTextListResult,
     HelpTextSummary,
@@ -65,11 +71,13 @@ from .models import (
     MembershipWriteResult,
     NewsDetail,
     NewsListResult,
+    NewsSummary,
     NewsWriteResult,
     NonWorkingDayListResult,
     NotificationListResult,
     NotificationMarkResult,
     PrincipalListResult,
+    PrincipalSummary,
     PriorityListResult,
     PrioritySummary,
     ProjectAccessSummary,
@@ -91,15 +99,19 @@ from .models import (
     QueryOperatorSummary,
     QuerySortBySummary,
     RelationListResult,
+    RelationSummary,
     RelationUpdateResult,
     RelationWriteResult,
     ReminderListResult,
+    ReminderSummary,
     ReminderWriteResult,
     RenderedText,
     RoleListResult,
+    RoleSummary,
     SortCriterion,
     SprintDetail,
     SprintListResult,
+    SprintSummary,
     StatusListResult,
     StatusSummary,
     TimeEntryActivityListResult,
@@ -116,10 +128,13 @@ from .models import (
     UserWriteResult,
     VersionDetail,
     VersionListResult,
+    VersionSummary,
     VersionWriteResult,
     ViewDetail,
     ViewListResult,
+    ViewSummary,
     WatcherListResult,
+    WatcherSummary,
     WatcherWriteResult,
     WikiPageDetail,
     WorkingDayListResult,
@@ -495,14 +510,21 @@ async def list_projects(
 async def get_project(
     ctx: Context,
     project: str,
+    text_limit: int | None = None,
 ) -> ProjectDetail:
     """Get a project by id or identifier, including its ancestor chain.
 
     project: numeric id (e.g., 7) or identifier (e.g., "my-project"), not display name.
+
+    description/status_explanation are returned in full by default (single projects
+    are not truncated). Pass ``text_limit`` to cap them at that many characters; when
+    cut, ``description_truncated``/``status_explanation_truncated`` are true and
+    ``description_length``/``status_explanation_length`` report the real length.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
-    return await _run_tool(client.get_project(safe_project))
+    safe_text_limit = _validate_optional_text_limit(text_limit)
+    return await _run_tool(client.get_project(safe_project, text_limit=safe_text_limit))
 
 
 async def list_sprints(
@@ -510,16 +532,21 @@ async def list_sprints(
     search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> SprintListResult:
     """List Backlogs sprints visible to the current token, optionally filtered by name search.
 
     Requires the OpenProject Backlogs module; unavailable instances return a clear not-found message.
+
+    select restricts each result row to the given fields (e.g. ["id", "name"]);
+    an invalid name returns the allowed set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
+    _validate_select(select, row_type=SprintSummary)
     return await _run_tool(client.list_sprints(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
@@ -529,8 +556,12 @@ async def list_project_sprints(
     search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> SprintListResult:
     """List Backlogs sprints for a project by id or identifier, optionally filtered by name search.
+
+    select restricts each result row to the given fields (e.g. ["id", "name"]);
+    an invalid name returns the allowed set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -538,6 +569,7 @@ async def list_project_sprints(
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
+    _validate_select(select, row_type=SprintSummary)
     return await _run_tool(
         client.list_project_sprints(safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
     )
@@ -751,9 +783,14 @@ async def delete_project(
     return await _run_tool(client.delete_project(project_ref=safe_project, confirm=confirm))
 
 
-async def list_roles(ctx: Context) -> RoleListResult:
-    """List OpenProject roles visible to the current user."""
+async def list_roles(ctx: Context, select: list[str] | None = None) -> RoleListResult:
+    """List OpenProject roles visible to the current user.
+
+    select restricts each result row to the given fields (e.g. ["id", "name"]);
+    an invalid name returns the allowed set.
+    """
     client = _client_from_context(ctx)
+    _validate_select(select, row_type=RoleSummary)
     return await _run_tool(client.list_roles())
 
 
@@ -762,14 +799,19 @@ async def list_principals(
     search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> PrincipalListResult:
     """List users and groups that can be used for project memberships.
+
+    select restricts each result row to the given fields (e.g. ["id", "name",
+    "type"]); an invalid name returns the allowed set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
+    _validate_select(select, row_type=PrincipalSummary)
     return await _run_tool(client.list_principals(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
@@ -810,14 +852,19 @@ async def list_groups(
     search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> GroupListResult:
     """List groups visible to the current token.
+
+    select restricts each result row to the given fields (e.g. ["id", "name"]);
+    an invalid name returns the allowed set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
+    _validate_select(select, row_type=GroupSummary)
     return await _run_tool(client.list_groups(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
@@ -937,11 +984,24 @@ async def get_query_filter_instance_schema(
 async def list_project_memberships(
     ctx: Context,
     project: str,
+    offset: int = 1,
+    limit: int | None = None,
+    select: list[str] | None = None,
 ) -> MembershipListResult:
-    """List memberships for a project, including principal and role names."""
+    """List memberships for a project, including principal and role names.
+
+    select restricts each result row to the given fields (e.g. ["id",
+    "principal_name", "role_names"]); an invalid name returns the allowed set.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
-    return await _run_tool(client.list_project_memberships(safe_project))
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=MembershipSummary)
+    return await _run_tool(client.list_project_memberships(safe_project, offset=safe_offset, limit=safe_limit))
 
 
 async def get_membership(
@@ -1065,8 +1125,12 @@ async def list_views(
     search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> ViewListResult:
     """List saved OpenProject views, optionally filtered by project, view subtype, or name search.
+
+    select restricts each result row to the given fields (e.g. ["id", "name"]);
+    an invalid name returns the allowed set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -1075,6 +1139,7 @@ async def list_views(
     safe_project = _validate_optional_project_ref(project)
     safe_type = _validate_optional_query(type, field_name="type", max_length=120)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
+    _validate_select(select, row_type=ViewSummary)
     return await _run_tool(
         client.list_views(
             project=safe_project,
@@ -1102,8 +1167,12 @@ async def list_documents(
     search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> DocumentListResult:
     """List documents, optionally filtered to a single project or by title search.
+
+    select restricts each result row to the given fields (e.g. ["id", "title"]);
+    an invalid name returns the allowed set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -1111,6 +1180,7 @@ async def list_documents(
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
+    _validate_select(select, row_type=DocumentSummary)
     return await _run_tool(
         client.list_documents(project=safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
     )
@@ -1155,8 +1225,12 @@ async def list_news(
     search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> NewsListResult:
     """List news entries, optionally filtered by project or title/summary search.
+
+    select restricts each result row to the given fields (e.g. ["id", "title"]);
+    an invalid name returns the allowed set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -1164,6 +1238,7 @@ async def list_news(
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
+    _validate_select(select, row_type=NewsSummary)
     return await _run_tool(
         client.list_news(
             project=safe_project,
@@ -1261,10 +1336,16 @@ async def get_wiki_page(
 async def list_categories(
     ctx: Context,
     project: str,
+    select: list[str] | None = None,
 ) -> CategoryListResult:
-    """List work-package categories configured for a project."""
+    """List work-package categories configured for a project.
+
+    select restricts each result row to the given fields (e.g. ["id", "name"]);
+    an invalid name returns the allowed set.
+    """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
+    _validate_select(select, row_type=CategorySummary)
     return await _run_tool(client.list_categories(safe_project))
 
 
@@ -2310,8 +2391,12 @@ async def list_my_open_work_packages(
     ctx: Context,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> WorkPackageListResult:
     """List the current user's open assigned work packages.
+
+    select restricts each result row to the given fields (e.g. ["id", "subject",
+    "due_date"]); an invalid name returns the allowed set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. This query has no
@@ -2325,6 +2410,7 @@ async def list_my_open_work_packages(
     client = _client_from_context(ctx)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=WorkPackageSummary)
     return await _run_tool(client.list_my_open_work_packages(offset=safe_offset, limit=safe_limit))
 
 
@@ -2334,9 +2420,13 @@ async def list_versions(
     search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> VersionListResult:
     """List versions globally or for a specific project, optionally filtered by a
     case-insensitive name substring.
+
+    select restricts each result row to the given fields (e.g. ["id", "name"]);
+    an invalid name returns the allowed set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -2344,6 +2434,7 @@ async def list_versions(
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
+    _validate_select(select, row_type=VersionSummary)
     return await _run_tool(
         client.list_versions(project=safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
     )
@@ -2352,11 +2443,19 @@ async def list_versions(
 async def get_version(
     ctx: Context,
     version_id: int,
+    text_limit: int | None = None,
 ) -> VersionDetail:
-    """Get a compact version summary by id."""
+    """Get a version by id, including its full description.
+
+    The description is returned in full by default (single versions are not
+    truncated). Pass ``text_limit`` to cap it at that many characters; when the
+    text is cut, ``description_truncated`` is true and ``description_length``
+    reports the real length.
+    """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(version_id, field_name="version_id")
-    return await _run_tool(client.get_version(safe_id))
+    safe_text_limit = _validate_optional_text_limit(text_limit)
+    return await _run_tool(client.get_version(safe_id, text_limit=safe_text_limit))
 
 
 def _validate_version_schedule_fields(
@@ -2478,8 +2577,12 @@ async def list_boards(
     search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> BoardListResult:
     """List saved OpenProject boards/queries, optionally scoped to a project.
+
+    select restricts each result row to the given fields (e.g. ["id", "name"]);
+    an invalid name returns the allowed set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -2487,6 +2590,7 @@ async def list_boards(
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
+    _validate_select(select, row_type=BoardSummary)
     return await _run_tool(
         client.list_boards(project=safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
     )
@@ -2761,11 +2865,19 @@ async def list_time_entries(
 async def get_time_entry(
     ctx: Context,
     time_entry_id: int,
+    text_limit: int | None = None,
 ) -> TimeEntrySummary:
-    """Get a single time entry by id."""
+    """Get a single time entry by id, including its full comment.
+
+    The comment is returned in full by default (single time entries are not
+    truncated). Pass ``text_limit`` to cap it at that many characters; when the
+    text is cut, ``comment_truncated`` is true and ``comment_length`` reports
+    the real length.
+    """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(time_entry_id, field_name="time_entry_id")
-    return await _run_tool(client.get_time_entry(safe_id))
+    safe_text_limit = _validate_optional_text_limit(text_limit)
+    return await _run_tool(client.get_time_entry(safe_id, text_limit=safe_text_limit))
 
 
 async def create_time_entry(
@@ -2886,6 +2998,9 @@ async def delete_time_entry(
 async def get_work_package_relations(
     ctx: Context,
     work_package_id: int | str,
+    offset: int = 1,
+    limit: int | None = None,
+    select: list[str] | None = None,
 ) -> RelationListResult:
     """Get all relations for a work package (blocks, relates to, duplicates, etc.).
 
@@ -2895,10 +3010,19 @@ async def get_work_package_relations(
     OpenProject canonicalizes some relation types at creation time (e.g. a relation requested as 'precedes'
     is stored as 'follows' with from_id/to_id swapped; see create_work_package_relation). Use from_id/to_id
     together with type, not the request you expect to have made, to determine the actual direction.
+
+    select restricts each result row to the given fields (e.g. ["id", "type",
+    "to_id"]); an invalid name returns the allowed set.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.get_work_package_relations(safe_id))
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=RelationSummary)
+    return await _run_tool(client.get_work_package_relations(safe_id, offset=safe_offset, limit=safe_limit))
 
 
 async def get_work_package_activities(
@@ -2906,37 +3030,44 @@ async def get_work_package_activities(
     work_package_id: int | str,
     limit: int | None = None,
     text_limit: int | None = None,
+    select: list[str] | None = None,
 ) -> ActivityListResult:
     """Get the activity log for a work package, most recent first.
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
 
-    Comments are capped by default to keep the log compact; pass ``text_limit``
-    to widen (or ``0``-based semantics via a larger value) the per-comment cap.
-    When a comment is cut, ``comment_truncated`` is true and ``comment_length``
-    reports its real length.
+    Comments are returned in full by default (this is one work package's own
+    history, not an open-ended multi-row list — same rationale as
+    get_work_package). Pass ``text_limit`` to cap each comment at that many
+    characters; when a comment is cut, ``comment_truncated`` is true and
+    ``comment_length`` reports its real length.
+
+    select restricts each result row to the given fields (e.g. ["id", "type",
+    "created_at"]); an invalid name returns the allowed set.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
     safe_limit = _validate_limit(limit)
     safe_text_limit = _validate_optional_text_limit(text_limit)
-    # Unset text_limit → keep the client's compact default cap for the activity
-    # log (not the uncapped single-WP behavior). Only override when set.
-    if safe_text_limit is None:
-        return await _run_tool(client.get_work_package_activities(safe_id, limit=safe_limit))
+    _validate_select(select, row_type=ActivitySummary)
     return await _run_tool(client.get_work_package_activities(safe_id, limit=safe_limit, text_limit=safe_text_limit))
 
 
 async def list_work_package_reactions(
     ctx: Context,
     work_package_id: int | str,
+    select: list[str] | None = None,
 ) -> EmojiReactionListResult:
     """List emoji reactions across a work package's comment activities.
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+
+    select restricts each result row to the given fields (e.g. ["reaction",
+    "count"]); an invalid name returns the allowed set.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
+    _validate_select(select, row_type=EmojiReactionSummary)
     return await _run_tool(client.list_work_package_reactions(safe_id))
 
 
@@ -2959,9 +3090,14 @@ async def toggle_activity_emoji_reaction(
     return await _run_tool(client.toggle_activity_emoji_reaction(safe_id, safe_reaction, confirm=confirm))
 
 
-async def list_reminders(ctx: Context) -> ReminderListResult:
-    """List the current user's active reminders across all work packages."""
+async def list_reminders(ctx: Context, select: list[str] | None = None) -> ReminderListResult:
+    """List the current user's active reminders across all work packages.
+
+    select restricts each result row to the given fields (e.g. ["id",
+    "remind_at"]); an invalid name returns the allowed set.
+    """
     client = _client_from_context(ctx)
+    _validate_select(select, row_type=ReminderSummary)
     return await _run_tool(client.list_reminders())
 
 
@@ -3113,13 +3249,18 @@ async def get_type(ctx: Context, type_id: int) -> TypeSummary:
 async def list_work_package_watchers(
     ctx: Context,
     work_package_id: int | str,
+    select: list[str] | None = None,
 ) -> WatcherListResult:
     """List watchers of a work package.
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+
+    select restricts each result row to the given fields (e.g. ["id", "name"]);
+    an invalid name returns the allowed set.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
+    _validate_select(select, row_type=WatcherSummary)
     return await _run_tool(client.list_work_package_watchers(safe_id))
 
 
@@ -3349,13 +3490,18 @@ async def delete_group(
 async def list_work_package_file_links(
     ctx: Context,
     work_package_id: int | str,
+    select: list[str] | None = None,
 ) -> FileLinkListResult:
     """List Nextcloud file links attached to a work package (Community Edition).
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+
+    select restricts each result row to the given fields (e.g. ["id", "title"]);
+    an invalid name returns the allowed set.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
+    _validate_select(select, row_type=FileLinkSummary)
     return await _run_tool(client.list_work_package_file_links(safe_id))
 
 
@@ -3373,10 +3519,16 @@ async def delete_file_link(
 async def list_grids(
     ctx: Context,
     scope: str | None = None,
+    select: list[str] | None = None,
 ) -> GridListResult:
-    """List dashboard grids, optionally filtered by scope (page path)."""
+    """List dashboard grids, optionally filtered by scope (page path).
+
+    select restricts each result row to the given fields (e.g. ["id", "scope"]);
+    an invalid name returns the allowed set.
+    """
     client = _client_from_context(ctx)
     safe_scope = _validate_optional_query(scope, field_name="scope", max_length=500)
+    _validate_select(select, row_type=GridSummary)
     return await _run_tool(client.list_grids(scope=safe_scope))
 
 
@@ -3541,6 +3693,9 @@ async def get_custom_option(ctx: Context, custom_option_id: int) -> CustomOption
 async def list_relations(
     ctx: Context,
     relation_type: str | None = None,
+    offset: int = 1,
+    limit: int | None = None,
+    select: list[str] | None = None,
 ) -> RelationListResult:
     """List all relations across the instance, optionally filtered by type (e.g. 'blocks', 'follows').
 
@@ -3550,10 +3705,19 @@ async def list_relations(
     as 'precedes' is stored as 'follows' with from_id/to_id swapped; see create_work_package_relation).
     Filtering by relation_type matches the stored (canonical) type, not necessarily the type a caller
     originally requested when creating it.
+
+    select restricts each result row to the given fields (e.g. ["id", "type",
+    "to_id"]); an invalid name returns the allowed set.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_type = _validate_relation_type(relation_type) if relation_type else None
-    return await _run_tool(client.list_relations(relation_type=safe_type))
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=RelationSummary)
+    return await _run_tool(client.list_relations(relation_type=safe_type, offset=safe_offset, limit=safe_limit))
 
 
 async def update_relation(

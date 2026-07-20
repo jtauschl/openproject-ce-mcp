@@ -96,6 +96,8 @@ def test_version_list_result_shape_is_locked_and_matches_the_shared_page_envelop
                 "url": "https://op.example.com/versions/1",
                 "created_at": None,
                 "updated_at": None,
+                "description_truncated": False,
+                "description_length": None,
             }
         ],
     }
@@ -506,7 +508,6 @@ async def test_list_sprints_normalizes_backlogs_collection() -> None:
     assert result.results[0].id == 1
     assert result.results[0].name == "0.3.0 Release Finalization"
     assert result.results[0].status == "In Planning"
-    assert result.results[0].status_href == "urn:openproject-org:api:v3:sprints:status:in_planning"
     assert result.results[0].finish_date == "2026-07-10"
     assert result.results[0].defining_workspace_id == 7
     assert result.results[0].defining_workspace == "Demo"
@@ -737,6 +738,71 @@ async def test_list_versions_global_backfills_after_allowlist_filter() -> None:
     assert page.total == 3
     assert page.truncated is True
     assert page.next_offset == 2
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_versions_description_capped_at_text_limit() -> None:
+    # OPM-1457: list rows cap description at settings.text_limit (default 500),
+    # like list_projects/list_work_packages, with truncation metadata.
+    long_description = "d" * 900
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/versions" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 1,
+                                "name": "v1",
+                                "description": {"raw": long_description},
+                                "_links": {},
+                            }
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    page = await client.list_versions()
+
+    assert page.results[0].description is not None
+    assert page.results[0].description_truncated is True
+    assert page.results[0].description_length == 900
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_version_returns_full_description_by_default() -> None:
+    # OPM-1457: single-version reads (get_version) are uncapped by default,
+    # like get_work_package/get_project; text_limit is an opt-in override.
+    long_description = "d" * 1500
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/versions/1" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 1, "name": "v1", "description": {"raw": long_description}, "_links": {}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    full = await client.get_version(1)
+    assert full.description is not None
+    assert len(full.description) == 1500 + len("<user-content></user-content>")
+    assert full.description_truncated is False
+
+    capped = await client.get_version(1, text_limit=50)
+    assert capped.description_truncated is True
+    assert capped.description_length == 1500
 
     await client.aclose()
 

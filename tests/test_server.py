@@ -492,6 +492,24 @@ def test_main_unexpected_flag_still_runs_server(monkeypatch) -> None:
     assert ran == [True]
 
 
+def test_main_unrecognized_subcommand_errors_instead_of_running_server(monkeypatch, capsys) -> None:
+    # A typo'd subcommand (e.g. "confiugure") is not something any MCP client
+    # would ever pass -- it must fail with a clear "invalid choice" usage
+    # error instead of silently starting the server, which previously failed
+    # confusingly later with an unrelated missing-configuration error.
+    import openproject_ce_mcp.server as srv
+
+    monkeypatch.setattr(srv, "_run_server", lambda: (_ for _ in ()).throw(AssertionError("server ran")))
+    monkeypatch.setattr(srv.sys, "argv", ["openproject-ce-mcp", "confiugure"])
+    try:
+        srv.main()
+    except SystemExit as exc:
+        assert exc.code == 2
+    err = capsys.readouterr().err
+    assert "invalid choice" in err
+    assert "confiugure" in err
+
+
 def test_main_help_exits_without_server(monkeypatch, capsys) -> None:
     import openproject_ce_mcp.server as srv
 

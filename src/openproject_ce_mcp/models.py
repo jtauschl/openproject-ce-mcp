@@ -81,6 +81,10 @@ class ProjectSummary:
     can_update: bool = False
     can_delete: bool = False
     favorited: bool | None = None
+    description_truncated: bool = False
+    description_length: int | None = None
+    status_explanation_truncated: bool = False
+    status_explanation_length: int | None = None
 
 
 @dataclass
@@ -128,7 +132,7 @@ class MembershipSummary:
 
 
 @dataclass
-class MembershipListResult(CollectionResult):
+class MembershipListResult(PageResult):
     results: list[MembershipSummary]
 
 
@@ -186,7 +190,6 @@ class ProjectAccessSummary:
     current_user_id: int
     current_user_name: str | None
     membership: MembershipSummary | None
-    project_links: list[str]
     inferred_is_project_admin: bool
     inferred_can_edit_project: bool
     inferred_can_manage_memberships: bool
@@ -285,10 +288,13 @@ class GroupListResult(PageResult):
 
 @dataclass
 class ActionSummary:
+    """id/url only -- OpenProject's actions API never populates name/description/
+    modules on the wire (verified against .op-sources across 16.0-17.6: the
+    representer's `self` link title is always `-> {}`, and no other properties
+    are declared). Those three fields were removed as 100% dead weight (OPM-1460).
+    """
+
     id: str
-    name: str | None
-    description: str | None
-    modules: list[str]
     url: str | None
 
 
@@ -299,10 +305,14 @@ class ActionListResult(PageResult):
 
 @dataclass
 class CapabilitySummary:
+    """name/action_name dropped -- OpenProject's capabilities API never
+    populates them on the wire (verified against .op-sources: the representer's
+    `self`/`action` link titles are always `-> {}`, unlike `context`'s title,
+    which is a genuine populated SQL expression). Removed as dead weight (OPM-1460).
+    """
+
     id: str
-    name: str | None
     action_id: str | None
-    action_name: str | None
     principal_id: int | None
     principal_name: str | None
     context: str | None
@@ -334,12 +344,27 @@ class ProjectFieldSchema:
 
 
 @dataclass
+class ProjectRef:
+    """Lightweight project picklist entry — id/identifier/name/url only.
+
+    Used where a caller needs to pick a project by reference (e.g. a parent
+    project) but not read its full description/status: the full ProjectSummary
+    would cost a description/status_explanation (up to 1200 chars) per
+    candidate for no benefit to that use case (OPM-1458).
+    """
+
+    id: int
+    identifier: str | None
+    name: str
+    url: str
+
+
+@dataclass
 class ProjectAdminContext:
     project: ProjectSummary | None
     available_statuses: list[OptionValue]
-    available_parent_projects: list[ProjectSummary]
+    available_parent_projects: list[ProjectRef]
     fields: list[ProjectFieldSchema]
-    project_links: list[str]
 
 
 @dataclass
@@ -405,7 +430,6 @@ class WorkPackageSummary:
     sprint: str | None
     start_date: str | None
     due_date: str | None
-    percentage_complete: int | None
     description: str | None
     has_description: bool
     url: str
@@ -450,7 +474,6 @@ class WorkPackageDetail:
     parent_display_id: str | None
     start_date: str | None
     due_date: str | None
-    percentage_complete: int | None
     lock_version: int | None
     description: str | None
     url: str
@@ -570,6 +593,8 @@ class VersionSummary:
     url: str
     created_at: str | None = None
     updated_at: str | None = None
+    description_truncated: bool = False
+    description_length: int | None = None
 
 
 @dataclass
@@ -599,7 +624,6 @@ class SprintSummary:
     id: int
     name: str
     status: str | None
-    status_href: str | None
     start_date: str | None
     finish_date: str | None
     defining_workspace_id: int | None
@@ -610,18 +634,12 @@ class SprintSummary:
 
 
 @dataclass
-class SprintDetail:
-    id: int
-    name: str
-    status: str | None
-    status_href: str | None
-    start_date: str | None
-    finish_date: str | None
-    defining_workspace_id: int | None
-    defining_workspace: str | None
-    created_at: str | None
-    updated_at: str | None
-    url: str
+class SprintDetail(SprintSummary):
+    """Identical field shape to SprintSummary today; kept as a distinct
+    subclass (not a bare alias) so __name__/import path/MCP output schema
+    title for get_sprint stay exactly as they are (OPM-48, mirrors
+    VersionDetail/NewsDetail).
+    """
 
 
 @dataclass
@@ -947,6 +965,8 @@ class TimeEntrySummary:
     created_at: str | None
     updated_at: str | None
     url: str
+    comment_truncated: bool = False
+    comment_length: int | None = None
 
 
 @dataclass
@@ -983,7 +1003,7 @@ class RelationSummary:
 
 
 @dataclass
-class RelationListResult(CollectionResult):
+class RelationListResult(PageResult):
     results: list[RelationSummary]
 
 
@@ -1190,7 +1210,7 @@ class FileLinkListResult(CollectionResult):
 @dataclass
 class FileLinkWriteResult(ConfirmationHeader):
     file_link_id: int | None
-    work_package_id: int
+    work_package_id: int | None
     validation_errors: dict
     result: FileLinkSummary | None
 

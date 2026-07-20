@@ -1155,6 +1155,45 @@ async def test_add_work_package_comment_writes_after_confirmation_when_enabled()
 
 
 @pytest.mark.asyncio
+async def test_add_work_package_comment_echo_is_capped_by_default() -> None:
+    # OPM-1457: the write-echo used to be uncapped (text_limit=None), unlike the
+    # analogous work-package description echo -- the caller already has the
+    # comment it just sent, so it should be capped like other write-echoes.
+    long_comment = "c" * 1500
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/activities" and request.method == "POST":
+            return httpx.Response(
+                201,
+                json={
+                    "id": 77,
+                    "_type": "Activity",
+                    "version": 3,
+                    "comment": {"raw": long_comment},
+                    "_links": {"user": {"title": "OpenProject Bot"}},
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.add_work_package_comment(work_package_id=42, comment=long_comment, confirm=True)
+
+    assert result.result is not None
+    assert result.result.comment_truncated is True
+    assert result.result.comment_length == 1500
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_add_work_package_comment_suppresses_aggregated_journal_details() -> None:
     """OpenProject can merge a new note into an existing journal (e.g. a prior
     status change), returning that journal's unrelated `details`/`createdAt`
@@ -2317,6 +2356,47 @@ async def test_toggle_activity_emoji_reaction_previews_without_confirm() -> None
     assert result.requires_confirmation is True
     assert result.ready is True
     assert result.result is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_toggle_activity_emoji_reaction_previews_when_write_disabled() -> None:
+    """confirm=false must still return a preview when work-package write is
+    disabled — the write-enabled gate belongs to the mutation, not the preview
+    (OPM-1450: it previously ran unconditionally at the top of the method,
+    breaking the confirm=False-always-returns-a-preview contract)."""
+    import dataclasses
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/activities/1988" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 1988, "_links": {"workPackage": {"href": "/api/v3/work_packages/42"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.method == "PATCH":
+            raise AssertionError("PATCH must not be issued without confirm=true")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = dataclasses.replace(make_settings(), enable_work_package_write=False)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.toggle_activity_emoji_reaction(1988, "heart")
+
+    assert result.confirmed is False
+    assert result.requires_confirmation is True
+    assert result.ready is True
+    assert result.result is None
+
+    with pytest.raises(PermissionDeniedError, match="write support is disabled"):
+        await client.toggle_activity_emoji_reaction(1988, "heart", confirm=True)
 
     await client.aclose()
 

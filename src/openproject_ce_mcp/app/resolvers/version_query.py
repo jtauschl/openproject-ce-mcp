@@ -22,7 +22,7 @@ from ..policies import access
 from ..policies.version_policy import version_payload_allowed
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
-from ..ports.version_api import VersionApi
+from ..ports.version_api import FORMATTABLE_LIMIT, VersionApi
 
 
 async def fetch_version_page(
@@ -36,6 +36,7 @@ async def fetch_version_page(
     offset: int,
     limit: int,
     context: ProjectResolutionContext | None,
+    text_limit: int | None = FORMATTABLE_LIMIT,
 ) -> tuple[list[VersionSummary], int, int | None, bool]:
     """Raw, unmasked version-summary page: (page_results, total, next_offset, truncated).
 
@@ -54,7 +55,9 @@ async def fetch_version_page(
         # link only carries the title (display name), not the identifier. No
         # client-side filtering happens here, so exact server-side pagination is safe.
         project_payload = await resolve_project_ref(project, write=False, context=context)
-        page = await api.list_for_project(int(project_payload["id"]), offset=offset, page_size=effective_limit)
+        page = await api.list_for_project(
+            int(project_payload["id"]), offset=offset, page_size=effective_limit, text_limit=text_limit
+        )
         results = [r.summary for r in page.records]
         server_total = page.server_total if page.server_total is not None else len(results)
         next_offset, truncated = paginate_server(offset=offset, limit=effective_limit, total=server_total)
@@ -65,14 +68,16 @@ async def fetch_version_page(
         # endpoint either, so over-fetch this project's versions and filter/paginate
         # in memory instead of relying on exact server-side pagination.
         project_payload = await resolve_project_ref(project, write=False, context=context)
-        page = await api.list_for_project(int(project_payload["id"]), offset=1, page_size=settings.max_results)
+        page = await api.list_for_project(
+            int(project_payload["id"]), offset=1, page_size=settings.max_results, text_limit=text_limit
+        )
         results = [r.summary for r in page.records]
     else:
         # The global endpoint has no project filter, so results are filtered
         # client-side against OPENPROJECT_READ_PROJECTS. Fetch up to
         # settings.max_results in one request and paginate the filtered survivors in
         # memory instead. Bounded by max_results -- not a full multi-page walk.
-        page = await api.list_global(offset=1, page_size=settings.max_results)
+        page = await api.list_global(offset=1, page_size=settings.max_results, text_limit=text_limit)
         results = [
             r.summary
             for r in page.records

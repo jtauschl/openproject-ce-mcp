@@ -260,8 +260,8 @@ async def test_list_roles_tool_calls_client() -> None:
 @pytest.mark.asyncio
 async def test_project_access_tools_pass_project_ref() -> None:
     class StubClient:
-        async def list_project_memberships(self, project):
-            return {"project": project}
+        async def list_project_memberships(self, project, **kwargs):
+            return {"project": project, **kwargs}
 
         async def get_my_project_access(self, project):
             return {"project": project}
@@ -393,8 +393,8 @@ async def test_version_tools_pass_expected_arguments() -> None:
         async def list_versions(self, **kwargs):
             return kwargs
 
-        async def get_version(self, version_id):
-            return {"version_id": version_id}
+        async def get_version(self, version_id, **kwargs):
+            return {"version_id": version_id, **kwargs}
 
         async def create_version(self, **kwargs):
             return kwargs
@@ -584,8 +584,8 @@ async def test_time_entry_tools_pass_expected_arguments() -> None:
         async def list_time_entries(self, **kwargs):
             return kwargs
 
-        async def get_time_entry(self, time_entry_id):
-            return {"time_entry_id": time_entry_id}
+        async def get_time_entry(self, time_entry_id, **kwargs):
+            return {"time_entry_id": time_entry_id, **kwargs}
 
         async def create_time_entry(self, **kwargs):
             return kwargs

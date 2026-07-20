@@ -52,7 +52,6 @@ def _wp_summary(**overrides) -> m.WorkPackageSummary:
         "sprint": None,
         "start_date": None,
         "due_date": None,
-        "percentage_complete": None,
         "description": "desc",
         "has_description": True,
         "url": "http://x/5",
@@ -94,7 +93,6 @@ def _wp_detail(**overrides) -> m.WorkPackageDetail:
         "parent_display_id": None,
         "start_date": None,
         "due_date": None,
-        "percentage_complete": None,
         "lock_version": 1,
         "description": "desc",
         "url": "http://x/5",
@@ -468,6 +466,6 @@ def test_single_entity_read_keeps_schema_without_hide_config() -> None:
 
 
 def test_single_entity_read_trimmed_when_hide_config_active() -> None:
-    tools = _tools(create_app(_make_settings(hidden_fields={"work_package": ("percentage_complete",)})))
+    tools = _tools(create_app(_make_settings(hidden_fields={"work_package": ("percentage_done",)})))
     # With hiding on, get_* results must be trimmable (dict output) to drop keys.
     assert tools["get_work_package"].output_schema is None

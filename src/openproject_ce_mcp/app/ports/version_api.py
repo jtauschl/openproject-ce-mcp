@@ -7,6 +7,28 @@ from typing import Any, Protocol
 
 from ...models import VersionDetail, VersionSummary
 
+# Duplicated from httpx_version_api.py's constant of the same name (ADR 0001
+# deliberate duplication) -- needed here only as the Protocol's default text_limit.
+FORMATTABLE_LIMIT = 1_200
+
+
+def summary_to_detail(s: VersionSummary) -> VersionDetail:
+    return VersionDetail(
+        id=s.id,
+        name=s.name,
+        status=s.status,
+        sharing=s.sharing,
+        start_date=s.start_date,
+        end_date=s.end_date,
+        defining_project=s.defining_project,
+        description=s.description,
+        url=s.url,
+        created_at=s.created_at,
+        updated_at=s.updated_at,
+        description_truncated=s.description_truncated,
+        description_length=s.description_length,
+    )
+
 
 @dataclass(frozen=True)
 class VersionRecord:
@@ -22,20 +44,7 @@ class VersionRecord:
     defining_project_link: dict[str, Any] | None
 
     def to_detail(self) -> VersionDetail:
-        s = self.summary
-        return VersionDetail(
-            id=s.id,
-            name=s.name,
-            status=s.status,
-            sharing=s.sharing,
-            start_date=s.start_date,
-            end_date=s.end_date,
-            defining_project=s.defining_project,
-            description=s.description,
-            url=s.url,
-            created_at=s.created_at,
-            updated_at=s.updated_at,
-        )
+        return summary_to_detail(self.summary)
 
 
 @dataclass(frozen=True)
@@ -56,9 +65,13 @@ class VersionApi(Protocol):
     architecture-boundary test).
     """
 
-    async def list_for_project(self, project_id: int, *, offset: int, page_size: int) -> VersionPage: ...
-    async def list_global(self, *, offset: int, page_size: int) -> VersionPage: ...
-    async def get(self, version_id: int) -> VersionRecord: ...
+    async def list_for_project(
+        self, project_id: int, *, offset: int, page_size: int, text_limit: int | None = FORMATTABLE_LIMIT
+    ) -> VersionPage: ...
+    async def list_global(
+        self, *, offset: int, page_size: int, text_limit: int | None = FORMATTABLE_LIMIT
+    ) -> VersionPage: ...
+    async def get(self, version_id: int, *, text_limit: int | None = FORMATTABLE_LIMIT) -> VersionRecord: ...
     async def create_form(self, payload: dict[str, Any]) -> VersionFormResult: ...
     async def update_form(self, version_id: int, payload: dict[str, Any]) -> VersionFormResult: ...
     async def commit_create(self, payload: dict[str, Any]) -> VersionDetail: ...

@@ -197,14 +197,20 @@ def main() -> None:
 
     With no arguments (how MCP clients launch it) this runs the stdio server —
     unchanged behaviour. ``configure`` hands off to the interactive setup CLI;
-    ``--help``/``--version`` print top-level info via argparse. Anything else is
-    treated as a server launch so a client passing an unexpected flag still starts
-    the server rather than erroring out.
+    ``--help``/``--version`` print top-level info via argparse. An unrecognized
+    flag (e.g. a client passing something this version doesn't know about) still
+    falls through to a server launch rather than erroring out. An unrecognized
+    bare word (e.g. a typo'd subcommand like "confiugure") is not something any
+    MCP client would ever pass, so it's treated as a human mistake and reported
+    via argparse's own "invalid choice" error instead of silently starting the
+    server, which previously failed confusingly on missing configuration.
     """
     parser = _build_parser()
     arg = sys.argv[1] if len(sys.argv) > 1 else None
 
     if arg not in _cli_tokens(parser):
+        if arg is not None and not arg.startswith("-"):
+            parser.parse_args(sys.argv[1:])  # always exits: "invalid choice" usage error
         _run_server()
         return
 

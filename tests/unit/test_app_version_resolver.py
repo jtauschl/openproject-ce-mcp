@@ -27,13 +27,15 @@ class _FakeVersionApi:
     def __init__(self, records: list[VersionRecord]) -> None:
         self._records = records
 
-    async def list_for_project(self, project_id: int, *, offset: int, page_size: int) -> VersionPage:
+    async def list_for_project(
+        self, project_id: int, *, offset: int, page_size: int, text_limit: int | None = None
+    ) -> VersionPage:
         return VersionPage(records=self._records, server_total=len(self._records))
 
-    async def list_global(self, *, offset: int, page_size: int) -> VersionPage:
+    async def list_global(self, *, offset: int, page_size: int, text_limit: int | None = None) -> VersionPage:
         return VersionPage(records=self._records, server_total=None)
 
-    async def get(self, version_id: int) -> VersionRecord:
+    async def get(self, version_id: int, *, text_limit: int | None = None) -> VersionRecord:
         for record in self._records:
             if record.summary.id == version_id:
                 return record

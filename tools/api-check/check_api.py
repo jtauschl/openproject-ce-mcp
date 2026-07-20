@@ -244,6 +244,14 @@ ASSUMPTIONS: list[Assumption] = [
 ]
 
 
+def _find_any(root: Path, name_pattern: str) -> bool:
+    """True if `find <root> -name <name_pattern>` matches at least one file."""
+    found = subprocess.run(
+        ["find", str(root), "-name", name_pattern], capture_output=True, text=True, check=False
+    ).stdout.strip()
+    return bool(found)
+
+
 def _present(version: str, asm: Assumption) -> bool:
     """True if the symbol's pattern is found anywhere under its subtree."""
     base = SOURCES / version / asm.subtree
@@ -266,13 +274,7 @@ def _present(version: str, asm: Assumption) -> bool:
         if content:
             return True
         # Filename match (for *_api.rb / directory-name patterns).
-        names = subprocess.run(
-            ["find", str(base), "-name", f"*{asm.pattern}*"],
-            capture_output=True,
-            text=True,
-            check=False,
-        ).stdout.strip()
-        return bool(names)
+        return _find_any(base, f"*{asm.pattern}*")
     except FileNotFoundError as exc:  # grep/find missing
         print(f"error: required tool not found: {exc}", file=sys.stderr)
         raise
@@ -464,10 +466,7 @@ def _resource_present(version: str, resource: str) -> bool:
         )
         if hit:
             return True
-    found = subprocess.run(
-        ["find", str(api), "-name", f"*{name}*"], capture_output=True, text=True, check=False
-    ).stdout.strip()
-    return bool(found)
+    return _find_any(api, f"*{name}*")
 
 
 def _filter_present(version: str, filter_key: str) -> bool:
@@ -476,10 +475,7 @@ def _filter_present(version: str, filter_key: str) -> bool:
         return False
     name = FILTER_ALIASES.get(filter_key, filter_key)
     # Filters are <name>_filter.rb files (allow plural dir layouts).
-    found = subprocess.run(
-        ["find", str(qroot), "-name", f"{name}_filter.rb"], capture_output=True, text=True, check=False
-    ).stdout.strip()
-    return bool(found)
+    return _find_any(qroot, f"{name}_filter.rb")
 
 
 def run_full_coverage() -> int:

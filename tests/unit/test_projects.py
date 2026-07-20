@@ -155,6 +155,89 @@ async def test_get_project_work_package_context_returns_schema_and_metadata() ->
     assert result.custom_fields[0].key == "customField10"
     assert result.custom_fields[0].name == "Story points"
 
+    # OPM-1458: status/projectPhase's allowed_values are hoisted into
+    # available_statuses/available_project_phases above — fields[] must not
+    # also carry the same enumeration a second time.
+    status_field = next(f for f in result.fields if f.key == "status")
+    project_phase_field = next(f for f in result.fields if f.key == "projectPhase")
+    assert status_field.allowed_values == []
+    assert project_phase_field.allowed_values == []
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_project_admin_context_filters_parent_candidates_and_writable_fields() -> None:
+    """OPM-1449/OPM-1458: available_parent_projects must not leak projects
+    outside READ_PROJECTS, and fields[] should only carry writable entries."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/form":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "schema": {
+                            "id": {"name": "Id", "type": "Integer", "required": False, "writable": False},
+                            "name": {"name": "Name", "type": "String", "required": True, "writable": True},
+                            "parent": {"name": "Parent", "type": "Project", "required": False, "writable": True},
+                            "status": {
+                                "name": "Status",
+                                "type": "Status",
+                                "required": False,
+                                "writable": True,
+                                "_embedded": {"allowedValues": [{"id": 1, "name": "On track"}]},
+                            },
+                        }
+                    }
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/available_parent_projects" and request.url.params.get("of") == "1":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {"_type": "Project", "id": 2, "name": "Allowed Parent", "identifier": "allowed-parent"},
+                            {"_type": "Project", "id": 3, "name": "Secret Project", "identifier": "secret-project"},
+                        ]
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("demo", "allowed-parent"),
+        write_projects=(),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.get_project_admin_context("demo")
+
+    assert [p.identifier for p in result.available_parent_projects] == ["allowed-parent"]
+    # Lightweight ProjectRef, not a full ProjectSummary — no description/status_explanation (OPM-1458).
+    assert result.available_parent_projects[0].name == "Allowed Parent"
+    assert not hasattr(result.available_parent_projects[0], "description")
+    assert {f.key for f in result.fields} == {"name", "parent", "status"}  # "id" (writable=False) is excluded
+    assert result.available_statuses[0].title == "On track"
+    assert not hasattr(result, "project_links")  # redundant with the inferred_* booleans (OPM-1458)
+
     await client.aclose()
 
 
@@ -248,6 +331,62 @@ async def test_list_roles_and_project_memberships_and_my_access() -> None:
     assert access.inferred_is_project_admin is True
     assert access.inferred_can_edit_project is True
     assert access.inferred_can_manage_memberships is True
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_project_memberships_paginates_and_preserves_project_filter() -> None:
+    # OPM-1456: list_project_memberships previously fetched one unbounded page.
+    # Now it must (a) send real offset/pageSize and (b) merge them into the
+    # memberships href's own "filters" query rather than replacing it --
+    # httpx's params= replaces a URL's existing query string outright, which
+    # would have silently dropped the project scoping filter.
+    def member(i: int) -> dict:
+        return {
+            "id": i,
+            "_links": {
+                "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+                "principal": {"href": f"/api/v3/users/{i}", "title": f"User {i}"},
+                "roles": [{"href": "/api/v3/roles/6", "title": "Member"}],
+            },
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Project",
+                    "id": 1,
+                    "name": "Demo",
+                    "identifier": "demo",
+                    "_links": {
+                        "memberships": {"href": "/api/v3/memberships?filters=%5B%7B%22project%22%3A1%7D%5D"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/memberships":
+            assert request.url.params["filters"] == '[{"project":1}]'  # preserved, not dropped
+            offset = request.url.params["offset"]
+            assert request.url.params["pageSize"] == "1"
+            if offset == "1":
+                return httpx.Response(200, json={"total": 2, "_embedded": {"elements": [member(1)]}}, request=request)
+            if offset == "2":
+                return httpx.Response(200, json={"total": 2, "_embedded": {"elements": [member(2)]}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    page1 = await client.list_project_memberships("demo", offset=1, limit=1)
+    assert [m.id for m in page1.results] == [1]
+    assert page1.next_offset == 2
+    assert page1.truncated is True
+
+    page2 = await client.list_project_memberships("demo", offset=page1.next_offset, limit=1)
+    assert [m.id for m in page2.results] == [2]
+    assert page2.next_offset is None
 
     await client.aclose()
 

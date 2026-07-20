@@ -548,6 +548,51 @@ async def test_get_grid_denies_missing_or_malformed_scope_under_restrictive_allo
 
 
 @pytest.mark.asyncio
+async def test_create_grid_denies_unrecognized_scope_under_restrictive_allowlist() -> None:
+    # OPM-1449: create_grid used to silently skip the write-ACL check whenever
+    # the scope href wasn't a recognized "/projects/<id>" link — fail closed instead.
+    client = OpenProjectClient(
+        _make_grid_settings(),
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}, request=r)),
+    )
+
+    with pytest.raises(PermissionDeniedError, match="disabled by OPENPROJECT_"):
+        await client.create_grid(name="Rogue Grid", scope="/api/v3/grids/some_bogus_scope", confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_and_delete_grid_deny_unrecognized_scope_under_restrictive_allowlist() -> None:
+    # Same fail-closed fix as create_grid, but for the fetch-then-authorize
+    # path shared by update_grid/delete_grid.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/grids/77" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Grid",
+                    "id": 77,
+                    "rowCount": 1,
+                    "columnCount": 1,
+                    "_links": {"self": {"href": "/api/v3/grids/77"}},  # no "scope" link at all
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await client.update_grid(grid_id=77, name="Renamed", confirm=True)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await client.delete_grid(grid_id=77, confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_update_grid_preview_mode() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/grids/55" and request.method == "GET":

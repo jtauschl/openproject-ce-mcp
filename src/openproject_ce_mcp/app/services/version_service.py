@@ -6,11 +6,11 @@ the architecture-boundary test).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Generic, TypeVar
 
 from ...config import Settings
-from ...models import VersionDetail, VersionListResult, VersionWriteResult
+from ...models import VersionDetail, VersionListResult, VersionSummary, VersionWriteResult
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.project_ref import ProjectRefResolver
@@ -108,6 +108,17 @@ class VersionService:
         self._api_prefix = api_prefix
 
     def _stamp(self, value: Any) -> Any:
+        # The adapter computes description_truncated/description_length before
+        # hidden-field masking exists (masking is a Service concern, per ADR
+        # 0001) -- apply_hidden_fields only drops the "description" key itself,
+        # so without this, a hidden description's length/truncation state would
+        # still leak through those two sibling fields. Zero them out here,
+        # mirroring how client.py's hide-aware _visible_formattable_text_with_meta
+        # already does this for Project/WorkPackage/TimeEntry (OPM-1451 follow-up).
+        if isinstance(value, VersionSummary) and hidden_fields.field_hidden(
+            "version", "description", settings=self._settings
+        ):
+            value = replace(value, description_truncated=False, description_length=None)
         return hidden_fields.apply_hidden_fields("version", value, settings=self._settings)
 
     def _api_href(self, relative_path: str) -> str:
@@ -149,6 +160,9 @@ class VersionService:
             offset=offset,
             limit=effective_limit,
             context=resolution_context,
+            # List-row context: capped at settings.text_limit (default 500), same
+            # convention as list_projects/list_work_packages (OPM-1457).
+            text_limit=self._settings.text_limit,
         )
         stamped = [self._stamp(item) for item in page_results]
         return VersionListResult(
@@ -161,9 +175,12 @@ class VersionService:
             results=stamped,
         )
 
-    async def get(self, version_id: int) -> VersionDetail:
+    async def get(self, version_id: int, *, text_limit: int | None = None) -> VersionDetail:
+        # Default (text_limit=None) returns the full description uncapped, like
+        # get_work_package/get_project: opening a single version means you want
+        # to read it, so nothing is cut unless the caller asks for a smaller cap.
         access.ensure_read_enabled("version", settings=self._settings)
-        record = await self._api.get(version_id)
+        record = await self._api.get(version_id, text_limit=text_limit)
         scope_policy.ensure_project_link_allowed(
             record.defining_project_link,
             settings=self._settings,

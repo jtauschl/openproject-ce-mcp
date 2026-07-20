@@ -45,13 +45,15 @@ class _FakeVersionApi:
         self.validation_errors: dict[str, str] = {}
         self.commit_calls: list[dict] = []
 
-    async def list_for_project(self, project_id: int, *, offset: int, page_size: int) -> VersionPage:
+    async def list_for_project(
+        self, project_id: int, *, offset: int, page_size: int, text_limit: int | None = None
+    ) -> VersionPage:
         return VersionPage(records=self._records, server_total=len(self._records))
 
-    async def list_global(self, *, offset: int, page_size: int) -> VersionPage:
+    async def list_global(self, *, offset: int, page_size: int, text_limit: int | None = None) -> VersionPage:
         return VersionPage(records=self._records, server_total=None)
 
-    async def get(self, version_id: int) -> VersionRecord:
+    async def get(self, version_id: int, *, text_limit: int | None = None) -> VersionRecord:
         link = {"href": "/api/v3/projects/6", "title": "Demo"}
         return VersionRecord(summary=_summary(version_id), defining_project_link=link)
 

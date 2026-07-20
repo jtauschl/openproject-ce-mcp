@@ -159,6 +159,12 @@ async def test_list_relations_returns_empty_under_empty_read_projects() -> None:
 async def test_list_relations_and_update_relation() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/relations" and request.method == "GET":
+            # OPM-1456 follow-up (P1, third review round): list_relations previously
+            # omitted pageSize entirely and relied on the server's default page size,
+            # so every call re-fetched the same default first page -- entries past it
+            # were permanently unreachable regardless of offset.
+            assert request.url.params["offset"] == "1"
+            assert request.url.params["pageSize"] == "100"
             return httpx.Response(
                 200,
                 json={
@@ -309,6 +315,61 @@ async def test_list_relations_filters_by_read_allowlist_both_sides() -> None:
     result = await client.list_relations()
     ids = {r.id for r in result.results}
     assert ids == {1}, f"expected only rel 1, got {ids}"
+    await client.aclose()
+
+
+async def test_list_relations_bounds_fetch_by_max_results_and_paginates_survivors() -> None:
+    # OPM-1456 follow-up (P1, third review round): list_relations previously sent
+    # no pageSize at all, so it silently relied on the server's default page size
+    # instead of settings.max_results -- every call re-fetched that same default
+    # first page and re-sliced it locally, making relations past the default page
+    # permanently unreachable no matter what offset/limit was requested.
+    settings = _base_settings(max_results=5)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations" and request.method == "GET":
+            assert request.url.params["offset"] == "1"
+            assert request.url.params["pageSize"] == "5"
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": i,
+                                "type": "blocks",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/10"},
+                                    "to": {"href": f"/api/v3/work_packages/{i}"},
+                                },
+                            }
+                            for i in range(1, 6)
+                        ]
+                    }
+                },
+                request=request,
+            )
+        m = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if m:
+            return httpx.Response(
+                200,
+                json={"id": int(m.group(1)), "_links": {"project": {"title": "demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    page1 = await client.list_relations(offset=1, limit=2)
+    assert [r.id for r in page1.results] == [1, 2]
+    assert page1.total == 5
+    assert page1.next_offset == 2
+    assert page1.truncated is True
+
+    page3 = await client.list_relations(offset=3, limit=2)
+    assert [r.id for r in page3.results] == [5]
+    assert page3.next_offset is None
+
     await client.aclose()
 
 
