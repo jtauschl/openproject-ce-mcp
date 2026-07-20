@@ -3,7 +3,9 @@ from __future__ import annotations
 import pytest
 from _tools_test_helpers import FakeContext
 
+from openproject_ce_mcp.models import SortCriterion
 from openproject_ce_mcp.tools import (
+    _validate_group_by,
     _validate_optional_duration,
     _validate_optional_non_negative_int,
     _validate_optional_percentage_done,
@@ -13,6 +15,7 @@ from openproject_ce_mcp.tools import (
     _validate_optional_work_package_ref,
     _validate_positive_int,
     _validate_required_text,
+    _validate_sort_by,
     _validate_work_package_ref,
     bulk_create_work_packages,
     bulk_update_work_packages,
@@ -461,3 +464,50 @@ async def test_categorize_tool_errors_tags_validation_and_avoids_double_prefix()
 
     with pytest.raises(ValueError, match=r"^\[not_found\] gone$"):
         await already_tagged(None)
+
+
+def test_validate_sort_by_accepts_real_sortable_columns() -> None:
+    # OPM-103: live-verified 2026-07-20 against real OpenProject 17.5 (Docker
+    # harness) -- these column identifiers are what GET /work_packages?sortBy=
+    # actually accepts (cross-checked against property_select.rb/
+    # project_phase_select.rb in .op-sources), not a guess at plausible names.
+    criteria = _validate_sort_by(["status:desc", "assigned_to", "assignee:asc", "cf_5:desc"])
+    assert criteria == [
+        SortCriterion(field="status", direction="desc"),
+        SortCriterion(field="assigned_to", direction="asc"),
+        SortCriterion(field="assignee", direction="asc"),
+        SortCriterion(field="cf_5", direction="desc"),
+    ]
+
+
+def test_validate_sort_by_rejects_unknown_field_with_valid_list() -> None:
+    # Live-verified: "spent_hours" and "due_date" both round-trip syntax
+    # validation (alphanumeric+underscore) but OpenProject itself rejects
+    # spent_hours for sorting ("Can't sort by column: spent_hours") -- catching
+    # this locally with the real allowed set beats a guessed plausible name
+    # only failing after a round trip to the server. "assignedto" (no
+    # underscore) is a plausible-but-wrong guess that should also be rejected.
+    with pytest.raises(ValueError, match=r"unknown field 'spent_hours'.*Valid fields are: "):
+        _validate_sort_by(["spent_hours"])
+    with pytest.raises(ValueError, match="unknown field 'assignedto'"):
+        _validate_sort_by(["assignedto:asc"])
+
+
+def test_validate_group_by_accepts_real_groupable_columns() -> None:
+    assert _validate_group_by("status") == "status"
+    assert _validate_group_by("assigned_to") == "assigned_to"
+    assert _validate_group_by("cf_5") == "cf_5"
+    assert _validate_group_by(None) is None
+
+
+def test_validate_group_by_rejects_sortable_but_not_groupable_field() -> None:
+    # Live-verified: due_date/estimated_hours/estimated_time/created_at/
+    # updated_at/duration/start_date all sort fine but OpenProject rejects
+    # them for groupBy ("Can't group by: due_date") -- property_select.rb
+    # confirms none of them declare a `groupable:` column. This is exactly
+    # the class of error the ticket wants caught locally instead of only
+    # surfacing via OpenProject's own remote error.
+    with pytest.raises(ValueError, match=r"unknown field 'due_date'.*Valid fields are: "):
+        _validate_group_by("due_date")
+    with pytest.raises(ValueError, match="unknown field 'estimated_time'"):
+        _validate_group_by("estimated_time")
