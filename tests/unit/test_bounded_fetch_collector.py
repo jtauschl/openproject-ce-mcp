@@ -2,9 +2,10 @@
 
 Covers the shared bounded-fetch-filter-paginate shape used by list_views/
 list_documents/list_news/list_time_entries/list_sprints/list_project_sprints/
-list_boards: fetch one bounded page, normalize + filter raw elements via
-item_allowed, apply an optional post_filter over the normalized results, then
-paginate the survivors in memory.
+list_boards/get_work_package_relations/list_relations: fetch one bounded page,
+normalize + filter raw elements via an async item_allowed, apply an optional
+post_filter over the normalized results, then paginate the survivors in
+memory.
 """
 
 from __future__ import annotations
@@ -55,11 +56,14 @@ async def test_fetch_bounded_and_paginate_applies_item_allowed_filter() -> None:
     ]
     client = OpenProjectClient(make_settings(), transport=_handler_for(elements))
 
+    async def item_allowed(item: dict) -> bool:
+        return bool(item["allowed"])
+
     page, total, next_offset, truncated = await client._fetch_bounded_and_paginate(
         path="widgets",
         params_extra=None,
         normalize=lambda item: item["name"],
-        item_allowed=lambda item: bool(item["allowed"]),
+        item_allowed=item_allowed,
         post_filter=None,
         offset=1,
         limit=10,

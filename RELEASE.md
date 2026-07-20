@@ -363,3 +363,21 @@ verification, not just as a tooling health check.
      created manually out-of-band. Keep doing this for consistent release
      history; if that policy ever changes, update this step instead of
      letting a future release silently skip it.
+  9. **Sync the finalization commit back into `main`** — if steps 1–5 above
+     were performed on a dedicated `release/X.Y.Z` branch rather than
+     directly on `main` (the pattern for a hotfix cut while `main` already
+     carries newer, not-yet-released work — see e.g. the 0.3.1/0.3.2 patch
+     releases parallel to 0.4.0's architecture work), `main` does NOT
+     automatically pick up that branch's changelog rename or version bump.
+     Confirmed missing for both 0.3.1 and 0.3.2 (OPM-229/OPM-249): `main`'s
+     own `[Unreleased]` section kept the shipped fixes unlabeled, silently
+     making it look like nothing had been released. Fix this now, not at
+     the next release's review: merge or cherry-pick the finalization
+     commit(s) into `main` (at minimum the CHANGELOG heading rename). If a
+     real merge would only produce noise against later refactors (verify
+     first — diff the release branch's tree against `main`'s current state
+     for the touched files), a content-preserving `git merge --no-ff -s
+     ours <tag>` is an acceptable alternative to make the tag a proper
+     ancestor of `main` without reintroducing superseded diffs — but the
+     CHANGELOG heading itself still needs its own real edit either way,
+     since `-s ours` does not carry any content forward.

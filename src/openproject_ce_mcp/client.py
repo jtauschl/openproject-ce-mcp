@@ -1169,7 +1169,7 @@ class OpenProjectClient:
         path: str,
         params_extra: dict[str, str] | None,
         normalize: Callable[[dict[str, Any]], _FetchT],
-        item_allowed: Callable[[dict[str, Any]], bool] | None,
+        item_allowed: Callable[[dict[str, Any]], Awaitable[bool]] | None,
         post_filter: Callable[[list[_FetchT]], list[_FetchT]] | None,
         offset: int,
         limit: int,
@@ -1182,16 +1182,21 @@ class OpenProjectClient:
         paging, so a restrictive filter can't produce a sparse page. Any
         NotFoundError re-wrap (sprints/project_sprints) stays at the call site,
         not here.
+
+        item_allowed is async (rather than plain bool) so ACL checks that need
+        their own lookups (e.g. relations checking each linked work package's
+        project) can use this helper too -- without it, callers needing an
+        async filter had to hand-roll their own fetch+params, which is exactly
+        how the pageSize omission bug (OPM-1456 follow-up) happened.
         """
         params = {"offset": "1", "pageSize": str(self.settings.max_results)}
         if params_extra:
             params.update(params_extra)
         payload = await self._get(path, params=params)
-        results = [
-            normalize(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and (item_allowed is None or item_allowed(item))
-        ]
+        results = []
+        for item in payload.get("_embedded", {}).get("elements", []):
+            if isinstance(item, dict) and (item_allowed is None or await item_allowed(item)):
+                results.append(normalize(item))
         if post_filter is not None:
             results = post_filter(results)
         return _paginate_client(offset=offset, limit=limit, results=results)
@@ -1729,7 +1734,7 @@ class OpenProjectClient:
 
         effective_limit = self._resolve_limit(limit)
 
-        def item_allowed(item: dict[str, Any]) -> bool:
+        async def item_allowed(item: dict[str, Any]) -> bool:
             return self._time_entry_payload_allowed(item) and (
                 not project_candidates
                 or self._link_matches_project_refs(item.get("_links", {}).get("project"), project_candidates)
@@ -3497,33 +3502,24 @@ class OpenProjectClient:
         # The old work_packages/{id}/relations endpoint is deprecated (308 redirect).
         # Use the canonical relations endpoint with an "involved" filter instead.
         filters = json.dumps([{"involved": {"operator": "=", "values": [str(work_package_id)]}}])
-        # Bounded by max_results (like _fetch_bounded_and_paginate) rather than
-        # left to the server's default page size: without an explicit pageSize,
-        # every call re-fetches the same default-sized first page and re-slices
-        # it locally, so relations past that page are never reachable no matter
-        # what offset is passed. Fetched here manually rather than via
-        # _fetch_bounded_and_paginate because the ACL filter below is async
-        # (per-item work-package lookups), which that helper's item_allowed
-        # callback does not support.
-        payload = await self._get(
-            "relations", params={"filters": filters, "offset": "1", "pageSize": str(self.settings.max_results)}
-        )
         # Filter out relations whose OTHER side sits in a project outside the
         # READ_PROJECTS allowlist — otherwise that work package's id/subject
         # would leak through to_id/to_subject even though it isn't readable
-        # on its own. Same helper/caching as list_relations. Filtered
-        # client-side (like list_project_sprints et al.), so pagination is
-        # applied to the filtered survivors, not the raw server page — a
-        # restrictive allowlist can't produce a sparse page this way.
+        # on its own. Same helper/caching as list_relations.
         allowlisted = not _scope_allows_all(self.settings.read_projects)
         wp_allowed: dict[str, bool] = {}
-        allowed_results: list[RelationSummary] = []
-        for item in payload.get("_embedded", {}).get("elements", []):
-            if allowlisted and not await self._relation_endpoints_allowed(item, wp_allowed):
-                continue
-            allowed_results.append(self.normalize_relation(item))
-        page, total, next_offset, truncated = _paginate_client(
-            offset=offset, limit=effective_limit, results=allowed_results
+
+        async def item_allowed(item: dict[str, Any]) -> bool:
+            return not allowlisted or await self._relation_endpoints_allowed(item, wp_allowed)
+
+        page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
+            path="relations",
+            params_extra={"filters": filters},
+            normalize=self.normalize_relation,
+            item_allowed=item_allowed,
+            post_filter=None,
+            offset=offset,
+            limit=effective_limit,
         )
         return RelationListResult(
             offset=offset,
@@ -4742,31 +4738,25 @@ class OpenProjectClient:
         """
         self._ensure_read_enabled("work_package")
         effective_limit = self._resolve_limit(limit)
-        # Bounded by max_results (like _fetch_bounded_and_paginate) rather than
-        # left to the server's default page size: without an explicit pageSize,
-        # every call re-fetches the same default-sized first page and re-slices
-        # it locally, so relations past that page are never reachable no matter
-        # what offset is passed. Fetched here manually rather than via
-        # _fetch_bounded_and_paginate because the ACL filter below is async
-        # (per-item work-package lookups), which that helper's item_allowed
-        # callback does not support.
-        params: dict[str, str] = {"offset": "1", "pageSize": str(self.settings.max_results)}
+        params_extra: dict[str, str] | None = None
         if relation_type is not None:
-            params["filters"] = json.dumps([{"type": {"operator": "=", "values": [relation_type]}}])
-        payload = await self._get("relations", params=params)
-        allowed_results: list[RelationSummary] = []
+            params_extra = {"filters": json.dumps([{"type": {"operator": "=", "values": [relation_type]}}])}
         allowlisted = not _scope_allows_all(self.settings.read_projects)
         # Cache project-allow decisions per work package so a batch of relations
         # between the same work packages doesn't refetch (mitigates N+1).
         wp_allowed: dict[str, bool] = {}
-        for item in payload.get("_embedded", {}).get("elements", []):
-            if not isinstance(item, dict):
-                continue
-            if allowlisted and not await self._relation_endpoints_allowed(item, wp_allowed):
-                continue
-            allowed_results.append(self.normalize_relation(item))
-        page, total, next_offset, truncated = _paginate_client(
-            offset=offset, limit=effective_limit, results=allowed_results
+
+        async def item_allowed(item: dict[str, Any]) -> bool:
+            return not allowlisted or await self._relation_endpoints_allowed(item, wp_allowed)
+
+        page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
+            path="relations",
+            params_extra=params_extra,
+            normalize=self.normalize_relation,
+            item_allowed=item_allowed,
+            post_filter=None,
+            offset=offset,
+            limit=effective_limit,
         )
         return RelationListResult(
             offset=offset,
@@ -7370,7 +7360,7 @@ class OpenProjectClient:
         """
         return _scope_policy.payload_allowed(ensure)
 
-    def _sprint_payload_allowed(self, payload: dict[str, Any]) -> bool:
+    async def _sprint_payload_allowed(self, payload: dict[str, Any]) -> bool:
         return self._payload_allowed(lambda: self._ensure_sprint_workspace_allowed(payload))
 
     def _ensure_sprint_workspace_allowed(self, payload: dict[str, Any]) -> None:
@@ -7459,7 +7449,7 @@ class OpenProjectClient:
             raise PermissionDeniedError("OpenProject writes to this board are disabled by OPENPROJECT_WRITE_PROJECTS.")
         self._ensure_project_write_link_allowed(project_link)
 
-    def _board_payload_allowed(self, payload: dict[str, Any]) -> bool:
+    async def _board_payload_allowed(self, payload: dict[str, Any]) -> bool:
         return self._payload_allowed(lambda: self._ensure_board_payload_allowed(payload))
 
     def _ensure_view_payload_allowed(self, payload: dict[str, Any]) -> None:
@@ -7470,13 +7460,13 @@ class OpenProjectClient:
             raise PermissionDeniedError("OpenProject access to this view is disabled by OPENPROJECT_READ_PROJECTS.")
         self._ensure_project_link_allowed(project_link)
 
-    def _view_payload_allowed(self, payload: dict[str, Any]) -> bool:
+    async def _view_payload_allowed(self, payload: dict[str, Any]) -> bool:
         return self._payload_allowed(lambda: self._ensure_view_payload_allowed(payload))
 
     def _ensure_document_payload_allowed(self, payload: dict[str, Any]) -> None:
         self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
 
-    def _document_payload_allowed(self, payload: dict[str, Any]) -> bool:
+    async def _document_payload_allowed(self, payload: dict[str, Any]) -> bool:
         return self._payload_allowed(lambda: self._ensure_document_payload_allowed(payload))
 
     def _ensure_document_write_payload_allowed(self, payload: dict[str, Any]) -> None:
@@ -7485,7 +7475,7 @@ class OpenProjectClient:
     def _ensure_news_payload_allowed(self, payload: dict[str, Any]) -> None:
         self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
 
-    def _news_payload_allowed(self, payload: dict[str, Any]) -> bool:
+    async def _news_payload_allowed(self, payload: dict[str, Any]) -> bool:
         return self._payload_allowed(lambda: self._ensure_news_payload_allowed(payload))
 
     def _ensure_news_write_payload_allowed(self, payload: dict[str, Any]) -> None:
@@ -7870,7 +7860,7 @@ class OpenProjectClient:
                 ) from exc
             elements = payload.get("_embedded", {}).get("elements", [])
             for item in elements:
-                if not isinstance(item, dict) or not self._sprint_payload_allowed(item):
+                if not isinstance(item, dict) or not await self._sprint_payload_allowed(item):
                     continue
                 summary = self.normalize_sprint(item)
                 if (summary.name or "").casefold() == sprint_ref.casefold():
