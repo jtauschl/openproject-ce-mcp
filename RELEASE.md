@@ -339,8 +339,14 @@ verification, not just as a tooling health check.
   5. **Tag exactness** — before tagging, confirm the current commit hash is
      exactly the one that passed this review, not any later local change.
   6. Report back. Tagging/pushing remains a further step requiring its own
-     explicit confirmation, after the release commit is reviewed — for this
-     project, pushing a `vX.Y.Z` tag triggers `.github/workflows/publish.yml`,
+     explicit confirmation, after the release commit is reviewed. **Always
+     create an annotated tag** — `git tag -a vX.Y.Z -m "vX.Y.Z"`, never a
+     bare `git tag vX.Y.Z` — so the tag is a real object with its own
+     message, not just a pointer to a commit; a lightweight tag gives no
+     audit trail of its own. (`v0.3.1`/`v0.3.2` shipped as lightweight tags
+     before this was written down explicitly — left as historical, not
+     rewritten.) Push it with `git push origin vX.Y.Z`. For this project,
+     pushing a `vX.Y.Z` tag triggers `.github/workflows/publish.yml`,
      which publishes to PyPI via trusted publishing. A PyPI release's files
      can't be reused or cleanly re-uploaded once published (yanking hides a
      version but doesn't free the filename — see the rollback note above),
