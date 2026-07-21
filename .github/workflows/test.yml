@@ -39,6 +39,9 @@ jobs:
       - name: Run bandit (SAST)
         run: uvx bandit -r src/openproject_ce_mcp -ll
 
+      - name: Check dependency licenses
+        run: uvx pip-licenses --python .venv/bin/python3 --fail-on="GPL;LGPL;AGPL"
+
   test:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
