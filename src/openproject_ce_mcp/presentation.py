@@ -1,4 +1,4 @@
-"""MCP output/context-reduction presentation policy (OPM-48).
+"""MCP output/context-reduction presentation policy.
 
 Relocated out of tools.py: this is presentation/serialization policy (hides
 confirmed payloads, drops derived fields, applies `select`, filters hidden

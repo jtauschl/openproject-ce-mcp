@@ -286,7 +286,7 @@ class OpenProjectClient:
             transport=transport,
         )
 
-        # ADR 0001 / OPM-153: HttpxTransport wraps the SAME httpx.AsyncClient
+        # ADR 0001: HttpxTransport wraps the SAME httpx.AsyncClient
         # constructed above (one connection pool, not two).
         self._version_api: VersionApi = HttpxVersionApi(HttpxTransport(self._http), base_url=settings.base_url)
         self._version_service = VersionService(
@@ -455,7 +455,7 @@ class OpenProjectClient:
         available_statuses = status_field.allowed_values if status_field else []
         available_parent_projects = await self._list_available_parent_projects(project.id, schema=schema)
         # Non-writable/internal schema entries (id, timestamps, lockVersion, ...)
-        # aren't useful to an agent discovering what it can set here (OPM-1458).
+        # aren't useful to an agent discovering what it can set here.
         writable_fields = [field for field in fields if field.writable]
         return self._apply_hidden_fields(
             "project_admin_context",
@@ -1187,7 +1187,7 @@ class OpenProjectClient:
         their own lookups (e.g. relations checking each linked work package's
         project) can use this helper too -- without it, callers needing an
         async filter had to hand-roll their own fetch+params, which is exactly
-        how the pageSize omission bug (OPM-1456 follow-up) happened.
+        how a prior pageSize-omission bug happened.
         """
         params = {"offset": "1", "pageSize": str(self.settings.max_results)}
         if params_extra:
@@ -2012,7 +2012,7 @@ class OpenProjectClient:
                 available_project_phases = project_phase_field.allowed_values
             # These four fields' allowed_values were just hoisted into the
             # available_* lists above — clear them here so the same option
-            # enumeration isn't serialized twice in one response (OPM-1458).
+            # enumeration isn't serialized twice in one response.
             hoisted_keys = {"status", "priority", "category", "projectPhase"}
             fields = [
                 replace(field, allowed_values=[]) if field.key in hoisted_keys and field.allowed_values else field
@@ -2490,13 +2490,13 @@ class OpenProjectClient:
         # through its cache too -- items sharing the same project then only trigger
         # one real project fetch for the whole batch, not one per item. With no
         # wp_context (the default, single-call case) this is exactly the raw
-        # self._resolve_project_ref(project, write=True) call from before OPM-206.
+        # self._resolve_project_ref(project, write=True) call, uncached.
         project_payload = await self._get_project_payload(
             project, write=True, context=wp_context.project_context if wp_context is not None else None
         )
         project_id = str(project_payload["id"])
-        # Default: a fresh context per call, same as before OPM-206. A bulk caller
-        # (bulk_create_work_packages) passes one shared across all its items instead.
+        # Default: a fresh context per call. A bulk caller (bulk_create_work_packages)
+        # passes one shared across all its items instead.
         if wp_context is None:
             wp_context = self._new_wp_context()
         # write=True already implies read=True passed (write checks read first),
@@ -2632,8 +2632,8 @@ class OpenProjectClient:
             raise OpenProjectServerError("OpenProject work package is missing a project link.")
         self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
 
-        # Default: a fresh context per call, same as before OPM-206. A bulk caller
-        # (bulk_update_work_packages) passes one shared across all its items instead.
+        # Default: a fresh context per call. A bulk caller (bulk_update_work_packages)
+        # passes one shared across all its items instead.
         if wp_context is None:
             wp_context = self._new_wp_context()
         lock_version = current.get("lockVersion")
@@ -2913,8 +2913,7 @@ class OpenProjectClient:
             "activity",
             # Capped like every other write-echo (create/update_work_package's
             # description, etc.) -- the caller already has the comment it just
-            # sent, so echoing it back uncapped costs tokens for no benefit
-            # (OPM-1457).
+            # sent, so echoing it back uncapped costs tokens for no benefit.
             self.normalize_activity(activity, text_limit=FORMATTABLE_LIMIT),
             details=None,
             details_truncated=False,
@@ -4998,7 +4997,7 @@ class OpenProjectClient:
         identifier = payload.get("identifier")
         project_path = f"projects/{identifier or payload['id']}"
         # List-row context: capped at settings.text_limit (default 500), same
-        # convention as WorkPackageSummary.description (OPM-1457). Single-item
+        # convention as WorkPackageSummary.description. Single-item
         # reads go through normalize_project_detail, which uses a larger/opt-in cap.
         description, description_truncated, description_length = self._visible_formattable_text_with_meta(
             payload.get("description"), "project", "description", limit=self.settings.text_limit
@@ -5145,7 +5144,7 @@ class OpenProjectClient:
         links = payload.get("_links", {})
         groups = [title for item in links.get("groups", []) if isinstance(item, dict) and (title := _link_title(item))]
         auth_source = _link_title(links.get("authSource"))
-        # OPM-221: the real `identityUrl` API property (OmniAuth/SSO subject),
+        # The real `identityUrl` API property (OmniAuth/SSO subject),
         # a top-level property -- not the `showUser` HAL link, which just
         # duplicates the already-modeled `url` field (both resolve to the same
         # /users/{id} web path).
@@ -6126,7 +6125,7 @@ class OpenProjectClient:
     ) -> TimeEntrySummary:
         """``text_limit=None`` returns the full comment uncapped (get_time_entry);
         the FORMATTABLE_LIMIT default keeps write-preview callers capped. List rows
-        (list_time_entries) explicitly pass settings.text_limit (OPM-1457)."""
+        (list_time_entries) explicitly pass settings.text_limit."""
         links = payload.get("_links", {})
         project_link = links.get("project")
         entity_link = links.get("entity")
@@ -6605,7 +6604,7 @@ class OpenProjectClient:
             # already puts "type" in schema_links whenever `type` is given, so this
             # branch only fires for a hypothetical future caller that doesn't. Still
             # threaded through for consistency with every other resolver call in
-            # this flow (see OPM-206).
+            # this flow.
             type_id = await self._resolve_type_id(type, project=project, context=project_context)
             schema_links["type"] = {"href": self._api_href(f"types/{type_id}")}
         if schema_links:
@@ -7229,11 +7228,11 @@ class OpenProjectClient:
         elements = payload.get("_embedded", {}).get("elements", [])
         # Fail closed: a parent-project candidate outside READ_PROJECTS must not
         # leak its name/identifier through this picklist just because it's a
-        # valid parent target (OPM-1449).
+        # valid parent target.
         allowed = [item for item in elements if self._project_payload_allowed(item)]
         # Lightweight refs only — a full ProjectSummary would cost a
         # description/status_explanation per candidate for no benefit to a
-        # parent-project picklist (OPM-1458).
+        # parent-project picklist.
         return [
             ProjectRef(
                 id=int(item["id"]),
@@ -7841,8 +7840,8 @@ class OpenProjectClient:
         # the identical first server page — a project with more sprints than
         # max_results would never be fully searched no matter how many
         # "pages" were walked. This resolver instead pages the server itself,
-        # trusting its reported `total` (OPM-1451 follow-up, mirrors
-        # VersionResolver.resolve_id's genuine server-paginated project path).
+        # trusting its reported `total` (mirrors VersionResolver.resolve_id's
+        # genuine server-paginated project path).
         self._ensure_read_enabled("project")
         project_payload = await self._get_project_payload(project, context=context)
         project_id = int(project_payload["id"])
@@ -8263,7 +8262,7 @@ def _query_ref_identity(links: dict[str, Any], payload: dict[str, Any]) -> tuple
 
 
 # _scope_allows_all/_scope_matches_candidates: relocated to app/policies/scope.py
-# (ADR 0001, OPM-153 Slice 3). Rebound here rather than rewritten as wrapper
+# (ADR 0001). Rebound here rather than rewritten as wrapper
 # functions since both are pure module-level functions with no `self` — a direct
 # name rebind is behaviorally identical and requires zero changes at any of the
 # ~30 existing call sites across every domain.

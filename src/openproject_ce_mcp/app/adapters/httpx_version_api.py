@@ -108,7 +108,7 @@ def normalize_version(
 
     ``text_limit=None`` returns the full description uncapped (single-version
     read); the FORMATTABLE_LIMIT default keeps list/write-preview callers capped
-    (OPM-1457, mirrors client.py's work-package/project pattern).
+    (mirrors client.py's work-package/project pattern).
     """
     links = payload.get("_links", {})
     description, description_truncated, description_length = _extract_formattable_text_with_meta(

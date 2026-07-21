@@ -70,7 +70,7 @@ class ProjectResolutionContext:
 
 class WorkPackageResolutionContext:
     """Adds an id-level cache for resolved type/version/sprint references on top
-    of a ProjectResolutionContext (composition, not inheritance -- OPM-26's ADR
+    of a ProjectResolutionContext (composition, not inheritance -- ADR 0001
     left that choice open, and composition keeps this cache layer decoupled
     from ProjectResolutionContext's own implementation).
 

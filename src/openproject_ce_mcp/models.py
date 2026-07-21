@@ -16,7 +16,7 @@ class SortCriterion(NamedTuple):
 
 @dataclass
 class PageResult:
-    """Shared pagination envelope (OPM-48). Deliberately NOT Generic[T] with
+    """Shared pagination envelope. Deliberately NOT Generic[T] with
     `results` on the base -- a dataclass field typed `list[~T]` on a generic
     base stays that way at runtime even when a subclass parametrizes it, which
     would degrade the MCP output schema for `results.items` to an untyped `{}`
@@ -35,7 +35,7 @@ class PageResult:
 
 @dataclass
 class CollectionResult:
-    """Shared bare-collection envelope (OPM-48). See PageResult for why this
+    """Shared bare-collection envelope. See PageResult for why this
     is not Generic[T] with `results` on the base.
     """
 
@@ -44,13 +44,13 @@ class CollectionResult:
 
 @dataclass
 class ConfirmationHeader:
-    """Shared confirm-gated write/delete header (OPM-222). Deliberately just
+    """Shared confirm-gated write/delete header. Deliberately just
     these 5 fields -- the ones genuinely common to all matching write
     results. payload/validation_errors/result are NOT here: identity fields
     vary in name/count/type and always sit between the header and payload,
     and result's type differs per subclass, so a wider shared base would
     either reorder every subclass's fields for no functional reason or
-    reintroduce the Generic[T] schema-degradation problem OPM-48 already
+    reintroduce the Generic[T] schema-degradation problem already
     rejected for `results` (see PageResult). BulkWorkPackageWriteResult is
     deliberately excluded from this hierarchy -- it lacks `ready` and is
     batch-shaped, not a single confirm-gated action.
@@ -91,7 +91,7 @@ class ProjectSummary:
 class ProjectDetail(ProjectSummary):
     """Single-project read (get_project) only -- list_projects/ProjectListResult
     stays on the leaner ProjectSummary so list responses don't carry every
-    row's ancestor chain (OPM-221, mirrors WorkPackageDetail.ancestors).
+    row's ancestor chain (mirrors WorkPackageDetail.ancestors).
     """
 
     ancestors: list[dict[str, str | None]] | None = None
@@ -291,7 +291,7 @@ class ActionSummary:
     """id/url only -- OpenProject's actions API never populates name/description/
     modules on the wire (verified against .op-sources across 16.0-17.6: the
     representer's `self` link title is always `-> {}`, and no other properties
-    are declared). Those three fields were removed as 100% dead weight (OPM-1460).
+    are declared). Those three fields were removed as 100% dead weight.
     """
 
     id: str
@@ -308,7 +308,7 @@ class CapabilitySummary:
     """name/action_name dropped -- OpenProject's capabilities API never
     populates them on the wire (verified against .op-sources: the representer's
     `self`/`action` link titles are always `-> {}`, unlike `context`'s title,
-    which is a genuine populated SQL expression). Removed as dead weight (OPM-1460).
+    which is a genuine populated SQL expression). Removed as dead weight.
     """
 
     id: str
@@ -350,7 +350,7 @@ class ProjectRef:
     Used where a caller needs to pick a project by reference (e.g. a parent
     project) but not read its full description/status: the full ProjectSummary
     would cost a description/status_explanation (up to 1200 chars) per
-    candidate for no benefit to that use case (OPM-1458).
+    candidate for no benefit to that use case.
     """
 
     id: int
@@ -601,7 +601,7 @@ class VersionSummary:
 class VersionDetail(VersionSummary):
     """Identical field shape to VersionSummary today; kept as a distinct
     subclass (not a bare alias) so __name__/import path/MCP output schema
-    title for get_version stay exactly as they are (OPM-48).
+    title for get_version stay exactly as they are.
     """
 
 
@@ -637,7 +637,7 @@ class SprintSummary:
 class SprintDetail(SprintSummary):
     """Identical field shape to SprintSummary today; kept as a distinct
     subclass (not a bare alias) so __name__/import path/MCP output schema
-    title for get_sprint stay exactly as they are (OPM-48, mirrors
+    title for get_sprint stay exactly as they are (mirrors
     VersionDetail/NewsDetail).
     """
 
@@ -1045,7 +1045,7 @@ class NewsSummary:
 class NewsDetail(NewsSummary):
     """Identical field shape to NewsSummary today; kept as a distinct subclass
     (not a bare alias) so __name__/import path/MCP output schema title for
-    get_news stay exactly as they are (OPM-48).
+    get_news stay exactly as they are.
     """
 
 

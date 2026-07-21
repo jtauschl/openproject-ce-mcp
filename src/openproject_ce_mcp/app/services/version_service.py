@@ -114,7 +114,7 @@ class VersionService:
         # so without this, a hidden description's length/truncation state would
         # still leak through those two sibling fields. Zero them out here,
         # mirroring how client.py's hide-aware _visible_formattable_text_with_meta
-        # already does this for Project/WorkPackage/TimeEntry (OPM-1451 follow-up).
+        # already does this for Project/WorkPackage/TimeEntry.
         if isinstance(value, VersionSummary) and hidden_fields.field_hidden(
             "version", "description", settings=self._settings
         ):
@@ -146,7 +146,7 @@ class VersionService:
         # method or the client.py facade), threading its OWN context across its OWN
         # page-walk -- so no current internal caller actually passes a context into
         # list()/list_versions() anymore; this parameter is kept for signature
-        # compatibility (OPM-205 added it) and for any future caller that might chain
+        # compatibility and for any future caller that might chain
         # a list() call into a larger multi-resolution operation. Either way, this
         # line guarantees list()'s own resolve call is never left uncached-and-unscoped.
         resolution_context = context or ProjectResolutionContext(self._resolve_project_ref)
@@ -161,7 +161,7 @@ class VersionService:
             limit=effective_limit,
             context=resolution_context,
             # List-row context: capped at settings.text_limit (default 500), same
-            # convention as list_projects/list_work_packages (OPM-1457).
+            # convention as list_projects/list_work_packages.
             text_limit=self._settings.text_limit,
         )
         stamped = [self._stamp(item) for item in page_results]
