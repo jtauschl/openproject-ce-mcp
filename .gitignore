@@ -18,14 +18,9 @@ htmlcov/
 
 # Local credentials and config
 .env
-.mcp.json
-/AGENTS.md
 
 # Tool-local state
 .claude/
-.codex/
-.vscode/
-.cursor/
 .DS_Store
 CONTINUE.md
 
@@ -41,6 +36,5 @@ SELF_REVIEW.md
 # Internal design docs (reference OPM ticket IDs — private tracker, not public)
 docs/adr/
 
-# dev_policies is a plain local clone pinned to a tag, not a submodule
-# (see OPM-260/263) — moves to the umbrella-directory level, not committed here
-/dev_policies/
+# AGENTS.md, .mcp.json, .vscode/, .codex/, and dev_policies now live one level
+# up at the umbrella-directory level (see OPM-260/263), not inside this repo
