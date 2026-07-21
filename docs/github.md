@@ -71,7 +71,8 @@ does the same — in both cases, the file holds your API token in plain text:
 chmod 600 .vscode/mcp.json
 ```
 
-Add `.vscode/mcp.json` to your project's `.gitignore` so it is never
+Add `.vscode/mcp.json` and `.vscode/mcp.json.bak*` to your project's
+`.gitignore` so neither the file nor its timestamped backups are ever
 committed.
 
 ## Reload and verify

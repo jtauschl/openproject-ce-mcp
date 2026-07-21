@@ -7,9 +7,10 @@
 Your client config (`.mcp.json`, `.codex/config.toml`, `.vscode/mcp.json`,
 `.cursor/mcp.json`, or `claude_desktop_config.json`) contains your API token. Treat it like a password. This repo gitignores
 `.mcp.json`, but when you place a project-scoped config in your **own**
-project, add it to that project's `.gitignore` so the token is never
-committed — choose your client-specific guide from [Clients](clients.md) for
-the exact file and command.
+project, add both it and its timestamped backups (e.g. `.mcp.json.bak*`) to
+that project's `.gitignore` so the token is never committed — choose your
+client-specific guide from [Clients](clients.md) for the exact file and
+command.
 
 **Never share your API token** in chat messages, screenshots, or log output.
 If a token has been exposed, revoke it immediately in **My account → Access

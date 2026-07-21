@@ -87,7 +87,9 @@ both cases, protect it:
 chmod 600 .cursor/mcp.json
 ```
 
-Add `.cursor/mcp.json` to your project's `.gitignore` so it is never committed.
+Add `.cursor/mcp.json` and `.cursor/mcp.json.bak*` to your project's
+`.gitignore` so neither the file nor its timestamped backups are ever
+committed.
 
 ## Reload and verify
 

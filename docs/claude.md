@@ -99,7 +99,8 @@ The full set of `env` keys is the same as every other client — see
 chmod 600 .mcp.json
 ```
 
-Add `.mcp.json` to your project's `.gitignore` so it is never committed.
+Add `.mcp.json` and `.mcp.json.bak*` to your project's `.gitignore` so neither
+the file nor its timestamped backups are ever committed.
 
 ## Reload and verify
 

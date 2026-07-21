@@ -98,7 +98,9 @@ both cases, protect it:
 chmod 600 .codex/config.toml
 ```
 
-Add `.codex/config.toml` to your project's `.gitignore` so it is never committed.
+Add `.codex/config.toml` and `.codex/config.toml.bak*` to your project's
+`.gitignore` so neither the file nor its timestamped backups are ever
+committed.
 
 ## Reload and verify
 
