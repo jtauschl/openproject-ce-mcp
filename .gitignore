@@ -23,6 +23,9 @@ htmlcov/
 
 # Tool-local state
 .claude/
+.vscode/
+.codex/
+.mcp.json
 .DS_Store
 Thumbs.db
 Desktop.ini
@@ -37,7 +40,6 @@ CONTINUE.md
 # Internal review notes
 SELF_REVIEW.md
 
-# CLAUDE.md, .mcp.json, .vscode/, .codex/, and dev_policies now live one level
-# up at the umbrella-directory level (see OPM-260/263), not inside this repo.
-# ADRs and other internal engineering docs live in the openproject-ce-mcp-docs
-# companion repo, not in this repo at all (see OPM-264)
+# AGENTS.md/CLAUDE.md and dev_policies live one level up at the
+# umbrella-directory level, not inside this repo. ADRs and other internal
+# engineering docs live in the openproject-ce-mcp-docs companion repo.
