@@ -17,15 +17,20 @@ lint() {
   uv run ruff check .
   uv run ruff format --check .
   uv run mypy
+  uvx bandit -r src/openproject_ce_mcp -ll
+  uvx pip-licenses --python .venv/bin/python3 --fail-on="GPL;LGPL;AGPL"
+  shellcheck get.sh uninstall.sh dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh
 }
 
 test_() {
-  uv run pytest "$@"
+  uv run pytest --cov=src/openproject_ce_mcp --cov-report=term-missing "$@"
 }
 
 build() {
   uv build
   uvx twine check dist/*
+  uv export --no-dev --format requirements-txt --no-hashes -o requirements.txt
+  uvx --from cyclonedx-bom cyclonedx-py requirements requirements.txt --of JSON -o sbom.json
 }
 
 case "$cmd" in
