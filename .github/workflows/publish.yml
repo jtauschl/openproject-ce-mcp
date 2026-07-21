@@ -19,8 +19,9 @@ jobs:
     timeout-minutes: 15
     environment: pypi
     permissions:
-      contents: read   # actions/checkout (explicit once any permission is set)
-      id-token: write  # required for PyPI trusted publishing (OIDC)
+      contents: read        # actions/checkout (explicit once any permission is set)
+      id-token: write       # required for PyPI trusted publishing (OIDC) and attestation signing
+      attestations: write   # required to publish a build-provenance attestation
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -34,6 +35,10 @@ jobs:
 
       - name: Check package metadata
         run: uvx twine check dist/*
+
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: "dist/*"
 
       - name: Publish to PyPI
         run: uv publish

@@ -36,6 +36,9 @@ jobs:
       - name: Run mypy
         run: uv run mypy
 
+      - name: Run bandit (SAST)
+        run: uvx bandit -r src/openproject_ce_mcp -ll
+
   test:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -74,6 +77,16 @@ jobs:
       - name: Check package metadata
         run: uvx twine check dist/*
 
+      - name: Generate SBOM
+        run: |
+          uv export --no-dev --format requirements-txt --no-hashes -o requirements.txt
+          uvx --from cyclonedx-bom cyclonedx-py requirements requirements.txt --of JSON -o sbom.json
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom
+          path: sbom.json
+
   launchers:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -92,6 +105,9 @@ jobs:
 
       - name: Check uninstall.sh syntax (bash)
         run: bash -n uninstall.sh
+
+      - name: shellcheck
+        run: shellcheck get.sh uninstall.sh dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh
 
       - name: Check get.ps1 / uninstall.ps1 syntax (PowerShell parser)
         shell: pwsh
