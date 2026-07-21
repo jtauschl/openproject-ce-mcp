@@ -24,8 +24,8 @@ from openproject_ce_mcp.models import (
 
 
 def test_version_list_result_shape_is_locked_and_matches_the_shared_page_envelope() -> None:
-    """OPM-211: locks in VersionListResult's current serialized shape before any
-    future PageResult[T] base-class migration (OPM-48's broader 35-class scope).
+    """Locks in VersionListResult's current serialized shape before any
+    future PageResult[T] base-class migration (a broader 35-class scope).
 
     Also confirms the "would PageResult[T] fit" question for this one class:
     VersionListResult's field set (name, order, and declared type) is byte-for-
@@ -104,7 +104,7 @@ def test_version_list_result_shape_is_locked_and_matches_the_shared_page_envelop
 
 
 def test_paginate_server_derives_truncated_from_next_offset() -> None:
-    # OPM-210: truncated and next_offset used to be two independently written
+    # truncated and next_offset used to be two independently written
     # (but logically identical) expressions per list method -- this locks in
     # that they're now one derivation, for every boundary case.
     next_offset, truncated = _paginate_server(offset=1, limit=10, total=25)
@@ -744,7 +744,7 @@ async def test_list_versions_global_backfills_after_allowlist_filter() -> None:
 
 @pytest.mark.asyncio
 async def test_list_versions_description_capped_at_text_limit() -> None:
-    # OPM-1457: list rows cap description at settings.text_limit (default 500),
+    # List rows cap description at settings.text_limit (default 500),
     # like list_projects/list_work_packages, with truncation metadata.
     long_description = "d" * 900
 
@@ -780,7 +780,7 @@ async def test_list_versions_description_capped_at_text_limit() -> None:
 
 @pytest.mark.asyncio
 async def test_get_version_returns_full_description_by_default() -> None:
-    # OPM-1457: single-version reads (get_version) are uncapped by default,
+    # Single-version reads (get_version) are uncapped by default,
     # like get_work_package/get_project; text_limit is an opt-in override.
     long_description = "d" * 1500
 

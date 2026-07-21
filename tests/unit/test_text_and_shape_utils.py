@@ -171,7 +171,7 @@ def test_normalize_activity_returns_full_comment_by_default() -> None:
 
 
 def test_normalize_activity_details_are_delimited_and_drop_duplicate_html() -> None:
-    # OPM-1448/OPM-1460: details[] previously bypassed delimiting entirely and
+    # details[] previously bypassed delimiting entirely and
     # carried both "raw" and "html" copies of the same change description.
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
 
@@ -206,7 +206,7 @@ def test_normalize_project_description_and_status_explanation_are_delimited() ->
 
 
 def test_normalize_project_description_is_capped_at_list_context_default() -> None:
-    # OPM-1457: list rows (normalize_project) cap at settings.text_limit
+    # List rows (normalize_project) cap at settings.text_limit
     # (default 500), like WorkPackageSummary, with truncation metadata.
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
     long_description = "d" * 900
@@ -223,7 +223,7 @@ def test_normalize_project_description_is_capped_at_list_context_default() -> No
 
 @pytest.mark.asyncio
 async def test_get_project_returns_full_description_by_default_get_projects_caps_it() -> None:
-    # OPM-1457: single-project reads (get_project) are uncapped by default,
+    # Single-project reads (get_project) are uncapped by default,
     # like get_work_package; list_projects rows stay capped at text_limit.
     long_description = "d" * 900
 
@@ -706,7 +706,7 @@ async def test_work_package_relations_use_canonical_involved_filter_shape() -> N
     assert result.count == 1
     assert result.results[0].id == 12
     # Only the resolve + relations fetch — the redundant get_work_package(55)
-    # round-trip (OPM-1455) was removed since _resolve_work_package_id already
+    # round-trip was removed since _resolve_work_package_id already
     # confirmed existence/ACL access for the anchor work package.
     assert requests == [
         ("GET", "/api/v3/work_packages/PROJ-7"),
@@ -783,7 +783,7 @@ async def test_global_relations_allowlist_checks_from_and_to_link_shapes() -> No
 
 @pytest.mark.asyncio
 async def test_get_work_package_relations_filters_out_of_scope_other_side() -> None:
-    """OPM-1449: get_work_package_relations must not leak the id/subject of a
+    """get_work_package_relations must not leak the id/subject of a
     linked work package whose project is outside READ_PROJECTS, even though
     the anchor work package itself is in an allowed project."""
     work_package_projects = {10: "demo", 11: "demo", 20: "other"}
@@ -843,12 +843,12 @@ async def test_get_work_package_relations_filters_out_of_scope_other_side() -> N
 
 @pytest.mark.asyncio
 async def test_get_work_package_relations_paginates_allowed_results() -> None:
-    # OPM-1456: get_work_package_relations previously returned every relation
+    # get_work_package_relations previously returned every relation
     # in one unbounded response. Pagination is applied to the ACL-filtered
     # survivors (not the raw server page), so a restrictive allowlist can't
     # produce a sparse page -- same pattern as list_project_sprints.
     #
-    # OPM-1456 follow-up (P1, third review round): the /relations request itself
+    # Follow-up hardening: the /relations request itself
     # previously omitted pageSize entirely, so it silently relied on the server's
     # default page size instead of settings.max_results -- every call re-fetched
     # that same default first page and re-sliced it locally, making relations
@@ -958,7 +958,7 @@ def test_normalize_work_package_prefers_start_date_due_date_over_milestone_date_
 
 
 def test_normalize_project_detail_builds_ancestors_from_links() -> None:
-    """OPM-221: get_project's ancestors, mirroring WorkPackageDetail.ancestors
+    """get_project's ancestors, mirroring WorkPackageDetail.ancestors
     (same shape, same client.py-side truncation pattern)."""
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
     payload = {
@@ -1010,7 +1010,7 @@ def test_normalize_project_detail_leaves_ancestors_none_when_absent() -> None:
 
 
 def test_normalize_user_detail_reads_identity_url_from_the_real_property() -> None:
-    """OPM-221: identity_url now sources OpenProject's real identityUrl
+    """identity_url now sources OpenProject's real identityUrl
     property (top-level, not a _links entry), not the showUser link -- which
     duplicated the already-modeled `url` field."""
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
@@ -1043,14 +1043,14 @@ def test_normalize_user_detail_identity_url_is_none_without_sso_despite_showuser
     assert detail.identity_url is None
 
 
-# --- OPM-190: hal.normalize_links integration (pure-function tests moved to
-# tests/unit/test_hal.py alongside the OPM-190 architecture follow-up
+# --- hal.normalize_links integration (pure-function tests moved to
+# tests/unit/test_hal.py alongside the architecture follow-up
 # extraction of normalize_links into its own shared module) -------------------
 
 
 @pytest.mark.asyncio
 async def test_explicit_null_links_survives_list_work_packages_end_to_end() -> None:
-    """OPM-190: proves the fix at the actual integration point (_request_json
+    """Proves the fix at the actual integration point (_request_json
     -> hal.normalize_links, before any normalizer sees the payload), not just
     the pure helper in isolation. Without it, the second element's
     `payload.get("_links", {})` read inside normalize_work_package_summary
@@ -1085,7 +1085,7 @@ async def test_explicit_null_links_survives_list_work_packages_end_to_end() -> N
 
 @pytest.mark.asyncio
 async def test_explicit_null_links_survives_attachment_multipart_upload(tmp_path) -> None:
-    """OPM-190: _post_multipart (attachment upload) bypasses _request_json with
+    """_post_multipart (attachment upload) bypasses _request_json with
     its own inline response.json() call -- a separate path that must be
     normalized too, or this one call site would still be exposed.
     """

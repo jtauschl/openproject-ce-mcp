@@ -159,10 +159,10 @@ async def test_list_relations_returns_empty_under_empty_read_projects() -> None:
 async def test_list_relations_and_update_relation() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/relations" and request.method == "GET":
-            # OPM-1456 follow-up (P1, third review round): list_relations previously
-            # omitted pageSize entirely and relied on the server's default page size,
-            # so every call re-fetched the same default first page -- entries past it
-            # were permanently unreachable regardless of offset.
+            # list_relations previously omitted pageSize entirely and relied on the
+            # server's default page size, so every call re-fetched the same default
+            # first page -- entries past it were permanently unreachable regardless
+            # of offset.
             assert request.url.params["offset"] == "1"
             assert request.url.params["pageSize"] == "100"
             return httpx.Response(
@@ -319,11 +319,11 @@ async def test_list_relations_filters_by_read_allowlist_both_sides() -> None:
 
 
 async def test_list_relations_bounds_fetch_by_max_results_and_paginates_survivors() -> None:
-    # OPM-1456 follow-up (P1, third review round): list_relations previously sent
-    # no pageSize at all, so it silently relied on the server's default page size
-    # instead of settings.max_results -- every call re-fetched that same default
-    # first page and re-sliced it locally, making relations past the default page
-    # permanently unreachable no matter what offset/limit was requested.
+    # list_relations previously sent no pageSize at all, so it silently relied on
+    # the server's default page size instead of settings.max_results -- every call
+    # re-fetched that same default first page and re-sliced it locally, making
+    # relations past the default page permanently unreachable no matter what
+    # offset/limit was requested.
     settings = _base_settings(max_results=5)
 
     async def handler(request: httpx.Request) -> httpx.Response:

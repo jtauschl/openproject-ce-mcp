@@ -51,7 +51,7 @@ from openproject_ce_mcp.presentation import _to_payload  # noqa: E402
 from openproject_ce_mcp.server import CE_INSTRUCTIONS, create_app  # noqa: E402
 
 # A substring of CE_INSTRUCTIONS distinctive enough that a false-positive match
-# elsewhere is implausible -- used by measure_tools_list's OPM-213 check below.
+# elsewhere is implausible -- used by measure_tools_list's duplication check below.
 _CE_INSTRUCTIONS_NEEDLE = "Community Edition (CE)"
 
 WRITE_ENV = {
@@ -124,14 +124,14 @@ async def measure_tools_list() -> None:
         print(f"{label}: {len(tools)} tools, {len(raw)} bytes, ~{len(raw) // 4} tokens")
     print()
 
-    # OPM-213: live Codex tool discovery reportedly saw the server-level CE
+    # Live Codex tool discovery reportedly saw the server-level CE
     # instructions repeated in every tool's own metadata/description. Verify
     # server.instructions is carried exactly once (the spec-standard `initialize`
     # field) and never duplicated into any individual tool's `description` --
     # confirming the duplication, if real, is not introduced by this server or
     # by FastMCP's Tool.description construction (which is built from each
     # function's own docstring, never referencing `instructions`).
-    print("=== OPM-213: server instructions vs. per-tool descriptions ===\n")
+    print("=== server instructions vs. per-tool descriptions ===\n")
     settings = Settings.from_env({**BASE_ENV, **WRITE_ENV, "OPENPROJECT_ENABLE_EXTENDED_READ": "true"})
     app = create_app(settings)
     tools = await app.list_tools()

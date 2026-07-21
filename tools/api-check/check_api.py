@@ -119,8 +119,8 @@ ASSUMPTIONS: list[Assumption] = [
     Assumption(
         "semantic identifier model", "field", "semantic_id?", subtree="app/models/work_package", present_from="17.4"
     ),  # model lands in 17.4; setting activates it in 17.5
-    # --- OPM-89 field batch: response fields never backfilled into this list
-    # when they were added to the client. Patterns include the declaring macro
+    # --- Response fields never backfilled into this list when they were added
+    # to the client. Patterns include the declaring macro
     # (property/date_property/date_time_property/link), not just the bare field
     # name, and subtree is the specific representer file, not its whole
     # resource directory -- a bare name like "readonly" or "created_at" would
@@ -168,7 +168,7 @@ ASSUMPTIONS: list[Assumption] = [
     # semantic reference via this filter fails (see _resolve_work_package_id).
     Assumption("subject_or_id filter", "filter", "subject_or_id_filter.rb", subtree=_WP_FILTERS),
     Assumption("status_id filter", "filter", "status_filter.rb", subtree=_WP_FILTERS),
-    # OPM-67: check the registered filter key itself (self.key), not just that
+    # Check the registered filter key itself (self.key), not just that
     # a similarly-named file exists -- the file could survive a key rename.
     Assumption("assigned_to_id filter", "filter", ":assigned_to_id", subtree=f"{_WP_FILTERS}/assigned_to_filter.rb"),
     Assumption("priority_id filter", "filter", ":priority_id", subtree=f"{_WP_FILTERS}/priority_filter.rb"),
@@ -176,7 +176,7 @@ ASSUMPTIONS: list[Assumption] = [
     Assumption(
         "involved (relations) filter", "filter", "involved_filter.rb", subtree="app/models/queries/relations/filters"
     ),
-    # OPM-80/81: date-filter operators "=d"/"<>d". Check the literal registered
+    # Date-filter operators "=d"/"<>d". Check the literal registered
     # symbol in its specific operator file, not just that a similarly-named
     # file exists -- the wrong thing to prove would be "some file named
     # on_date.rb still exists" when what the client depends on is the exact
@@ -207,7 +207,7 @@ ASSUMPTIONS: list[Assumption] = [
         subtree="app/models/queries/operators/versions",
         present_from="16.4",
     ),
-    # --- OPM-86: Backlogs sprint endpoints + the work-package-side write link.
+    # --- Backlogs sprint endpoints + the work-package-side write link.
     # Collection and detail are independent route blocks in the same file, so
     # each gets its own entry rather than one that only proves the file exists.
     Assumption(

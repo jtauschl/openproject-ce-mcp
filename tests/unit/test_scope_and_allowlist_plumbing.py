@@ -322,7 +322,7 @@ async def test_initialize_populates_identifier_cache_for_restricted_write_scope_
 
 @pytest.mark.asyncio
 async def test_initialize_logs_and_survives_an_expected_transport_failure(caplog) -> None:
-    # OPM-190-adjacent hardening: initialize()'s identifier-cache fetch used to
+    # Hardening: initialize()'s identifier-cache fetch used to
     # swallow every exception silently (bare `except Exception: pass`). An
     # OpenProjectError-family failure (transport/API) must now be logged with
     # its concrete cause, not just a generic "something failed" message, and

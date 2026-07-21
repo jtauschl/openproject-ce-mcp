@@ -1,6 +1,6 @@
-"""Request-count regression tests for OPM-206's WorkPackageResolutionContext.
+"""Request-count regression tests for WorkPackageResolutionContext.
 
-Verifies the redundancy the ticket targets: a bulk batch of work-package writes
+Verifies the redundancy this fixes: a bulk batch of work-package writes
 in the same project used to re-resolve the project ref AND re-resolve
 type/version/sprint name->id lookups once per item. These tests assert the
 real HTTP call counts, not just that the calls succeed -- reverting the
@@ -58,7 +58,8 @@ def _form_response(request: httpx.Request, body: dict) -> httpx.Response:
 @pytest.mark.asyncio
 async def test_create_work_package_single_call_resolves_type_and_version_once() -> None:
     """Baseline (no bulk context involved): a single create still hits each
-    endpoint exactly once -- unchanged behavior from before OPM-206."""
+    endpoint exactly once -- unchanged behavior from before the shared
+    resolution context was introduced."""
     counts: Counter[tuple[str, str]] = Counter()
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -89,8 +90,9 @@ async def test_create_work_package_single_call_resolves_type_and_version_once() 
 async def test_update_work_package_single_call_resolves_type_version_sprint_once() -> None:
     """Baseline: a single update resolving type+version+sprint hits the shared
     project payload exactly once across all three resolutions (pre-existing
-    single-call dedup via the plain ProjectResolutionContext, unchanged by
-    OPM-206) and each type/version/sprint endpoint exactly once."""
+    single-call dedup via the plain ProjectResolutionContext, unchanged by the
+    bulk-sharing work below) and each type/version/sprint endpoint exactly
+    once."""
     counts: Counter[tuple[str, str]] = Counter()
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -132,10 +134,10 @@ async def test_update_work_package_single_call_resolves_type_version_sprint_once
 
 @pytest.mark.asyncio
 async def test_bulk_create_same_project_shares_project_and_type_version_resolution() -> None:
-    """The actual OPM-206 target: two bulk_create items in the same project,
-    both needing the same type/version name->id lookup, must only trigger the
-    project fetch and the type/version lookups ONCE for the whole batch, not
-    once per item."""
+    """The actual target of the shared resolution context: two bulk_create items
+    in the same project, both needing the same type/version name->id lookup,
+    must only trigger the project fetch and the type/version lookups ONCE for
+    the whole batch, not once per item."""
     counts: Counter[tuple[str, str]] = Counter()
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -160,7 +162,7 @@ async def test_bulk_create_same_project_shares_project_and_type_version_resoluti
     assert result.succeeded == 2
     assert result.failed == 0
 
-    # The point of OPM-206: shared across both items, not one fetch per item.
+    # The point: shared across both items, not one fetch per item.
     assert counts[("GET", "/api/v3/projects/proj-a")] == 1
     assert counts[("GET", "/api/v3/projects/1/types")] == 1
     assert counts[("GET", "/api/v3/projects/1/versions")] == 1
@@ -226,7 +228,7 @@ async def test_bulk_update_same_project_shares_type_version_sprint_resolution() 
     assert result.succeeded == 2
     assert result.failed == 0
 
-    # The point of OPM-206: shared across both items, not one lookup per item.
+    # The point: shared across both items, not one lookup per item.
     assert counts[("GET", "/api/v3/projects/1")] == 1
     assert counts[("GET", "/api/v3/projects/1/types")] == 1
     assert counts[("GET", "/api/v3/projects/1/versions")] == 1

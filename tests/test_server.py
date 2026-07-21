@@ -39,7 +39,7 @@ ALL_WRITE_OFF = {
 
 
 def test_ce_instructions_are_not_duplicated_into_any_tool_description() -> None:
-    """OPM-213: live Codex tool discovery reportedly saw the server-level CE
+    """Live Codex tool discovery reportedly saw the server-level CE
     instructions repeated in every tool's own metadata/description. Guards
     against this server (or a future change to it) ever introducing that --
     server.instructions must stay the single carrier of this text, sent once

@@ -120,7 +120,7 @@ _None — every checked field is modeled or has a documented exclusion._
 
 - `user.password` — Write-only property (getter: ->(*) {}, render_nil: false) -- never appears in a read response, per user_representer.rb's own '# Write-only properties' comment.
 - `user.currentPassword` — Write-only property (getter: ->(*) {}, render_nil: false), same as password.
-- `work_package.date` — Milestone-only date_property (work_package_representer.rb:380, getter: default_date_getter(:due_date)); OPM-223 normalizes it into start_date/due_date at runtime (both get the same value for a milestone) rather than modeling a separate field -- a deliberate composite/semantic mapping, not an unmodeled field.
+- `work_package.date` — Milestone-only date_property (work_package_representer.rb:380, getter: default_date_getter(:due_date)); this client normalizes it into start_date/due_date at runtime (both get the same value for a milestone) rather than modeling a separate field -- a deliberate composite/semantic mapping, not an unmodeled field.
 - `work_package.projectPhaseDefinition` — Secondary link to the phase *definition* record (link :projectPhaseDefinition), distinct from the already-modeled project_phase value/name. list_project_phase_definitions/get_project_phase_definition already provide independent definition lookups; not worth a second WorkPackageDetail field.
 
 ### large_embedded

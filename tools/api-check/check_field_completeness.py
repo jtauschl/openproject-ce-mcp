@@ -286,7 +286,7 @@ EXCLUSIONS: list[FieldExclusion] = [
         "date",
         ExclusionCategory.INTERNAL_OTHER,
         "Milestone-only date_property (work_package_representer.rb:380, getter: "
-        "default_date_getter(:due_date)); OPM-223 normalizes it into start_date/"
+        "default_date_getter(:due_date)); this client normalizes it into start_date/"
         "due_date at runtime (both get the same value for a milestone) rather than "
         "modeling a separate field -- a deliberate composite/semantic mapping, not "
         "an unmodeled field.",

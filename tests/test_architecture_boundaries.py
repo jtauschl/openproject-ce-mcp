@@ -1,13 +1,13 @@
-"""Static architecture-boundary checks for the app/ layered tree (ADR 0001, OPM-153/OPM-209).
+"""Static architecture-boundary checks for the app/ layered tree (ADR 0001).
 
 First static-boundary test in this repo -- no existing pattern to copy (confirmed by
 searching the whole tree for `ast.parse`/"boundary"/"layering" before writing this).
 A general, directory-based layer-dependency check, not a narrow "these two specific
 files don't import each other" test -- the narrow version would have missed a real
-layering violation caught during OPM-153's design review (a shared helper placed
+layering violation caught during an earlier design review (a shared helper placed
 under app/services/ that a Resolver depended on).
 
-OPM-209 generalized this from the Versions-only pilot to cover future domains.
+This was later generalized from the Versions-only pilot to cover future domains.
 Four of the five original checks were already directory-generic (they walk app/
 by layer, not by domain name) and needed no changes; only the Service/Resolver-
 depends-on-the-port-Protocol check named VersionService/VersionResolver/VersionApi/
@@ -31,7 +31,7 @@ import pytest
 SRC = Path(__file__).resolve().parent.parent / "src" / "openproject_ce_mcp"
 APP = SRC / "app"
 
-# Pre-existing httpx importers NOT touched by OPM-153: client.py still does raw HTTP
+# Pre-existing httpx importers not migrated to the layered app/ tree: client.py still does raw HTTP
 # for ~50 unmigrated domains; retry_transport.py is wrapped-not-replaced per the ADR;
 # doctor.py/setup_cli.py are the ADR's own named, pre-existing exceptions.
 _PRE_EXISTING_HTTPX_IMPORTERS = {"client.py", "retry_transport.py", "doctor.py", "setup_cli.py"}
@@ -107,7 +107,7 @@ def test_httpx_importers_outside_app_match_the_known_allow_list() -> None:
 
 def _app_import_violations(source: str) -> list[str]:
     """Find imports of the `app/` package in `source`, in any of the three forms
-    Python allows (OPM-219): absolute `ast.ImportFrom`, relative `ast.ImportFrom`
+    Python allows: absolute `ast.ImportFrom`, relative `ast.ImportFrom`
     (as used from a package-root file like tools.py, so level == 1), and bare
     `ast.Import`. An earlier version of this check only inspected absolute
     `ast.ImportFrom` nodes, so `from .app.presentation import x` or
@@ -172,7 +172,7 @@ def _hal_import_violations(source: str) -> list[str]:
 
 
 def test_hal_module_stays_neutral() -> None:
-    """hal.py (OPM-190 architecture follow-up) is a shared-kernel module imported by
+    """hal.py (introduced as an architecture follow-up) is a shared-kernel module imported by
     both client.py and app/transport/httpx_transport.py -- neither of which
     may import from the other. It only stays a valid shared dependency for
     both sides as long as it imports nothing from either. This guards against
@@ -281,7 +281,7 @@ def _protocol_classes_under_ports() -> set[type]:
 
 
 def test_services_and_resolvers_are_named_by_convention_and_depend_on_port_protocols() -> None:
-    """Generalizes OPM-153's Versions-only check (which named VersionService/
+    """Generalizes an earlier Versions-only check (which named VersionService/
     VersionResolver/VersionApi/HttpxVersionApi directly) by discovering classes
     by directory instead, so a second domain's Service/Resolver needs no edit
     here. Two things are proven, not just "isn't the adapter" alone:

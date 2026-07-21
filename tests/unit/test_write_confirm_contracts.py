@@ -1,4 +1,4 @@
-"""OPM-209 (Phase D): registry-driven behavioral contracts for every registered
+"""Registry-driven behavioral contracts for every registered
 write/delete MCP tool.
 
 Properties proven here, generically across all 55 tools in `WRITE_TOOL_CASES`
@@ -16,11 +16,11 @@ request (several preview/form-based write paths deliberately issue their own
 GET/POST-form requests before the write-scope gate is ever reached, and those
 are expected, not violations). The stronger "zero follow-up requests at all
 before the check trips" guarantee, for a representative handful of domains, is
-`tests/unit/test_project_resolution.py`'s OPM-117 matrix -- see its module
-docstring/comments for how the two complement each other.
+`tests/unit/test_project_resolution.py`'s project-resolution policy matrix --
+see its module docstring/comments for how the two complement each other.
 
-Payload preview/confirm semantic equivalence (property c in OPM-209's ticket
-text, a different "c" from the property list above) is proven separately in
+Payload preview/confirm semantic equivalence (a different "c" from the
+property list above) is proven separately in
 `tests/unit/test_write_payload_equivalence.py`.
 """
 

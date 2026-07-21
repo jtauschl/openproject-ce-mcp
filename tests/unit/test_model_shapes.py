@@ -1,11 +1,11 @@
-"""Snapshot/shape tests for the OPM-48 ListResult consolidation and the
-OPM-222 ConfirmationHeader (WriteResult family) consolidation.
+"""Snapshot/shape tests for the ListResult base-class consolidation and the
+ConfirmationHeader (WriteResult family) consolidation.
 
 Guards against the two failure modes a base-class migration could silently
 introduce: (1) field order / serialization drift on any of the 36
 `*ListResult` classes or 24 confirm-gated write-result classes, and (2) loss
 of concrete element/result typing, which a naive `Generic[T]` base (rejected
-during OPM-48 planning) would have caused -- verified here by literally
+during planning) would have caused -- verified here by literally
 reproducing that rejected shape and showing it degrades the MCP output
 schema, then showing our actual non-generic bases do not.
 """
@@ -23,7 +23,7 @@ from mcp.server.fastmcp import FastMCP
 from openproject_ce_mcp import models
 from openproject_ce_mcp.presentation import _to_payload
 
-# Captured from `main` before the OPM-48 base-class migration landed (via
+# Captured from `main` before the ListResult base-class migration landed (via
 # `dataclasses.fields()` on every *ListResult class) -- the source of truth
 # this test protects. Do not "fix" this fixture to match a future change
 # without confirming the new field order is actually intended.
@@ -125,11 +125,11 @@ def test_list_result_to_payload_drops_count_and_truncated(name: str) -> None:
     assert list(out.keys()) == expected_keys
 
 
-# --- OPM-222: ConfirmationHeader (WriteResult family) ----------------------
+# --- ConfirmationHeader (WriteResult family) ----------------------
 
 # The 21 `*WriteResult`-suffixed classes plus 3 same-shaped-but-differently-
 # named classes (ProjectCopyResult, RelationUpdateResult, NotificationMarkResult)
-# that OPM-222 classified. Discovery mirrors _all_list_result_classes()'s
+# that the ConfirmationHeader consolidation classified. Discovery mirrors _all_list_result_classes()'s
 # suffix filter, widened by an explicit small set for the 3 non-suffix names
 # -- unlike *ListResult, this family doesn't share one common suffix.
 _EXTRA_CONFIRMATION_HEADER_CLASSES = frozenset({"ProjectCopyResult", "RelationUpdateResult", "NotificationMarkResult"})
@@ -143,12 +143,12 @@ def _all_write_result_classes() -> dict[str, type]:
     }
 
 
-# Captured from `main` before the OPM-222 ConfirmationHeader migration landed
+# Captured from `main` before the ConfirmationHeader migration landed
 # (via `dataclasses.fields()` on every class below) -- the source of truth
 # this test protects. Do not "fix" this fixture to match a future change
 # without confirming the new field order is actually intended.
-# BulkWorkPackageWriteResult is included as a fixed control: OPM-222
-# deliberately leaves it unconsolidated (no `ready` field, batch-shaped), so
+# BulkWorkPackageWriteResult is included as a fixed control: the
+# consolidation deliberately leaves it unconsolidated (no `ready` field, batch-shaped), so
 # its entry must never gain a ConfirmationHeader-shaped prefix.
 EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     "ActivityWriteResult": [
@@ -487,7 +487,7 @@ _RejectedT = typing.TypeVar("_RejectedT")
 class _RejectedGenericPageResult(typing.Generic[_RejectedT]):
     """Module-level (not function-local) so FastMCP's `eval_str=True` signature
     evaluation can resolve it as a return-type annotation -- reproduces the
-    Generic[T]-with-results-on-the-base design rejected during OPM-48 planning.
+    Generic[T]-with-results-on-the-base design rejected during ListResult base-class planning.
     """
 
     total: int
@@ -569,7 +569,7 @@ async def test_page_result_and_collection_result_keep_concrete_element_types() -
 
 @pytest.mark.asyncio
 async def test_project_detail_ancestors_boundary_in_mcp_schema() -> None:
-    """OPM-221: get_project (ProjectDetail) exposes ancestors/ancestors_truncated;
+    """Verifies get_project (ProjectDetail) exposes ancestors/ancestors_truncated;
     list_projects rows (ProjectSummary) and ProjectWriteResult.result (also
     ProjectSummary) must NOT -- proves the Detail/Summary split actually holds
     at the schema boundary, not just in the dataclass definitions.

@@ -150,10 +150,10 @@ def test_multi_file_source_union():
 
 
 def test_work_package_date_field_is_excluded_as_composite_mapping():
-    # OPM-223 normalizes milestone-only `date_property :date`
-    # (work_package_representer.rb:380) into start_date/due_date at runtime
-    # instead of modeling a separate field -- a curated FieldExclusion
-    # (composite/semantic mapping), not an unmodeled field left UNTRIAGED.
+    # work_package_representer.rb:380 normalizes milestone-only `date_property :date`
+    # into start_date/due_date at runtime instead of modeling a separate field --
+    # a curated FieldExclusion (composite/semantic mapping), not an unmodeled
+    # field left UNTRIAGED.
     from openproject_ce_mcp import models
 
     rc = cfc.ResourceCheck(

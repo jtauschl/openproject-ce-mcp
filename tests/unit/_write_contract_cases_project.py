@@ -1,5 +1,5 @@
-"""Write/delete-tool behavioral-contract cases for the "project"-scope tools
-(OPM-209 / Phase D). See `_write_contract_cases_types.py` for the shared
+"""Write/delete-tool behavioral-contract cases for the "project"-scope tools.
+See `_write_contract_cases_types.py` for the shared
 `WriteToolCase` shape and `_write_contract_cases.py` for how this module's
 output is merged with the other scopes.
 

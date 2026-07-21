@@ -1,5 +1,5 @@
-"""Shared dataclasses for the write/delete-tool behavioral-contract case table
-(OPM-209 / Phase D). Split out from `_write_contract_cases.py` so the per-scope
+"""Shared dataclasses for the write/delete-tool behavioral-contract case table.
+Split out from `_write_contract_cases.py` so the per-scope
 builder modules (`_write_contract_cases_*.py`) can import these types without a
 circular import against the module that merges their output.
 """

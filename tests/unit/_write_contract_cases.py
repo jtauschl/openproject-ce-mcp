@@ -1,4 +1,4 @@
-"""Shared write/delete-tool behavioral-contract case table (OPM-209 / Phase D).
+"""Shared write/delete-tool behavioral-contract case table.
 
 One `WriteToolCase` per registered write/delete MCP tool -- the exhaustiveness
 mechanism `tests/unit/test_write_confirm_contracts.py` enforces against

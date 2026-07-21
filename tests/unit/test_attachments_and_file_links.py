@@ -142,7 +142,7 @@ async def test_delete_file_link_allows_write_project() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_file_link_reports_none_work_package_id_when_container_unresolvable() -> None:
-    # OPM-1453: a file link with no resolvable container used to fake a work_package_id
+    # A file link with no resolvable container used to fake a work_package_id
     # of 0 (a real-looking id) instead of reporting "unknown/none" as None.
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/file_links/5" and request.method == "GET":

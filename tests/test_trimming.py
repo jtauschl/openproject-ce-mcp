@@ -255,7 +255,7 @@ def test_returns_trimmable_true_for_batch_read() -> None:
     assert _returns_trimmable(get_work_packages) is True
 
 
-# ── select trims the nested result on bulk writes (OPM-155) ──────────────────
+# ── select trims the nested result on bulk writes ────────────────────────────
 
 
 def _bulk_write(*, items=None) -> m.BulkWorkPackageWriteResult:
@@ -391,7 +391,7 @@ def test_list_tools_expose_select_param() -> None:
         assert "select" in json.dumps(tools[name].parameters), name
 
 
-# ── select is actually threaded through the registered wrapper (OPM-155) ──────
+# ── select is actually threaded through the registered wrapper ───────────────
 #
 # The test above only proves `select` is *published* in a tool's schema. It
 # does NOT prove tools.py:459-460 (the register_tools() trimming wrapper)

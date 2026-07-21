@@ -1,4 +1,4 @@
-"""OPM-209 (Phase D): preview-vs-confirmed payload semantic equivalence.
+"""Preview-vs-confirmed payload semantic equivalence.
 
 Generic at the mechanism level, representative at the edges -- not one test per
 tool. `client.py:_finalize_write` (the shared preview/confirm state machine
@@ -11,8 +11,8 @@ construction. The two hand-rolled outliers below (`create_work_package_relation`
 `delete_work_package`) don't route through either shared helper and are proven
 individually.
 
-Allowed deviations named in the OPM-209 ticket: lockVersion, form-validation
-results, server-determined hrefs, unavoidable time-dependent values. This file
+Allowed deviations: lockVersion, form-validation results, server-determined
+hrefs, unavoidable time-dependent values. This file
 also documents a fifth, found while writing these tests: preview-only
 echo/context fields a hand-rolled write adds for caller readability but never
 sends over the wire (`create_work_package_relation`'s `to_work_package_id`).

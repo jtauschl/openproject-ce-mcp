@@ -1156,7 +1156,7 @@ async def test_add_work_package_comment_writes_after_confirmation_when_enabled()
 
 @pytest.mark.asyncio
 async def test_add_work_package_comment_echo_is_capped_by_default() -> None:
-    # OPM-1457: the write-echo used to be uncapped (text_limit=None), unlike the
+    # The write-echo used to be uncapped (text_limit=None), unlike the
     # analogous work-package description echo -- the caller already has the
     # comment it just sent, so it should be capped like other write-echoes.
     long_comment = "c" * 1500
@@ -1506,7 +1506,7 @@ async def test_create_subtask_uses_parent_link_in_form_payload() -> None:
         if request.url.path == "/api/v3/projects/1" and request.method == "GET":
             # Unlike create_work_package, create_subtask only knows the parent's
             # numeric project id from its link (no full payload up front), so its
-            # ProjectResolutionContext (OPM-205) starts empty -- _resolve_type_id's
+            # ProjectResolutionContext starts empty -- _resolve_type_id's
             # project fetch below is a real, still-necessary first request. It
             # would only be skipped on a *second* resolution of the same project
             # within this same call (e.g. if version were also given here).
@@ -1575,7 +1575,7 @@ async def test_create_work_package_resolves_schema_backed_fields_and_custom_fiel
             )
         if request.url.path == "/api/v3/projects/1" and request.method == "GET":
             # Not actually hit anymore for this numeric project ref: create_work_package's
-            # ProjectResolutionContext (OPM-205) is seeded from the initial project
+            # ProjectResolutionContext is seeded from the initial project
             # resolution, so _resolve_type_id's own project fetch is served from that
             # cache instead of re-requesting it. Kept in the handler in case a future
             # change reintroduces the extra fetch.
@@ -1701,7 +1701,7 @@ async def test_create_work_package_resolves_schema_backed_fields_and_custom_fiel
 
 @pytest.mark.asyncio
 async def test_create_work_package_resolves_project_only_once_for_type_and_version_together() -> None:
-    # OPM-205: before ProjectResolutionContext, create_work_package's own
+    # Before ProjectResolutionContext existed, create_work_package's own
     # project resolution, then _resolve_type_id's, then _resolve_version_id's
     # each independently re-fetched (and re-allowlist-checked) the same
     # already-resolved project. With both type and version given, this proves
@@ -1795,7 +1795,7 @@ async def test_bulk_create_work_packages_preview_mode() -> None:
 
 @pytest.mark.asyncio
 async def test_bulk_create_work_packages_preview_forwards_duration_fields() -> None:
-    # OPM-215: bulk_create_work_packages used to silently drop estimated_time/
+    # bulk_create_work_packages used to silently drop estimated_time/
     # remaining_time/duration instead of forwarding them to create_work_package.
     posted_bodies: list[dict] = []
 
@@ -1836,7 +1836,7 @@ async def test_bulk_create_work_packages_preview_forwards_duration_fields() -> N
 
 @pytest.mark.asyncio
 async def test_bulk_create_work_packages_confirm_forwards_duration_fields() -> None:
-    # OPM-215 follow-up: the preview test above only exercises confirm=False (the
+    # The preview test above only exercises confirm=False (the
     # form-probe POST). Assert the same fields also reach the actual mutating
     # create POST when confirm=True, and that the committed result reflects them
     # (not just the outgoing request).
@@ -2364,8 +2364,8 @@ async def test_toggle_activity_emoji_reaction_previews_without_confirm() -> None
 async def test_toggle_activity_emoji_reaction_previews_when_write_disabled() -> None:
     """confirm=false must still return a preview when work-package write is
     disabled — the write-enabled gate belongs to the mutation, not the preview
-    (OPM-1450: it previously ran unconditionally at the top of the method,
-    breaking the confirm=False-always-returns-a-preview contract)."""
+    (it previously ran unconditionally at the top of the method, breaking the
+    confirm=False-always-returns-a-preview contract)."""
     import dataclasses
 
     async def handler(request: httpx.Request) -> httpx.Response:

@@ -1,4 +1,4 @@
-"""Write/delete-tool behavioral-contract cases (OPM-209 / Phase D) for the
+"""Write/delete-tool behavioral-contract cases for the
 membership, version, board, and admin (user/group) scopes.
 
 Sibling modules import this as `from

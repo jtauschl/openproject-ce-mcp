@@ -1,5 +1,5 @@
-"""Personal-scope + attachment-upload write/delete-tool behavioral-contract cases
-(OPM-209 / Phase D). Split out from `_write_contract_cases.py` -- see that module's
+"""Personal-scope + attachment-upload write/delete-tool behavioral-contract cases.
+Split out from `_write_contract_cases.py` -- see that module's
 docstring. Covers the smallest group of the four builder modules, but the one
 that needs dynamic per-test setup (`create_work_package_attachment`'s local file +
 matching `Settings.attachment_root`).
@@ -172,7 +172,7 @@ def _create_work_package_attachment_handler(request: httpx.Request) -> httpx.Res
 
 def _materialize_attachment_case(tmp_path: Path) -> MaterializedWriteToolCase:
     file_path = tmp_path / "note.txt"
-    file_path.write_text("hello from OPM-209")
+    file_path.write_text("hello from the attachment test")
     return MaterializedWriteToolCase(
         kwargs={"work_package_id": 42, "file_path": str(file_path), "description": "Spec"},
         settings=dataclasses.replace(_base_settings_for_attachment(), attachment_root=str(tmp_path)),

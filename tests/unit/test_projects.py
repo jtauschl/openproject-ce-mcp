@@ -155,7 +155,7 @@ async def test_get_project_work_package_context_returns_schema_and_metadata() ->
     assert result.custom_fields[0].key == "customField10"
     assert result.custom_fields[0].name == "Story points"
 
-    # OPM-1458: status/projectPhase's allowed_values are hoisted into
+    # status/projectPhase's allowed_values are hoisted into
     # available_statuses/available_project_phases above — fields[] must not
     # also carry the same enumeration a second time.
     status_field = next(f for f in result.fields if f.key == "status")
@@ -168,7 +168,7 @@ async def test_get_project_work_package_context_returns_schema_and_metadata() ->
 
 @pytest.mark.asyncio
 async def test_get_project_admin_context_filters_parent_candidates_and_writable_fields() -> None:
-    """OPM-1449/OPM-1458: available_parent_projects must not leak projects
+    """available_parent_projects must not leak projects
     outside READ_PROJECTS, and fields[] should only carry writable entries."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -231,12 +231,12 @@ async def test_get_project_admin_context_filters_parent_candidates_and_writable_
     result = await client.get_project_admin_context("demo")
 
     assert [p.identifier for p in result.available_parent_projects] == ["allowed-parent"]
-    # Lightweight ProjectRef, not a full ProjectSummary — no description/status_explanation (OPM-1458).
+    # Lightweight ProjectRef, not a full ProjectSummary — no description/status_explanation.
     assert result.available_parent_projects[0].name == "Allowed Parent"
     assert not hasattr(result.available_parent_projects[0], "description")
     assert {f.key for f in result.fields} == {"name", "parent", "status"}  # "id" (writable=False) is excluded
     assert result.available_statuses[0].title == "On track"
-    assert not hasattr(result, "project_links")  # redundant with the inferred_* booleans (OPM-1458)
+    assert not hasattr(result, "project_links")  # redundant with the inferred_* booleans
 
     await client.aclose()
 
@@ -337,7 +337,7 @@ async def test_list_roles_and_project_memberships_and_my_access() -> None:
 
 @pytest.mark.asyncio
 async def test_list_project_memberships_paginates_and_preserves_project_filter() -> None:
-    # OPM-1456: list_project_memberships previously fetched one unbounded page.
+    # list_project_memberships previously fetched one unbounded page.
     # Now it must (a) send real offset/pageSize and (b) merge them into the
     # memberships href's own "filters" query rather than replacing it --
     # httpx's params= replaces a URL's existing query string outright, which
@@ -1807,12 +1807,12 @@ async def test_list_projects_cross_call_pagination_does_not_skip_or_duplicate() 
 
 @pytest.mark.asyncio
 async def test_list_projects_cross_call_pagination_with_allowlist_thinning_across_pages() -> None:
-    # OPM-117: the OPM-107 cross-call regression test (above) uses an unrestricted
-    # allowlist, so it never exercises skip_count spanning a raw-page boundary while
-    # an active allowlist is also thinning pages unevenly — the actual scenario the
-    # original OPM-107 bug was about. Three raw server pages of 2 (pageSize=2), one
+    # test_list_projects_cross_call_pagination_does_not_skip_or_duplicate (above) uses
+    # an unrestricted allowlist, so it never exercises skip_count spanning a raw-page
+    # boundary while an active allowlist is also thinning pages unevenly — the actual
+    # scenario this test is about. Three raw server pages of 2 (pageSize=2), one
     # allowed project per page (p1, p3, p5); each of the three offset=1/2/3 calls
-    # uses a *fresh* client (no shared state), mirroring the OPM-107 test's shape.
+    # uses a *fresh* client (no shared state), mirroring that test's shape.
     import dataclasses
 
     pages = {

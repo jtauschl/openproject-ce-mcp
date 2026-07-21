@@ -165,7 +165,7 @@ async def test_delete_issues_delete_request() -> None:
 
 @pytest.mark.asyncio
 async def test_get_survives_explicit_null_links_at_top_level() -> None:
-    """OPM-190: HttpxTransport._request_json normalizes an explicit
+    """HttpxTransport._request_json normalizes an explicit
     `"_links": null` to `{}` before any adapter code sees it -- without that,
     `_record`'s `payload.get("_links", {}).get("definingProject")` would
     raise AttributeError on the `.get("definingProject")` call.

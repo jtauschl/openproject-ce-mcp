@@ -1,7 +1,7 @@
 # Sibling test files import from this module as `from _tools_test_helpers import
 # ...` (no package prefix), which relies on pytest's default rootless import mode
 # adding this directory to sys.path. Revisit if the project ever switches to
-# `--import-mode=importlib` (e.g. as part of the OPM-26 test-architecture work).
+# `--import-mode=importlib`.
 from __future__ import annotations
 
 from dataclasses import dataclass

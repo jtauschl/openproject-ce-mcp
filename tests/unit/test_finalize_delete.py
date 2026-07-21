@@ -1,4 +1,4 @@
-"""Direct unit tests for OpenProjectClient._finalize_delete (OPM-46).
+"""Direct unit tests for OpenProjectClient._finalize_delete.
 
 Covers the two behaviors most easily flattened by a future edit: preview_result
 and commit_result threaded independently (not assumed equal), and result_kwargs

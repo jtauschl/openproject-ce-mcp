@@ -1,5 +1,5 @@
 """Behavioral-contract fixture cases for the "work_package"-scope write/delete MCP
-tools (OPM-209 / Phase D). Split out per scope so no single file grows unwieldy;
+tools. Split out per scope so no single file grows unwieldy;
 this one covers every tool in `WRITE_TOOLS_BY_SCOPE["work_package"]`
 (src/openproject_ce_mcp/tools.py) -- the largest scope group.
 

@@ -1,4 +1,4 @@
-"""Direct unit tests for OpenProjectClient._fetch_bounded_and_paginate (OPM-88).
+"""Direct unit tests for OpenProjectClient._fetch_bounded_and_paginate.
 
 Covers the shared bounded-fetch-filter-paginate shape used by list_views/
 list_documents/list_news/list_time_entries/list_sprints/list_project_sprints/

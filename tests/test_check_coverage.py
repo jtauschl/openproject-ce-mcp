@@ -26,7 +26,7 @@ def test_resource_alias_is_recognized_as_covered(monkeypatch):
 
 
 def test_client_resources_detects_helper_keyword_path_arguments(tmp_path, monkeypatch):
-    # OPM-1439: list_views/get_view reach the "views" resource only via
+    # list_views/get_view reach the "views" resource only via
     # path="views" / path=f"views/{id}" keyword arguments to the shared
     # bounded-fetch/detail helpers, never a direct self._get("views"...) call.
     # "views" has no other call site to fall back on, so it was the one

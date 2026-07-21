@@ -549,8 +549,8 @@ async def test_get_grid_denies_missing_or_malformed_scope_under_restrictive_allo
 
 @pytest.mark.asyncio
 async def test_create_grid_denies_unrecognized_scope_under_restrictive_allowlist() -> None:
-    # OPM-1449: create_grid used to silently skip the write-ACL check whenever
-    # the scope href wasn't a recognized "/projects/<id>" link — fail closed instead.
+    # create_grid used to silently skip the write-ACL check whenever the scope
+    # href wasn't a recognized "/projects/<id>" link — fail closed instead.
     client = OpenProjectClient(
         _make_grid_settings(),
         transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}, request=r)),

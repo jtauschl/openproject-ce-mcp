@@ -165,7 +165,7 @@ async def test_update_project_denies_disallowed_parent_project() -> None:
     await client.aclose()
 
 
-# OPM-117: systematic project-reference-type x access-type x expectation matrix.
+# Systematic project-reference-type x access-type x expectation matrix.
 # Underlying invariant: no project-specific follow-up request may occur before the
 # target project has been resolved and checked against the required read/write
 # policy. Each case asserts both the outcome (success/denied) and the exact number
@@ -177,8 +177,8 @@ async def test_update_project_denies_disallowed_parent_project() -> None:
 # test_create_work_package_by_display_name_still_enforces_write_allowlist) plus the
 # ambiguous-name write-path test directly below this matrix.
 #
-# OPM-209 extended this matrix with "membership"/"board"/"version" operations
-# (previously only "read"/"write" against project itself), specifically to prove
+# This matrix extends to "membership"/"board"/"version" operations
+# (beyond just "read"/"write" against project itself), specifically to prove
 # the property holds through domains beyond project, and -- for "version" -- through
 # the app/-layer delegation (VersionService/project-ref resolution wiring), not
 # just legacy client.py code. This proves the *stronger* zero-follow-up-requests
@@ -214,8 +214,8 @@ async def test_update_project_denies_disallowed_parent_project() -> None:
         # the board preview form — 3 requests when allowed.
         pytest.param("1", ("*",), ("other",), "board", "WRITE", 1, id="board-write_denied"),
         pytest.param("1", ("*",), ("*",), "board", None, 3, id="board-write_allowed"),
-        # version: routed through app/services/version_service.py (the OPM-153
-        # pilot's app/-layer delegation, not legacy client.py code) — resolves+
+        # version: routed through app/services/version_service.py (an
+        # app/-layer delegation, not legacy client.py code) — resolves+
         # write-checks the project (1 request, and where it fails on denial), then
         # posts the version preview form — 2 requests when allowed.
         pytest.param("demo", ("*",), ("other",), "version", "WRITE", 1, id="version-write_denied"),
@@ -479,7 +479,7 @@ async def test_resolve_version_id_numeric_project_ref_is_allowlist_checked_first
 
 @pytest.mark.asyncio
 async def test_resolve_sprint_id_by_name_found_on_real_second_server_page() -> None:
-    # OPM-1451 (follow-up): _resolve_sprint_id must page-walk the SERVER itself
+    # _resolve_sprint_id must page-walk the SERVER itself
     # (real offset/pageSize per request), not just re-slice a single bounded
     # fetch in memory -- list_project_sprints's _fetch_bounded_and_paginate
     # always requests server offset=1/pageSize=max_results and paginates that

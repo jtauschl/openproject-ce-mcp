@@ -494,7 +494,7 @@ async def test_hidden_version_fields_are_tagged_and_dropped_from_payload() -> No
 async def test_hidden_version_description_also_suppresses_truncation_metadata() -> None:
     # A hidden "description" must also blank description_truncated/description_length
     # -- otherwise the real length of hidden content would still leak through those
-    # two sibling fields even though "description" itself is dropped (OPM-1451 follow-up).
+    # two sibling fields even though "description" itself is dropped.
     # The adapter computes them before hidden-field masking exists (masking is a
     # VersionService concern, per ADR 0001), so this can only be caught end-to-end
     # through get_version/list_versions, not via a direct normalize_version() call.
@@ -575,7 +575,7 @@ async def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() ->
 async def test_hidden_file_link_and_grid_fields_are_tagged_and_dropped_from_payload() -> None:
     # normalize_file_link/normalize_grid previously never called
     # _apply_hidden_fields at all, so OPENPROJECT_HIDE_FIELDS for these two
-    # entities was a silent no-op (OPM-1459).
+    # entities was a silent no-op.
     client = OpenProjectClient(
         _base_settings(hidden_fields={"file_link": ("storage_name",), "grid": ("scope",)}),
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),

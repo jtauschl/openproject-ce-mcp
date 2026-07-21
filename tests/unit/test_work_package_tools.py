@@ -889,9 +889,8 @@ async def test_bulk_update_work_packages_tool_version_error_has_item_index() -> 
 
 @pytest.mark.asyncio
 async def test_bulk_create_work_packages_assignee_error_is_indexed_by_item() -> None:
-    # OPM-218 fix: assignee's error is now indexed with "items[{i}]." like every
-    # sibling field in this loop, so a multi-item bulk call can tell which item
-    # failed.
+    # assignee's error is now indexed with "items[{i}]." like every sibling
+    # field in this loop, so a multi-item bulk call can tell which item failed.
     class StubClient:
         async def bulk_create_work_packages(self, **kwargs):
             return kwargs
@@ -906,7 +905,7 @@ async def test_bulk_create_work_packages_assignee_error_is_indexed_by_item() -> 
 
 @pytest.mark.asyncio
 async def test_bulk_create_work_packages_responsible_error_is_indexed_by_item() -> None:
-    # OPM-218 fix, for responsible.
+    # Same item-indexing fix as assignee above, for responsible.
     class StubClient:
         async def bulk_create_work_packages(self, **kwargs):
             return kwargs
@@ -921,7 +920,7 @@ async def test_bulk_create_work_packages_responsible_error_is_indexed_by_item() 
 
 @pytest.mark.asyncio
 async def test_bulk_update_work_packages_assignee_error_is_indexed_by_item() -> None:
-    # OPM-218 fix, same as the two bulk_create tests above.
+    # Same item-indexing fix as the two bulk_create tests above.
     class StubClient:
         async def bulk_update_work_packages(self, **kwargs):
             return kwargs
@@ -936,7 +935,7 @@ async def test_bulk_update_work_packages_assignee_error_is_indexed_by_item() -> 
 
 @pytest.mark.asyncio
 async def test_bulk_update_work_packages_responsible_error_is_indexed_by_item() -> None:
-    # OPM-218 fix, for responsible.
+    # Same item-indexing fix as assignee above, for responsible.
     class StubClient:
         async def bulk_update_work_packages(self, **kwargs):
             return kwargs
@@ -951,7 +950,7 @@ async def test_bulk_update_work_packages_responsible_error_is_indexed_by_item() 
 
 @pytest.mark.asyncio
 async def test_bulk_create_work_packages_accepts_select() -> None:
-    # OPM-155: select is validated by the tool function but not forwarded to the
+    # select is validated by the tool function but not forwarded to the
     # client -- the actual field-dropping happens one layer up, in the FastMCP
     # registration wrapper's _to_payload call (see tests/test_trimming.py's
     # wrapper-integration test for that). This test only proves the tool

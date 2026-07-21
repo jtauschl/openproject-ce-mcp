@@ -91,8 +91,8 @@ def _service(api: _FakeVersionApi | None = None, *, settings=None) -> VersionSer
 
 @pytest.mark.asyncio
 async def test_list_masks_hidden_fields_and_reports_clamped_limit() -> None:
-    # OPM-153 review fix: limit must be clamped to max_page_size/max_results in the
-    # RETURNED envelope, not just for the actual pagination math -- a caller passing
+    # The limit must be clamped to max_page_size/max_results in the RETURNED
+    # envelope, not just for the actual pagination math -- a caller passing
     # limit=10_000 against a small max_page_size must not see limit=10_000 back.
     records = [VersionRecord(summary=_summary(), defining_project_link=None)]
     settings = dataclasses.replace(
