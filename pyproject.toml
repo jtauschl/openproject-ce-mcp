@@ -92,6 +92,13 @@ markers = [
     "launcher: executable tests of the source-install/uninstall launcher scripts (ubuntu-only, see .github/workflows/test.yml's launchers job)",
 ]
 
+[tool.coverage.run]
+source = ["src/openproject_ce_mcp"]
+
+[tool.coverage.report]
+fail_under = 88
+show_missing = true
+
 [tool.ruff]
 line-length = 120
 target-version = "py310"

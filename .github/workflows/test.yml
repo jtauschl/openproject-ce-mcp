@@ -59,7 +59,12 @@ jobs:
         run: uv sync --dev
 
       - name: Run tests
+        if: matrix.os != 'ubuntu-latest' || matrix.python-version != '3.12'
         run: uv run pytest
+
+      - name: Run tests with coverage gate
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        run: uv run pytest --cov=src/openproject_ce_mcp --cov-report=term-missing
 
   build:
     runs-on: ubuntu-latest
