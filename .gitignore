@@ -40,3 +40,7 @@ SELF_REVIEW.md
 
 # Internal design docs (reference OPM ticket IDs — private tracker, not public)
 docs/adr/
+
+# dev_policies is a plain local clone pinned to a tag, not a submodule
+# (see OPM-260/263) — moves to the umbrella-directory level, not committed here
+/dev_policies/

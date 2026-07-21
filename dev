@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cmd="${1:-}"
+shift || true
+
+usage() {
+  echo "Usage: ./dev {bootstrap|lint|test|build|ci}" >&2
+  exit 1
+}
+
+bootstrap() {
+  uv sync --dev
+}
+
+lint() {
+  uv run ruff check .
+  uv run ruff format --check .
+  uv run mypy
+}
+
+test_() {
+  uv run pytest "$@"
+}
+
+build() {
+  uv build
+  uvx twine check dist/*
+}
+
+case "$cmd" in
+  bootstrap) bootstrap ;;
+  lint) lint ;;
+  test) test_ "$@" ;;
+  build) build ;;
+  ci)
+    lint
+    test_
+    build
+    ;;
+  *) usage ;;
+esac
