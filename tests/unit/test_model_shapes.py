@@ -607,3 +607,87 @@ async def test_project_detail_ancestors_boundary_in_mcp_schema() -> None:
     result_summary_schema = write_schema["$defs"][result_refs[0].rsplit("/", 1)[-1]]
     assert result_summary_schema["title"] == "ProjectSummary"
     assert "ancestors" not in result_summary_schema["properties"]
+
+
+@pytest.mark.asyncio
+async def test_get_project_tolerates_ancestor_without_display_id() -> None:
+    """Regression: OpenProject's _links.ancestors entries for a project are
+    lightweight {href, title} link objects and never carry a displayId (that
+    field is a work-package-only concept) -- client.py's normalize_project_detail
+    still probes for it via a.get("displayId"), so display_id is None for every
+    project ancestor. A prior `dict[str, str]` annotation on
+    ProjectDetail.ancestors rejected that None at the MCP structured-output
+    validation boundary (a real 'Input should be a valid string' crash on any
+    project with a parent), even though client.py and its unit tests already
+    treated None as the normal shape. Exercise the real FastMCP call_tool path
+    (not just outputSchema shape) so a regression here fails loudly again.
+    """
+    mcp = FastMCP("shape-test")
+
+    @mcp.tool()
+    def get_project_probe() -> models.ProjectDetail:
+        return models.ProjectDetail(
+            id=9,
+            name="Sub Project",
+            identifier="sub-project",
+            active=True,
+            description=None,
+            url="https://example.org/projects/sub-project",
+            ancestors=[
+                {"href": "/api/v3/projects/1", "title": "Root", "display_id": None},
+            ],
+        )
+
+    result = await mcp.call_tool("get_project_probe", {})
+    structured = result[1] if isinstance(result, tuple) else result
+    assert structured["ancestors"] == [{"href": "/api/v3/projects/1", "title": "Root", "display_id": None}]
+
+
+@pytest.mark.asyncio
+async def test_get_work_package_tolerates_ancestor_without_display_id() -> None:
+    """Regression, classic/pre-17.5 OpenProject instance: hierarchy links only
+    carry `displayId` in 17.5+ semantic mode (see the `parent_display_id`
+    comment in client.py's normalize_work_package_detail) -- on an older
+    instance, every ancestors/children entry's display_id is None, hitting the
+    exact same `dict[str, str]` structured-output rejection as the
+    get_project case above. Shipped since v0.3.0 (WorkPackageDetail.ancestors/
+    children existed before ProjectDetail.ancestors did), fixed alongside it.
+    """
+    mcp = FastMCP("shape-test")
+
+    @mcp.tool()
+    def get_work_package_probe() -> models.WorkPackageDetail:
+        return models.WorkPackageDetail(
+            id=952,
+            display_id="PROJ-952",
+            subject="Child task",
+            type=None,
+            status=None,
+            priority=None,
+            project_phase=None,
+            assignee=None,
+            responsible=None,
+            project=None,
+            version=None,
+            sprint=None,
+            parent_id=1,
+            parent_display_id=None,
+            start_date=None,
+            due_date=None,
+            lock_version=None,
+            description=None,
+            url="https://example.org/work_packages/952",
+            activities_url=None,
+            relations_url=None,
+            ancestors=[
+                {"href": "/api/v3/work_packages/1", "title": "Root task", "display_id": None},
+            ],
+            children=[
+                {"href": "/api/v3/work_packages/2", "title": "Sub task", "display_id": None},
+            ],
+        )
+
+    result = await mcp.call_tool("get_work_package_probe", {})
+    structured = result[1] if isinstance(result, tuple) else result
+    assert structured["ancestors"] == [{"href": "/api/v3/work_packages/1", "title": "Root task", "display_id": None}]
+    assert structured["children"] == [{"href": "/api/v3/work_packages/2", "title": "Sub task", "display_id": None}]

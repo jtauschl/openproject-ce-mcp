@@ -94,7 +94,7 @@ class ProjectDetail(ProjectSummary):
     row's ancestor chain (OPM-221, mirrors WorkPackageDetail.ancestors).
     """
 
-    ancestors: list[dict[str, str]] | None = None
+    ancestors: list[dict[str, str | None]] | None = None
     ancestors_truncated: bool = False
 
 
@@ -491,9 +491,9 @@ class WorkPackageDetail:
     updated_at: str | None = None
     author: str | None = None
     category: str | None = None
-    children: list[dict[str, str]] | None = None
+    children: list[dict[str, str | None]] | None = None
     children_truncated: bool = False
-    ancestors: list[dict[str, str]] | None = None
+    ancestors: list[dict[str, str | None]] | None = None
     ancestors_truncated: bool = False
     schedule_manually: bool | None = None
     ignore_non_working_days: bool | None = None

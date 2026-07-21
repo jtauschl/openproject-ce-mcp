@@ -56,6 +56,14 @@ development baseline.
   `null`** (as opposed to the key being absent, which was already handled).
   No confirmed case of OpenProject actually sending this has been observed;
   this is defensive hardening, not a fix for an observed failure.
+- **`get_project` no longer crashes on a project that has a parent, and
+  `get_work_package` no longer crashes on a classic/pre-17.5 OpenProject
+  instance for a work package with ancestors/children.** Project ancestor
+  links never carry a `displayId` (that field is a work-package-only
+  concept), and work-package hierarchy links only carry `displayId` in 17.5+
+  semantic mode — either way `ancestors[].display_id`/`children[].display_id`
+  can be `null`, but the output schema required a string there and rejected
+  the `null`.
 
 ---
 
