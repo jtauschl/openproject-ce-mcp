@@ -41,6 +41,11 @@ development baseline.
   instance's live feature flags.** This data remains available via the
   `get_instance_configuration` tool; the change removes a network call from
   server startup.
+- CI now runs **Semgrep** as a second SAST pass alongside the existing
+  bandit scan, and a complete shell-script gate (shellcheck, `shfmt`,
+  `bash -n`) across `dev`, `get.sh`, `uninstall.sh`,
+  `docker/test/up.sh`/`down.sh`, and `tools/api-check/fetch-sources.sh`. No
+  end-user-visible behavior change.
 
 ### Fixed
 

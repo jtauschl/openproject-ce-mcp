@@ -11,10 +11,13 @@ cd "$ROOT_DIR"
 # skip if no interpreter is available yet.
 PYTHON_BIN=""
 for p in python3 python; do
-  if command -v "$p" >/dev/null 2>&1; then PYTHON_BIN="$p"; break; fi
+    if command -v "$p" >/dev/null 2>&1; then
+        PYTHON_BIN="$p"
+        break
+    fi
 done
 if [ -n "$PYTHON_BIN" ]; then
-  "$PYTHON_BIN" configure_mcp.py --uninstall || true
+    "$PYTHON_BIN" configure_mcp.py --uninstall || true
 fi
 
 # Remove local build/dev artifacts and the API-source clones (large, gitignored).

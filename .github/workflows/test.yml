@@ -39,6 +39,9 @@ jobs:
       - name: Run bandit (SAST)
         run: uvx bandit -r src/openproject_ce_mcp -ll
 
+      - name: Run semgrep (SAST)
+        run: uvx semgrep --config auto src/openproject_ce_mcp
+
       - name: Check dependency licenses
         run: uvx pip-licenses --python .venv/bin/python3 --fail-on="GPL;LGPL;AGPL"
 
@@ -111,11 +114,22 @@ jobs:
       - name: Check get.sh syntax (POSIX sh)
         run: sh -n get.sh
 
-      - name: Check uninstall.sh syntax (bash)
-        run: bash -n uninstall.sh
+      - name: Check shell scripts syntax (bash -n)
+        run: |
+          for f in dev uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh; do
+            bash -n "$f"
+          done
 
       - name: shellcheck
         run: shellcheck get.sh uninstall.sh dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh
+
+      - name: Install shfmt
+        run: |
+          go install mvdan.cc/sh/v3/cmd/shfmt@v3.13.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: shfmt
+        run: shfmt -l get.sh uninstall.sh dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh
 
       - name: Check get.ps1 / uninstall.ps1 syntax (PowerShell parser)
         shell: pwsh

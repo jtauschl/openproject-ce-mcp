@@ -20,58 +20,82 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 # Stable secret across restarts, generated once into a gitignored .env.
 if [ ! -f .env ]; then
-  echo "SECRET_KEY_BASE=$(openssl rand -hex 64)" > .env
-  echo "generated docker/test/.env"
+    echo "SECRET_KEY_BASE=$(openssl rand -hex 64)" >.env
+    echo "generated docker/test/.env"
 fi
 
 case "${1:-all}" in
-  16) SERVICES=(op-16-6); SEMANTIC=("op-16-6:0") ;;
-  174) SERVICES=(op-17-4); SEMANTIC=("op-17-4:0") ;;  # displayId present, semantic off
-  17|175) SERVICES=(op-17-5); SEMANTIC=("op-17-5:1") ;;
-  all|"") SERVICES=(op-16-6 op-17-4 op-17-5); SEMANTIC=("op-16-6:0" "op-17-4:0" "op-17-5:1") ;;
-  *) echo "usage: up.sh [16|174|17|all]" >&2; exit 2 ;;
+16)
+    SERVICES=(op-16-6)
+    SEMANTIC=("op-16-6:0")
+    ;;
+174)
+    SERVICES=(op-17-4)
+    SEMANTIC=("op-17-4:0")
+    ;; # displayId present, semantic off
+17 | 175)
+    SERVICES=(op-17-5)
+    SEMANTIC=("op-17-5:1")
+    ;;
+all | "")
+    SERVICES=(op-16-6 op-17-4 op-17-5)
+    SEMANTIC=("op-16-6:0" "op-17-4:0" "op-17-5:1")
+    ;;
+*)
+    echo "usage: up.sh [16|174|17|all]" >&2
+    exit 2
+    ;;
 esac
 
 echo "Starting: ${SERVICES[*]} (first boot can take >5 min)…"
 docker compose up -d "${SERVICES[@]}"
 
 wait_healthy() {
-  local svc="$1" cid
-  cid="$(docker compose ps -q "$svc")"
-  echo -n "Waiting for $svc to become healthy"
-  for _ in $(seq 1 120); do
-    local state
-    state="$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo starting)"
-    if [ "$state" = "healthy" ]; then echo " ok"; return 0; fi
-    echo -n "."; sleep 10
-  done
-  echo " TIMEOUT"; return 1
+    local svc="$1" cid
+    cid="$(docker compose ps -q "$svc")"
+    echo -n "Waiting for $svc to become healthy"
+    for _ in $(seq 1 120); do
+        local state
+        state="$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo starting)"
+        if [ "$state" = "healthy" ]; then
+            echo " ok"
+            return 0
+        fi
+        echo -n "."
+        sleep 10
+    done
+    echo " TIMEOUT"
+    return 1
 }
 
 port_for() {
-  case "$1" in
+    case "$1" in
     op-16-6) echo 8166 ;;
     op-17-4) echo 8174 ;;
     op-17-5) echo 8175 ;;
-    *) echo "unknown service: $1" >&2; return 2 ;;
-  esac
+    *)
+        echo "unknown service: $1" >&2
+        return 2
+        ;;
+    esac
 }
 
 for entry in "${SEMANTIC[@]}"; do
-  svc="${entry%%:*}"; semantic="${entry#*:}"
-  port="$(port_for "$svc")"
-  wait_healthy "$svc"
-  echo "Seeding $svc (SEED_SEMANTIC=$semantic)…"
-  token="$(docker compose exec -T -e SEED_SEMANTIC="$semantic" "$svc" \
-            bundle exec rails runner - < seed.rb \
-            | sed -n 's/^SEED: API_TOKEN=//p' | tail -1)"
-  if [ -z "$token" ]; then
-    echo "WARNING: could not capture API token for $svc — check seed output above." >&2
-    continue
-  fi
-  # Project identifier matches seed.rb: uppercase in semantic mode, lowercase otherwise
-  test_project="$( [ "$semantic" = "1" ] && echo "TST" || echo "tst" )"
-  cat <<EOF
+    svc="${entry%%:*}"
+    semantic="${entry#*:}"
+    port="$(port_for "$svc")"
+    wait_healthy "$svc"
+    echo "Seeding $svc (SEED_SEMANTIC=$semantic)…"
+    token="$(docker compose exec -T -e SEED_SEMANTIC="$semantic" "$svc" \
+        bundle exec rails runner - <seed.rb |
+        sed -n 's/^SEED: API_TOKEN=//p' | tail -1)"
+    if [ -z "$token" ]; then
+        echo "WARNING: could not capture API token for $svc — check seed output above." >&2
+        continue
+    fi
+    # Project identifier matches seed.rb: uppercase in semantic mode, lowercase otherwise
+    test_project="$([ "$semantic" = "1" ] && echo "TST" || echo "tst")"
+    cat <<EOF
 
 # --- $svc (port $port) -------------------------------------------------
 OPENPROJECT_BASE_URL=http://localhost:$port \\
