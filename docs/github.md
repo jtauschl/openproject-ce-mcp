@@ -5,7 +5,9 @@
 </p>
 
 This guide covers **VS Code**, where MCP servers run through **GitHub Copilot in
-Agent mode**. If you use VS Code, this is your guide.
+Agent mode**. If you use VS Code, this is your guide. (This is about VS
+Code's own MCP host via Copilot — not a standalone "GitHub MCP server";
+this project doesn't connect to or configure one.)
 
 ## Recommended setup
 

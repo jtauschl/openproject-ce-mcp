@@ -69,6 +69,33 @@ development baseline.
   semantic mode — either way `ancestors[].display_id`/`children[].display_id`
   can be `null`, but the output schema required a string there and rejected
   the `null`.
+- **`configure`'s generic copy-source for MCP clients without native support
+  (Zed, Continue, ...) no longer writes to `.mcp.json`** — that path is
+  Claude Code's own active project config, so a non-Claude project-scoped
+  selection could leave a file there that Claude Code would later load as if
+  it were a real registration. It now writes to a dedicated
+  `openproject-mcp.example.json`, and its `OPENPROJECT_API_TOKEN` is always a
+  placeholder rather than the real value, since the file is a manual
+  copy/adapt reference, not something any client loads automatically.
+- **`configure`/`--uninstall` no longer crash with an unhandled traceback on
+  a filesystem error (permissions, disk full) while writing or removing one
+  of several selected client configs.** Each target's config file is now
+  written atomically (temp file + `os.replace()`, existing content backed up
+  via copy rather than move first) so a failed write can never leave a
+  half-written or missing file; a failure on one target no longer aborts the
+  remaining ones, and the process now exits non-zero with a summary of every
+  target that failed instead of silently reporting success.
+
+### Docs
+
+- Added the missing "Notes" section to the Cursor client guide
+  (`OPENPROJECT_READ_PROJECTS`/`WRITE_PROJECTS` semantics), matching every
+  other client guide.
+- Documented the monorepo/umbrella-directory case where `configure` writes
+  to the wrong place relative to where an AI client actually opens its
+  workspace, with a troubleshooting entry for it.
+- Clarified that the VS Code/Copilot guide is about VS Code's own MCP host,
+  not a standalone "GitHub MCP server".
 
 ---
 

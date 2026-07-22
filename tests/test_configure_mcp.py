@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -186,7 +187,7 @@ def _json_client(target: Path, *, detect: bool = True, project_target: Path | No
 @_needs_tomllib
 def test_write_client_config_creates_file(monkeypatch, tmp_path: Path) -> None:
     target = tmp_path / "nested" / "config.toml"
-    assert c._write_client_config(_codex_client(target), CMD, ENV) is True
+    assert c._write_client_config(_codex_client(target), CMD, ENV) == "changed"
     assert target.exists()
     data = tomllib.loads(target.read_text())
     assert data["mcp_servers"]["openproject"]["command"] == CMD
@@ -195,8 +196,8 @@ def test_write_client_config_creates_file(monkeypatch, tmp_path: Path) -> None:
 def test_write_client_config_backs_up_and_preserves(monkeypatch, tmp_path: Path) -> None:
     target = tmp_path / ".claude.json"
     target.write_text(json.dumps({"mcpServers": {"other": {"command": "/x"}}, "theme": "dark"}))
-    monkeypatch.setattr(c, "_backup", lambda p: p.rename(p.with_name(f"{p.name}.bak.fixed")))
-    assert c._write_client_config(_json_client(target), CMD, ENV) is True
+    monkeypatch.setattr(c, "_backup", lambda p: shutil.copy2(p, p.with_name(f"{p.name}.bak.fixed")))
+    assert c._write_client_config(_json_client(target), CMD, ENV) == "changed"
     backup = tmp_path / ".claude.json.bak.fixed"
     assert backup.exists(), "existing config must be backed up before rewriting"
     result = json.loads(target.read_text())
@@ -210,7 +211,7 @@ def test_write_client_config_skips_unparseable_file(monkeypatch, tmp_path: Path,
     target = tmp_path / ".claude.json"
     target.write_text("{ this is not valid json ")
     monkeypatch.setattr(c, "_backup", lambda p: None)
-    assert c._write_client_config(_json_client(target), CMD, ENV) is False
+    assert c._write_client_config(_json_client(target), CMD, ENV) == "failed"
     # Original file left untouched.
     assert target.read_text() == "{ this is not valid json "
     assert "could not be parsed" in capsys.readouterr().out
@@ -222,7 +223,11 @@ def test_backup_preserves_extension(tmp_path: Path) -> None:
     c._backup(target)
     backups = list(tmp_path.glob("config.toml.bak.*"))
     assert len(backups) == 1
-    assert not target.exists()
+    # _backup copies (not moves): the original stays in place until the
+    # atomic replace swaps in new content, which this call never does.
+    assert target.exists()
+    assert target.read_text() == "x = 1\n"
+    assert backups[0].read_text() == "x = 1\n"
 
 
 @pytest.mark.skipif(
@@ -239,6 +244,55 @@ def test_backup_chmods_backup_on_posix(monkeypatch, tmp_path: Path) -> None:
 
     backup = next(tmp_path.glob("config.toml.bak.*"))
     assert backup.stat().st_mode & 0o777 == 0o600
+
+
+def test_atomic_write_existing_target_untouched_on_replace_failure(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / "config.toml"
+    target.write_text("original\n")
+
+    def _boom(*_args, **_kwargs):
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr(c.os, "replace", _boom)
+    with pytest.raises(OSError):
+        c._atomic_write(target, "new content\n")
+    # The original survives byte-for-byte: _backup copies rather than moves,
+    # so a failed replace never leaves the target missing or half-written.
+    assert target.read_text() == "original\n"
+    assert list(tmp_path.glob("*.tmp")) == [], "no orphaned temp file after a failed replace"
+
+
+def test_atomic_write_no_partial_file_on_new_target_failure(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / "config.toml"  # does not exist yet
+
+    def _boom(*_args, **_kwargs):
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr(c.os, "replace", _boom)
+    with pytest.raises(OSError):
+        c._atomic_write(target, "new content\n")
+    assert not target.exists(), "a failed first-time write must not leave a partial target"
+    assert list(tmp_path.glob("*.tmp")) == [], "no orphaned temp file after a failed replace"
+
+
+def test_atomic_write_cleans_up_temp_file_on_write_failure(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / "config.toml"
+
+    class _BoomFile:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def write(self, _text):
+            raise OSError("simulated disk-full mid-write")
+
+    monkeypatch.setattr(c.os, "fdopen", lambda fd, *a, **k: _BoomFile())
+    with pytest.raises(OSError):
+        c._atomic_write(target, "new content\n")
+    assert not target.exists()
+    assert list(tmp_path.glob(".*.tmp")) == [], "no orphaned temp file after a failed write"
 
 
 def test_git_warning_noops_when_git_missing(monkeypatch, tmp_path: Path, capsys) -> None:
@@ -573,7 +627,7 @@ def test_write_client_config_skips_dotted_codex(monkeypatch, tmp_path, capsys) -
     original = 'mcp_servers.openproject.command = "/old"\n'
     target.write_text(original)
     monkeypatch.setattr(c, "_backup", lambda p: None)
-    assert c._write_client_config(_codex_client(target), CMD, ENV) is False
+    assert c._write_client_config(_codex_client(target), CMD, ENV) == "failed"
     # File left byte-for-byte untouched.
     assert target.read_text() == original
     assert "could not be parsed" in capsys.readouterr().out
@@ -597,7 +651,7 @@ def test_write_client_config_skips_non_dict_json(monkeypatch, tmp_path, capsys) 
     original = "[1, 2, 3]"
     target.write_text(original)
     monkeypatch.setattr(c, "_backup", lambda p: None)
-    assert c._write_client_config(_json_client(target), CMD, ENV) is False
+    assert c._write_client_config(_json_client(target), CMD, ENV) == "failed"
     # Existing (unexpected-shape) data must not be clobbered.
     assert target.read_text() == original
     assert "could not be parsed" in capsys.readouterr().out
@@ -676,11 +730,11 @@ def test_remove_codex_openproject_keeps_siblings() -> None:
 def test_remove_client_config_backs_up_and_removes(monkeypatch, tmp_path) -> None:
     target = tmp_path / ".claude.json"
     target.write_text(json.dumps({"mcpServers": {"openproject": {"command": "/x"}, "gh": {"command": "/gh"}}}))
-    monkeypatch.setattr(c, "_backup", lambda p: p.rename(p.with_name(f"{p.name}.bak.fixed")))
+    monkeypatch.setattr(c, "_backup", lambda p: shutil.copy2(p, p.with_name(f"{p.name}.bak.fixed")))
     client = c.Client(
         "claude-code", "Claude Code", target, "json", lambda: True, "docs/claude.md", root_key="mcpServers"
     )
-    assert c._remove_client_config(client) is True
+    assert c._remove_client_config(client) == "changed"
     assert (tmp_path / ".claude.json.bak.fixed").exists()
     result = json.loads(target.read_text())
     assert "openproject" not in result["mcpServers"]
@@ -693,7 +747,54 @@ def test_remove_client_config_noop_when_no_entry(tmp_path) -> None:
     client = c.Client(
         "claude-code", "Claude Code", target, "json", lambda: True, "docs/claude.md", root_key="mcpServers"
     )
-    assert c._remove_client_config(client) is False
+    assert c._remove_client_config(client) == "unchanged"
+
+
+def test_remove_client_config_missing_target_is_unchanged(tmp_path) -> None:
+    client = c.Client(
+        "claude-code",
+        "Claude Code",
+        tmp_path / ".claude.json",
+        "json",
+        lambda: True,
+        "docs/claude.md",
+        root_key="mcpServers",
+    )
+    assert c._remove_client_config(client) == "unchanged"
+
+
+def test_remove_client_config_failed_on_unparseable(monkeypatch, tmp_path, capsys) -> None:
+    target = tmp_path / ".claude.json"
+    target.write_text("{ not valid json")
+    client = c.Client(
+        "claude-code", "Claude Code", target, "json", lambda: True, "docs/claude.md", root_key="mcpServers"
+    )
+    assert c._remove_client_config(client) == "failed"
+    assert target.read_text() == "{ not valid json"
+    assert "could not be parsed" in capsys.readouterr().out
+
+
+def test_remove_client_config_read_error_is_failed_not_unchanged(monkeypatch, tmp_path, capsys) -> None:
+    # A permission error (or any non-FileNotFoundError OSError) reading the
+    # target must be reported as "failed" — Path.exists() would have
+    # swallowed this as "doesn't exist" and silently reported "unchanged".
+    target = tmp_path / ".claude.json"
+    target.write_text('{"mcpServers": {}}')
+    client = c.Client(
+        "claude-code", "Claude Code", target, "json", lambda: True, "docs/claude.md", root_key="mcpServers"
+    )
+    monkeypatch.setattr(c.Path, "read_text", lambda self, *a, **k: (_ for _ in ()).throw(PermissionError("denied")))
+    assert c._remove_client_config(client) == "failed"
+    assert "Could not read" in capsys.readouterr().out
+
+
+def test_write_client_config_read_error_is_failed(monkeypatch, tmp_path, capsys) -> None:
+    target = tmp_path / ".claude.json"
+    target.write_text('{"mcpServers": {}}')
+    client = _json_client(target)
+    monkeypatch.setattr(c.Path, "read_text", lambda self, *a, **k: (_ for _ in ()).throw(PermissionError("denied")))
+    assert c._write_client_config(client, CMD, ENV) == "failed"
+    assert "Could not read" in capsys.readouterr().out
 
 
 # ── run mode / command / config-path resolution (installed vs. clone) ───────────
@@ -747,10 +848,10 @@ def test_server_command_installed_last_resort_bare_name(monkeypatch, tmp_path: P
     assert c._server_command(installed=True) == ("openproject-ce-mcp", False)
 
 
-def test_resolve_mcp_json_clone_uses_launch_directory(monkeypatch, tmp_path: Path) -> None:
+def test_resolve_generic_mcp_example_clone_uses_launch_directory(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PWD", str(tmp_path))
-    assert c._resolve_mcp_json(None, installed=False) == tmp_path / ".mcp.json"
+    assert c._resolve_generic_mcp_example(None, installed=False) == tmp_path / c._GENERIC_EXAMPLE_FILENAME
 
 
 def test_project_cwd_prefers_pwd_for_uv_directory(monkeypatch, tmp_path: Path) -> None:
@@ -761,31 +862,31 @@ def test_project_cwd_prefers_pwd_for_uv_directory(monkeypatch, tmp_path: Path) -
     monkeypatch.chdir(repo_dir)
     monkeypatch.setenv("PWD", str(launch_dir))
     assert c._project_cwd() == launch_dir
-    assert c._resolve_mcp_json("local", installed=False) == launch_dir / ".mcp.json"
+    assert c._resolve_generic_mcp_example("local", installed=False) == launch_dir / c._GENERIC_EXAMPLE_FILENAME
 
 
-def test_resolve_mcp_json_installed_project_dir_uses_cwd(monkeypatch, tmp_path: Path) -> None:
+def test_resolve_generic_mcp_example_installed_project_dir_uses_cwd(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PWD", str(tmp_path))
     (tmp_path / ".git").mkdir()
-    assert c._resolve_mcp_json(None, installed=True) == tmp_path / ".mcp.json"
+    assert c._resolve_generic_mcp_example(None, installed=True) == tmp_path / c._GENERIC_EXAMPLE_FILENAME
 
 
-def test_resolve_mcp_json_installed_bare_dir_is_global(monkeypatch, tmp_path: Path) -> None:
+def test_resolve_generic_mcp_example_installed_bare_dir_is_global(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)  # no project markers
     monkeypatch.setenv("PWD", str(tmp_path))
-    assert c._resolve_mcp_json(None, installed=True) is None
+    assert c._resolve_generic_mcp_example(None, installed=True) is None
 
 
-def test_resolve_mcp_json_local_forces_cwd(monkeypatch, tmp_path: Path) -> None:
+def test_resolve_generic_mcp_example_local_forces_cwd(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PWD", str(tmp_path))
-    assert c._resolve_mcp_json("local", installed=True) == tmp_path / ".mcp.json"
+    assert c._resolve_generic_mcp_example("local", installed=True) == tmp_path / c._GENERIC_EXAMPLE_FILENAME
 
 
-def test_resolve_mcp_json_global_is_none() -> None:
-    assert c._resolve_mcp_json("global", installed=True) is None
-    assert c._resolve_mcp_json("global", installed=False) is None
+def test_resolve_generic_mcp_example_global_is_none() -> None:
+    assert c._resolve_generic_mcp_example("global", installed=True) is None
+    assert c._resolve_generic_mcp_example("global", installed=False) is None
 
 
 def test_looks_like_project_dir(tmp_path: Path) -> None:
@@ -1040,7 +1141,7 @@ def test_write_project_json_preserves_github(tmp_path: Path) -> None:
     target = tmp_path / ".mcp.json"
     target.write_text(json.dumps({"mcpServers": {"github": {"command": "github-mcp-server"}}}))
     client = _json_client(tmp_path / ".claude.json", project_target=target)
-    assert c._write_client_config(client, CMD, ENV, target=target) is True
+    assert c._write_client_config(client, CMD, ENV, target=target) == "changed"
     data = json.loads(target.read_text())
     assert data["mcpServers"]["github"]["command"] == "github-mcp-server"
     assert data["mcpServers"]["openproject"]["command"] == CMD
@@ -1061,7 +1162,7 @@ def test_write_project_vscode_servers_stdio_preserves_github(tmp_path: Path) -> 
         stdio=True,
         project_target=target,
     )
-    assert c._write_client_config(client, CMD, ENV, target=target) is True
+    assert c._write_client_config(client, CMD, ENV, target=target) == "changed"
     data = json.loads(target.read_text())
     assert data["servers"]["github"]["command"] == "x"
     assert data["servers"]["openproject"]["type"] == "stdio"
@@ -1073,7 +1174,7 @@ def test_write_project_codex_toml_preserves_github(tmp_path: Path) -> None:
     target.parent.mkdir()
     target.write_text('[mcp_servers.github]\ncommand = "x"\n')
     client = _codex_client(tmp_path / "g.toml", project_target=target)
-    assert c._write_client_config(client, CMD, ENV, target=target) is True
+    assert c._write_client_config(client, CMD, ENV, target=target) == "changed"
     text = target.read_text()
     assert "[mcp_servers.github]" in text
     assert "[mcp_servers.openproject]" in text
@@ -1083,7 +1184,7 @@ def test_write_project_invalid_json_left_untouched(tmp_path: Path, capsys) -> No
     target = tmp_path / ".mcp.json"
     target.write_text("{ not valid json ")
     client = _json_client(tmp_path / ".claude.json", project_target=target)
-    assert c._write_client_config(client, CMD, ENV, target=target) is False
+    assert c._write_client_config(client, CMD, ENV, target=target) == "failed"
     assert target.read_text() == "{ not valid json "  # untouched
     assert "could not be parsed" in capsys.readouterr().out
 
@@ -1120,10 +1221,60 @@ def test_uninstall_removes_openproject_from_project_keeps_github(tmp_path: Path)
         )
     )
     client = _json_client(tmp_path / ".claude.json", project_target=target)
-    assert c._remove_client_config(client, target=target) is True
+    assert c._remove_client_config(client, target=target) == "changed"
     data = json.loads(target.read_text())
     assert "openproject" not in data["mcpServers"]
     assert "github" in data["mcpServers"]
+
+
+def test_remove_generic_example_missing_file_is_unchanged(tmp_path: Path) -> None:
+    assert c._remove_generic_example(tmp_path / c._GENERIC_EXAMPLE_FILENAME) == "unchanged"
+
+
+def test_remove_generic_example_removes_entry_keeps_others(tmp_path: Path) -> None:
+    target = tmp_path / c._GENERIC_EXAMPLE_FILENAME
+    target.write_text(json.dumps({"mcpServers": {"github": {"command": "x"}, "openproject": {"command": CMD}}}))
+    assert c._remove_generic_example(target) == "changed"
+    data = json.loads(target.read_text())
+    assert "openproject" not in data["mcpServers"]
+    assert "github" in data["mcpServers"]
+
+
+def test_remove_generic_example_read_error_is_failed_not_unchanged(monkeypatch, tmp_path: Path, capsys) -> None:
+    target = tmp_path / c._GENERIC_EXAMPLE_FILENAME
+    target.write_text('{"mcpServers": {}}')
+    monkeypatch.setattr(c.Path, "read_text", lambda self, *a, **k: (_ for _ in ()).throw(PermissionError("denied")))
+    assert c._remove_generic_example(target) == "failed"
+    assert "Could not read" in capsys.readouterr().out
+
+
+def test_run_uninstall_removes_generic_example(monkeypatch, tmp_path: Path, capsys) -> None:
+    # No detected clients at all — only the generic example file exists,
+    # covering the case where it was written for a client this tool doesn't
+    # natively support and must still be cleaned up by --uninstall.
+    monkeypatch.setattr(c, "_clients", lambda: [])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PWD", str(tmp_path))
+    example = tmp_path / c._GENERIC_EXAMPLE_FILENAME
+    example.write_text(json.dumps({"mcpServers": {"openproject": {"command": CMD}}}))
+    c._run_uninstall()
+    data = json.loads(example.read_text())
+    assert "openproject" not in data.get("mcpServers", {})
+    assert "Done." in capsys.readouterr().out
+
+
+def test_run_uninstall_reports_failure_and_exits_nonzero(monkeypatch, tmp_path: Path, capsys) -> None:
+    target = tmp_path / ".mcp.json"
+    target.write_text(json.dumps({"mcpServers": {"openproject": {"command": CMD}}}))
+    client = _json_client(tmp_path / ".claude.json", project_target=target)
+    monkeypatch.setattr(c, "_clients", lambda: [client])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PWD", str(tmp_path))
+    monkeypatch.setattr(c, "_remove_client_config", lambda *a, **k: "failed")
+    with pytest.raises(SystemExit) as exc:
+        c._run_uninstall()
+    assert exc.value.code == 1
+    assert str(target) in capsys.readouterr().out
 
 
 # ── main() orchestration (happy paths + abort), prompts fully patched ───────────
@@ -1413,7 +1564,9 @@ def test_main_project_prefill_does_not_use_global_values(monkeypatch, tmp_path: 
 
 
 def test_main_project_non_claude_writes_generic_mcp_json(monkeypatch, tmp_path: Path) -> None:
-    # Project scope with ONLY a non-Claude client (codex) → generic .mcp.json IS written.
+    # Project scope with ONLY a non-Claude client (codex) → generic example
+    # copy-source IS written, under its own inert name — never .mcp.json,
+    # which is Claude Code's own active project config.
     codex = _codex_client(tmp_path / "g.toml", project_target=tmp_path / ".codex" / "config.toml")
     answers = {
         "Configure globally": "n",
@@ -1424,13 +1577,24 @@ def test_main_project_non_claude_writes_generic_mcp_json(monkeypatch, tmp_path: 
         "Write scope": "",
     }
     _run_main(monkeypatch, tmp_path, [codex], answers)
-    assert (tmp_path / ".codex" / "config.toml").exists()
-    assert (tmp_path / ".mcp.json").exists(), "generic .mcp.json written when no Claude Code project"
+    codex_config = tmp_path / ".codex" / "config.toml"
+    example = tmp_path / c._GENERIC_EXAMPLE_FILENAME
+    assert codex_config.exists()
+    assert example.exists(), "generic example copy-source written when no Claude Code project"
+    assert not (tmp_path / ".mcp.json").exists(), "must never write Claude Code's own file for a non-Claude selection"
+    # The example file is a copy-source, not an active config any client loads
+    # — its token is a placeholder, never the real secret duplicated to disk.
+    example_env = json.loads(example.read_text())["mcpServers"]["openproject"]["env"]
+    assert example_env["OPENPROJECT_API_TOKEN"] == c._EXAMPLE_TOKEN_PLACEHOLDER
+    # The actual client file that's really loaded still gets the real token.
+    codex_text = codex_config.read_text()
+    assert "opapi-tok" in codex_text
+    assert c._EXAMPLE_TOKEN_PLACEHOLDER not in codex_text
 
 
 def test_main_project_claude_no_duplicate_mcp_json(monkeypatch, tmp_path: Path) -> None:
     # Project scope WITH Claude Code → .mcp.json is Claude's project file, written once,
-    # and the generic write is skipped (no double write / no extra backup).
+    # and the generic example write is skipped entirely (no double write / no extra backup).
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
     answers = {
         "Configure globally": "n",
@@ -1445,6 +1609,46 @@ def test_main_project_claude_no_duplicate_mcp_json(monkeypatch, tmp_path: Path) 
     # exactly one .mcp.json, no stray backup from a second write
     backups = list(tmp_path.glob(".mcp.json.bak.*"))
     assert backups == [], "Claude Code project write must not double-write .mcp.json"
+    assert not (tmp_path / c._GENERIC_EXAMPLE_FILENAME).exists(), (
+        "no generic example needed when Claude Code is selected"
+    )
+
+
+def test_configure_continues_after_one_client_fails_and_exits_nonzero(monkeypatch, tmp_path: Path, capsys) -> None:
+    # Two project-scoped clients selected in one run; the first one's write
+    # fails (simulated OSError at the atomic-replace step) — the second must
+    # still be written, the failure summary must name the failed path, and
+    # the process must exit non-zero without an unhandled traceback.
+    codex_target = tmp_path / ".codex" / "config.toml"
+    claude_target = tmp_path / ".mcp.json"
+    codex = _codex_client(tmp_path / "g.toml", project_target=codex_target)
+    claude = _json_client(tmp_path / ".claude.json", project_target=claude_target)
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Codex?": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Write scope": "",
+    }
+
+    real_replace = c.os.replace
+
+    def _flaky_replace(src, dst, *a, **k):
+        if str(dst) == str(codex_target):
+            raise OSError("simulated write failure")
+        return real_replace(src, dst, *a, **k)
+
+    monkeypatch.setattr(c.os, "replace", _flaky_replace)
+
+    with pytest.raises(SystemExit) as exc:
+        _run_main(monkeypatch, tmp_path, [codex, claude], answers)
+    assert exc.value.code == 1
+    out = capsys.readouterr().out
+    assert str(codex_target) in out, "the failure summary must name the specific failed path"
+    assert not codex_target.exists(), "a failed write must not leave a partial target"
+    assert claude_target.exists(), "the second client must still be written despite the first one failing"
 
 
 def test_main_basic_setup_safe_advanced_defaults(monkeypatch, tmp_path: Path) -> None:

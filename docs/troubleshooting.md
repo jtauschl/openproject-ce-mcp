@@ -50,7 +50,7 @@ If a check fails, doctor prints a `[FAIL]` message with details and suggestions.
 
 | Symptom | Likely cause and fix |
 |---|---|
-| Server / tools don't appear | Client not restarted, or the config is in the wrong file. Reload the client and confirm the file, location, and root key match your client's row in [Clients](clients.md#file-layout-per-client). |
+| Server / tools don't appear | Client not restarted, or the config is in the wrong file. Reload the client and confirm the file, location, and root key match your client's row in [Clients](clients.md#file-layout-per-client) — `configure` writes to whatever directory it was launched from, so also check that matches the folder your client has open, and re-run `configure` from there if not. |
 | `[auth_error]` on the first call | Wrong `OPENPROJECT_API_TOKEN` or `OPENPROJECT_BASE_URL`. Re-check both; the token is `opapi-…` and the base URL has no trailing `/api/v3`. |
 | Tools appear but writes fail | The project-scope allowlists are the real write gate, not the write-category flags (which default on). Make sure the target project is in **both** `OPENPROJECT_READ_PROJECTS` and `OPENPROJECT_WRITE_PROJECTS`, and check that the corresponding write-category flag such as `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE` hasn't been explicitly set to `false` — see [Configuration](configuration.md#tool-groups). |
 | Missing env vars | Add `OPENPROJECT_BASE_URL` and `OPENPROJECT_API_TOKEN` to your client config's `env` section. |

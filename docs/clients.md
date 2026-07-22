@@ -54,6 +54,11 @@ Registration only points your client at the installed command; it is not a
 second install. Using more than one client (say Claude and Codex)? Create one
 config file per client; they sit side by side.
 
+Run `configure` from your project directory — the same one your AI client
+opens as its workspace — so the project-scoped config actually lands where
+the client looks for it; the target path is shown in the preview before you
+confirm, so you can double-check it.
+
 ## Choosing a client guide
 
 | If you use… | Guide |
@@ -67,9 +72,10 @@ config file per client; they sit side by side.
 
 **Any other MCP client** (Windsurf, JetBrains AI Assistant/Junie, Cline,
 Continue, Warp, Zed, …) uses the same pattern: point `command` at the binary
-from the generated `.mcp.json` and copy the `env` values. The root key is
-almost always `mcpServers` (Zed uses `context_servers` with
-`"source": "custom"`; Continue uses YAML with the same fields).
+from the generated `openproject-mcp.example.json` copy-source and copy the
+`env` values. The root key is almost always `mcpServers` (Zed uses
+`context_servers` with `"source": "custom"`; Continue uses YAML with the
+same fields).
 
 ## File layout per client
 
@@ -86,11 +92,16 @@ client's config to another verbatim:
 
 `.mcp.json` *is* Claude Code's project config, so `configure` writes it once
 and reuses it; for every other client chosen at project scope, `configure`
-also writes a generic `.mcp.json` you can copy values from.
+also writes a generic `openproject-mcp.example.json` copy-source you can
+copy values from — a deliberately inert filename no client loads
+automatically, so it never collides with Claude Code's own `.mcp.json`.
+Its `OPENPROJECT_API_TOKEN` is always a placeholder, not the real value —
+paste your actual token in when you adapt it into your client's real config.
 
 To register manually instead of running `configure`, copy the `command` and
-`env` values from the generated `.mcp.json` into the file and format your
-client's guide shows — the values are identical across clients (see
+`env` values from the generated `openproject-mcp.example.json` into the file
+and format your client's guide shows — the fields are equivalent across
+clients, but replace the token placeholder with your real token (see
 [`.mcp.json.example`](../.mcp.json.example) and
 [Configuration](configuration.md) for the full set of `env` keys).
 

@@ -29,6 +29,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -113,10 +114,16 @@ def _project_cwd() -> Path:
     return Path.cwd()
 
 
-def _resolve_mcp_json(scope: str | None, installed: bool) -> Path | None:
-    """Resolve where the project-local ``.mcp.json`` goes, or ``None`` for global.
+_GENERIC_EXAMPLE_FILENAME = "openproject-mcp.example.json"
 
-    This owns the whole scope policy in one place:
+
+def _resolve_generic_mcp_example(scope: str | None, installed: bool) -> Path | None:
+    """Resolve where the generic copy-source example file goes, or ``None`` for global.
+
+    This is the copy-source written for project-scoped clients that don't
+    read ``.mcp.json`` themselves (see ``write_generic_mcp_json``) — never
+    Claude Code's own project config, which is always ``.mcp.json`` and set
+    directly in ``_clients()``. This owns the whole scope policy in one place:
 
     * ``scope="global"`` → ``None`` (no project file; register clients instead),
     * ``scope="local"`` → launch directory,
@@ -127,11 +134,11 @@ def _resolve_mcp_json(scope: str | None, installed: bool) -> Path | None:
     if scope == "global":
         return None
     if scope == "local":
-        return _project_cwd() / ".mcp.json"
+        return _project_cwd() / _GENERIC_EXAMPLE_FILENAME
     if not installed:
-        return _project_cwd() / ".mcp.json"
+        return _project_cwd() / _GENERIC_EXAMPLE_FILENAME
     if _looks_like_project_dir(_project_cwd()):
-        return _project_cwd() / ".mcp.json"
+        return _project_cwd() / _GENERIC_EXAMPLE_FILENAME
     return None
 
 
@@ -354,6 +361,12 @@ def _merge_codex_toml(existing: str, command: str, env: dict[str, str]) -> str:
     return merged
 
 
+# "unchanged" is a no-op success (nothing to write/remove), distinct from
+# "failed" — both must never be conflated when aggregating results, or a
+# successful no-op would misreport as a failure.
+MutationResult = Literal["changed", "unchanged", "failed"]
+
+
 class Client:
     """A registerable MCP client: how to detect it and where its config lives.
 
@@ -506,33 +519,48 @@ def _clients() -> list[Client]:
     ]
 
 
-def _write_client_config(client: Client, command: str, env: dict[str, str], *, target: Path | None = None) -> bool:
+def _write_client_config(
+    client: Client, command: str, env: dict[str, str], *, target: Path | None = None
+) -> MutationResult:
     """Merge the ``openproject`` server into a client config at ``target``.
 
     ``target`` defaults to the client's global config; pass ``client.project_target``
     for the project-local file. Existing content is preserved — only the
     ``openproject`` entry is added or replaced — and a timestamped backup is taken
-    before any existing file is rewritten. Returns True on success, False if the
-    existing file could not be parsed. The rest of the body uses the local
-    ``target`` throughout (never ``client.target``) so project-local writes land in
-    the right file.
+    before any existing file is rewritten. Returns ``"changed"`` on success,
+    ``"failed"`` if the existing file couldn't be parsed or the write itself
+    failed (never ``"unchanged"`` — a write always upserts the entry). The
+    rest of the body uses the local ``target`` throughout (never
+    ``client.target``) so project-local writes land in the right file.
     """
     target = target if target is not None else client.target
-    existing = ""
-    if target.exists():
+    try:
         existing = target.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        existing = ""
+    except OSError as exc:
+        # Path.exists() would swallow this as "doesn't exist" (it catches any
+        # OSError, not just FileNotFoundError) — read directly instead so a
+        # permission error is reported, not silently treated as a fresh file.
+        print(f"  ! Could not read {target}: {exc}")
+        return "failed"
+    if existing:
         try:
             merged = client.merge(existing, command, env)
         except (json.JSONDecodeError, ValueError) as exc:
             print(f"  ! {target} exists but could not be parsed ({exc}).")
             print(f"    Leaving it untouched. Add the server by hand — see {client.doc}.")
-            return False
+            return "failed"
         print(f"  · Updating {target} (existing settings are preserved).")
     else:
         merged = client.merge("", command, env)
-    _write_config_file(target, merged)
+    try:
+        _write_config_file(target, merged)
+    except OSError as exc:
+        print(f"  ! Could not write {target}: {exc}")
+        return "failed"
     print(f"  ✓ Wrote {target}")
-    return True
+    return "changed"
 
 
 def _remove_json_openproject(existing: str, root_key: str) -> str | None:
@@ -558,17 +586,28 @@ def _remove_json_openproject(existing: str, root_key: str) -> str | None:
     return json.dumps(data, indent=2) + "\n"
 
 
-def _remove_client_config(client: Client, *, target: Path | None = None) -> bool:
+def _remove_client_config(client: Client, *, target: Path | None = None) -> MutationResult:
     """Remove the openproject entry from a client config at ``target``; keep the rest.
 
     ``target`` defaults to the client's global config; pass ``client.project_target``
-    for the project-local file. Backs up before rewriting. Returns True if something
-    was removed.
+    for the project-local file. Backs up before rewriting. Returns
+    ``"changed"`` if something was removed, ``"unchanged"`` if there was
+    nothing to do (no file, or no openproject entry — a successful no-op,
+    not a failure), ``"failed"`` if the existing file couldn't be parsed or
+    the write itself failed.
     """
     target = target if target is not None else client.target
-    if target is None or not target.exists():
-        return False
-    existing = target.read_text(encoding="utf-8")
+    if target is None:
+        return "unchanged"
+    try:
+        existing = target.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return "unchanged"
+    except OSError as exc:
+        # See _write_client_config: read directly rather than pre-checking
+        # with exists(), which would misreport a permission error as "unchanged".
+        print(f"  ! Could not read {target}: {exc}")
+        return "failed"
     try:
         if client.fmt == "toml":
             stripped = _strip_codex_openproject(existing).rstrip()
@@ -580,15 +619,47 @@ def _remove_client_config(client: Client, *, target: Path | None = None) -> bool
             new_text = merged if merged is not None else existing
     except (json.JSONDecodeError, ValueError, CodexMergeError) as exc:
         print(f"  ! {target} could not be parsed ({exc}). Leaving it untouched.")
-        return False
+        return "failed"
     if not changed:
-        return False
-    _backup(target)
-    target.write_text(new_text, encoding="utf-8")
-    if not _IS_WINDOWS and new_text:
-        target.chmod(0o600)
+        return "unchanged"
+    try:
+        _atomic_write(target, new_text)
+    except OSError as exc:
+        print(f"  ! Could not write {target}: {exc}")
+        return "failed"
     print(f"  ✓ Removed openproject from {target}")
-    return True
+    return "changed"
+
+
+def _remove_generic_example(path: Path) -> MutationResult:
+    """Remove the openproject entry from the generic copy-source example file.
+
+    Same three-state contract as ``_remove_client_config``, but for the
+    fixed, always-JSON ``mcpServers`` example file rather than a detected
+    ``Client`` — it has no detection heuristic or global target, so building
+    a full ``Client`` for it would carry meaningless fields.
+    """
+    try:
+        existing = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return "unchanged"
+    except OSError as exc:
+        print(f"  ! Could not read {path}: {exc}")
+        return "failed"
+    try:
+        merged = _remove_json_openproject(existing, "mcpServers")
+    except (json.JSONDecodeError, ValueError) as exc:
+        print(f"  ! {path} could not be parsed ({exc}). Leaving it untouched.")
+        return "failed"
+    if merged is None:
+        return "unchanged"
+    try:
+        _atomic_write(path, merged)
+    except OSError as exc:
+        print(f"  ! Could not write {path}: {exc}")
+        return "failed"
+    print(f"  ✓ Removed openproject from {path}")
+    return "changed"
 
 
 def _run_uninstall() -> None:
@@ -600,17 +671,22 @@ def _run_uninstall() -> None:
     venv/caches of a source checkout are handled by uninstall.sh/.ps1.
     """
     clients = _clients()
+    failed: list[Path] = []
 
     def _clean(scope: str, targets: list[tuple[Client, Path]]) -> bool:
         removed = False
         for client, target in targets:
-            if not target.exists():
-                print(f"  · {client.label}: {target} — not found")
-                continue
-            if _remove_client_config(client, target=target):
+            # No exists() pre-check: it swallows any OSError (not just a
+            # missing file) as "doesn't exist", which would misreport e.g. a
+            # permission error as a harmless no-op. _remove_client_config
+            # itself distinguishes "not found" from a genuine read failure.
+            result = _remove_client_config(client, target=target)
+            if result == "changed":
                 removed = True  # message printed inside _remove_client_config
+            elif result == "failed":
+                failed.append(target)
             else:
-                print(f"  · {client.label}: {target} — no openproject entry / skipped")
+                print(f"  · {client.label}: {target} — not found / no openproject entry")
         return removed
 
     print("Removing the openproject server from client configs (existing settings kept)…")
@@ -621,8 +697,32 @@ def _run_uninstall() -> None:
     print(f"Project-local (this directory: {Path.cwd()}):")
     removed_project = _clean("project", [(c, c.project_target) for c in clients if c.project_target is not None])
 
+    # The generic copy-source example file (see write_generic_mcp_json /
+    # _remove_generic_example) isn't a detected Client, so it isn't covered
+    # by the loop above — clean it up explicitly on the same pass.
     print()
-    if not (removed_global or removed_project):
+    print("Generic copy-source example (for MCP clients without native support):")
+    example_target = _resolve_generic_mcp_example("local", installed=True)
+    removed_example = False
+    if example_target is None:
+        print("  · (not applicable)")
+    else:
+        # No exists() pre-check here either — see _clean() above.
+        result = _remove_generic_example(example_target)
+        if result == "changed":
+            removed_example = True
+        elif result == "failed":
+            failed.append(example_target)
+        else:
+            print(f"  · {example_target} — not found / no openproject entry")
+
+    print()
+    if failed:
+        print("Failed to update (see errors above):")
+        for path in failed:
+            print(f"  - {path}")
+        sys.exit(1)
+    if not (removed_global or removed_project or removed_example):
         print("No client config contained an openproject entry — nothing removed.")
     else:
         print("Done. Restart any client you had it registered in.")
@@ -697,10 +797,39 @@ def _backup(path: Path) -> None:
                 dest = candidate
                 break
             counter += 1
-    path.rename(dest)
+    # Copy, not rename/move: the original must stay at `path` until the
+    # atomic replace in _atomic_write actually swaps in the new content, or
+    # a failed replace would leave neither a working file at `path` nor a
+    # way to tell _atomic_write already backed it up.
+    shutil.copy2(path, dest)
     if not _IS_WINDOWS:
         dest.chmod(0o600)
     print(f"Backed up {path.name} → {dest.name}")
+
+
+def _atomic_write(path: Path, text: str, *, backup: bool = True) -> None:
+    """Write ``text`` to ``path`` without ever leaving a partially-written file.
+
+    Order: write a temp file in the same directory, chmod it, back up any
+    existing target (see ``_backup`` — a copy, so the original survives),
+    then atomically swap the temp file over the target with
+    ``os.replace()``. The temp file is removed on any failure before the
+    swap, so a partial write or backup failure never touches the real target.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        if not _IS_WINDOWS:
+            tmp_path.chmod(0o600)
+        if backup and path.exists():
+            _backup(path)
+        os.replace(tmp_path, path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
 
 def _nearest_existing_parent(path: Path) -> Path:
@@ -735,39 +864,57 @@ def _git_warning_for_unignored_file(path: Path) -> None:
         return
 
     print(f"  ! {path} is inside a Git repository but is not ignored.")
-    print("    It contains credentials; add it and its backups to .gitignore before committing.")
+    print("    It contains configuration you may not want to share publicly; add it and its")
+    print("    backups to .gitignore before committing.")
 
 
 def _write_config_file(path: Path, text: str, *, backup: bool = True) -> None:
-    """Shared shape behind _write_client_config/_write_mcp_json: back up an
-    existing file, ensure the parent directory exists, write the new text,
-    tighten permissions to 0o600 (POSIX only), then warn if the file (or its
-    timestamped-backup-example path) looks unignored by Git. Callers print
-    their own success message afterward — the wording differs between them.
+    """Shared shape behind _write_client_config/_write_mcp_json: atomically
+    write the new content (backing up any existing file first — see
+    _atomic_write), then warn if the file (or its timestamped-backup-example
+    path) looks unignored by Git. Callers print their own success message
+    afterward — the wording differs between them.
     """
-    if backup and path.exists():
-        _backup(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    if not _IS_WINDOWS:
-        path.chmod(0o600)
+    _atomic_write(path, text, backup=backup)
     _git_warning_for_unignored_file(path)
     _git_warning_for_unignored_file(path.with_name(f"{path.name}.bak.example"))
 
 
-def _write_mcp_json(env: dict[str, str], mcp_json: Path, command: str) -> None:
-    existing = mcp_json.read_text(encoding="utf-8") if mcp_json.exists() else ""
+_EXAMPLE_TOKEN_PLACEHOLDER = "replace-with-your-token"
+
+
+def _write_mcp_json(env: dict[str, str], mcp_json: Path, command: str) -> MutationResult:
+    """Write the generic copy-source example file (see write_generic_mcp_json).
+
+    The token is always a placeholder, never the real value — this file is a
+    manual-adaptation reference for clients this tool doesn't natively
+    support (e.g. Zed, Continue), not an active config any client loads, so
+    it doesn't need a working credential, only the correct shape.
+    """
+    example_env = dict(env)
+    if "OPENPROJECT_API_TOKEN" in example_env:
+        example_env["OPENPROJECT_API_TOKEN"] = _EXAMPLE_TOKEN_PLACEHOLDER
+    try:
+        existing = mcp_json.read_text(encoding="utf-8") if mcp_json.exists() else ""
+    except OSError as exc:
+        print(f"Could not read {mcp_json}: {exc}", file=sys.stderr)
+        return "failed"
     # Merge first: if the existing file has an unexpected shape, _merge_json
     # raises and we must leave it untouched (do NOT back up then abort, which
     # would strand the user's data in a .bak with no working file written).
     try:
-        merged = _merge_json(existing, "mcpServers", command, env, stdio=False)
+        merged = _merge_json(existing, "mcpServers", command, example_env, stdio=False)
     except (json.JSONDecodeError, ValueError) as exc:
         print(f"Could not update {mcp_json}: {exc}", file=sys.stderr)
         print("Left it untouched. Fix or remove the file by hand, then re-run.", file=sys.stderr)
-        return
-    _write_config_file(mcp_json, merged)
+        return "failed"
+    try:
+        _write_config_file(mcp_json, merged)
+    except OSError as exc:
+        print(f"Could not write {mcp_json}: {exc}", file=sys.stderr)
+        return "failed"
     print(f"Written: {mcp_json}")
+    return "changed"
 
 
 # ── prompts ───────────────────────────────────────────────────────────────────
@@ -1020,14 +1167,19 @@ def _choose_targets(clients: list[Client]) -> tuple[list[Client], list[Client], 
     return global_clients, project_clients, remove_global_clients, remove_project_clients
 
 
-def _apply_registration(clients: list[Client], command: str, env: dict[str, str], *, scope: str) -> None:
+def _apply_registration(clients: list[Client], command: str, env: dict[str, str], *, scope: str) -> list[Path]:
+    """Write every client's config; return the targets that failed."""
+    failed: list[Path] = []
     for client in clients:
-        _write_client_config(client, command, env, target=client.target_for(scope))
+        target = client.target_for(scope)
+        if target is not None and _write_client_config(client, command, env, target=target) == "failed":
+            failed.append(target)
+    return failed
 
 
 # Backwards-compatible wrapper (global scope) for callers/tests.
-def _apply_global_registration(clients: list[Client], command: str, env: dict[str, str]) -> None:
-    _apply_registration(clients, command, env, scope="global")
+def _apply_global_registration(clients: list[Client], command: str, env: dict[str, str]) -> list[Path]:
+    return _apply_registration(clients, command, env, scope="global")
 
 
 def _merge_prefill(pairs: list[tuple[Client, Path | None]]) -> dict[str, str]:
@@ -1587,7 +1739,7 @@ def _preview_changes(
         action = "Update" if _has_openproject_config(client, client.project_target) else "Create"
         print(f"  - {action} {client.label} (project): {client.project_target}")
     if write_generic_mcp_json:
-        print("  - Write generic .mcp.json (copy-source for project scope)")
+        print(f"  - Write generic {_GENERIC_EXAMPLE_FILENAME} (copy-source for project scope)")
 
     if env is not None:
         print()
@@ -1628,38 +1780,61 @@ def _apply_changes(
     generic_target: Path | None,
     command: str,
     env: dict[str, str] | None,
-) -> None:
+) -> list[Path]:
     """Perform every mutation in one bundled step: removals first, then writes.
 
     Bundling matters because it's called exactly once, after any preview/confirm
     — never split across the flow, or a decline partway through would leave some
     mutations applied and others not (the bug this replaces: removals used to run
     immediately after target selection, before credentials were even collected).
-    ``env`` is None for a pure-removal flow with nothing to write.
+    ``env`` is None for a pure-removal flow with nothing to write. Returns
+    every target that failed to write/remove, across removals, client
+    registration, and the generic copy-source — a failure never aborts the
+    remaining targets, the caller aggregates this list into a summary and a
+    non-zero exit code instead.
     """
+    failed: list[Path] = []
     if remove_global_clients:
         print()
         print("Removing deselected user-wide (global) config:")
         for client in remove_global_clients:
-            _remove_client_config(client, target=client.target)
+            if _remove_client_config(client, target=client.target) == "failed":
+                failed.append(client.target)
     if remove_project_clients:
         print()
         print("Removing deselected project-scoped config:")
         for client in remove_project_clients:
-            _remove_client_config(client, target=client.project_target)
+            target = client.project_target
+            if target is not None and _remove_client_config(client, target=target) == "failed":
+                failed.append(target)
 
     if env is None:
-        return
+        return failed
 
     print()
     if global_clients:
         print("Configuring user-wide (global):")
-        _apply_registration(global_clients, command, env, scope="global")
+        failed.extend(_apply_registration(global_clients, command, env, scope="global"))
     if project_clients:
         print("Configuring project-scoped (this directory):")
-        _apply_registration(project_clients, command, env, scope="project")
-    if write_generic_mcp_json and generic_target is not None:
-        _write_mcp_json(env, generic_target, command)
+        failed.extend(_apply_registration(project_clients, command, env, scope="project"))
+    if (
+        write_generic_mcp_json
+        and generic_target is not None
+        and _write_mcp_json(env, generic_target, command) == "failed"
+    ):
+        failed.append(generic_target)
+    return failed
+
+
+def _report_failures_and_exit_if_any(failed: list[Path]) -> None:
+    if not failed:
+        return
+    print()
+    print("Failed to write/remove (see errors above):")
+    for path in failed:
+        print(f"  - {path}")
+    sys.exit(1)
 
 
 # ── minimal-diff config writing ──────────────────────────────────────────────
@@ -1823,10 +1998,12 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
     # Two independent gates decide WHERE to configure — before collecting creds.
     global_clients, project_clients, remove_global_clients, remove_project_clients = _choose_targets(clients)
 
-    # A generic .mcp.json copy-source is written when project scope is chosen,
-    # NOT for a purely global configuration. If Claude
-    # Code is among the project clients, its project_target IS .mcp.json, so we
-    # write it once via _write_client_config and skip the generic write.
+    # A generic openproject-mcp.example.json copy-source is written when project
+    # scope is chosen, NOT for a purely global configuration — for clients this
+    # tool doesn't natively support (Zed, Continue, ...). If Claude Code is among
+    # the project clients, its project_target IS .mcp.json, written once via
+    # _write_client_config; the example file only covers the "no native support"
+    # case, so it's skipped whenever Claude Code is already selected.
     claude_code_project = any(c.key == "claude-code" for c in project_clients)
     write_generic_mcp_json = bool(project_clients) and not claude_code_project
 
@@ -1849,7 +2026,8 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
             if not proceed:
                 print("\nCancelled — nothing was written.")
                 return
-        _apply_changes(remove_global_clients, remove_project_clients, [], [], False, None, command, None)
+        failed = _apply_changes(remove_global_clients, remove_project_clients, [], [], False, None, command, None)
+        _report_failures_and_exit_if_any(failed)
         print()
         print("No targets selected to configure. Removed selected OpenProject entries.")
         return
@@ -1877,14 +2055,15 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
     # only the file actually written is trimmed to deviations from the default.
     minimal_env = _minimal_env(env, candidate_settings)
 
-    # Generic copy-source .mcp.json: only when project scope was chosen and not
-    # already covered by Claude Code's project write.
+    # Generic copy-source example file: only when project scope was chosen and
+    # not already covered by Claude Code's project write.
     generic_target: Path | None = None
     if write_generic_mcp_json:
         # Both prior branches always resolved to the same project-local path
-        # regardless of `installed` (see _resolve_mcp_json's scope="local" case) —
-        # one unconditional call, not a dead installed-conditional.
-        generic_target = _resolve_mcp_json("local", installed)
+        # regardless of `installed` (see _resolve_generic_mcp_example's
+        # scope="local" case) — one unconditional call, not a dead
+        # installed-conditional.
+        generic_target = _resolve_generic_mcp_example("local", installed)
 
     if interactive:
         proceed = _preview_changes(
@@ -1900,7 +2079,7 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
             print("\nCancelled — nothing was written.")
             return
 
-    _apply_changes(
+    failed = _apply_changes(
         remove_global_clients,
         remove_project_clients,
         global_clients,
@@ -1910,6 +2089,7 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
         command,
         minimal_env,
     )
+    _report_failures_and_exit_if_any(failed)
 
     print()
     print("Server configured.")
@@ -1936,7 +2116,7 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
     else:
         print()
         print("Register the server yourself — copy the values from the generated")
-        print(".mcp.json into your client's config. Guides:")
+        print(f"{_GENERIC_EXAMPLE_FILENAME} into your client's config. Guides:")
         for label, doc in _doc_locations(installed).items():
             print(f"  - {label:<26} {doc}")
 

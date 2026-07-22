@@ -137,9 +137,10 @@ PyPI and source installs use the same setup flow after installation — see
 First unregister the server. This removes the `openproject` entry from your
 clients' **user-wide** configs **and** from **project-local** configs in the
 current directory (`.mcp.json`, `.codex/config.toml`, `.vscode/mcp.json`,
-`.cursor/mcp.json`) — so run it from the project directory to clean that up too.
-Your other MCP servers and settings are kept and each edited file is backed up
-first; results are listed grouped by scope:
+`.cursor/mcp.json`, plus the generic `openproject-mcp.example.json`
+copy-source if one was written) — so run it from the project directory to
+clean that up too. Your other MCP servers and settings are kept and each
+edited file is backed up first; results are listed grouped by scope:
 
 ```bash
 openproject-ce-mcp configure --uninstall   # or: openproject-ce-mcp-setup --uninstall

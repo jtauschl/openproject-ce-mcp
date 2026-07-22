@@ -107,6 +107,14 @@ Project-scoped is preferred for per-project permissions; for credentials
 specifically, the `${env:...}` pattern under "Recommended setup" above is
 preferred either way.
 
+## Notes
+
+- Cursor supports user-level configuration in `~/.cursor/mcp.json` and project-scoped configuration in `.cursor/mcp.json`
+- Project-scoped setup (`.cursor/mcp.json`) is preferred for fine-grained project permissions
+- After changing the config, run "Reload Window" from the command palette so Cursor picks up the change
+- `OPENPROJECT_READ_PROJECTS` accepts comma-separated identifiers, names, or glob patterns: `project-one,team-*`. Use `*` for all visible projects
+- `OPENPROJECT_WRITE_PROJECTS` is the real write gate — the 5 core write-category flags (like `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`) are on by default and do nothing until a project is listed here; set one to `false` to exclude that category instead
+
 ## See also
 
 - [Documentation hub](README.md) — full documentation index
