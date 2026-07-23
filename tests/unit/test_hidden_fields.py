@@ -6,6 +6,8 @@ import httpx
 import pytest
 from _client_test_helpers import _base_settings
 
+from openproject_ce_mcp.app.adapters.httpx_membership_api import normalize_membership
+from openproject_ce_mcp.app.policies import hidden_fields
 from openproject_ce_mcp.client import (
     InvalidInputError,
     OpenProjectClient,
@@ -544,22 +546,26 @@ async def test_hidden_version_description_also_suppresses_truncation_metadata() 
     await client.aclose()
 
 
-@pytest.mark.asyncio
-async def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() -> None:
-    # createdAt/updatedAt on MembershipSummary respect the
-    # existing OPENPROJECT_HIDE_MEMBERSHIP_FIELDS wiring.
-    client = OpenProjectClient(
-        _base_settings(hidden_fields={"membership": ("created_at",)}),
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
-    )
+def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() -> None:
+    # createdAt/updatedAt on MembershipSummary respect the existing
+    # OPENPROJECT_HIDE_MEMBERSHIP_FIELDS wiring. normalize_membership (the
+    # adapter's pure HAL->model function) no longer applies masking itself
+    # (ADR 0001 -- masking moved to MembershipService); this test applies it
+    # via the same hidden_fields.apply_hidden_fields the Service calls.
+    settings = _base_settings(hidden_fields={"membership": ("created_at",)})
 
-    membership = client.normalize_membership(
-        {
-            "id": 1,
-            "createdAt": "2026-01-01T00:00:00Z",
-            "updatedAt": "2026-06-01T00:00:00Z",
-            "_links": {},
-        }
+    membership = hidden_fields.apply_hidden_fields(
+        "membership",
+        normalize_membership(
+            {
+                "id": 1,
+                "createdAt": "2026-01-01T00:00:00Z",
+                "updatedAt": "2026-06-01T00:00:00Z",
+                "_links": {},
+            },
+            base_url=settings.base_url,
+        ),
+        settings=settings,
     )
 
     assert membership._hidden_keys == frozenset({"created_at"})
@@ -567,8 +573,6 @@ async def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() ->
     assert membership.updated_at == "2026-06-01T00:00:00Z"
     serialized = _to_payload(membership)
     assert "created_at" not in serialized
-
-    await client.aclose()
 
 
 @pytest.mark.asyncio

@@ -383,6 +383,24 @@ def test_project_service_and_resolver_bind_the_api_param_to_project_api_specific
         )
 
 
+def test_membership_service_binds_the_api_param_to_membership_api_specifically() -> None:
+    """Non-generalized regression test for the Memberships domain's exact
+    guarantee, sibling to the Versions-only and Projects-only checks above:
+    the api param is MembershipApi exactly, not just "some Protocol". No
+    MembershipResolver exists (unlike Versions/Projects) -- membership_id is
+    always a numeric value already validated by tools.py, so there is no
+    semantic-reference resolution for this domain to warrant a Resolver."""
+    from openproject_ce_mcp.app.adapters.httpx_membership_api import HttpxMembershipApi
+    from openproject_ce_mcp.app.ports.membership_api import MembershipApi
+    from openproject_ce_mcp.app.services.membership_service import MembershipService
+
+    hints = typing.get_type_hints(MembershipService.__init__)
+    assert hints["api"] is MembershipApi, "MembershipService.__init__'s api param must be typed MembershipApi"
+    assert hints["api"] is not HttpxMembershipApi, (
+        "MembershipService.__init__'s api param must not be the concrete adapter"
+    )
+
+
 # Names that once lived in app/ports/project_api.py (HAL->model normalize_*
 # translation functions and their private text/href helpers) before they moved
 # to app/adapters/httpx_project_api.py, matching the Versions domain's

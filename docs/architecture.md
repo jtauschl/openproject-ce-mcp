@@ -76,18 +76,22 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
-## Layered architecture (Versions, Projects)
+## Layered architecture (Versions, Projects, Memberships)
 
-`client.py` stays the small, flat facade described above for most domains, but two
+`client.py` stays the small, flat facade described above for most domains, but three
 domains have been migrated into `app/` for a stricter layered structure: Versions
 (`list_versions`, `get_version`, `create_version`, `update_version`,
-`delete_version` — the original pilot, validating the pattern) and Projects
+`delete_version` — the original pilot, validating the pattern), Projects
 (`list_projects`, `get_project`, `create_project`, `update_project`,
 `delete_project`, `copy_project`, `get_project_admin_context`,
 `get_project_configuration`, `add_project_favorite`/`remove_project_favorite`,
 `list_project_phase_definitions`, `get_project_phase_definition`,
 `get_project_phase` — the second migration, applying the pilot's lessons to a
-domain every other domain's resolvers depend on):
+domain every other domain's resolvers depend on), and Memberships
+(`list_project_memberships`, `get_membership`, `create_membership`,
+`update_membership`, `delete_membership` — the third migration, the smallest
+full-CRUD domain, coupled to Projects only through the pre-existing
+`ProjectRefResolver` seam):
 
 ```text
 tools.py (MCP presentation)
@@ -126,23 +130,39 @@ tools.py (MCP presentation)
   `resolve_record()` deliberately takes no `context` parameter, since
   `ProjectResolutionContext` caches raw payloads only; `resolve()` keeps its existing
   context-aware, payload-caching behavior unchanged and calls `resolve_record()` only
-  when no context is given.
+  when no context is given. Memberships has no resolver at all: a `membership_id` is
+  always a numeric value already validated by `tools.py`, so there is no
+  semantic-reference resolution for this domain to warrant one.
 - **Application Services** (e.g. `VersionService`, `ProjectService`) orchestrate a
   single use case: Policy checks, Resolver calls, port calls, and the
   preview/confirm write state machine. They depend on a port's Protocol type, never
   a concrete adapter. Projects additionally has `ProjectAdminService` (schema +
   available-parent-projects + field metadata for `get_project_admin_context`) as a
   second class in the same file, since it shares the same dependencies.
+  `MembershipService` reuses the pre-existing `ProjectRefResolver` seam for project
+  resolution (the same seam `VersionService` consumes) and adds one narrow seam of
+  its own, `PrincipalRefResolver` (`app/ports/principal_ref.py`), bound to
+  `client.py`'s still-flat `self._resolve_principal_id` — shared with the
+  still-unmigrated Work-Package domain's assignee resolution, exactly mirroring how
+  `ProjectRefResolver` seamed onto still-flat project resolution during the Versions
+  pilot. `list_roles` stays flat in `client.py` too (a plain read-only lookup, not a
+  CRUD object of its own) and is injected into `MembershipService` as a bare
+  callable, without a dedicated port, since it currently has only one consumer.
 - `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under
   `app/` that imports `httpx`; `client.py`'s own HTTP calls for the remaining
   still-flat domains, and `retry_transport.py`, are unaffected and keep importing it
   directly.
 - `OpenProjectClient` remains a 100%-compatible facade throughout: its public method
-  signatures for Versions and Projects are unchanged, and `tools.py` requires no
-  changes at all. `get_my_project_access` and `get_project_work_package_context`
-  stay as client.py-level orchestration rather than moving into `ProjectService`,
-  since they combine Projects with still-flat domains (Memberships,
-  work-package-schema) and a Service must not depend on another Service.
+  signatures for Versions, Projects, and Memberships are unchanged, and `tools.py`
+  requires no changes at all. `get_my_project_access` and
+  `get_project_work_package_context` stay as client.py-level orchestration rather
+  than moving into a Service, since they combine multiple domains (Projects with
+  Memberships, and Projects with the still-flat work-package-schema domain,
+  respectively) and a Service must not depend on another Service —
+  `get_my_project_access` keeps calling the public `list_project_memberships`
+  facade method rather than reaching into `self._membership_service` directly, both
+  because that facade now delegates transparently to the Service anyway and to
+  preserve dynamic dispatch through the public method for subclasses/test doubles.
 
 Remaining domains stay exactly as described in the flat model above; migrating them
 further is deliberately out of scope until each migration's own lessons justify the
@@ -154,7 +174,8 @@ checks that every `app/services/`/`app/resolvers/` class depends on a port
 domain-specific, so a further domain's migration needs no test changes to stay
 covered — only a small, deliberately non-generalized regression test per migrated
 domain (`test_version_service_and_resolver_bind_the_api_param_to_version_api_specifically`,
-`test_project_service_and_resolver_bind_the_api_param_to_project_api_specifically`)
+`test_project_service_and_resolver_bind_the_api_param_to_project_api_specifically`,
+`test_membership_service_binds_the_api_param_to_membership_api_specifically`)
 pins that domain's exact port type, kept alongside the generic check rather than
 folded into it. Complementary behavioral-contract tests
 (`tests/unit/test_write_confirm_contracts.py`,
@@ -297,8 +318,9 @@ The tradeoff is that `client.py` is large and policy-heavy. That is intentional 
 ## Future split points
 
 The Policies extraction (scope checks, hidden-field enforcement) is done, for every
-domain — see "Layered architecture" above. Versions and Projects are migrated;
-remaining candidates, once each migration's own lessons justify the next one:
+domain — see "Layered architecture" above. Versions, Projects, and Memberships are
+migrated; remaining candidates, once each migration's own lessons justify the next
+one:
 
 - migrating additional domains through the same `app/` layers, one at a time —
   re-evaluate which domain's resolvers most depend on already-flat logic, per the

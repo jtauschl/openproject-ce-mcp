@@ -9,12 +9,13 @@ from dataclasses import replace
 from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any, TypeVar, cast
-from urllib.parse import parse_qsl, quote, unquote, urljoin, urlparse
+from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
 
 from . import __version__
 from .app.adapters import httpx_version_api as _httpx_version_api
+from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
 from .app.adapters.httpx_version_api import HttpxVersionApi
 
@@ -36,11 +37,13 @@ from .app.pagination import paginate_server as _paginate_server
 from .app.policies import access as _access_policy
 from .app.policies import hidden_fields as _hidden_fields_policy
 from .app.policies import scope as _scope_policy
+from .app.ports.membership_api import MembershipApi
 from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
 from .app.ports.version_api import VersionApi
 from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.version_resolver import VersionResolver
+from .app.services.membership_service import MembershipService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
 from .app.services.version_service import VersionService
@@ -324,6 +327,19 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
+        )
+
+        self._membership_api: MembershipApi = HttpxMembershipApi(
+            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
+        )
+        self._membership_service = MembershipService(
+            api=self._membership_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_project_ref=self._get_project_payload,
+            resolve_principal_ref=self._resolve_principal_id,
+            list_roles=self.list_roles,
+            api_prefix=self._api_prefix,
         )
 
     async def initialize(self) -> None:
@@ -795,40 +811,10 @@ class OpenProjectClient:
     async def list_project_memberships(
         self, project_ref: str, *, offset: int = 1, limit: int | None = None
     ) -> MembershipListResult:
-        self._ensure_read_enabled("membership")
-        project_payload = await self._resolve_project_ref(project_ref, write=False)
-        effective_limit = self._resolve_limit(limit)
-        href = project_payload.get("_links", {}).get("memberships", {}).get("href")
-        if not href:
-            return MembershipListResult(
-                offset=offset, limit=effective_limit, total=0, count=0, next_offset=None, truncated=False, results=[]
-            )
-        # httpx's params= REPLACES a URL's existing query string rather than
-        # merging with it, so offset/pageSize must be merged into href's own
-        # query (e.g. its "filters=...") ourselves, not passed as separate params.
-        path = self._link_to_api_path(href)
-        base_path, _, query = path.partition("?")
-        merged_params = dict(parse_qsl(query))
-        merged_params.update({"offset": str(offset), "pageSize": str(effective_limit)})
-        payload = await self._get(base_path, params=merged_params)
-        memberships = [self.normalize_membership(item) for item in payload.get("_embedded", {}).get("elements", [])]
-        total = int(payload.get("total", len(memberships)))
-        next_offset, truncated = _paginate_server(offset=offset, limit=effective_limit, total=total)
-        return MembershipListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(memberships),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=memberships,
-        )
+        return await self._membership_service.list_for_project(project_ref, offset=offset, limit=limit)
 
     async def get_membership(self, membership_id: int) -> MembershipSummary:
-        self._ensure_read_enabled("membership")
-        payload = await self._get(f"memberships/{membership_id}")
-        self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
-        return self.normalize_membership(payload)
+        return await self._membership_service.get(membership_id)
 
     async def create_membership(
         self,
@@ -839,31 +825,12 @@ class OpenProjectClient:
         notification_message: str | None = None,
         confirm: bool = False,
     ) -> MembershipWriteResult:
-        project_payload = await self._get_project_payload(project, write=True)
-        self._ensure_field_writable("membership", "project_name")
-        self._ensure_field_writable("membership", "principal_name")
-        self._ensure_field_writable("membership", "role_names")
-        project_id = str(project_payload["id"])
-        principal_id = await self._resolve_principal_id(principal)
-        role_hrefs = await self._resolve_role_hrefs(roles)
-        payload: dict[str, Any] = {
-            "_links": {
-                "project": {"href": self._api_href(f"projects/{project_id}")},
-                "principal": {"href": self._api_href(f"users/{principal_id}")},
-                "roles": [{"href": href} for href in role_hrefs],
-            }
-        }
-        if notification_message is not None:
-            payload["_meta"] = {"notificationMessage": {"format": "markdown", "raw": notification_message}}
-        form = await self._post("memberships/form", json_body=payload)
-        return await self._finalize_membership_write(
-            action="create",
+        return await self._membership_service.create(
+            project=project,
+            principal=principal,
+            roles=roles,
+            notification_message=notification_message,
             confirm=confirm,
-            form=form,
-            write_path="memberships",
-            project_name=_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT),
-            preview_message="OpenProject validated the membership. Ask for confirmation, then call again with confirm=true to create it.",
-            success_message="Membership created successfully.",
         )
 
     async def update_membership(
@@ -874,27 +841,8 @@ class OpenProjectClient:
         notification_message: str | None = None,
         confirm: bool = False,
     ) -> MembershipWriteResult:
-        current = await self._get(f"memberships/{membership_id}")
-        self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
-        self._ensure_field_writable("membership", "role_names")
-        role_hrefs = await self._resolve_role_hrefs(roles)
-        payload: dict[str, Any] = {
-            "_links": {
-                "roles": [{"href": href} for href in role_hrefs],
-            }
-        }
-        if notification_message is not None:
-            payload["_meta"] = {"notificationMessage": {"format": "markdown", "raw": notification_message}}
-        form = await self._post(f"memberships/{membership_id}/form", json_body=payload)
-        return await self._finalize_membership_write(
-            action="update",
-            confirm=confirm,
-            form=form,
-            write_path=f"memberships/{membership_id}",
-            write_method="PATCH",
-            membership_id=membership_id,
-            project_name=_link_title(current.get("_links", {}).get("project")),
-            success_message="Membership updated successfully.",
+        return await self._membership_service.update(
+            membership_id=membership_id, roles=roles, notification_message=notification_message, confirm=confirm
         )
 
     async def delete_membership(
@@ -903,25 +851,7 @@ class OpenProjectClient:
         membership_id: int,
         confirm: bool = False,
     ) -> MembershipWriteResult:
-        current = await self._get(f"memberships/{membership_id}")
-        self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
-        membership = self.normalize_membership(current)
-        payload = {
-            "id": membership.id,
-            "principal": membership.principal_name,
-            "roles": membership.role_names,
-        }
-        return await self._finalize_delete(
-            result_cls=MembershipWriteResult,
-            confirm=confirm,
-            result_kwargs={"membership_id": membership.id, "project": membership.project_name, "payload": payload},
-            preview_result=None,
-            commit_result=membership,
-            write_scope="membership",
-            delete_path=f"memberships/{membership_id}",
-            preview_message="OpenProject found the membership. Ask for confirmation, then call again with confirm=true to delete it.",
-            success_message="Membership deleted successfully.",
-        )
+        return await self._membership_service.delete(membership_id=membership_id, confirm=confirm)
 
     async def get_my_project_access(self, project_ref: str) -> ProjectAccessSummary:
         self._ensure_read_enabled("project")
@@ -5034,37 +4964,6 @@ class OpenProjectClient:
             ),
         )
 
-    def normalize_membership(self, payload: dict[str, Any]) -> MembershipSummary:
-        links = payload.get("_links", {})
-        roles = links.get("roles", [])
-        return self._apply_hidden_fields(
-            "membership",
-            MembershipSummary(
-                id=int(payload["id"]),
-                principal_id=_id_from_href(links.get("principal", {}).get("href")),
-                principal_name=_link_title(links.get("principal")),
-                project_id=_id_from_href(links.get("project", {}).get("href")),
-                project_name=_link_title(links.get("project")),
-                role_ids=[
-                    role_id
-                    for role in roles
-                    if isinstance(role, dict)
-                    if (role_id := _id_from_href(role.get("href"))) is not None
-                ],
-                role_names=[
-                    title
-                    for role in roles
-                    if isinstance(role, dict)
-                    if (title := _trim_text(role.get("title"), limit=SUBJECT_LIMIT)) is not None
-                ],
-                can_update="update" in links,
-                can_update_immediately="updateImmediately" in links,
-                url=self._web_url(f"memberships/{payload['id']}"),
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-            ),
-        )
-
     def _work_package_dates(self, payload: dict[str, Any]) -> tuple[str | None, str | None]:
         """(start_date, due_date) for a work package, accounting for milestones.
 
@@ -6747,36 +6646,6 @@ class OpenProjectClient:
             success_message=success_message or f"Grid {action}d successfully.",
         )
 
-    async def _finalize_membership_write(
-        self,
-        *,
-        action: str,
-        confirm: bool,
-        form: dict[str, Any],
-        write_path: str,
-        write_method: str = "POST",
-        membership_id: int | None = None,
-        project_name: str | None = None,
-        preview_message: str | None = None,
-        success_message: str | None = None,
-    ) -> MembershipWriteResult:
-        return await self._finalize_write(
-            result_cls=MembershipWriteResult,
-            action=action,
-            confirm=confirm,
-            form=form,
-            write_path=write_path,
-            write_method=write_method,
-            write_scope="membership",
-            identity_kwargs=lambda _payload: {"membership_id": membership_id, "project": project_name},
-            normalize=self.normalize_membership,
-            committed_kwargs=lambda m: {"membership_id": m.id, "project": m.project_name},
-            rejected_message="OpenProject rejected the proposed membership changes. Fix the validation errors before confirming.",
-            preview_message=preview_message
-            or "OpenProject validated the membership change. Ask for confirmation, then call again with confirm=true to write it.",
-            success_message=success_message or f"Membership {action}d successfully.",
-        )
-
     async def _finalize_user_write(
         self,
         *,
@@ -7181,28 +7050,6 @@ class OpenProjectClient:
                 f"OpenProject principal '{principal_ref}' is ambiguous. Pass a numeric user or group id."
             )
         return matches[0]
-
-    async def _resolve_role_hrefs(self, roles: list[str]) -> list[str]:
-        available_roles = await self.list_roles()
-        hrefs: list[str] = []
-        for role_ref in roles:
-            normalized = role_ref.strip()
-            if not normalized:
-                continue
-            if normalized.isdigit():
-                hrefs.append(self._api_href(f"roles/{normalized}"))
-                continue
-            matches = [
-                role for role in available_roles.results if (role.name or "").casefold() == normalized.casefold()
-            ]
-            if not matches:
-                raise InvalidInputError(f"OpenProject role '{role_ref}' was not found.")
-            if len(matches) > 1:
-                raise InvalidInputError(f"OpenProject role '{role_ref}' is ambiguous. Pass a numeric role id.")
-            hrefs.append(self._api_href(f"roles/{matches[0].id}"))
-        if not hrefs:
-            raise InvalidInputError("At least one role is required.")
-        return hrefs
 
     async def _resolve_wp_ref_id(
         self,
