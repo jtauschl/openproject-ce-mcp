@@ -20,7 +20,7 @@ lint() {
     uv run ruff format --check .
     uv run mypy
     uvx bandit -r src/openproject_ce_mcp -ll
-    uvx semgrep --config auto src/openproject_ce_mcp
+    uvx semgrep --config auto --error src/openproject_ce_mcp
     uvx pip-licenses --python .venv/bin/python3 --fail-on="GPL;LGPL;AGPL"
     shellcheck "${shell_scripts[@]}"
     shfmt -l "${shell_scripts[@]}"
@@ -28,6 +28,11 @@ lint() {
     for f in dev uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh; do
         bash -n "$f"
     done
+    if ! command -v actionlint >/dev/null 2>&1; then
+        echo "actionlint not found — install: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12" >&2
+        exit 1
+    fi
+    actionlint
 }
 
 test_() {
