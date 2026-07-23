@@ -1,0 +1,493 @@
+from __future__ import annotations
+
+import dataclasses
+
+import pytest
+from _client_test_helpers import make_settings
+
+from openproject_ce_mcp.app.errors import PermissionDeniedError
+from openproject_ce_mcp.app.ports.project_api import (
+    ProjectCopyFormResult,
+    ProjectFormResult,
+    ProjectPage,
+    ProjectPhaseDefinition,
+    ProjectPhaseRecord,
+    ProjectRecord,
+    ProjectRef,
+    ProjectSchemaResult,
+    normalize_project_detail,
+)
+from openproject_ce_mcp.app.resolvers.project_resolver import ProjectResolver
+from openproject_ce_mcp.app.services.project_service import ProjectAdminService, ProjectService
+from openproject_ce_mcp.models import ProjectDetail, ProjectPhase, ProjectSummary
+
+BASE_URL = "https://op.example.com"
+
+
+def _payload(project_id: int = 6, name: str = "Demo Project", identifier: str = "demo", **extra) -> dict:
+    payload = {
+        "id": project_id,
+        "_type": "Project",
+        "name": name,
+        "identifier": identifier,
+        "active": True,
+        "description": {"raw": "Some description"},
+        "statusExplanation": {"raw": "Some explanation"},
+        "_links": {},
+    }
+    payload.update(extra)
+    return payload
+
+
+def _summary(project_id: int = 6, name: str = "Demo Project", identifier: str = "demo") -> ProjectSummary:
+    return ProjectSummary(
+        id=project_id,
+        name=name,
+        identifier=identifier,
+        active=True,
+        description=None,
+        url=f"{BASE_URL}/projects/{project_id}",
+    )
+
+
+def _record(project_id: int = 6, name: str = "Demo Project", identifier: str = "demo") -> ProjectRecord:
+    summary = _summary(project_id, name, identifier)
+    return ProjectRecord(
+        summary=summary, detail=ProjectDetail(**vars(summary)), payload=_payload(project_id, name, identifier)
+    )
+
+
+class _FakeProjectApi:
+    def __init__(self, records: list[ProjectRecord] | None = None) -> None:
+        self._records = records or [_record()]
+        self.configuration: dict = {"maximumAttachmentFileSize": 100}
+        self.schema: dict = {"status": {"name": "Status", "writable": True, "_embedded": {"allowedValues": []}}}
+        self.parent_projects: list[ProjectRef] = []
+        self.phase_definitions: list[ProjectPhaseDefinition] = []
+        self.phase_record: ProjectPhaseRecord | None = None
+        self.validation_errors: dict[str, str] = {}
+        self.copy_validation_errors: dict[str, str] = {}
+        self.commit_create_calls: list[dict] = []
+        self.commit_update_calls: list[tuple[int, dict]] = []
+        self.delete_calls: list[int] = []
+        self.favorite_calls: list[tuple[int, bool]] = []
+        self.commit_copy_calls: list[tuple[int, dict]] = []
+        self.job_status_url: str | None = "https://op.example.com/api/v3/projects/6/copy/status/1"
+
+    async def list(
+        self, *, server_offset: int, server_page_size: int, search: str | None, text_limit=None
+    ) -> ProjectPage:
+        return ProjectPage(records=self._records, server_total=len(self._records), exhausted=True)
+
+    async def get(self, project_ref: str, *, text_limit=None) -> ProjectRecord:
+        for record in self._records:
+            if str(record.summary.id) == project_ref or record.summary.identifier == project_ref:
+                return record
+        raise AssertionError(f"no fake record for ref {project_ref}")
+
+    async def create_form(self, payload) -> ProjectFormResult:
+        return ProjectFormResult(payload=payload, validation_errors=self.validation_errors)
+
+    async def update_form(self, project_id, payload) -> ProjectFormResult:
+        return ProjectFormResult(payload=payload, validation_errors=self.validation_errors)
+
+    async def commit_create(self, payload) -> ProjectDetail:
+        self.commit_create_calls.append(payload)
+        return normalize_project_detail(_payload(name=payload.get("name", "Demo Project")), base_url=BASE_URL)
+
+    async def commit_update(self, project_id, payload) -> ProjectDetail:
+        self.commit_update_calls.append((project_id, payload))
+        return normalize_project_detail(
+            _payload(project_id=project_id, name=payload.get("name", "Demo Project")), base_url=BASE_URL
+        )
+
+    async def delete(self, project_id) -> None:
+        self.delete_calls.append(project_id)
+
+    async def get_schema(self, *, project_id, draft_payload) -> ProjectSchemaResult:
+        return ProjectSchemaResult(schema=self.schema)
+
+    async def list_available_parent_projects(self, project_id, *, schema):
+        return self.parent_projects
+
+    async def get_configuration(self, project_id) -> dict:
+        return self.configuration
+
+    async def list_phase_definitions(self):
+        return self.phase_definitions
+
+    async def get_phase_definition(self, phase_definition_id) -> ProjectPhaseDefinition:
+        return self.phase_definitions[0]
+
+    async def get_phase(self, phase_id) -> ProjectPhaseRecord:
+        assert self.phase_record is not None
+        return self.phase_record
+
+    async def set_favorite(self, project_id, *, favorite) -> None:
+        self.favorite_calls.append((project_id, favorite))
+
+    async def copy_form(self, project_id, payload) -> ProjectCopyFormResult:
+        return ProjectCopyFormResult(payload=payload, validation_errors=self.copy_validation_errors)
+
+    async def commit_copy(self, project_id, payload) -> str | None:
+        self.commit_copy_calls.append((project_id, payload))
+        return self.job_status_url
+
+
+def _resolver(api: _FakeProjectApi, *, settings=None) -> ProjectResolver:
+    return ProjectResolver(api=api, settings=settings or make_settings(), project_id_to_identifier={})
+
+
+def _service(api: _FakeProjectApi | None = None, *, settings=None) -> ProjectService:
+    api = api or _FakeProjectApi()
+    settings = settings or make_settings()
+    return ProjectService(
+        api=api,
+        settings=settings,
+        project_id_to_identifier={},
+        resolver=_resolver(api, settings=settings),
+        base_url=BASE_URL,
+        api_prefix="/api/v3/",
+    )
+
+
+def _admin_service(api: _FakeProjectApi | None = None, *, settings=None) -> ProjectAdminService:
+    api = api or _FakeProjectApi()
+    settings = settings or make_settings()
+    return ProjectAdminService(
+        api=api,
+        settings=settings,
+        project_id_to_identifier={},
+        resolver=_resolver(api, settings=settings),
+        base_url=BASE_URL,
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_returns_stamped_summaries() -> None:
+    service = _service()
+
+    result = await service.list()
+
+    assert result.total == 1
+    assert result.results[0].id == 6
+
+
+@pytest.mark.asyncio
+async def test_get_returns_detail_with_full_text_uncapped() -> None:
+    service = _service()
+
+    detail = await service.get("demo")
+
+    assert detail.identifier == "demo"
+
+
+@pytest.mark.asyncio
+async def test_get_configuration_returns_normalized_configuration() -> None:
+    service = _service()
+
+    config = await service.get_configuration("demo")
+
+    assert config.project_id == 6
+    assert config.maximum_attachment_file_size == 100
+
+
+@pytest.mark.asyncio
+async def test_get_configuration_applies_hidden_field_masking() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"project_configuration": ("duration_format",)})
+    service = _service(settings=settings)
+
+    config = await service.get_configuration("demo")
+
+    assert getattr(config, "_hidden_keys", frozenset()) == {"duration_format"}
+
+
+@pytest.mark.asyncio
+async def test_list_phase_definitions_applies_hidden_field_masking() -> None:
+    api = _FakeProjectApi()
+    api.phase_definitions = [
+        ProjectPhaseDefinition(
+            id=1, name="Init", start_gate=None, finish_gate=None, created_at=None, updated_at=None, url=""
+        )
+    ]
+    settings = dataclasses.replace(make_settings(), hidden_fields={"project_phase_definition": ("start_gate",)})
+    service = _service(api, settings=settings)
+
+    result = await service.list_phase_definitions()
+
+    assert getattr(result.results[0], "_hidden_keys", frozenset()) == {"start_gate"}
+
+
+@pytest.mark.asyncio
+async def test_get_phase_applies_hidden_field_masking() -> None:
+    api = _FakeProjectApi()
+    api.phase_record = _phase_record(project_link={"href": "/api/v3/projects/6", "title": "Demo"})
+    settings = dataclasses.replace(
+        make_settings(), read_projects=("*",), hidden_fields={"project_phase": ("phase_definition",)}
+    )
+    service = _service(api, settings=settings)
+
+    phase = await service.get_phase(3)
+
+    assert getattr(phase, "_hidden_keys", frozenset()) == {"phase_definition"}
+
+
+@pytest.mark.asyncio
+async def test_list_phase_definitions_returns_wrapped_result() -> None:
+    api = _FakeProjectApi()
+    api.phase_definitions = [
+        ProjectPhaseDefinition(
+            id=1, name="Init", start_gate=None, finish_gate=None, created_at=None, updated_at=None, url=""
+        )
+    ]
+    service = _service(api)
+
+    result = await service.list_phase_definitions()
+
+    assert result.count == 1
+    assert result.results[0].id == 1
+
+
+def _phase_record(*, project_link: dict | None) -> ProjectPhaseRecord:
+    return ProjectPhaseRecord(
+        phase=ProjectPhase(
+            id=3,
+            name="Build",
+            project_id=6,
+            project="Demo",
+            phase_definition_id=None,
+            phase_definition=None,
+            start_date=None,
+            finish_date=None,
+            created_at=None,
+            updated_at=None,
+            url="",
+        ),
+        project_link=project_link,
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_phase_checks_project_read_allowlist() -> None:
+    api = _FakeProjectApi()
+    api.phase_record = _phase_record(project_link={"href": "/api/v3/projects/6", "title": "Demo"})
+    settings = dataclasses.replace(make_settings(), read_projects=("other",))
+    service = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await service.get_phase(3)
+
+
+@pytest.mark.asyncio
+async def test_get_phase_fails_closed_when_project_link_is_missing() -> None:
+    api = _FakeProjectApi()
+    api.phase_record = _phase_record(project_link=None)
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
+    service = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await service.get_phase(3)
+
+
+@pytest.mark.asyncio
+async def test_get_phase_returns_stamped_phase_when_allowed() -> None:
+    api = _FakeProjectApi()
+    api.phase_record = _phase_record(project_link={"href": "/api/v3/projects/6", "title": "Demo"})
+    settings = dataclasses.replace(make_settings(), read_projects=("*",))
+    service = _service(api, settings=settings)
+
+    phase = await service.get_phase(3)
+
+    assert phase.id == 3
+
+
+@pytest.mark.asyncio
+async def test_stamp_zeroes_hidden_description_metadata() -> None:
+    settings = dataclasses.replace(make_settings(), hide_project_fields=("description",))
+    service = _service(settings=settings)
+
+    detail = await service.get("demo")
+
+    assert detail.description_truncated is False
+    assert detail.description_length is None
+
+
+@pytest.mark.asyncio
+async def test_stamp_zeroes_hidden_status_explanation_metadata() -> None:
+    settings = dataclasses.replace(make_settings(), hide_project_fields=("status_explanation",))
+    service = _service(settings=settings)
+
+    detail = await service.get("demo")
+
+    assert detail.status_explanation_truncated is False
+    assert detail.status_explanation_length is None
+
+
+@pytest.mark.asyncio
+async def test_get_admin_context_includes_writable_fields_and_parent_projects() -> None:
+    api = _FakeProjectApi()
+    api.parent_projects = [ProjectRef(id=1, identifier="root", name="Root", url="")]
+    service = _admin_service(api)
+
+    context = await service.get_admin_context("demo")
+
+    assert context.project is not None
+    assert context.project.id == 6
+    assert len(context.available_parent_projects) == 1
+    assert any(field.key == "status" for field in context.fields)
+
+
+@pytest.mark.asyncio
+async def test_get_admin_context_zeroes_hidden_description_metadata_on_embedded_project() -> None:
+    settings = dataclasses.replace(make_settings(), hide_project_fields=("description",))
+    service = _admin_service(settings=settings)
+
+    context = await service.get_admin_context("demo")
+
+    assert context.project is not None
+    assert context.project.description_truncated is False
+    assert context.project.description_length is None
+
+
+@pytest.mark.asyncio
+async def test_create_returns_preview_without_committing() -> None:
+    api = _FakeProjectApi()
+    service = _service(api)
+
+    result = await service.create(name="New Project", identifier="new-project", confirm=False)
+
+    assert result.ready is True
+    assert result.requires_confirmation is True
+    assert result.confirmed is False
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_commits_when_confirmed() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_write=True)
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    result = await service.create(name="New Project", identifier="new-project", confirm=True)
+
+    assert result.confirmed is True
+    assert result.result is not None
+    assert len(api.commit_create_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_validation_errors_present() -> None:
+    api = _FakeProjectApi()
+    api.validation_errors = {"name": "too short"}
+    service = _service(api)
+
+    result = await service.create(name="x", identifier="x", confirm=True)
+
+    assert result.ready is False
+    assert result.confirmed is False
+    assert result.validation_errors == {"name": "too short"}
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_denies_target_outside_write_allowlist() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
+    service = _service(settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await service.create(name="New Project", identifier="new-project", confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_update_commits_when_confirmed() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_write=True)
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    result = await service.update(project_ref="demo", name="Renamed", confirm=True)
+
+    assert result.confirmed is True
+    assert result.result is not None
+    assert len(api.commit_update_calls) == 1
+    assert api.commit_update_calls[0][0] == 6
+
+
+@pytest.mark.asyncio
+async def test_delete_returns_preview_then_commits() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_write=True)
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    preview = await service.delete(project_ref="demo", confirm=False)
+    assert preview.ready is True
+    assert preview.requires_confirmation is True
+    assert preview.confirmed is False
+    assert api.delete_calls == []
+
+    committed = await service.delete(project_ref="demo", confirm=True)
+    assert committed.confirmed is True
+    assert committed.result is not None
+    assert api.delete_calls == [6]
+
+
+@pytest.mark.asyncio
+async def test_set_favorite_returns_preview_then_commits() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_write=True)
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    preview = await service.set_favorite("demo", favorite=True, confirm=False)
+    assert preview.requires_confirmation is True
+    assert api.favorite_calls == []
+
+    committed = await service.set_favorite("demo", favorite=True, confirm=True)
+    assert committed.confirmed is True
+    assert api.favorite_calls == [(6, True)]
+
+
+@pytest.mark.asyncio
+async def test_copy_returns_preview_without_committing() -> None:
+    api = _FakeProjectApi()
+    service = _service(api)
+
+    result = await service.copy(source_project="demo", name="Copy", identifier="copy-project", confirm=False)
+
+    assert result.requires_confirmation is True
+    assert result.confirmed is False
+    assert api.commit_copy_calls == []
+
+
+@pytest.mark.asyncio
+async def test_copy_commits_and_returns_job_status_url() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_write=True)
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    result = await service.copy(source_project="demo", name="Copy", identifier="copy-project", confirm=True)
+
+    assert result.confirmed is True
+    assert result.job_status_url == api.job_status_url
+    assert len(api.commit_copy_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_copy_denies_target_outside_write_allowlist() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("demo",))
+    service = _service(settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await service.copy(source_project="demo", name="Copy", identifier="copy-project", confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_build_write_payload_rejects_hidden_field() -> None:
+    from openproject_ce_mcp.app.errors import InvalidInputError
+
+    settings = dataclasses.replace(make_settings(), enable_project_write=True, hide_project_fields=("description",))
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="New", identifier="new", description="secret", confirm=False)
+
+    assert api.commit_create_calls == []

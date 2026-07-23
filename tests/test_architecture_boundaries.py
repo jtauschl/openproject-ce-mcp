@@ -365,6 +365,24 @@ def test_version_service_and_resolver_bind_the_api_param_to_version_api_specific
         )
 
 
+def test_project_service_and_resolver_bind_the_api_param_to_project_api_specifically() -> None:
+    """Non-generalized regression test for the Projects domain's exact
+    guarantee, sibling to the Versions-only check above (that one is not
+    generalized further -- this is a new, separate test, not an edit to it):
+    the api param is ProjectApi exactly, not just "some Protocol"."""
+    from openproject_ce_mcp.app.adapters.httpx_project_api import HttpxProjectApi
+    from openproject_ce_mcp.app.ports.project_api import ProjectApi
+    from openproject_ce_mcp.app.resolvers.project_resolver import ProjectResolver
+    from openproject_ce_mcp.app.services.project_service import ProjectAdminService, ProjectService
+
+    for cls in (ProjectService, ProjectAdminService, ProjectResolver):
+        hints = typing.get_type_hints(cls.__init__)
+        assert hints["api"] is ProjectApi, f"{cls.__name__}.__init__'s api param must be typed ProjectApi"
+        assert hints["api"] is not HttpxProjectApi, (
+            f"{cls.__name__}.__init__'s api param must not be the concrete adapter"
+        )
+
+
 def _imports_module_named(path: Path, module_name: str) -> bool:
     tree = ast.parse(path.read_text(), filename=str(path))
     for node in ast.walk(tree):

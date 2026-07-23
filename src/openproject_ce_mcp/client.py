@@ -15,6 +15,7 @@ import httpx
 
 from . import __version__
 from .app.adapters import httpx_version_api as _httpx_version_api
+from .app.adapters.httpx_project_api import HttpxProjectApi
 from .app.adapters.httpx_version_api import HttpxVersionApi
 
 # AuthenticationError: no longer referenced directly in this module (its only use was
@@ -30,15 +31,18 @@ from .app.errors import (
     PermissionDeniedError,
     TransportError,
 )
-from .app.pagination import _next_offset
 from .app.pagination import paginate_client as _paginate_client
 from .app.pagination import paginate_server as _paginate_server
 from .app.policies import access as _access_policy
 from .app.policies import hidden_fields as _hidden_fields_policy
 from .app.policies import scope as _scope_policy
+from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
 from .app.ports.version_api import VersionApi
+from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.version_resolver import VersionResolver
+from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
+from .app.services.project_service import ProjectAdminService, ProjectService
 from .app.services.version_service import VersionService
 from .app.transport.errors import raise_for_status as _map_status_to_error
 from .app.transport.httpx_transport import HttpxTransport
@@ -112,12 +116,10 @@ from .models import (
     ProjectConfiguration,
     ProjectCopyResult,
     ProjectDetail,
-    ProjectFieldSchema,
     ProjectListResult,
     ProjectPhase,
     ProjectPhaseDefinition,
     ProjectPhaseDefinitionListResult,
-    ProjectRef,
     ProjectSummary,
     ProjectWorkPackageContext,
     ProjectWriteResult,
@@ -189,12 +191,6 @@ LOGGER = logging.getLogger(__name__)
 # (settings.text_limit, default 500) — see normalize_work_package_summary.
 FORMATTABLE_LIMIT = 1_200
 SUBJECT_LIMIT = 255
-
-# Bound on how many search pages _resolve_project_by_name scans while resolving a project
-# display name to an id — protects against unbounded scans on instances with many
-# similarly-named projects; hitting this cap without a confirmed unique match is reported
-# as ambiguous rather than silently picking whatever was found so far.
-_PROJECT_NAME_SEARCH_MAX_PAGES = 5
 
 # Array truncation limits for work package hierarchy and activity details
 WORK_PACKAGE_CHILDREN_LIMIT = 50
@@ -288,6 +284,28 @@ class OpenProjectClient:
 
         # ADR 0001: HttpxTransport wraps the SAME httpx.AsyncClient
         # constructed above (one connection pool, not two).
+        self._project_api: ProjectApi = HttpxProjectApi(
+            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
+        )
+        self._project_resolver = ProjectResolver(
+            api=self._project_api, settings=settings, project_id_to_identifier=self._project_id_to_identifier
+        )
+        self._project_service = ProjectService(
+            api=self._project_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolver=self._project_resolver,
+            base_url=settings.base_url,
+            api_prefix=self._api_prefix,
+        )
+        self._project_admin_service = ProjectAdminService(
+            api=self._project_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolver=self._project_resolver,
+            base_url=settings.base_url,
+        )
+
         self._version_api: VersionApi = HttpxVersionApi(HttpxTransport(self._http), base_url=settings.base_url)
         self._version_service = VersionService(
             api=self._version_api,
@@ -357,122 +375,16 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> ProjectListResult:
-        self._ensure_read_enabled("project")
-        effective_limit = self._resolve_limit(limit)
-        filters: list[dict[str, Any]] = []
-        if search:
-            filters.append({"name_and_identifier": {"operator": "~", "values": [search]}})
-
-        # Fetch multiple pages if needed to collect `limit` allowed projects.
-        # `offset` paginates in units of `effective_limit`, which can differ
-        # from the server's own page size (`max_page_size`) — the two spaces can't be
-        # conflated into one server-side offset. So every call re-scans from server
-        # page 1, skipping the first `(offset - 1) * effective_limit` already-seen
-        # allowed matches before collecting the next `effective_limit` — this trades
-        # some redundant server calls on deep pagination for correctness (no allowed
-        # project is ever silently skipped or duplicated across calls).
-        skip_count = (offset - 1) * effective_limit
-        skipped = 0
-        results: list[ProjectSummary] = []
-        server_offset = 1
-        server_page_size = self.settings.max_page_size
-        exhausted = False
-
-        while len(results) < effective_limit:
-            payload = await self._get(
-                "projects",
-                params={
-                    "offset": str(server_offset),
-                    "pageSize": str(server_page_size),
-                    "filters": _json_param(filters),
-                },
-            )
-            raw_projects = payload.get("_embedded", {}).get("elements", [])
-            if not raw_projects:
-                exhausted = True
-                break  # No more results from API
-
-            projects = [p for p in raw_projects if p.get("_type") == "Project"]
-            projects = [p for p in projects if self._project_payload_allowed(p)]
-            hit_limit_mid_page = False
-            for project in projects:
-                if skipped < skip_count:
-                    skipped += 1
-                    continue
-                results.append(self.normalize_project(project))
-                if len(results) >= effective_limit:
-                    hit_limit_mid_page = True
-                    break
-
-            if hit_limit_mid_page:
-                # This page had more allowed matches than needed — stop without
-                # checking server exhaustion: we already know there's at least one
-                # more allowed project waiting (the rest of this page), so treating
-                # this as "exhausted" would wrongly hide it from a follow-up call.
-                break
-
-            server_total = int(payload.get("total", 0))
-            # server_offset is a 1-based page number (matching _next_offset's
-            # convention), advanced by one page — not by a full page size, and not
-            # compared directly against an item count.
-            if _next_offset(server_offset, server_page_size, server_total) is None:
-                exhausted = True
-                break
-            server_offset += 1
-
-        # truncated reflects why the loop stopped: hitting the requested limit (there
-        # may be more) vs. the server genuinely running out.
-        truncated = not exhausted
-        total = len(results)
-
-        return ProjectListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=total,
-            next_offset=offset + 1 if truncated else None,
-            truncated=truncated,
-            results=results,
-        )
+        return await self._project_service.list(search=search, offset=offset, limit=limit)
 
     async def get_project(self, project_ref: str, *, text_limit: int | None = None) -> ProjectDetail:
-        self._ensure_read_enabled("project")
-        payload = await self._resolve_project_ref(project_ref, write=False)
-        # Default (text_limit=None) returns the full description/status_explanation
-        # uncapped, like get_work_package: opening a single project means you want
-        # to read it, so nothing is cut unless the caller asks for a smaller cap.
-        return self.normalize_project_detail(payload, text_limit=text_limit)
+        return await self._project_service.get(project_ref, text_limit=text_limit)
 
     async def get_project_admin_context(self, project_ref: str) -> ProjectAdminContext:
-        self._ensure_read_enabled("project")
-        payload = await self._resolve_project_ref(project_ref, write=False)
-        project = self.normalize_project(payload)
-        schema = await self._get_project_schema(project_id=project.id, draft_payload={"name": project.name})
-        fields = [
-            self._normalize_project_field_schema(key, entry) for key, entry in schema.items() if isinstance(entry, dict)
-        ]
-        status_field = next((field for field in fields if field.key == "status"), None)
-        available_statuses = status_field.allowed_values if status_field else []
-        available_parent_projects = await self._list_available_parent_projects(project.id, schema=schema)
-        # Non-writable/internal schema entries (id, timestamps, lockVersion, ...)
-        # aren't useful to an agent discovering what it can set here.
-        writable_fields = [field for field in fields if field.writable]
-        return self._apply_hidden_fields(
-            "project_admin_context",
-            ProjectAdminContext(
-                project=project,
-                available_statuses=available_statuses,
-                available_parent_projects=available_parent_projects,
-                fields=writable_fields,
-            ),
-        )
+        return await self._project_admin_service.get_admin_context(project_ref)
 
     async def get_project_configuration(self, project_ref: str) -> ProjectConfiguration:
-        self._ensure_read_enabled("project")
-        payload = await self._resolve_project_ref(project_ref, write=False)
-        project = self.normalize_project(payload)
-        configuration = await self._get(f"projects/{project.id}/configuration")
-        return self.normalize_project_configuration(configuration, project=project)
+        return await self._project_service.get_configuration(project_ref)
 
     async def create_project(
         self,
@@ -487,8 +399,7 @@ class OpenProjectClient:
         parent: str | object | None = None,
         confirm: bool = False,
     ) -> ProjectWriteResult:
-        self._ensure_project_write_candidate_allowed(identifier=identifier, name=name)
-        payload = await self._build_project_write_payload(
+        return await self._project_service.create(
             name=name,
             identifier=identifier,
             description=description,
@@ -496,17 +407,8 @@ class OpenProjectClient:
             active=active,
             status=status,
             status_explanation=status_explanation,
-            parent=parent,
-            project_id=None,
-        )
-        form = await self._post("projects/form", json_body=payload)
-        return await self._finalize_project_write(
-            action="create",
+            parent=_PROJECT_CLEAR_PARENT if parent is CLEAR else parent,
             confirm=confirm,
-            form=form,
-            write_path="projects",
-            preview_message="OpenProject validated the project. Ask for confirmation, then call again with confirm=true to create it.",
-            success_message="Project created successfully.",
         )
 
     async def update_project(
@@ -523,9 +425,8 @@ class OpenProjectClient:
         parent: str | object | None = None,
         confirm: bool = False,
     ) -> ProjectWriteResult:
-        current = await self._resolve_project_ref(project_ref, write=True)
-        project = self.normalize_project(current)
-        payload = await self._build_project_write_payload(
+        return await self._project_service.update(
+            project_ref=project_ref,
             name=name,
             identifier=identifier,
             description=description,
@@ -533,19 +434,8 @@ class OpenProjectClient:
             active=active,
             status=status,
             status_explanation=status_explanation,
-            parent=parent,
-            project_id=project.id,
-        )
-        form = await self._post(f"projects/{project.id}/form", json_body=payload)
-        return await self._finalize_project_write(
-            action="update",
+            parent=_PROJECT_CLEAR_PARENT if parent is CLEAR else parent,
             confirm=confirm,
-            form=form,
-            write_path=f"projects/{project.id}",
-            write_method="PATCH",
-            project_id=project.id,
-            project_name=project.name,
-            success_message="Project updated successfully.",
         )
 
     async def delete_project(
@@ -554,20 +444,7 @@ class OpenProjectClient:
         project_ref: str,
         confirm: bool = False,
     ) -> ProjectWriteResult:
-        payload_current = await self._resolve_project_ref(project_ref, write=True)
-        project = self.normalize_project(payload_current)
-        payload = {"id": project.id, "identifier": project.identifier, "name": project.name}
-        return await self._finalize_delete(
-            result_cls=ProjectWriteResult,
-            confirm=confirm,
-            result_kwargs={"project_id": project.id, "project": project.name, "payload": payload},
-            preview_result=None,
-            commit_result=project,
-            write_scope="project",
-            delete_path=f"projects/{project.id}",
-            preview_message="OpenProject found the project. Ask for confirmation, then call again with confirm=true to delete it.",
-            success_message="Project deleted successfully.",
-        )
+        return await self._project_service.delete(project_ref=project_ref, confirm=confirm)
 
     async def copy_project(
         self,
@@ -583,12 +460,8 @@ class OpenProjectClient:
         parent: str | object | None = None,
         confirm: bool = False,
     ) -> ProjectCopyResult:
-        source_payload = await self._resolve_project_ref(source_project, write=True)
-        # Also validate the destination so a copy cannot create a project outside
-        # the read/write allowlist (the source being allowed is not sufficient).
-        self._ensure_project_write_candidate_allowed(identifier=identifier, name=name)
-        project = self.normalize_project(source_payload)
-        payload = await self._build_project_write_payload(
+        return await self._project_service.copy(
+            source_project=source_project,
             name=name,
             identifier=identifier,
             description=description,
@@ -596,58 +469,8 @@ class OpenProjectClient:
             active=active,
             status=status,
             status_explanation=status_explanation,
-            parent=parent,
-            project_id=None,
-        )
-        form = await self._post(f"projects/{project.id}/copy/form", json_body=payload)
-        form_payload = form.get("_embedded", {}).get("payload", payload)
-        validation_errors = _normalize_validation_errors(form.get("_embedded", {}).get("validationErrors"))
-        ready = not validation_errors
-        common_result_fields = {
-            "action": "copy",
-            "source_project_id": project.id,
-            "source_project": project.name,
-            "payload": form_payload,
-            "validation_errors": validation_errors,
-            "job_status_id": None,
-            "job_status_url": None,
-        }
-        if not confirm:
-            return ProjectCopyResult(
-                confirmed=False,
-                requires_confirmation=True,
-                ready=ready,
-                message=(
-                    "OpenProject validated the project copy. Ask for confirmation, then call again with confirm=true to start the copy job."
-                    if ready
-                    else "OpenProject rejected the project copy payload. Fix the validation errors and try again."
-                ),
-                **common_result_fields,
-            )
-        if validation_errors:
-            return ProjectCopyResult(
-                confirmed=False,
-                requires_confirmation=False,
-                ready=False,
-                message="OpenProject rejected the project copy payload. Fix the validation errors and try again.",
-                **common_result_fields,
-            )
-        self._ensure_write_enabled("project")
-        response = await self._request("POST", f"projects/{project.id}/copy", json_body=form_payload)
-        redirect = response.history[0] if response.history else response
-        job_status_url = self._link_to_web_url(redirect.headers.get("Location"))
-        return ProjectCopyResult(
-            action="copy",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Project copy job started successfully.",
-            source_project_id=project.id,
-            source_project=project.name,
-            payload=form_payload,
-            validation_errors={},
-            job_status_id=_id_from_href(job_status_url),
-            job_status_url=job_status_url,
+            parent=_PROJECT_CLEAR_PARENT if parent is CLEAR else parent,
+            confirm=confirm,
         )
 
     async def get_job_status(self, job_status_id: int) -> JobStatusDetail:
@@ -1142,26 +965,13 @@ class OpenProjectClient:
         return self.normalize_instance_configuration(payload)
 
     async def list_project_phase_definitions(self) -> ProjectPhaseDefinitionListResult:
-        self._ensure_read_enabled("project")
-        payload = await self._get("project_phase_definitions")
-        elements = payload.get("_embedded", {}).get("elements", [])
-        results = [
-            self.normalize_project_phase_definition(item)
-            for item in elements
-            if isinstance(item, dict) and item.get("_type") == "ProjectPhaseDefinition"
-        ]
-        return ProjectPhaseDefinitionListResult(count=len(results), results=results)
+        return await self._project_service.list_phase_definitions()
 
     async def get_project_phase_definition(self, phase_definition_id: int) -> ProjectPhaseDefinition:
-        self._ensure_read_enabled("project")
-        payload = await self._get(f"project_phase_definitions/{phase_definition_id}")
-        return self.normalize_project_phase_definition(payload)
+        return await self._project_service.get_phase_definition(phase_definition_id)
 
     async def get_project_phase(self, phase_id: int) -> ProjectPhase:
-        self._ensure_read_enabled("project")
-        payload = await self._get(f"project_phases/{phase_id}")
-        self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
-        return self.normalize_project_phase(payload)
+        return await self._project_service.get_phase(phase_id)
 
     async def _fetch_bounded_and_paginate(
         self,
@@ -3813,48 +3623,7 @@ class OpenProjectClient:
             ) from exc
 
     async def _set_project_favorite(self, project: str, *, favorite: bool, confirm: bool) -> FavoriteWriteResult:
-        # Use the workspaces endpoint (the project-favorite path is deprecated).
-        project_payload = await self._get_project_payload(project, write=True)
-        project_id = int(project_payload["id"])
-        project_name = _trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT)
-        action = "favorite" if favorite else "unfavorite"
-        if not confirm:
-            verb = "mark as favorite" if favorite else "remove from favorites"
-            return FavoriteWriteResult(
-                action=action,
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message=f"OpenProject is ready to {verb}. Ask for confirmation, then call again with confirm=true.",
-                project_id=project_id,
-                project=project_name,
-            )
-        self._ensure_write_enabled("project")
-        # The workspaces favorite endpoint exists only from 17.0; on older
-        # instances a 404 is translated into a clear version hint.
-        if favorite:
-            # The favorite endpoint returns 204 with no body, so go through
-            # _request (not _post, which would try to parse empty JSON).
-            await self._run_version_gated(
-                self._request("POST", f"workspaces/{project_id}/favorite", json_body={}),
-                feature="Project favorites",
-                min_version="17.0",
-            )
-        else:
-            await self._run_version_gated(
-                self._delete(f"workspaces/{project_id}/favorite"),
-                feature="Project favorites",
-                min_version="17.0",
-            )
-        return FavoriteWriteResult(
-            action=action,
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message=f"Project {'added to' if favorite else 'removed from'} favorites.",
-            project_id=project_id,
-            project=project_name,
-        )
+        return await self._project_service.set_favorite(project, favorite=favorite, confirm=confirm)
 
     async def add_project_favorite(self, *, project: str, confirm: bool = False) -> FavoriteWriteResult:
         return await self._set_project_favorite(project, favorite=True, confirm=confirm)
@@ -6035,74 +5804,6 @@ class OpenProjectClient:
             ),
         )
 
-    def normalize_project_configuration(
-        self,
-        payload: dict[str, Any],
-        *,
-        project: ProjectSummary,
-    ) -> ProjectConfiguration:
-        base = self.normalize_instance_configuration(payload)
-        return self._apply_hidden_fields(
-            "project_configuration",
-            ProjectConfiguration(
-                project_id=project.id,
-                project_name=project.name,
-                maximum_attachment_file_size=base.maximum_attachment_file_size,
-                maximum_api_v3_page_size=base.maximum_api_v3_page_size,
-                per_page_options=base.per_page_options,
-                duration_format=base.duration_format,
-                hours_per_day=base.hours_per_day,
-                days_per_month=base.days_per_month,
-                active_feature_flags=base.active_feature_flags,
-                available_features=base.available_features,
-                trialling_features=base.trialling_features,
-                enabled_internal_comments=payload.get("enabledInternalComments"),
-                url=self._web_url(f"api/v3/projects/{project.id}/configuration"),
-            ),
-        )
-
-    def normalize_project_phase_definition(self, payload: dict[str, Any]) -> ProjectPhaseDefinition:
-        phase_id = int(payload["id"])
-        return self._apply_hidden_fields(
-            "project_phase_definition",
-            ProjectPhaseDefinition(
-                id=phase_id,
-                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Phase {phase_id}",
-                start_gate=_trim_text(payload.get("startGateName"), limit=SUBJECT_LIMIT),
-                finish_gate=_trim_text(payload.get("finishGateName"), limit=SUBJECT_LIMIT),
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-                url=self._web_url(f"api/v3/project_phase_definitions/{phase_id}"),
-            ),
-        )
-
-    def normalize_project_phase(self, payload: dict[str, Any]) -> ProjectPhase:
-        phase_id = int(payload["id"])
-        links = payload.get("_links", {})
-        phase_definition_link = links.get("projectPhaseDefinition")
-        return self._apply_hidden_fields(
-            "project_phase",
-            ProjectPhase(
-                id=phase_id,
-                name=(
-                    _trim_text(payload.get("name"), limit=SUBJECT_LIMIT)
-                    or _link_title(phase_definition_link)
-                    or f"Project phase {phase_id}"
-                ),
-                project_id=_id_from_href(links.get("project", {}).get("href")),
-                project=_link_title(links.get("project")),
-                phase_definition_id=_id_from_href(phase_definition_link.get("href"))
-                if isinstance(phase_definition_link, dict)
-                else None,
-                phase_definition=_link_title(phase_definition_link),
-                start_date=payload.get("startDate"),
-                finish_date=payload.get("finishDate"),
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-                url=self._web_url(f"api/v3/project_phases/{phase_id}"),
-            ),
-        )
-
     def normalize_time_entry_activity(self, payload: dict[str, Any]) -> TimeEntryActivitySummary:
         activity_id = int(payload["id"])
         projects = [
@@ -6348,41 +6049,6 @@ class OpenProjectClient:
             # Templated-subject hint (17.3+); present only when a type configures
             # a subject template, otherwise absent.
             placeholder=_trim_text(payload.get("placeholder"), limit=SUBJECT_LIMIT),
-            location=_trim_text(payload.get("location"), limit=SUBJECT_LIMIT),
-            allowed_values=normalized_allowed_values,
-        )
-
-    def _normalize_project_field_schema(self, key: str, payload: dict[str, Any]) -> ProjectFieldSchema:
-        normalized_allowed_values: list[OptionValue] = []
-        embedded_allowed = payload.get("_embedded", {}).get("allowedValues", [])
-        if isinstance(embedded_allowed, list):
-            normalized_allowed_values.extend(
-                self._normalize_option_value(item) for item in embedded_allowed if isinstance(item, dict)
-            )
-        link_allowed = payload.get("_links", {}).get("allowedValues", [])
-        if isinstance(link_allowed, list):
-            normalized_allowed_values.extend(
-                OptionValue(
-                    id=_id_from_href(item.get("href")),
-                    title=_trim_text(item.get("title"), limit=SUBJECT_LIMIT) or "Unnamed",
-                    href=item.get("href"),
-                )
-                for item in link_allowed
-                if isinstance(item, dict)
-            )
-        elif isinstance(embedded_allowed, list) and embedded_allowed and isinstance(embedded_allowed[0], str):
-            normalized_allowed_values.extend(
-                OptionValue(id=None, title=_trim_text(item, limit=SUBJECT_LIMIT) or "Unnamed", href=None)
-                for item in embedded_allowed
-                if isinstance(item, str)
-            )
-        return ProjectFieldSchema(
-            key=key,
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or key,
-            type=_trim_text(payload.get("type"), limit=SUBJECT_LIMIT),
-            required=bool(payload.get("required")),
-            writable=bool(payload.get("writable")),
-            has_default=bool(payload.get("hasDefault")),
             location=_trim_text(payload.get("location"), limit=SUBJECT_LIMIT),
             allowed_values=normalized_allowed_values,
         )
@@ -6990,25 +6656,14 @@ class OpenProjectClient:
     async def _resolve_project_ref(self, project_ref: str, *, write: bool = False) -> dict[str, Any]:
         """Resolve a project by numeric id, exact identifier, or (as a fallback) display name.
 
-        Numeric id / identifier is tried first via a direct GET (cheap, unchanged from before this
-        fallback existed). Only when that 404s do we fall back to a name search via list_projects.
-        Identifiers are unique in OpenProject by construction; display names are not, so an exact-name
-        match is only trusted once the search has confirmed there is no second project with that same
-        name (see _resolve_project_by_name for the exact algorithm).
+        Delegates to the layered ProjectResolver (app/resolvers/project_resolver.py),
+        which is a verbatim behavioral port of this method's former inline
+        implementation. Kept as a stable internal facade -- every other domain's
+        client.py code (list_project_memberships, get_my_project_access, ...) still
+        calls this method (or _get_project_payload, which calls it) directly and
+        expects the identical raw-payload contract; only the body changed.
         """
-        try:
-            payload = await self._get(f"projects/{quote(project_ref, safe='')}")
-        except NotFoundError:
-            payload = None
-        if payload is not None and payload.get("_type") != "Project":
-            payload = None
-        if payload is not None:
-            if write:
-                self._ensure_project_write_allowed(project_ref, payload=payload)
-            else:
-                self._ensure_project_allowed(project_ref, payload=payload)
-            return payload
-        return await self._resolve_project_by_name(project_ref, write=write)
+        return await self._project_resolver.resolve(project_ref, write=write)
 
     async def _resolve_project_filter_candidates(self, project: str | None) -> set[str] | None:
         if project is None:
@@ -7019,65 +6674,6 @@ class OpenProjectClient:
             (_trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
             (_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or "").casefold(),
         }
-
-    async def _resolve_project_by_name(self, project_ref: str, *, write: bool) -> dict[str, Any]:
-        normalized = " ".join(project_ref.split())
-        normalized_cf = normalized.casefold()
-        page_size = self.settings.max_results
-        exact_name_matches: list[ProjectSummary] = []
-        substring_matches: list[ProjectSummary] = []
-        exhausted = False
-        offset = 1
-        for _ in range(_PROJECT_NAME_SEARCH_MAX_PAGES):
-            page = await self.list_projects(search=normalized, offset=offset, limit=page_size)
-            for project in page.results:
-                identifier_cf = (project.identifier or "").casefold()
-                if identifier_cf == normalized_cf:
-                    # Identifiers are unique — an exact identifier match, wherever it turns up in the
-                    # search results, always wins immediately over any name/substring match.
-                    return await self._resolve_project_ref(str(project.id), write=write)
-                name_cf = (project.name or "").casefold()
-                if name_cf == normalized_cf:
-                    exact_name_matches.append(project)
-                else:
-                    substring_matches.append(project)
-            if len(exact_name_matches) >= 2:
-                break
-            if not page.truncated:
-                exhausted = True
-                break
-            offset += 1
-
-        if len(exact_name_matches) >= 2:
-            raise self._project_ambiguous_error(project_ref, exact_name_matches, exhausted=True)
-        if not exhausted:
-            # The page cap was hit before the search could confirm a unique match — never fabricate
-            # uniqueness here, since a later (unscanned) page could still contain a second exact-name
-            # match or an exact-identifier match that would change the outcome.
-            pending = exact_name_matches or substring_matches
-            raise self._project_ambiguous_error(project_ref, pending, exhausted=False)
-        if len(exact_name_matches) == 1:
-            return await self._resolve_project_ref(str(exact_name_matches[0].id), write=write)
-        if len(substring_matches) == 1:
-            return await self._resolve_project_ref(str(substring_matches[0].id), write=write)
-        if len(substring_matches) > 1:
-            raise self._project_ambiguous_error(project_ref, substring_matches, exhausted=True)
-        raise NotFoundError(f"OpenProject project '{project_ref}' was not found. Call list_projects.")
-
-    def _project_ambiguous_error(
-        self, project_ref: str, candidates: list[ProjectSummary], *, exhausted: bool
-    ) -> InvalidInputError:
-        shown = candidates[:10]
-        formatted = ", ".join(f"'{c.identifier or c.id}' (id {c.id}, name '{c.name}')" for c in shown)
-        if exhausted:
-            remainder = len(candidates) - len(shown)
-            suffix = f" (+{remainder} more)" if remainder > 0 else ""
-        else:
-            suffix = " (additional matches may exist)"
-        return InvalidInputError(
-            f"OpenProject project '{project_ref}' is ambiguous: {formatted}{suffix}. "
-            f"Use a numeric id or exact identifier, or call list_projects(search='{project_ref}')."
-        )
 
     async def _time_entry_activities_from_project(self, project_id: int) -> list[TimeEntryActivitySummary]:
         form = await self._post(
@@ -7149,142 +6745,6 @@ class OpenProjectClient:
             preview_message=preview_message
             or "OpenProject validated the grid change. Ask for confirmation, then call again with confirm=true to write it.",
             success_message=success_message or f"Grid {action}d successfully.",
-        )
-
-    async def _build_project_write_payload(
-        self,
-        *,
-        name: str | None,
-        identifier: str | None,
-        description: str | None,
-        public: bool | None,
-        active: bool | None,
-        status: str | None,
-        status_explanation: str | None,
-        parent: str | object | None,
-        project_id: int | None,
-    ) -> dict[str, Any]:
-        payload: dict[str, Any] = {}
-        links: dict[str, dict[str, str | None]] = {}
-        schema = await self._get_project_schema(project_id=project_id, draft_payload=payload)
-
-        if name is not None:
-            self._ensure_field_writable("project", "name")
-            payload["name"] = name
-        if identifier is not None:
-            self._ensure_field_writable("project", "identifier")
-            payload["identifier"] = identifier
-        if description is not None:
-            self._ensure_field_writable("project", "description")
-            payload["description"] = {"format": "markdown", "raw": description}
-        if public is not None:
-            self._ensure_field_writable("project", "public")
-            payload["public"] = public
-        if active is not None:
-            self._ensure_field_writable("project", "active")
-            payload["active"] = active
-        if status_explanation is not None:
-            self._ensure_field_writable("project", "status_explanation")
-            payload["statusExplanation"] = {"format": "markdown", "raw": status_explanation}
-        if status is not None:
-            self._ensure_field_writable("project", "status")
-            links["status"] = {"href": self._resolve_project_status_href(schema, status)}
-        if parent is CLEAR:
-            self._ensure_field_writable("project", "parent")
-            links["parent"] = {"href": None}
-        elif parent is not None:
-            self._ensure_field_writable("project", "parent")
-            parent_id = await self._resolve_project_id(_narrow_cleared(parent, sentinel=CLEAR))
-            links["parent"] = {"href": self._api_href(f"projects/{parent_id}")}
-        if links:
-            payload["_links"] = links
-        return payload
-
-    async def _get_project_schema(
-        self,
-        *,
-        project_id: int | None,
-        draft_payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        if project_id is None:
-            form = await self._post("projects/form", json_body=draft_payload)
-        else:
-            form = await self._post(f"projects/{project_id}/form", json_body=draft_payload)
-        return form.get("_embedded", {}).get("schema", {})
-
-    async def _list_available_parent_projects(
-        self,
-        project_id: int,
-        *,
-        schema: dict[str, Any],
-    ) -> list[ProjectRef]:
-        parent_field = schema.get("parent")
-        if not isinstance(parent_field, dict):
-            return []
-        href = parent_field.get("_links", {}).get("allowedValues", {}).get("href")
-        if not href:
-            href = f"/api/v3/projects/available_parent_projects?of={project_id}"
-        payload = await self._get(self._link_to_api_path(href))
-        elements = payload.get("_embedded", {}).get("elements", [])
-        # Fail closed: a parent-project candidate outside READ_PROJECTS must not
-        # leak its name/identifier through this picklist just because it's a
-        # valid parent target.
-        allowed = [item for item in elements if self._project_payload_allowed(item)]
-        # Lightweight refs only — a full ProjectSummary would cost a
-        # description/status_explanation per candidate for no benefit to a
-        # parent-project picklist.
-        return [
-            ProjectRef(
-                id=int(item["id"]),
-                identifier=item.get("identifier"),
-                name=_trim_text(item.get("name"), limit=SUBJECT_LIMIT) or f"Project {item['id']}",
-                url=self._web_url(f"projects/{item.get('identifier') or item['id']}"),
-            )
-            for item in allowed
-        ]
-
-    def _resolve_project_status_href(self, schema: dict[str, Any], raw_value: str) -> str:
-        field = schema.get("status")
-        if not isinstance(field, dict):
-            raise InvalidInputError("OpenProject schema does not expose the project status field.")
-        for item in field.get("_links", {}).get("allowedValues", []):
-            if not isinstance(item, dict):
-                continue
-            href = item.get("href")
-            title = _trim_text(item.get("title"), limit=SUBJECT_LIMIT)
-            item_id = _slug_from_href(href)
-            if (raw_value.casefold() == (title or "").casefold() or raw_value == item_id) and href:
-                return href
-        raise InvalidInputError(f"OpenProject project status '{raw_value}' is not allowed.")
-
-    async def _finalize_project_write(
-        self,
-        *,
-        action: str,
-        confirm: bool,
-        form: dict[str, Any],
-        write_path: str,
-        write_method: str = "POST",
-        project_id: int | None = None,
-        project_name: str | None = None,
-        preview_message: str | None = None,
-        success_message: str | None = None,
-    ) -> ProjectWriteResult:
-        return await self._finalize_write(
-            result_cls=ProjectWriteResult,
-            action=action,
-            confirm=confirm,
-            form=form,
-            write_path=write_path,
-            write_method=write_method,
-            write_scope="project",
-            identity_kwargs=lambda _payload: {"project_id": project_id, "project": project_name},
-            normalize=self.normalize_project,
-            committed_kwargs=lambda p: {"project_id": p.id, "project": p.name},
-            rejected_message="OpenProject rejected the proposed project changes. Fix the validation errors before confirming.",
-            preview_message=preview_message
-            or "OpenProject validated the project change. Ask for confirmation, then call again with confirm=true to write it.",
-            success_message=success_message or f"Project {action}d successfully.",
         )
 
     async def _finalize_membership_write(
@@ -7395,32 +6855,6 @@ class OpenProjectClient:
         )
         if not _scope_matches_candidates(self.settings.read_projects, candidates):
             raise PermissionDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
-
-    def _ensure_project_write_allowed(self, project_ref: str, *, payload: dict[str, Any] | None = None) -> None:
-        candidates = self._project_candidates(project_ref=project_ref, payload=payload)
-        self._ensure_project_allowed(project_ref, payload=payload, candidates=candidates)
-        if _scope_allows_all(self.settings.write_projects):
-            return
-        if not _scope_matches_candidates(self.settings.write_projects, candidates):
-            raise PermissionDeniedError(
-                "OpenProject writes to this project are disabled by OPENPROJECT_WRITE_PROJECTS."
-            )
-
-    def _ensure_project_write_candidate_allowed(self, *, identifier: str | None, name: str | None) -> None:
-        candidates = self._project_candidates(identifier=identifier, name=name)
-        if not _scope_allows_all(self.settings.read_projects) and not _scope_matches_candidates(
-            self.settings.read_projects, candidates
-        ):
-            raise PermissionDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
-        if not _scope_allows_all(self.settings.write_projects) and not _scope_matches_candidates(
-            self.settings.write_projects, candidates
-        ):
-            raise PermissionDeniedError(
-                "OpenProject writes to this project are disabled by OPENPROJECT_WRITE_PROJECTS."
-            )
-
-    def _project_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        return self._payload_allowed(lambda: self._ensure_project_allowed(str(payload.get("id", "")), payload=payload))
 
     def _ensure_project_link_allowed(self, link: Any) -> None:
         _scope_policy.ensure_project_link_allowed(
@@ -7726,8 +7160,7 @@ class OpenProjectClient:
         return f"/{self._api_prefix.lstrip('/')}{relative_path.lstrip('/')}"
 
     async def _resolve_project_id(self, project_ref: str) -> str:
-        payload = await self._resolve_project_ref(project_ref, write=False)
-        return str(payload["id"])
+        return await self._project_resolver.resolve_id(project_ref, write=False)
 
     async def _resolve_principal_id(self, principal_ref: str) -> str:
         if principal_ref.casefold() == "me":

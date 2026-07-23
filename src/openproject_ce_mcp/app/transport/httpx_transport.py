@@ -13,6 +13,7 @@ import httpx
 from ...hal import normalize_links
 from ..errors import OpenProjectServerError, TransportError
 from .errors import raise_for_status
+from .protocol import TransportResponse
 
 
 class HttpxTransport:
@@ -42,6 +43,18 @@ class HttpxTransport:
         response = await self._request("DELETE", path, params=params)
         if response.status_code not in {200, 202, 204}:
             raise OpenProjectServerError(f"OpenProject delete request failed with status {response.status_code}.")
+
+    async def request_raw(
+        self, method: str, path: str, *, params: dict[str, str] | None = None, json_body: dict[str, Any] | None = None
+    ) -> TransportResponse:
+        response = await self._request(method, path, params=params, json_body=json_body)
+        return TransportResponse(
+            status_code=response.status_code,
+            headers={k.lower(): v for k, v in response.headers.items()},
+            redirect_headers=tuple(
+                {k.lower(): v for k, v in redirect.headers.items()} for redirect in response.history
+            ),
+        )
 
     async def _request_json(
         self,

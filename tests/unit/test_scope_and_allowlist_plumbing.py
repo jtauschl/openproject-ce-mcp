@@ -4,6 +4,7 @@ import httpx
 import pytest
 from _client_test_helpers import _base_settings
 
+from openproject_ce_mcp.app.policies import project_policy
 from openproject_ce_mcp.client import (
     OpenProjectClient,
     PermissionDeniedError,
@@ -240,7 +241,12 @@ async def test_write_scope_is_intersection_of_read_scope() -> None:
 @pytest.mark.parametrize(
     "check",
     [
-        lambda client: client._ensure_project_write_allowed("other"),
+        lambda client: project_policy.ensure_project_write_allowed(
+            {"id": "other", "identifier": "other"},
+            project_ref="other",
+            settings=client.settings,
+            project_id_to_identifier=client._project_id_to_identifier,
+        ),
         lambda client: client._ensure_project_write_link_allowed({"href": "/api/v3/projects/other"}),
         lambda client: client._ensure_board_write_payload_allowed(
             {"_links": {"project": {"href": "/api/v3/projects/other"}}}

@@ -10,17 +10,18 @@ OpenProject CE MCP is intentionally small and flat. The codebase keeps transport
 
 ```text
 src/openproject_ce_mcp/
-├── config.py            environment loading, validation, and safe defaults
+├── config.py             environment loading, validation, and safe defaults
 ├── client.py             OpenProject API client facade: auth, timeouts, most domains'
 │                         pagination/normalization/error mapping, plus one-line
-│                         delegations to app/ for the Versions domain (see below)
+│                         delegations to app/ for the Versions and Projects domains
+│                         (see below)
 ├── retry_transport.py    HTTP retry with backoff for transient failures
 ├── models.py             compact dataclasses returned to MCP clients
 ├── tools.py              validated MCP tool handlers
 ├── server.py             FastMCP server bootstrap and lifecycle management
 ├── setup_cli.py          the interactive `configure` command
 ├── doctor.py             the `doctor` diagnostics command
-└── app/                  layered architecture pilot -- see "Layered architecture" below
+└── app/                  layered architecture -- see "Layered architecture" below
     ├── errors.py         shared exception types (re-exported from client.py)
     ├── pagination.py     shared pagination-envelope helpers (re-exported from client.py)
     ├── policies/         pure, no-I/O scope/allowlist/hidden-field checks
@@ -75,12 +76,18 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
-## Layered architecture (pilot: Versions)
+## Layered architecture (Versions, Projects)
 
-`client.py` stays the small, flat facade described above for most domains, but the
-Versions domain (`list_versions`, `get_version`, `create_version`, `update_version`,
-`delete_version`) has been migrated into `app/` as a pilot for a stricter layered
-structure, validating the pattern before any other domain follows:
+`client.py` stays the small, flat facade described above for most domains, but two
+domains have been migrated into `app/` for a stricter layered structure: Versions
+(`list_versions`, `get_version`, `create_version`, `update_version`,
+`delete_version` — the original pilot, validating the pattern) and Projects
+(`list_projects`, `get_project`, `create_project`, `update_project`,
+`delete_project`, `copy_project`, `get_project_admin_context`,
+`get_project_configuration`, `add_project_favorite`/`remove_project_favorite`,
+`list_project_phase_definitions`, `get_project_phase_definition`,
+`get_project_phase` — the second migration, applying the pilot's lessons to a
+domain every other domain's resolvers depend on):
 
 ```text
 tools.py (MCP presentation)
@@ -96,30 +103,51 @@ tools.py (MCP presentation)
   implement this logic directly (`_ensure_read_enabled`, `_project_candidates`,
   `_apply_hidden_fields`, etc.) is now a one-line delegating wrapper, so **every**
   domain benefits from a single, dependency-free, directly-unit-testable source of
-  truth for this security-relevant logic — not just Versions.
-- **Ports** are narrow, per-domain Protocols (e.g. `VersionApi`) — no universal
-  gateway. **Adapters** are the concrete HTTP implementation of a port, translating
-  HAL payloads into the compact dataclasses from `models.py`.
-- **Resolvers** turn a semantic reference (a version name, a numeric id) into a
-  concrete id, using only a port — never an Application Service.
-- **Application Services** (e.g. `VersionService`) orchestrate a single use case:
-  Policy checks, Resolver calls, port calls, and the preview/confirm write state
-  machine. They depend on a port's Protocol type, never a concrete adapter.
+  truth for this security-relevant logic — not just the migrated domains.
+- **Ports** are narrow, per-domain Protocols (e.g. `VersionApi`, `ProjectApi`) — no
+  universal gateway. **Adapters** are the concrete HTTP implementation of a port,
+  translating HAL payloads into the compact dataclasses from `models.py`. For
+  Projects specifically, the pure HAL-to-model `normalize_*` functions live in the
+  *port* module (`app/ports/project_api.py`), not the adapter — unlike Versions,
+  `ProjectService` normalizes an already-resolved raw payload directly (avoiding a
+  second port round-trip), and Services may depend on Ports but not Adapters.
+- **Resolvers** turn a semantic reference (a version name, a project identifier) into
+  a concrete id, using only a port — never an Application Service. `ProjectResolver`
+  is also the concrete implementation the pre-existing `ProjectRefResolver` seam
+  (`app/ports/project_ref.py`) is bound to, since every other domain's resolvers
+  depend on Projects' resolution logic — Projects doesn't consume that seam, it
+  fulfils it.
+- **Application Services** (e.g. `VersionService`, `ProjectService`) orchestrate a
+  single use case: Policy checks, Resolver calls, port calls, and the
+  preview/confirm write state machine. They depend on a port's Protocol type, never
+  a concrete adapter. Projects additionally has `ProjectAdminService` (schema +
+  available-parent-projects + field metadata for `get_project_admin_context`) as a
+  second class in the same file, since it shares the same dependencies.
 - `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under
-  `app/` that imports `httpx`; `client.py`'s own HTTP calls for the ~50 still-flat
-  domains, and `retry_transport.py`, are unaffected and keep importing it directly.
+  `app/` that imports `httpx`; `client.py`'s own HTTP calls for the remaining
+  still-flat domains, and `retry_transport.py`, are unaffected and keep importing it
+  directly.
 - `OpenProjectClient` remains a 100%-compatible facade throughout: its public method
-  signatures for Versions are unchanged, and `tools.py` requires no changes at all.
+  signatures for Versions and Projects are unchanged, and `tools.py` requires no
+  changes at all. `get_my_project_access` and `get_project_work_package_context`
+  stay as client.py-level orchestration rather than moving into `ProjectService`,
+  since they combine Projects with still-flat domains (Memberships,
+  work-package-schema) and a Service must not depend on another Service.
 
 Remaining domains stay exactly as described in the flat model above; migrating them
-is deliberately out of scope until the pilot's lessons inform a second migration.
-An `ast`-based test (`tests/test_architecture_boundaries.py`) enforces the layer
-directions above, confines `httpx` to `HttpxTransport`, forbids importing `fastmcp`
-or reading environment variables directly anywhere under `app/`, and checks that
-every `app/services/`/`app/resolvers/` class depends on a port `Protocol`, never a
-concrete adapter. These checks are directory-driven, not Versions-specific, so a
-second domain's migration needs no test changes to stay covered. Complementary
-behavioral-contract tests (`tests/unit/test_write_confirm_contracts.py`,
+further is deliberately out of scope until each migration's own lessons justify the
+next one. An `ast`-based test (`tests/test_architecture_boundaries.py`) enforces the
+layer directions above, confines `httpx` to `HttpxTransport`, forbids importing
+`fastmcp` or reading environment variables directly anywhere under `app/`, and
+checks that every `app/services/`/`app/resolvers/` class depends on a port
+`Protocol`, never a concrete adapter. These checks are directory-driven, not
+domain-specific, so a further domain's migration needs no test changes to stay
+covered — only a small, deliberately non-generalized regression test per migrated
+domain (`test_version_service_and_resolver_bind_the_api_param_to_version_api_specifically`,
+`test_project_service_and_resolver_bind_the_api_param_to_project_api_specifically`)
+pins that domain's exact port type, kept alongside the generic check rather than
+folded into it. Complementary behavioral-contract tests
+(`tests/unit/test_write_confirm_contracts.py`,
 `tests/unit/test_write_payload_equivalence.py`) prove, for every registered
 write/delete MCP tool, that writes stay preview-only until confirmed, that no
 mutating call happens before confirmation or without the required write scope, and
@@ -259,12 +287,12 @@ The tradeoff is that `client.py` is large and policy-heavy. That is intentional 
 ## Future split points
 
 The Policies extraction (scope checks, hidden-field enforcement) is done, for every
-domain — see "Layered architecture" above. Remaining candidates, once the Versions
-pilot's lessons justify a second migration:
+domain — see "Layered architecture" above. Versions and Projects are migrated;
+remaining candidates, once each migration's own lessons justify the next one:
 
-- migrating additional domains through the same `app/` layers, one at a time,
-  starting with the ones the pilot's own dependencies already touch (Projects, since
-  every domain's resolvers call into its still-flat resolution logic)
+- migrating additional domains through the same `app/` layers, one at a time —
+  re-evaluate which domain's resolvers most depend on already-flat logic, per the
+  pilot's own "validate before extending" approach
 - separate modules for project-scoped content like news/documents/views
 - separate modules for work-package writes and schema handling
 - dedicated integration-test helpers around form endpoints and live smoke tests
