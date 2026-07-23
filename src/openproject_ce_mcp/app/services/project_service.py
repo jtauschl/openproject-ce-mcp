@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from typing import Any, Generic, TypeVar
+from urllib.parse import unquote
 
 from ...config import Settings
 from ...models import (
@@ -36,19 +37,50 @@ from ..errors import InvalidInputError, NotFoundError
 from ..policies import access, hidden_fields
 from ..policies import project_policy as project_policy_module
 from ..policies.scope import ensure_project_link_allowed, payload_allowed
-from ..ports.project_api import (
-    ProjectApi,
-    _id_from_href,
-    _slug_from_href,
-    _trim_text,
-    normalize_project,
-    normalize_project_detail,
-    normalize_project_field_schema,
-)
+from ..ports.project_api import ProjectApi
 from ..resolvers.project_query import fetch_project_page
 from ..resolvers.project_resolver import ProjectResolver
 
 SUBJECT_LIMIT = 255
+
+
+# Duplicated from httpx_project_api.py's helpers of the same name (ADR 0001
+# deliberate duplication) -- Services must not import Adapters. These are
+# generic string/href utilities, not HAL->model mapping (which stays adapter-
+# only), needed here for job-status-URL parsing (copy()), status-href
+# matching (_resolve_status_href), and name trimming (set_favorite()). Unify
+# only once every domain has migrated.
+def _trim_text(value: Any, *, limit: int) -> str | None:
+    if value is None:
+        return None
+    text = " ".join(str(value).split())
+    if not text:
+        return None
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def _id_from_href(href: str | None) -> int | None:
+    if not href:
+        return None
+    parts = href.rstrip("/").split("/")
+    try:
+        return int(parts[-1])
+    except (ValueError, IndexError):
+        return None
+
+
+def _slug_from_href(href: str | None) -> str | None:
+    if not href:
+        return None
+    parts = href.rstrip("/").split("/")
+    try:
+        slug = parts[-1]
+        return unquote(slug) or None
+    except IndexError:
+        return None
+
 
 # "Clear this field" sentinel for `parent` (unassign via _links.parent =
 # {"href": null}), distinguishing it from `None` ("leave unchanged"). Lives
@@ -194,14 +226,13 @@ class ProjectService:
         # uncapped, like get_work_package: opening a single project means you want
         # to read it, so nothing is cut unless the caller asks for a smaller cap.
         access.ensure_read_enabled("project", settings=self._settings)
-        payload = await self._resolver.resolve(project_ref, write=False)
-        detail = normalize_project_detail(payload, base_url=self._base_url, text_limit=text_limit)
-        return self._stamp(detail)
+        record = await self._resolver.resolve_record(project_ref, write=False, text_limit=text_limit)
+        return self._stamp(record.detail)
 
     async def get_configuration(self, project_ref: str) -> ProjectConfiguration:
         access.ensure_read_enabled("project", settings=self._settings)
-        payload = await self._resolver.resolve(project_ref, write=False)
-        project = self._stamp(normalize_project(payload, base_url=self._base_url))
+        record = await self._resolver.resolve_record(project_ref, write=False)
+        project = self._stamp(record.summary)
         configuration = await self._api.get_configuration(project.id)
         return hidden_fields.apply_hidden_fields(
             "project_configuration",
@@ -293,8 +324,8 @@ class ProjectService:
         parent: str | object | None = None,
         confirm: bool = False,
     ) -> ProjectWriteResult:
-        current_payload = await self._resolver.resolve(project_ref, write=True)
-        project = normalize_project(current_payload, base_url=self._base_url)
+        record = await self._resolver.resolve_record(project_ref, write=True)
+        project = record.summary
         payload = await self._build_write_payload(
             name=name,
             identifier=identifier,
@@ -322,8 +353,8 @@ class ProjectService:
         return self._to_write_result("update", outcome)
 
     async def delete(self, *, project_ref: str, confirm: bool = False) -> ProjectWriteResult:
-        current_payload = await self._resolver.resolve(project_ref, write=True)
-        project = self._stamp(normalize_project(current_payload, base_url=self._base_url))
+        record = await self._resolver.resolve_record(project_ref, write=True)
+        project = self._stamp(record.summary)
         payload = {"id": project.id, "identifier": project.identifier, "name": project.name}
 
         if not confirm:
@@ -369,7 +400,7 @@ class ProjectService:
         parent: str | object | None = None,
         confirm: bool = False,
     ) -> ProjectCopyResult:
-        source_payload = await self._resolver.resolve(source_project, write=True)
+        source_record = await self._resolver.resolve_record(source_project, write=True)
         # Also validate the destination so a copy cannot create a project outside
         # the read/write allowlist (the source being allowed is not sufficient).
         project_policy_module.ensure_project_create_target_allowed(
@@ -378,7 +409,7 @@ class ProjectService:
             settings=self._settings,
             project_id_to_identifier=self._project_id_to_identifier,
         )
-        project = normalize_project(source_payload, base_url=self._base_url)
+        project = source_record.summary
         payload = await self._build_write_payload(
             name=name,
             identifier=identifier,
@@ -596,13 +627,11 @@ class ProjectAdminService:
 
     async def get_admin_context(self, project_ref: str) -> ProjectAdminContext:
         access.ensure_read_enabled("project", settings=self._settings)
-        payload = await self._resolver.resolve(project_ref, write=False)
-        project = _stamp_project(normalize_project(payload, base_url=self._base_url), settings=self._settings)
+        record = await self._resolver.resolve_record(project_ref, write=False)
+        project = _stamp_project(record.summary, settings=self._settings)
         schema_result = await self._api.get_schema(project_id=project.id, draft_payload={"name": project.name})
         schema = schema_result.schema
-        fields = [
-            normalize_project_field_schema(key, entry) for key, entry in schema.items() if isinstance(entry, dict)
-        ]
+        fields = schema_result.fields
         status_field = next((field for field in fields if field.key == "status"), None)
         available_statuses = status_field.allowed_values if status_field else []
         parent_candidates = await self._api.list_available_parent_projects(project.id, schema=schema)

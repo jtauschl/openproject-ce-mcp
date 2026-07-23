@@ -11,6 +11,18 @@ seam -- it IS the concrete implementation the seam is bound to (client.py's
 `_get_project_payload`/`_resolve_project_ref` delegate to it after the rebind).
 `resolve()` implements the full `ProjectRefResolver` Protocol contract itself,
 including the `context` parameter.
+
+`resolve_record()` is the typed counterpart: same exact algorithm, but returns
+the full `ProjectRecord` (summary + detail + payload) the adapter already
+normalized, instead of discarding it down to `.payload`. It deliberately takes
+no `context` parameter -- `ProjectResolutionContext`
+(`..ports.project_resolution`) caches `dict[str, Any]` payloads only, and
+`resolvers` may not import `adapters` to re-derive a summary/detail from a
+cache-hit payload without a second HTTP call. A `context`-aware
+`resolve_record()` that silently re-fetched on every call would be a
+misleading cache contract, so it isn't offered; `resolve()` keeps its
+existing `context`-aware, payload-caching behavior unchanged, calling
+`resolve_record()` only when `context is None`.
 """
 
 from __future__ import annotations
@@ -21,7 +33,7 @@ from ...config import Settings
 from ...models import ProjectSummary
 from ..errors import InvalidInputError, NotFoundError
 from ..policies import project_policy
-from ..ports.project_api import ProjectApi
+from ..ports.project_api import FORMATTABLE_LIMIT, ProjectApi, ProjectRecord
 from ..ports.project_resolution import ProjectResolutionContext
 from .project_query import fetch_project_page
 
@@ -39,47 +51,54 @@ class ProjectResolver:
     ) -> dict[str, Any]:
         if context is not None:
             return await context.resolve(project_ref, write=write)
-        return await self._resolve_uncached(project_ref, write=write)
+        record = await self.resolve_record(project_ref, write=write)
+        return record.payload
+
+    async def resolve_record(
+        self, project_ref: str, *, write: bool = False, text_limit: int | None = FORMATTABLE_LIMIT
+    ) -> ProjectRecord:
+        """Typed counterpart to resolve(); see module docstring for why this
+        takes no `context` parameter."""
+        return await self._resolve_record_uncached(project_ref, write=write, text_limit=text_limit)
 
     async def resolve_id(self, project_ref: str, *, write: bool = False) -> str:
         payload = await self.resolve(project_ref, write=write)
         return str(payload["id"])
 
-    async def _resolve_uncached(self, project_ref: str, *, write: bool) -> dict[str, Any]:
+    async def _resolve_record_uncached(self, project_ref: str, *, write: bool, text_limit: int | None) -> ProjectRecord:
         """Resolve a project by numeric id, exact identifier, or (as a fallback) display name.
 
         Numeric id / identifier is tried first via a direct GET (cheap, unchanged from before this
         fallback existed). Only when that 404s do we fall back to a name search via list_projects.
         Identifiers are unique in OpenProject by construction; display names are not, so an exact-name
         match is only trusted once the search has confirmed there is no second project with that same
-        name (see _resolve_by_name for the exact algorithm).
+        name (see _resolve_by_name_record for the exact algorithm).
         """
         try:
-            record = await self._api.get(project_ref)
-            payload = record.payload
+            record: ProjectRecord | None = await self._api.get(project_ref, text_limit=text_limit)
         except NotFoundError:
-            payload = None
-        if payload is not None and payload.get("_type") != "Project":
-            payload = None
-        if payload is not None:
+            record = None
+        if record is not None and record.payload.get("_type") != "Project":
+            record = None
+        if record is not None:
             if write:
                 project_policy.ensure_project_write_allowed(
-                    payload,
+                    record.payload,
                     project_ref=project_ref,
                     settings=self._settings,
                     project_id_to_identifier=self._project_id_to_identifier,
                 )
             else:
                 project_policy.ensure_project_read_allowed(
-                    payload,
+                    record.payload,
                     project_ref=project_ref,
                     settings=self._settings,
                     project_id_to_identifier=self._project_id_to_identifier,
                 )
-            return payload
-        return await self._resolve_by_name(project_ref, write=write)
+            return record
+        return await self._resolve_by_name_record(project_ref, write=write, text_limit=text_limit)
 
-    async def _resolve_by_name(self, project_ref: str, *, write: bool) -> dict[str, Any]:
+    async def _resolve_by_name_record(self, project_ref: str, *, write: bool, text_limit: int | None) -> ProjectRecord:
         normalized = " ".join(project_ref.split())
         normalized_cf = normalized.casefold()
         page_size = self._settings.max_results
@@ -101,7 +120,7 @@ class ProjectResolver:
                 if identifier_cf == normalized_cf:
                     # Identifiers are unique — an exact identifier match, wherever it turns up in the
                     # search results, always wins immediately over any name/substring match.
-                    return await self._resolve_uncached(str(project.id), write=write)
+                    return await self._resolve_record_uncached(str(project.id), write=write, text_limit=text_limit)
                 name_cf = (project.name or "").casefold()
                 if name_cf == normalized_cf:
                     exact_name_matches.append(project)
@@ -123,9 +142,11 @@ class ProjectResolver:
             pending = exact_name_matches or substring_matches
             raise self._ambiguous_error(project_ref, pending, exhausted=False)
         if len(exact_name_matches) == 1:
-            return await self._resolve_uncached(str(exact_name_matches[0].id), write=write)
+            return await self._resolve_record_uncached(
+                str(exact_name_matches[0].id), write=write, text_limit=text_limit
+            )
         if len(substring_matches) == 1:
-            return await self._resolve_uncached(str(substring_matches[0].id), write=write)
+            return await self._resolve_record_uncached(str(substring_matches[0].id), write=write, text_limit=text_limit)
         if len(substring_matches) > 1:
             raise self._ambiguous_error(project_ref, substring_matches, exhausted=True)
         raise NotFoundError(f"OpenProject project '{project_ref}' was not found. Call list_projects.")

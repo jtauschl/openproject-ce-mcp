@@ -383,6 +383,51 @@ def test_project_service_and_resolver_bind_the_api_param_to_project_api_specific
         )
 
 
+# Names that once lived in app/ports/project_api.py (HAL->model normalize_*
+# translation functions and their private text/href helpers) before they moved
+# to app/adapters/httpx_project_api.py, matching the Versions domain's
+# convention. Kept as a literal list so this test independently pins the exact
+# set that moved, in addition to (not instead of) a generic "normalize_*"
+# prefix check below that also catches any *new* normalizer added to the port
+# in the future under a name not in this historical list.
+_FORMER_PROJECT_API_PORT_NORMALIZER_NAMES = {
+    "normalize_project",
+    "normalize_project_detail",
+    "normalize_option_value",
+    "normalize_project_field_schema",
+    "normalize_project_phase_definition",
+    "normalize_project_phase",
+    "_trim_text",
+    "_normalize_text",
+    "_trim_text_with_meta",
+    "_extract_formattable_text_with_meta",
+    "_link_title",
+    "_id_from_href",
+    "_slug_from_href",
+    "_delimit_user_content",
+}
+
+
+def test_project_api_port_defines_no_normalize_functions() -> None:
+    """Positive proof that app/ports/project_api.py is narrow again: HAL->model
+    mapping must live in HttpxProjectApi (the adapter), not the port. Checks
+    module-level FunctionDef/AsyncFunctionDef nodes via AST (not a text/rg
+    match) so the surviving module docstring and comments can freely mention
+    these names without tripping the check."""
+    path = APP / "ports" / "project_api.py"
+    tree = ast.parse(path.read_text(), filename=str(path))
+    defined_names = {
+        node.name for node in ast.iter_child_nodes(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    offenders = defined_names & _FORMER_PROJECT_API_PORT_NORMALIZER_NAMES
+    assert not offenders, f"app/ports/project_api.py must not define {offenders} -- move to the adapter"
+    new_normalizers = {name for name in defined_names if name.startswith("normalize_")}
+    assert not new_normalizers, (
+        f"app/ports/project_api.py must not define {new_normalizers} -- normalize_* HAL->model "
+        "mapping belongs in HttpxProjectApi (the adapter), not the port"
+    )
+
+
 def _imports_module_named(path: Path, module_name: str) -> bool:
     tree = ast.parse(path.read_text(), filename=str(path))
     for node in ast.walk(tree):

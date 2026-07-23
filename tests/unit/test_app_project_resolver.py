@@ -38,8 +38,10 @@ class _FakeProjectApi:
 
     def __init__(self, records: list[ProjectRecord]) -> None:
         self._records = records
+        self.get_calls: list[tuple[str, object]] = []
 
     async def get(self, project_ref: str, *, text_limit=None) -> ProjectRecord:
+        self.get_calls.append((project_ref, text_limit))
         for record in self._records:
             if str(record.summary.id) == project_ref or record.summary.identifier == project_ref:
                 return record
@@ -78,6 +80,12 @@ def _resolver(records: list[ProjectRecord], *, settings=None) -> ProjectResolver
         settings=settings or make_settings(),
         project_id_to_identifier={},
     )
+
+
+def _resolver_with_api(records: list[ProjectRecord], *, settings=None) -> tuple[ProjectResolver, _FakeProjectApi]:
+    api = _FakeProjectApi(records)
+    resolver = ProjectResolver(api=api, settings=settings or make_settings(), project_id_to_identifier={})
+    return resolver, api
 
 
 @pytest.mark.asyncio
@@ -161,3 +169,94 @@ async def test_resolve_write_allowlist_denies() -> None:
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await resolver.resolve("demo", write=True)
+
+
+@pytest.mark.asyncio
+async def test_resolve_record_by_numeric_id_direct_get_returns_project_record() -> None:
+    resolver = _resolver([_record(6, "Demo", identifier="demo")])
+
+    record = await resolver.resolve_record("6")
+
+    assert isinstance(record, ProjectRecord)
+    assert record.summary.id == 6
+    assert record.payload["id"] == 6
+
+
+@pytest.mark.asyncio
+async def test_resolve_record_by_exact_identifier_returns_matching_summary() -> None:
+    resolver = _resolver([_record(6, "Demo", identifier="demo")])
+
+    record = await resolver.resolve_record("demo")
+
+    assert record.summary.identifier == "demo"
+
+
+@pytest.mark.asyncio
+async def test_resolve_wraps_resolve_record_and_returns_its_payload() -> None:
+    resolver = _resolver([_record(6, "Demo", identifier="demo")])
+
+    record = await resolver.resolve_record("6")
+    payload = await resolver.resolve("6")
+
+    assert payload == record.payload
+
+
+@pytest.mark.asyncio
+async def test_resolve_record_falls_back_to_name_search_and_returns_record() -> None:
+    resolver = _resolver([_record(6, "Demo Project", identifier="demo")])
+
+    record = await resolver.resolve_record("Demo Project")
+
+    assert record.summary.name == "Demo Project"
+    assert record.summary.id == 6
+
+
+@pytest.mark.asyncio
+async def test_resolve_record_ambiguous_exact_name_match_raises() -> None:
+    records = [_record(1, "Duplicate"), _record(2, "Duplicate")]
+    resolver = _resolver(records)
+
+    with pytest.raises(InvalidInputError, match="ambiguous"):
+        await resolver.resolve_record("Duplicate")
+
+
+@pytest.mark.asyncio
+async def test_resolve_record_read_allowlist_denies() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("other",))
+    resolver = _resolver([_record(6, "Demo", identifier="demo")], settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await resolver.resolve_record("demo")
+
+
+@pytest.mark.asyncio
+async def test_resolve_record_write_allowlist_denies() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
+    resolver = _resolver([_record(6, "Demo", identifier="demo")], settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await resolver.resolve_record("demo", write=True)
+
+
+@pytest.mark.asyncio
+async def test_resolve_record_text_limit_is_forwarded_to_the_api_on_direct_get() -> None:
+    resolver, api = _resolver_with_api([_record(6, "Demo", identifier="demo")])
+
+    await resolver.resolve_record("demo", text_limit=None)
+
+    assert api.get_calls == [("demo", None)]
+
+
+@pytest.mark.asyncio
+async def test_resolve_record_text_limit_is_forwarded_through_the_name_fallback() -> None:
+    # "Demo Project" is not a direct-GET hit; resolution falls back to the name
+    # search and then recurses into a second api.get() by numeric id -- both the
+    # (failed) direct attempt and the final recursive lookup must carry the same
+    # text_limit, or a name-resolved project would be capped where an
+    # id-resolved one wouldn't.
+    resolver, api = _resolver_with_api([_record(6, "Demo Project", identifier="demo")])
+
+    await resolver.resolve_record("Demo Project", text_limit=None)
+
+    assert ("Demo Project", None) in api.get_calls
+    assert ("6", None) in api.get_calls

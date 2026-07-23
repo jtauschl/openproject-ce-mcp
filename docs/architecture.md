@@ -105,18 +105,28 @@ tools.py (MCP presentation)
   domain benefits from a single, dependency-free, directly-unit-testable source of
   truth for this security-relevant logic — not just the migrated domains.
 - **Ports** are narrow, per-domain Protocols (e.g. `VersionApi`, `ProjectApi`) — no
-  universal gateway. **Adapters** are the concrete HTTP implementation of a port,
-  translating HAL payloads into the compact dataclasses from `models.py`. For
-  Projects specifically, the pure HAL-to-model `normalize_*` functions live in the
-  *port* module (`app/ports/project_api.py`), not the adapter — unlike Versions,
-  `ProjectService` normalizes an already-resolved raw payload directly (avoiding a
-  second port round-trip), and Services may depend on Ports but not Adapters.
+  universal gateway. A port holds only contracts and port-owned data types (the
+  Protocol itself, its Result dataclasses, and small port-level constants/conversions
+  such as `FORMATTABLE_LIMIT` or `VersionRecord.to_detail()`) — never HAL->model
+  mapping. **Adapters** are the concrete HTTP implementation of a port, translating HAL
+  payloads into the compact dataclasses from `models.py`. For both Versions and
+  Projects, the pure HAL-to-model `normalize_*` functions live in the adapter, not the
+  port — Services never call them directly, and may depend on Ports but not Adapters.
 - **Resolvers** turn a semantic reference (a version name, a project identifier) into
   a concrete id, using only a port — never an Application Service. `ProjectResolver`
   is also the concrete implementation the pre-existing `ProjectRefResolver` seam
   (`app/ports/project_ref.py`) is bound to, since every other domain's resolvers
   depend on Projects' resolution logic — Projects doesn't consume that seam, it
-  fulfils it.
+  fulfils it. `ProjectResolver` exposes a typed `resolve_record()` alongside the
+  compatibility `resolve()`: the adapter's `get()` already returns a fully normalized
+  `ProjectRecord` (summary + detail + raw payload), so `resolve_record()` forwards
+  that record straight through instead of discarding it down to a raw payload and
+  making `ProjectService` re-normalize it — this is what lets the normalizers live
+  exclusively in the adapter without reintroducing a second HTTP round-trip.
+  `resolve_record()` deliberately takes no `context` parameter, since
+  `ProjectResolutionContext` caches raw payloads only; `resolve()` keeps its existing
+  context-aware, payload-caching behavior unchanged and calls `resolve_record()` only
+  when no context is given.
 - **Application Services** (e.g. `VersionService`, `ProjectService`) orchestrate a
   single use case: Policy checks, Resolver calls, port calls, and the
   preview/confirm write state machine. They depend on a port's Protocol type, never

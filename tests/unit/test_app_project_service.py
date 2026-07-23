@@ -5,6 +5,7 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
+from openproject_ce_mcp.app.adapters.httpx_project_api import normalize_project_detail, normalize_project_field_schema
 from openproject_ce_mcp.app.errors import PermissionDeniedError
 from openproject_ce_mcp.app.ports.project_api import (
     ProjectCopyFormResult,
@@ -15,7 +16,6 @@ from openproject_ce_mcp.app.ports.project_api import (
     ProjectRecord,
     ProjectRef,
     ProjectSchemaResult,
-    normalize_project_detail,
 )
 from openproject_ce_mcp.app.resolvers.project_resolver import ProjectResolver
 from openproject_ce_mcp.app.services.project_service import ProjectAdminService, ProjectService
@@ -60,8 +60,14 @@ def _record(project_id: int = 6, name: str = "Demo Project", identifier: str = "
 class _FakeProjectApi:
     def __init__(self, records: list[ProjectRecord] | None = None) -> None:
         self._records = records or [_record()]
+        self.get_calls: list[str] = []
         self.configuration: dict = {"maximumAttachmentFileSize": 100}
         self.schema: dict = {"status": {"name": "Status", "writable": True, "_embedded": {"allowedValues": []}}}
+        # None (default) means get_schema() derives fields from self.schema, as
+        # the real adapter does. Set explicitly to a value that deliberately
+        # does NOT match self.schema to prove a consumer uses the ProjectSchemaResult
+        # it was handed rather than re-normalizing self.schema itself.
+        self.fields: tuple | None = None
         self.parent_projects: list[ProjectRef] = []
         self.phase_definitions: list[ProjectPhaseDefinition] = []
         self.phase_record: ProjectPhaseRecord | None = None
@@ -80,6 +86,7 @@ class _FakeProjectApi:
         return ProjectPage(records=self._records, server_total=len(self._records), exhausted=True)
 
     async def get(self, project_ref: str, *, text_limit=None) -> ProjectRecord:
+        self.get_calls.append(project_ref)
         for record in self._records:
             if str(record.summary.id) == project_ref or record.summary.identifier == project_ref:
                 return record
@@ -105,7 +112,15 @@ class _FakeProjectApi:
         self.delete_calls.append(project_id)
 
     async def get_schema(self, *, project_id, draft_payload) -> ProjectSchemaResult:
-        return ProjectSchemaResult(schema=self.schema)
+        if self.fields is not None:
+            fields = self.fields
+        else:
+            fields = tuple(
+                normalize_project_field_schema(key, entry)
+                for key, entry in self.schema.items()
+                if isinstance(entry, dict)
+            )
+        return ProjectSchemaResult(schema=self.schema, fields=fields)
 
     async def list_available_parent_projects(self, project_id, *, schema):
         return self.parent_projects
@@ -491,3 +506,133 @@ async def test_build_write_payload_rejects_hidden_field() -> None:
         await service.create(name="New", identifier="new", description="secret", confirm=False)
 
     assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_get_resolves_project_exactly_once() -> None:
+    api = _FakeProjectApi()
+    service = _service(api)
+
+    await service.get("demo")
+
+    assert api.get_calls == ["demo"]
+
+
+@pytest.mark.asyncio
+async def test_update_resolves_project_exactly_once() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_write=True)
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    await service.update(project_ref="demo", name="Renamed", confirm=True)
+
+    assert api.get_calls == ["demo"]
+    assert len(api.commit_update_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_resolves_project_exactly_once() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_write=True)
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    await service.delete(project_ref="demo", confirm=True)
+
+    assert api.get_calls == ["demo"]
+    assert api.delete_calls == [6]
+
+
+@pytest.mark.asyncio
+async def test_copy_resolves_source_project_exactly_once() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_write=True)
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    await service.copy(source_project="demo", name="Copy", identifier="copy-project", confirm=True)
+
+    assert api.get_calls == ["demo"]
+    assert len(api.commit_copy_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_get_admin_context_resolves_project_exactly_once() -> None:
+    api = _FakeProjectApi()
+    service = _admin_service(api)
+
+    await service.get_admin_context("demo")
+
+    assert api.get_calls == ["demo"]
+
+
+@pytest.mark.asyncio
+async def test_get_schema_fields_matches_embedded_linked_and_string_allowed_values() -> None:
+    api = _FakeProjectApi()
+    api.schema = {
+        "status": {
+            "name": "Status",
+            "writable": True,
+            "_embedded": {"allowedValues": [{"id": 1, "name": "Open"}]},
+        },
+        "priority": {
+            "name": "Priority",
+            "writable": True,
+            "_links": {"allowedValues": [{"href": "/api/v3/priorities/2", "title": "High"}]},
+        },
+        # normalize_project_field_schema's string-shaped-allowedValues branch is
+        # unreachable in practice: payload.get("_links", {}) always defaults to
+        # {}, so `_links.allowedValues` is always present as [] and the plain
+        # `if isinstance(link_allowed, list)` branch always wins over the
+        # `elif`. This field documents that pre-existing (unchanged by this
+        # migration) behavior rather than asserting a string-normalization
+        # outcome that never actually occurs.
+        "category": {
+            "name": "Category",
+            "writable": True,
+            "_embedded": {"allowedValues": ["Bug", "Feature"]},
+        },
+        # A non-dict schema entry must be skipped, not raise.
+        "_type": "Schema",
+    }
+    service = _admin_service(api)
+
+    context = await service.get_admin_context("demo")
+
+    fields_by_key = {field.key: field for field in context.fields}
+    assert set(fields_by_key) == {"status", "priority", "category"}
+    assert [v.title for v in fields_by_key["status"].allowed_values] == ["Open"]
+    assert [v.title for v in fields_by_key["priority"].allowed_values] == ["High"]
+    assert fields_by_key["category"].allowed_values == []
+
+
+@pytest.mark.asyncio
+async def test_get_admin_context_consumes_schema_result_fields_without_renormalizing() -> None:
+    api = _FakeProjectApi()
+    # `schema` and `fields` are deliberately inconsistent: schema describes a
+    # "status" field, but the pre-normalized `fields` the fake API hands back
+    # describes an unrelated "sentinel" field instead. If get_admin_context()
+    # re-normalized `schema_result.schema` itself instead of consuming
+    # `schema_result.fields` as-is, the assertion below would see "status",
+    # not "sentinel", and fail -- a re-normalizing regression can't pass this
+    # test by coincidence, unlike a version where schema and fields matched.
+    api.schema = {"status": {"name": "Status", "writable": True, "_embedded": {"allowedValues": []}}}
+    sentinel_field = normalize_project_field_schema("sentinel", {"name": "Sentinel", "writable": True})
+    api.fields = (sentinel_field,)
+    service = _admin_service(api)
+
+    context = await service.get_admin_context("demo")
+
+    assert context.fields == [sentinel_field]
+
+
+def test_project_service_module_does_not_define_normalizer_names() -> None:
+    from openproject_ce_mcp.app.services import project_service
+
+    normalizer_names = {
+        "normalize_project",
+        "normalize_project_detail",
+        "normalize_option_value",
+        "normalize_project_field_schema",
+        "normalize_project_phase_definition",
+        "normalize_project_phase",
+    }
+    assert not normalizer_names & set(dir(project_service))
