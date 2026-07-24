@@ -5951,7 +5951,7 @@ class OpenProjectClient:
                 project_id=_id_from_href(links.get("project", {}).get("href")),
                 project=_link_title(links.get("project")),
                 description=self._visible_formattable_text(
-                    payload.get("description"), "project", "description", limit=SUBJECT_LIMIT
+                    payload.get("description"), "document", "description", limit=SUBJECT_LIMIT
                 ),
                 created_at=payload.get("createdAt"),
                 attachment_count=attachment_count,
@@ -5970,7 +5970,7 @@ class OpenProjectClient:
                 title=summary.title,
                 project_id=summary.project_id,
                 project=summary.project,
-                description=self._visible_formattable_text(payload.get("description"), "project", "description"),
+                description=self._visible_formattable_text(payload.get("description"), "document", "description"),
                 created_at=summary.created_at,
                 attachment_count=summary.attachment_count,
                 attachments_url=self._link_to_web_url(links.get("attachments", {}).get("href")),
@@ -6311,7 +6311,7 @@ class OpenProjectClient:
                 start_time=_trim_text(payload.get("startTime"), limit=SUBJECT_LIMIT),
                 end_time=_trim_text(payload.get("endTime"), limit=SUBJECT_LIMIT),
                 ongoing=bool(payload.get("ongoing")),
-                comment=self._visible_formattable_text(payload.get("comment"), "activity", "comment"),
+                comment=self._visible_formattable_text(payload.get("comment"), "time_entry", "comment"),
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
                 url=self._web_url(f"time_entries/{payload['id']}"),

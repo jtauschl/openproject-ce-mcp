@@ -9948,6 +9948,67 @@ async def test_news_description_hidden_by_news_scope_not_project_scope():
 
 
 @pytest.mark.asyncio
+async def test_document_description_hidden_by_document_scope_not_project_scope():
+    payload = {
+        "id": 5,
+        "title": "Architecture",
+        "description": {"format": "markdown", "raw": "Document description content"},
+        "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+    }
+
+    settings_project_hidden = _base_settings(hide_project_fields=("description",))
+    client_project_hidden = OpenProjectClient(
+        settings_project_hidden, transport=httpx.MockTransport(lambda r: httpx.Response(200))
+    )
+    document = client_project_hidden.normalize_document(payload)
+    assert document.description == "Document description content"
+    detail = client_project_hidden.normalize_document_detail(payload)
+    assert detail.description == "Document description content"
+    await client_project_hidden.aclose()
+
+    settings_document_hidden = _base_settings(hidden_fields={"document": ("description",)})
+    client_document_hidden = OpenProjectClient(
+        settings_document_hidden, transport=httpx.MockTransport(lambda r: httpx.Response(200))
+    )
+    document_hidden = client_document_hidden.normalize_document(payload)
+    assert document_hidden.description is None
+    detail_hidden = client_document_hidden.normalize_document_detail(payload)
+    assert detail_hidden.description is None
+    await client_document_hidden.aclose()
+
+
+@pytest.mark.asyncio
+async def test_time_entry_comment_hidden_by_time_entry_scope_not_activity_scope():
+    payload = {
+        "id": 7,
+        "hours": "PT1H",
+        "spentOn": "2026-03-20",
+        "comment": {"format": "markdown", "raw": "Time entry comment content"},
+        "_links": {
+            "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+            "user": {"href": "/api/v3/users/1", "title": "Admin"},
+            "activity": {"href": "/api/v3/time_entries/activities/1", "title": "Development"},
+        },
+    }
+
+    settings_activity_hidden = _base_settings(hide_activity_fields=("comment",))
+    client_activity_hidden = OpenProjectClient(
+        settings_activity_hidden, transport=httpx.MockTransport(lambda r: httpx.Response(200))
+    )
+    time_entry = client_activity_hidden.normalize_time_entry(payload)
+    assert time_entry.comment == "Time entry comment content"
+    await client_activity_hidden.aclose()
+
+    settings_time_entry_hidden = _base_settings(hidden_fields={"time_entry": ("comment",)})
+    client_time_entry_hidden = OpenProjectClient(
+        settings_time_entry_hidden, transport=httpx.MockTransport(lambda r: httpx.Response(200))
+    )
+    time_entry_hidden = client_time_entry_hidden.normalize_time_entry(payload)
+    assert time_entry_hidden.comment is None
+    await client_time_entry_hidden.aclose()
+
+
+@pytest.mark.asyncio
 async def test_wiki_page_content_delimited():
     settings = _base_settings()
     client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
