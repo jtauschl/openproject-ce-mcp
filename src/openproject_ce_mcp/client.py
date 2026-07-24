@@ -16,6 +16,7 @@ import httpx
 from . import __version__
 from .app.adapters import httpx_version_api as _httpx_version_api
 from .app.adapters.httpx_membership_api import HttpxMembershipApi
+from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
 from .app.adapters.httpx_version_api import HttpxVersionApi
 
@@ -38,12 +39,14 @@ from .app.policies import access as _access_policy
 from .app.policies import hidden_fields as _hidden_fields_policy
 from .app.policies import scope as _scope_policy
 from .app.ports.membership_api import MembershipApi
+from .app.ports.news_api import NewsApi
 from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
 from .app.ports.version_api import VersionApi
 from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.version_resolver import VersionResolver
 from .app.services.membership_service import MembershipService
+from .app.services.news_service import NewsService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
 from .app.services.version_service import VersionService
@@ -340,6 +343,14 @@ class OpenProjectClient:
             resolve_principal_ref=self._resolve_principal_id,
             list_roles=self.list_roles,
             api_prefix=self._api_prefix,
+        )
+
+        self._news_api: NewsApi = HttpxNewsApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._news_service = NewsService(
+            api=self._news_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_project_ref=self._get_project_payload,
         )
 
     async def initialize(self) -> None:
@@ -1097,50 +1108,10 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> NewsListResult:
-        self._ensure_read_enabled("project")
-        effective_limit = self._resolve_limit(limit)
-        project_candidates = await self._resolve_project_filter_candidates(project)
-
-        def post_filter(results: list[NewsSummary]) -> list[NewsSummary]:
-            if project_candidates is not None:
-                results = [
-                    item for item in results if self._summary_matches_project_candidates(item, project_candidates)
-                ]
-            if search is not None:
-                search_key = search.casefold()
-                results = [
-                    item
-                    for item in results
-                    if search_key in (item.title or "").casefold() or search_key in (item.summary or "").casefold()
-                ]
-            return results
-
-        page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
-            path="news",
-            params_extra=None,
-            normalize=self.normalize_news,
-            item_allowed=self._news_payload_allowed,
-            post_filter=post_filter,
-            offset=offset,
-            limit=effective_limit,
-        )
-        return NewsListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(page),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=page,
-        )
+        return await self._news_service.list(project=project, search=search, offset=offset, limit=limit)
 
     async def get_news(self, news_id: int) -> NewsDetail:
-        return await self._fetch_and_normalize_detail(
-            scope="project",
-            path=f"news/{news_id}",
-            ensure_fn=self._ensure_news_payload_allowed,
-            normalize_fn=self.normalize_news_detail,
-        )
+        return await self._news_service.get(news_id)
 
     async def create_news(
         self,
@@ -1151,46 +1122,8 @@ class OpenProjectClient:
         description: str | None = None,
         confirm: bool = False,
     ) -> NewsWriteResult:
-        project_payload = await self._resolve_project_ref(project, write=True)
-        project_id = str(project_payload["id"])
-        self._ensure_field_writable("news", "title")
-        payload: dict[str, Any] = {
-            "title": title,
-            "_links": {"project": {"href": self._api_href(f"projects/{project_id}")}},
-        }
-        if summary is not None:
-            self._ensure_field_writable("news", "summary")
-            payload["summary"] = summary
-        if description is not None:
-            self._ensure_field_writable("news", "description")
-            payload["description"] = {"format": "markdown", "raw": description}
-        if not confirm:
-            return NewsWriteResult(
-                action="create",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to create this news entry. Ask for confirmation, then call again with confirm=true.",
-                news_id=None,
-                project=_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT),
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        self._ensure_write_enabled("project")
-        response = await self._post("news", json_body=payload)
-        result = self.normalize_news_detail(response)
-        return NewsWriteResult(
-            action="create",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="News created successfully.",
-            news_id=result.id,
-            project=result.project,
-            payload=payload,
-            validation_errors={},
-            result=result,
+        return await self._news_service.create(
+            project=project, title=title, summary=summary, description=description, confirm=confirm
         )
 
     async def update_news(
@@ -1202,46 +1135,8 @@ class OpenProjectClient:
         description: str | None = None,
         confirm: bool = False,
     ) -> NewsWriteResult:
-        current = await self._get(f"news/{news_id}")
-        self._ensure_news_write_payload_allowed(current)
-        detail = self.normalize_news_detail(current)
-        payload: dict[str, Any] = {}
-        if title is not None:
-            self._ensure_field_writable("news", "title")
-            payload["title"] = title
-        if summary is not None:
-            self._ensure_field_writable("news", "summary")
-            payload["summary"] = summary
-        if description is not None:
-            self._ensure_field_writable("news", "description")
-            payload["description"] = {"format": "markdown", "raw": description}
-        if not confirm:
-            return NewsWriteResult(
-                action="update",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to update this news entry. Ask for confirmation, then call again with confirm=true.",
-                news_id=detail.id,
-                project=detail.project,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        self._ensure_write_enabled("project")
-        response = await self._patch(f"news/{news_id}", json_body=payload)
-        result = self.normalize_news_detail(response)
-        return NewsWriteResult(
-            action="update",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="News updated successfully.",
-            news_id=result.id,
-            project=result.project,
-            payload=payload,
-            validation_errors={},
-            result=result,
+        return await self._news_service.update(
+            news_id=news_id, title=title, summary=summary, description=description, confirm=confirm
         )
 
     async def delete_news(
@@ -1250,21 +1145,7 @@ class OpenProjectClient:
         news_id: int,
         confirm: bool = False,
     ) -> NewsWriteResult:
-        current = await self._get(f"news/{news_id}")
-        self._ensure_news_write_payload_allowed(current)
-        detail = self.normalize_news_detail(current)
-        payload = {"id": detail.id, "title": detail.title}
-        return await self._finalize_delete(
-            result_cls=NewsWriteResult,
-            confirm=confirm,
-            result_kwargs={"news_id": detail.id, "project": detail.project, "payload": payload},
-            preview_result=detail,
-            commit_result=detail,
-            write_scope="project",
-            delete_path=f"news/{news_id}",
-            preview_message="OpenProject found the news entry. Ask for confirmation, then call again with confirm=true to delete it.",
-            success_message="News deleted successfully.",
-        )
+        return await self._news_service.delete(news_id=news_id, confirm=confirm)
 
     async def get_wiki_page(self, wiki_page_id: int) -> WikiPageDetail:
         self._ensure_read_enabled("project")
@@ -5477,50 +5358,6 @@ class OpenProjectClient:
             ),
         )
 
-    def normalize_news(self, payload: dict[str, Any]) -> NewsSummary:
-        links = payload.get("_links", {})
-        description = self._visible_formattable_text(
-            payload.get("description"), "news", "description", limit=SUBJECT_LIMIT
-        )
-        description = _delimit_user_content(description)
-        return self._apply_hidden_fields(
-            "news",
-            NewsSummary(
-                id=int(payload["id"]),
-                title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or f"News {payload['id']}",
-                summary=_trim_text(payload.get("summary"), limit=SUBJECT_LIMIT),
-                description=description,
-                project_id=_id_from_href(links.get("project", {}).get("href")),
-                project=_link_title(links.get("project")),
-                author=_link_title(links.get("author")),
-                created_at=payload.get("createdAt"),
-                can_update=_can_update_from_links(links),
-                can_delete=bool(links.get("delete")),
-                url=self._web_url(f"news/{payload['id']}"),
-            ),
-        )
-
-    def normalize_news_detail(self, payload: dict[str, Any]) -> NewsDetail:
-        summary = self.normalize_news(payload)
-        description = self._visible_formattable_text(payload.get("description"), "news", "description")
-        description = _delimit_user_content(description)
-        return self._apply_hidden_fields(
-            "news",
-            NewsDetail(
-                id=summary.id,
-                title=summary.title,
-                summary=summary.summary,
-                description=description,
-                project_id=summary.project_id,
-                project=summary.project,
-                author=summary.author,
-                created_at=summary.created_at,
-                can_update=summary.can_update,
-                can_delete=summary.can_delete,
-                url=summary.url,
-            ),
-        )
-
     def normalize_wiki_page(self, payload: dict[str, Any]) -> WikiPageDetail:
         links = payload.get("_links", {})
         text_block = payload.get("text") or payload.get("content")
@@ -6772,15 +6609,6 @@ class OpenProjectClient:
         return self._payload_allowed(lambda: self._ensure_document_payload_allowed(payload))
 
     def _ensure_document_write_payload_allowed(self, payload: dict[str, Any]) -> None:
-        self._ensure_project_write_link_allowed(payload.get("_links", {}).get("project"))
-
-    def _ensure_news_payload_allowed(self, payload: dict[str, Any]) -> None:
-        self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
-
-    async def _news_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        return self._payload_allowed(lambda: self._ensure_news_payload_allowed(payload))
-
-    def _ensure_news_write_payload_allowed(self, payload: dict[str, Any]) -> None:
         self._ensure_project_write_link_allowed(payload.get("_links", {}).get("project"))
 
     def _work_package_payload_allowed(self, payload: dict[str, Any]) -> bool:

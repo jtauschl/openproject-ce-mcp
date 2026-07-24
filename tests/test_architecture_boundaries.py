@@ -401,6 +401,21 @@ def test_membership_service_binds_the_api_param_to_membership_api_specifically()
     )
 
 
+def test_news_service_binds_the_api_param_to_news_api_specifically() -> None:
+    """Non-generalized regression test for the News domain's exact guarantee,
+    sibling to the checks above: the api param is NewsApi exactly, not just
+    "some Protocol". No NewsResolver exists (like Memberships) -- news_id is
+    always a numeric value already validated by tools.py, so there is no
+    semantic-reference resolution for this domain to warrant a Resolver."""
+    from openproject_ce_mcp.app.adapters.httpx_news_api import HttpxNewsApi
+    from openproject_ce_mcp.app.ports.news_api import NewsApi
+    from openproject_ce_mcp.app.services.news_service import NewsService
+
+    hints = typing.get_type_hints(NewsService.__init__)
+    assert hints["api"] is NewsApi, "NewsService.__init__'s api param must be typed NewsApi"
+    assert hints["api"] is not HttpxNewsApi, "NewsService.__init__'s api param must not be the concrete adapter"
+
+
 # Names that once lived in app/ports/project_api.py (HAL->model normalize_*
 # translation functions and their private text/href helpers) before they moved
 # to app/adapters/httpx_project_api.py, matching the Versions domain's

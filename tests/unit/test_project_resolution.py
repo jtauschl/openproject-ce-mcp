@@ -220,6 +220,16 @@ async def test_update_project_denies_disallowed_parent_project() -> None:
         # posts the version preview form — 2 requests when allowed.
         pytest.param("demo", ("*",), ("other",), "version", "WRITE", 1, id="version-write_denied"),
         pytest.param("demo", ("*",), ("*",), "version", None, 2, id="version-write_allowed"),
+        # news: routed through app/services/news_service.py (an app/-layer
+        # delegation, not legacy client.py code) -- create_news always
+        # resolves the project ref with write=True (even at confirm=False,
+        # matching create_membership/create_board/create_version), which
+        # itself performs the write-allowlist check inline (1 request, and
+        # where it fails on denial). When allowed, News has no /form
+        # endpoint (unlike membership/board/version), so no further request
+        # follows -- 1 request total, not 2-3.
+        pytest.param("demo", ("*",), ("other",), "news", "WRITE", 1, id="news-write_denied"),
+        pytest.param("demo", ("*",), ("*",), "news", None, 1, id="news-write_allowed"),
     ],
 )
 async def test_project_resolution_policy_matrix(
@@ -274,9 +284,12 @@ async def test_project_resolution_policy_matrix(
         elif operation == "board":
             result = await client.create_board(name="Board", project=project_ref, confirm=False)
             assert result.ready
-        else:
-            assert operation == "version"
+        elif operation == "version":
             result = await client.create_version(project=project_ref, name="v1.0", confirm=False)
+            assert result.ready
+        else:
+            assert operation == "news"
+            result = await client.create_news(project=project_ref, title="New feature", confirm=False)
             assert result.ready
 
     if expect_error is None:

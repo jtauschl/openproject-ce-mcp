@@ -76,9 +76,9 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
-## Layered architecture (Versions, Projects, Memberships)
+## Layered architecture (Versions, Projects, Memberships, News)
 
-`client.py` stays the small, flat facade described above for most domains, but three
+`client.py` stays the small, flat facade described above for most domains, but four
 domains have been migrated into `app/` for a stricter layered structure: Versions
 (`list_versions`, `get_version`, `create_version`, `update_version`,
 `delete_version` — the original pilot, validating the pattern), Projects
@@ -87,11 +87,17 @@ domains have been migrated into `app/` for a stricter layered structure: Version
 `get_project_configuration`, `add_project_favorite`/`remove_project_favorite`,
 `list_project_phase_definitions`, `get_project_phase_definition`,
 `get_project_phase` — the second migration, applying the pilot's lessons to a
-domain every other domain's resolvers depend on), and Memberships
+domain every other domain's resolvers depend on), Memberships
 (`list_project_memberships`, `get_membership`, `create_membership`,
 `update_membership`, `delete_membership` — the third migration, the smallest
 full-CRUD domain, coupled to Projects only through the pre-existing
-`ProjectRefResolver` seam):
+`ProjectRefResolver` seam), and News (`list_news`, `get_news`, `create_news`,
+`update_news`, `delete_news` — the fourth migration, structurally close to
+Memberships but with no `/form` endpoint, so its Service's preview/commit state
+machine has no validation-error branch, and its `list()` fetches the single
+global `news` collection client-side-filtered against the allowlist and an
+optional project/search predicate, rather than a server-paginated
+project-scoped endpoint):
 
 ```text
 tools.py (MCP presentation)
@@ -113,9 +119,14 @@ tools.py (MCP presentation)
   Protocol itself, its Result dataclasses, and small port-level constants/conversions
   such as `FORMATTABLE_LIMIT` or `VersionRecord.to_detail()`) — never HAL->model
   mapping. **Adapters** are the concrete HTTP implementation of a port, translating HAL
-  payloads into the compact dataclasses from `models.py`. For both Versions and
-  Projects, the pure HAL-to-model `normalize_*` functions live in the adapter, not the
+  payloads into the compact dataclasses from `models.py`. For Versions, Projects, and
+  News, the pure HAL-to-model `normalize_*` functions live in the adapter, not the
   port — Services never call them directly, and may depend on Ports but not Adapters.
+  `NewsRecord` carries both `summary` (`NewsSummary`, truncated at the list-row cap)
+  and `detail` (`NewsDetail`, truncated at the larger single-item cap) rather than
+  deriving one from the other like `VersionRecord.to_detail()`: `normalize_news` and
+  `normalize_news_detail` apply *different* truncation limits to the same raw
+  `description`, so a copy-based derivation would silently under-truncate `get_news`.
 - **Resolvers** turn a semantic reference (a version name, a project identifier) into
   a concrete id, using only a port — never an Application Service. `ProjectResolver`
   is also the concrete implementation the pre-existing `ProjectRefResolver` seam
@@ -130,9 +141,10 @@ tools.py (MCP presentation)
   `resolve_record()` deliberately takes no `context` parameter, since
   `ProjectResolutionContext` caches raw payloads only; `resolve()` keeps its existing
   context-aware, payload-caching behavior unchanged and calls `resolve_record()` only
-  when no context is given. Memberships has no resolver at all: a `membership_id` is
-  always a numeric value already validated by `tools.py`, so there is no
-  semantic-reference resolution for this domain to warrant one.
+  when no context is given. Memberships and News have no resolver at all: a
+  `membership_id`/`news_id` is always a numeric value already validated by
+  `tools.py`, so there is no semantic-reference resolution for either domain to
+  warrant one.
 - **Application Services** (e.g. `VersionService`, `ProjectService`) orchestrate a
   single use case: Policy checks, Resolver calls, port calls, and the
   preview/confirm write state machine. They depend on a port's Protocol type, never
@@ -148,6 +160,14 @@ tools.py (MCP presentation)
   pilot. `list_roles` stays flat in `client.py` too (a plain read-only lookup, not a
   CRUD object of its own) and is injected into `MembershipService` as a bare
   callable, without a dedicated port, since it currently has only one consumer.
+  `NewsService` reuses the same `ProjectRefResolver` seam and needs no domain-specific
+  seam of its own. Unlike every other migrated domain, News' hidden-field masking
+  (`apply_hidden_fields("news", ...)`) is applied *only* in the Service, never in the
+  Adapter: `NewsSummary`/`NewsDetail` have no truncation-metadata sibling fields
+  (`description_truncated`/`description_length`, as Project/Version/WorkPackage do)
+  to zero out on a hide, so there is no reason for the Adapter to perform its own
+  hidden-field-aware extraction — it always extracts the full text, and the Service's
+  single `apply_hidden_fields` call is sufficient to drop the entire field.
 - `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under
   `app/` that imports `httpx`; `client.py`'s own HTTP calls for the remaining
   still-flat domains, and `retry_transport.py`, are unaffected and keep importing it
