@@ -79,12 +79,14 @@ async def _resolve_project_ref(project_ref: str, *, write: bool = False, context
     return {"id": 6, "identifier": "demo", "name": "Demo"}
 
 
-def _service(api: _FakeVersionApi | None = None, *, settings=None) -> VersionService:
+def _service(
+    api: _FakeVersionApi | None = None, *, settings=None, resolve_project_ref=_resolve_project_ref
+) -> VersionService:
     return VersionService(
         api=api or _FakeVersionApi(),
         settings=settings or make_settings(),
         project_id_to_identifier={6: "demo"},
-        resolve_project_ref=_resolve_project_ref,
+        resolve_project_ref=resolve_project_ref,
         api_prefix="api/v3/",
     )
 
@@ -127,6 +129,32 @@ async def test_create_returns_preview_without_committing() -> None:
     assert result.requires_confirmation is True
     assert result.confirmed is False
     assert api.commit_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_passes_write_true_to_resolve_project_ref() -> None:
+    """create() must ask its injected resolve_project_ref for a WRITE-checked
+    resolution (write=True), not a read-only one -- the actual write-
+    allowlist enforcement for create() lives inside the real
+    _get_project_payload/ProjectResolver.resolve_record (see
+    project_resolver.py's `if write: ensure_project_write_allowed(...)`),
+    not inside VersionService itself, so this only pins the contract at the
+    seam; the enforcement itself is covered by test_project_resolution.py's
+    "version-write_denied" policy-matrix case against the real client.
+    """
+    write_flags: list[bool] = []
+
+    async def resolve_project_ref_tracking_write(project_ref: str, *, write: bool = False, context=None) -> dict:
+        write_flags.append(write)
+        return await _resolve_project_ref(project_ref, write=write, context=context)
+
+    settings = dataclasses.replace(make_settings(), enable_version_write=True)
+    api = _FakeVersionApi()
+    service = _service(api, settings=settings, resolve_project_ref=resolve_project_ref_tracking_write)
+
+    await service.create(project="demo", name="Release 1", confirm=True)
+
+    assert write_flags == [True]
 
 
 @pytest.mark.asyncio

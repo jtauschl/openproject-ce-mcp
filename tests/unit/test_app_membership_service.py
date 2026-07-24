@@ -187,6 +187,32 @@ async def test_create_returns_preview_without_committing() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_passes_write_true_to_resolve_project_ref() -> None:
+    """create() must ask its injected resolve_project_ref for a WRITE-checked
+    resolution (write=True), not a read-only one -- the actual write-
+    allowlist enforcement for create() lives inside the real
+    _get_project_payload/ProjectResolver.resolve_record (see
+    project_resolver.py's `if write: ensure_project_write_allowed(...)`),
+    not inside MembershipService itself, so this only pins the contract at
+    the seam; the enforcement itself is covered by
+    test_project_resolution.py's "membership-write_denied" policy-matrix
+    case against the real client.
+    """
+    write_flags: list[bool] = []
+
+    async def resolve_project_ref_tracking_write(project_ref: str, *, write: bool = False, context=None) -> dict:
+        write_flags.append(write)
+        return await _resolve_project_ref(project_ref, write=write, context=context)
+
+    api = _FakeMembershipApi()
+    service = _service(api, resolve_project_ref=resolve_project_ref_tracking_write)
+
+    await service.create(project="demo", principal="me", roles=["Member"], confirm=True)
+
+    assert write_flags == [True]
+
+
+@pytest.mark.asyncio
 async def test_create_commits_and_stamps_hidden_fields_when_confirmed() -> None:
     # created_at is hidden here rather than a field create() itself writes
     # (project_name/principal_name/role_names) -- hiding one of those would be
