@@ -53,7 +53,9 @@ def _summary(project_id: int = 6, name: str = "Demo Project", identifier: str = 
 def _record(project_id: int = 6, name: str = "Demo Project", identifier: str = "demo") -> ProjectRecord:
     summary = _summary(project_id, name, identifier)
     return ProjectRecord(
-        summary=summary, detail=ProjectDetail(**vars(summary)), payload=_payload(project_id, name, identifier)
+        summary=summary,
+        to_detail=lambda: ProjectDetail(**vars(summary)),
+        payload=_payload(project_id, name, identifier),
     )
 
 

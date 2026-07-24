@@ -71,8 +71,9 @@ async def test_get_fetches_by_ref_and_builds_detail_with_ancestors() -> None:
         record = await api.get("demo")
 
     assert record.summary.identifier == "demo"
-    assert record.detail.ancestors == [{"href": "/api/v3/projects/1", "title": "Root", "display_id": None}]
-    assert record.detail.ancestors_truncated is False
+    detail = record.to_detail()
+    assert detail.ancestors == [{"href": "/api/v3/projects/1", "title": "Root", "display_id": None}]
+    assert detail.ancestors_truncated is False
 
 
 @pytest.mark.asyncio
@@ -120,7 +121,7 @@ async def test_get_applies_the_requested_text_limit() -> None:
         record = await api.get("demo", text_limit=10)
 
     assert record.summary.description_truncated is True
-    assert record.detail.description_truncated is True
+    assert record.to_detail().description_truncated is True
 
 
 @pytest.mark.asyncio

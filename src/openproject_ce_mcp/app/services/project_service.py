@@ -227,7 +227,7 @@ class ProjectService:
         # to read it, so nothing is cut unless the caller asks for a smaller cap.
         access.ensure_read_enabled("project", settings=self._settings)
         record = await self._resolver.resolve_record(project_ref, write=False, text_limit=text_limit)
-        return self._stamp(record.detail)
+        return self._stamp(record.to_detail())
 
     async def get_configuration(self, project_ref: str) -> ProjectConfiguration:
         access.ensure_read_enabled("project", settings=self._settings)

@@ -13,7 +13,7 @@ normalization without a second HTTP round-trip" concern is resolved).
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -33,20 +33,33 @@ FORMATTABLE_LIMIT = 1_200
 
 @dataclass(frozen=True)
 class ProjectRecord:
-    """One project as read from the API: the normalized summary AND detail
-    (detail carries fields summary doesn't -- ancestors, an independently
-    text_limit'd description/status_explanation -- so it is a real second
-    normalization, not derivable from summary alone; see
-    normalize_project_detail's ancestors-from-_links.ancestors logic) plus the
-    unmodified raw HAL payload (including ``_links``). The raw payload must be
-    carried, not just the normalized fields, because several still-flat
-    client.py domains (list_project_memberships, get_my_project_access, ...)
-    read arbitrary raw ``_links``/fields off a resolved project payload today,
-    a contract ProjectResolver.resolve() must keep honoring verbatim.
+    """One project as read from the API: the normalized summary, a LAZY
+    `to_detail` thunk for the richer single-item shape (detail carries fields
+    summary doesn't -- ancestors, an independently text_limit'd
+    description/status_explanation -- so it is a real second normalization,
+    not derivable from summary alone; see normalize_project_detail's
+    ancestors-from-_links.ancestors logic), plus the unmodified raw HAL
+    payload (including ``_links``). The raw payload must be carried, not just
+    the normalized fields, because several still-flat client.py domains
+    (list_project_memberships, get_my_project_access, ...) read arbitrary raw
+    ``_links``/fields off a resolved project payload today, a contract
+    ProjectResolver.resolve() must keep honoring verbatim.
+
+    `to_detail` is a callable, not a precomputed `ProjectDetail` field,
+    because most `ProjectRecord` consumers never read it: `ProjectResolver.
+    resolve()`/`resolve_id()` (used by EVERY migrated domain's project-
+    reference resolution, plus every still-flat client.py domain via the
+    `ProjectRefResolver` seam) only ever read `.payload`, and
+    `ProjectService.list()` only ever reads `.summary`. Precomputing detail
+    eagerly on every `_record()` build -- as this used to do -- ran a second,
+    independent text-extraction pass over every resolved/listed project's
+    description AND status_explanation, plus rebuilt its ancestors list, for
+    a value almost no caller reads. Only `ProjectService.get()` (the single-
+    item read path) calls `to_detail()`.
     """
 
     summary: ProjectSummary
-    detail: ProjectDetail
+    to_detail: Callable[[], ProjectDetail]
     payload: dict[str, Any]
 
 

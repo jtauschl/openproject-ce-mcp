@@ -387,9 +387,15 @@ class HttpxProjectApi:
         return urljoin(f"{self._base_url.rstrip('/')}/", href)
 
     def _record(self, payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT) -> ProjectRecord:
+        base_url = self._base_url
         return ProjectRecord(
-            summary=normalize_project(payload, base_url=self._base_url, text_limit=text_limit),
-            detail=normalize_project_detail(payload, base_url=self._base_url, text_limit=text_limit),
+            summary=normalize_project(payload, base_url=base_url, text_limit=text_limit),
+            # Lazy: most callers (ProjectResolver.resolve()/resolve_id(), used
+            # by every domain's project-reference resolution; ProjectService.
+            # list()) never read this. The closure captures only
+            # `payload`/`base_url`/`text_limit` (small, per-record), not
+            # `self` -- it does not keep a whole adapter/transport alive.
+            to_detail=lambda: normalize_project_detail(payload, base_url=base_url, text_limit=text_limit),
             payload=payload,
         )
 
