@@ -5480,7 +5480,7 @@ class OpenProjectClient:
     def normalize_news(self, payload: dict[str, Any]) -> NewsSummary:
         links = payload.get("_links", {})
         description = self._visible_formattable_text(
-            payload.get("description"), "project", "description", limit=SUBJECT_LIMIT
+            payload.get("description"), "news", "description", limit=SUBJECT_LIMIT
         )
         description = _delimit_user_content(description)
         return self._apply_hidden_fields(
@@ -5502,7 +5502,7 @@ class OpenProjectClient:
 
     def normalize_news_detail(self, payload: dict[str, Any]) -> NewsDetail:
         summary = self.normalize_news(payload)
-        description = self._visible_formattable_text(payload.get("description"), "project", "description")
+        description = self._visible_formattable_text(payload.get("description"), "news", "description")
         description = _delimit_user_content(description)
         return self._apply_hidden_fields(
             "news",

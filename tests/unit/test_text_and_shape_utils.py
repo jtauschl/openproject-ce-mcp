@@ -437,6 +437,40 @@ async def test_news_description_delimited():
 
 
 @pytest.mark.asyncio
+async def test_news_description_hidden_by_news_scope_not_project_scope():
+    payload = {
+        "id": 10,
+        "title": "News Title",
+        "summary": "Short summary",
+        "description": {"format": "markdown", "raw": "News description content"},
+        "_links": {
+            "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+            "author": {"href": "/api/v3/users/1", "title": "Admin"},
+        },
+    }
+
+    settings_project_hidden = _base_settings(hide_project_fields=("description",))
+    client_project_hidden = OpenProjectClient(
+        settings_project_hidden, transport=httpx.MockTransport(lambda r: httpx.Response(200))
+    )
+    news = client_project_hidden.normalize_news(payload)
+    assert news.description == "<user-content>News description content</user-content>"
+    detail = client_project_hidden.normalize_news_detail(payload)
+    assert detail.description == "<user-content>News description content</user-content>"
+    await client_project_hidden.aclose()
+
+    settings_news_hidden = _base_settings(hidden_fields={"news": ("description",)})
+    client_news_hidden = OpenProjectClient(
+        settings_news_hidden, transport=httpx.MockTransport(lambda r: httpx.Response(200))
+    )
+    news_hidden = client_news_hidden.normalize_news(payload)
+    assert news_hidden.description is None
+    detail_hidden = client_news_hidden.normalize_news_detail(payload)
+    assert detail_hidden.description is None
+    await client_news_hidden.aclose()
+
+
+@pytest.mark.asyncio
 async def test_wiki_page_content_delimited():
     settings = _base_settings()
     client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))

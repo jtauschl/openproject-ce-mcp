@@ -49,6 +49,9 @@ development baseline.
 
 ### Fixed
 
+- **`get_news`/`list_news` description truncation now honors
+  `OPENPROJECT_HIDE_NEWS_FIELDS`**, instead of incorrectly checking
+  `OPENPROJECT_HIDE_PROJECT_FIELDS`.
 - **`bulk_create_work_packages`/`bulk_update_work_packages` now report
   `assignee`/`responsible` validation errors indexed per item** (e.g.
   `items[0].assignee`), like every sibling field, instead of the unprefixed
