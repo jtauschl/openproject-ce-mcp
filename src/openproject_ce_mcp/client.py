@@ -5446,7 +5446,7 @@ class OpenProjectClient:
                 project=_link_title(links.get("project")),
                 description=_delimit_user_content(
                     self._visible_formattable_text(
-                        payload.get("description"), "project", "description", limit=SUBJECT_LIMIT
+                        payload.get("description"), "document", "description", limit=SUBJECT_LIMIT
                     )
                 ),
                 created_at=payload.get("createdAt"),
@@ -5467,7 +5467,7 @@ class OpenProjectClient:
                 project_id=summary.project_id,
                 project=summary.project,
                 description=_delimit_user_content(
-                    self._visible_formattable_text(payload.get("description"), "project", "description")
+                    self._visible_formattable_text(payload.get("description"), "document", "description")
                 ),
                 created_at=summary.created_at,
                 attachment_count=summary.attachment_count,
@@ -5730,7 +5730,7 @@ class OpenProjectClient:
         project_link = links.get("project")
         entity_link = links.get("entity")
         comment, comment_truncated, comment_length = self._visible_formattable_text_with_meta(
-            payload.get("comment"), "activity", "comment", limit=text_limit
+            payload.get("comment"), "time_entry", "comment", limit=text_limit
         )
         return self._apply_hidden_fields(
             "time_entry",
