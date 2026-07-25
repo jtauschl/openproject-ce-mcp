@@ -20,6 +20,7 @@ from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
 from .app.adapters.httpx_version_api import HttpxVersionApi
+from .app.adapters.httpx_wiki_page_api import HttpxWikiPageApi
 
 # AuthenticationError: no longer referenced directly in this module (its only use was
 # inside _raise_for_status, now delegated to app.transport.errors.raise_for_status),
@@ -45,6 +46,7 @@ from .app.ports.news_api import NewsApi
 from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
 from .app.ports.version_api import VersionApi
+from .app.ports.wiki_page_api import WikiPageApi
 from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.version_resolver import VersionResolver
 from .app.services.document_service import DocumentService
@@ -53,6 +55,7 @@ from .app.services.news_service import NewsService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
 from .app.services.version_service import VersionService
+from .app.services.wiki_page_service import WikiPageService
 from .app.transport.errors import raise_for_status as _map_status_to_error
 from .app.transport.httpx_transport import HttpxTransport
 from .config import Settings
@@ -362,6 +365,13 @@ class OpenProjectClient:
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
             resolve_project_ref=self._get_project_payload,
+        )
+
+        self._wiki_page_api: WikiPageApi = HttpxWikiPageApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._wiki_page_service = WikiPageService(
+            api=self._wiki_page_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
         )
 
     async def initialize(self) -> None:
@@ -1088,10 +1098,7 @@ class OpenProjectClient:
         return await self._news_service.delete(news_id=news_id, confirm=confirm)
 
     async def get_wiki_page(self, wiki_page_id: int) -> WikiPageDetail:
-        self._ensure_read_enabled("project")
-        payload = await self._get(f"wiki_pages/{wiki_page_id}")
-        self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
-        return self.normalize_wiki_page(payload)
+        return await self._wiki_page_service.get(wiki_page_id)
 
     async def list_categories(self, project_ref: str) -> CategoryListResult:
         self._ensure_read_enabled("project")
@@ -5259,26 +5266,6 @@ class OpenProjectClient:
                 filter=_link_title(links.get("filter")),
                 operator_count=operator_count,
                 url=self._link_to_web_url(href),
-            ),
-        )
-
-    def normalize_wiki_page(self, payload: dict[str, Any]) -> WikiPageDetail:
-        links = payload.get("_links", {})
-        text_block = payload.get("text") or payload.get("content")
-        content: str | None = None
-        if isinstance(text_block, dict):
-            content = _trim_text(text_block.get("raw"), limit=50_000)
-        content = _delimit_user_content(content)
-        return self._apply_hidden_fields(
-            "wiki_page",
-            WikiPageDetail(
-                id=int(payload["id"]),
-                title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or f"Wiki page {payload['id']}",
-                project_id=_id_from_href(links.get("project", {}).get("href")),
-                project=_link_title(links.get("project")),
-                content=content,
-                attachments_url=self._link_to_web_url(links.get("attachments", {}).get("href")),
-                url=self._web_url(f"wiki_pages/{payload['id']}"),
             ),
         )
 

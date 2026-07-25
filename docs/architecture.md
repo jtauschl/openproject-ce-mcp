@@ -76,9 +76,9 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
-## Layered architecture (Versions, Projects, Memberships, News, Documents)
+## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages)
 
-`client.py` stays the small, flat facade described above for most domains, but five
+`client.py` stays the small, flat facade described above for most domains, but six
 domains have been migrated into `app/` for a stricter layered structure: Versions
 (`list_versions`, `get_version`, `create_version`, `update_version`,
 `delete_version` — the original pilot, validating the pattern), Projects
@@ -105,7 +105,18 @@ OpenProject v3 API exposes no create/delete endpoint for documents, so
 exactly one call site would add indirection with no reuse benefit. `update_document`
 also takes no `project` parameter, so unlike News' create/update it never calls
 `resolve_project_ref`; the write-allowlist check runs directly against the
-already-fetched document's own `_links.project`):
+already-fetched document's own `_links.project`), and Wiki Pages (`get_wiki_page`
+— the sixth migration, and the first **get-only, single-shape** domain: OpenProject
+v3 exposes neither a collection endpoint nor create/update/delete for wiki pages, so
+`WikiPageApi` has exactly one method and `WikiPageService` has exactly one method
+with no preview/commit state machine at all. `WikiPageRecord` carries no separate
+`summary` shape and no lazy `to_detail` either — unlike every prior migration, there
+is no list endpoint to produce list-row-truncated rows in the first place, so the
+usual `to_detail`-laziness rationale doesn't apply. `WikiPageService` also has no
+`ProjectRefResolver` seam and no dedicated policy file: `get_wiki_page` takes no
+`project` parameter to resolve, and with no list to client-side-filter, `get()` calls
+`scope_policy.ensure_project_link_allowed` directly on the already-fetched record's
+own `project_link`):
 
 ```text
 tools.py (MCP presentation)
@@ -138,7 +149,16 @@ tools.py (MCP presentation)
   `DocumentRecord.to_detail` is lazy for the identical reason: `normalize_document`/
   `normalize_document_detail` apply different truncation limits to the same raw
   description, and `DocumentService.list()` never reads `.detail`, so eager
-  computation would waste a second extraction pass on every list row.
+  computation would waste a second extraction pass on every list row. Each
+  adapter's small helpers (`_trim_text`, `_id_from_href`, `_link_title`,
+  `_delimit_user_content`, `_origin_from_url`, `_link_to_web_url`, plus
+  `SUBJECT_LIMIT`) were deliberately duplicated per file through the first five
+  migrations ("unify only once every domain has migrated"); once Wiki Pages
+  became the sixth, they were extracted into `app/adapters/_text.py` and every
+  adapter now imports them instead. Helpers that differ meaningfully between
+  adapters (`_normalize_validation_errors`, `_extract_formattable_text`) stay
+  local — near-identical is not the same as identical, and unifying genuinely
+  different logic would change behavior, not just remove duplication.
 - **Resolvers** turn a semantic reference (a version name, a project identifier) into
   a concrete id, using only a port — never an Application Service. `ProjectResolver`
   is also the concrete implementation the pre-existing `ProjectRefResolver` seam
@@ -160,7 +180,16 @@ tools.py (MCP presentation)
 - **Application Services** (e.g. `VersionService`, `ProjectService`) orchestrate a
   single use case: Policy checks, Resolver calls, port calls, and the
   preview/confirm write state machine. They depend on a port's Protocol type, never
-  a concrete adapter. Projects additionally has `ProjectAdminService` (schema +
+  a concrete adapter. The preview/confirm state machine itself
+  (`_WriteOutcome`/`_finalize_write`) was duplicated byte-for-byte in Versions,
+  Projects, and Memberships (the three full-CRUD domains) until a shared
+  `app/services/_write_outcome.py` replaced all three copies — extracted once a
+  3rd domain needed the identical shape, matching this project's standing
+  unify-at-3-instances convention (already applied once before, to
+  `document_policy.py`/`news_policy.py`/`version_policy.py`). Documents/News/Wiki
+  Pages don't use it: a domain with fewer than 2 write actions sharing the same
+  shape stays a single flat method instead. Projects additionally has
+  `ProjectAdminService` (schema +
   available-parent-projects + field metadata for `get_project_admin_context`) as a
   second class in the same file, since it shares the same dependencies.
   `MembershipService` reuses the pre-existing `ProjectRefResolver` seam for project
@@ -186,14 +215,18 @@ tools.py (MCP presentation)
   extraction point and again via a whole-object stamp; both paths check the same
   `field_hidden` predicate, so dropping the Adapter-side check is behaviorally
   equivalent, not a narrowing). `update()` never calls `resolve_project_ref` at all —
-  see above.
+  see above. `WikiPageService` reuses no `ProjectRefResolver` seam at all (unlike
+  every other migrated domain) — `get_wiki_page` takes no `project` parameter to
+  resolve, and there is no dedicated `wiki_page_policy.py` file either, since there
+  is no list endpoint to client-side-filter (`get()` calls
+  `scope_policy.ensure_project_link_allowed` directly).
 - `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under
   `app/` that imports `httpx`; `client.py`'s own HTTP calls for the remaining
   still-flat domains, and `retry_transport.py`, are unaffected and keep importing it
   directly.
 - `OpenProjectClient` remains a 100%-compatible facade throughout: its public method
-  signatures for Versions, Projects, Memberships, News, and Documents are unchanged,
-  and `tools.py` requires no changes at all. `get_my_project_access` and
+  signatures for Versions, Projects, Memberships, News, Documents, and Wiki Pages are
+  unchanged, and `tools.py` requires no changes at all. `get_my_project_access` and
   `get_project_work_package_context` stay as client.py-level orchestration rather
   than moving into a Service, since they combine multiple domains (Projects with
   Memberships, and Projects with the still-flat work-package-schema domain,
@@ -216,7 +249,8 @@ domain (`test_version_service_and_resolver_bind_the_api_param_to_version_api_spe
 `test_project_service_and_resolver_bind_the_api_param_to_project_api_specifically`,
 `test_membership_service_binds_the_api_param_to_membership_api_specifically`,
 `test_news_service_binds_the_api_param_to_news_api_specifically`,
-`test_document_service_binds_the_api_param_to_document_api_specifically`)
+`test_document_service_binds_the_api_param_to_document_api_specifically`,
+`test_wiki_page_service_binds_the_api_param_to_wiki_page_api_specifically`)
 pins that domain's exact port type, kept alongside the generic check rather than
 folded into it. Complementary behavioral-contract tests
 (`tests/unit/test_write_confirm_contracts.py`,
@@ -360,8 +394,8 @@ The tradeoff is that `client.py` is large and policy-heavy. That is intentional 
 
 The Policies extraction (scope checks, hidden-field enforcement) is done, for every
 domain — see "Layered architecture" above. Versions, Projects, Memberships, News,
-and Documents are migrated; remaining candidates, once each migration's own lessons
-justify the next one:
+Documents, and Wiki Pages are migrated; remaining candidates, once each migration's
+own lessons justify the next one:
 
 - migrating additional domains through the same `app/` layers, one at a time —
   re-evaluate which domain's resolvers most depend on already-flat logic, per the

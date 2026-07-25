@@ -432,6 +432,22 @@ def test_document_service_binds_the_api_param_to_document_api_specifically() -> 
     assert hints["api"] is not HttpxDocumentApi, "DocumentService.__init__'s api param must not be the concrete adapter"
 
 
+def test_wiki_page_service_binds_the_api_param_to_wiki_page_api_specifically() -> None:
+    """Non-generalized regression test for the Wiki Pages domain's exact
+    guarantee, sibling to the checks above: the api param is WikiPageApi
+    exactly, not just "some Protocol". No WikiPageResolver exists (like
+    Memberships/News/Documents) -- wiki_page_id is always a numeric value
+    already validated by tools.py, so there is no semantic-reference
+    resolution for this domain to warrant a Resolver."""
+    from openproject_ce_mcp.app.adapters.httpx_wiki_page_api import HttpxWikiPageApi
+    from openproject_ce_mcp.app.ports.wiki_page_api import WikiPageApi
+    from openproject_ce_mcp.app.services.wiki_page_service import WikiPageService
+
+    hints = typing.get_type_hints(WikiPageService.__init__)
+    assert hints["api"] is WikiPageApi, "WikiPageService.__init__'s api param must be typed WikiPageApi"
+    assert hints["api"] is not HttpxWikiPageApi, "WikiPageService.__init__'s api param must not be the concrete adapter"
+
+
 # Names that once lived in app/ports/project_api.py (HAL->model normalize_*
 # translation functions and their private text/href helpers) before they moved
 # to app/adapters/httpx_project_api.py, matching the Versions domain's

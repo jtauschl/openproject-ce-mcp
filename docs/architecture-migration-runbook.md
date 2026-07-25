@@ -10,9 +10,9 @@ Written so it can be handed to a fresh session (human or agent) as a
 self-contained starting brief — see "Prompt for a fresh session" at the
 bottom for a ready-to-paste version.
 
-Five domains are migrated so far: Versions (pilot), Projects, Memberships,
-News, Documents. ~31 remain, all still flat in `client.py`. This runbook
-distills what each of those five migrations actually needed, including
+Six domains are migrated so far: Versions (pilot), Projects, Memberships,
+News, Documents, Wiki Pages. ~30 remain, all still flat in `client.py`. This
+runbook distills what each of those six migrations actually needed, including
 mistakes found and fixed along the way — follow it literally, don't
 re-derive the process from scratch.
 
@@ -30,7 +30,7 @@ Prefer a domain that:
 - is named as a candidate in this doc's "Future split points" list in
   [architecture.md](architecture.md)
 
-At the time of writing, Views/Categories/Wiki/Grids/Notifications/Project
+At the time of writing, Views/Categories/Grids/Notifications/Project
 Lifecycle Phases share Documents' exact shape (project-scoped, no
 work-package dependency) and are natural next picks by the same reasoning
 used for Documents.

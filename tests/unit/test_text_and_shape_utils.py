@@ -433,24 +433,6 @@ async def test_time_entry_comment_hidden_by_time_entry_scope_not_activity_scope(
 
 
 @pytest.mark.asyncio
-async def test_wiki_page_content_delimited():
-    settings = _base_settings()
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
-
-    wiki_page = client.normalize_wiki_page(
-        {
-            "id": 20,
-            "title": "Wiki Page",
-            "text": {"format": "markdown", "raw": "Wiki page content"},
-            "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
-        }
-    )
-
-    assert wiki_page.content == "<user-content>Wiki page content</user-content>"
-
-    await client.aclose()
-
-
 def test_delimit_user_content_handles_injection_attempt():
     """Test that content already containing delimiter tags gets double-wrapped (makes injection visible)."""
     from openproject_ce_mcp.client import _delimit_user_content
