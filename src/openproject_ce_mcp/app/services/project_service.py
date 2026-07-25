@@ -197,6 +197,23 @@ class ProjectService:
     def _stamp(self, value: Any) -> Any:
         return _stamp_project(value, settings=self._settings)
 
+    def _remember_identifier(self, outcome: _WriteOutcome[ProjectDetail]) -> None:
+        """Keep project_id_to_identifier in sync with a just-committed create/update.
+
+        This dict is otherwise populated exactly once, by client.py's
+        initialize() at server startup -- a project created or renamed
+        through this same server afterward was invisible to every
+        link-shaped allowlist check (ensure_project_link_allowed, used by
+        every already-migrated Service plus every still-flat client.py
+        domain that scopes by a work-package-style `_links.project` link,
+        which carries no identifier field) until the process restarted.
+        """
+        if not outcome.confirmed or outcome.detail is None:
+            return
+        identifier = outcome.detail.identifier
+        if identifier:
+            self._project_id_to_identifier[outcome.detail.id] = identifier
+
     async def list(self, *, search: str | None = None, offset: int = 1, limit: int | None = None) -> ProjectListResult:
         effective_limit = min(
             limit or self._settings.default_page_size, self._settings.max_page_size, self._settings.max_results
@@ -308,6 +325,7 @@ class ProjectService:
             preview_message="OpenProject validated the project. Ask for confirmation, then call again with confirm=true to create it.",
             success_message="Project created successfully.",
         )
+        self._remember_identifier(outcome)
         return self._to_write_result("create", outcome)
 
     async def update(
@@ -350,6 +368,7 @@ class ProjectService:
             preview_message="OpenProject validated the project change. Ask for confirmation, then call again with confirm=true to write it.",
             success_message="Project updated successfully.",
         )
+        self._remember_identifier(outcome)
         return self._to_write_result("update", outcome)
 
     async def delete(self, *, project_ref: str, confirm: bool = False) -> ProjectWriteResult:

@@ -1708,12 +1708,22 @@ class OpenProjectClient:
         elif not total_is_scope_safe:
             # No explicit project given but read scope is restricted — add a server-side
             # project filter so the API only returns WPs from the allowed projects. This
-            # cache can be empty (e.g. initialize() silently failed), in which case no
-            # filter is sent and the server total must not be trusted.
+            # cache can still be empty (e.g. every allowed project was created after
+            # initialize()'s one-time startup snapshot and no confirmed write has
+            # refreshed it since — see ProjectService._remember_identifier). Sending an
+            # unfiltered query in that case would silently leak an untrustworthy total
+            # instead of failing loudly, so this fails closed with an explicit error
+            # instead — consistent with every other project-link-scoped tool
+            # (get_work_package/update_work_package/etc. all raise the same error for
+            # the identical underlying condition, rather than silently narrowing to
+            # nothing).
             allowed_ids = [str(pid) for pid in self._project_id_to_identifier]
-            if allowed_ids:
-                filters.append({"project_id": {"operator": "=", "values": allowed_ids}})
-                total_is_scope_safe = True
+            if not allowed_ids:
+                raise PermissionDeniedError(
+                    "OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS."
+                )
+            filters.append({"project_id": {"operator": "=", "values": allowed_ids}})
+            total_is_scope_safe = True
         if open_only:
             filters.append({"status_id": {"operator": "o", "values": []}})
         if assignee_me:

@@ -460,6 +460,89 @@ async def test_update_denies_target_outside_write_allowlist() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_remembers_new_project_identifier_in_the_shared_cache() -> None:
+    """Regression test for the bug where a project created through this server
+    was invisible to every link-shaped allowlist check (ensure_project_link_allowed,
+    used by get_work_package/update_work_package/every already-migrated Service)
+    until the process restarted -- project_id_to_identifier was otherwise only
+    ever populated once, by client.py's initialize() at startup.
+    """
+    settings = dataclasses.replace(make_settings(), enable_project_write=True)
+    api = _FakeProjectApi()
+    project_id_to_identifier: dict[int, str] = {}
+    service = ProjectService(
+        api=api,
+        settings=settings,
+        project_id_to_identifier=project_id_to_identifier,
+        resolver=_resolver(api, settings=settings),
+        base_url=BASE_URL,
+        api_prefix="/api/v3/",
+    )
+
+    result = await service.create(name="New Project", identifier="new-project", confirm=True)
+
+    assert result.result is not None
+    assert project_id_to_identifier == {result.result.id: result.result.identifier}
+
+
+@pytest.mark.asyncio
+async def test_create_preview_does_not_write_to_the_cache() -> None:
+    api = _FakeProjectApi()
+    project_id_to_identifier: dict[int, str] = {}
+    service = ProjectService(
+        api=api,
+        settings=make_settings(),
+        project_id_to_identifier=project_id_to_identifier,
+        resolver=_resolver(api),
+        base_url=BASE_URL,
+        api_prefix="/api/v3/",
+    )
+
+    await service.create(name="New Project", identifier="new-project", confirm=False)
+
+    assert project_id_to_identifier == {}
+
+
+@pytest.mark.asyncio
+async def test_update_remembers_project_identifier_in_the_shared_cache() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_write=True)
+    api = _FakeProjectApi()
+    project_id_to_identifier: dict[int, str] = {}
+    service = ProjectService(
+        api=api,
+        settings=settings,
+        project_id_to_identifier=project_id_to_identifier,
+        resolver=_resolver(api, settings=settings),
+        base_url=BASE_URL,
+        api_prefix="/api/v3/",
+    )
+
+    result = await service.update(project_ref="demo", name="Renamed", confirm=True)
+
+    assert result.result is not None
+    assert project_id_to_identifier == {result.result.id: result.result.identifier}
+
+
+@pytest.mark.asyncio
+async def test_update_preview_does_not_write_to_the_cache() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_write=True)
+    api = _FakeProjectApi()
+    project_id_to_identifier: dict[int, str] = {}
+    service = ProjectService(
+        api=api,
+        settings=settings,
+        project_id_to_identifier=project_id_to_identifier,
+        resolver=_resolver(api, settings=settings),
+        base_url=BASE_URL,
+        api_prefix="/api/v3/",
+    )
+
+    await service.update(project_ref="demo", name="Renamed", confirm=False)
+
+    assert project_id_to_identifier == {}
+
+
+@pytest.mark.asyncio
 async def test_delete_returns_preview_then_commits() -> None:
     settings = dataclasses.replace(make_settings(), enable_project_write=True)
     api = _FakeProjectApi()
