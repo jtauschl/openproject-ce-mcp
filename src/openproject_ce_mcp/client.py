@@ -17,6 +17,7 @@ from . import __version__
 from .app.adapters import httpx_version_api as _httpx_version_api
 from .app.adapters.httpx_category_api import HttpxCategoryApi
 from .app.adapters.httpx_document_api import HttpxDocumentApi
+from .app.adapters.httpx_grid_api import HttpxGridApi
 from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
@@ -44,6 +45,7 @@ from .app.policies import hidden_fields as _hidden_fields_policy
 from .app.policies import scope as _scope_policy
 from .app.ports.category_api import CategoryApi
 from .app.ports.document_api import DocumentApi
+from .app.ports.grid_api import GridApi
 from .app.ports.membership_api import MembershipApi
 from .app.ports.news_api import NewsApi
 from .app.ports.project_api import ProjectApi
@@ -55,6 +57,7 @@ from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.version_resolver import VersionResolver
 from .app.services.category_service import CategoryService
 from .app.services.document_service import DocumentService
+from .app.services.grid_service import GridService
 from .app.services.membership_service import MembershipService
 from .app.services.news_service import NewsService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
@@ -393,6 +396,13 @@ class OpenProjectClient:
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
             resolve_project_ref=self._get_project_payload,
+        )
+
+        self._grid_api: GridApi = HttpxGridApi(HttpxTransport(self._http), api_prefix=self._api_prefix)
+        self._grid_service = GridService(
+            api=self._grid_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
         )
 
     async def initialize(self) -> None:
@@ -3982,43 +3992,11 @@ class OpenProjectClient:
 
     # --- Grids ---
 
-    def _ensure_grid_payload_allowed(self, payload: dict[str, Any]) -> None:
-        scope_link = payload.get("_links", {}).get("scope")
-        scope_href = scope_link.get("href") if isinstance(scope_link, dict) else None
-        if scope_href == "/my/page":
-            return  # documented personal-scope grid — never project-scoped, always allowed
-        self._ensure_project_link_allowed(scope_link)
-
-    def _grid_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        return self._payload_allowed(lambda: self._ensure_grid_payload_allowed(payload))
-
-    def _ensure_grid_write_payload_allowed(self, scope_href: str | None) -> None:
-        if scope_href == "/my/page":
-            return  # documented personal-scope grid — never project-scoped, always allowed
-        if _scope_allows_all(self.settings.read_projects) and _scope_allows_all(self.settings.write_projects):
-            return
-        if not scope_href:
-            raise PermissionDeniedError("OpenProject writes to this grid are disabled by OPENPROJECT_WRITE_PROJECTS.")
-        self._ensure_project_write_link_allowed({"href": scope_href})
-
     async def list_grids(self, *, scope: str | None = None) -> GridListResult:
-        self._ensure_read_enabled("project")
-        params: dict[str, str] = {}
-        if scope is not None:
-            params["filters"] = _json_param([{"scope": {"operator": "=", "values": [scope]}}])
-        payload = await self._get("grids", params=params if params else None)
-        results = [
-            self.normalize_grid(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._grid_payload_allowed(item)
-        ]
-        return GridListResult(count=len(results), results=results)
+        return await self._grid_service.list(scope=scope)
 
     async def get_grid(self, grid_id: int) -> GridSummary:
-        self._ensure_read_enabled("project")
-        payload = await self._get(f"grids/{grid_id}")
-        self._ensure_grid_payload_allowed(payload)
-        return self.normalize_grid(payload)
+        return await self._grid_service.get(grid_id)
 
     async def create_grid(
         self,
@@ -4029,29 +4007,9 @@ class OpenProjectClient:
         column_count: int | None = None,
         confirm: bool = False,
     ) -> GridWriteResult:
-        self._ensure_grid_write_payload_allowed(scope)
-        payload: dict[str, Any] = {
-            "name": name,
-            "_links": {"scope": {"href": scope}},
-        }
-        if row_count is not None:
-            payload["rowCount"] = row_count
-        if column_count is not None:
-            payload["columnCount"] = column_count
-        form = await self._post("grids/form", json_body=payload)
-        return await self._finalize_grid_write(
-            action="create",
-            confirm=confirm,
-            form=form,
-            write_path="grids",
-            preview_message="OpenProject validated the grid. Ask for confirmation, then call again with confirm=true to create it.",
-            success_message="Grid created successfully.",
+        return await self._grid_service.create(
+            name=name, scope=scope, row_count=row_count, column_count=column_count, confirm=confirm
         )
-
-    async def _authorize_grid_write(self, grid_id: int) -> dict[str, Any]:
-        current = await self._get(f"grids/{grid_id}")
-        self._ensure_grid_write_payload_allowed(current.get("_links", {}).get("scope", {}).get("href"))
-        return current
 
     async def update_grid(
         self,
@@ -4062,24 +4020,8 @@ class OpenProjectClient:
         column_count: int | None = None,
         confirm: bool = False,
     ) -> GridWriteResult:
-        await self._authorize_grid_write(grid_id)
-        payload: dict[str, Any] = {}
-        if name is not None:
-            payload["name"] = name
-        if row_count is not None:
-            payload["rowCount"] = row_count
-        if column_count is not None:
-            payload["columnCount"] = column_count
-        form = await self._post(f"grids/{grid_id}/form", json_body=payload)
-        return await self._finalize_grid_write(
-            action="update",
-            confirm=confirm,
-            form=form,
-            write_path=f"grids/{grid_id}",
-            write_method="PATCH",
-            grid_id=grid_id,
-            preview_message="OpenProject validated the grid update. Ask for confirmation, then call again with confirm=true to write it.",
-            success_message="Grid updated successfully.",
+        return await self._grid_service.update(
+            grid_id=grid_id, name=name, row_count=row_count, column_count=column_count, confirm=confirm
         )
 
     async def delete_grid(
@@ -4088,20 +4030,7 @@ class OpenProjectClient:
         grid_id: int,
         confirm: bool = False,
     ) -> GridWriteResult:
-        current = await self._authorize_grid_write(grid_id)
-        detail = self.normalize_grid(current)
-        scope = current.get("_links", {}).get("scope", {}).get("href")
-        return await self._finalize_delete(
-            result_cls=GridWriteResult,
-            confirm=confirm,
-            result_kwargs={"grid_id": detail.id, "scope": scope, "payload": {"id": detail.id}},
-            preview_result=None,
-            commit_result=None,
-            write_scope="project",
-            delete_path=f"grids/{grid_id}",
-            preview_message="OpenProject found the grid. Ask for confirmation, then call again with confirm=true to delete it.",
-            success_message="Grid deleted successfully.",
-        )
+        return await self._grid_service.delete(grid_id=grid_id, confirm=confirm)
 
     # --- User Preferences ---
 
@@ -5495,24 +5424,6 @@ class OpenProjectClient:
             ),
         )
 
-    def normalize_grid(self, payload: dict[str, Any]) -> GridSummary:
-        grid_id = int(payload["id"])
-        links = payload.get("_links", {})
-        scope_href = links.get("scope", {}).get("href") if isinstance(links.get("scope"), dict) else None
-        scope = _trim_text(scope_href, limit=SUBJECT_LIMIT)
-        return self._apply_hidden_fields(
-            "grid",
-            GridSummary(
-                id=grid_id,
-                row_count=payload.get("rowCount"),
-                column_count=payload.get("columnCount"),
-                scope=scope,
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-                url=self._api_href(f"grids/{grid_id}"),
-            ),
-        )
-
     def normalize_user_preferences(self, payload: dict[str, Any]) -> UserPreferences:
         return UserPreferences(
             id=payload.get("id"),
@@ -6242,38 +6153,6 @@ class OpenProjectClient:
             preview_message=preview_message
             or "OpenProject validated the board change. Ask for confirmation, then call again with confirm=true to write it.",
             success_message=success_message or f"Board {action}d successfully.",
-        )
-
-    async def _finalize_grid_write(
-        self,
-        *,
-        action: str,
-        confirm: bool,
-        form: dict[str, Any],
-        write_path: str,
-        write_method: str = "POST",
-        grid_id: int | None = None,
-        preview_message: str | None = None,
-        success_message: str | None = None,
-    ) -> GridWriteResult:
-        return await self._finalize_write(
-            result_cls=GridWriteResult,
-            action=action,
-            confirm=confirm,
-            form=form,
-            write_path=write_path,
-            write_method=write_method,
-            write_scope="project",  # grids are project-scoped, not their own scope
-            identity_kwargs=lambda payload: {
-                "grid_id": grid_id,
-                "scope": payload.get("_links", {}).get("scope", {}).get("href"),
-            },
-            normalize=self.normalize_grid,
-            committed_kwargs=lambda d: {"grid_id": d.id, "scope": d.scope},
-            rejected_message="OpenProject rejected the proposed grid changes. Fix the validation errors before confirming.",
-            preview_message=preview_message
-            or "OpenProject validated the grid change. Ask for confirmation, then call again with confirm=true to write it.",
-            success_message=success_message or f"Grid {action}d successfully.",
         )
 
     async def _finalize_user_write(

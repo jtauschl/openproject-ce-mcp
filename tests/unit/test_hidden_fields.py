@@ -576,12 +576,14 @@ def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() -> None:
 
 
 @pytest.mark.asyncio
-async def test_hidden_file_link_and_grid_fields_are_tagged_and_dropped_from_payload() -> None:
-    # normalize_file_link/normalize_grid previously never called
-    # _apply_hidden_fields at all, so OPENPROJECT_HIDE_FIELDS for these two
-    # entities was a silent no-op.
+async def test_hidden_file_link_fields_are_tagged_and_dropped_from_payload() -> None:
+    # normalize_file_link previously never called _apply_hidden_fields at
+    # all, so OPENPROJECT_HIDE_FIELDS for this entity was a silent no-op.
+    # (Grid's equivalent regression coverage moved to
+    # tests/unit/test_app_grid_service.py's test_get_applies_hidden_field_masking
+    # after the Grids domain migration -- client.normalize_grid no longer exists.)
     client = OpenProjectClient(
-        _base_settings(hidden_fields={"file_link": ("storage_name",), "grid": ("scope",)}),
+        _base_settings(hidden_fields={"file_link": ("storage_name",)}),
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
     )
 
@@ -600,22 +602,6 @@ async def test_hidden_file_link_and_grid_fields_are_tagged_and_dropped_from_payl
     serialized_file_link = _to_payload(file_link)
     assert "storage_name" not in serialized_file_link
     assert serialized_file_link["storage_id"] == 1
-
-    grid = client.normalize_grid(
-        {
-            "id": 2,
-            "rowCount": 4,
-            "columnCount": 3,
-            "createdAt": "2026-01-01T00:00:00Z",
-            "updatedAt": "2026-06-01T00:00:00Z",
-            "_links": {"scope": {"href": "/api/v3/projects/1"}},
-        }
-    )
-    assert grid._hidden_keys == frozenset({"scope"})
-    assert grid.scope == "/api/v3/projects/1"  # preserved on the dataclass
-    serialized_grid = _to_payload(grid)
-    assert "scope" not in serialized_grid
-    assert serialized_grid["row_count"] == 4
 
     await client.aclose()
 

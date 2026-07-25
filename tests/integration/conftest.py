@@ -166,6 +166,17 @@ async def time_entry_ids(client: OpenProjectClient):
 
 
 @pytest.fixture
+async def grid_ids(client: OpenProjectClient):
+    created: list[int] = []
+    yield created
+    for grid_id in created:
+        try:
+            await client.delete_grid(grid_id=grid_id, confirm=True)
+        except Exception:
+            pass
+
+
+@pytest.fixture
 async def group_ids(client: OpenProjectClient):
     """Yields a list to append created group IDs; deletes them all after the test.
 
