@@ -10,11 +10,11 @@ Written so it can be handed to a fresh session (human or agent) as a
 self-contained starting brief — see "Prompt for a fresh session" at the
 bottom for a ready-to-paste version.
 
-Six domains are migrated so far: Versions (pilot), Projects, Memberships,
-News, Documents, Wiki Pages. ~30 remain, all still flat in `client.py`. This
-runbook distills what each of those six migrations actually needed, including
-mistakes found and fixed along the way — follow it literally, don't
-re-derive the process from scratch.
+Seven domains are migrated so far: Versions (pilot), Projects, Memberships,
+News, Documents, Wiki Pages, Categories. ~29 remain, all still flat in
+`client.py`. This runbook distills what each of those seven migrations
+actually needed, including mistakes found and fixed along the way — follow
+it literally, don't re-derive the process from scratch.
 
 ## 0. Pick the next domain
 
@@ -30,10 +30,13 @@ Prefer a domain that:
 - is named as a candidate in this doc's "Future split points" list in
   [architecture.md](architecture.md)
 
-At the time of writing, Views/Categories/Grids/Notifications/Project
-Lifecycle Phases share Documents' exact shape (project-scoped, no
-work-package dependency) and are natural next picks by the same reasoning
-used for Documents.
+At the time of writing, Views and Grids share Documents'/Categories' exact
+shape (project-scoped, no work-package dependency) and are natural next
+picks by the same reasoning used for Documents/Categories. Project
+Lifecycle Phases already migrated as part of Projects (its three
+`client.py` methods delegate to `self._project_service`) — it is not a
+separate still-flat candidate, despite looking like one from its own
+top-level methods.
 
 ## 1. Read the real source before planning
 

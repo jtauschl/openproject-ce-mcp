@@ -76,9 +76,9 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
-## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages)
+## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories)
 
-`client.py` stays the small, flat facade described above for most domains, but six
+`client.py` stays the small, flat facade described above for most domains, but seven
 domains have been migrated into `app/` for a stricter layered structure: Versions
 (`list_versions`, `get_version`, `create_version`, `update_version`,
 `delete_version` — the original pilot, validating the pattern), Projects
@@ -116,7 +116,19 @@ usual `to_detail`-laziness rationale doesn't apply. `WikiPageService` also has n
 `ProjectRefResolver` seam and no dedicated policy file: `get_wiki_page` takes no
 `project` parameter to resolve, and with no list to client-side-filter, `get()` calls
 `scope_policy.ensure_project_link_allowed` directly on the already-fetched record's
-own `project_link`):
+own `project_link`), and Categories (`list_categories`, `get_category` — the
+seventh migration, and the first **list-only API where the Service synthesizes
+`get`**: the OpenProject v3 API exposes no single-category GET, so `CategoryApi`
+has exactly one method (`list_for_project`) and `CategoryService.get()` calls its
+own `list()` and filters by id in Python, exactly mirroring the pre-migration
+`client.py` behavior. `CategoryRecord` carries neither a lazy `to_detail` (there is
+no `normalize_category_detail` — one shape only) nor a `project_link` (an
+individual category payload carries no own `project` HAL link, only
+`defaultAssignee`); the project scope comes entirely from the caller-supplied
+`project_ref`, so the read allowlist is enforced once, inside
+`resolve_project_ref` itself, rather than per-record like Documents/Memberships.
+Categories also has no dedicated policy file, for the same no-list-filtering-needed
+reason as Wiki Pages):
 
 ```text
 tools.py (MCP presentation)
@@ -394,15 +406,18 @@ The tradeoff is that `client.py` is large and policy-heavy. That is intentional 
 
 The Policies extraction (scope checks, hidden-field enforcement) is done, for every
 domain — see "Layered architecture" above. Versions, Projects, Memberships, News,
-Documents, and Wiki Pages are migrated; remaining candidates, once each migration's
-own lessons justify the next one:
+Documents, Wiki Pages, and Categories are migrated; remaining candidates, once each
+migration's own lessons justify the next one:
 
 - migrating additional domains through the same `app/` layers, one at a time —
   re-evaluate which domain's resolvers most depend on already-flat logic, per the
   pilot's own "validate before extending" approach. See
   [architecture-migration-runbook.md](architecture-migration-runbook.md) for the
-  step-by-step process distilled from the five migrations done so far.
-- separate modules for project-scoped content like views
+  step-by-step process distilled from the seven migrations done so far. Views and
+  Grids share Categories'/Documents' general shape (project-scoped, no
+  work-package-resolution dependency) and are natural next picks by the same
+  reasoning; Project Lifecycle Phases already migrated as part of Projects, not a
+  separate candidate.
 - separate modules for work-package writes and schema handling
 - dedicated integration-test helpers around form endpoints and live smoke tests
 
