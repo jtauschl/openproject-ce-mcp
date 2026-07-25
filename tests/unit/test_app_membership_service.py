@@ -199,6 +199,51 @@ async def test_list_for_project_checks_read_enabled() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_for_project_propagates_project_read_allowlist_denial() -> None:
+    """list_for_project() resolves the project via resolve_project_ref before
+    fetching -- the read allowlist is enforced entirely inside that resolver
+    (the real _get_project_payload/ProjectResolver in production), same as
+    Categories' list(). This gap (list_for_project had no allowlist-denial
+    test, unlike get()'s test_get_checks_project_read_allowlist above) was
+    found during Categories' step-6 cross-domain self-audit.
+    """
+
+    async def denying_resolve_project_ref(project_ref: str, *, write: bool = False, context=None) -> dict:
+        raise PermissionDeniedError("OPENPROJECT_READ_PROJECTS")
+
+    api = _FakeMembershipApi()
+    service = _service(api, resolve_project_ref=denying_resolve_project_ref)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await service.list_for_project("demo")
+
+    assert api.list_calls == []
+
+
+@pytest.mark.asyncio
+async def test_list_for_project_passes_write_false_to_resolve_project_ref() -> None:
+    """list_for_project() must ask its injected resolve_project_ref for a
+    READ-checked (write=False) resolution, mirroring create()'s existing
+    test_create_passes_write_true_to_resolve_project_ref pin for the write
+    side below. Found missing during Categories' step-6 cross-domain
+    self-audit -- no domain previously pinned the write=False argument on
+    any read-path resolver call, only the write=True side was covered.
+    """
+    calls: list[bool] = []
+
+    async def resolve_project_ref_tracking_write(project_ref: str, *, write: bool = False, context=None) -> dict:
+        calls.append(write)
+        return await _resolve_project_ref(project_ref, write=write, context=context)
+
+    api = _FakeMembershipApi()
+    service = _service(api, resolve_project_ref=resolve_project_ref_tracking_write)
+
+    await service.list_for_project("demo")
+
+    assert calls == [False]
+
+
+@pytest.mark.asyncio
 async def test_get_created_at_hidden_by_membership_scope_not_project_scope() -> None:
     """Regression test for the entity-scope class of bug found via News'
     OPM-266 hotfix and Documents' equivalent: a field must only be masked by
