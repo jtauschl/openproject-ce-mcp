@@ -130,6 +130,26 @@ def payload_allowed(ensure: Callable[[], None]) -> bool:
         return False
 
 
+def project_link_payload_allowed(
+    payload: dict[str, Any], *, link_key: str, settings: Settings, project_id_to_identifier: dict[int, str]
+) -> bool:
+    """Shared body for every domain's `<domain>_payload_allowed(payload, ...)`
+    wrapper (`document_policy.py`, `news_policy.py`, `version_policy.py`):
+    each one only ever differed in which `_links` key carries the project
+    reference (`"project"` for Documents/News, `"definingProject"` for
+    Versions) -- found to be near-identical, cross-sibling duplication (not
+    the documented, sanctioned client.py-transition duplication) during the
+    Documents migration's post-implementation review.
+    """
+    return payload_allowed(
+        lambda: ensure_project_link_allowed(
+            payload.get("_links", {}).get(link_key),
+            settings=settings,
+            project_id_to_identifier=project_id_to_identifier,
+        )
+    )
+
+
 def ensure_project_link_allowed(link: Any, *, settings: Settings, project_id_to_identifier: dict[int, str]) -> None:
     if scope_allows_all(settings.read_projects):
         return
