@@ -15,6 +15,7 @@ import httpx
 
 from . import __version__
 from .app.adapters import httpx_version_api as _httpx_version_api
+from .app.adapters.httpx_category_api import HttpxCategoryApi
 from .app.adapters.httpx_document_api import HttpxDocumentApi
 from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
@@ -40,6 +41,7 @@ from .app.pagination import paginate_server as _paginate_server
 from .app.policies import access as _access_policy
 from .app.policies import hidden_fields as _hidden_fields_policy
 from .app.policies import scope as _scope_policy
+from .app.ports.category_api import CategoryApi
 from .app.ports.document_api import DocumentApi
 from .app.ports.membership_api import MembershipApi
 from .app.ports.news_api import NewsApi
@@ -49,6 +51,7 @@ from .app.ports.version_api import VersionApi
 from .app.ports.wiki_page_api import WikiPageApi
 from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.version_resolver import VersionResolver
+from .app.services.category_service import CategoryService
 from .app.services.document_service import DocumentService
 from .app.services.membership_service import MembershipService
 from .app.services.news_service import NewsService
@@ -372,6 +375,13 @@ class OpenProjectClient:
             api=self._wiki_page_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
+        )
+
+        self._category_api: CategoryApi = HttpxCategoryApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._category_service = CategoryService(
+            api=self._category_api,
+            settings=settings,
+            resolve_project_ref=self._get_project_payload,
         )
 
     async def initialize(self) -> None:
@@ -1101,24 +1111,10 @@ class OpenProjectClient:
         return await self._wiki_page_service.get(wiki_page_id)
 
     async def list_categories(self, project_ref: str) -> CategoryListResult:
-        self._ensure_read_enabled("project")
-        project_payload = await self._resolve_project_ref(project_ref, write=False)
-        project_id = int(project_payload["id"])
-        payload = await self._get(f"projects/{project_id}/categories")
-        project_name = _trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT)
-        results = [
-            self.normalize_category(item, project_id=project_id, project_name=project_name)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        return CategoryListResult(count=len(results), results=results)
+        return await self._category_service.list(project_ref)
 
     async def get_category(self, *, project_ref: str, category_id: int) -> CategorySummary:
-        categories = await self.list_categories(project_ref)
-        for category in categories.results:
-            if category.id == category_id:
-                return category
-        raise NotFoundError("OpenProject category not found in this project.")
+        return await self._category_service.get(project_ref=project_ref, category_id=category_id)
 
     async def list_work_package_attachments(self, work_package_id: int | str) -> AttachmentListResult:
         self._ensure_read_enabled("work_package")
@@ -5298,32 +5294,6 @@ class OpenProjectClient:
                 created_resource_name=_link_title(resource_link),
                 links=sorted(links.keys()),
                 url=self._link_to_web_url(links.get("self", {}).get("href")),
-            ),
-        )
-
-    def normalize_category(
-        self,
-        payload: dict[str, Any],
-        *,
-        project_id: int | None,
-        project_name: str | None,
-    ) -> CategorySummary:
-        category_id = int(payload["id"])
-        links = payload.get("_links", {})
-        default_assignee_link = links.get("defaultAssignee")
-        return self._apply_hidden_fields(
-            "category",
-            CategorySummary(
-                id=category_id,
-                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Category {category_id}",
-                project_id=project_id,
-                project=project_name,
-                is_default=bool(payload.get("isDefault")),
-                url=self._web_url(f"api/v3/categories/{category_id}"),
-                default_assignee_id=_id_from_href(
-                    default_assignee_link.get("href") if isinstance(default_assignee_link, dict) else None
-                ),
-                default_assignee=_link_title(default_assignee_link),
             ),
         )
 

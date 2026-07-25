@@ -448,6 +448,22 @@ def test_wiki_page_service_binds_the_api_param_to_wiki_page_api_specifically() -
     assert hints["api"] is not HttpxWikiPageApi, "WikiPageService.__init__'s api param must not be the concrete adapter"
 
 
+def test_category_service_binds_the_api_param_to_category_api_specifically() -> None:
+    """Non-generalized regression test for the Categories domain's exact
+    guarantee, sibling to the checks above: the api param is CategoryApi
+    exactly, not just "some Protocol". No CategoryResolver exists (like
+    Memberships/News/Documents/Wiki Pages) -- category_id is always a numeric
+    value already validated by tools.py, so there is no semantic-reference
+    resolution for this domain to warrant a Resolver."""
+    from openproject_ce_mcp.app.adapters.httpx_category_api import HttpxCategoryApi
+    from openproject_ce_mcp.app.ports.category_api import CategoryApi
+    from openproject_ce_mcp.app.services.category_service import CategoryService
+
+    hints = typing.get_type_hints(CategoryService.__init__)
+    assert hints["api"] is CategoryApi, "CategoryService.__init__'s api param must be typed CategoryApi"
+    assert hints["api"] is not HttpxCategoryApi, "CategoryService.__init__'s api param must not be the concrete adapter"
+
+
 # Names that once lived in app/ports/project_api.py (HAL->model normalize_*
 # translation functions and their private text/href helpers) before they moved
 # to app/adapters/httpx_project_api.py, matching the Versions domain's
