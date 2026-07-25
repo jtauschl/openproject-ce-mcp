@@ -76,9 +76,9 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
-## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views)
+## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views, Grids)
 
-`client.py` stays the small, flat facade described above for most domains, but eight
+`client.py` stays the small, flat facade described above for most domains, but nine
 domains have been migrated into `app/` for a stricter layered structure: Versions
 (`list_versions`, `get_version`, `create_version`, `update_version`,
 `delete_version` — the original pilot, validating the pattern), Projects
@@ -142,7 +142,21 @@ already produces the correct deny-when-restricted-and-unlinked outcome for a
 having a separate detail shape: `normalize_view_detail` reuses every field from
 `normalize_view` verbatim and adds exactly one extra field (`links`), with no
 second/different truncation limit applied anywhere — there is nothing expensive
-to defer):
+to defer), and Grids (`list_grids`, `get_grid`, `create_grid`, `update_grid`,
+`delete_grid` — the ninth migration, and the first **full-CRUD** domain since
+Memberships (every domain migrated in between was read-only or update-only). Grids
+has its own dedicated `grid_policy.py` (unlike every no-policy-file domain since
+Wiki Pages) because of a domain-specific carve-out: a grid scoped to
+`/my/page` (the current user's own dashboard) is always allowed, read or
+write, regardless of `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS`
+— checked before any allowlist logic runs. `GridRecord` carries the raw
+`scope` HAL link dict (not just the extracted href string), since the
+allowlist check and `scope.project_candidates()` both read more than just
+`href` off it. `list_grids`' `scope` parameter is a server-side exact-match
+filter (narrowing, not a security boundary) — the per-item allowlist check
+still runs client-side on every returned element regardless of whether a
+filter was passed; unlike Documents/News/Views, Grids never resolves a
+project ref at all, since `scope` is a raw href passed straight through):
 
 ```text
 tools.py (MCP presentation)
@@ -420,20 +434,19 @@ The tradeoff is that `client.py` is large and policy-heavy. That is intentional 
 
 The Policies extraction (scope checks, hidden-field enforcement) is done, for every
 domain — see "Layered architecture" above. Versions, Projects, Memberships, News,
-Documents, Wiki Pages, Categories, and Views are migrated; remaining candidates,
-once each migration's own lessons justify the next one:
+Documents, Wiki Pages, Categories, Views, and Grids are migrated; remaining
+candidates, once each migration's own lessons justify the next one:
 
 - migrating additional domains through the same `app/` layers, one at a time —
   re-evaluate which domain's resolvers most depend on already-flat logic, per the
   pilot's own "validate before extending" approach. See
   [architecture-migration-runbook.md](architecture-migration-runbook.md) for the
-  step-by-step process distilled from the eight migrations done so far. Grids
-  shares Categories'/Documents' general shape (project-scoped, no
-  work-package-resolution dependency) and is a natural next pick by the same
-  reasoning, though it has full CRUD (unlike every read-only domain migrated so
-  far) and its own "/my/page" personal-grid carve-out to account for; Project
-  Lifecycle Phases already migrated as part of Projects, not a separate
-  candidate.
+  step-by-step process distilled from the nine migrations done so far. Grids was
+  the last domain explicitly named as a "natural next pick" in this doc and the
+  runbook — with it done, the next pick needs a fresh look at the ~26 remaining
+  still-flat domains against step 0's criteria directly, not a pre-named
+  shortlist; Project Lifecycle Phases already migrated as part of Projects, not
+  a separate candidate.
 - separate modules for work-package writes and schema handling
 - dedicated integration-test helpers around form endpoints and live smoke tests
 

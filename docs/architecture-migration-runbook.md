@@ -10,9 +10,9 @@ Written so it can be handed to a fresh session (human or agent) as a
 self-contained starting brief — see "Prompt for a fresh session" at the
 bottom for a ready-to-paste version.
 
-Eight domains are migrated so far: Versions (pilot), Projects, Memberships,
-News, Documents, Wiki Pages, Categories, Views. ~28 remain, all still flat in
-`client.py`. This runbook distills what each of those eight migrations
+Nine domains are migrated so far: Versions (pilot), Projects, Memberships,
+News, Documents, Wiki Pages, Categories, Views, Grids. ~26 remain, all still
+flat in `client.py`. This runbook distills what each of those nine migrations
 actually needed, including mistakes found and fixed along the way — follow
 it literally, don't re-derive the process from scratch.
 
@@ -30,16 +30,15 @@ Prefer a domain that:
 - is named as a candidate in this doc's "Future split points" list in
   [architecture.md](architecture.md)
 
-At the time of writing, Grids shares Documents'/Categories'/Views' general
-shape (project-scoped, no work-package dependency) and is a natural next
-pick by the same reasoning used for those three — though it has full CRUD
-(list/get/create/update/delete, unlike every read-only domain migrated so
-far) and its own "/my/page" personal-grid carve-out (a grid scoped to the
-current user's dashboard is always allowed regardless of project ACL) to
-account for. Project Lifecycle Phases already migrated as part of Projects
-(its three `client.py` methods delegate to `self._project_service`) — it
-is not a separate still-flat candidate, despite looking like one from its
-own top-level methods.
+At the time of writing, Grids was the last domain explicitly named as a
+"natural next pick" in this doc and architecture.md — with it migrated, the
+next domain needs a fresh evaluation against the three criteria above
+directly, not a pre-named shortlist; the ~26 remaining still-flat domains
+haven't been individually screened against these criteria yet. Project
+Lifecycle Phases already migrated as part of Projects (its three
+`client.py` methods delegate to `self._project_service`) — it is not a
+separate still-flat candidate, despite looking like one from its own
+top-level methods.
 
 ## 1. Read the real source before planning
 
