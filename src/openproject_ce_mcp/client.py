@@ -21,6 +21,7 @@ from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
 from .app.adapters.httpx_version_api import HttpxVersionApi
+from .app.adapters.httpx_view_api import HttpxViewApi
 from .app.adapters.httpx_wiki_page_api import HttpxWikiPageApi
 
 # AuthenticationError: no longer referenced directly in this module (its only use was
@@ -48,6 +49,7 @@ from .app.ports.news_api import NewsApi
 from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
 from .app.ports.version_api import VersionApi
+from .app.ports.view_api import ViewApi
 from .app.ports.wiki_page_api import WikiPageApi
 from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.version_resolver import VersionResolver
@@ -58,6 +60,7 @@ from .app.services.news_service import NewsService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
 from .app.services.version_service import VersionService
+from .app.services.view_service import ViewService
 from .app.services.wiki_page_service import WikiPageService
 from .app.transport.errors import raise_for_status as _map_status_to_error
 from .app.transport.httpx_transport import HttpxTransport
@@ -381,6 +384,14 @@ class OpenProjectClient:
         self._category_service = CategoryService(
             api=self._category_api,
             settings=settings,
+            resolve_project_ref=self._get_project_payload,
+        )
+
+        self._view_api: ViewApi = HttpxViewApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._view_service = ViewService(
+            api=self._view_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
             resolve_project_ref=self._get_project_payload,
         )
 
@@ -992,48 +1003,12 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> ViewListResult:
-        self._ensure_read_enabled("project")
-        effective_limit = self._resolve_limit(limit)
-        project_candidates = await self._resolve_project_filter_candidates(project)
-
-        def post_filter(results: list[ViewSummary]) -> list[ViewSummary]:
-            if project_candidates is not None:
-                results = [
-                    item for item in results if self._summary_matches_project_candidates(item, project_candidates)
-                ]
-            if view_type is not None:
-                results = [item for item in results if (item.type or "").casefold() == view_type.casefold()]
-            if search is not None:
-                search_key = search.casefold()
-                results = [item for item in results if search_key in (item.name or "").casefold()]
-            return results
-
-        page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
-            path="views",
-            params_extra=None,
-            normalize=self.normalize_view,
-            item_allowed=self._view_payload_allowed,
-            post_filter=post_filter,
-            offset=offset,
-            limit=effective_limit,
-        )
-        return ViewListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(page),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=page,
+        return await self._view_service.list(
+            project=project, view_type=view_type, search=search, offset=offset, limit=limit
         )
 
     async def get_view(self, view_id: int) -> ViewDetail:
-        return await self._fetch_and_normalize_detail(
-            scope="project",
-            path=f"views/{view_id}",
-            ensure_fn=self._ensure_view_payload_allowed,
-            normalize_fn=self.normalize_view_detail,
-        )
+        return await self._view_service.get(view_id)
 
     async def list_documents(
         self,
@@ -5138,49 +5113,6 @@ class OpenProjectClient:
             ),
         )
 
-    def normalize_view(self, payload: dict[str, Any]) -> ViewSummary:
-        links = payload.get("_links", {})
-        project_link = links.get("project")
-        query_link = links.get("query")
-        return self._apply_hidden_fields(
-            "view",
-            ViewSummary(
-                id=int(payload["id"]),
-                type=_trim_text(payload.get("_type"), limit=SUBJECT_LIMIT),
-                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"View {payload['id']}",
-                project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
-                project=_link_title(project_link),
-                query_id=_id_from_href(query_link.get("href")) if isinstance(query_link, dict) else None,
-                query=_link_title(query_link),
-                public=bool(payload.get("public")),
-                starred=bool(payload.get("starred")),
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-                url=self._web_url(f"api/v3/views/{payload['id']}"),
-            ),
-        )
-
-    def normalize_view_detail(self, payload: dict[str, Any]) -> ViewDetail:
-        summary = self.normalize_view(payload)
-        return self._apply_hidden_fields(
-            "view",
-            ViewDetail(
-                id=summary.id,
-                type=summary.type,
-                name=summary.name,
-                project_id=summary.project_id,
-                project=summary.project,
-                query_id=summary.query_id,
-                query=summary.query,
-                public=summary.public,
-                starred=summary.starred,
-                created_at=summary.created_at,
-                updated_at=summary.updated_at,
-                links=sorted(payload.get("_links", {}).keys()),
-                url=summary.url,
-            ),
-        )
-
     def normalize_query_filter(self, payload: dict[str, Any]) -> QueryFilterSummary:
         links = payload.get("_links", {})
         self_link, href, filter_id = _query_ref_identity(links, payload)
@@ -6451,17 +6383,6 @@ class OpenProjectClient:
 
     async def _board_payload_allowed(self, payload: dict[str, Any]) -> bool:
         return self._payload_allowed(lambda: self._ensure_board_payload_allowed(payload))
-
-    def _ensure_view_payload_allowed(self, payload: dict[str, Any]) -> None:
-        project_link = payload.get("_links", {}).get("project")
-        if _scope_allows_all(self.settings.read_projects):
-            return
-        if not isinstance(project_link, dict):
-            raise PermissionDeniedError("OpenProject access to this view is disabled by OPENPROJECT_READ_PROJECTS.")
-        self._ensure_project_link_allowed(project_link)
-
-    async def _view_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        return self._payload_allowed(lambda: self._ensure_view_payload_allowed(payload))
 
     def _work_package_payload_allowed(self, payload: dict[str, Any]) -> bool:
         return self._payload_allowed(
