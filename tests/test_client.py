@@ -11605,6 +11605,69 @@ async def test_work_package_relations_use_canonical_involved_filter_shape() -> N
 
 
 @pytest.mark.asyncio
+async def test_get_work_package_relations_filters_by_read_allowlist_other_side() -> None:
+    """get_work_package_relations must not leak a relation's OTHER-side work
+    package (to_id/to_subject) when it sits outside OPENPROJECT_READ_PROJECTS
+    -- get_work_package() on the anchor only confirms the anchor itself is
+    allowed, not the linked work package on the far end of each relation.
+    """
+    wp_project = {55: "allowed", 56: "allowed", 57: "secret"}
+
+    def _anchor_payload() -> dict:
+        payload = _wp_detail_payload(55, "PROJ-7")
+        payload["_links"]["project"] = {"title": "allowed"}
+        return payload
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/PROJ-7" and request.method == "GET":
+            return httpx.Response(200, json=_anchor_payload(), request=request)
+        if request.url.path == "/api/v3/relations" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 12,
+                                "type": "relates",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/55", "title": "A"},
+                                    "to": {"href": "/api/v3/work_packages/56", "title": "B"},
+                                },
+                            },
+                            {
+                                "id": 13,
+                                "type": "relates",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/55", "title": "A"},
+                                    "to": {"href": "/api/v3/work_packages/57", "title": "Secret"},
+                                },
+                            },
+                        ]
+                    }
+                },
+                request=request,
+            )
+        m = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if m:
+            wp = int(m.group(1))
+            return httpx.Response(
+                200, json={"id": wp, "_links": {"project": {"title": wp_project[wp]}}}, request=request
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("allowed",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.get_work_package_relations("PROJ-7")
+
+    ids = {r.id for r in result.results}
+    assert ids == {12}, f"expected only the allowed-side relation, got {ids}"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_global_relations_allowlist_checks_from_and_to_link_shapes() -> None:
     """Verify global relation listing validates both endpoint links."""
     work_package_projects = {10: "demo", 11: "demo", 20: "other", 30: "demo", 31: "other"}

@@ -3687,7 +3687,22 @@ class OpenProjectClient:
         # Use the canonical relations endpoint with an "involved" filter instead.
         filters = json.dumps([{"involved": {"operator": "=", "values": [str(work_package_id)]}}])
         payload = await self._get("relations", params={"filters": filters})
-        results = [self.normalize_relation(item) for item in payload.get("_embedded", {}).get("elements", [])]
+        # get_work_package() above only confirms the ANCHOR work package is
+        # allowed; the OTHER side of each relation is unrelated to it and must
+        # be checked independently -- otherwise a relation's to_id/to_subject
+        # (or from_id/from_subject, depending on direction) would leak a work
+        # package's id/subject from a project outside OPENPROJECT_READ_PROJECTS,
+        # even though it isn't independently readable via get_work_package.
+        # Same helper list_relations() already uses for the identical concern.
+        allowlisted = not _scope_allows_all(self.settings.read_projects)
+        wp_allowed: dict[str, bool] = {}
+        results = []
+        for item in payload.get("_embedded", {}).get("elements", []):
+            if not isinstance(item, dict):
+                continue
+            if allowlisted and not await self._relation_endpoints_allowed(item, wp_allowed):
+                continue
+            results.append(self.normalize_relation(item))
         return RelationListResult(count=len(results), results=results)
 
     async def get_work_package_activities(
