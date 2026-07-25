@@ -62,7 +62,7 @@ def _delimit_user_content(text: str | None) -> str | None:
 
 
 def _extract_formattable_text(value: Any, *, limit: int) -> str | None:
-    raw = value.get("raw") if isinstance(value, dict) else value
+    raw = value.get("raw") or value.get("html") if isinstance(value, dict) else value
     return _trim_text(raw, limit=limit)
 
 

@@ -106,6 +106,28 @@ async def test_get_summary_and_detail_apply_different_truncation_limits_to_same_
 
 
 @pytest.mark.asyncio
+async def test_get_falls_back_to_html_when_raw_is_absent() -> None:
+    """Regression coverage: this local _extract_formattable_text copy was
+    missing the `.get("raw") or .get("html")` fallback that client.py's
+    original has (and that HttpxProjectApi/HttpxVersionApi/HttpxDocumentApi
+    all keep) -- found during the Documents migration's self-review. A
+    description payload with only an `html` key (no `raw`) must still be
+    extracted, not silently dropped.
+    """
+    payload = _news_payload()
+    payload["description"] = {"format": "markdown", "html": "<p>HTML only content</p>"}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxNewsApi(HttpxTransport(http_client), base_url=BASE_URL)
+        record = await api.get(1)
+
+    assert record.summary.description == "<user-content><p>HTML only content</p></user-content>"
+
+
+@pytest.mark.asyncio
 async def test_commit_create_posts_and_returns_detail() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/news"
