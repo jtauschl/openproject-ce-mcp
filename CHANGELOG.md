@@ -7,6 +7,25 @@ development baseline.
 
 ---
 
+## 0.3.3 – Unreleased
+
+### Fixed
+
+- **A project created or renamed through this server was invisible to
+  `get_work_package`/`update_work_package`/`create_work_package` (when
+  linking a `parent`) and every other project-scoped tool under a
+  restrictive `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS`,
+  until the server process restarted**, even though `get_project` and
+  `list_projects` already saw it correctly. The identifier lookup these
+  tools rely on was only ever populated once, at startup; a confirmed
+  `create_project`/`update_project` now keeps it up to date immediately.
+- **`list_work_packages` without an explicit `project` now raises a clear
+  permission error instead of silently returning zero results** when it
+  cannot prove the query is scoped to only the allowed projects — previously
+  indistinguishable from "this project genuinely has no work packages yet."
+
+---
+
 ## 0.3.2 – 2026-07-20
 
 ### Fixed

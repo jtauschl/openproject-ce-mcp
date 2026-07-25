@@ -1397,38 +1397,23 @@ async def test_list_work_packages_exposes_real_total_when_scope_unrestricted() -
 
 
 @pytest.mark.asyncio
-async def test_list_work_packages_falls_back_to_page_count_when_project_cache_empty() -> None:
+async def test_list_work_packages_denies_when_project_cache_empty_under_restricted_scope() -> None:
     # Restricted scope, no explicit project, and the allowed-project-id cache
-    # (populated by initialize(), which this test deliberately never calls --
-    # e.g. because initialize() silently swallowed a failure) is empty. No
-    # server-side project filter is sent at all, so even though nothing on
-    # THIS page happens to be filtered, the server's total could still include
-    # matches from a disallowed project on a later page -- total must fall
-    # back to this page's item count regardless.
+    # (populated by initialize() at startup, or by create_project/update_project
+    # writing through on a confirmed commit) is empty -- there is no way to send
+    # a server-side project filter that provably restricts the query, so
+    # silently proceeding would let an unscopable total leak the existence of
+    # disallowed-project matches. This must fail closed with an explicit error,
+    # consistent with every other project-link-scoped tool, not silently narrow
+    # to a page-count total that reads exactly like "this project has no work
+    # packages yet."
     async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v3/work_packages"
-        params = dict(request.url.params)
-        assert "project_id" not in params["filters"]
-        return httpx.Response(
-            200,
-            json={
-                "total": 50,
-                "_embedded": {
-                    "elements": [
-                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
-                        {"id": 2, "subject": "B", "_links": {"project": {"title": "demo"}}},
-                    ]
-                },
-            },
-            request=request,
-        )
+        raise AssertionError("no request should be sent when the query cannot be safely scoped")
 
     client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
-    result = await client.list_work_packages(limit=2)
 
-    assert [wp.id for wp in result.results] == [1, 2]
-    assert result.total == 2
-    assert result.count == 2
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await client.list_work_packages(limit=2)
 
     await client.aclose()
 
@@ -1468,13 +1453,17 @@ async def test_list_work_packages_exposes_real_total_when_restricted_scope_filte
 
 
 @pytest.mark.asyncio
-async def test_list_work_packages_pagination_hints_do_not_leak_untrusted_total() -> None:
-    # Same untrusted-total scenario as the empty-cache test above, but this one
-    # asserts on next_offset/truncated specifically: they must NOT be derived
-    # from the server's secret total (50) -- that would reveal the existence of
-    # further matches just as much as exposing the total itself. Since this raw
-    # page came back short of the requested limit, there is nothing more to
-    # page through.
+async def test_search_work_packages_pagination_hints_do_not_leak_untrusted_total() -> None:
+    # search_work_packages has no restricted-scope project_id filter branch at
+    # all (unlike list_work_packages, which now fails closed instead of ever
+    # reaching an untrusted-total state -- see
+    # test_list_work_packages_denies_when_project_cache_empty_under_restricted_scope),
+    # so it's the one remaining path that can still legitimately produce an
+    # untrusted total without an explicit project. next_offset/truncated must
+    # NOT be derived from the server's secret total (50) -- that would reveal
+    # the existence of further matches just as much as exposing the total
+    # itself. Since this raw page came back short of the requested limit,
+    # there is nothing more to page through.
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -1490,7 +1479,7 @@ async def test_list_work_packages_pagination_hints_do_not_leak_untrusted_total()
         )
 
     client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
-    result = await client.list_work_packages(limit=5)
+    result = await client.search_work_packages(query="A", limit=5)
 
     assert result.total == 1
     assert result.next_offset is None
@@ -1500,7 +1489,7 @@ async def test_list_work_packages_pagination_hints_do_not_leak_untrusted_total()
 
 
 @pytest.mark.asyncio
-async def test_list_work_packages_pagination_continues_with_untrusted_total_when_page_full() -> None:
+async def test_search_work_packages_pagination_continues_with_untrusted_total_when_page_full() -> None:
     # Same untrusted-total scope, but the raw page came back full (== limit) --
     # there may be more allowed matches on a later server page, so pagination
     # must still continue even though the total itself stays hidden.
@@ -1520,7 +1509,7 @@ async def test_list_work_packages_pagination_continues_with_untrusted_total_when
         )
 
     client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
-    result = await client.list_work_packages(offset=1, limit=2)
+    result = await client.search_work_packages(query="A", offset=1, limit=2)
 
     assert result.total == 2
     assert result.next_offset == 2
@@ -4511,6 +4500,14 @@ async def test_global_list_work_packages_and_versions_respect_allowlist_ids() ->
         read_projects=("6",),
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    # Mirrors initialize()'s cache population (or create_project/update_project's
+    # write-through on a confirmed commit) -- without it, list_work_packages now
+    # fails closed instead of ever reaching the server (see
+    # test_list_work_packages_denies_when_project_cache_empty_under_restricted_scope).
+    # This test's own purpose is the per-row allowlist filter (project 7's item
+    # must still be dropped client-side even though the server-side filter
+    # covers it), so the cache must be populated to reach that code at all.
+    client._project_id_to_identifier[6] = "6"
 
     work_packages = await client.list_work_packages()
     versions = await client.list_versions()
@@ -6824,6 +6821,99 @@ async def test_create_project_rejects_validation_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_project_remembers_new_project_identifier_in_the_cache() -> None:
+    """Regression test: a project created through this server was invisible to
+    every link-shaped allowlist check (get_work_package/update_work_package/etc,
+    all of which key off _project_id_to_identifier) until the process restarted,
+    since _project_id_to_identifier was otherwise only ever populated once, by
+    initialize() at startup. create_project must now write the committed
+    project's (id, identifier) into that cache immediately on a confirmed commit.
+    """
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/form" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "schema": {},
+                        "payload": {"name": "New Project", "identifier": "new-project"},
+                        "validationErrors": {},
+                    }
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 42, "name": "New Project", "identifier": "new-project"},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("new-project",),
+        write_projects=("new-project",),
+        base_url="https://op.example.com",
+        api_token="token",
+        enable_project_write=True,
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.create_project(name="New Project", identifier="new-project", confirm=True)
+
+    assert result.confirmed is True
+    assert client._project_id_to_identifier == {42: "new-project"}
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_project_preview_does_not_write_to_the_cache() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/form" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "schema": {},
+                        "payload": {"name": "New Project", "identifier": "new-project"},
+                        "validationErrors": {},
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("new-project",),
+        write_projects=("new-project",),
+        base_url="https://op.example.com",
+        api_token="token",
+        enable_project_write=True,
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    await client.create_project(name="New Project", identifier="new-project", confirm=False)
+
+    assert client._project_id_to_identifier == {}
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_delete_project_returns_preview_and_executes_when_confirmed() -> None:
     project_json = {
         "_type": "Project",
@@ -8354,6 +8444,41 @@ async def test_update_project_denies_disallowed_parent_project() -> None:
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
         await client.update_project(project_ref="demo", parent="999", confirm=True)
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_project_remembers_project_identifier_in_the_cache() -> None:
+    """Same regression coverage as create_project's, for update_project (which
+    can also change a project's identifier, not just introduce a new one)."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/form" and request.method == "POST":
+            return httpx.Response(
+                200, json={"_embedded": {"schema": {}, "payload": {}, "validationErrors": {}}}, request=request
+            )
+        if request.url.path == "/api/v3/projects/1" and request.method == "PATCH":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Renamed Demo", "_links": {}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",), write_projects=("demo",), enable_project_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.update_project(project_ref="demo", name="Renamed Demo", confirm=True)
+
+    assert result.confirmed is True
+    assert client._project_id_to_identifier == {1: "demo"}
+
     await client.aclose()
 
 

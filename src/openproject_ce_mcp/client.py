@@ -316,6 +316,22 @@ class OpenProjectClient:
         except Exception:
             pass
 
+    def _remember_project_identifier(self, result: ProjectWriteResult) -> None:
+        """Keep _project_id_to_identifier in sync with a just-committed create/update.
+
+        This dict is otherwise populated exactly once, by initialize() at
+        server startup -- a project created or renamed through this same
+        server afterward was invisible to every link-shaped allowlist check
+        (_ensure_project_link_allowed, used by every work-package/membership/
+        version/etc. write and read that scopes by an embedded project link,
+        which carries no identifier field) until the process restarted.
+        """
+        if not result.confirmed or result.result is None:
+            return
+        identifier = result.result.identifier
+        if identifier:
+            self._project_id_to_identifier[result.result.id] = identifier
+
     async def aclose(self) -> None:
         await self._http.aclose()
 
@@ -465,7 +481,7 @@ class OpenProjectClient:
             project_id=None,
         )
         form = await self._post("projects/form", json_body=payload)
-        return await self._finalize_project_write(
+        result = await self._finalize_project_write(
             action="create",
             confirm=confirm,
             form=form,
@@ -473,6 +489,8 @@ class OpenProjectClient:
             preview_message="OpenProject validated the project. Ask for confirmation, then call again with confirm=true to create it.",
             success_message="Project created successfully.",
         )
+        self._remember_project_identifier(result)
+        return result
 
     async def update_project(
         self,
@@ -502,7 +520,7 @@ class OpenProjectClient:
             project_id=project.id,
         )
         form = await self._post(f"projects/{project.id}/form", json_body=payload)
-        return await self._finalize_project_write(
+        result = await self._finalize_project_write(
             action="update",
             confirm=confirm,
             form=form,
@@ -512,6 +530,8 @@ class OpenProjectClient:
             project_name=project.name,
             success_message="Project updated successfully.",
         )
+        self._remember_project_identifier(result)
+        return result
 
     async def delete_project(
         self,
@@ -2199,12 +2219,19 @@ class OpenProjectClient:
         elif not total_is_scope_safe:
             # No explicit project given but read scope is restricted — add a server-side
             # project filter so the API only returns WPs from the allowed projects. This
-            # cache can be empty (e.g. initialize() silently failed), in which case no
-            # filter is sent and the server total must not be trusted.
+            # cache can still be empty (e.g. every allowed project was created after
+            # initialize()'s one-time startup snapshot and no confirmed write has
+            # refreshed it since — see _remember_project_identifier). Sending an
+            # unfiltered query in that case would silently leak an untrustworthy total
+            # instead of failing loudly, so this fails closed with an explicit error
+            # instead — consistent with every other project-link-scoped tool.
             allowed_ids = [str(pid) for pid in self._project_id_to_identifier]
-            if allowed_ids:
-                filters.append({"project_id": {"operator": "=", "values": allowed_ids}})
-                total_is_scope_safe = True
+            if not allowed_ids:
+                raise PermissionDeniedError(
+                    "OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS."
+                )
+            filters.append({"project_id": {"operator": "=", "values": allowed_ids}})
+            total_is_scope_safe = True
         if open_only:
             filters.append({"status_id": {"operator": "o", "values": []}})
         if assignee_me:
