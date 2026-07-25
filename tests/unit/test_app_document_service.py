@@ -126,6 +126,28 @@ async def test_list_filters_by_project_candidate() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_passes_write_false_to_resolve_project_ref() -> None:
+    """list()'s project filter resolves via resolve_project_filter_candidates
+    (project_scoped_list.py), which forwards straight to resolve_project_ref
+    -- must ask for a READ-checked (write=False) resolution. Found missing
+    during the Views domain's step-6 self-audit; ViewService.list() has the
+    identical gap (same shared helper), fixed alongside this one.
+    """
+    calls: list[bool] = []
+
+    async def resolve_project_ref_tracking_write(project_ref: str, *, write: bool = False, context=None) -> dict:
+        calls.append(write)
+        return await _resolve_project_ref(project_ref, write=write, context=context)
+
+    api = _FakeDocumentApi()
+    service = _service(api, resolve_project_ref=resolve_project_ref_tracking_write)
+
+    await service.list(project="demo")
+
+    assert calls == [False]
+
+
+@pytest.mark.asyncio
 async def test_list_filters_by_search_term_in_title_only() -> None:
     """Documents' post_filter (client.py's pre-migration list_documents) only
     ever searches `item.title`, unlike News which also matches `.summary` --
