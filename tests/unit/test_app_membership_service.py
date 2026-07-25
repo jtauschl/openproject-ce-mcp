@@ -175,6 +175,26 @@ async def test_get_checks_project_read_allowlist() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_created_at_hidden_by_membership_scope_not_project_scope() -> None:
+    """Regression test for the entity-scope class of bug found via News'
+    OPM-266 hotfix and Documents' equivalent: a field must only be masked by
+    its OWN domain's OPENPROJECT_HIDE_<ENTITY>_FIELDS scope, never by a
+    same-named field under a different (e.g. project) scope.
+    """
+    settings_project_hidden = dataclasses.replace(make_settings(), hide_project_fields=("created_at",))
+    api_project_hidden = _FakeMembershipApi()
+    service_project_hidden = _service(api_project_hidden, settings=settings_project_hidden)
+    result_project_hidden = await service_project_hidden.get(1)
+    assert getattr(result_project_hidden, "_hidden_keys", frozenset()) == frozenset()
+
+    settings_membership_hidden = dataclasses.replace(make_settings(), hidden_fields={"membership": ("created_at",)})
+    api_membership_hidden = _FakeMembershipApi()
+    service_membership_hidden = _service(api_membership_hidden, settings=settings_membership_hidden)
+    result_membership_hidden = await service_membership_hidden.get(1)
+    assert getattr(result_membership_hidden, "_hidden_keys", frozenset()) == {"created_at"}
+
+
+@pytest.mark.asyncio
 async def test_create_returns_preview_without_committing() -> None:
     api = _FakeMembershipApi()
     service = _service(api)

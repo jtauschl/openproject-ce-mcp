@@ -5,6 +5,7 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
+from openproject_ce_mcp.app.errors import PermissionDeniedError
 from openproject_ce_mcp.app.ports.version_api import VersionFormResult, VersionPage, VersionRecord
 from openproject_ce_mcp.app.services.version_service import VersionService
 from openproject_ce_mcp.models import VersionDetail, VersionSummary
@@ -119,6 +120,33 @@ async def test_get_masks_hidden_fields() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_checks_project_read_allowlist() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("other",))
+    service = _service(settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await service.get(8)
+
+
+@pytest.mark.asyncio
+async def test_get_status_hidden_by_version_scope_not_project_scope() -> None:
+    """Regression test for the entity-scope class of bug found via News'
+    OPM-266 hotfix and Documents' equivalent: a field must only be masked by
+    its OWN domain's OPENPROJECT_HIDE_<ENTITY>_FIELDS scope, never by a
+    same-named field under a different (e.g. project) scope.
+    """
+    settings_project_hidden = dataclasses.replace(make_settings(), hide_project_fields=("status",))
+    service_project_hidden = _service(settings=settings_project_hidden)
+    result_project_hidden = await service_project_hidden.get(8)
+    assert getattr(result_project_hidden, "_hidden_keys", frozenset()) == frozenset()
+
+    settings_version_hidden = dataclasses.replace(make_settings(), hidden_fields={"version": ("status",)})
+    service_version_hidden = _service(settings=settings_version_hidden)
+    result_version_hidden = await service_version_hidden.get(8)
+    assert getattr(result_version_hidden, "_hidden_keys", frozenset()) == {"status"}
+
+
+@pytest.mark.asyncio
 async def test_create_returns_preview_without_committing() -> None:
     api = _FakeVersionApi()
     service = _service(api)
@@ -199,6 +227,15 @@ async def test_update_commits_when_confirmed() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_checks_project_write_allowlist() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
+    service = _service(settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await service.update(version_id=8, name="Release 1.1", confirm=False)
+
+
+@pytest.mark.asyncio
 async def test_delete_returns_preview_then_commits() -> None:
     settings = dataclasses.replace(make_settings(), enable_version_write=True)
     service = _service(settings=settings)
@@ -212,3 +249,12 @@ async def test_delete_returns_preview_then_commits() -> None:
     assert committed.confirmed is True
     assert committed.result is not None
     assert committed.result.id == 8
+
+
+@pytest.mark.asyncio
+async def test_delete_checks_project_write_allowlist() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
+    service = _service(settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await service.delete(version_id=8, confirm=False)

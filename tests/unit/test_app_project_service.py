@@ -168,6 +168,27 @@ def _service(api: _FakeProjectApi | None = None, *, settings=None) -> ProjectSer
     )
 
 
+@pytest.mark.asyncio
+async def test_get_description_hidden_by_project_scope_not_project_configuration_scope() -> None:
+    """Regression test for the entity-scope class of bug found via News'
+    OPM-266 hotfix and Documents' equivalent: a field must only be masked by
+    its OWN domain's OPENPROJECT_HIDE_<ENTITY>_FIELDS scope, never by a
+    same-named field under a different, similarly-named scope (here
+    "project_configuration", the nearest same-prefixed sibling entity).
+    """
+    settings_configuration_hidden = dataclasses.replace(
+        make_settings(), hidden_fields={"project_configuration": ("description",)}
+    )
+    service_configuration_hidden = _service(settings=settings_configuration_hidden)
+    result_configuration_hidden = await service_configuration_hidden.get("demo")
+    assert getattr(result_configuration_hidden, "_hidden_keys", frozenset()) == frozenset()
+
+    settings_project_hidden = dataclasses.replace(make_settings(), hidden_fields={"project": ("description",)})
+    service_project_hidden = _service(settings=settings_project_hidden)
+    result_project_hidden = await service_project_hidden.get("demo")
+    assert getattr(result_project_hidden, "_hidden_keys", frozenset()) == {"description"}
+
+
 def _admin_service(api: _FakeProjectApi | None = None, *, settings=None) -> ProjectAdminService:
     api = api or _FakeProjectApi()
     settings = settings or make_settings()
@@ -430,6 +451,15 @@ async def test_update_commits_when_confirmed() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_denies_target_outside_write_allowlist() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
+    service = _service(settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await service.update(project_ref="demo", name="Renamed", confirm=False)
+
+
+@pytest.mark.asyncio
 async def test_delete_returns_preview_then_commits() -> None:
     settings = dataclasses.replace(make_settings(), enable_project_write=True)
     api = _FakeProjectApi()
@@ -445,6 +475,15 @@ async def test_delete_returns_preview_then_commits() -> None:
     assert committed.confirmed is True
     assert committed.result is not None
     assert api.delete_calls == [6]
+
+
+@pytest.mark.asyncio
+async def test_delete_denies_target_outside_write_allowlist() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
+    service = _service(settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await service.delete(project_ref="demo", confirm=False)
 
 
 @pytest.mark.asyncio
