@@ -175,6 +175,30 @@ async def test_get_checks_project_read_allowlist() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_checks_read_enabled() -> None:
+    settings = dataclasses.replace(make_settings(), enable_membership_read=False)
+    api = _FakeMembershipApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.get(1)
+
+    assert api.get_calls == []
+
+
+@pytest.mark.asyncio
+async def test_list_for_project_checks_read_enabled() -> None:
+    settings = dataclasses.replace(make_settings(), enable_membership_read=False)
+    api = _FakeMembershipApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.list_for_project("demo")
+
+    assert api.list_calls == []
+
+
+@pytest.mark.asyncio
 async def test_get_created_at_hidden_by_membership_scope_not_project_scope() -> None:
     """Regression test for the entity-scope class of bug found via News'
     OPM-266 hotfix and Documents' equivalent: a field must only be masked by
@@ -327,6 +351,16 @@ async def test_update_checks_project_write_allowlist() -> None:
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.update(membership_id=1, roles=["Member"], confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_delete_checks_project_write_allowlist() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
+    api = _FakeMembershipApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await service.delete(membership_id=1, confirm=False)
 
 
 @pytest.mark.asyncio

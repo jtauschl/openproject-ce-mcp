@@ -221,6 +221,18 @@ async def test_get_returns_detail_with_full_text_uncapped() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_checks_read_enabled() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_read=False)
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.get("demo")
+
+    assert api.get_calls == []
+
+
+@pytest.mark.asyncio
 async def test_get_configuration_returns_normalized_configuration() -> None:
     service = _service()
 
@@ -582,6 +594,16 @@ async def test_set_favorite_returns_preview_then_commits() -> None:
     committed = await service.set_favorite("demo", favorite=True, confirm=True)
     assert committed.confirmed is True
     assert api.favorite_calls == [(6, True)]
+
+
+@pytest.mark.asyncio
+async def test_set_favorite_denies_target_outside_write_allowlist() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await service.set_favorite("demo", favorite=True, confirm=False)
 
 
 @pytest.mark.asyncio

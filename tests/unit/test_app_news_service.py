@@ -190,6 +190,18 @@ async def test_get_checks_project_read_allowlist() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_checks_read_enabled() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_read=False)
+    api = _FakeNewsApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.get(1)
+
+    assert api.get_calls == []
+
+
+@pytest.mark.asyncio
 async def test_create_returns_preview_without_committing_or_calling_api() -> None:
     api = _FakeNewsApi()
     service = _service(api)

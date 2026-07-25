@@ -196,6 +196,18 @@ async def test_get_checks_project_read_allowlist() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_checks_read_enabled() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_read=False)
+    api = _FakeDocumentApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.get(1)
+
+    assert api.get_calls == []
+
+
+@pytest.mark.asyncio
 async def test_update_returns_preview_without_committing_when_not_confirmed() -> None:
     api = _FakeDocumentApi()
     service = _service(api)

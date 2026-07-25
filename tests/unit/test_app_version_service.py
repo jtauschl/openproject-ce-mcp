@@ -129,6 +129,15 @@ async def test_get_checks_project_read_allowlist() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_checks_read_enabled() -> None:
+    settings = dataclasses.replace(make_settings(), enable_version_read=False)
+    service = _service(settings=settings)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.get(8)
+
+
+@pytest.mark.asyncio
 async def test_get_status_hidden_by_version_scope_not_project_scope() -> None:
     """Regression test for the entity-scope class of bug found via News'
     OPM-266 hotfix and Documents' equivalent: a field must only be masked by
