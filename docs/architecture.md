@@ -365,7 +365,9 @@ justify the next one:
 
 - migrating additional domains through the same `app/` layers, one at a time —
   re-evaluate which domain's resolvers most depend on already-flat logic, per the
-  pilot's own "validate before extending" approach
+  pilot's own "validate before extending" approach. See
+  [architecture-migration-runbook.md](architecture-migration-runbook.md) for the
+  step-by-step process distilled from the five migrations done so far.
 - separate modules for project-scoped content like views
 - separate modules for work-package writes and schema handling
 - dedicated integration-test helpers around form endpoints and live smoke tests
