@@ -76,9 +76,9 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
-## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories)
+## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views)
 
-`client.py` stays the small, flat facade described above for most domains, but seven
+`client.py` stays the small, flat facade described above for most domains, but eight
 domains have been migrated into `app/` for a stricter layered structure: Versions
 (`list_versions`, `get_version`, `create_version`, `update_version`,
 `delete_version` — the original pilot, validating the pattern), Projects
@@ -128,7 +128,21 @@ individual category payload carries no own `project` HAL link, only
 `project_ref`, so the read allowlist is enforced once, inside
 `resolve_project_ref` itself, rather than per-record like Documents/Memberships.
 Categories also has no dedicated policy file, for the same no-list-filtering-needed
-reason as Wiki Pages):
+reason as Wiki Pages), and Views (`list_views`, `get_view` — the eighth migration,
+and the first domain with a **nullable project link**: a view need not belong to
+any project at all. `list_views` is client-side fetch-all-then-filter (reusing
+`project_scoped_list.py`'s `resolve_project_filter_candidates`/
+`summary_matches_project_candidates`, same shape as Documents/News), but the
+per-record allowlist check calls `scope_policy.ensure_project_link_allowed`/
+`payload_allowed` directly rather than through a dedicated `view_policy.py`
+wrapper — no new Policy code was needed, since `ensure_project_link_allowed`
+already produces the correct deny-when-restricted-and-unlinked outcome for a
+`None` link (an empty project-candidate set never matches a restrictive scope).
+`ViewRecord.detail` is a precomputed field, not a lazy `to_detail` thunk, despite
+having a separate detail shape: `normalize_view_detail` reuses every field from
+`normalize_view` verbatim and adds exactly one extra field (`links`), with no
+second/different truncation limit applied anywhere — there is nothing expensive
+to defer):
 
 ```text
 tools.py (MCP presentation)
@@ -406,18 +420,20 @@ The tradeoff is that `client.py` is large and policy-heavy. That is intentional 
 
 The Policies extraction (scope checks, hidden-field enforcement) is done, for every
 domain — see "Layered architecture" above. Versions, Projects, Memberships, News,
-Documents, Wiki Pages, and Categories are migrated; remaining candidates, once each
-migration's own lessons justify the next one:
+Documents, Wiki Pages, Categories, and Views are migrated; remaining candidates,
+once each migration's own lessons justify the next one:
 
 - migrating additional domains through the same `app/` layers, one at a time —
   re-evaluate which domain's resolvers most depend on already-flat logic, per the
   pilot's own "validate before extending" approach. See
   [architecture-migration-runbook.md](architecture-migration-runbook.md) for the
-  step-by-step process distilled from the seven migrations done so far. Views and
-  Grids share Categories'/Documents' general shape (project-scoped, no
-  work-package-resolution dependency) and are natural next picks by the same
-  reasoning; Project Lifecycle Phases already migrated as part of Projects, not a
-  separate candidate.
+  step-by-step process distilled from the eight migrations done so far. Grids
+  shares Categories'/Documents' general shape (project-scoped, no
+  work-package-resolution dependency) and is a natural next pick by the same
+  reasoning, though it has full CRUD (unlike every read-only domain migrated so
+  far) and its own "/my/page" personal-grid carve-out to account for; Project
+  Lifecycle Phases already migrated as part of Projects, not a separate
+  candidate.
 - separate modules for work-package writes and schema handling
 - dedicated integration-test helpers around form endpoints and live smoke tests
 
