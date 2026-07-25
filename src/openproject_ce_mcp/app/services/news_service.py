@@ -30,15 +30,15 @@ from dataclasses import dataclass
 from typing import Any
 
 from ...config import Settings
-from ...models import NewsDetail, NewsListResult, NewsSummary, NewsWriteResult
+from ...models import NewsDetail, NewsListResult, NewsWriteResult
 from ..pagination import paginate_client
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..policies.news_policy import news_payload_allowed
 from ..ports.news_api import NewsApi
 from ..ports.project_ref import ProjectRefResolver
-
-SUBJECT_LIMIT = 255
+from .project_scoped_list import SUBJECT_LIMIT, resolve_project_filter_candidates, summary_matches_project_candidates
+from .project_scoped_list import trim_text as _trim_text
 
 
 @dataclass(frozen=True)
@@ -125,17 +125,6 @@ def _to_write_result(outcome: _WriteOutcome) -> NewsWriteResult:
     )
 
 
-def _trim_text(value: Any, *, limit: int) -> str | None:
-    if value is None:
-        return None
-    text = " ".join(str(value).split())
-    if not text:
-        return None
-    if len(text) <= limit:
-        return text
-    return text[: limit - 1].rstrip() + "…"
-
-
 class NewsService:
     def __init__(
         self,
@@ -153,25 +142,6 @@ class NewsService:
     def _stamp(self, value: Any) -> Any:
         return hidden_fields.apply_hidden_fields("news", value, settings=self._settings)
 
-    async def _resolve_project_filter_candidates(self, project: str | None) -> set[str] | None:
-        if project is None:
-            return None
-        project_payload = await self._resolve_project_ref(project, write=False)
-        return {
-            str(project_payload["id"]).casefold(),
-            (_trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
-            (_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or "").casefold(),
-        }
-
-    @staticmethod
-    def _summary_matches_project_candidates(item: NewsSummary, project_candidates: set[str]) -> bool:
-        return not project_candidates.isdisjoint(
-            {
-                str(item.project_id).casefold() if item.project_id is not None else "",
-                (item.project or "").casefold(),
-            }
-        )
-
     async def list(
         self,
         *,
@@ -184,7 +154,9 @@ class NewsService:
         effective_limit = min(
             limit or self._settings.default_page_size, self._settings.max_page_size, self._settings.max_results
         )
-        project_candidates = await self._resolve_project_filter_candidates(project)
+        project_candidates = await resolve_project_filter_candidates(
+            project, resolve_project_ref=self._resolve_project_ref
+        )
 
         records = await self._api.list_all(page_size=self._settings.max_results)
         results = [
@@ -197,7 +169,7 @@ class NewsService:
             )
         ]
         if project_candidates is not None:
-            results = [item for item in results if self._summary_matches_project_candidates(item, project_candidates)]
+            results = [item for item in results if summary_matches_project_candidates(item, project_candidates)]
         if search is not None:
             search_key = search.casefold()
             results = [
