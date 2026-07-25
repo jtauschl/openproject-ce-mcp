@@ -416,6 +416,22 @@ def test_news_service_binds_the_api_param_to_news_api_specifically() -> None:
     assert hints["api"] is not HttpxNewsApi, "NewsService.__init__'s api param must not be the concrete adapter"
 
 
+def test_document_service_binds_the_api_param_to_document_api_specifically() -> None:
+    """Non-generalized regression test for the Documents domain's exact
+    guarantee, sibling to the checks above: the api param is DocumentApi
+    exactly, not just "some Protocol". No DocumentResolver exists (like
+    Memberships/News) -- document_id is always a numeric value already
+    validated by tools.py, so there is no semantic-reference resolution for
+    this domain to warrant a Resolver."""
+    from openproject_ce_mcp.app.adapters.httpx_document_api import HttpxDocumentApi
+    from openproject_ce_mcp.app.ports.document_api import DocumentApi
+    from openproject_ce_mcp.app.services.document_service import DocumentService
+
+    hints = typing.get_type_hints(DocumentService.__init__)
+    assert hints["api"] is DocumentApi, "DocumentService.__init__'s api param must be typed DocumentApi"
+    assert hints["api"] is not HttpxDocumentApi, "DocumentService.__init__'s api param must not be the concrete adapter"
+
+
 # Names that once lived in app/ports/project_api.py (HAL->model normalize_*
 # translation functions and their private text/href helpers) before they moved
 # to app/adapters/httpx_project_api.py, matching the Versions domain's

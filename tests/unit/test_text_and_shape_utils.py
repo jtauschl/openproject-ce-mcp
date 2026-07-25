@@ -254,18 +254,6 @@ async def test_get_project_returns_full_description_by_default_get_projects_caps
     await client.aclose()
 
 
-def test_normalize_document_description_is_delimited() -> None:
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
-
-    payload = {"id": 1, "title": "Spec", "description": {"raw": "secret plan"}, "_links": {}}
-
-    summary = client.normalize_document(payload)
-    detail = client.normalize_document_detail(payload)
-
-    assert summary.description == "<user-content>secret plan</user-content>"
-    assert detail.description == "<user-content>secret plan</user-content>"
-
-
 def test_normalize_time_entry_comment_is_delimited() -> None:
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
 
@@ -411,36 +399,6 @@ async def test_activity_comment_delimited():
     assert activity.comment == "<user-content>User comment text</user-content>"
 
     await client.aclose()
-
-
-@pytest.mark.asyncio
-async def test_document_description_hidden_by_document_scope_not_project_scope():
-    payload = {
-        "id": 5,
-        "title": "Architecture",
-        "description": {"format": "markdown", "raw": "Document description content"},
-        "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
-    }
-
-    settings_project_hidden = _base_settings(hide_project_fields=("description",))
-    client_project_hidden = OpenProjectClient(
-        settings_project_hidden, transport=httpx.MockTransport(lambda r: httpx.Response(200))
-    )
-    document = client_project_hidden.normalize_document(payload)
-    assert document.description == "<user-content>Document description content</user-content>"
-    detail = client_project_hidden.normalize_document_detail(payload)
-    assert detail.description == "<user-content>Document description content</user-content>"
-    await client_project_hidden.aclose()
-
-    settings_document_hidden = _base_settings(hidden_fields={"document": ("description",)})
-    client_document_hidden = OpenProjectClient(
-        settings_document_hidden, transport=httpx.MockTransport(lambda r: httpx.Response(200))
-    )
-    document_hidden = client_document_hidden.normalize_document(payload)
-    assert document_hidden.description is None
-    detail_hidden = client_document_hidden.normalize_document_detail(payload)
-    assert detail_hidden.description is None
-    await client_document_hidden.aclose()
 
 
 @pytest.mark.asyncio

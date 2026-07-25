@@ -15,6 +15,7 @@ import httpx
 
 from . import __version__
 from .app.adapters import httpx_version_api as _httpx_version_api
+from .app.adapters.httpx_document_api import HttpxDocumentApi
 from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
@@ -38,6 +39,7 @@ from .app.pagination import paginate_server as _paginate_server
 from .app.policies import access as _access_policy
 from .app.policies import hidden_fields as _hidden_fields_policy
 from .app.policies import scope as _scope_policy
+from .app.ports.document_api import DocumentApi
 from .app.ports.membership_api import MembershipApi
 from .app.ports.news_api import NewsApi
 from .app.ports.project_api import ProjectApi
@@ -45,6 +47,7 @@ from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageR
 from .app.ports.version_api import VersionApi
 from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.version_resolver import VersionResolver
+from .app.services.document_service import DocumentService
 from .app.services.membership_service import MembershipService
 from .app.services.news_service import NewsService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
@@ -348,6 +351,14 @@ class OpenProjectClient:
         self._news_api: NewsApi = HttpxNewsApi(HttpxTransport(self._http), base_url=settings.base_url)
         self._news_service = NewsService(
             api=self._news_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_project_ref=self._get_project_payload,
+        )
+
+        self._document_api: DocumentApi = HttpxDocumentApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._document_service = DocumentService(
+            api=self._document_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
             resolve_project_ref=self._get_project_payload,
@@ -1012,46 +1023,10 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> DocumentListResult:
-        self._ensure_read_enabled("project")
-        effective_limit = self._resolve_limit(limit)
-        project_candidates = await self._resolve_project_filter_candidates(project)
-
-        def post_filter(results: list[DocumentSummary]) -> list[DocumentSummary]:
-            if project_candidates is not None:
-                results = [
-                    item for item in results if self._summary_matches_project_candidates(item, project_candidates)
-                ]
-            if search is not None:
-                search_key = search.casefold()
-                results = [item for item in results if search_key in (item.title or "").casefold()]
-            return results
-
-        page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
-            path="documents",
-            params_extra=None,
-            normalize=self.normalize_document,
-            item_allowed=self._document_payload_allowed,
-            post_filter=post_filter,
-            offset=offset,
-            limit=effective_limit,
-        )
-        return DocumentListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(page),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=page,
-        )
+        return await self._document_service.list(project=project, search=search, offset=offset, limit=limit)
 
     async def get_document(self, document_id: int) -> DocumentDetail:
-        return await self._fetch_and_normalize_detail(
-            scope="project",
-            path=f"documents/{document_id}",
-            ensure_fn=self._ensure_document_payload_allowed,
-            normalize_fn=self.normalize_document_detail,
-        )
+        return await self._document_service.get(document_id)
 
     async def update_document(
         self,
@@ -1061,43 +1036,8 @@ class OpenProjectClient:
         description: str | None = None,
         confirm: bool = False,
     ) -> DocumentWriteResult:
-        current = await self._get(f"documents/{document_id}")
-        self._ensure_document_write_payload_allowed(current)
-        payload: dict[str, Any] = {}
-        if title is not None:
-            self._ensure_field_writable("document", "title")
-            payload["title"] = title
-        if description is not None:
-            self._ensure_field_writable("document", "description")
-            payload["description"] = {"format": "markdown", "raw": description}
-        detail = self.normalize_document_detail(current)
-        if not confirm:
-            return DocumentWriteResult(
-                action="update",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to update this document. Ask for confirmation, then call again with confirm=true.",
-                document_id=detail.id,
-                project=detail.project,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        self._ensure_write_enabled("project")
-        response = await self._patch(f"documents/{document_id}", json_body=payload)
-        result = self.normalize_document_detail(response)
-        return DocumentWriteResult(
-            action="update",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Document updated successfully.",
-            document_id=result.id,
-            project=result.project,
-            payload=payload,
-            validation_errors={},
-            result=result,
+        return await self._document_service.update(
+            document_id=document_id, title=title, description=description, confirm=confirm
         )
 
     async def list_news(
@@ -5312,52 +5252,6 @@ class OpenProjectClient:
             ),
         )
 
-    def normalize_document(self, payload: dict[str, Any]) -> DocumentSummary:
-        links = payload.get("_links", {})
-        attachments = payload.get("_embedded", {}).get("attachments", {})
-        attachment_count = 0
-        if isinstance(attachments, dict):
-            attachment_count = int(attachments.get("count") or attachments.get("total") or 0)
-        return self._apply_hidden_fields(
-            "document",
-            DocumentSummary(
-                id=int(payload["id"]),
-                title=_trim_text(payload.get("title"), limit=SUBJECT_LIMIT) or f"Document {payload['id']}",
-                project_id=_id_from_href(links.get("project", {}).get("href")),
-                project=_link_title(links.get("project")),
-                description=_delimit_user_content(
-                    self._visible_formattable_text(
-                        payload.get("description"), "document", "description", limit=SUBJECT_LIMIT
-                    )
-                ),
-                created_at=payload.get("createdAt"),
-                attachment_count=attachment_count,
-                can_update=_can_update_from_links(links),
-                url=self._web_url(f"documents/{payload['id']}"),
-            ),
-        )
-
-    def normalize_document_detail(self, payload: dict[str, Any]) -> DocumentDetail:
-        summary = self.normalize_document(payload)
-        links = payload.get("_links", {})
-        return self._apply_hidden_fields(
-            "document",
-            DocumentDetail(
-                id=summary.id,
-                title=summary.title,
-                project_id=summary.project_id,
-                project=summary.project,
-                description=_delimit_user_content(
-                    self._visible_formattable_text(payload.get("description"), "document", "description")
-                ),
-                created_at=summary.created_at,
-                attachment_count=summary.attachment_count,
-                attachments_url=self._link_to_web_url(links.get("attachments", {}).get("href")),
-                can_update=summary.can_update,
-                url=summary.url,
-            ),
-        )
-
     def normalize_wiki_page(self, payload: dict[str, Any]) -> WikiPageDetail:
         links = payload.get("_links", {})
         text_block = payload.get("text") or payload.get("content")
@@ -6601,15 +6495,6 @@ class OpenProjectClient:
 
     async def _view_payload_allowed(self, payload: dict[str, Any]) -> bool:
         return self._payload_allowed(lambda: self._ensure_view_payload_allowed(payload))
-
-    def _ensure_document_payload_allowed(self, payload: dict[str, Any]) -> None:
-        self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
-
-    async def _document_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        return self._payload_allowed(lambda: self._ensure_document_payload_allowed(payload))
-
-    def _ensure_document_write_payload_allowed(self, payload: dict[str, Any]) -> None:
-        self._ensure_project_write_link_allowed(payload.get("_links", {}).get("project"))
 
     def _work_package_payload_allowed(self, payload: dict[str, Any]) -> bool:
         return self._payload_allowed(

@@ -76,9 +76,9 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
-## Layered architecture (Versions, Projects, Memberships, News)
+## Layered architecture (Versions, Projects, Memberships, News, Documents)
 
-`client.py` stays the small, flat facade described above for most domains, but four
+`client.py` stays the small, flat facade described above for most domains, but five
 domains have been migrated into `app/` for a stricter layered structure: Versions
 (`list_versions`, `get_version`, `create_version`, `update_version`,
 `delete_version` — the original pilot, validating the pattern), Projects
@@ -91,13 +91,21 @@ domain every other domain's resolvers depend on), Memberships
 (`list_project_memberships`, `get_membership`, `create_membership`,
 `update_membership`, `delete_membership` — the third migration, the smallest
 full-CRUD domain, coupled to Projects only through the pre-existing
-`ProjectRefResolver` seam), and News (`list_news`, `get_news`, `create_news`,
+`ProjectRefResolver` seam), News (`list_news`, `get_news`, `create_news`,
 `update_news`, `delete_news` — the fourth migration, structurally close to
 Memberships but with no `/form` endpoint, so its Service's preview/commit state
 machine has no validation-error branch, and its `list()` fetches the single
 global `news` collection client-side-filtered against the allowlist and an
 optional project/search predicate, rather than a server-paginated
-project-scoped endpoint):
+project-scoped endpoint), and Documents (`list_documents`, `get_document`,
+`update_document` — the fifth migration, and the first **PATCH-only** domain: the
+OpenProject v3 API exposes no create/delete endpoint for documents, so
+`DocumentService.update()` is a single flat preview/commit method with no shared
+`_WriteOutcome`/`_finalize_write` state machine at all — a state machine with
+exactly one call site would add indirection with no reuse benefit. `update_document`
+also takes no `project` parameter, so unlike News' create/update it never calls
+`resolve_project_ref`; the write-allowlist check runs directly against the
+already-fetched document's own `_links.project`):
 
 ```text
 tools.py (MCP presentation)
@@ -127,6 +135,10 @@ tools.py (MCP presentation)
   deriving one from the other like `VersionRecord.to_detail()`: `normalize_news` and
   `normalize_news_detail` apply *different* truncation limits to the same raw
   `description`, so a copy-based derivation would silently under-truncate `get_news`.
+  `DocumentRecord.to_detail` is lazy for the identical reason: `normalize_document`/
+  `normalize_document_detail` apply different truncation limits to the same raw
+  description, and `DocumentService.list()` never reads `.detail`, so eager
+  computation would waste a second extraction pass on every list row.
 - **Resolvers** turn a semantic reference (a version name, a project identifier) into
   a concrete id, using only a port — never an Application Service. `ProjectResolver`
   is also the concrete implementation the pre-existing `ProjectRefResolver` seam
@@ -168,13 +180,20 @@ tools.py (MCP presentation)
   to zero out on a hide, so there is no reason for the Adapter to perform its own
   hidden-field-aware extraction — it always extracts the full text, and the Service's
   single `apply_hidden_fields` call is sufficient to drop the entire field.
+  `DocumentService` follows the same shape — it reuses the `ProjectRefResolver` seam
+  for `list()`'s optional project filter only, and masks hidden fields exclusively at
+  the Service layer like News (the pre-migration flat code masked at both the
+  extraction point and again via a whole-object stamp; both paths check the same
+  `field_hidden` predicate, so dropping the Adapter-side check is behaviorally
+  equivalent, not a narrowing). `update()` never calls `resolve_project_ref` at all —
+  see above.
 - `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under
   `app/` that imports `httpx`; `client.py`'s own HTTP calls for the remaining
   still-flat domains, and `retry_transport.py`, are unaffected and keep importing it
   directly.
 - `OpenProjectClient` remains a 100%-compatible facade throughout: its public method
-  signatures for Versions, Projects, and Memberships are unchanged, and `tools.py`
-  requires no changes at all. `get_my_project_access` and
+  signatures for Versions, Projects, Memberships, News, and Documents are unchanged,
+  and `tools.py` requires no changes at all. `get_my_project_access` and
   `get_project_work_package_context` stay as client.py-level orchestration rather
   than moving into a Service, since they combine multiple domains (Projects with
   Memberships, and Projects with the still-flat work-package-schema domain,
@@ -195,7 +214,9 @@ domain-specific, so a further domain's migration needs no test changes to stay
 covered — only a small, deliberately non-generalized regression test per migrated
 domain (`test_version_service_and_resolver_bind_the_api_param_to_version_api_specifically`,
 `test_project_service_and_resolver_bind_the_api_param_to_project_api_specifically`,
-`test_membership_service_binds_the_api_param_to_membership_api_specifically`)
+`test_membership_service_binds_the_api_param_to_membership_api_specifically`,
+`test_news_service_binds_the_api_param_to_news_api_specifically`,
+`test_document_service_binds_the_api_param_to_document_api_specifically`)
 pins that domain's exact port type, kept alongside the generic check rather than
 folded into it. Complementary behavioral-contract tests
 (`tests/unit/test_write_confirm_contracts.py`,
@@ -338,14 +359,14 @@ The tradeoff is that `client.py` is large and policy-heavy. That is intentional 
 ## Future split points
 
 The Policies extraction (scope checks, hidden-field enforcement) is done, for every
-domain — see "Layered architecture" above. Versions, Projects, and Memberships are
-migrated; remaining candidates, once each migration's own lessons justify the next
-one:
+domain — see "Layered architecture" above. Versions, Projects, Memberships, News,
+and Documents are migrated; remaining candidates, once each migration's own lessons
+justify the next one:
 
 - migrating additional domains through the same `app/` layers, one at a time —
   re-evaluate which domain's resolvers most depend on already-flat logic, per the
   pilot's own "validate before extending" approach
-- separate modules for project-scoped content like news/documents/views
+- separate modules for project-scoped content like views
 - separate modules for work-package writes and schema handling
 - dedicated integration-test helpers around form endpoints and live smoke tests
 
