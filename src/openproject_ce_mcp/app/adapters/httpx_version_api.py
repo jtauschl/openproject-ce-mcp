@@ -1,13 +1,12 @@
 """HTTP-backed VersionApi adapter (ADR 0001).
 
-No `httpx` import (depends on the `Transport` Protocol only). Contains small,
-deliberately duplicated private copies of `_trim_text`/`_extract_formattable_text`/
-`_trim_text_with_meta`/`_extract_formattable_text_with_meta`/`_link_title`/
-`_normalize_validation_errors`/`_delimit_user_content`
-(+ `SUBJECT_LIMIT`/`FORMATTABLE_LIMIT`) -- duplicated rather than imported from
-client.py to avoid `app/` importing from `client.py` (still used by ~50 other
-normalize_* methods and 6 other `_finalize_*_write` variants there). Unify only
-once every domain has migrated and client.py's copies become truly dead.
+No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
+`_link_title`/`_delimit_user_content`/`SUBJECT_LIMIT` are shared via
+`app/adapters/_text.py` (unified once every domain migrated). Still has its
+own `_extract_formattable_text`/`_trim_text_with_meta`/
+`_extract_formattable_text_with_meta`/`_normalize_validation_errors` (+
+`FORMATTABLE_LIMIT`) -- these differ behaviorally from the other adapters'
+equivalents (see `_text.py`'s module docstring) and are not shared.
 """
 
 from __future__ import annotations
@@ -18,20 +17,12 @@ from urllib.parse import urljoin
 from ...models import VersionDetail, VersionSummary
 from ..ports.version_api import VersionFormResult, VersionPage, VersionRecord, summary_to_detail
 from ..transport.protocol import Transport
+from ._text import SUBJECT_LIMIT
+from ._text import delimit_user_content as _delimit_user_content
+from ._text import link_title as _link_title
+from ._text import trim_text as _trim_text
 
-SUBJECT_LIMIT = 255
 FORMATTABLE_LIMIT = 1_200
-
-
-def _trim_text(value: Any, *, limit: int) -> str | None:
-    if value is None:
-        return None
-    text = " ".join(str(value).split())
-    if not text:
-        return None
-    if len(text) <= limit:
-        return text
-    return text[: limit - 1].rstrip() + "…"
 
 
 def _extract_formattable_text(value: Any, *, limit: int = FORMATTABLE_LIMIT) -> str | None:
@@ -62,24 +53,6 @@ def _extract_formattable_text_with_meta(
 ) -> tuple[str | None, bool, int | None]:
     raw = value.get("raw") or value.get("html") if isinstance(value, dict) else value
     return _trim_text_with_meta(raw, limit=limit)
-
-
-def _link_title(link: Any) -> str | None:
-    if not isinstance(link, dict):
-        return None
-    title = link.get("title")
-    return _trim_text(title, limit=SUBJECT_LIMIT)
-
-
-def _delimit_user_content(text: str | None) -> str | None:
-    """Wrap user-provided text in boundary markers for prompt injection safety.
-
-    Duplicated from client.py's helper of the same name, for the same reason
-    the other helpers in this module are duplicated (see module docstring).
-    """
-    if text is None or not text.strip():
-        return text
-    return f"<user-content>{text}</user-content>"
 
 
 def _normalize_validation_errors(value: Any) -> dict[str, str]:

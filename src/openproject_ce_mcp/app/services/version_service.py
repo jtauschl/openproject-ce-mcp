@@ -1,13 +1,15 @@
 """Application Service for the Versions domain (ADR 0001 pilot).
 
 Depends on the VersionApi Protocol, never HttpxVersionApi concretely (enforced by
-the architecture-boundary test).
+the architecture-boundary test). `_WriteOutcome`/`_finalize_write` are shared via
+`app/services/_write_outcome.py` (unified once a 3rd domain needed the identical
+state machine -- see that module's docstring).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from typing import Any, Generic, TypeVar
+from dataclasses import replace
+from typing import Any
 
 from ...config import Settings
 from ...models import VersionDetail, VersionListResult, VersionSummary, VersionWriteResult
@@ -17,78 +19,7 @@ from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
 from ..ports.version_api import VersionApi
 from ..resolvers.version_query import fetch_version_page
-
-DetailT = TypeVar("DetailT")
-
-
-@dataclass(frozen=True)
-class _WriteOutcome(Generic[DetailT]):
-    ready: bool
-    confirmed: bool
-    requires_confirmation: bool
-    message: str
-    payload: dict[str, Any]
-    validation_errors: dict[str, str]
-    detail: DetailT | None
-    identity: dict[str, Any]
-
-
-async def _finalize_write(
-    *,
-    confirm: bool,
-    payload: dict[str, Any],
-    validation_errors: dict[str, str],
-    identity: dict[str, Any],
-    ensure_write_enabled: Any,
-    commit: Any,
-    committed_identity: Any,
-    rejected_message: str,
-    preview_message: str,
-    success_message: str,
-) -> _WriteOutcome[Any]:
-    """Rejected/preview/committed state machine. Deliberately a *separate* copy of
-    client.py's generic `_finalize_write` (still used by the 6 other, unmigrated
-    write-finalizers) rather than a shared import: `_finalize_write` performs I/O
-    itself (self._patch/self._post directly), which an Application Service must not
-    do (ADR: Services call ports, never transport directly) -- so `commit` here is a
-    port-bound callable instead. Kept as a private helper inside this file (ADR:
-    "domain-scoped instead of living as a generic method on the shared client") --
-    unify only once every domain has migrated.
-    """
-    if validation_errors:
-        return _WriteOutcome(
-            ready=False,
-            confirmed=False,
-            requires_confirmation=not confirm,
-            message=rejected_message,
-            payload=payload,
-            validation_errors=validation_errors,
-            detail=None,
-            identity=identity,
-        )
-    if not confirm:
-        return _WriteOutcome(
-            ready=True,
-            confirmed=False,
-            requires_confirmation=True,
-            message=preview_message,
-            payload=payload,
-            validation_errors={},
-            detail=None,
-            identity=identity,
-        )
-    ensure_write_enabled()
-    detail = await commit(payload)
-    return _WriteOutcome(
-        ready=True,
-        confirmed=True,
-        requires_confirmation=False,
-        message=success_message,
-        payload=payload,
-        validation_errors={},
-        detail=detail,
-        identity=committed_identity(detail),
-    )
+from ._write_outcome import _finalize_write, _WriteOutcome
 
 
 class VersionService:

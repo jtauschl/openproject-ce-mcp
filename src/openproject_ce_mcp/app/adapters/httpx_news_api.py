@@ -3,11 +3,9 @@
 No `httpx` import (depends on the `Transport` Protocol only), no
 `api_prefix` parameter (unlike HttpxMembershipApi/HttpxProjectApi): News
 builds no raw absolute hrefs from server responses, every path is a fixed
-string (`news`, `news/{id}`). Contains small, deliberately duplicated
-private copies of `_trim_text`/`_link_title`/`_id_from_href`/
-`_delimit_user_content`/`_can_update_from_links` (+ `SUBJECT_LIMIT`), after
-the established duplication pattern (see HttpxMembershipApi's module
-docstring) -- unify only once every domain has migrated.
+string (`news`, `news/{id}`). `_trim_text`/`_link_title`/`_id_from_href`/
+`_delimit_user_content`/`SUBJECT_LIMIT` are shared via `app/adapters/_text.py`
+(unified once every domain migrated). `_can_update_from_links` stays local.
 """
 
 from __future__ import annotations
@@ -18,47 +16,17 @@ from urllib.parse import urljoin
 from ...models import NewsDetail, NewsSummary
 from ..ports.news_api import NewsRecord
 from ..transport.protocol import Transport
+from ._text import SUBJECT_LIMIT
+from ._text import delimit_user_content as _delimit_user_content
+from ._text import id_from_href as _id_from_href
+from ._text import link_title as _link_title
+from ._text import trim_text as _trim_text
 
-SUBJECT_LIMIT = 255
 FORMATTABLE_LIMIT = 1_200
-
-
-def _trim_text(value: Any, *, limit: int) -> str | None:
-    if value is None:
-        return None
-    text = " ".join(str(value).split())
-    if not text:
-        return None
-    if len(text) <= limit:
-        return text
-    return text[: limit - 1].rstrip() + "…"
-
-
-def _id_from_href(href: str | None) -> int | None:
-    if not href:
-        return None
-    parts = href.rstrip("/").split("/")
-    try:
-        return int(parts[-1])
-    except (ValueError, IndexError):
-        return None
-
-
-def _link_title(link: Any) -> str | None:
-    if not isinstance(link, dict):
-        return None
-    title = link.get("title")
-    return _trim_text(title, limit=SUBJECT_LIMIT)
 
 
 def _can_update_from_links(links: dict[str, Any]) -> bool:
     return "update" in links or "updateImmediately" in links
-
-
-def _delimit_user_content(text: str | None) -> str | None:
-    if text is None or not text.strip():
-        return text
-    return f"<user-content>{text}</user-content>"
 
 
 def _extract_formattable_text(value: Any, *, limit: int) -> str | None:

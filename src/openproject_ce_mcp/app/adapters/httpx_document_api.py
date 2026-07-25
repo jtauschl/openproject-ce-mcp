@@ -1,11 +1,11 @@
 """HTTP-backed DocumentApi adapter (ADR 0001).
 
-No `httpx` import (depends on the `Transport` Protocol only). Contains small,
-deliberately duplicated private copies of `_trim_text`/`_id_from_href`/
-`_link_title`/`_can_update_from_links`/`_delimit_user_content`/
-`_link_to_web_url`/`_origin_from_url` (+ `SUBJECT_LIMIT`/`FORMATTABLE_LIMIT`),
-after the established duplication pattern (see HttpxProjectApi's module
-docstring) -- unify only once every domain has migrated.
+No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
+`_id_from_href`/`_link_title`/`_delimit_user_content`/`_link_to_web_url`/
+`_origin_from_url`/`SUBJECT_LIMIT` are shared via `app/adapters/_text.py`
+(unified once every domain migrated, per that module's own docstring).
+`_can_update_from_links`/`_extract_formattable_text`/`FORMATTABLE_LIMIT`
+stay local -- not shared across every adapter.
 
 `_extract_formattable_text` here keeps the `.get("raw") or .get("html")`
 fallback that client.py's original has (and that HttpxProjectApi/
@@ -16,62 +16,29 @@ than copied from HttpxNewsApi's local copy, which is missing this fallback.
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 from ...models import DocumentDetail, DocumentSummary
 from ..ports.document_api import DocumentRecord
 from ..transport.protocol import Transport
+from ._text import SUBJECT_LIMIT
+from ._text import delimit_user_content as _delimit_user_content
+from ._text import id_from_href as _id_from_href
+from ._text import link_title as _link_title
+from ._text import link_to_web_url as _link_to_web_url
+from ._text import origin_from_url as _origin_from_url
+from ._text import trim_text as _trim_text
 
-SUBJECT_LIMIT = 255
 FORMATTABLE_LIMIT = 1_200
-
-
-def _trim_text(value: Any, *, limit: int) -> str | None:
-    if value is None:
-        return None
-    text = " ".join(str(value).split())
-    if not text:
-        return None
-    if len(text) <= limit:
-        return text
-    return text[: limit - 1].rstrip() + "…"
-
-
-def _id_from_href(href: str | None) -> int | None:
-    if not href:
-        return None
-    parts = href.rstrip("/").split("/")
-    try:
-        return int(parts[-1])
-    except (ValueError, IndexError):
-        return None
-
-
-def _link_title(link: Any) -> str | None:
-    if not isinstance(link, dict):
-        return None
-    title = link.get("title")
-    return _trim_text(title, limit=SUBJECT_LIMIT)
 
 
 def _can_update_from_links(links: dict[str, Any]) -> bool:
     return "update" in links or "updateImmediately" in links
 
 
-def _delimit_user_content(text: str | None) -> str | None:
-    if text is None or not text.strip():
-        return text
-    return f"<user-content>{text}</user-content>"
-
-
 def _extract_formattable_text(value: Any, *, limit: int) -> str | None:
     raw = value.get("raw") or value.get("html") if isinstance(value, dict) else value
     return _trim_text(raw, limit=limit)
-
-
-def _origin_from_url(url: str) -> str:
-    parsed = urlparse(url)
-    return f"{parsed.scheme}://{parsed.netloc}"
 
 
 def normalize_document(payload: dict[str, Any], *, base_url: str) -> DocumentSummary:
@@ -126,24 +93,6 @@ def normalize_document_detail(payload: dict[str, Any], *, base_url: str, origin:
         can_update=summary.can_update,
         url=summary.url,
     )
-
-
-def _link_to_web_url(href: str | None, *, base_url: str, origin: str) -> str | None:
-    """Same-origin-checked href -> absolute web URL, or None for a foreign origin.
-
-    Verbatim port of client.py's _link_to_web_url: a foreign-origin absolute
-    href silently yields None rather than raising.
-    """
-    if not href:
-        return None
-    parsed = urlparse(href)
-    if parsed.scheme:
-        if _origin_from_url(href) != origin:
-            return None
-        return href
-    if href.startswith("/"):
-        return urljoin(f"{origin.rstrip('/')}/", href.lstrip("/"))
-    return urljoin(f"{base_url.rstrip('/')}/", href)
 
 
 class HttpxDocumentApi:

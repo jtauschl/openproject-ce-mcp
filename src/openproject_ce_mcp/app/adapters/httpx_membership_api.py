@@ -1,13 +1,13 @@
 """HTTP-backed MembershipApi adapter (ADR 0001).
 
-No `httpx` import (depends on the `Transport` Protocol only). Contains small,
-deliberately duplicated private copies of `_trim_text`/`_link_title`/
-`_id_from_href`/`_normalize_validation_errors`/`_origin_from_url` (+
-`SUBJECT_LIMIT`) and of `_link_to_api_path` (see HttpxProjectApi's copy of the
-same name for the full rationale: an absolute href whose origin differs from
-this instance's configured origin is rejected BEFORE any authenticated
-request is made) -- duplicated rather than imported from client.py to avoid
-`app/` importing from `client.py`. Unify only once every domain has migrated.
+No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
+`_link_title`/`_id_from_href`/`_origin_from_url`/`SUBJECT_LIMIT` are shared
+via `app/adapters/_text.py` (unified once every domain migrated). Still has
+its own `_normalize_validation_errors` (differs behaviorally from Version's/
+Project's -- see `_text.py`'s module docstring for why it isn't shared) and
+`_link_to_api_path` (see HttpxProjectApi's copy of the same name for the full
+rationale: an absolute href whose origin differs from this instance's
+configured origin is rejected BEFORE any authenticated request is made).
 """
 
 from __future__ import annotations
@@ -19,36 +19,11 @@ from ...models import MembershipSummary
 from ..errors import OpenProjectServerError
 from ..ports.membership_api import MembershipFormResult, MembershipPage, MembershipRecord
 from ..transport.protocol import Transport
-
-SUBJECT_LIMIT = 255
-
-
-def _trim_text(value: Any, *, limit: int) -> str | None:
-    if value is None:
-        return None
-    text = " ".join(str(value).split())
-    if not text:
-        return None
-    if len(text) <= limit:
-        return text
-    return text[: limit - 1].rstrip() + "…"
-
-
-def _id_from_href(href: str | None) -> int | None:
-    if not href:
-        return None
-    parts = href.rstrip("/").split("/")
-    try:
-        return int(parts[-1])
-    except (ValueError, IndexError):
-        return None
-
-
-def _link_title(link: Any) -> str | None:
-    if not isinstance(link, dict):
-        return None
-    title = link.get("title")
-    return _trim_text(title, limit=SUBJECT_LIMIT)
+from ._text import SUBJECT_LIMIT
+from ._text import id_from_href as _id_from_href
+from ._text import link_title as _link_title
+from ._text import origin_from_url as _origin_from_url
+from ._text import trim_text as _trim_text
 
 
 def _normalize_validation_errors(value: Any) -> dict[str, str]:
@@ -64,11 +39,6 @@ def _normalize_validation_errors(value: Any) -> dict[str, str]:
         if message:
             normalized[str(key)] = message
     return normalized
-
-
-def _origin_from_url(url: str) -> str:
-    parsed = urlparse(url)
-    return f"{parsed.scheme}://{parsed.netloc}"
 
 
 def normalize_membership(payload: dict[str, Any], *, base_url: str) -> MembershipSummary:

@@ -7,13 +7,13 @@ longer calls these directly -- it consumes the ProjectRecord that
 ProjectResolver.resolve_record() forwards from this adapter's own get()/list()
 calls, so no second normalization-without-a-second-HTTP-call concern applies.
 
-Contains small, deliberately duplicated private copies of `_trim_text`/
-`_normalize_text`/`_trim_text_with_meta`/`_extract_formattable_text_with_meta`/
-`_link_title`/`_id_from_href`/`_slug_from_href`/`_delimit_user_content`/
-`_normalize_validation_errors`/`_origin_from_url` (+ `SUBJECT_LIMIT`/
-`FORMATTABLE_LIMIT`/`PROJECT_ANCESTORS_LIMIT`) -- duplicated rather than
-imported from client.py to avoid `app/` importing from `client.py`. Unify only
-once every domain has migrated and client.py's copies become truly dead.
+`_trim_text`/`_link_title`/`_id_from_href`/`_delimit_user_content`/
+`_origin_from_url`/`SUBJECT_LIMIT` are shared via `app/adapters/_text.py`
+(unified once every domain migrated). Still has its own `_normalize_text`/
+`_trim_text_with_meta`/`_extract_formattable_text_with_meta`/`_slug_from_href`/
+`_normalize_validation_errors` (+ `FORMATTABLE_LIMIT`/`PROJECT_ANCESTORS_LIMIT`)
+-- these differ behaviorally from the other adapters' equivalents (see
+`_text.py`'s module docstring) and are not shared.
 """
 
 from __future__ import annotations
@@ -42,21 +42,16 @@ from ..ports.project_api import (
     ProjectSchemaResult,
 )
 from ..transport.protocol import Transport
+from ._text import SUBJECT_LIMIT
+from ._text import delimit_user_content as _delimit_user_content
+from ._text import id_from_href as _id_from_href
+from ._text import link_title as _link_title
+from ._text import link_to_web_url as _shared_link_to_web_url
+from ._text import origin_from_url as _origin_from_url
+from ._text import trim_text as _trim_text
 
 FORMATTABLE_LIMIT = 1_200
-SUBJECT_LIMIT = 255
 PROJECT_ANCESTORS_LIMIT = 20
-
-
-def _trim_text(value: Any, *, limit: int) -> str | None:
-    if value is None:
-        return None
-    text = " ".join(str(value).split())
-    if not text:
-        return None
-    if len(text) <= limit:
-        return text
-    return text[: limit - 1].rstrip() + "…"
 
 
 def _normalize_text(value: Any, *, preserve_newlines: bool) -> str:
@@ -102,23 +97,6 @@ def _extract_formattable_text_with_meta(
     return _trim_text_with_meta(raw, limit=limit, preserve_newlines=preserve_newlines)
 
 
-def _link_title(link: Any) -> str | None:
-    if not isinstance(link, dict):
-        return None
-    title = link.get("title")
-    return _trim_text(title, limit=SUBJECT_LIMIT)
-
-
-def _id_from_href(href: str | None) -> int | None:
-    if not href:
-        return None
-    parts = href.rstrip("/").split("/")
-    try:
-        return int(parts[-1])
-    except (ValueError, IndexError):
-        return None
-
-
 def _slug_from_href(href: str | None) -> str | None:
     if not href:
         return None
@@ -128,12 +106,6 @@ def _slug_from_href(href: str | None) -> str | None:
         return unquote(slug) or None
     except IndexError:
         return None
-
-
-def _delimit_user_content(text: str | None) -> str | None:
-    if text is None or not text.strip():
-        return text
-    return f"<user-content>{text}</user-content>"
 
 
 def normalize_project(
@@ -334,11 +306,6 @@ def _normalize_validation_errors(value: Any) -> dict[str, str]:
     return normalized
 
 
-def _origin_from_url(url: str) -> str:
-    parsed = urlparse(url)
-    return f"{parsed.scheme}://{parsed.netloc}"
-
-
 class HttpxProjectApi:
     def __init__(self, transport: Transport, *, base_url: str, api_prefix: str = "/api/v3/") -> None:
         self._transport = transport
@@ -370,21 +337,15 @@ class HttpxProjectApi:
     def _link_to_web_url(self, href: str | None) -> str | None:
         """Same-origin-checked href -> absolute web URL, or None for a foreign origin.
 
-        Verbatim port of client.py's _link_to_web_url: unlike _link_to_api_path,
-        a foreign-origin absolute href is not an error here -- it silently
-        yields None (job_status_url becomes None) rather than raising, matching
-        copy_project's existing behavior for a copy-job redirect Location.
+        Unlike _link_to_api_path, a foreign-origin absolute href is not an
+        error here -- it silently yields None (job_status_url becomes None)
+        rather than raising, matching copy_project's existing behavior for a
+        copy-job redirect Location. Delegates to the shared free function in
+        _text.py, which every other adapter's own copy of this helper does
+        too -- only the bound-method call shape (closing over self._base_url/
+        self._origin instead of taking them as params) is Project-specific.
         """
-        if not href:
-            return None
-        parsed = urlparse(href)
-        if parsed.scheme:
-            if _origin_from_url(href) != self._origin:
-                return None
-            return href
-        if href.startswith("/"):
-            return urljoin(f"{self._origin.rstrip('/')}/", href.lstrip("/"))
-        return urljoin(f"{self._base_url.rstrip('/')}/", href)
+        return _shared_link_to_web_url(href, base_url=self._base_url, origin=self._origin)
 
     def _record(self, payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT) -> ProjectRecord:
         base_url = self._base_url

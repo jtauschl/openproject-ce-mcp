@@ -10,12 +10,15 @@ combine Projects with the still-flat Memberships/Work-Package-schema domains, an
 a Service must not depend on another Service. They stay as client.py-level
 orchestration that calls into ProjectService/ProjectResolver for the project-
 identity part only.
+
+`_WriteOutcome`/`_finalize_write` are shared via `app/services/_write_outcome.py`
+(unified once a 3rd domain needed the identical state machine).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from typing import Any, Generic, TypeVar
+from dataclasses import replace
+from typing import Any
 from urllib.parse import unquote
 
 from ...config import Settings
@@ -40,6 +43,7 @@ from ..policies.scope import ensure_project_link_allowed, payload_allowed
 from ..ports.project_api import ProjectApi
 from ..resolvers.project_query import fetch_project_page
 from ..resolvers.project_resolver import ProjectResolver
+from ._write_outcome import _finalize_write, _WriteOutcome
 
 SUBJECT_LIMIT = 255
 
@@ -88,73 +92,6 @@ def _slug_from_href(href: str | None) -> str | None:
 # client.py; client.py's create_project/update_project/copy_project wrappers
 # translate their own CLEAR into this one at the call boundary.
 CLEAR_PARENT = object()
-
-DetailT = TypeVar("DetailT")
-
-
-@dataclass(frozen=True)
-class _WriteOutcome(Generic[DetailT]):
-    ready: bool
-    confirmed: bool
-    requires_confirmation: bool
-    message: str
-    payload: dict[str, Any]
-    validation_errors: dict[str, str]
-    detail: DetailT | None
-    identity: dict[str, Any]
-
-
-async def _finalize_write(
-    *,
-    confirm: bool,
-    payload: dict[str, Any],
-    validation_errors: dict[str, str],
-    identity: dict[str, Any],
-    ensure_write_enabled: Any,
-    commit: Any,
-    committed_identity: Any,
-    rejected_message: str,
-    preview_message: str,
-    success_message: str,
-) -> _WriteOutcome[Any]:
-    """Rejected/preview/committed state machine. Private, domain-local copy --
-    see version_service.py's identical helper for the ADR rationale (Services
-    call ports, never transport directly; unify only once every domain migrates).
-    """
-    if validation_errors:
-        return _WriteOutcome(
-            ready=False,
-            confirmed=False,
-            requires_confirmation=not confirm,
-            message=rejected_message,
-            payload=payload,
-            validation_errors=validation_errors,
-            detail=None,
-            identity=identity,
-        )
-    if not confirm:
-        return _WriteOutcome(
-            ready=True,
-            confirmed=False,
-            requires_confirmation=True,
-            message=preview_message,
-            payload=payload,
-            validation_errors={},
-            detail=None,
-            identity=identity,
-        )
-    ensure_write_enabled()
-    detail = await commit(payload)
-    return _WriteOutcome(
-        ready=True,
-        confirmed=True,
-        requires_confirmation=False,
-        message=success_message,
-        payload=payload,
-        validation_errors={},
-        detail=detail,
-        identity=committed_identity(detail),
-    )
 
 
 def _stamp_project(value: Any, *, settings: Settings) -> Any:

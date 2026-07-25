@@ -6,13 +6,15 @@ MembershipResolver: unlike Versions (name -> id) or Projects
 (identifier/name -> id), a `membership_id` is always a numeric value already
 validated by tools.py -- there is no semantic-reference resolution for this
 domain to warrant a Resolver in the ADR sense.
+
+`_WriteOutcome`/`_finalize_write` are shared via `app/services/_write_outcome.py`
+(unified once a 3rd domain needed the identical state machine).
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from ...config import Settings
 from ...models import MembershipListResult, MembershipSummary, MembershipWriteResult, RoleListResult
@@ -24,73 +26,7 @@ from ..ports.membership_api import MembershipApi
 from ..ports.principal_ref import PrincipalRefResolver
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
-
-DetailT = TypeVar("DetailT")
-
-
-@dataclass(frozen=True)
-class _WriteOutcome(Generic[DetailT]):
-    ready: bool
-    confirmed: bool
-    requires_confirmation: bool
-    message: str
-    payload: dict[str, Any]
-    validation_errors: dict[str, str]
-    detail: DetailT | None
-    identity: dict[str, Any]
-
-
-async def _finalize_write(
-    *,
-    confirm: bool,
-    payload: dict[str, Any],
-    validation_errors: dict[str, str],
-    identity: dict[str, Any],
-    ensure_write_enabled: Any,
-    commit: Any,
-    committed_identity: Any,
-    rejected_message: str,
-    preview_message: str,
-    success_message: str,
-) -> _WriteOutcome[Any]:
-    """Rejected/preview/committed state machine. Private, domain-local copy --
-    see version_service.py's identical helper for the ADR rationale (Services
-    call ports, never transport directly; unify only once every domain migrates).
-    """
-    if validation_errors:
-        return _WriteOutcome(
-            ready=False,
-            confirmed=False,
-            requires_confirmation=not confirm,
-            message=rejected_message,
-            payload=payload,
-            validation_errors=validation_errors,
-            detail=None,
-            identity=identity,
-        )
-    if not confirm:
-        return _WriteOutcome(
-            ready=True,
-            confirmed=False,
-            requires_confirmation=True,
-            message=preview_message,
-            payload=payload,
-            validation_errors={},
-            detail=None,
-            identity=identity,
-        )
-    ensure_write_enabled()
-    detail = await commit(payload)
-    return _WriteOutcome(
-        ready=True,
-        confirmed=True,
-        requires_confirmation=False,
-        message=success_message,
-        payload=payload,
-        validation_errors={},
-        detail=detail,
-        identity=committed_identity(detail),
-    )
+from ._write_outcome import _finalize_write, _WriteOutcome
 
 
 class MembershipService:
