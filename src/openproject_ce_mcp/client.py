@@ -3766,7 +3766,6 @@ class OpenProjectClient:
     async def toggle_activity_emoji_reaction(
         self, activity_id: int, reaction: str, *, confirm: bool = False
     ) -> EmojiReactionWriteResult:
-        self._ensure_write_enabled("work_package")
         if reaction not in self.EMOJI_REACTIONS:
             raise InvalidInputError(f"reaction must be one of: {', '.join(self.EMOJI_REACTIONS)}.")
         # Enforce the project write allowlist against the activity's work package.
@@ -3799,6 +3798,7 @@ class OpenProjectClient:
                 reaction=reaction,
                 result=None,
             )
+        self._ensure_write_enabled("work_package")
         # PATCH toggles: adds the reaction if absent, removes it if present, and
         # returns the full reaction collection for the activity afterwards.
         payload = await self._patch(

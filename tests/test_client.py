@@ -8793,6 +8793,73 @@ async def test_toggle_activity_emoji_reaction_fails_closed_without_work_package_
     await client.aclose()
 
 
+@pytest.mark.asyncio
+async def test_toggle_activity_emoji_reaction_preview_does_not_require_write_enabled() -> None:
+    """A confirm=False preview must not require OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE
+    -- only the actual confirm=True mutation does. The project write-allowlist
+    check still runs during the preview (that's an authorization gate, not the
+    write-enabled scope flag)."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/activities/1988" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 1988, "_links": {"workPackage": {"href": "/api/v3/work_packages/42"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.method == "PATCH":
+            raise AssertionError("PATCH must not be issued without confirm=true")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_work_package_write=False)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.toggle_activity_emoji_reaction(1988, "heart")
+
+    assert result.confirmed is False
+    assert result.requires_confirmation is True
+    assert result.ready is True
+    assert result.result is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_toggle_activity_emoji_reaction_confirm_still_requires_write_enabled() -> None:
+    """confirm=True must still be rejected when OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE is off."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/activities/1988" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 1988, "_links": {"workPackage": {"href": "/api/v3/work_packages/42"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.method == "PATCH":
+            raise AssertionError("PATCH must not be issued when work_package write is disabled")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_work_package_write=False)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="work package write support is disabled"):
+        await client.toggle_activity_emoji_reaction(1988, "heart", confirm=True)
+
+    await client.aclose()
+
+
 def _notification_payload(
     notification_id: int,
     *,
