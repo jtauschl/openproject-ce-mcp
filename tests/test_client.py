@@ -6045,7 +6045,7 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
                 request=request,
             )
         if request.url.path == "/api/v3/capabilities":
-            assert request.url.params.get("filters") == '[{"context":{"operator":"=","values":["p1"]}}]'
+            assert request.url.params.get("filters") == '[{"context":{"operator":"=","values":["w1"]}}]'
             return httpx.Response(
                 200,
                 json={
@@ -6058,7 +6058,7 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
                                     "self": {"href": "/api/v3/capabilities/update-project"},
                                     "action": {"href": "/api/v3/actions/update", "title": "update"},
                                     "principal": {"href": "/api/v3/users/5", "title": "Alice"},
-                                    "context": {"title": "Demo"},
+                                    "context": {"href": "/api/v3/projects/1", "title": "Demo"},
                                 },
                             }
                         ]
@@ -6137,6 +6137,82 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
     assert sort_by.direction == "asc"
     assert schemas.count == 1
     assert schemas.results[0].operator_count == 2
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_capabilities_by_id_uses_single_item_get_not_collection_filter() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/capabilities/update-project":
+            return httpx.Response(
+                200,
+                json={
+                    "name": "canUpdate",
+                    "_links": {
+                        "self": {"href": "/api/v3/capabilities/update-project"},
+                        "action": {"href": "/api/v3/actions/update", "title": "update"},
+                        "principal": {"href": "/api/v3/users/5", "title": "Alice"},
+                        "context": {"href": "/api/v3/projects/1", "title": "Demo"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.list_capabilities(capability_id="update-project")
+
+    assert result.count == 1
+    assert result.results[0].principal_name == "Alice"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_capabilities_by_id_checks_the_records_own_context_allowlist() -> None:
+    """Regression test: a capability_id-only lookup (no `project` given) must
+    still allowlist-check the returned record's own `context` link, not skip
+    the check just because there was no `project` parameter to resolve.
+    Previously this leaked capability records (including their project
+    context) outside OPENPROJECT_READ_PROJECTS."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/capabilities/update-project":
+            return httpx.Response(
+                200,
+                json={
+                    "name": "canUpdate",
+                    "_links": {
+                        "self": {"href": "/api/v3/capabilities/update-project"},
+                        "action": {"href": "/api/v3/actions/update", "title": "update"},
+                        "principal": {"href": "/api/v3/users/5", "title": "Alice"},
+                        "context": {"href": "/api/v3/projects/1", "title": "Demo"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("other-project",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_capabilities(capability_id="update-project")
+
+    assert result.count == 0
+    assert result.results == []
 
     await client.aclose()
 

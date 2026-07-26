@@ -45,6 +45,14 @@ development baseline.
   permission error instead of silently returning zero results** when it
   cannot prove the query is scoped to only the allowed projects — previously
   indistinguishable from "this project genuinely has no work packages yet."
+- **`list_capabilities` no longer leaks capability records (including project
+  names and principals) from outside `OPENPROJECT_READ_PROJECTS`.** Only the
+  caller-supplied `project` parameter was ever checked against the allowlist;
+  each returned capability's own project link was not, so a `capability_id`
+  lookup with no `project` given skipped the check entirely. `capability_id`
+  now also resolves via the single-item lookup rather than an undocumented
+  collection filter, and the `context` filter uses the current workspace
+  syntax instead of the deprecated project-prefixed one.
 
 ---
 

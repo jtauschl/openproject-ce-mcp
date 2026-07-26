@@ -887,6 +887,10 @@ class OpenProjectClient:
             results=results,
         )
 
+    def _capability_context_allowed(self, payload: dict[str, Any]) -> bool:
+        context_link = payload.get("_links", {}).get("context")
+        return self._payload_allowed(lambda: self._ensure_project_link_allowed(context_link))
+
     async def list_capabilities(
         self,
         *,
@@ -899,26 +903,55 @@ class OpenProjectClient:
         if project is None and capability_id is None:
             raise InvalidInputError("At least one of project or capability_id is required for capabilities.")
         effective_limit = self._resolve_limit(limit)
-        filters: list[dict[str, Any]] = []
-        if capability_id is not None:
-            filters.append({"id": {"operator": "=", "values": [capability_id]}})
+
+        project_id: str | None = None
         if project is not None:
             project_id = await self._resolve_project_id(project)
-            filters.append({"context": {"operator": "=", "values": [f"p{project_id}"]}})
-        payload = await self._get(
-            "capabilities",
-            params={
-                "offset": str(offset),
-                "pageSize": str(effective_limit),
-                "filters": _json_param(filters),
-            },
-        )
-        results = [
-            self.normalize_capability(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        total = int(payload.get("total", len(results)))
+
+        if capability_id is not None:
+            # capability_id is filtered via the single-item GET, not a
+            # collection filter -- OpenProject's capabilities collection
+            # endpoint only documents action/principal/context filters, no
+            # id filter (found via the OpenProject API docs while fixing the
+            # allowlist gap below; the previous {"id": ...} collection filter
+            # was undocumented and unverified against the live API).
+            payload = await self._get(f"capabilities/{quote(capability_id, safe='')}")
+            raw_results = [payload] if self._capability_context_allowed(payload) else []
+            if project_id is not None:
+                context_href = payload.get("_links", {}).get("context", {}).get("href")
+                if not context_href or context_href.rstrip("/").split("/")[-1] != str(project_id):
+                    raw_results = []
+            total = len(raw_results)
+        else:
+            # w{id} is the current context-filter syntax; p{id} (used by the
+            # pre-fix code) is deprecated. See the allowlist-gap comment
+            # below for why the per-record check below still runs even
+            # though this filter already narrows the query server-side.
+            filters: list[dict[str, Any]] = [{"context": {"operator": "=", "values": [f"w{project_id}"]}}]
+            payload = await self._get(
+                "capabilities",
+                params={
+                    "offset": str(offset),
+                    "pageSize": str(effective_limit),
+                    "filters": _json_param(filters),
+                },
+            )
+            elements = payload.get("_embedded", {}).get("elements", [])
+            raw_results = [
+                item for item in elements if isinstance(item, dict) and self._capability_context_allowed(item)
+            ]
+            total = int(payload.get("total", len(raw_results)))
+
+        # SECURITY FIX: the previous code only ever allowlist-checked the
+        # caller-supplied `project` parameter (by resolving it before
+        # building the server-side `context` filter); it never checked each
+        # RETURNED capability's own `context` link. A capability_id-only
+        # call skipped the check entirely, since no `project` was given to
+        # resolve -- letting a restrictive OPENPROJECT_READ_PROJECTS leak
+        # capability records (including project names/principals) outside
+        # the caller's read scope. Every returned record's context link is
+        # now checked above, regardless of which lookup path was taken.
+        results = [self.normalize_capability(item) for item in raw_results]
         return CapabilityListResult(
             offset=offset,
             limit=effective_limit,
