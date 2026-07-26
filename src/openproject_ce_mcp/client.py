@@ -15,6 +15,7 @@ import httpx
 
 from . import __version__
 from .app.adapters import httpx_version_api as _httpx_version_api
+from .app.adapters.httpx_board_api import HttpxBoardApi
 from .app.adapters.httpx_category_api import HttpxCategoryApi
 from .app.adapters.httpx_document_api import HttpxDocumentApi
 from .app.adapters.httpx_grid_api import HttpxGridApi
@@ -45,6 +46,7 @@ from .app.policies import access as _access_policy
 from .app.policies import hidden_fields as _hidden_fields_policy
 from .app.policies import scope as _scope_policy
 from .app.policies import sprint_policy as _sprint_policy
+from .app.ports.board_api import BoardApi
 from .app.ports.category_api import CategoryApi
 from .app.ports.document_api import DocumentApi
 from .app.ports.grid_api import GridApi
@@ -58,6 +60,7 @@ from .app.ports.view_api import ViewApi
 from .app.ports.wiki_page_api import WikiPageApi
 from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.version_resolver import VersionResolver
+from .app.services.board_service import BoardService
 from .app.services.category_service import CategoryService
 from .app.services.document_service import DocumentService
 from .app.services.grid_service import GridService
@@ -85,7 +88,6 @@ from .models import (
     BatchWorkPackageReadItemResult,
     BatchWorkPackageReadResult,
     BoardDetail,
-    BoardFilter,
     BoardListResult,
     BoardSummary,
     BoardWriteResult,
@@ -414,6 +416,16 @@ class OpenProjectClient:
             api=self._grid_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
+        )
+
+        self._board_api: BoardApi = HttpxBoardApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._board_service = BoardService(
+            api=self._board_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_project_ref=self._get_project_payload,
+            api_prefix=self._api_prefix,
+            origin=self._origin,
         )
 
     async def initialize(self) -> None:
@@ -2785,78 +2797,10 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> BoardListResult:
-        self._ensure_read_enabled("board")
-        effective_limit = self._resolve_limit(limit)
-        use_client_side_filtering = (
-            project is not None or bool(search) or not _scope_allows_all(self.settings.read_projects)
-        )
-        if use_client_side_filtering:
-            project_candidates: set[str] = set()
-            if project is not None:
-                project_payload = await self._get_project_payload(project)
-                project_candidates = {
-                    project.casefold(),
-                    str(project_payload["id"]).casefold(),
-                    (_trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
-                    (_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or "").casefold(),
-                }
-
-            def post_filter(filtered: list[BoardSummary]) -> list[BoardSummary]:
-                if project is not None:
-                    filtered = [
-                        item for item in filtered if self._summary_matches_project_candidates(item, project_candidates)
-                    ]
-                if search:
-                    search_key = search.casefold()
-                    filtered = [item for item in filtered if search_key in (item.name or "").casefold()]
-                return filtered
-
-            results, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
-                path="queries",
-                params_extra=None,
-                normalize=self.normalize_board,
-                item_allowed=self._board_payload_allowed,
-                post_filter=post_filter,
-                offset=offset,
-                limit=effective_limit,
-            )
-            return BoardListResult(
-                offset=offset,
-                limit=effective_limit,
-                total=total,
-                count=len(results),
-                next_offset=next_offset,
-                truncated=truncated,
-                results=results,
-            )
-
-        payload = await self._get(
-            "queries",
-            params={
-                "offset": str(offset),
-                "pageSize": str(effective_limit),
-            },
-        )
-        results = [self.normalize_board(item) for item in payload.get("_embedded", {}).get("elements", [])]
-        total = int(payload.get("total", len(results)))
-        next_offset, truncated = _paginate_server(offset=offset, limit=effective_limit, total=total)
-        return BoardListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(results),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=results,
-        )
+        return await self._board_service.list(project=project, search=search, offset=offset, limit=limit)
 
     async def get_board(self, board_id: int) -> BoardDetail:
-        return await self._fetch_and_normalize_detail(
-            scope="board",
-            path=f"queries/{board_id}",
-            ensure_fn=self._ensure_board_payload_allowed,
-            normalize_fn=self.normalize_board_detail,
-        )
+        return await self._board_service.get(board_id)
 
     async def create_board(
         self,
@@ -2876,14 +2820,7 @@ class OpenProjectClient:
         filters: list[dict[str, Any]] | None = None,
         confirm: bool = False,
     ) -> BoardWriteResult:
-        if project is not None:
-            await self._get_project_payload(project, write=True)
-        elif not (_scope_allows_all(self.settings.read_projects) and _scope_allows_all(self.settings.write_projects)):
-            raise PermissionDeniedError(
-                "Project-scoped board writes require a project unless both OPENPROJECT_READ_PROJECTS and "
-                "OPENPROJECT_WRITE_PROJECTS are '*'."
-            )
-        payload = await self._build_board_write_payload(
+        return await self._board_service.create(
             name=name,
             project=project,
             public=public,
@@ -2897,16 +2834,7 @@ class OpenProjectClient:
             sort_by=sort_by,
             highlighted_attributes=highlighted_attributes,
             filters=filters,
-        )
-        form = await self._post("queries/form", json_body=payload)
-        return await self._finalize_board_write(
-            action="create",
             confirm=confirm,
-            form=form,
-            write_path="queries",
-            project_name=_link_title(form.get("_embedded", {}).get("payload", {}).get("_links", {}).get("project")),
-            preview_message="OpenProject validated the board. Ask for confirmation, then call again with confirm=true to create it.",
-            success_message="Board created successfully.",
         )
 
     async def update_board(
@@ -2928,10 +2856,8 @@ class OpenProjectClient:
         filters: list[dict[str, Any]] | None = None,
         confirm: bool = False,
     ) -> BoardWriteResult:
-        current = await self._get(f"queries/{board_id}")
-        self._ensure_board_write_payload_allowed(current)
-        self._ensure_board_payload_allowed(current)
-        payload = await self._build_board_write_payload(
+        return await self._board_service.update(
+            board_id=board_id,
             name=name,
             project=project,
             public=public,
@@ -2945,17 +2871,7 @@ class OpenProjectClient:
             sort_by=sort_by,
             highlighted_attributes=highlighted_attributes,
             filters=filters,
-        )
-        form = await self._post(f"queries/{board_id}/form", json_body=payload)
-        return await self._finalize_board_write(
-            action="update",
             confirm=confirm,
-            form=form,
-            write_path=f"queries/{board_id}",
-            write_method="PATCH",
-            board_id=board_id,
-            project_name=_link_title(current.get("_links", {}).get("project")),
-            success_message="Board updated successfully.",
         )
 
     async def delete_board(
@@ -2964,22 +2880,7 @@ class OpenProjectClient:
         board_id: int,
         confirm: bool = False,
     ) -> BoardWriteResult:
-        current = await self._get(f"queries/{board_id}")
-        self._ensure_board_payload_allowed(current)
-        self._ensure_board_write_payload_allowed(current)
-        detail = self.normalize_board_detail(current)
-        payload = {"id": detail.id, "name": detail.name}
-        return await self._finalize_delete(
-            result_cls=BoardWriteResult,
-            confirm=confirm,
-            result_kwargs={"board_id": detail.id, "project": detail.project, "payload": payload},
-            preview_result=detail,
-            commit_result=detail,
-            write_scope="board",
-            delete_path=f"queries/{board_id}",
-            preview_message="OpenProject found the board. Ask for confirmation, then call again with confirm=true to delete it.",
-            success_message="Board deleted successfully.",
-        )
+        return await self._board_service.delete(board_id=board_id, confirm=confirm)
 
     async def get_work_package_relations(
         self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
@@ -4874,66 +4775,6 @@ class OpenProjectClient:
         )
         return self._apply_hidden_fields("version", detail)
 
-    def normalize_board(self, payload: dict[str, Any]) -> BoardSummary:
-        links = payload.get("_links", {})
-        project_link = links.get("project")
-        filters = payload.get("filters", [])
-        if not isinstance(filters, list):
-            filters = []
-        return self._apply_hidden_fields(
-            "board",
-            BoardSummary(
-                id=int(payload["id"]),
-                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Board {payload['id']}",
-                project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
-                project=_link_title(project_link),
-                public=bool(payload.get("public")),
-                hidden=bool(payload.get("hidden")),
-                starred=bool(payload.get("starred")),
-                include_subprojects=bool(payload.get("includeSubprojects")),
-                show_hierarchies=bool(payload.get("showHierarchies")),
-                timeline_visible=bool(payload.get("timelineVisible")),
-                filter_count=len(filters),
-                can_update=_can_update_from_links(links),
-                can_delete=bool(links.get("delete")),
-                url=self._board_web_url(payload),
-            ),
-        )
-
-    def normalize_board_detail(self, payload: dict[str, Any]) -> BoardDetail:
-        summary = self.normalize_board(payload)
-        links = payload.get("_links", {})
-        return self._apply_hidden_fields(
-            "board",
-            BoardDetail(
-                id=summary.id,
-                name=summary.name,
-                project_id=summary.project_id,
-                project=summary.project,
-                public=summary.public,
-                hidden=summary.hidden,
-                starred=summary.starred,
-                include_subprojects=summary.include_subprojects,
-                show_hierarchies=summary.show_hierarchies,
-                timeline_visible=summary.timeline_visible,
-                timeline_zoom_level=_trim_text(payload.get("timelineZoomLevel"), limit=SUBJECT_LIMIT),
-                highlighting_mode=_trim_text(payload.get("highlightingMode"), limit=SUBJECT_LIMIT),
-                group_by=self._normalize_query_link_label(links.get("groupBy")),
-                columns=self._normalize_query_link_list(links.get("columns")),
-                sort_by=self._normalize_query_link_list(links.get("sortBy")),
-                highlighted_attributes=self._normalize_query_link_list(links.get("highlightedAttributes")),
-                timestamps=[str(item) for item in payload.get("timestamps", []) if str(item).strip()],
-                filters=[
-                    self._normalize_board_filter(item) for item in payload.get("filters", []) if isinstance(item, dict)
-                ],
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-                can_update=summary.can_update,
-                can_delete=summary.can_delete,
-                url=summary.url,
-            ),
-        )
-
     def normalize_query_filter(self, payload: dict[str, Any]) -> QueryFilterSummary:
         links = payload.get("_links", {})
         self_link, href, filter_id = _query_ref_identity(links, payload)
@@ -5084,52 +4925,6 @@ class OpenProjectClient:
                 url=self._web_url(f"api/v3/attachments/{payload['id']}"),
             ),
         )
-
-    def _normalize_board_filter(self, payload: dict[str, Any]) -> BoardFilter:
-        links = payload.get("_links", {})
-        return BoardFilter(
-            key=_slug_from_href(links.get("filter", {}).get("href")),
-            name=_link_title(links.get("filter")),
-            operator=_link_title(links.get("operator")) or _slug_from_href(links.get("operator", {}).get("href")),
-            values=self._normalize_filter_values(links.get("values")),
-        )
-
-    def _normalize_filter_values(self, values: Any) -> list[str]:
-        if not isinstance(values, list):
-            return []
-        normalized: list[str] = []
-        for item in values:
-            if isinstance(item, dict):
-                text = (
-                    _link_title(item.get("_links", {}).get("self"))
-                    or _trim_text(item.get("name"), limit=SUBJECT_LIMIT)
-                    or _trim_text(item.get("title"), limit=SUBJECT_LIMIT)
-                    or _trim_text(item.get("href"), limit=SUBJECT_LIMIT)
-                )
-            else:
-                text = _trim_text(item, limit=SUBJECT_LIMIT)
-            if text:
-                normalized.append(text)
-        return normalized
-
-    def _normalize_query_link_list(self, value: Any) -> list[str]:
-        if not isinstance(value, list):
-            return []
-        normalized: list[str] = []
-        for item in value:
-            label = self._normalize_query_link_label(item)
-            if label:
-                normalized.append(label)
-        return normalized
-
-    def _normalize_query_link_label(self, value: Any) -> str | None:
-        if isinstance(value, dict):
-            return _link_title(value) or _slug_from_href(value.get("href"))
-        return _trim_text(value, limit=SUBJECT_LIMIT)
-
-    def _board_web_url(self, payload: dict[str, Any]) -> str:
-        board_id = int(payload["id"])
-        return urljoin(f"{self.settings.base_url.rstrip('/')}/", f"work_packages?query_id={board_id}")
 
     def normalize_instance_configuration(self, payload: dict[str, Any]) -> InstanceConfiguration:
         return self._apply_hidden_fields(
@@ -5848,76 +5643,6 @@ class OpenProjectClient:
             success_message=success_message or f"Work package {action}d successfully.",
         )
 
-    async def _build_board_write_payload(
-        self,
-        *,
-        name: str | None,
-        project: str | None,
-        public: bool | None,
-        starred: bool | None,
-        hidden: bool | None,
-        include_subprojects: bool | None,
-        show_hierarchies: bool | None,
-        timeline_visible: bool | None,
-        group_by: str | None,
-        columns: list[str] | None,
-        sort_by: list[str] | None,
-        highlighted_attributes: list[str] | None,
-        filters: list[dict[str, Any]] | None,
-    ) -> dict[str, Any]:
-        payload: dict[str, Any] = {}
-        links: dict[str, Any] = {}
-
-        if name is not None:
-            self._ensure_field_writable("board", "name")
-            payload["name"] = name
-        if public is not None:
-            self._ensure_field_writable("board", "public")
-            payload["public"] = public
-        if starred is not None:
-            self._ensure_field_writable("board", "starred")
-            payload["starred"] = starred
-        if hidden is not None:
-            self._ensure_field_writable("board", "hidden")
-            payload["hidden"] = hidden
-        if include_subprojects is not None:
-            self._ensure_field_writable("board", "include_subprojects")
-            payload["includeSubprojects"] = include_subprojects
-        # group_by and showHierarchies are mutually exclusive in the OpenProject API
-        effective_show_hierarchies = show_hierarchies
-        if group_by is not None and show_hierarchies is None:
-            effective_show_hierarchies = False
-        if effective_show_hierarchies is not None:
-            self._ensure_field_writable("board", "show_hierarchies")
-            payload["showHierarchies"] = effective_show_hierarchies
-        if timeline_visible is not None:
-            self._ensure_field_writable("board", "timeline_visible")
-            payload["timelineVisible"] = timeline_visible
-        if filters is not None:
-            self._ensure_field_writable("board", "filters")
-            payload["filters"] = filters
-        if project is not None:
-            self._ensure_field_writable("board", "project")
-            project_id = await self._resolve_project_id(project)
-            links["project"] = {"href": self._api_href(f"projects/{project_id}")}
-        if group_by is not None:
-            self._ensure_field_writable("board", "group_by")
-            links["groupBy"] = {"href": self._resolve_query_reference_href(group_by, kind="group_by")}
-        if columns is not None:
-            self._ensure_field_writable("board", "columns")
-            links["columns"] = [{"href": self._resolve_query_reference_href(item, kind="column")} for item in columns]
-        if sort_by is not None:
-            self._ensure_field_writable("board", "sort_by")
-            links["sortBy"] = [{"href": self._resolve_query_reference_href(item, kind="sort_by")} for item in sort_by]
-        if highlighted_attributes is not None:
-            self._ensure_field_writable("board", "highlighted_attributes")
-            links["highlightedAttributes"] = [
-                {"href": self._resolve_query_reference_href(item, kind="column")} for item in highlighted_attributes
-            ]
-        if links:
-            payload["_links"] = links
-        return payload
-
     async def _build_time_entry_write_payload(
         self,
         *,
@@ -6017,36 +5742,6 @@ class OpenProjectClient:
         allowed = activity_field.get("_embedded", {}).get("allowedValues", [])
         return [self.normalize_time_entry_activity(item) for item in allowed if isinstance(item, dict)]
 
-    async def _finalize_board_write(
-        self,
-        *,
-        action: str,
-        confirm: bool,
-        form: dict[str, Any],
-        write_path: str,
-        write_method: str = "POST",
-        board_id: int | None = None,
-        project_name: str | None = None,
-        preview_message: str | None = None,
-        success_message: str | None = None,
-    ) -> BoardWriteResult:
-        return await self._finalize_write(
-            result_cls=BoardWriteResult,
-            action=action,
-            confirm=confirm,
-            form=form,
-            write_path=write_path,
-            write_method=write_method,
-            write_scope="board",
-            identity_kwargs=lambda _payload: {"board_id": board_id, "project": project_name},
-            normalize=self.normalize_board_detail,
-            committed_kwargs=lambda d: {"board_id": d.id, "project": d.project},
-            rejected_message="OpenProject rejected the proposed board changes. Fix the validation errors before confirming.",
-            preview_message=preview_message
-            or "OpenProject validated the board change. Ask for confirmation, then call again with confirm=true to write it.",
-            success_message=success_message or f"Board {action}d successfully.",
-        )
-
     async def _finalize_user_write(
         self,
         *,
@@ -6098,25 +5793,6 @@ class OpenProjectClient:
         _scope_policy.ensure_project_write_link_allowed(
             link, settings=self.settings, project_id_to_identifier=self._project_id_to_identifier
         )
-
-    def _ensure_board_payload_allowed(self, payload: dict[str, Any]) -> None:
-        project_link = payload.get("_links", {}).get("project")
-        if _scope_allows_all(self.settings.read_projects):
-            return
-        if not isinstance(project_link, dict):
-            raise PermissionDeniedError("OpenProject access to this board is disabled by OPENPROJECT_READ_PROJECTS.")
-        self._ensure_project_link_allowed(project_link)
-
-    def _ensure_board_write_payload_allowed(self, payload: dict[str, Any]) -> None:
-        project_link = payload.get("_links", {}).get("project")
-        if _scope_allows_all(self.settings.read_projects) and _scope_allows_all(self.settings.write_projects):
-            return
-        if not isinstance(project_link, dict):
-            raise PermissionDeniedError("OpenProject writes to this board are disabled by OPENPROJECT_WRITE_PROJECTS.")
-        self._ensure_project_write_link_allowed(project_link)
-
-    async def _board_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        return self._payload_allowed(lambda: self._ensure_board_payload_allowed(payload))
 
     def _work_package_payload_allowed(self, payload: dict[str, Any]) -> bool:
         return self._payload_allowed(
@@ -6617,28 +6293,6 @@ class OpenProjectClient:
                 f"OpenProject time entry activity '{activity_ref}' is ambiguous. Pass a numeric activity id."
             )
         return matches[0]
-
-    def _resolve_query_reference_href(self, reference: str, *, kind: str) -> str:
-        normalized = str(reference).strip()
-        if not normalized:
-            raise InvalidInputError(f"{kind.replace('_', ' ')} values must not be empty.")
-
-        if normalized.startswith("http://") or normalized.startswith("https://"):
-            parsed = urlparse(normalized)
-            if _origin_from_url(normalized) != self._origin:
-                raise InvalidInputError(
-                    f"OpenProject {kind.replace('_', ' ')} references must stay on the same origin."
-                )
-            return parsed.path
-
-        if normalized.startswith("/"):
-            return normalized
-
-        if kind == "sort_by":
-            return self._api_href(f"queries/sort_bys/{normalized}")
-        if kind == "group_by":
-            return self._api_href(f"queries/group_bys/{normalized}")
-        return self._api_href(f"queries/columns/{normalized}")
 
 
 def _json_param(value: list[dict[str, Any]]) -> str:
