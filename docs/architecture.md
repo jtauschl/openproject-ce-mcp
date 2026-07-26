@@ -76,9 +76,9 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
-## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views, Grids, Sprints)
+## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards)
 
-`client.py` stays the small, flat facade described above for most domains, but ten
+`client.py` stays the small, flat facade described above for most domains, but eleven
 domains have been migrated into `app/` for a stricter layered structure: Versions
 (`list_versions`, `get_version`, `create_version`, `update_version`,
 `delete_version` — the original pilot, validating the pattern), Projects
@@ -186,7 +186,42 @@ path like Views' `url` — the one place copying Views' adapter verbatim would
 have been wrong. All three Service methods rewrap a bare `NotFoundError` from
 the adapter with one of three distinct "Backlogs module" messages, mirroring
 the existing `ProjectService` NotFoundError-rewrap precedent rather than a
-new pattern):
+new pattern), and Boards (`list_boards`, `get_board`, `create_board`,
+`update_board`, `delete_board` — the eleventh migration, and the largest by
+line count so far. Boards are backed by OpenProject's `queries` resource
+(`_type: "Query"`, no dedicated `boards` endpoint) but are otherwise a
+structural hybrid: list filtering follows Views'/Documents'/News' shape
+(`ProjectRefResolver` + `project_scoped_list.py`'s
+`resolve_project_filter_candidates`/`summary_matches_project_candidates`),
+while the write-outcome shape (`_finalize_write`/`_WriteOutcome` for
+`create`/`update`, an inline flat `delete()`) and the raw-dict
+`BoardRecord.project_link` field follow Grids' full-CRUD shape.
+`board_policy.py` is a thin delegation to
+`scope.project_link_payload_allowed`/`ensure_project_write_link_allowed` (no
+Grids-style bespoke carve-out — Boards has no `/my/page`-equivalent special
+case). Two business rules have no sibling precedent and are ported
+byte-for-byte from `client.py`: the groupBy/showHierarchies mutual-exclusion
+(`create`/`update` auto-set `showHierarchies: false` only when `group_by` is
+given and `show_hierarchies` wasn't explicitly passed), and the "global
+board" rule (a board with no `project` requires BOTH
+`OPENPROJECT_READ_PROJECTS` and `OPENPROJECT_WRITE_PROJECTS` fully open,
+checked directly in `BoardService.create()`, not through `board_policy.py`,
+since there is no link to check for an unscoped board). Write-allowlist
+check ordering is preserved exactly as found in the original, inconsistent
+flat code rather than unified: `update()` checks write-then-read, `delete()`
+checks read-then-write. `BoardRecord.detail` is eager, built as a field-copy
+off the already-computed `summary` (mirroring `view_api.py`'s/
+`sprint_api.py`'s `summary_to_detail` pattern) rather than by re-running the
+raw payload's normalizer a second time. `list()` has two distinct HTTP
+shapes like Sprints, but the trigger condition differs — the
+server-paginated `list_page` path is reachable only when no project/search
+filter is given AND `read_projects` is fully open; an empty `read_projects`
+tuple must still filter client-side down to zero results, not skip
+filtering (a regression this domain's tests pin explicitly). The pure,
+no-I/O `_resolve_query_reference_href` helper (used only for building
+`group_by`/`columns`/`sort_by`/`highlighted_attributes` link hrefs) lives in
+`board_service.py`, not the adapter — Services, not Adapters, own pure
+write-payload-building logic elsewhere in this codebase too):
 
 ```text
 tools.py (MCP presentation)
@@ -481,20 +516,17 @@ The tradeoff is that `client.py` is large and policy-heavy. That is intentional 
 
 The Policies extraction (scope checks, hidden-field enforcement) is done, for every
 domain — see "Layered architecture" above. Versions, Projects, Memberships, News,
-Documents, Wiki Pages, Categories, Views, Grids, and Sprints are migrated; remaining
-candidates, once each migration's own lessons justify the next one:
+Documents, Wiki Pages, Categories, Views, Grids, Sprints, and Boards are migrated;
+remaining candidates, once each migration's own lessons justify the next one:
 
 - migrating additional domains through the same `app/` layers, one at a time —
   re-evaluate which domain's resolvers most depend on already-flat logic, per the
   pilot's own "validate before extending" approach. See
   [architecture-migration-runbook.md](architecture-migration-runbook.md) for the
-  step-by-step process distilled from the ten migrations done so far. Sprints was
-  picked via a fresh screening against step 0's criteria directly (no pre-named
-  shortlist remained after Grids) — the same fresh-screening approach applies to
-  the next pick too, against the ~25 remaining still-flat domains. Boards was
-  screened and found NOT disqualified by the work-package-resolution criterion
-  (it scopes via a plain project link, same shape as Views/Documents) — it
-  remains a plausible future candidate, simply not the one picked this round;
+  step-by-step process distilled from the eleven migrations done so far. Boards
+  was picked via a fresh screening against step 0's criteria directly — no
+  pre-named shortlist remained after Grids/Sprints. The next pick needs the same
+  fresh-screening approach again, against the ~24 remaining still-flat domains;
   Project Lifecycle Phases already migrated as part of Projects, not a separate
   candidate.
 - separate modules for work-package writes and schema handling

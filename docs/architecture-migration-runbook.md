@@ -10,11 +10,12 @@ Written so it can be handed to a fresh session (human or agent) as a
 self-contained starting brief — see "Prompt for a fresh session" at the
 bottom for a ready-to-paste version.
 
-Ten domains are migrated so far: Versions (pilot), Projects, Memberships,
-News, Documents, Wiki Pages, Categories, Views, Grids, Sprints. ~25 remain, all
-still flat in `client.py`. This runbook distills what each of those ten
-migrations actually needed, including mistakes found and fixed along the
-way — follow it literally, don't re-derive the process from scratch.
+Eleven domains are migrated so far: Versions (pilot), Projects, Memberships,
+News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards. ~24
+remain, all still flat in `client.py`. This runbook distills what each of
+those eleven migrations actually needed, including mistakes found and fixed
+along the way — follow it literally, don't re-derive the process from
+scratch.
 
 ## 0. Pick the next domain
 
@@ -30,30 +31,33 @@ Prefer a domain that:
   screening disqualified Boards for this reason without checking, and the
   claim was wrong (Boards scopes via a plain `_links.project` link, the
   same shape as Views/Documents, with zero `_work_package_ref` calls
-  anywhere in its methods).
+  anywhere in its methods) — this was later confirmed correct when Boards
+  itself was migrated as the eleventh domain.
 - is small-to-medium in `client.py` line count (rough guide: under ~150
-  lines including its `normalize_*` methods)
+  lines including its `normalize_*` methods) — Boards broke this guide
+  (~430 lines including its write-payload builder and finalize helper) but
+  was still the right pick, since every smaller remaining candidate at the
+  time failed the project-scoped/work-package-independence criterion
+  instead. Treat the line-count guide as a tiebreaker among domains that
+  already pass the first criterion, not a hard cap.
 - is named as a candidate in this doc's "Future split points" list in
   [architecture.md](architecture.md)
 
-Grids was the last domain explicitly named as a "natural next pick" in this
-doc and architecture.md; with it migrated, Sprints was picked via a fresh
-screening against the three criteria above (not a pre-named shortlist) —
-Reminders/Notifications/File Links were disqualified for calling
+Grids and Sprints were the last domains explicitly named as "natural next
+picks" in this doc and architecture.md; with Sprints migrated, Boards was
+picked via a fresh screening against the three criteria above (not a
+pre-named shortlist) — Watchers/Relations/Emoji Reactions/Attachments/Time
+Entries were disqualified for calling `_resolve_work_package_id`/
 `_work_package_ref`/fetching a work package to derive project scope;
-Statuses/Priorities/Types are global lookups with no project link or
-allowlist enforcement at all; TimeEntryActivities is a scan-all-projects
-fallback shape entangled with `list_projects`/work-package form probing.
-Boards was screened too and found NOT disqualified by the work-package
-criterion (it scopes via a plain `_links.project` link, same shape as
-Views/Documents) — it simply wasn't the domain picked this round, and
-remains a plausible future candidate. With Sprints now migrated, the next
-domain needs its own fresh evaluation against the three criteria above; the
-~25 remaining still-flat domains haven't been individually screened yet.
-Project Lifecycle Phases already migrated as part of Projects (its three
-`client.py` methods delegate to `self._project_service`) — it is not a
-separate still-flat candidate, despite looking like one from its own
-top-level methods.
+Users/Groups/Roles/Principals/query-metadata/help-texts/working-days/
+custom-options are global or admin-scoped lookups with no project link at
+all; User Preferences is self-scoped (the token owner's own prefs only), not
+project-scoped. With Boards now migrated, the next domain needs its own
+fresh evaluation against the three criteria above; the ~24 remaining
+still-flat domains haven't been individually screened yet. Project Lifecycle
+Phases already migrated as part of Projects (its three `client.py` methods
+delegate to `self._project_service`) — it is not a separate still-flat
+candidate, despite looking like one from its own top-level methods.
 
 ## 1. Read the real source before planning
 
