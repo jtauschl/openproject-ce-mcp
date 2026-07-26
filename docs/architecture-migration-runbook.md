@@ -392,6 +392,29 @@ tried (Boards, the 11th migration):
   domains" (step 6) is narrower than "scope to everything the session
   touched or that's simply out of date."
 
+The pattern held on the very next domain too (Actions & Capabilities, the
+12th migration): the self-audit's four lenses (scoped, as instructed, across
+all 12 already-migrated domains) found nothing wrong in the new domain
+itself; the step-6.5 Codex review then found a genuine, pre-existing P1
+security bug the self-audit's structural security checks couldn't have
+caught, for the same reason as Boards' reparent bug — it required
+cross-parameter reasoning, not a structural property of the new code as
+written. `list_capabilities` allowlist-checked its caller-supplied `project`
+parameter, but never each individual RETURNED capability's own `context`
+(project) link — a `capability_id`-only call (the domain's other,
+independent filter parameter) skipped the check entirely, since there was no
+`project` to resolve. Verifying the finding against the live OpenProject API
+docs (not just the existing test fixture, which had quietly modeled
+`context` as title-only) surfaced two more, lower-severity findings in the
+same review: an undocumented `capability_id` collection filter (OpenProject
+only documents a collection `id` filter's absence — the correct lookup is a
+single-item `GET /capabilities/{id}`) and a deprecated `context` filter
+value syntax (`p{id}` instead of the current `w{id}`). All three were fixed
+in the same session and ported to `release/0.3.3` independently (that branch
+still has this domain flat). This is the second domain in a row where the
+step-6.5 review earned its keep — treat it as the default next step after
+step 6, not a one-off from the Boards migration.
+
 **How to apply**: after step 6's fixes are committed, ask Codex to review
 the new commit(s) for correctness, security, and consistency with the
 rest of the codebase — plain language is enough, no special prompt
