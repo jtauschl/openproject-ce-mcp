@@ -529,6 +529,25 @@ def test_board_service_binds_the_api_param_to_board_api_specifically() -> None:
     assert hints["api"] is not HttpxBoardApi, "BoardService.__init__'s api param must not be the concrete adapter"
 
 
+def test_action_capability_service_binds_the_api_param_to_action_capability_api_specifically() -> None:
+    """Non-generalized regression test for the Actions & Capabilities domain's
+    exact guarantee, sibling to the checks above: the api param is
+    ActionCapabilityApi exactly, not just "some Protocol". No dedicated
+    Resolver exists -- capability_id is an opaque filter string, not a
+    semantic reference needing lookup."""
+    from openproject_ce_mcp.app.adapters.httpx_action_capability_api import HttpxActionCapabilityApi
+    from openproject_ce_mcp.app.ports.action_capability_api import ActionCapabilityApi
+    from openproject_ce_mcp.app.services.action_capability_service import ActionCapabilityService
+
+    hints = typing.get_type_hints(ActionCapabilityService.__init__)
+    assert hints["api"] is ActionCapabilityApi, (
+        "ActionCapabilityService.__init__'s api param must be typed ActionCapabilityApi"
+    )
+    assert hints["api"] is not HttpxActionCapabilityApi, (
+        "ActionCapabilityService.__init__'s api param must not be the concrete adapter"
+    )
+
+
 # Names that once lived in app/ports/project_api.py (HAL->model normalize_*
 # translation functions and their private text/href helpers) before they moved
 # to app/adapters/httpx_project_api.py, matching the Versions domain's

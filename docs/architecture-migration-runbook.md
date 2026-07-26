@@ -10,12 +10,12 @@ Written so it can be handed to a fresh session (human or agent) as a
 self-contained starting brief — see "Prompt for a fresh session" at the
 bottom for a ready-to-paste version.
 
-Eleven domains are migrated so far: Versions (pilot), Projects, Memberships,
-News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards. ~24
-remain, all still flat in `client.py`. This runbook distills what each of
-those eleven migrations actually needed, including mistakes found and fixed
-along the way — follow it literally, don't re-derive the process from
-scratch.
+Twelve domains are migrated so far: Versions (pilot), Projects, Memberships,
+News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards,
+Actions & Capabilities. ~23 remain, all still flat in `client.py`. This
+runbook distills what each of those twelve migrations actually needed,
+including mistakes found and fixed along the way — follow it literally,
+don't re-derive the process from scratch.
 
 ## 0. Pick the next domain
 
@@ -52,12 +52,28 @@ Entries were disqualified for calling `_resolve_work_package_id`/
 Users/Groups/Roles/Principals/query-metadata/help-texts/working-days/
 custom-options are global or admin-scoped lookups with no project link at
 all; User Preferences is self-scoped (the token owner's own prefs only), not
-project-scoped. With Boards now migrated, the next domain needs its own
-fresh evaluation against the three criteria above; the ~24 remaining
-still-flat domains haven't been individually screened yet. Project Lifecycle
-Phases already migrated as part of Projects (its three `client.py` methods
-delegate to `self._project_service`) — it is not a separate still-flat
-candidate, despite looking like one from its own top-level methods.
+project-scoped. Project Lifecycle Phases and Project Favorites already
+migrated as part of Projects (their `client.py` methods delegate to
+`self._project_service`) — neither is a separate still-flat candidate,
+despite looking like one from its own top-level methods.
+
+With Boards migrated, Actions & Capabilities (OPM-276) was migrated next —
+a **deliberate exception** to the "project-scoped only" criterion, not a
+fresh pass that found a project-scoped match: `list_actions` has no project
+concept at all (same category as Users/Groups/Roles, which this doc
+disqualifies above), and `list_capabilities` is only conditionally
+project-scoped (its `project` filter is one of two independent, non-exclusive
+filter parameters). The user explicitly chose to follow the pre-existing
+ticket bundling (OPM-276 groups both under one ticket since client.py placed
+them adjacently) rather than split Actions into its own separately-tracked,
+indefinitely-deferred ticket. This is the first migrated Service with a
+method (`list_actions`) carrying no `ProjectRefResolver` dependency at all —
+see architecture.md's Actions & Capabilities entry for the exact shape, and
+treat it as the template for a future Users/Groups/Roles-style purely-global
+migration rather than forcing those onto Categories'/Memberships' shape.
+With Actions & Capabilities now migrated, the next domain needs its own
+fresh evaluation against the three criteria above; the ~23 remaining
+still-flat domains haven't been individually screened yet.
 
 ## 1. Read the real source before planning
 

@@ -76,9 +76,9 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
-## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards)
+## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards, Actions & Capabilities)
 
-`client.py` stays the small, flat facade described above for most domains, but eleven
+`client.py` stays the small, flat facade described above for most domains, but twelve
 domains have been migrated into `app/` for a stricter layered structure: Versions
 (`list_versions`, `get_version`, `create_version`, `update_version`,
 `delete_version` — the original pilot, validating the pattern), Projects
@@ -221,7 +221,31 @@ filtering (a regression this domain's tests pin explicitly). The pure,
 no-I/O `_resolve_query_reference_href` helper (used only for building
 `group_by`/`columns`/`sort_by`/`highlighted_attributes` link hrefs) lives in
 `board_service.py`, not the adapter — Services, not Adapters, own pure
-write-payload-building logic elsewhere in this codebase too):
+write-payload-building logic elsewhere in this codebase too), and Actions &
+Capabilities (`list_actions`, `list_capabilities` — the twelfth migration,
+bundled as one ticket (OPM-276) since client.py placed them adjacently, but
+architecturally a mixed pair in one Service. `list_actions` is the first
+**genuinely project-independent** method migrated: every other domain's
+Service (Projects aside, which has no domain above it to scope against)
+depends on the `ProjectRefResolver` seam, but OpenProject's actions API has
+no project concept at all, so `ActionCapabilityService` takes the seam only
+for `list_capabilities`' benefit. `list_capabilities` IS project-scoped, but
+only conditionally: `project` is one of two mutually-non-exclusive filters
+(the other being `capability_id`), and `resolve_project_ref` is called only
+when a `project` ref is actually given — `InvalidInputError` when neither is
+supplied, ported verbatim from client.py's original guard. Both `ActionRecord`
+and `CapabilityRecord` carry only a `summary` field: neither payload carries
+its own `project` HAL link (Capabilities' project scope comes entirely from
+the caller-supplied `context` filter, the same "no per-record link to check"
+shape as Categories), so there is no policy file. Both methods share the same
+`access.ensure_read_enabled("membership", ...)` gate, verbatim from
+client.py, which is why the two unrelated lookups share one Service instead
+of two: splitting them would mean depending on the identical seam twice for
+no behavioral difference. `_slug_from_href` has no shared home in
+`app/adapters/_text.py` (only `app/policies/scope.py` has a private copy, per
+that module's own "duplicated rather than imported from client.py" rationale)
+so this adapter carries its own small, verified-byte-identical copy rather
+than importing across the policies/adapters boundary):
 
 ```text
 tools.py (MCP presentation)
@@ -516,19 +540,20 @@ The tradeoff is that `client.py` is large and policy-heavy. That is intentional 
 
 The Policies extraction (scope checks, hidden-field enforcement) is done, for every
 domain — see "Layered architecture" above. Versions, Projects, Memberships, News,
-Documents, Wiki Pages, Categories, Views, Grids, Sprints, and Boards are migrated;
-remaining candidates, once each migration's own lessons justify the next one:
+Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards, and Actions &
+Capabilities are migrated; remaining candidates, once each migration's own lessons
+justify the next one:
 
 - migrating additional domains through the same `app/` layers, one at a time —
   re-evaluate which domain's resolvers most depend on already-flat logic, per the
   pilot's own "validate before extending" approach. See
   [architecture-migration-runbook.md](architecture-migration-runbook.md) for the
-  step-by-step process distilled from the eleven migrations done so far. Boards
-  was picked via a fresh screening against step 0's criteria directly — no
-  pre-named shortlist remained after Grids/Sprints. The next pick needs the same
-  fresh-screening approach again, against the ~24 remaining still-flat domains;
-  Project Lifecycle Phases already migrated as part of Projects, not a separate
-  candidate.
+  step-by-step process distilled from the twelve migrations done so far. Boards
+  and Actions & Capabilities were each picked via a fresh screening against step
+  0's criteria directly — no pre-named shortlist remained after Grids/Sprints. The
+  next pick needs the same fresh-screening approach again, against the ~23
+  remaining still-flat domains; Project Lifecycle Phases and Project Favorites
+  already migrated as part of Projects, not separate candidates.
 - separate modules for work-package writes and schema handling
 - dedicated integration-test helpers around form endpoints and live smoke tests
 

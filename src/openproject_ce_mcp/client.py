@@ -15,6 +15,7 @@ import httpx
 
 from . import __version__
 from .app.adapters import httpx_version_api as _httpx_version_api
+from .app.adapters.httpx_action_capability_api import HttpxActionCapabilityApi
 from .app.adapters.httpx_board_api import HttpxBoardApi
 from .app.adapters.httpx_category_api import HttpxCategoryApi
 from .app.adapters.httpx_document_api import HttpxDocumentApi
@@ -46,6 +47,7 @@ from .app.policies import access as _access_policy
 from .app.policies import hidden_fields as _hidden_fields_policy
 from .app.policies import scope as _scope_policy
 from .app.policies import sprint_policy as _sprint_policy
+from .app.ports.action_capability_api import ActionCapabilityApi
 from .app.ports.board_api import BoardApi
 from .app.ports.category_api import CategoryApi
 from .app.ports.document_api import DocumentApi
@@ -60,6 +62,7 @@ from .app.ports.view_api import ViewApi
 from .app.ports.wiki_page_api import WikiPageApi
 from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.version_resolver import VersionResolver
+from .app.services.action_capability_service import ActionCapabilityService
 from .app.services.board_service import BoardService
 from .app.services.category_service import CategoryService
 from .app.services.document_service import DocumentService
@@ -78,7 +81,6 @@ from .config import Settings
 from .hal import normalize_links
 from .models import (
     ActionListResult,
-    ActionSummary,
     ActivityListResult,
     ActivitySummary,
     ActivityWriteResult,
@@ -94,7 +96,6 @@ from .models import (
     BulkWorkPackageItemResult,
     BulkWorkPackageWriteResult,
     CapabilityListResult,
-    CapabilitySummary,
     CategoryListResult,
     CategorySummary,
     CurrentUser,
@@ -426,6 +427,15 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
             api_prefix=self._api_prefix,
             origin=self._origin,
+        )
+
+        self._action_capability_api: ActionCapabilityApi = HttpxActionCapabilityApi(
+            HttpxTransport(self._http), base_url=settings.base_url
+        )
+        self._action_capability_service = ActionCapabilityService(
+            api=self._action_capability_api,
+            settings=settings,
+            resolve_project_ref=self._get_project_payload,
         )
 
     async def initialize(self) -> None:
@@ -782,31 +792,7 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> ActionListResult:
-        self._ensure_read_enabled("membership")
-        effective_limit = self._resolve_limit(limit)
-        payload = await self._get(
-            "actions",
-            params={
-                "offset": str(offset),
-                "pageSize": str(effective_limit),
-            },
-        )
-        results = [
-            self.normalize_action(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        total = int(payload.get("total", len(results)))
-        next_offset, truncated = _paginate_server(offset=offset, limit=effective_limit, total=total)
-        return ActionListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(results),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=results,
-        )
+        return await self._action_capability_service.list_actions(offset=offset, limit=limit)
 
     async def list_capabilities(
         self,
@@ -816,39 +802,8 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> CapabilityListResult:
-        self._ensure_read_enabled("membership")
-        if project is None and capability_id is None:
-            raise InvalidInputError("At least one of project or capability_id is required for capabilities.")
-        effective_limit = self._resolve_limit(limit)
-        filters: list[dict[str, Any]] = []
-        if capability_id is not None:
-            filters.append({"id": {"operator": "=", "values": [capability_id]}})
-        if project is not None:
-            project_id = await self._resolve_project_id(project)
-            filters.append({"context": {"operator": "=", "values": [f"p{project_id}"]}})
-        payload = await self._get(
-            "capabilities",
-            params={
-                "offset": str(offset),
-                "pageSize": str(effective_limit),
-                "filters": _json_param(filters),
-            },
-        )
-        results = [
-            self.normalize_capability(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        total = int(payload.get("total", len(results)))
-        next_offset, truncated = _paginate_server(offset=offset, limit=effective_limit, total=total)
-        return CapabilityListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(results),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=results,
+        return await self._action_capability_service.list_capabilities(
+            project=project, capability_id=capability_id, offset=offset, limit=limit
         )
 
     async def get_query_filter(self, filter_id: str) -> QueryFilterSummary:
@@ -4500,38 +4455,6 @@ class OpenProjectClient:
                 can_update=summary.can_update,
                 can_delete=summary.can_delete,
                 url=summary.url,
-            ),
-        )
-
-    def normalize_action(self, payload: dict[str, Any]) -> ActionSummary:
-        links = payload.get("_links", {})
-        href = links.get("self", {}).get("href") if isinstance(links.get("self"), dict) else None
-        action_id = _slug_from_href(href) or _trim_text(payload.get("id"), limit=SUBJECT_LIMIT) or ""
-        return self._apply_hidden_fields(
-            "action",
-            ActionSummary(
-                id=action_id,
-                url=self._link_to_web_url(href),
-            ),
-        )
-
-    def normalize_capability(self, payload: dict[str, Any]) -> CapabilitySummary:
-        links = payload.get("_links", {})
-        self_link = links.get("self", {})
-        action_link = links.get("action")
-        principal_link = links.get("principal")
-        context_link = links.get("context")
-        href = self_link.get("href") if isinstance(self_link, dict) else None
-        capability_id = _slug_from_href(href) or _trim_text(payload.get("id"), limit=SUBJECT_LIMIT) or ""
-        return self._apply_hidden_fields(
-            "capability",
-            CapabilitySummary(
-                id=capability_id,
-                action_id=_slug_from_href(action_link.get("href")) if isinstance(action_link, dict) else None,
-                principal_id=_id_from_href(principal_link.get("href")) if isinstance(principal_link, dict) else None,
-                principal_name=_link_title(principal_link),
-                context=_link_title(context_link) if isinstance(context_link, dict) else None,
-                url=self._link_to_web_url(href),
             ),
         )
 
