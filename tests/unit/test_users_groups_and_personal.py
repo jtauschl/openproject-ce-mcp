@@ -337,7 +337,7 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
                 request=request,
             )
         if request.url.path == "/api/v3/capabilities":
-            assert request.url.params.get("filters") == '[{"context":{"operator":"=","values":["p1"]}}]'
+            assert request.url.params.get("filters") == '[{"context":{"operator":"=","values":["w1"]}}]'
             return httpx.Response(
                 200,
                 json={
@@ -350,7 +350,7 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
                                     "self": {"href": "/api/v3/capabilities/update-project"},
                                     "action": {"href": "/api/v3/actions/update", "title": "update"},
                                     "principal": {"href": "/api/v3/users/5", "title": "Alice"},
-                                    "context": {"title": "Demo"},
+                                    "context": {"href": "/api/v3/projects/1", "title": "Demo"},
                                 },
                             }
                         ]

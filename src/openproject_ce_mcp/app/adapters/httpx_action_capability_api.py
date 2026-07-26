@@ -106,9 +106,19 @@ class HttpxActionCapabilityApi:
         payload = await self._transport.get_json("capabilities", params=params)
         elements = payload.get("_embedded", {}).get("elements", [])
         records = [
-            CapabilityRecord(summary=normalize_capability(item, base_url=self._base_url, origin=self._origin))
+            CapabilityRecord(
+                summary=normalize_capability(item, base_url=self._base_url, origin=self._origin),
+                context_link=item.get("_links", {}).get("context"),
+            )
             for item in elements
             if isinstance(item, dict)
         ]
         total = int(payload.get("total", len(records)))
         return records, total
+
+    async def get_capability(self, capability_id: str) -> CapabilityRecord:
+        payload = await self._transport.get_json(f"capabilities/{capability_id}")
+        return CapabilityRecord(
+            summary=normalize_capability(payload, base_url=self._base_url, origin=self._origin),
+            context_link=payload.get("_links", {}).get("context"),
+        )

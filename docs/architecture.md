@@ -233,19 +233,43 @@ for `list_capabilities`' benefit. `list_capabilities` IS project-scoped, but
 only conditionally: `project` is one of two mutually-non-exclusive filters
 (the other being `capability_id`), and `resolve_project_ref` is called only
 when a `project` ref is actually given — `InvalidInputError` when neither is
-supplied, ported verbatim from client.py's original guard. Both `ActionRecord`
-and `CapabilityRecord` carry only a `summary` field: neither payload carries
-its own `project` HAL link (Capabilities' project scope comes entirely from
-the caller-supplied `context` filter, the same "no per-record link to check"
-shape as Categories), so there is no policy file. Both methods share the same
-`access.ensure_read_enabled("membership", ...)` gate, verbatim from
-client.py, which is why the two unrelated lookups share one Service instead
-of two: splitting them would mean depending on the identical seam twice for
-no behavioral difference. `_slug_from_href` has no shared home in
-`app/adapters/_text.py` (only `app/policies/scope.py` has a private copy, per
-that module's own "duplicated rather than imported from client.py" rationale)
-so this adapter carries its own small, verified-byte-identical copy rather
-than importing across the policies/adapters boundary):
+supplied, ported verbatim from client.py's original guard.
+
+`ActionRecord` carries only a `summary` field (Actions has no per-record
+project link at all), but `CapabilityRecord` carries a raw `context_link`
+dict alongside its `summary` — a step-6.5 Codex review found that
+capability records genuinely carry a `context.href`
+(`/api/v3/projects/{id}` or `/api/v3/workspaces/{id}`, per the OpenProject
+API docs), not just a display title as the pre-migration client.py's own
+`normalize_capability` implied. The pre-migration code only ever
+allowlist-checked the caller-supplied `project` parameter (by resolving it
+through `ProjectRefResolver`), never each individual RETURNED record's own
+`context` link — a `capability_id`-only call skipped that check entirely,
+letting a restrictive `OPENPROJECT_READ_PROJECTS` leak capability records
+(and their project names/principals) for projects outside the caller's read
+scope. `list_capabilities` now checks each returned record's `context_link`
+via `scope.ensure_project_link_allowed`, the same "nullable link, no
+dedicated policy file" shape `ViewService._allowed` uses — the server-side
+`context` filter (when `project` is given) is a narrowing optimization, not
+the security boundary; the per-record check runs regardless, including for
+`capability_id`-only calls with no server-side filter at all. The same
+review found the pre-migration `capability_id` collection filter
+(`{"id": ...}`) isn't a documented OpenProject filter — the collection
+endpoint accepts only `action`/`principal`/`context` — so `capability_id`
+now resolves via a genuine single-item `GET /capabilities/{id}`
+(`ActionCapabilityApi.get_capability`), and the `context` filter's
+project-scoping value uses the current `w{id}` (workspace) syntax rather
+than the deprecated `p{id}` form the pre-migration code sent.
+
+Both methods share the same `access.ensure_read_enabled("membership", ...)`
+gate, verbatim from client.py, which is why the two unrelated lookups share
+one Service instead of two: splitting them would mean depending on the
+identical seam twice for no behavioral difference. `_slug_from_href` has no
+shared home in `app/adapters/_text.py` (only `app/policies/scope.py` has a
+private copy, per that module's own "duplicated rather than imported from
+client.py" rationale) so this adapter carries its own small,
+verified-byte-identical copy rather than importing across the
+policies/adapters boundary):
 
 ```text
 tools.py (MCP presentation)

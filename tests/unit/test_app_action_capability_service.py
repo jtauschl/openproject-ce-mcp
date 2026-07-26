@@ -34,6 +34,12 @@ def _capability_summary(
     )
 
 
+def _capability_record(capability_id: str = "update-project", *, context_link: dict | None = None) -> CapabilityRecord:
+    if context_link is None:
+        context_link = {"href": "/api/v3/projects/6", "title": "Demo"}
+    return CapabilityRecord(summary=_capability_summary(capability_id), context_link=context_link)
+
+
 class _FakeActionCapabilityApi:
     def __init__(
         self,
@@ -42,17 +48,20 @@ class _FakeActionCapabilityApi:
         action_total: int | None = None,
         capability_records: list[CapabilityRecord] | None = None,
         capability_total: int | None = None,
+        capability_by_id: dict[str, CapabilityRecord] | None = None,
     ) -> None:
         self._action_records = (
             action_records if action_records is not None else [ActionRecord(summary=_action_summary())]
         )
         self._action_total = action_total if action_total is not None else len(self._action_records)
-        self._capability_records = (
-            capability_records if capability_records is not None else [CapabilityRecord(summary=_capability_summary())]
-        )
+        self._capability_records = capability_records if capability_records is not None else [_capability_record()]
         self._capability_total = capability_total if capability_total is not None else len(self._capability_records)
+        self._capability_by_id = (
+            capability_by_id if capability_by_id is not None else {"update-project": _capability_record()}
+        )
         self.list_actions_calls: list[tuple[int, int]] = []
         self.list_capabilities_calls: list[tuple[list[dict[str, object]], int, int]] = []
+        self.get_capability_calls: list[str] = []
 
     async def list_actions(self, *, offset: int, page_size: int) -> tuple[list[ActionRecord], int]:
         self.list_actions_calls.append((offset, page_size))
@@ -63,6 +72,10 @@ class _FakeActionCapabilityApi:
     ) -> tuple[list[CapabilityRecord], int]:
         self.list_capabilities_calls.append((filters, offset, page_size))
         return list(self._capability_records), self._capability_total
+
+    async def get_capability(self, capability_id: str) -> CapabilityRecord:
+        self.get_capability_calls.append(capability_id)
+        return self._capability_by_id[capability_id]
 
 
 async def _resolve_project_ref(project_ref: str, *, write: bool = False, context=None) -> dict:
@@ -77,12 +90,17 @@ def _denying_resolve_project_ref(message: str):
 
 
 def _service(
-    api: _FakeActionCapabilityApi | None = None, *, settings=None, resolve_project_ref=_resolve_project_ref
+    api: _FakeActionCapabilityApi | None = None,
+    *,
+    settings=None,
+    project_id_to_identifier=None,
+    resolve_project_ref=_resolve_project_ref,
 ) -> ActionCapabilityService:
     api = api or _FakeActionCapabilityApi()
     return ActionCapabilityService(
         api=api,
         settings=settings or make_settings(),
+        project_id_to_identifier=project_id_to_identifier if project_id_to_identifier is not None else {6: "demo"},
         resolve_project_ref=resolve_project_ref,
     )
 
@@ -147,25 +165,82 @@ async def test_list_capabilities_requires_project_or_capability_id() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_capabilities_filters_by_capability_id_without_project_resolution() -> None:
+async def test_list_capabilities_by_id_uses_single_item_get_not_collection_filter() -> None:
     api = _FakeActionCapabilityApi()
+    service = _service(api)
+
+    result = await service.list_capabilities(capability_id="update-project")
+
+    assert result.count == 1
+    assert api.get_capability_calls == ["update-project"]
+    assert api.list_capabilities_calls == []
+
+
+@pytest.mark.asyncio
+async def test_list_capabilities_by_id_does_not_resolve_project_ref_when_no_project_given() -> None:
     calls: list[bool] = []
 
     async def resolve_project_ref_tracking(project_ref: str, *, write: bool = False, context=None) -> dict:
         calls.append(write)
         return await _resolve_project_ref(project_ref, write=write, context=context)
 
+    api = _FakeActionCapabilityApi()
     service = _service(api, resolve_project_ref=resolve_project_ref_tracking)
 
-    result = await service.list_capabilities(capability_id="update-project")
+    await service.list_capabilities(capability_id="update-project")
 
-    assert result.count == 1
-    assert calls == []  # no project given -- resolve_project_ref must not be called
-    assert api.list_capabilities_calls[0][0] == [{"id": {"operator": "=", "values": ["update-project"]}}]
+    assert calls == []
 
 
 @pytest.mark.asyncio
-async def test_list_capabilities_filters_by_project_context() -> None:
+async def test_list_capabilities_by_id_checks_the_records_own_context_allowlist() -> None:
+    """The security fix: a capability_id-only lookup must still allowlist-check
+    the record's own context link, not skip the check just because no
+    `project` ref was given to resolve."""
+    settings = dataclasses.replace(make_settings(), read_projects=("other-project",))
+    api = _FakeActionCapabilityApi(
+        capability_by_id={
+            "update-project": _capability_record(context_link={"href": "/api/v3/projects/6", "title": "Demo"})
+        }
+    )
+    service = _service(api, settings=settings)
+
+    result = await service.list_capabilities(capability_id="update-project")
+
+    assert result.count == 0
+    assert result.results == []
+
+
+@pytest.mark.asyncio
+async def test_list_capabilities_by_id_and_project_filters_out_a_mismatched_context() -> None:
+    api = _FakeActionCapabilityApi(
+        capability_by_id={
+            "update-project": _capability_record(context_link={"href": "/api/v3/projects/99", "title": "Other"})
+        }
+    )
+    service = _service(api)
+
+    result = await service.list_capabilities(project="demo", capability_id="update-project")
+
+    assert result.count == 0
+
+
+@pytest.mark.asyncio
+async def test_list_capabilities_by_id_and_project_keeps_a_matching_context() -> None:
+    api = _FakeActionCapabilityApi(
+        capability_by_id={
+            "update-project": _capability_record(context_link={"href": "/api/v3/projects/6", "title": "Demo"})
+        }
+    )
+    service = _service(api)
+
+    result = await service.list_capabilities(project="demo", capability_id="update-project")
+
+    assert result.count == 1
+
+
+@pytest.mark.asyncio
+async def test_list_capabilities_filters_by_project_context_using_workspace_syntax() -> None:
     api = _FakeActionCapabilityApi()
     service = _service(api)
 
@@ -173,19 +248,27 @@ async def test_list_capabilities_filters_by_project_context() -> None:
 
     assert result.count == 1
     assert result.results[0].principal_name == "Alice"
-    assert api.list_capabilities_calls[0][0] == [{"context": {"operator": "=", "values": ["p6"]}}]
+    assert api.list_capabilities_calls[0][0] == [{"context": {"operator": "=", "values": ["w6"]}}]
 
 
 @pytest.mark.asyncio
-async def test_list_capabilities_combines_project_and_capability_id_filters() -> None:
-    api = _FakeActionCapabilityApi()
-    service = _service(api)
+async def test_list_capabilities_by_project_checks_each_records_own_context_allowlist() -> None:
+    """Even when `project` narrows the server-side query, the per-record
+    allowlist check still runs -- it is not skipped just because a project
+    filter was supplied."""
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
+    api = _FakeActionCapabilityApi(
+        capability_records=[
+            _capability_record("in-scope", context_link={"href": "/api/v3/projects/6", "title": "Demo"}),
+            _capability_record("out-of-scope", context_link={"href": "/api/v3/projects/99", "title": "Other"}),
+        ],
+        capability_total=2,
+    )
+    service = _service(api, settings=settings, project_id_to_identifier={6: "demo", 99: "other"})
 
-    await service.list_capabilities(project="demo", capability_id="update-project")
+    result = await service.list_capabilities(project="demo")
 
-    filters = api.list_capabilities_calls[0][0]
-    assert {"id": {"operator": "=", "values": ["update-project"]}} in filters
-    assert {"context": {"operator": "=", "values": ["p6"]}} in filters
+    assert [r.id for r in result.results] == ["in-scope"]
 
 
 @pytest.mark.asyncio
@@ -225,6 +308,7 @@ async def test_list_capabilities_checks_read_enabled() -> None:
         await service.list_capabilities(capability_id="update-project")
 
     assert api.list_capabilities_calls == []
+    assert api.get_capability_calls == []
 
 
 @pytest.mark.asyncio

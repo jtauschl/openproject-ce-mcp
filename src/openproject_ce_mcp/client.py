@@ -435,6 +435,7 @@ class OpenProjectClient:
         self._action_capability_service = ActionCapabilityService(
             api=self._action_capability_api,
             settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
             resolve_project_ref=self._get_project_payload,
         )
 

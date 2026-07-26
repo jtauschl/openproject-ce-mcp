@@ -32,7 +32,7 @@ def _capability_payload() -> dict:
             "self": {"href": "/api/v3/capabilities/update-project"},
             "action": {"href": "/api/v3/actions/update", "title": "update"},
             "principal": {"href": "/api/v3/users/5", "title": "Alice"},
-            "context": {"title": "Demo"},
+            "context": {"href": "/api/v3/projects/1", "title": "Demo"},
         },
     }
 
@@ -73,12 +73,12 @@ async def test_list_actions_missing_embedded_elements_returns_empty_list() -> No
 async def test_list_capabilities_sends_filters_as_json() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/capabilities"
-        assert request.url.params.get("filters") == '[{"context":{"operator":"=","values":["p1"]}}]'
+        assert request.url.params.get("filters") == '[{"context":{"operator":"=","values":["w1"]}}]'
         return httpx.Response(
             200, json={"total": 1, "_embedded": {"elements": [_capability_payload()]}}, request=request
         )
 
-    filters = [{"context": {"operator": "=", "values": ["p1"]}}]
+    filters = [{"context": {"operator": "=", "values": ["w1"]}}]
     async with _client(handler) as http_client:
         api = HttpxActionCapabilityApi(HttpxTransport(http_client), base_url=BASE_URL)
         records, total = await api.list_capabilities(filters=filters, offset=1, page_size=20)
@@ -92,6 +92,21 @@ async def test_list_capabilities_sends_filters_as_json() -> None:
     assert summary.principal_name == "Alice"
     assert summary.context == "Demo"
     assert summary.url == f"{BASE_URL}/api/v3/capabilities/update-project"
+    assert records[0].context_link == {"href": "/api/v3/projects/1", "title": "Demo"}
+
+
+@pytest.mark.asyncio
+async def test_get_capability_requests_single_item_endpoint() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/capabilities/update-project"
+        return httpx.Response(200, json=_capability_payload(), request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxActionCapabilityApi(HttpxTransport(http_client), base_url=BASE_URL)
+        record = await api.get_capability("update-project")
+
+    assert record.summary.id == "update-project"
+    assert record.context_link == {"href": "/api/v3/projects/1", "title": "Demo"}
 
 
 @pytest.mark.asyncio
