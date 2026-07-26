@@ -76,9 +76,9 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
-## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards, Actions & Capabilities)
+## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards, Actions & Capabilities, Roles)
 
-`client.py` stays the small, flat facade described above for most domains, but twelve
+`client.py` stays the small, flat facade described above for most domains, but thirteen
 domains have been migrated into `app/` for a stricter layered structure: Versions
 (`list_versions`, `get_version`, `create_version`, `update_version`,
 `delete_version` — the original pilot, validating the pattern), Projects
@@ -269,7 +269,46 @@ shared home in `app/adapters/_text.py` (only `app/policies/scope.py` has a
 private copy, per that module's own "duplicated rather than imported from
 client.py" rationale) so this adapter carries its own small,
 verified-byte-identical copy rather than importing across the
-policies/adapters boundary):
+policies/adapters boundary), and Roles (`list_roles` — the thirteenth
+migration, and the second **genuinely project-independent** Service after
+Actions & Capabilities: no `ProjectRefResolver` seam at all, following that
+domain's template exactly. Unlike every prior migration, this one deliberately
+changes `OpenProjectClient`'s public facade signature rather than preserving
+it byte-for-byte: `list_roles` moves from an unpaginated `CollectionResult`
+(a single `_get("roles")` call returning the entire collection) to the same
+`PageResult`/`offset`/`limit` shape as `list_actions`, a behavior change
+requested alongside the migration, not a mechanical consequence of it. This
+broke a previously-documented shortcut: `list_roles` used to be injected into
+`MembershipService` as a bare parameterless callable pointing at
+`client.py`'s own unpaginated method, "without a dedicated port, since it
+currently ha[d] only one consumer" (`MembershipService._resolve_role_hrefs`,
+which resolves a role name to its href by scanning the complete role set).
+That was safe only because the callable always returned every role in one
+call; once `list_roles` paginates with `default_page_size=10`, an unchanged
+callable would silently only see the first page, misreporting real roles
+beyond it as "not found". Fixed by giving `MembershipService` a direct
+`RoleApi` dependency instead of the callable, plus a new package-root shared
+helper, `app/pagination.paginate_all`, that page-walks a server-paginated
+fetcher to reassemble the complete dataset — the same shape
+`VersionResolver`/`ProjectResolver` already hand-roll for the identical
+"resolve a name against a paginated list" problem (see `version_resolver.py`/
+`project_resolver.py`), generalized here since Roles has no project-scoped
+fetch signature to entangle it with. Those two resolvers were **not**
+refactored onto the new helper in this migration — their loops are tied to
+project-scoped fetch signatures with per-page allowlist checks that
+`paginate_all` deliberately doesn't model; unifying them is a candidate for a
+future, separate cleanup, not part of this domain's own scope. `RoleRecord`
+carries only a `summary` field, the same shape as `ActionRecord` (roles have
+no project link, no per-record allowlist check, and no single-item GET —
+OpenProject's API exposes list-only, admin-UI-managed roles). An open
+question, not yet settled at migration time: this repo has no local evidence
+either way (no `.op-sources` cross-check, no doc statement) for whether the
+real `/api/v3/roles` endpoint actually honors `offset`/`pageSize` server-side
+versus always returning the full collection regardless of paging params
+(some OpenProject "static"/admin-managed collections are known to do the
+latter) — `tests/integration/test_roles.py` exercises this against a live
+instance, but the answer has practical significance only if a real
+installation ever has more than one page of roles):
 
 ```text
 tools.py (MCP presentation)
@@ -363,9 +402,11 @@ tools.py (MCP presentation)
   `client.py`'s still-flat `self._resolve_principal_id` — shared with the
   still-unmigrated Work-Package domain's assignee resolution, exactly mirroring how
   `ProjectRefResolver` seamed onto still-flat project resolution during the Versions
-  pilot. `list_roles` stays flat in `client.py` too (a plain read-only lookup, not a
-  CRUD object of its own) and is injected into `MembershipService` as a bare
-  callable, without a dedicated port, since it currently has only one consumer.
+  pilot. `MembershipService._resolve_role_hrefs` depends directly on `RoleApi` (the
+  Roles domain's own port, migrated as the thirteenth domain) plus the shared
+  `app.pagination.paginate_all` helper, rather than an injected parameterless
+  `list_roles` callable as it did before Roles was migrated — see the Roles entry
+  above for why.
   `NewsService` reuses the same `ProjectRefResolver` seam and needs no domain-specific
   seam of its own. Unlike every other migrated domain, News' hidden-field masking
   (`apply_hidden_fields("news", ...)`) is applied *only* in the Service, never in the
@@ -389,10 +430,14 @@ tools.py (MCP presentation)
   `app/` that imports `httpx`; `client.py`'s own HTTP calls for the remaining
   still-flat domains, and `retry_transport.py`, are unaffected and keep importing it
   directly.
-- `OpenProjectClient` remains a 100%-compatible facade throughout: its public method
-  signatures for Versions, Projects, Memberships, News, Documents, Wiki Pages,
-  Categories, Views, Grids, and Sprints are all unchanged, and `tools.py` requires
-  no changes at all. `get_my_project_access` and
+- `OpenProjectClient` remains a 100%-compatible facade for most migrated domains:
+  its public method signatures for Versions, Projects, Memberships, News, Documents,
+  Wiki Pages, Categories, Views, Grids, Sprints, Boards, and Actions & Capabilities
+  are all unchanged, and `tools.py` requires no changes at all for those domains.
+  Roles is the one deliberate exception: `list_roles` gained `offset`/`limit`
+  parameters as part of its migration (see the Roles entry above), so `tools.py`'s
+  `list_roles` tool gained the matching parameters too — the only `tools.py` change
+  any migration to date has required. `get_my_project_access` and
   `get_project_work_package_context` stay as client.py-level orchestration rather
   than moving into a Service, since they combine multiple domains (Projects with
   Memberships, and Projects with the still-flat work-package-schema domain,
@@ -420,7 +465,10 @@ domain (`test_version_service_and_resolver_bind_the_api_param_to_version_api_spe
 `test_category_service_binds_the_api_param_to_category_api_specifically`,
 `test_view_service_binds_the_api_param_to_view_api_specifically`,
 `test_grid_service_binds_the_api_param_to_grid_api_specifically`,
-`test_sprint_service_binds_the_api_param_to_sprint_api_specifically`)
+`test_sprint_service_binds_the_api_param_to_sprint_api_specifically`,
+`test_board_service_binds_the_api_param_to_board_api_specifically`,
+`test_action_capability_service_binds_the_api_param_to_action_capability_api_specifically`,
+`test_role_service_binds_the_api_param_to_role_api_specifically`)
 pins that domain's exact port type, kept alongside the generic check rather than
 folded into it. Complementary behavioral-contract tests
 (`tests/unit/test_write_confirm_contracts.py`,
@@ -564,22 +612,29 @@ The tradeoff is that `client.py` is large and policy-heavy. That is intentional 
 
 The Policies extraction (scope checks, hidden-field enforcement) is done, for every
 domain — see "Layered architecture" above. Versions, Projects, Memberships, News,
-Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards, and Actions &
-Capabilities are migrated; remaining candidates, once each migration's own lessons
-justify the next one:
+Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards, Actions &
+Capabilities, and Roles are migrated; remaining candidates, once each migration's own
+lessons justify the next one:
 
 - migrating additional domains through the same `app/` layers, one at a time —
   re-evaluate which domain's resolvers most depend on already-flat logic, per the
   pilot's own "validate before extending" approach. See
   [architecture-migration-runbook.md](architecture-migration-runbook.md) for the
-  step-by-step process distilled from the twelve migrations done so far. Boards
-  and Actions & Capabilities were each picked via a fresh screening against step
-  0's criteria directly — no pre-named shortlist remained after Grids/Sprints. The
-  next pick needs the same fresh-screening approach again, against the ~23
-  remaining still-flat domains; Project Lifecycle Phases and Project Favorites
-  already migrated as part of Projects, not separate candidates.
+  step-by-step process distilled from the thirteen migrations done so far. Boards,
+  Actions & Capabilities, and Roles were each picked via a fresh screening against
+  step 0's criteria directly — no pre-named shortlist remained after Grids/Sprints.
+  The next pick needs the same fresh-screening approach again, against the ~22
+  remaining still-flat domains (Users and Groups are the two remaining
+  purely-global candidates in Roles' own bucket); Project Lifecycle Phases and
+  Project Favorites already migrated as part of Projects, not separate candidates.
 - separate modules for work-package writes and schema handling
 - dedicated integration-test helpers around form endpoints and live smoke tests
+- unifying `VersionResolver`'s/`ProjectResolver`'s hand-rolled page-walk loops onto
+  the `app/pagination.paginate_all` helper extracted during the Roles migration —
+  deliberately deferred at the time (their loops carry project-scoped fetch
+  signatures and per-page allowlist checks `paginate_all` doesn't model), but worth
+  revisiting once a third such loop appears, per this project's own
+  unify-at-3-instances convention.
 
 ## See also
 

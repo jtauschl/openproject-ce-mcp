@@ -10,10 +10,10 @@ Written so it can be handed to a fresh session (human or agent) as a
 self-contained starting brief — see "Prompt for a fresh session" at the
 bottom for a ready-to-paste version.
 
-Twelve domains are migrated so far: Versions (pilot), Projects, Memberships,
+Thirteen domains are migrated so far: Versions (pilot), Projects, Memberships,
 News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards,
-Actions & Capabilities. ~23 remain, all still flat in `client.py`. This
-runbook distills what each of those twelve migrations actually needed,
+Actions & Capabilities, Roles. ~22 remain, all still flat in `client.py`. This
+runbook distills what each of those thirteen migrations actually needed,
 including mistakes found and fixed along the way — follow it literally,
 don't re-derive the process from scratch.
 
@@ -71,9 +71,29 @@ method (`list_actions`) carrying no `ProjectRefResolver` dependency at all —
 see architecture.md's Actions & Capabilities entry for the exact shape, and
 treat it as the template for a future Users/Groups/Roles-style purely-global
 migration rather than forcing those onto Categories'/Memberships' shape.
-With Actions & Capabilities now migrated, the next domain needs its own
-fresh evaluation against the three criteria above; the ~23 remaining
-still-flat domains haven't been individually screened yet.
+With Actions & Capabilities migrated, Roles was picked next — following
+through on the "template for a future Users/Groups/Roles-style purely-global
+migration" pointer above, and the smallest of that bucket (a single
+`list_roles` method, no write, no single-item GET). This migration also
+deliberately introduced a behavior change alongside the structural move (user
+request): `list_roles` switched from an unpaginated `CollectionResult` to the
+same `PageResult`/`offset`/`limit` shape as `list_actions`. That broke
+`MembershipService`'s pre-existing shortcut of injecting `list_roles` as a
+bare parameterless callable (safe only while it always returned every role in
+one call) — fixed by giving `MembershipService` a direct `RoleApi` dependency
+plus a new shared `app/pagination.paginate_all` helper that page-walks a
+paginated fetcher to completion, generalizing the same "resolve a name against
+a paginated list" shape `VersionResolver`/`ProjectResolver` already hand-roll
+(see architecture.md's Roles entry for the full detail). Users and Groups
+remain the two still-flat, purely-global candidates in this bucket — Groups
+in particular carries a documented `PATCH` full-membership-replacement API
+quirk (a complete `_links.members` array is required on every update, no
+add/remove operation exists) as its own complexity flag, distinct from Roles'
+plain read-only shape.
+
+With Roles now migrated, the next domain needs its own fresh evaluation
+against the three criteria above; the ~22 remaining still-flat domains
+haven't been individually screened yet.
 
 ## 1. Read the real source before planning
 
