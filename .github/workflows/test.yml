@@ -116,12 +116,12 @@ jobs:
 
       - name: Check shell scripts syntax (bash -n)
         run: |
-          for f in dev uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh; do
+          for f in dev uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh tools/security-settings/github-security-settings.sh; do
             bash -n "$f"
           done
 
       - name: shellcheck
-        run: shellcheck get.sh uninstall.sh dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh
+        run: shellcheck get.sh uninstall.sh dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh tools/security-settings/github-security-settings.sh
 
       - name: Install shfmt
         run: |
@@ -129,7 +129,7 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: shfmt
-        run: shfmt -l get.sh uninstall.sh dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh
+        run: shfmt -l get.sh uninstall.sh dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh tools/security-settings/github-security-settings.sh
 
       - name: Check get.ps1 / uninstall.ps1 syntax (PowerShell parser)
         shell: pwsh

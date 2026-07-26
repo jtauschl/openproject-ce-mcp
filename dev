@@ -13,7 +13,7 @@ bootstrap() {
     uv sync --dev
 }
 
-shell_scripts=(dev get.sh uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh)
+shell_scripts=(dev get.sh uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh tools/security-settings/github-security-settings.sh)
 
 lint() {
     uv run ruff check .
@@ -25,7 +25,7 @@ lint() {
     shellcheck "${shell_scripts[@]}"
     shfmt -l "${shell_scripts[@]}"
     sh -n get.sh
-    for f in dev uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh; do
+    for f in dev uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh tools/security-settings/github-security-settings.sh; do
         bash -n "$f"
     done
     if ! command -v actionlint >/dev/null 2>&1; then
