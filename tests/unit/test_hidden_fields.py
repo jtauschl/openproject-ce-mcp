@@ -7,6 +7,7 @@ import pytest
 from _client_test_helpers import _base_settings
 
 from openproject_ce_mcp.app.adapters.httpx_membership_api import normalize_membership
+from openproject_ce_mcp.app.adapters.httpx_sprint_api import normalize_sprint
 from openproject_ce_mcp.app.policies import hidden_fields
 from openproject_ce_mcp.client import (
     InvalidInputError,
@@ -316,30 +317,35 @@ async def test_hidden_custom_field_is_rejected_on_write() -> None:
     await client.aclose()
 
 
-@pytest.mark.asyncio
-async def test_hidden_sprint_fields_are_tagged_and_dropped_from_payload() -> None:
+def test_hidden_sprint_fields_are_tagged_and_dropped_from_payload() -> None:
     # Sprints support OPENPROJECT_HIDE_SPRINT_FIELDS like every other entity.
-    client = OpenProjectClient(
-        _base_settings(hidden_fields={"sprint": ("defining_workspace",)}),
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
-    )
+    # normalize_sprint (the adapter's pure HAL->model function) no longer
+    # applies masking itself (ADR 0001 -- masking moved to SprintService);
+    # this test applies it via the same hidden_fields.apply_hidden_fields the
+    # Service calls, mirroring test_hidden_membership_fields_are_tagged_and_dropped_from_payload.
+    settings = _base_settings(hidden_fields={"sprint": ("defining_workspace",)})
 
-    sprint = client.normalize_sprint(
-        {
-            "_type": "Sprint",
-            "id": 1,
-            "name": "Cleanup",
-            "_embedded": {
-                "definingWorkspace": {
-                    "_type": "Project",
-                    "id": 7,
-                    "identifier": "demo",
-                    "name": "Demo",
-                    "_links": {"self": {"href": "/api/v3/projects/7", "title": "Demo"}},
-                }
+    sprint = hidden_fields.apply_hidden_fields(
+        "sprint",
+        normalize_sprint(
+            {
+                "_type": "Sprint",
+                "id": 1,
+                "name": "Cleanup",
+                "_embedded": {
+                    "definingWorkspace": {
+                        "_type": "Project",
+                        "id": 7,
+                        "identifier": "demo",
+                        "name": "Demo",
+                        "_links": {"self": {"href": "/api/v3/projects/7", "title": "Demo"}},
+                    }
+                },
+                "_links": {},
             },
-            "_links": {},
-        }
+            base_url=settings.base_url,
+        ),
+        settings=settings,
     )
 
     assert sprint._hidden_keys == frozenset({"defining_workspace"})
@@ -347,8 +353,6 @@ async def test_hidden_sprint_fields_are_tagged_and_dropped_from_payload() -> Non
     serialized = _to_payload(sprint)
     assert "defining_workspace" not in serialized
     assert serialized["name"] == "Cleanup"
-
-    await client.aclose()
 
 
 @pytest.mark.asyncio

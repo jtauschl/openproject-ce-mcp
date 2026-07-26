@@ -21,6 +21,7 @@ from .app.adapters.httpx_grid_api import HttpxGridApi
 from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
+from .app.adapters.httpx_sprint_api import HttpxSprintApi
 from .app.adapters.httpx_version_api import HttpxVersionApi
 from .app.adapters.httpx_view_api import HttpxViewApi
 from .app.adapters.httpx_wiki_page_api import HttpxWikiPageApi
@@ -43,6 +44,7 @@ from .app.pagination import paginate_server as _paginate_server
 from .app.policies import access as _access_policy
 from .app.policies import hidden_fields as _hidden_fields_policy
 from .app.policies import scope as _scope_policy
+from .app.policies import sprint_policy as _sprint_policy
 from .app.ports.category_api import CategoryApi
 from .app.ports.document_api import DocumentApi
 from .app.ports.grid_api import GridApi
@@ -50,6 +52,7 @@ from .app.ports.membership_api import MembershipApi
 from .app.ports.news_api import NewsApi
 from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
+from .app.ports.sprint_api import SprintApi
 from .app.ports.version_api import VersionApi
 from .app.ports.view_api import ViewApi
 from .app.ports.wiki_page_api import WikiPageApi
@@ -62,6 +65,7 @@ from .app.services.membership_service import MembershipService
 from .app.services.news_service import NewsService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
+from .app.services.sprint_service import SprintService
 from .app.services.version_service import VersionService
 from .app.services.view_service import ViewService
 from .app.services.wiki_page_service import WikiPageService
@@ -163,7 +167,6 @@ from .models import (
     SortCriterion,
     SprintDetail,
     SprintListResult,
-    SprintSummary,
     StatusListResult,
     StatusSummary,
     TimeEntryActivityListResult,
@@ -393,6 +396,14 @@ class OpenProjectClient:
         self._view_api: ViewApi = HttpxViewApi(HttpxTransport(self._http), base_url=settings.base_url)
         self._view_service = ViewService(
             api=self._view_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_project_ref=self._get_project_payload,
+        )
+
+        self._sprint_api: SprintApi = HttpxSprintApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._sprint_service = SprintService(
+            api=self._sprint_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
             resolve_project_ref=self._get_project_payload,
@@ -2694,43 +2705,7 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> SprintListResult:
-        self._ensure_read_enabled("project")
-        effective_limit = self._resolve_limit(limit)
-
-        # Results are always filtered client-side against the allowlist (sprints can
-        # be shared cross-project via Backlogs sharing). Fetch up to settings.max_results in
-        # one request and paginate the filtered survivors in memory, same pattern as
-        # list_views/list_documents, so a restrictive allowlist can't produce a sparse page.
-        # Bounded by max_results — not a full multi-page walk across every server page.
-        def post_filter(results: list[SprintSummary]) -> list[SprintSummary]:
-            if search is not None:
-                search_key = search.casefold()
-                results = [item for item in results if search_key in (item.name or "").casefold()]
-            return results
-
-        try:
-            page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
-                path="sprints",
-                params_extra=None,
-                normalize=self.normalize_sprint,
-                item_allowed=self._sprint_payload_allowed,
-                post_filter=post_filter,
-                offset=offset,
-                limit=effective_limit,
-            )
-        except NotFoundError as exc:
-            raise NotFoundError(
-                "OpenProject sprints require the Backlogs module and OpenProject 17.3 or newer."
-            ) from exc
-        return SprintListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(page),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=page,
-        )
+        return await self._sprint_service.list(search=search, offset=offset, limit=limit)
 
     async def list_project_sprints(
         self,
@@ -2741,55 +2716,12 @@ class OpenProjectClient:
         limit: int | None = None,
         context: ProjectResolutionContext | None = None,
     ) -> SprintListResult:
-        self._ensure_read_enabled("project")
-        project_payload = await self._get_project_payload(project, context=context)
-        project_id = int(project_payload["id"])
-        effective_limit = self._resolve_limit(limit)
-
-        # Even though this is project-scoped, results are still filtered client-side
-        # (a sprint shared into this project can be *defined* by a different, possibly
-        # disallowed project). Fetch up to settings.max_results in one request and
-        # paginate the filtered survivors in memory, same pattern as list_views/list_documents,
-        # so a restrictive allowlist can't produce a sparse page. Bounded by max_results — not
-        # a full multi-page walk across every server page.
-        def post_filter(results: list[SprintSummary]) -> list[SprintSummary]:
-            if search is not None:
-                search_key = search.casefold()
-                results = [item for item in results if search_key in (item.name or "").casefold()]
-            return results
-
-        try:
-            page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
-                path=f"projects/{project_id}/sprints",
-                params_extra=None,
-                normalize=self.normalize_sprint,
-                item_allowed=self._sprint_payload_allowed,
-                post_filter=post_filter,
-                offset=offset,
-                limit=effective_limit,
-            )
-        except NotFoundError as exc:
-            raise NotFoundError(
-                "OpenProject project sprints require the Backlogs module and OpenProject 17.3 or newer."
-            ) from exc
-        return SprintListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(page),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=page,
+        return await self._sprint_service.list_for_project(
+            project, search=search, offset=offset, limit=limit, context=context
         )
 
     async def get_sprint(self, sprint_id: int) -> SprintDetail:
-        return await self._fetch_and_normalize_detail(
-            scope="project",
-            path=f"sprints/{sprint_id}",
-            ensure_fn=self._ensure_sprint_workspace_allowed,
-            normalize_fn=self.normalize_sprint_detail,
-            not_found_message="OpenProject sprint not found, or the Backlogs module / sprint API is unavailable.",
-        )
+        return await self._sprint_service.get(sprint_id)
 
     async def create_version(
         self,
@@ -4942,46 +4874,6 @@ class OpenProjectClient:
         )
         return self._apply_hidden_fields("version", detail)
 
-    def normalize_sprint(self, payload: dict[str, Any]) -> SprintSummary:
-        links = payload.get("_links", {})
-        status_link = links.get("status")
-        workspace_link = self._sprint_workspace_link(payload)
-        return self._apply_hidden_fields(
-            "sprint",
-            SprintSummary(
-                id=int(payload["id"]),
-                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Sprint {payload['id']}",
-                status=_link_title(status_link),
-                start_date=payload.get("startDate"),
-                finish_date=payload.get("finishDate"),
-                defining_workspace_id=_id_from_href(workspace_link.get("href"))
-                if isinstance(workspace_link, dict)
-                else None,
-                defining_workspace=_link_title(workspace_link),
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-                url=self._web_url(f"sprints/{payload['id']}"),
-            ),
-        )
-
-    def normalize_sprint_detail(self, payload: dict[str, Any]) -> SprintDetail:
-        summary = self.normalize_sprint(payload)
-        return self._apply_hidden_fields(
-            "sprint",
-            SprintDetail(
-                id=summary.id,
-                name=summary.name,
-                status=summary.status,
-                start_date=summary.start_date,
-                finish_date=summary.finish_date,
-                defining_workspace_id=summary.defining_workspace_id,
-                defining_workspace=summary.defining_workspace,
-                created_at=summary.created_at,
-                updated_at=summary.updated_at,
-                url=summary.url,
-            ),
-        )
-
     def normalize_board(self, payload: dict[str, Any]) -> BoardSummary:
         links = payload.get("_links", {})
         project_link = links.get("project")
@@ -6197,43 +6089,6 @@ class OpenProjectClient:
         """
         return _scope_policy.payload_allowed(ensure)
 
-    async def _sprint_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        return self._payload_allowed(lambda: self._ensure_sprint_workspace_allowed(payload))
-
-    def _ensure_sprint_workspace_allowed(self, payload: dict[str, Any]) -> None:
-        embedded = payload.get("_embedded", {}).get("definingWorkspace")
-        if isinstance(embedded, dict):
-            self._ensure_project_allowed(str(embedded.get("id", "")), payload=embedded)
-            return
-        self._ensure_project_link_allowed(self._sprint_workspace_link(payload))
-
-    def _sprint_workspace_link(self, payload: dict[str, Any]) -> Any:
-        links = payload.get("_links", {})
-        link = links.get("definingWorkspace")
-        if isinstance(link, dict):
-            return link
-        embedded = payload.get("_embedded", {}).get("definingWorkspace")
-        if isinstance(embedded, dict):
-            self_link = embedded.get("_links", {}).get("self")
-            if isinstance(self_link, dict):
-                return {**self_link, "title": self_link.get("title") or embedded.get("name")}
-        return None
-
-    def _ensure_project_allowed(
-        self,
-        project_ref: str,
-        *,
-        payload: dict[str, Any] | None = None,
-        candidates: set[str] | None = None,
-    ) -> None:
-        if _scope_allows_all(self.settings.read_projects):
-            return
-        candidates = (
-            candidates if candidates is not None else self._project_candidates(project_ref=project_ref, payload=payload)
-        )
-        if not _scope_matches_candidates(self.settings.read_projects, candidates):
-            raise PermissionDeniedError("OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS.")
-
     def _ensure_project_link_allowed(self, link: Any) -> None:
         _scope_policy.ensure_project_link_allowed(
             link, settings=self.settings, project_id_to_identifier=self._project_id_to_identifier
@@ -6585,16 +6440,21 @@ class OpenProjectClient:
     ) -> str:
         if sprint_ref.isdigit():
             try:
-                payload = await self._get(f"sprints/{sprint_ref}")
+                record = await self._sprint_api.get(int(sprint_ref))
             except NotFoundError as exc:
                 raise NotFoundError(
                     "OpenProject sprint not found, or the Backlogs module / sprint API is unavailable."
                 ) from exc
-            self._ensure_sprint_workspace_allowed(payload)
+            _sprint_policy.ensure_sprint_workspace_allowed(
+                defining_workspace_payload=record.defining_workspace_payload,
+                defining_workspace_link=record.defining_workspace_link,
+                settings=self.settings,
+                project_id_to_identifier=self._project_id_to_identifier,
+            )
             return sprint_ref
 
         # Page-walk real server pages directly (NOT via list_project_sprints):
-        # that method's _fetch_bounded_and_paginate always requests server
+        # that method's over-fetch-then-paginate-in-memory shape always requests
         # offset=1/pageSize=max_results and paginates the same bounded result
         # in memory, so calling it again with a different offset just re-fetches
         # the identical first server page — a project with more sprints than
@@ -6610,21 +6470,23 @@ class OpenProjectClient:
         offset = 1
         while True:
             try:
-                payload = await self._get(
-                    f"projects/{project_id}/sprints", params={"offset": str(offset), "pageSize": str(page_size)}
+                records, total = await self._sprint_api.list_for_project_page(
+                    project_id, offset=offset, page_size=page_size
                 )
             except NotFoundError as exc:
                 raise NotFoundError(
                     "OpenProject project sprints require the Backlogs module and OpenProject 17.3 or newer."
                 ) from exc
-            elements = payload.get("_embedded", {}).get("elements", [])
-            for item in elements:
-                if not isinstance(item, dict) or not await self._sprint_payload_allowed(item):
+            for record in records:
+                if not _sprint_policy.sprint_payload_allowed(
+                    defining_workspace_payload=record.defining_workspace_payload,
+                    defining_workspace_link=record.defining_workspace_link,
+                    settings=self.settings,
+                    project_id_to_identifier=self._project_id_to_identifier,
+                ):
                     continue
-                summary = self.normalize_sprint(item)
-                if (summary.name or "").casefold() == sprint_ref.casefold():
-                    matches.append(str(summary.id))
-            total = int(payload.get("total", len(elements)))
+                if (record.summary.name or "").casefold() == sprint_ref.casefold():
+                    matches.append(str(record.summary.id))
             next_offset, _truncated = _paginate_server(offset=offset, limit=page_size, total=total)
             if next_offset is None:
                 break

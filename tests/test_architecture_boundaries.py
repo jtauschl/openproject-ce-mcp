@@ -39,7 +39,8 @@ _HTTPX_TRANSPORT_FILE = Path("transport") / "httpx_transport.py"
 
 # Layer dependency rules (ADR 0001): which app/<layer> dirs a given layer may import
 # from, besides itself and the shared kernel (app/errors.py, app/pagination.py,
-# config.py, models.py -- always allowed, excluded from this check entirely).
+# app/api_href.py, app/form_result.py, config.py, models.py -- always allowed,
+# excluded from this check entirely).
 _LAYER_DEPENDENCIES: dict[str, set[str]] = {
     "policies": set(),
     "transport": set(),
@@ -48,7 +49,7 @@ _LAYER_DEPENDENCIES: dict[str, set[str]] = {
     "resolvers": {"ports", "policies"},
     "services": {"ports", "policies", "resolvers"},
 }
-_SHARED_KERNEL = {"errors", "pagination"}  # module names directly under app/, not layer dirs
+_SHARED_KERNEL = {"errors", "pagination", "api_href", "form_result"}  # module names directly under app/, not layer dirs
 
 
 def _imports_httpx(path: Path) -> bool:
@@ -493,6 +494,24 @@ def test_grid_service_binds_the_api_param_to_grid_api_specifically() -> None:
     hints = typing.get_type_hints(GridService.__init__)
     assert hints["api"] is GridApi, "GridService.__init__'s api param must be typed GridApi"
     assert hints["api"] is not HttpxGridApi, "GridService.__init__'s api param must not be the concrete adapter"
+
+
+def test_sprint_service_binds_the_api_param_to_sprint_api_specifically() -> None:
+    """Non-generalized regression test for the Sprints domain's exact
+    guarantee, sibling to the checks above: the api param is SprintApi
+    exactly, not just "some Protocol". No SprintResolver exists -- sprint_id
+    is always a numeric value already validated by tools.py, so there is no
+    semantic-reference resolution for this domain to warrant a Resolver
+    (client.py's own `_resolve_sprint_id`, which resolves a *name* to an id
+    for work-package writes, stays client.py-side machinery consuming
+    SprintApi/sprint_policy directly, not a Service-layer Resolver)."""
+    from openproject_ce_mcp.app.adapters.httpx_sprint_api import HttpxSprintApi
+    from openproject_ce_mcp.app.ports.sprint_api import SprintApi
+    from openproject_ce_mcp.app.services.sprint_service import SprintService
+
+    hints = typing.get_type_hints(SprintService.__init__)
+    assert hints["api"] is SprintApi, "SprintService.__init__'s api param must be typed SprintApi"
+    assert hints["api"] is not HttpxSprintApi, "SprintService.__init__'s api param must not be the concrete adapter"
 
 
 # Names that once lived in app/ports/project_api.py (HAL->model normalize_*
