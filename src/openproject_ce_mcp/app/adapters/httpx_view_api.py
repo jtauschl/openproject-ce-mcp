@@ -54,13 +54,19 @@ def normalize_view(payload: dict[str, Any], *, base_url: str) -> ViewSummary:
     )
 
 
-def normalize_view_detail(payload: dict[str, Any], *, base_url: str) -> ViewDetail:
-    """Verbatim port of client.py's normalize_view_detail. Reuses every field
-    from normalize_view() verbatim and adds exactly one extra field (`links`,
-    read fresh off the raw payload's `_links` keys) -- no second/different
+def summary_to_detail(summary: ViewSummary, *, links: list[str]) -> ViewDetail:
+    """Reuses every field from an already-normalized `summary` (not the raw
+    payload) and adds exactly one extra field (`links`) -- no second/different
     truncation limit is applied anywhere, unlike Documents' description.
+
+    Built from `summary` rather than by re-running `normalize_view` on the raw
+    payload a second time (the original version of this function did that) --
+    doubling `_trim_text`/`_id_from_href`/`_link_title` work on every row of
+    every `list_all` call for a value list callers never read (`.detail` is
+    only read in `get()`). Found during the Sprints migration's step-6
+    efficiency audit, which flagged this as a pre-existing bug here too,
+    mirroring `version_api.py`'s `summary_to_detail` pattern.
     """
-    summary = normalize_view(payload, base_url=base_url)
     return ViewDetail(
         id=summary.id,
         type=summary.type,
@@ -73,7 +79,7 @@ def normalize_view_detail(payload: dict[str, Any], *, base_url: str) -> ViewDeta
         starred=summary.starred,
         created_at=summary.created_at,
         updated_at=summary.updated_at,
-        links=sorted(payload.get("_links", {}).keys()),
+        links=links,
         url=summary.url,
     )
 
@@ -84,10 +90,10 @@ class HttpxViewApi:
         self._base_url = base_url
 
     def _record(self, payload: dict[str, Any]) -> ViewRecord:
-        base_url = self._base_url
+        summary = normalize_view(payload, base_url=self._base_url)
         return ViewRecord(
-            summary=normalize_view(payload, base_url=base_url),
-            detail=normalize_view_detail(payload, base_url=base_url),
+            summary=summary,
+            detail=summary_to_detail(summary, links=sorted(payload.get("_links", {}).keys())),
             project_link=payload.get("_links", {}).get("project"),
         )
 

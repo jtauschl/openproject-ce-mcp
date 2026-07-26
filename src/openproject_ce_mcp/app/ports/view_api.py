@@ -14,12 +14,15 @@ class ViewRecord:
     the raw `project` HAL link (nullable -- a view need not belong to a
     project at all).
 
-    `detail` is precomputed, not a lazy `to_detail` thunk: normalize_view_detail
-    reuses every field from normalize_view() verbatim and adds exactly one
-    extra field (`links`, read fresh off the raw payload) -- there is no
-    second/different truncation limit applied to any field, unlike Documents'
-    description. No expensive divergent re-extraction exists to defer, so
-    eager computation here wastes nothing.
+    `detail` is precomputed, not a lazy `to_detail` thunk: `summary_to_detail`
+    reuses every field from the already-normalized `summary` verbatim and
+    adds exactly one extra field (`links`) -- there is no second/different
+    truncation limit applied to any field, unlike Documents' description. No
+    expensive divergent re-extraction exists to defer, so eager computation
+    here wastes nothing -- provided `detail` is built from `summary`, not by
+    re-running `normalize_view` on the raw payload a second time (an earlier
+    version of the adapter did that; fixed during the Sprints migration's
+    step-6 efficiency audit, which found the same bug in this file too).
 
     `project_link` must be carried separately (mirrors DocumentRecord/
     MembershipRecord) because the allowlist Policy check needs the raw link
