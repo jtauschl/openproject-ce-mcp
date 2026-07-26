@@ -339,6 +339,62 @@ predating Documents entirely.
 domains — don't file a follow-up ticket for something already understood
 and cheap to fix now. Re-run the full test/mypy/ruff suite after fixes.
 
+## 6.5. Optional: local Codex CLI review, after the self-audit
+
+If the local `codex` CLI is installed (`which codex`; no separate cost —
+distinct from the paid `/code-review ultra` cloud review, which is
+never triggered automatically and needs the user's explicit go-ahead
+every time), it is worth running as a second, independent pass after the
+step-6 self-audit, not instead of it. Ask it to review the new commit(s)
+against the actual source, the same way a human reviewer would.
+
+**Why this earns its own step**: an external pass with no memory of *how*
+the migration was built has caught real, non-hypothetical bugs the
+self-audit's own four lenses missed, on the very first domain this was
+tried (Boards, the 11th migration):
+- Two genuine P1 correctness/security bugs (a reparent target authorized
+  with `write=False` instead of `write=True`, letting a caller move a
+  resource into a project outside their write scope; a Port/Adapter method
+  typed and returning the wrong model class, silently missing fields a
+  downstream consumer needed) — both were **pre-existing bugs in the flat
+  `client.py` this migration faithfully ported**, not regressions
+  introduced by the migration itself. The self-audit's security pass
+  checks structural properties (confirm-gating, allowlist freshness,
+  ordering) against the NEW code as written; it does not re-derive
+  cross-parameter authorization gaps like "does a second, unrelated
+  parameter on this same call bypass the check on the first."
+- One real regression the self-audit's own reuse/extraction fix
+  introduced in the same session (a bounded-fetch parameter silently
+  dropped during a helper's initial write, reintroducing this project's
+  own previously-fixed "pageSize-omission" bug class) and one the
+  extraction step DIDN'T introduce but should have caught structurally (an
+  import trimmed too aggressively, caught only by the test suite, not by
+  review).
+- Two stale-documentation findings in files the self-audit's four lenses
+  don't scope to at all (this runbook itself, plus an unrelated tool's
+  README/header comment) — a reminder that "scope to all migrated
+  domains" (step 6) is narrower than "scope to everything the session
+  touched or that's simply out of date."
+
+**How to apply**: after step 6's fixes are committed, ask Codex to review
+the new commit(s) for correctness, security, and consistency with the
+rest of the codebase — plain language is enough, no special prompt
+engineering required. Treat every finding the same way as a step-6
+finding: verify it against the actual current source (a finding can be
+description-only or already-fixed by a later commit — confirm before
+acting), fix genuine findings in the same session, and if a finding
+reveals a pre-existing bug in the code this migration ported from
+`client.py` rather than something the migration introduced, still fix it
+in the new `app/` code (there's no flat `client.py` copy left to fix), and
+port the same fix to `release/0.3.x` if that branch still has the
+domain unmigrated and flat — reimplemented independently against the
+branch's own flat `client.py`, not cherry-picked, since the branch and
+`main` diverge structurally once a domain has migrated on `main` but not
+there. Findings genuinely outside the
+migration's own files (e.g. an unrelated tool adopted in a prior session)
+are worth fixing too if the user agrees, but as their own separate
+commit(s), not folded into the migration's.
+
 ## 7. Close out
 
 - Find and close the tracker ticket for this domain (search the tracker
@@ -367,6 +423,8 @@ without needing this conversation's history:
 > After implementing and testing the new domain, run the step 6
 > post-implementation self-audit scoped across ALL already-migrated
 > domains, not just the new one, and fix every real finding in the same
-> session, including in sibling domains. Close out per step 7: tracker
-> ticket with a summary comment, logically separate commits, no push
-> without my explicit go-ahead.
+> session, including in sibling domains. If the local `codex` CLI is
+> available, also run step 6.5 (an independent Codex review of the new
+> commit(s)) before closing out, and fix every real finding from that pass
+> too. Close out per step 7: tracker ticket with a summary comment,
+> logically separate commits, no push without my explicit go-ahead.
