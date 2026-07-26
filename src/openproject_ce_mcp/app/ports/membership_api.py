@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from ...models import MembershipSummary
+from ..form_result import FormResult
 
 
 @dataclass(frozen=True)
@@ -27,10 +28,7 @@ class MembershipPage:
     server_total: int | None
 
 
-@dataclass(frozen=True)
-class MembershipFormResult:
-    payload: dict[str, Any]
-    validation_errors: dict[str, str]
+MembershipFormResult = FormResult
 
 
 class MembershipApi(Protocol):

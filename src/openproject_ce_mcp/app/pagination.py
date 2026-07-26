@@ -28,6 +28,19 @@ def paginate_server(*, offset: int, limit: int, total: int) -> tuple[int | None,
     return next_offset, next_offset is not None
 
 
+def clamp_limit(limit: int | None, *, default_page_size: int, max_page_size: int, max_results: int) -> int:
+    """Resolve a caller-supplied `limit` (or None) to an effective page size,
+    capped by both `max_page_size` and `max_results`.
+
+    Byte-identical `effective_limit = min(limit or settings.default_page_size,
+    settings.max_page_size, settings.max_results)` was duplicated across 8 call
+    sites in 7 Service files (found during the Sprints migration's step-6
+    self-audit, which added the last 2 of the 8) -- extracted here once past
+    this project's own "3+ identical copies" unification threshold.
+    """
+    return min(limit or default_page_size, max_page_size, max_results)
+
+
 def paginate_client(*, offset: int, limit: int, results: list[Any]) -> tuple[list[Any], int, int | None, bool]:
     """Slice an already-fetched, already-filtered in-memory list into one page.
 

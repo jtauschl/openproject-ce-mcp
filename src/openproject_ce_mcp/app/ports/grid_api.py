@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from ...models import GridSummary
+from ..form_result import FormResult
 
 
 @dataclass(frozen=True)
@@ -23,10 +24,7 @@ class GridRecord:
     scope_link: dict[str, Any] | None
 
 
-@dataclass(frozen=True)
-class GridFormResult:
-    payload: dict[str, Any]
-    validation_errors: dict[str, str]
+GridFormResult = FormResult
 
 
 class GridApi(Protocol):

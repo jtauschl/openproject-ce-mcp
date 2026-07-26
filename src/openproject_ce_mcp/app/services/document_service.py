@@ -32,7 +32,7 @@ from typing import Any
 
 from ...config import Settings
 from ...models import DocumentDetail, DocumentListResult, DocumentWriteResult
-from ..pagination import paginate_client
+from ..pagination import clamp_limit, paginate_client
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..policies.document_policy import document_payload_allowed
@@ -67,8 +67,11 @@ class DocumentService:
         limit: int | None = None,
     ) -> DocumentListResult:
         access.ensure_read_enabled("project", settings=self._settings)
-        effective_limit = min(
-            limit or self._settings.default_page_size, self._settings.max_page_size, self._settings.max_results
+        effective_limit = clamp_limit(
+            limit,
+            default_page_size=self._settings.default_page_size,
+            max_page_size=self._settings.max_page_size,
+            max_results=self._settings.max_results,
         )
         project_candidates = await resolve_project_filter_candidates(
             project, resolve_project_ref=self._resolve_project_ref

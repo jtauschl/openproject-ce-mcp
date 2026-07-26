@@ -36,7 +36,9 @@ from ...models import (
     ProjectSummary,
     ProjectWriteResult,
 )
+from ..api_href import api_href
 from ..errors import InvalidInputError, NotFoundError
+from ..pagination import clamp_limit
 from ..policies import access, hidden_fields
 from ..policies import project_policy as project_policy_module
 from ..policies.scope import ensure_project_link_allowed, payload_allowed
@@ -152,8 +154,11 @@ class ProjectService:
             self._project_id_to_identifier[outcome.detail.id] = identifier
 
     async def list(self, *, search: str | None = None, offset: int = 1, limit: int | None = None) -> ProjectListResult:
-        effective_limit = min(
-            limit or self._settings.default_page_size, self._settings.max_page_size, self._settings.max_results
+        effective_limit = clamp_limit(
+            limit,
+            default_page_size=self._settings.default_page_size,
+            max_page_size=self._settings.max_page_size,
+            max_results=self._settings.max_results,
         )
         page_results, total, next_offset, truncated = await fetch_project_page(
             api=self._api,
@@ -530,7 +535,7 @@ class ProjectService:
         raise InvalidInputError(f"OpenProject project status '{raw_value}' is not allowed.")
 
     def _api_href(self, relative_path: str) -> str:
-        return f"/{self._api_prefix.lstrip('/')}{relative_path.lstrip('/')}"
+        return api_href(relative_path, api_prefix=self._api_prefix)
 
     def _to_write_result(self, action: str, outcome: _WriteOutcome[ProjectDetail]) -> ProjectWriteResult:
         return ProjectWriteResult(

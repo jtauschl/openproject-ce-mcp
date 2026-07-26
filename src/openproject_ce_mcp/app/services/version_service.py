@@ -13,6 +13,8 @@ from typing import Any
 
 from ...config import Settings
 from ...models import VersionDetail, VersionListResult, VersionSummary, VersionWriteResult
+from ..api_href import api_href
+from ..pagination import clamp_limit
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.project_ref import ProjectRefResolver
@@ -53,7 +55,7 @@ class VersionService:
         return hidden_fields.apply_hidden_fields("version", value, settings=self._settings)
 
     def _api_href(self, relative_path: str) -> str:
-        return f"/{self._api_prefix.lstrip('/')}{relative_path.lstrip('/')}"
+        return api_href(relative_path, api_prefix=self._api_prefix)
 
     async def list(
         self,
@@ -68,8 +70,11 @@ class VersionService:
         # (min(requested, max_page_size, max_results)) -- fetch_version_page clamps
         # its own internal copy for the actual pagination math, but that clamped
         # value must also be what gets reported back in the returned envelope.
-        effective_limit = min(
-            limit or self._settings.default_page_size, self._settings.max_page_size, self._settings.max_results
+        effective_limit = clamp_limit(
+            limit,
+            default_page_size=self._settings.default_page_size,
+            max_page_size=self._settings.max_page_size,
+            max_results=self._settings.max_results,
         )
         # ADR: each Application Service call creates its own resolution context at
         # the entry boundary if the caller didn't supply one. Note: after this

@@ -25,6 +25,7 @@ from ...models import (
     ProjectRef,
     ProjectSummary,
 )
+from ..form_result import FormResult
 
 # Duplicated from httpx_version_api.py's constant of the same name (ADR 0001
 # deliberate duplication) -- needed here as the Protocol's default text_limit value.
@@ -70,10 +71,7 @@ class ProjectPage:
     exhausted: bool  # False if the server page still had more (unscanned) results
 
 
-@dataclass(frozen=True)
-class ProjectFormResult:
-    payload: dict[str, Any]
-    validation_errors: dict[str, str]
+ProjectFormResult = FormResult
 
 
 @dataclass(frozen=True)
@@ -88,10 +86,7 @@ class ProjectSchemaResult:
     fields: tuple[ProjectFieldSchema, ...]
 
 
-@dataclass(frozen=True)
-class ProjectCopyFormResult:
-    payload: dict[str, Any]
-    validation_errors: dict[str, str]
+ProjectCopyFormResult = FormResult
 
 
 @dataclass(frozen=True)

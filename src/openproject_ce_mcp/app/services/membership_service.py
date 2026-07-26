@@ -18,8 +18,9 @@ from typing import Any
 
 from ...config import Settings
 from ...models import MembershipListResult, MembershipSummary, MembershipWriteResult, RoleListResult
+from ..api_href import api_href
 from ..errors import InvalidInputError
-from ..pagination import paginate_server
+from ..pagination import clamp_limit, paginate_server
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.membership_api import MembershipApi
@@ -53,7 +54,7 @@ class MembershipService:
         return hidden_fields.apply_hidden_fields("membership", value, settings=self._settings)
 
     def _api_href(self, relative_path: str) -> str:
-        return f"/{self._api_prefix.lstrip('/')}{relative_path.lstrip('/')}"
+        return api_href(relative_path, api_prefix=self._api_prefix)
 
     async def list_for_project(
         self,
@@ -66,8 +67,11 @@ class MembershipService:
         access.ensure_read_enabled("membership", settings=self._settings)
         resolution_context = context or ProjectResolutionContext(self._resolve_project_ref)
         project_payload = await resolution_context.resolve(project_ref, write=False)
-        effective_limit = min(
-            limit or self._settings.default_page_size, self._settings.max_page_size, self._settings.max_results
+        effective_limit = clamp_limit(
+            limit,
+            default_page_size=self._settings.default_page_size,
+            max_page_size=self._settings.max_page_size,
+            max_results=self._settings.max_results,
         )
         href = project_payload.get("_links", {}).get("memberships", {}).get("href")
         if not href:

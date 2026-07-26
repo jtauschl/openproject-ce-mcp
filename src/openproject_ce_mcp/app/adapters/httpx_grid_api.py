@@ -19,6 +19,7 @@ import json
 from typing import Any
 
 from ...models import GridSummary
+from ..api_href import api_href as _api_href
 from ..ports.grid_api import GridFormResult, GridRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
@@ -44,10 +45,6 @@ def _normalize_validation_errors(value: Any) -> dict[str, str]:
         if message:
             normalized[str(key)] = message
     return normalized
-
-
-def _api_href(relative_path: str, *, api_prefix: str) -> str:
-    return f"/{api_prefix.lstrip('/')}{relative_path.lstrip('/')}"
 
 
 def normalize_grid(payload: dict[str, Any], *, api_prefix: str) -> GridSummary:
