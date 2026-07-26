@@ -25,6 +25,23 @@ actions sharing the identical form-based preview/commit shape -- the first
 domain to hit this project's own "3+ write actions" threshold since
 Memberships). delete() has no form step at all, so it stays an inline
 preview/commit method like MembershipService.delete().
+
+Deliberate behavior CHANGE from client.py's original delete_grid (found via
+an external Codex review of the unpushed Grids migration commit, before this
+was pushed): the confirmed branch now returns `result=grid` (the deleted
+grid's stamped summary), not `result=None`. The original client.py's
+`delete_grid` returned `None` there -- but that was itself an outlier, not a
+deliberate design choice: `delete_version`/`delete_membership`/
+`delete_project` all returned the deleted entity's detail/summary on
+confirmed delete since their very first (pre-app/-migration) implementation,
+and `GridWriteResult.result: GridSummary | None` has always had the same
+shape as those siblings' result fields. Traced back through git history to
+Grids' very first commit -- `result=None` was present from day one, with no
+commit message or code comment ever explaining why Grids alone should
+differ. Kept the more-consistent, now-migrated behavior rather than
+reverting to match the likely-accidental legacy quirk; noted here, in the
+migration's commit message, and in CHANGELOG.md as a behavior-changing fix,
+not a silent one.
 """
 
 from __future__ import annotations
@@ -144,7 +161,7 @@ class GridService:
             commit=lambda p: self._api.commit_update(grid_id, p),
             committed_identity=lambda summary: {"grid_id": summary.id, "scope": summary.scope},
             rejected_message="OpenProject rejected the proposed grid changes. Fix the validation errors before confirming.",
-            preview_message="OpenProject validated the grid change. Ask for confirmation, then call again with confirm=true to write it.",
+            preview_message="OpenProject validated the grid update. Ask for confirmation, then call again with confirm=true to write it.",
             success_message="Grid updated successfully.",
         )
         return self._to_write_result("update", outcome)

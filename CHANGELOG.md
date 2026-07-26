@@ -49,6 +49,12 @@ development baseline.
 
 ### Fixed
 
+- **Breaking: `delete_grid(confirm=true)` now returns the deleted grid's
+  summary in `result`**, instead of `null`. Every sibling delete tool
+  (`delete_version`, `delete_membership`, `delete_project`) has always
+  returned the deleted entity on confirmed delete; `delete_grid` alone
+  returned `null` there since its introduction, with no documented reason
+  for the inconsistency.
 - **`get_news`/`list_news` description truncation now honors
   `OPENPROJECT_HIDE_NEWS_FIELDS`**, instead of incorrectly checking
   `OPENPROJECT_HIDE_PROJECT_FIELDS`.
