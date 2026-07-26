@@ -312,6 +312,8 @@ async def test_update_checks_project_write_allowlist() -> None:
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.update(news_id=1, title="Updated", confirm=False)
 
+    assert api.commit_update_calls == []
+
 
 @pytest.mark.asyncio
 async def test_delete_preview_carries_stamped_detail_not_none() -> None:
@@ -354,3 +356,5 @@ async def test_delete_checks_project_write_allowlist() -> None:
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.delete(news_id=1, confirm=False)
+
+    assert api.delete_calls == []

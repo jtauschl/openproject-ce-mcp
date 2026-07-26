@@ -265,6 +265,8 @@ async def test_update_checks_project_write_allowlist() -> None:
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.update(document_id=1, title="Updated", confirm=False)
 
+    assert api.commit_update_calls == []
+
 
 @pytest.mark.asyncio
 async def test_update_rejects_when_hidden_field_is_being_written() -> None:

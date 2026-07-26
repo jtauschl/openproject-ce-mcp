@@ -442,10 +442,13 @@ async def test_create_rejects_when_validation_errors_present() -> None:
 @pytest.mark.asyncio
 async def test_create_denies_target_outside_write_allowlist() -> None:
     settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
-    service = _service(settings=settings)
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.create(name="New Project", identifier="new-project", confirm=False)
+
+    assert api.commit_create_calls == []
 
 
 @pytest.mark.asyncio
@@ -465,10 +468,13 @@ async def test_update_commits_when_confirmed() -> None:
 @pytest.mark.asyncio
 async def test_update_denies_target_outside_write_allowlist() -> None:
     settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
-    service = _service(settings=settings)
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.update(project_ref="demo", name="Renamed", confirm=False)
+
+    assert api.commit_update_calls == []
 
 
 @pytest.mark.asyncio
@@ -575,10 +581,13 @@ async def test_delete_returns_preview_then_commits() -> None:
 @pytest.mark.asyncio
 async def test_delete_denies_target_outside_write_allowlist() -> None:
     settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
-    service = _service(settings=settings)
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.delete(project_ref="demo", confirm=False)
+
+    assert api.delete_calls == []
 
 
 @pytest.mark.asyncio
@@ -604,6 +613,8 @@ async def test_set_favorite_denies_target_outside_write_allowlist() -> None:
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.set_favorite("demo", favorite=True, confirm=False)
+
+    assert api.favorite_calls == []
 
 
 @pytest.mark.asyncio
@@ -634,10 +645,13 @@ async def test_copy_commits_and_returns_job_status_url() -> None:
 @pytest.mark.asyncio
 async def test_copy_denies_target_outside_write_allowlist() -> None:
     settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("demo",))
-    service = _service(settings=settings)
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.copy(source_project="demo", name="Copy", identifier="copy-project", confirm=False)
+
+    assert api.commit_copy_calls == []
 
 
 @pytest.mark.asyncio

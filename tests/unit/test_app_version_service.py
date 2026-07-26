@@ -45,6 +45,7 @@ class _FakeVersionApi:
         self._records = records or []
         self.validation_errors: dict[str, str] = {}
         self.commit_calls: list[dict] = []
+        self.delete_calls: list[int] = []
 
     async def list_for_project(
         self, project_id: int, *, offset: int, page_size: int, text_limit: int | None = None
@@ -73,7 +74,7 @@ class _FakeVersionApi:
         return _detail(version_id, name=payload.get("name", "Release 1"))
 
     async def delete(self, version_id: int) -> None:
-        pass
+        self.delete_calls.append(version_id)
 
 
 async def _resolve_project_ref(project_ref: str, *, write: bool = False, context=None) -> dict:
@@ -238,10 +239,13 @@ async def test_update_commits_when_confirmed() -> None:
 @pytest.mark.asyncio
 async def test_update_checks_project_write_allowlist() -> None:
     settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
-    service = _service(settings=settings)
+    api = _FakeVersionApi()
+    service = _service(api, settings=settings)
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.update(version_id=8, name="Release 1.1", confirm=False)
+
+    assert api.commit_calls == []
 
 
 @pytest.mark.asyncio
@@ -263,7 +267,10 @@ async def test_delete_returns_preview_then_commits() -> None:
 @pytest.mark.asyncio
 async def test_delete_checks_project_write_allowlist() -> None:
     settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
-    service = _service(settings=settings)
+    api = _FakeVersionApi()
+    service = _service(api, settings=settings)
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.delete(version_id=8, confirm=False)
+
+    assert api.delete_calls == []
