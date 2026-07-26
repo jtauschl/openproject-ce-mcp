@@ -11,6 +11,24 @@ development baseline.
 
 ### Fixed
 
+- **`get_news`/`list_news` description truncation now honors
+  `OPENPROJECT_HIDE_NEWS_FIELDS`**, instead of incorrectly checking
+  `OPENPROJECT_HIDE_PROJECT_FIELDS`.
+- **`get_document`/`list_documents` description truncation and
+  `get_time_entry`/`list_time_entries` comment truncation now honor
+  `OPENPROJECT_HIDE_DOCUMENT_FIELDS`/`OPENPROJECT_HIDE_TIME_ENTRY_FIELDS`
+  respectively**, instead of incorrectly checking
+  `OPENPROJECT_HIDE_PROJECT_FIELDS`/`OPENPROJECT_HIDE_ACTIVITY_FIELDS`.
+- **`get_work_package_relations` no longer leaks a linked work package's id
+  and subject from outside `OPENPROJECT_READ_PROJECTS`.** Only the anchor
+  work package's project was checked; the other side of each relation was
+  not, the same gap `list_relations` had already closed for the identical
+  concern.
+- **`toggle_activity_emoji_reaction` previews (`confirm=false`) no longer
+  require `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`.** The write-enablement
+  check ran unconditionally, even during a preview; it now runs only on the
+  confirmed mutation. The project write-allowlist check (an authorization
+  gate on the specific target) is unaffected and still runs during preview.
 - **A project created or renamed through this server was invisible to
   `get_work_package`/`update_work_package`/`create_work_package` (when
   linking a `parent`) and every other project-scoped tool under a
