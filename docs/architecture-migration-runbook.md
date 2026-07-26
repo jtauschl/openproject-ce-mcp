@@ -10,11 +10,11 @@ Written so it can be handed to a fresh session (human or agent) as a
 self-contained starting brief — see "Prompt for a fresh session" at the
 bottom for a ready-to-paste version.
 
-Nine domains are migrated so far: Versions (pilot), Projects, Memberships,
-News, Documents, Wiki Pages, Categories, Views, Grids. ~26 remain, all still
-flat in `client.py`. This runbook distills what each of those nine migrations
-actually needed, including mistakes found and fixed along the way — follow
-it literally, don't re-derive the process from scratch.
+Ten domains are migrated so far: Versions (pilot), Projects, Memberships,
+News, Documents, Wiki Pages, Categories, Views, Grids, Sprints. ~25 remain, all
+still flat in `client.py`. This runbook distills what each of those ten
+migrations actually needed, including mistakes found and fixed along the
+way — follow it literally, don't re-derive the process from scratch.
 
 ## 0. Pick the next domain
 
@@ -30,12 +30,21 @@ Prefer a domain that:
 - is named as a candidate in this doc's "Future split points" list in
   [architecture.md](architecture.md)
 
-At the time of writing, Grids was the last domain explicitly named as a
-"natural next pick" in this doc and architecture.md — with it migrated, the
-next domain needs a fresh evaluation against the three criteria above
-directly, not a pre-named shortlist; the ~26 remaining still-flat domains
-haven't been individually screened against these criteria yet. Project
-Lifecycle Phases already migrated as part of Projects (its three
+Grids was the last domain explicitly named as a "natural next pick" in this
+doc and architecture.md; with it migrated, Sprints was picked via a fresh
+screening against the three criteria above (not a pre-named shortlist) —
+Reminders/Notifications/File Links were disqualified for calling
+`_work_package_ref`/fetching a work package to derive project scope;
+Statuses/Priorities/Types are global lookups with no project link or
+allowlist enforcement at all; TimeEntryActivities is a scan-all-projects
+fallback shape entangled with `list_projects`/work-package form probing.
+Boards was screened too and found NOT disqualified by the work-package
+criterion (it scopes via a plain `_links.project` link, same shape as
+Views/Documents) — it simply wasn't the domain picked this round, and
+remains a plausible future candidate. With Sprints now migrated, the next
+domain needs its own fresh evaluation against the three criteria above; the
+~25 remaining still-flat domains haven't been individually screened yet.
+Project Lifecycle Phases already migrated as part of Projects (its three
 `client.py` methods delegate to `self._project_service`) — it is not a
 separate still-flat candidate, despite looking like one from its own
 top-level methods.

@@ -76,9 +76,9 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
-## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views, Grids)
+## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views, Grids, Sprints)
 
-`client.py` stays the small, flat facade described above for most domains, but nine
+`client.py` stays the small, flat facade described above for most domains, but ten
 domains have been migrated into `app/` for a stricter layered structure: Versions
 (`list_versions`, `get_version`, `create_version`, `update_version`,
 `delete_version` — the original pilot, validating the pattern), Projects
@@ -156,7 +156,37 @@ allowlist check and `scope.project_candidates()` both read more than just
 filter (narrowing, not a security boundary) — the per-item allowlist check
 still runs client-side on every returned element regardless of whether a
 filter was passed; unlike Documents/News/Views, Grids never resolves a
-project ref at all, since `scope` is a raw href passed straight through):
+project ref at all, since `scope` is a raw href passed straight through), and
+Sprints (`list_sprints`, `list_project_sprints`, `get_sprint` — the tenth
+migration, and the first domain with **two list entry points**: `list()`
+hits the global `sprints` endpoint (client-side allowlist + search filtering
+only, no `project` parameter at all — unlike every other client-side-filtered
+list, it never resolves a project ref); `list_for_project()` hits the
+project-scoped `projects/{id}/sprints` endpoint, but still filters
+client-side afterward, since a sprint shared into a project via Backlogs
+sharing can be *defined* by a different, possibly disallowed project.
+Because `SprintSummary`'s project-ish fields are named
+`defining_workspace_id`/`defining_workspace` (not `project_id`/`project`),
+`project_scoped_list.py`'s `summary_matches_project_candidates` (whose
+Protocol requires the latter names) isn't used here — and isn't needed
+anyway, since neither list method does client-side project-*candidate*
+matching. Sprints has its own dedicated `sprint_policy.py` (unlike Views,
+which needed none) because its allowlist check has two genuinely different
+branches: a full `_embedded.definingWorkspace` payload (checked via
+`scope.project_candidates(payload=...)`) when the API embeds one, or a raw
+`_links.definingWorkspace` link (checked via
+`scope.ensure_project_link_allowed`) otherwise — including a link
+synthesized from the embedded object's own `_links.self` when only the
+embedded form is present. `SprintRecord` carries both the resolved link and
+the raw embedded payload for this reason. `SprintDetail` is a bare subclass
+of `SprintSummary` with zero added fields, an even stronger case for eager
+(non-lazy) `detail` computation than Views' one-extra-field detail. Sprints'
+`url` field is a **web UI URL** (`base_url` + `sprints/{id}`), not an API
+path like Views' `url` — the one place copying Views' adapter verbatim would
+have been wrong. All three Service methods rewrap a bare `NotFoundError` from
+the adapter with one of three distinct "Backlogs module" messages, mirroring
+the existing `ProjectService` NotFoundError-rewrap precedent rather than a
+new pattern):
 
 ```text
 tools.py (MCP presentation)
@@ -198,7 +228,19 @@ tools.py (MCP presentation)
   adapter now imports them instead. Helpers that differ meaningfully between
   adapters (`_normalize_validation_errors`, `_extract_formattable_text`) stay
   local — near-identical is not the same as identical, and unifying genuinely
-  different logic would change behavior, not just remove duplication.
+  different logic would change behavior, not just remove duplication. Two more
+  package-root shared-kernel modules (alongside `app/errors.py`/`app/pagination.py`)
+  were extracted during the Sprints migration's step-6 audit, once each pattern
+  was found duplicated past the 3-copy threshold: `app/api_href.py` (a single
+  `api_href(relative_path, *, api_prefix)` function, replacing byte-identical
+  `_api_href` methods in `MembershipService`/`VersionService`/`ProjectService`
+  and a free function in `httpx_grid_api.py`), and `app/form_result.py` (a single
+  `FormResult` dataclass, aliased as `MembershipFormResult`/`GridFormResult`/
+  `VersionFormResult`/`ProjectFormResult`/`ProjectCopyFormResult` in each
+  domain's own port module — each domain keeps its own name so a
+  `create_form`/`update_form` Protocol method still reads as a domain-owned
+  type, and any one domain stays free to diverge from the shared shape later
+  without a breaking rename).
 - **Resolvers** turn a semantic reference (a version name, a project identifier) into
   a concrete id, using only a port — never an Application Service. `ProjectResolver`
   is also the concrete implementation the pre-existing `ProjectRefResolver` seam
@@ -434,19 +476,22 @@ The tradeoff is that `client.py` is large and policy-heavy. That is intentional 
 
 The Policies extraction (scope checks, hidden-field enforcement) is done, for every
 domain — see "Layered architecture" above. Versions, Projects, Memberships, News,
-Documents, Wiki Pages, Categories, Views, and Grids are migrated; remaining
+Documents, Wiki Pages, Categories, Views, Grids, and Sprints are migrated; remaining
 candidates, once each migration's own lessons justify the next one:
 
 - migrating additional domains through the same `app/` layers, one at a time —
   re-evaluate which domain's resolvers most depend on already-flat logic, per the
   pilot's own "validate before extending" approach. See
   [architecture-migration-runbook.md](architecture-migration-runbook.md) for the
-  step-by-step process distilled from the nine migrations done so far. Grids was
-  the last domain explicitly named as a "natural next pick" in this doc and the
-  runbook — with it done, the next pick needs a fresh look at the ~26 remaining
-  still-flat domains against step 0's criteria directly, not a pre-named
-  shortlist; Project Lifecycle Phases already migrated as part of Projects, not
-  a separate candidate.
+  step-by-step process distilled from the ten migrations done so far. Sprints was
+  picked via a fresh screening against step 0's criteria directly (no pre-named
+  shortlist remained after Grids) — the same fresh-screening approach applies to
+  the next pick too, against the ~25 remaining still-flat domains. Boards was
+  screened and found NOT disqualified by the work-package-resolution criterion
+  (it scopes via a plain project link, same shape as Views/Documents) — it
+  remains a plausible future candidate, simply not the one picked this round;
+  Project Lifecycle Phases already migrated as part of Projects, not a separate
+  candidate.
 - separate modules for work-package writes and schema handling
 - dedicated integration-test helpers around form endpoints and live smoke tests
 
