@@ -88,11 +88,23 @@ order, immediately before writing anything:
    migration, are not named after the new `app/` layer's conventions, and
    are trivial to miss if you only look for `test_app_*` files. They are a
    ready-made behavioral spec of the exact current behavior to preserve
-   (read them before writing the new Adapter/Service, not after), and they
-   must still pass unmodified once the facade delegates — do not delete or
-   rewrite them. The Sprints migration's own plan missed
-   `test_versions_and_sprints.py` entirely on the first pass; only a
-   separate self-review step caught it.
+   (read them before writing the new Adapter/Service, not after). The
+   Sprints migration's own plan missed `test_versions_and_sprints.py`
+   entirely on the first pass; only a separate self-review step caught it.
+   **This splits into two different obligations, not one absolute rule:**
+   a test that calls the domain's PUBLIC facade method on `OpenProjectClient`
+   (e.g. `client.list_sprints(...)`, everything in
+   `test_versions_and_sprints.py`) must keep passing completely unmodified —
+   the facade's signature/behavior is the actual migration contract. A test
+   that calls a PRIVATE, now-deleted `client.py` method directly (e.g.
+   `client.normalize_sprint(...)`, one case found in
+   `test_hidden_fields.py` during the Sprints migration) cannot possibly
+   stay unmodified, since that method no longer exists — re-anchor it at
+   the new home instead (call the adapter's now-module-level
+   `normalize_<domain>` function plus `hidden_fields.apply_hidden_fields`
+   explicitly, mirroring the existing
+   `test_hidden_membership_fields_are_tagged_and_dropped_from_payload`
+   pattern), don't just delete the coverage.
 
 **Verify, don't assume, on these two specific traps** (both cost real
 rework in the Documents migration):
@@ -158,25 +170,32 @@ In this order (each depends only on the previous):
 2. **Adapter** — `app/adapters/httpx_<domain>_api.py`: the concrete
    `Httpx<Domain>Api`, plus module-level `normalize_<domain>`/
    `normalize_<domain>_detail` HAL→model functions (pure translation, no
-   hidden-field awareness — see the masking note above). **`_trim_text`/
-   `_id_from_href`/`_link_title` are NOT to be locally duplicated anymore** —
-   they were extracted into `app/adapters/_text.py` once the sixth domain
-   (Wiki Pages) migrated (this project's own "unify once past the 3rd
-   identical copy" convention), and every adapter since imports them from
-   there (`from ._text import trim_text as _trim_text`, etc., plus
-   `SUBJECT_LIMIT`). Diff the shared version against `client.py`'s real
-   module-level original before trusting it, per the trap above, but reuse
-   it — do not re-copy it locally. `_can_update_from_links`/
-   `_delimit_user_content`/`_extract_formattable_text` (and
-   `_normalize_validation_errors`) genuinely DO stay local, deliberately
-   duplicated per adapter: these differ meaningfully between domains (see
-   `httpx_grid_api.py`'s module docstring for a concrete example of how two
-   adapters' versions diverge) and unifying them would silently change
-   behavior, not just remove duplication. Two more package-root
-   shared-kernel modules exist for the same reason, outside the adapter
-   layer: `app/api_href.py` (an `api_href(relative_path, *, api_prefix)`
-   helper, replacing what used to be a duplicated `_api_href` method per
-   Service) and `app/form_result.py` (a shared `FormResult` dataclass,
+   hidden-field awareness — see the masking note above). **`trim_text`/
+   `id_from_href`/`link_title`/`delimit_user_content`/`origin_from_url`/
+   `link_to_web_url` (plus `SUBJECT_LIMIT`) are NOT to be locally duplicated
+   anymore** — all six were extracted into `app/adapters/_text.py` once the
+   sixth domain (Wiki Pages) migrated (this project's own "unify once past
+   the 3rd identical copy" convention), and every adapter since imports
+   them from there (`from ._text import trim_text as _trim_text`, etc.).
+   Check `_text.py`'s actual current contents before writing a migration
+   plan that claims otherwise — an earlier version of this runbook entry
+   itself named only 3 of the 6 (missing `delimit_user_content`/
+   `origin_from_url`/`link_to_web_url`) and, separately, an even earlier
+   version claimed none of the six were unified at all; both were stale
+   claims a future migration would have quietly acted on by re-duplicating
+   already-shared helpers. Diff the shared version against `client.py`'s
+   real module-level original before trusting it, per the trap above, but
+   reuse it — do not re-copy it locally. `_can_update_from_links`/
+   `_extract_formattable_text`/`_normalize_validation_errors` genuinely DO
+   stay local, deliberately duplicated per adapter: these differ
+   meaningfully between domains (see `httpx_grid_api.py`'s module
+   docstring for a concrete example of how two adapters' versions diverge)
+   and unifying them would silently change behavior, not just remove
+   duplication. Two more package-root shared-kernel modules exist for the
+   same reason, outside the adapter layer: `app/api_href.py` (an
+   `api_href(relative_path, *, api_prefix)` helper, replacing what used to
+   be a duplicated `_api_href` method per Service) and `app/form_result.py`
+   (a shared `FormResult` dataclass,
    aliased under each domain's own `<Domain>FormResult` name in its port
    module). Check `app/{errors,pagination,api_href,form_result}.py` for an
    existing helper before writing a new one, the same way you'd check

@@ -307,8 +307,9 @@ tools.py (MCP presentation)
   still-flat domains, and `retry_transport.py`, are unaffected and keep importing it
   directly.
 - `OpenProjectClient` remains a 100%-compatible facade throughout: its public method
-  signatures for Versions, Projects, Memberships, News, Documents, and Wiki Pages are
-  unchanged, and `tools.py` requires no changes at all. `get_my_project_access` and
+  signatures for Versions, Projects, Memberships, News, Documents, Wiki Pages,
+  Categories, Views, Grids, and Sprints are all unchanged, and `tools.py` requires
+  no changes at all. `get_my_project_access` and
   `get_project_work_package_context` stay as client.py-level orchestration rather
   than moving into a Service, since they combine multiple domains (Projects with
   Memberships, and Projects with the still-flat work-package-schema domain,
@@ -332,7 +333,11 @@ domain (`test_version_service_and_resolver_bind_the_api_param_to_version_api_spe
 `test_membership_service_binds_the_api_param_to_membership_api_specifically`,
 `test_news_service_binds_the_api_param_to_news_api_specifically`,
 `test_document_service_binds_the_api_param_to_document_api_specifically`,
-`test_wiki_page_service_binds_the_api_param_to_wiki_page_api_specifically`)
+`test_wiki_page_service_binds_the_api_param_to_wiki_page_api_specifically`,
+`test_category_service_binds_the_api_param_to_category_api_specifically`,
+`test_view_service_binds_the_api_param_to_view_api_specifically`,
+`test_grid_service_binds_the_api_param_to_grid_api_specifically`,
+`test_sprint_service_binds_the_api_param_to_sprint_api_specifically`)
 pins that domain's exact port type, kept alongside the generic check rather than
 folded into it. Complementary behavioral-contract tests
 (`tests/unit/test_write_confirm_contracts.py`,
