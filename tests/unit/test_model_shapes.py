@@ -51,7 +51,7 @@ EXPECTED_FIELD_ORDER: dict[str, list[str]] = {
     "QueryFilterInstanceSchemaListResult": ["count", "results"],
     "RelationListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "ReminderListResult": ["count", "results"],
-    "RoleListResult": ["count", "results"],
+    "RoleListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "SprintListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "StatusListResult": ["count", "results"],
     "TimeEntryActivityListResult": ["count", "results"],

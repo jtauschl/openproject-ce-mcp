@@ -548,6 +548,20 @@ def test_action_capability_service_binds_the_api_param_to_action_capability_api_
     )
 
 
+def test_role_service_binds_the_api_param_to_role_api_specifically() -> None:
+    """Non-generalized regression test for the Roles domain's exact guarantee,
+    sibling to the checks above: the api param is RoleApi exactly, not just
+    "some Protocol". No dedicated Resolver exists -- list_roles has no
+    semantic reference to resolve."""
+    from openproject_ce_mcp.app.adapters.httpx_role_api import HttpxRoleApi
+    from openproject_ce_mcp.app.ports.role_api import RoleApi
+    from openproject_ce_mcp.app.services.role_service import RoleService
+
+    hints = typing.get_type_hints(RoleService.__init__)
+    assert hints["api"] is RoleApi, "RoleService.__init__'s api param must be typed RoleApi"
+    assert hints["api"] is not HttpxRoleApi, "RoleService.__init__'s api param must not be the concrete adapter"
+
+
 # Names that once lived in app/ports/project_api.py (HAL->model normalize_*
 # translation functions and their private text/href helpers) before they moved
 # to app/adapters/httpx_project_api.py, matching the Versions domain's

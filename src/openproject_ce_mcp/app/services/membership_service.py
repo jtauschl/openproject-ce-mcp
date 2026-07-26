@@ -9,24 +9,36 @@ domain to warrant a Resolver in the ADR sense.
 
 `_WriteOutcome`/`_finalize_write` are shared via `app/services/_write_outcome.py`
 (unified once a 3rd domain needed the identical state machine).
+
+`_resolve_role_hrefs` depends on `RoleApi` directly (plus the shared
+`app.pagination.paginate_all` helper) instead of an injected parameterless
+`list_roles` callable, as it did before the Roles domain migration. That
+callable pointed at `client.py`'s then-unpaginated `list_roles`, which always
+returned the complete role collection in one call -- safe for this method's
+"resolve a role name against ALL roles" need. Once Roles moved to a
+paginated `PageResult` (default_page_size=10), a single un-page-walked call
+would silently only see the first page, misreporting real roles beyond it as
+"not found". `paginate_all` page-walks `RoleApi.list_roles` to reassemble the
+complete set, the same shape `VersionResolver`/`ProjectResolver` already use
+for the identical "resolve a name against a paginated list" problem.
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from typing import Any
 
 from ...config import Settings
-from ...models import MembershipListResult, MembershipSummary, MembershipWriteResult, RoleListResult
+from ...models import MembershipListResult, MembershipSummary, MembershipWriteResult
 from ..api_href import api_href
 from ..errors import InvalidInputError
-from ..pagination import clamp_limit, paginate_server
+from ..pagination import clamp_limit, paginate_all, paginate_server
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.membership_api import MembershipApi
 from ..ports.principal_ref import PrincipalRefResolver
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
+from ..ports.role_api import RoleApi
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
@@ -39,7 +51,7 @@ class MembershipService:
         project_id_to_identifier: dict[int, str],
         resolve_project_ref: ProjectRefResolver,
         resolve_principal_ref: PrincipalRefResolver,
-        list_roles: Callable[[], Awaitable[RoleListResult]],
+        role_api: RoleApi,
         api_prefix: str,
     ) -> None:
         self._api = api
@@ -47,7 +59,7 @@ class MembershipService:
         self._project_id_to_identifier = project_id_to_identifier
         self._resolve_project_ref = resolve_project_ref
         self._resolve_principal_ref = resolve_principal_ref
-        self._list_roles = list_roles
+        self._role_api = role_api
         self._api_prefix = api_prefix
 
     def _stamp(self, value: Any) -> Any:
@@ -210,11 +222,22 @@ class MembershipService:
         )
 
     async def _resolve_role_hrefs(self, roles: list[str]) -> list[str]:
-        # Verbatim port of client.py's _resolve_role_hrefs. Kept as a private
-        # Service method (not a resolver) since it operates purely on the
-        # injected list_roles() result, with no ID resolution against
-        # MembershipApi itself.
-        available_roles = await self._list_roles()
+        # Kept as a private Service method (not a resolver) since it operates
+        # purely on the complete role set, with no ID resolution against
+        # MembershipApi itself. Page-walks RoleApi directly (rather than going
+        # through RoleService.list_roles) since this internal by-value lookup
+        # needs ALL roles regardless of the caller-facing pagination window,
+        # and has no serialization step to apply hidden-field masking to.
+        access.ensure_read_enabled("role", settings=self._settings)
+        # max_page_size, not clamp_limit(None, ...) (which would resolve to the
+        # smaller default_page_size) -- this walk needs the COMPLETE role set,
+        # so the largest page the server allows minimizes round trips, same as
+        # VersionResolver/ProjectResolver's identical page-walk (see
+        # version_resolver.py's `limit=self._settings.max_page_size`).
+        available_roles = await paginate_all(
+            lambda offset, page_size: self._role_api.list_roles(offset=offset, page_size=page_size),
+            page_size=self._settings.max_page_size,
+        )
         hrefs: list[str] = []
         for role_ref in roles:
             normalized = role_ref.strip()
@@ -224,13 +247,13 @@ class MembershipService:
                 hrefs.append(self._api_href(f"roles/{normalized}"))
                 continue
             matches = [
-                role for role in available_roles.results if (role.name or "").casefold() == normalized.casefold()
+                record for record in available_roles if (record.summary.name or "").casefold() == normalized.casefold()
             ]
             if not matches:
                 raise InvalidInputError(f"OpenProject role '{role_ref}' was not found.")
             if len(matches) > 1:
                 raise InvalidInputError(f"OpenProject role '{role_ref}' is ambiguous. Pass a numeric role id.")
-            hrefs.append(self._api_href(f"roles/{matches[0].id}"))
+            hrefs.append(self._api_href(f"roles/{matches[0].summary.id}"))
         if not hrefs:
             raise InvalidInputError("At least one role is required.")
         return hrefs

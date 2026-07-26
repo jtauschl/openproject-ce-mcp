@@ -111,7 +111,7 @@ class RoleSummary:
 
 
 @dataclass
-class RoleListResult(CollectionResult):
+class RoleListResult(PageResult):
     results: list[RoleSummary]
 
 

@@ -23,6 +23,7 @@ from .app.adapters.httpx_grid_api import HttpxGridApi
 from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
+from .app.adapters.httpx_role_api import HttpxRoleApi
 from .app.adapters.httpx_sprint_api import HttpxSprintApi
 from .app.adapters.httpx_version_api import HttpxVersionApi
 from .app.adapters.httpx_view_api import HttpxViewApi
@@ -56,6 +57,7 @@ from .app.ports.membership_api import MembershipApi
 from .app.ports.news_api import NewsApi
 from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
+from .app.ports.role_api import RoleApi
 from .app.ports.sprint_api import SprintApi
 from .app.ports.version_api import VersionApi
 from .app.ports.view_api import ViewApi
@@ -71,6 +73,7 @@ from .app.services.membership_service import MembershipService
 from .app.services.news_service import NewsService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
+from .app.services.role_service import RoleService
 from .app.services.sprint_service import SprintService
 from .app.services.version_service import VersionService
 from .app.services.view_service import ViewService
@@ -166,7 +169,6 @@ from .models import (
     ReminderWriteResult,
     RenderedText,
     RoleListResult,
-    RoleSummary,
     SortCriterion,
     SprintDetail,
     SprintListResult,
@@ -353,6 +355,9 @@ class OpenProjectClient:
             project_id_to_identifier=self._project_id_to_identifier,
         )
 
+        self._role_api: RoleApi = HttpxRoleApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._role_service = RoleService(api=self._role_api, settings=settings)
+
         self._membership_api: MembershipApi = HttpxMembershipApi(
             HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
         )
@@ -362,7 +367,7 @@ class OpenProjectClient:
             project_id_to_identifier=self._project_id_to_identifier,
             resolve_project_ref=self._get_project_payload,
             resolve_principal_ref=self._resolve_principal_id,
-            list_roles=self.list_roles,
+            role_api=self._role_api,
             api_prefix=self._api_prefix,
         )
 
@@ -594,11 +599,8 @@ class OpenProjectClient:
             self._ensure_project_link_allowed(project_link)
         return self.normalize_job_status(payload)
 
-    async def list_roles(self) -> RoleListResult:
-        self._ensure_read_enabled("role")
-        payload = await self._get("roles")
-        roles = [self.normalize_role(item) for item in payload.get("_embedded", {}).get("elements", [])]
-        return RoleListResult(count=len(roles), results=roles)
+    async def list_roles(self, *, offset: int = 1, limit: int | None = None) -> RoleListResult:
+        return await self._role_service.list_roles(offset=offset, limit=limit)
 
     async def list_principals(
         self,
@@ -4313,16 +4315,6 @@ class OpenProjectClient:
                 favorited=summary.favorited,
                 ancestors=ancestors,
                 ancestors_truncated=ancestors_truncated,
-            ),
-        )
-
-    def normalize_role(self, payload: dict[str, Any]) -> RoleSummary:
-        return self._apply_hidden_fields(
-            "role",
-            RoleSummary(
-                id=int(payload["id"]),
-                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Role {payload['id']}",
-                url=self._web_url(f"roles/{payload['id']}"),
             ),
         )
 

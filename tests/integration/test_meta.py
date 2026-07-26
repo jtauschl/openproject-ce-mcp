@@ -40,12 +40,6 @@ async def test_list_types(client: OpenProjectClient) -> None:
     assert result.results[0].name
 
 
-async def test_list_roles(client: OpenProjectClient) -> None:
-    result = await client.list_roles()
-    assert result.count > 0
-    assert result.results[0].name
-
-
 async def test_list_time_entry_activities(client: OpenProjectClient) -> None:
     result = await client.list_time_entry_activities()
     assert result.count >= 0

@@ -7,8 +7,9 @@ from _client_test_helpers import make_settings
 
 from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.membership_api import MembershipFormResult, MembershipPage, MembershipRecord
+from openproject_ce_mcp.app.ports.role_api import RoleRecord
 from openproject_ce_mcp.app.services.membership_service import MembershipService
-from openproject_ce_mcp.models import MembershipSummary, RoleListResult, RoleSummary
+from openproject_ce_mcp.models import MembershipSummary, RoleSummary
 
 BASE_URL = "https://op.example.com"
 
@@ -102,8 +103,16 @@ async def _resolve_principal_ref(principal_ref: str) -> str:
     return "9"
 
 
-async def _list_roles() -> RoleListResult:
-    return RoleListResult(count=1, results=[RoleSummary(id=1, name="Member", url=f"{BASE_URL}/roles/1")])
+class _FakeRoleApi:
+    def __init__(self, records: list[RoleRecord] | None = None) -> None:
+        self._records = records or [RoleRecord(summary=RoleSummary(id=1, name="Member", url=f"{BASE_URL}/roles/1"))]
+        self.list_calls: list[tuple[int, int]] = []
+
+    async def list_roles(self, *, offset: int, page_size: int) -> tuple[list[RoleRecord], int]:
+        self.list_calls.append((offset, page_size))
+        start = (offset - 1) * page_size
+        end = start + page_size
+        return self._records[start:end], len(self._records)
 
 
 def _service(
@@ -112,7 +121,7 @@ def _service(
     settings=None,
     resolve_project_ref=_resolve_project_ref,
     resolve_principal_ref=_resolve_principal_ref,
-    list_roles=_list_roles,
+    role_api: _FakeRoleApi | None = None,
 ) -> MembershipService:
     api = api or _FakeMembershipApi()
     return MembershipService(
@@ -121,7 +130,7 @@ def _service(
         project_id_to_identifier={},
         resolve_project_ref=resolve_project_ref,
         resolve_principal_ref=resolve_principal_ref,
-        list_roles=list_roles,
+        role_api=role_api or _FakeRoleApi(),
         api_prefix="/api/v3/",
     )
 
@@ -355,19 +364,86 @@ async def test_create_role_not_found_raises() -> None:
 
 @pytest.mark.asyncio
 async def test_create_role_ambiguous_raises() -> None:
-    async def list_roles_with_duplicate() -> RoleListResult:
-        return RoleListResult(
-            count=2,
-            results=[
-                RoleSummary(id=1, name="Member", url=f"{BASE_URL}/roles/1"),
-                RoleSummary(id=2, name="Member", url=f"{BASE_URL}/roles/2"),
-            ],
-        )
-
+    role_api = _FakeRoleApi(
+        records=[
+            RoleRecord(summary=RoleSummary(id=1, name="Member", url=f"{BASE_URL}/roles/1")),
+            RoleRecord(summary=RoleSummary(id=2, name="Member", url=f"{BASE_URL}/roles/2")),
+        ]
+    )
     api = _FakeMembershipApi()
-    service = _service(api, list_roles=list_roles_with_duplicate)
+    service = _service(api, role_api=role_api)
 
     with pytest.raises(InvalidInputError, match="ambiguous"):
+        await service.create(project="demo", principal="me", roles=["Member"], confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_create_role_lookup_page_walks_beyond_first_page() -> None:
+    """Regression test for the Roles migration: _resolve_role_hrefs must see
+    ALL roles, not just the first page, now that RoleApi is paginated. A role
+    api with a small page_size and the wanted role on a later page must still
+    resolve successfully.
+    """
+    role_api = _FakeRoleApi(
+        records=[
+            RoleRecord(summary=RoleSummary(id=1, name="Reader", url=f"{BASE_URL}/roles/1")),
+            RoleRecord(summary=RoleSummary(id=2, name="Member", url=f"{BASE_URL}/roles/2")),
+        ]
+    )
+    settings = dataclasses.replace(make_settings(), default_page_size=1, max_page_size=1)
+    api = _FakeMembershipApi()
+    service = _service(api, settings=settings, role_api=role_api)
+
+    result = await service.create(project="demo", principal="me", roles=["Member"], confirm=True)
+
+    assert result.confirmed is True
+    assert len(role_api.list_calls) >= 2
+
+
+@pytest.mark.asyncio
+async def test_create_role_lookup_page_walks_using_max_page_size_not_default() -> None:
+    """_resolve_role_hrefs must page-walk using settings.max_page_size, not
+    settings.default_page_size, to minimize round trips for this
+    fetch-everything-by-value lookup -- same as VersionResolver/
+    ProjectResolver's identical page-walk. A regression here (page-walking
+    with the smaller default_page_size) would still resolve correctly but
+    waste extra HTTP calls; distinguishing the two settings (unlike the
+    "beyond first page" test above, which sets both to 1 and can't tell them
+    apart) is what pins the actual page_size used.
+    """
+    role_api = _FakeRoleApi(records=[RoleRecord(summary=RoleSummary(id=1, name="Member", url=f"{BASE_URL}/roles/1"))])
+    settings = dataclasses.replace(make_settings(), default_page_size=1, max_page_size=20)
+    api = _FakeMembershipApi()
+    service = _service(api, settings=settings, role_api=role_api)
+
+    await service.create(project="demo", principal="me", roles=["Member"], confirm=True)
+
+    assert role_api.list_calls == [(1, 20)]
+
+
+@pytest.mark.asyncio
+async def test_create_role_lookup_checks_read_enabled() -> None:
+    settings = dataclasses.replace(make_settings(), enable_membership_read=False)
+    role_api = _FakeRoleApi()
+    api = _FakeMembershipApi()
+    service = _service(api, settings=settings, role_api=role_api)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.create(project="demo", principal="me", roles=["Member"], confirm=False)
+
+    assert role_api.list_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_role_lookup_propagates_role_api_failure() -> None:
+    class _FailingRoleApi:
+        async def list_roles(self, *, offset: int, page_size: int) -> tuple[list, int]:
+            raise RuntimeError("role listing unavailable")
+
+    api = _FakeMembershipApi()
+    service = _service(api, role_api=_FailingRoleApi())
+
+    with pytest.raises(RuntimeError, match="role listing unavailable"):
         await service.create(project="demo", principal="me", roles=["Member"], confirm=False)
 
 

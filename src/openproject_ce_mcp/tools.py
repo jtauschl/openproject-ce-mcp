@@ -783,15 +783,24 @@ async def delete_project(
     return await _run_tool(client.delete_project(project_ref=safe_project, confirm=confirm))
 
 
-async def list_roles(ctx: Context, select: list[str] | None = None) -> RoleListResult:
+async def list_roles(
+    ctx: Context,
+    select: list[str] | None = None,
+    offset: int = 1,
+    limit: int | None = None,
+) -> RoleListResult:
     """List OpenProject roles visible to the current user.
 
     select restricts each result row to the given fields (e.g. ["id", "name"]);
-    an invalid name returns the allowed set.
+    an invalid name returns the allowed set. limit is capped at
+    OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned next_offset as
+    the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     _validate_select(select, row_type=RoleSummary)
-    return await _run_tool(client.list_roles())
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    return await _run_tool(client.list_roles(offset=safe_offset, limit=safe_limit))
 
 
 async def list_principals(

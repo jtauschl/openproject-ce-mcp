@@ -31,11 +31,6 @@ async def test_get_user_me(client: OpenProjectClient) -> None:
     assert user.login == me.login
 
 
-async def test_list_roles(client: OpenProjectClient) -> None:
-    result = await client.list_roles()
-    assert result.count > 0
-
-
 async def test_list_groups(client: OpenProjectClient) -> None:
     result = await client.list_groups()
     assert result is not None

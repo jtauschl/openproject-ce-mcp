@@ -7,7 +7,8 @@ layering violation.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 
 
 def _next_offset(offset: int, limit: int, total: int) -> int | None:
@@ -54,3 +55,31 @@ def paginate_client(*, offset: int, limit: int, results: list[Any]) -> tuple[lis
     page = results[start:end]
     next_offset, truncated = paginate_server(offset=offset, limit=limit, total=total)
     return page, total, next_offset, truncated
+
+
+_T = TypeVar("_T")
+
+
+async def paginate_all(
+    fetch_page: Callable[[int, int], Awaitable[tuple[list[_T], int]]], *, page_size: int
+) -> list[_T]:
+    """Walk a server-paginated fetcher (offset, page_size) -> (items, total) to
+    completion, returning every item across all pages.
+
+    For an internal consumer that needs the complete dataset to scan (e.g.
+    resolving a name reference by value), not a single page for display.
+    `VersionResolver`/`ProjectResolver` each hand-roll an equivalent
+    `while True` loop already (see version_resolver.py, project_resolver.py),
+    but those are tied to project-scoped fetch signatures with per-page
+    allowlist checks -- not extracted here to avoid forcing an unrelated
+    refactor of that project-scoped machinery onto this purely-global helper.
+    """
+    items: list[_T] = []
+    offset = 1
+    while True:
+        page_items, total = await fetch_page(offset, page_size)
+        items.extend(page_items)
+        next_offset, truncated = paginate_server(offset=offset, limit=page_size, total=total)
+        if not truncated:
+            return items
+        offset = next_offset if next_offset is not None else offset + 1
