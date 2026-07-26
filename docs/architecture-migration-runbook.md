@@ -24,7 +24,13 @@ Prefer a domain that:
   not the still-flat work-package resolution machinery) — check
   `client.py` for whether the domain's methods call
   `_resolve_work_package_id`/`_work_package_ref` anywhere; if so, defer it
-  until Work Packages itself migrates
+  until Work Packages itself migrates. **Actually grep for the call, don't
+  infer it from the domain's name or its apparent similarity to a
+  work-package sub-resource** — the Sprints migration's own first-pass
+  screening disqualified Boards for this reason without checking, and the
+  claim was wrong (Boards scopes via a plain `_links.project` link, the
+  same shape as Views/Documents, with zero `_work_package_ref` calls
+  anywhere in its methods).
 - is small-to-medium in `client.py` line count (rough guide: under ~150
   lines including its `normalize_*` methods)
 - is named as a candidate in this doc's "Future split points" list in
@@ -75,6 +81,18 @@ order, immediately before writing anything:
    instead of copying them into the new service. Two domains (News,
    Documents) independently duplicated this exact logic before it was
    extracted — don't add a third copy.
+5. `grep -rl "<domain_name>" tests/unit/` for an EXISTING client-level test
+   file exercising the domain's still-flat `client.py` methods end-to-end
+   (e.g. `test_versions_and_sprints.py` for Versions/Sprints,
+   `test_hidden_fields.py`'s per-entity tests) — these predate the
+   migration, are not named after the new `app/` layer's conventions, and
+   are trivial to miss if you only look for `test_app_*` files. They are a
+   ready-made behavioral spec of the exact current behavior to preserve
+   (read them before writing the new Adapter/Service, not after), and they
+   must still pass unmodified once the facade delegates — do not delete or
+   rewrite them. The Sprints migration's own plan missed
+   `test_versions_and_sprints.py` entirely on the first pass; only a
+   separate self-review step caught it.
 
 **Verify, don't assume, on these two specific traps** (both cost real
 rework in the Documents migration):
@@ -106,27 +124,63 @@ In this order (each depends only on the previous):
 
 1. **Port** — `app/ports/<domain>_api.py`: a frozen `<Domain>Record`
    dataclass (`summary`, a `to_detail` field, `<parent>_link` for the raw
-   HAL link the Policy layer needs) and a `<Domain>Api` Protocol. Make
-   `to_detail` a **lazy callable** (`Callable[[], <Domain>Detail]`), not a
-   precomputed field, whenever the domain's summary/detail normalizers
-   apply different truncation limits to the same raw text — check by
-   grepping whether the Service's `list()` path ever reads `.detail`; if
-   it never does, eager computation wastes a second extraction pass on
-   every list row. Only omit `commit_create`/`delete` from the Protocol if
-   the OpenProject API genuinely has no such endpoint (verify against the
-   API docs or an existing read-only/limited-CRUD note in `docs/claude.md`
-   — don't assume from `client.py`'s current shape alone, since a missing
-   write method there could just mean it was never implemented, not that
-   it's impossible).
+   HAL link the Policy layer needs) and a `<Domain>Api` Protocol. **This is
+   the shape for a domain with both a list and a get endpoint returning a
+   parent-linked resource — it is not universal, don't force-fit it.** A
+   get-only, no-list domain (Wiki Pages) has exactly one method and one
+   result shape, no separate `summary`/`detail` split at all (there's no
+   list-row truncation to diverge from in the first place). A list-only
+   domain with no single-item GET (Categories) has the Service synthesize
+   `get()` by filtering `list()`'s results in Python, so the Record carries
+   no `to_detail`. A domain whose raw payload carries no reliable
+   identifier/title on its parent link (Grids) must carry the RAW link
+   dict, not just an extracted href string, since the allowlist check needs
+   more than `href` off it. Check the closest sibling BY SHAPE (per step 1
+   above) for the actual Record fields to include, not this generic
+   description. Make `to_detail` a **lazy callable**
+   (`Callable[[], <Domain>Detail]`), not a precomputed field, whenever the
+   domain's summary/detail normalizers apply different truncation limits to
+   the same raw text — check by grepping whether the Service's `list()`
+   path ever reads `.detail`; if it never does, eager computation wastes a
+   second extraction pass on every list row (verify this in the ADAPTER,
+   not just architecturally: an eager `detail` field built by re-running the
+   summary's own `normalize_*` function on the raw payload a second time is
+   just as wasteful as a needlessly lazy one — build it as a field-copy off
+   the already-computed `summary` instead, e.g. `version_api.py`'s
+   `summary_to_detail`; this exact double-normalization bug was found
+   independently in both Views' and Sprints' adapters during the Sprints
+   migration's step-6 audit). Only omit `commit_create`/`delete` from the
+   Protocol if the OpenProject API genuinely has no such endpoint (verify
+   against the API docs or an existing read-only/limited-CRUD note in
+   `docs/claude.md` — don't assume from `client.py`'s current shape alone,
+   since a missing write method there could just mean it was never
+   implemented, not that it's impossible).
 2. **Adapter** — `app/adapters/httpx_<domain>_api.py`: the concrete
    `Httpx<Domain>Api`, plus module-level `normalize_<domain>`/
    `normalize_<domain>_detail` HAL→model functions (pure translation, no
-   hidden-field awareness — see the masking note above). Small duplicated
-   private copies of `_trim_text`/`_id_from_href`/`_link_title`/
-   `_can_update_from_links`/`_delimit_user_content`/`_extract_formattable_text`
-   (verified against `client.py`'s real originals per the trap above) are
-   expected and fine — this project has a standing policy of not unifying
-   these across domains until every domain has migrated.
+   hidden-field awareness — see the masking note above). **`_trim_text`/
+   `_id_from_href`/`_link_title` are NOT to be locally duplicated anymore** —
+   they were extracted into `app/adapters/_text.py` once the sixth domain
+   (Wiki Pages) migrated (this project's own "unify once past the 3rd
+   identical copy" convention), and every adapter since imports them from
+   there (`from ._text import trim_text as _trim_text`, etc., plus
+   `SUBJECT_LIMIT`). Diff the shared version against `client.py`'s real
+   module-level original before trusting it, per the trap above, but reuse
+   it — do not re-copy it locally. `_can_update_from_links`/
+   `_delimit_user_content`/`_extract_formattable_text` (and
+   `_normalize_validation_errors`) genuinely DO stay local, deliberately
+   duplicated per adapter: these differ meaningfully between domains (see
+   `httpx_grid_api.py`'s module docstring for a concrete example of how two
+   adapters' versions diverge) and unifying them would silently change
+   behavior, not just remove duplication. Two more package-root
+   shared-kernel modules exist for the same reason, outside the adapter
+   layer: `app/api_href.py` (an `api_href(relative_path, *, api_prefix)`
+   helper, replacing what used to be a duplicated `_api_href` method per
+   Service) and `app/form_result.py` (a shared `FormResult` dataclass,
+   aliased under each domain's own `<Domain>FormResult` name in its port
+   module). Check `app/{errors,pagination,api_href,form_result}.py` for an
+   existing helper before writing a new one, the same way you'd check
+   `_text.py` for adapter helpers.
 3. **Policy** — `app/policies/<domain>_policy.py`: usually a one-line
    `<domain>_payload_allowed(payload, *, settings, project_id_to_identifier)`
    delegating to `scope.project_link_payload_allowed(payload,
@@ -189,10 +243,19 @@ In this order (each depends only on the previous):
   that calls `client.normalize_<domain>*` directly (these no longer exist
   post-migration); re-anchor its assertion at the Service layer instead.
 - `tests/integration/test_<domain>.py` — CRUD (or the subset the API
-  supports) against a live instance. If the domain has no create endpoint,
-  source an id via the corresponding `list_*` call and skip gracefully if
-  the test project has none (don't fail the suite over missing fixture
-  data you cannot create).
+  supports) against a live instance. If the domain has no create endpoint
+  but DOES have a `list_*` call, source an id via that list call and skip
+  gracefully if the test project has none (don't fail the suite over
+  missing fixture data you cannot create). **If the domain has neither a
+  create endpoint NOR a list endpoint** (a get-only domain like Wiki
+  Pages, where the single-item id is a known, stable, non-numeric slug
+  rather than something discoverable via listing), there may be no
+  practical way to source a live id at all — it is acceptable to skip
+  writing this file rather than force a live test against a hardcoded or
+  environment-specific id; confirm this explicitly rather than silently
+  omitting the file with no note (Wiki Pages shipped with no
+  `tests/integration/test_wiki_pages.py` at all, undocumented as a
+  decision until this runbook entry).
 
 Run `uv run pytest`, `uv run mypy src/openproject_ce_mcp`, `uv run ruff
 check .`, `uv run ruff format --check .` — all four must be clean before
