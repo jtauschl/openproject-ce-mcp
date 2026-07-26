@@ -78,7 +78,7 @@ def _record(*, project_link: dict | None = None, **kwargs: object) -> BoardRecor
 class _FakeBoardApi:
     def __init__(self, records: list[BoardRecord] | None = None) -> None:
         self._records = {r.summary.id: r for r in (records or [_record()])}
-        self.list_all_calls: list[None] = []
+        self.list_all_calls: list[int] = []
         self.list_page_calls: list[tuple[int, int]] = []
         self.get_calls: list[int] = []
         self.create_form_calls: list[dict] = []
@@ -90,8 +90,8 @@ class _FakeBoardApi:
         self.commit_result_project_id: int | None = 6
         self.commit_result_project: str | None = "Demo"
 
-    async def list_all(self) -> list[BoardRecord]:
-        self.list_all_calls.append(None)
+    async def list_all(self, *, page_size: int) -> list[BoardRecord]:
+        self.list_all_calls.append(page_size)
         return list(self._records.values())
 
     async def list_page(self, *, offset: int, limit: int) -> tuple[list[BoardRecord], int]:
@@ -121,13 +121,13 @@ class _FakeBoardApi:
         self.update_form_calls.append((board_id, payload))
         return BoardFormResult(payload=payload, validation_errors=self.validation_errors)
 
-    async def commit_create(self, payload: dict) -> BoardSummary:
+    async def commit_create(self, payload: dict) -> BoardDetail:
         self.commit_create_calls.append(payload)
-        return _summary(board_id=42, project_id=self.commit_result_project_id, project=self.commit_result_project)
+        return _detail(board_id=42, project_id=self.commit_result_project_id, project=self.commit_result_project)
 
-    async def commit_update(self, board_id: int, payload: dict) -> BoardSummary:
+    async def commit_update(self, board_id: int, payload: dict) -> BoardDetail:
         self.commit_update_calls.append((board_id, payload))
-        return _summary(board_id=board_id, project_id=self.commit_result_project_id, project=self.commit_result_project)
+        return _detail(board_id=board_id, project_id=self.commit_result_project_id, project=self.commit_result_project)
 
     async def delete(self, board_id: int) -> None:
         self.delete_calls.append(board_id)
@@ -179,7 +179,7 @@ async def test_list_uses_client_side_path_when_project_filter_given() -> None:
     result = await service.list(project="demo")
 
     assert [item.id for item in result.results] == [1]
-    assert api.list_all_calls == [None]
+    assert api.list_all_calls == [100]
     assert api.list_page_calls == []
 
 
@@ -205,7 +205,7 @@ async def test_list_returns_empty_under_empty_read_projects() -> None:
     result = await service.list()
 
     assert result.count == 0
-    assert api.list_all_calls == [None]
+    assert api.list_all_calls == [100]
 
 
 @pytest.mark.asyncio
@@ -328,6 +328,27 @@ async def test_create_commits_and_stamps_hidden_fields_when_confirmed() -> None:
     assert len(api.commit_create_calls) == 1
     assert result.result is not None
     assert getattr(result.result, "_hidden_keys", frozenset()) == {"public"}
+
+
+@pytest.mark.asyncio
+async def test_create_commit_result_is_a_board_detail_not_a_board_summary() -> None:
+    # Regression: BoardWriteResult.result is typed BoardDetail (models.py),
+    # but BoardApi.commit_create/commit_update once returned BoardSummary --
+    # a plain isinstance would still "work" via duck typing in Python, but a
+    # BoardSummary is missing every BoardDetail-only field (group_by,
+    # columns, sort_by, highlighted_attributes, filters, timestamps,
+    # timeline_zoom_level, highlighting_mode), so any consumer serializing
+    # the confirmed result (e.g. the MCP structured-output layer) against
+    # the BoardDetail schema would fail. Assert a detail-only field is
+    # actually present and correctly typed, not just that .result is truthy.
+    api = _FakeBoardApi()
+    service = _service(api)
+
+    result = await service.create(name="My Board", project="demo", confirm=True)
+
+    assert isinstance(result.result, BoardDetail)
+    assert hasattr(result.result, "group_by")
+    assert hasattr(result.result, "columns")
 
 
 @pytest.mark.asyncio
@@ -491,6 +512,41 @@ async def test_update_denies_a_board_outside_write_allowlist() -> None:
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.update(board_id=1, name="Renamed", confirm=False)
+
+    assert api.update_form_calls == []
+
+
+@pytest.mark.asyncio
+async def test_update_denies_reparenting_into_a_project_outside_write_allowlist() -> None:
+    # Regression: the CURRENT board's project (A, writable) passing
+    # ensure_board_write_allowed must NOT be sufficient authorization for a
+    # reparent target (B, not writable) -- _build_write_payload's own
+    # resolve_project_ref(project, write=False) call only resolves B's id
+    # for the outgoing href, it never authorizes writing INTO B. Without an
+    # explicit write=True check on the target, update(project="B") would
+    # silently move the board out of the caller's write-allowlist.
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("demo",))
+    calls: list[tuple[str, bool]] = []
+
+    async def resolve_project_ref_by_name(project_ref: str, *, write: bool = False, context=None) -> dict:
+        calls.append((project_ref, write))
+        from openproject_ce_mcp.app.policies import scope as scope_policy_module
+
+        project_id = 6 if project_ref == "demo" else 7
+        payload = {"id": project_id, "identifier": project_ref, "name": project_ref.title()}
+        if write:
+            scope_policy_module.ensure_project_write_link_allowed(
+                {"href": f"/api/v3/projects/{project_id}", "identifier": project_ref},
+                settings=settings,
+                project_id_to_identifier={6: "demo", 7: "other"},
+            )
+        return payload
+
+    api = _FakeBoardApi(records=[_record(board_id=1, project_id=6, project="demo")])
+    service = _service(api, settings=settings, resolve_project_ref=resolve_project_ref_by_name)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await service.update(board_id=1, project="other", confirm=False)
 
     assert api.update_form_calls == []
 

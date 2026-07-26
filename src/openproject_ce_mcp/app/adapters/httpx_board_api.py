@@ -180,8 +180,8 @@ class HttpxBoardApi:
             project_link=payload.get("_links", {}).get("project"),
         )
 
-    async def list_all(self) -> list[BoardRecord]:
-        payload = await self._transport.get_json("queries")
+    async def list_all(self, *, page_size: int) -> list[BoardRecord]:
+        payload = await self._transport.get_json("queries", params={"offset": "1", "pageSize": str(page_size)})
         elements = payload.get("_embedded", {}).get("elements", [])
         return [self._record(item) for item in elements if isinstance(item, dict)]
 
@@ -201,13 +201,13 @@ class HttpxBoardApi:
     async def update_form(self, board_id: int, payload: dict[str, Any]) -> BoardFormResult:
         return self._form_result(await self._transport.post_json(f"queries/{board_id}/form", json_body=payload))
 
-    async def commit_create(self, payload: dict[str, Any]) -> BoardSummary:
+    async def commit_create(self, payload: dict[str, Any]) -> BoardDetail:
         response = await self._transport.post_json("queries", json_body=payload)
-        return normalize_board(response, base_url=self._base_url)
+        return summary_to_detail(normalize_board(response, base_url=self._base_url), payload=response)
 
-    async def commit_update(self, board_id: int, payload: dict[str, Any]) -> BoardSummary:
+    async def commit_update(self, board_id: int, payload: dict[str, Any]) -> BoardDetail:
         response = await self._transport.patch_json(f"queries/{board_id}", json_body=payload)
-        return normalize_board(response, base_url=self._base_url)
+        return summary_to_detail(normalize_board(response, base_url=self._base_url), payload=response)
 
     async def delete(self, board_id: int) -> None:
         await self._transport.delete(f"queries/{board_id}")

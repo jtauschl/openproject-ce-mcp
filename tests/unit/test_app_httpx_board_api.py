@@ -45,14 +45,21 @@ def _board_payload(board_id: int = 1, *, long_name: bool = False) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_list_all_requests_queries_and_builds_records() -> None:
+async def test_list_all_requests_a_bounded_page_and_builds_records() -> None:
+    # Regression: the original client.py's _fetch_bounded_and_paginate always
+    # sent offset=1&pageSize=settings.max_results for its bounded fetch --
+    # an earlier version of this adapter omitted both params entirely,
+    # silently falling back to the server's (much smaller) default page
+    # size and truncating client-side-filtered results, exactly the
+    # "pageSize-omission bug" client.py's own docstring warns about.
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/queries"
+        assert dict(request.url.params) == {"offset": "1", "pageSize": "100"}
         return httpx.Response(200, json={"_embedded": {"elements": [_board_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
         api = HttpxBoardApi(HttpxTransport(http_client), base_url=BASE_URL)
-        records = await api.list_all()
+        records = await api.list_all(page_size=100)
 
     assert len(records) == 1
     summary = records[0].summary
@@ -157,7 +164,13 @@ async def test_update_form_posts_to_the_board_scoped_form_endpoint() -> None:
 
 
 @pytest.mark.asyncio
-async def test_commit_create_posts_and_returns_summary() -> None:
+async def test_commit_create_posts_and_returns_detail() -> None:
+    # Regression: BoardApi.commit_create must return a BoardDetail (matching
+    # BoardWriteResult.result's declared type in models.py), not a bare
+    # BoardSummary -- a BoardSummary is missing every detail-only field
+    # (group_by/columns/sort_by/highlighted_attributes/filters/timestamps/
+    # timeline_zoom_level/highlighting_mode), which would fail to serialize
+    # against the BoardDetail schema on the MCP structured-output path.
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/queries"
         assert request.method == "POST"
@@ -165,13 +178,15 @@ async def test_commit_create_posts_and_returns_summary() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxBoardApi(HttpxTransport(http_client), base_url=BASE_URL)
-        summary = await api.commit_create({"name": "My Board"})
+        detail = await api.commit_create({"name": "My Board"})
 
-    assert summary.id == 42
+    assert detail.id == 42
+    assert detail.group_by == "Status"
+    assert detail.columns == ["ID", "Subject"]
 
 
 @pytest.mark.asyncio
-async def test_commit_update_patches_and_returns_summary() -> None:
+async def test_commit_update_patches_and_returns_detail() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/queries/1"
         assert request.method == "PATCH"
@@ -179,9 +194,11 @@ async def test_commit_update_patches_and_returns_summary() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxBoardApi(HttpxTransport(http_client), base_url=BASE_URL)
-        summary = await api.commit_update(1, {"name": "Renamed"})
+        detail = await api.commit_update(1, {"name": "Renamed"})
 
-    assert summary.id == 1
+    assert detail.id == 1
+    assert detail.group_by == "Status"
+    assert detail.columns == ["ID", "Subject"]
 
 
 @pytest.mark.asyncio

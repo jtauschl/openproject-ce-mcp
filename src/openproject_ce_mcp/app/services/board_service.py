@@ -56,7 +56,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from ...config import Settings
-from ...models import BoardDetail, BoardListResult, BoardSummary, BoardWriteResult
+from ...models import BoardDetail, BoardListResult, BoardWriteResult
 from ..api_href import api_href as _api_href
 from ..errors import InvalidInputError, PermissionDeniedError
 from ..origin import origin_from_url as _origin_from_url
@@ -135,7 +135,7 @@ class BoardService:
             project_candidates = await resolve_project_filter_candidates(
                 project, resolve_project_ref=self._resolve_project_ref
             )
-            records = await self._api.list_all()
+            records = await self._api.list_all(page_size=self._settings.max_results)
             results = [
                 self._stamp(record.summary)
                 for record in records
@@ -269,6 +269,14 @@ class BoardService:
         board_policy.ensure_board_read_allowed(
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
+        if project is not None:
+            # A project re-parent target is a DIFFERENT project from the one
+            # current.project_link was just checked against above -- that
+            # check alone would let a caller move a board into a project
+            # outside OPENPROJECT_WRITE_PROJECTS, since _build_write_payload's
+            # own resolve_project_ref call below only resolves the target
+            # (write=False, for href-building), it never authorizes it.
+            await self._resolve_project_ref(project, write=True)
         payload = await self._build_write_payload(
             name=name,
             project=project,
@@ -413,7 +421,7 @@ class BoardService:
             payload["_links"] = links
         return payload
 
-    def _to_write_result(self, action: str, outcome: _WriteOutcome[BoardSummary]) -> BoardWriteResult:
+    def _to_write_result(self, action: str, outcome: _WriteOutcome[BoardDetail]) -> BoardWriteResult:
         return BoardWriteResult(
             action=action,
             confirmed=outcome.confirmed,
