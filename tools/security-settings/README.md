@@ -2,10 +2,12 @@
 
 `github-security-settings.sh` checks and enforces this repo's GitHub-level
 security settings via the `gh` CLI: enables Dependabot alerts and Dependabot
-security updates if not already on (the only two tier-independent,
-actually-enforced checks), and best-effort reports on `.github/dependabot.yml`
-presence, secret scanning status, Rulesets/branch protection, and Dependency
-Review product availability.
+security updates if not already on (tier-independent, actually-enforced),
+best-effort enables private vulnerability reporting on public repos if not
+already on (also tier-independent, but visibility-gated — skipped entirely
+on private repos, never attempted-then-reported), and best-effort reports
+on `.github/dependabot.yml` presence, secret scanning status, Rulesets/branch
+protection, and Dependency Review product availability.
 
 Copied from `sw_dev_handbook`'s
 [`templates/scripts/github-security-settings.sh.example`](https://github.com/jtauschl/sw_dev_handbook/blob/v0.8.0/templates/scripts/github-security-settings.sh.example)
@@ -23,8 +25,10 @@ tools/security-settings/github-security-settings.sh owner/repo    # targets a sp
 
 Requires `gh` (authenticated) and `jq`. Exits non-zero only if a
 tier-independent, enforced setting (Dependabot alerts/security updates)
-failed to apply or could not be determined — every other check is
-report-only and never fails the run on its own.
+failed to apply or could not be determined — every other check, including
+private vulnerability reporting (best-effort enabled on public repos, but a
+failure there is reported to stderr without affecting the exit code), is
+report-only in the sense that it never fails the run on its own.
 
 ## Maintenance
 

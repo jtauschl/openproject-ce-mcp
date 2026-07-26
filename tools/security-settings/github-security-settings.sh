@@ -9,9 +9,13 @@ set -euo pipefail
 #
 # Dependabot alerts and Dependabot security updates are tier-independent (available on
 # every plan) and are actually SET here if not already enabled — this script is an enforcer for
-# those two, not just an auditor. Every other check (secret scanning status, Rulesets/branch
-# protection, Dependency Review product availability, private vulnerability reporting,
-# .github/dependabot.yml presence) is report-only: either the setting is tier-gated or
+# those two, not just an auditor, and a failure to apply either one sets the script's final
+# non-zero exit code. Private vulnerability reporting (public repos only — see its own section
+# below) is ALSO actually set here if not already enabled, tier-independent the same way, but a
+# failure to apply it is reported to stderr WITHOUT affecting the exit code — it is best-effort
+# enforcement, not a hard gate like the two Dependabot checks. Every remaining check (secret
+# scanning status, Rulesets/branch protection, Dependency Review product availability,
+# .github/dependabot.yml presence) is purely report-only: either the setting is tier-gated or
 # visibility-gated with nothing meaningful to "set" without knowing the org's plan or the repo's
 # visibility, or (for dependabot.yml) not a settable API flag at all. A tier-gated check that
 # gets a 403 back reports it as an OPEN set of possible causes — plan tier, insufficient
@@ -22,10 +26,12 @@ set -euo pipefail
 # scope — an ambiguous case a confident plan-tier claim would have mislabeled). See the plan-tier
 # gaps already documented in github.md#branch-protection and #secret-scanning for the parts of
 # that open set which genuinely are plan-tier-driven.
-# A 403 on the two TIER-INDEPENDENT checks (Dependabot alerts, security updates) is
-# reported differently still — see those two checks below — since those are available on every
-# plan and a 403 there cannot mean "not on this plan" at all, not even as one of several
-# possibilities.
+# A 403 on the two hard-gated, exit-code-affecting checks (Dependabot alerts, security updates)
+# is reported differently still — see those two checks below — since those are available on
+# every plan and a 403 there cannot mean "not on this plan" at all, not even as one of several
+# possibilities. Private vulnerability reporting is also tier-independent, but its own 403
+# handling (see its section below) reports "insufficient permissions or organization policy"
+# without setting the script's exit code, matching its best-effort (not hard-gated) enforcement.
 #
 # Every status-determining `gh api` GET below goes through gh_api_status() (see its own comment),
 # which distinguishes four outcomes for any endpoint: 2xx (success), 404 (a specific, per-endpoint
@@ -96,9 +102,9 @@ set -euo pipefail
 #   status/body pairs — it does not, and cannot, verify the real GitHub REST API's actual
 #   contract; that part is confirmed by live manual runs, not by any automated test.
 #
-# Usage: ./github-security-settings.sh.example [owner/repo]
-#   e.g. ./github-security-settings.sh.example
-#        ./github-security-settings.sh.example octocat/Hello-World
+# Usage: ./github-security-settings.sh [owner/repo]
+#   e.g. ./github-security-settings.sh
+#        ./github-security-settings.sh octocat/Hello-World
 #   With no argument, targets the currently checked-out repo's own GitHub remote.
 
 # SW_DEV_HANDBOOK_DOC_REF: set this to the sw_dev_handbook tag YOUR project is actually pinned to (see
