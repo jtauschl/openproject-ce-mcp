@@ -11,6 +11,10 @@ development baseline.
 
 ### Fixed
 
+- **`update_board` no longer lets a board be moved into a project outside
+  `OPENPROJECT_WRITE_PROJECTS`.** Only the board's current project was
+  authorized against the write allowlist; a `project=` reparent target was
+  resolved for the outgoing request but never checked for write access.
 - **`get_news`/`list_news` description truncation now honors
   `OPENPROJECT_HIDE_NEWS_FIELDS`**, instead of incorrectly checking
   `OPENPROJECT_HIDE_PROJECT_FIELDS`.

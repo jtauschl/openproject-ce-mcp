@@ -3638,6 +3638,14 @@ class OpenProjectClient:
         current = await self._get(f"queries/{board_id}")
         self._ensure_board_write_payload_allowed(current)
         self._ensure_board_payload_allowed(current)
+        if project is not None:
+            # A reparent target is a DIFFERENT project from the one `current`
+            # was just checked against above -- that check alone would let a
+            # caller move a board into a project outside
+            # OPENPROJECT_WRITE_PROJECTS, since _build_board_write_payload's
+            # own _resolve_project_id call below only resolves the target
+            # (no write authorization), purely for href-building.
+            await self._get_project_payload(project, write=True)
         payload = await self._build_board_write_payload(
             name=name,
             project=project,

@@ -7111,6 +7111,67 @@ async def test_create_board_global_requires_fully_open_scope(read_projects, proj
 
 
 @pytest.mark.asyncio
+async def test_update_board_denies_reparenting_into_a_project_outside_write_allowlist() -> None:
+    # Regression: update_board only authorized the board's CURRENT project
+    # against OPENPROJECT_WRITE_PROJECTS -- a reparent target passed via
+    # `project=` was resolved inside _build_board_write_payload purely for
+    # href-building (no write authorization at all), so a caller with write
+    # access to project A could move a board they can write to INTO project
+    # B, which they cannot write to.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/queries/1":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Query",
+                    "id": 1,
+                    "name": "Board",
+                    "public": False,
+                    "hidden": False,
+                    "starred": False,
+                    "includeSubprojects": False,
+                    "showHierarchies": False,
+                    "timelineVisible": False,
+                    "timestamps": [],
+                    "filters": [],
+                    "_links": {
+                        "project": {"href": "/api/v3/projects/6", "title": "demo"},
+                        "update": {"href": "/api/v3/queries/1/form"},
+                        "delete": {"href": "/api/v3/queries/1"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/other":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 9, "name": "Other", "identifier": "other", "_links": {}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        enable_board_write=True,
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        read_projects=("*",),
+        write_projects=("demo",),
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await client.update_board(board_id=1, project="other", confirm=False)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_create_board_returns_preview_when_not_confirmed() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/queries/form" and request.method == "POST":
