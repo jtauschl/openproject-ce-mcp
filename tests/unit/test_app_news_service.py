@@ -126,6 +126,31 @@ async def test_list_filters_by_project_candidate() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_passes_write_false_to_resolve_project_ref() -> None:
+    """list()'s project filter resolves via resolve_project_filter_candidates
+    (project_scoped_list.py), which forwards straight to resolve_project_ref
+    -- must ask for a READ-checked (write=False) resolution. Same shared
+    helper/gap as ViewService.list()/DocumentService.list(), which each
+    already have this test; NewsService (an earlier domain that originated
+    this exact duplicated-then-extracted logic, per project_scoped_list.py's
+    own module docstring) never got the equivalent test backfilled. Found
+    during the Sprints migration's step-6 test-contract audit.
+    """
+    calls: list[bool] = []
+
+    async def resolve_project_ref_tracking_write(project_ref: str, *, write: bool = False, context=None) -> dict:
+        calls.append(write)
+        return await _resolve_project_ref(project_ref, write=write, context=context)
+
+    api = _FakeNewsApi()
+    service = _service(api, resolve_project_ref=resolve_project_ref_tracking_write)
+
+    await service.list(project="demo")
+
+    assert calls == [False]
+
+
+@pytest.mark.asyncio
 async def test_list_filters_by_search_term_in_title_or_summary() -> None:
     api = _FakeNewsApi(records=[_record(news_id=1, title="Release notes"), _record(news_id=2, title="Unrelated")])
     service = _service(api)
