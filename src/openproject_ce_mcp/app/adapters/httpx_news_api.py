@@ -4,8 +4,10 @@ No `httpx` import (depends on the `Transport` Protocol only), no
 `api_prefix` parameter (unlike HttpxMembershipApi/HttpxProjectApi): News
 builds no raw absolute hrefs from server responses, every path is a fixed
 string (`news`, `news/{id}`). `_trim_text`/`_link_title`/`_id_from_href`/
-`_delimit_user_content`/`SUBJECT_LIMIT` are shared via `app/adapters/_text.py`
-(unified once every domain migrated). `_can_update_from_links` stays local.
+`_delimit_user_content`/`_can_update_from_links`/`SUBJECT_LIMIT` are shared
+via `app/adapters/_text.py` (unified once every domain migrated;
+`_can_update_from_links` joined the shared module once Boards made it a 3rd
+byte-identical copy).
 """
 
 from __future__ import annotations
@@ -17,16 +19,13 @@ from ...models import NewsDetail, NewsSummary
 from ..ports.news_api import NewsRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
+from ._text import can_update_from_links as _can_update_from_links
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import trim_text as _trim_text
 
 FORMATTABLE_LIMIT = 1_200
-
-
-def _can_update_from_links(links: dict[str, Any]) -> bool:
-    return "update" in links or "updateImmediately" in links
 
 
 def _extract_formattable_text(value: Any, *, limit: int) -> str | None:

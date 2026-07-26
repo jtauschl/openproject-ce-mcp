@@ -2,10 +2,12 @@
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
 `_id_from_href`/`_link_title`/`_delimit_user_content`/`_link_to_web_url`/
-`_origin_from_url`/`SUBJECT_LIMIT` are shared via `app/adapters/_text.py`
-(unified once every domain migrated, per that module's own docstring).
-`_can_update_from_links`/`_extract_formattable_text`/`FORMATTABLE_LIMIT`
-stay local -- not shared across every adapter.
+`_origin_from_url`/`_can_update_from_links`/`SUBJECT_LIMIT` are shared via
+`app/adapters/_text.py` (unified once every domain migrated, per that
+module's own docstring; `_can_update_from_links` joined the shared module
+once Boards made it a 3rd byte-identical copy).
+`_extract_formattable_text`/`FORMATTABLE_LIMIT` stay local -- not shared
+across every adapter.
 
 `_extract_formattable_text` here keeps the `.get("raw") or .get("html")`
 fallback that client.py's original has (and that HttpxProjectApi/
@@ -22,6 +24,7 @@ from ...models import DocumentDetail, DocumentSummary
 from ..ports.document_api import DocumentRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
+from ._text import can_update_from_links as _can_update_from_links
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
@@ -30,10 +33,6 @@ from ._text import origin_from_url as _origin_from_url
 from ._text import trim_text as _trim_text
 
 FORMATTABLE_LIMIT = 1_200
-
-
-def _can_update_from_links(links: dict[str, Any]) -> bool:
-    return "update" in links or "updateImmediately" in links
 
 
 def _extract_formattable_text(value: Any, *, limit: int) -> str | None:

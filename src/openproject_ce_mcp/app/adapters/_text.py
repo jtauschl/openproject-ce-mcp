@@ -3,6 +3,14 @@
 Extracted from six byte-identical per-adapter copies once the sixth domain
 (Wiki Pages) migrated -- every adapter's own module docstring had documented
 this exact trigger condition ("unify only once every domain has migrated").
+`can_update_from_links` was added here once the Boards migration made it the
+3rd byte-identical copy (Document, News, Board all had the exact same
+`"update" in links or "updateImmediately" in links` body), found during
+Boards' step-6 self-audit. `origin_from_url` moved to the package-root
+`app/origin.py` (also found during Boards' step-6 audit) since
+`BoardService` needed the identical same-origin check but `services` cannot
+import from `adapters` -- re-exported here unchanged so every existing
+`from ._text import origin_from_url` import keeps working.
 Deliberately excludes `_normalize_validation_errors` and `_extract_formattable_text`:
 those differ meaningfully between adapters (e.g. httpx_project_api.py's
 validation-error path calls a `_with_meta` variant, httpx_membership_api.py's
@@ -16,6 +24,8 @@ from __future__ import annotations
 
 from typing import Any
 from urllib.parse import urljoin, urlparse
+
+from ..origin import origin_from_url
 
 SUBJECT_LIMIT = 255
 
@@ -54,9 +64,8 @@ def delimit_user_content(text: str | None) -> str | None:
     return f"<user-content>{text}</user-content>"
 
 
-def origin_from_url(url: str) -> str:
-    parsed = urlparse(url)
-    return f"{parsed.scheme}://{parsed.netloc}"
+def can_update_from_links(links: dict[str, Any]) -> bool:
+    return "update" in links or "updateImmediately" in links
 
 
 def link_to_web_url(href: str | None, *, base_url: str, origin: str) -> str | None:
