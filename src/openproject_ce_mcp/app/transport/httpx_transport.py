@@ -35,23 +35,8 @@ class HttpxTransport:
         return await self._request_json("POST", path, params=params, json_body=json_body)
 
     async def post_raw_json(self, path: str, *, content: bytes, headers: dict[str, str]) -> dict[str, Any]:
-        try:
-            response = await self._client.request("POST", path, content=content, headers=headers)
-        except httpx.TimeoutException as exc:
-            raise TransportError("OpenProject request timed out.") from exc
-        except httpx.HTTPError as exc:
-            raise TransportError("Could not reach OpenProject.") from exc
-
-        if response.status_code >= 400:
-            try:
-                payload = response.json()
-            except ValueError:
-                payload = {}
-            raise_for_status(response.status_code, payload)
-        try:
-            return normalize_links(response.json())
-        except ValueError as exc:
-            raise OpenProjectServerError("OpenProject returned invalid JSON.") from exc
+        response = await self._request("POST", path, content=content, headers=headers)
+        return self._parse_json(response)
 
     async def patch_json(
         self, path: str, *, params: dict[str, str] | None = None, json_body: dict[str, Any] | None = None
@@ -87,6 +72,9 @@ class HttpxTransport:
         json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         response = await self._request(method, path, params=params, json_body=json_body)
+        return self._parse_json(response)
+
+    def _parse_json(self, response: httpx.Response) -> dict[str, Any]:
         try:
             return normalize_links(response.json())
         except ValueError as exc:
@@ -99,9 +87,13 @@ class HttpxTransport:
         *,
         params: dict[str, str] | None = None,
         json_body: dict[str, Any] | None = None,
+        content: bytes | None = None,
+        headers: dict[str, str] | None = None,
     ) -> httpx.Response:
         try:
-            response = await self._client.request(method, path, params=params, json=json_body)
+            response = await self._client.request(
+                method, path, params=params, json=json_body, content=content, headers=headers
+            )
         except httpx.TimeoutException as exc:
             raise TransportError("OpenProject request timed out.") from exc
         except httpx.HTTPError as exc:
