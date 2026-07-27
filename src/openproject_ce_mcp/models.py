@@ -1227,7 +1227,7 @@ class GridSummary:
 
 
 @dataclass
-class GridListResult(CollectionResult):
+class GridListResult(PageResult):
     results: list[GridSummary]
 
 

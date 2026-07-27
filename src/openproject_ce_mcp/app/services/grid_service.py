@@ -38,6 +38,17 @@ configuration -- both the write guard AND the config entity were missing,
 not just the guard call sites. Fixed by adding the `"grid"` config entry and
 these calls, matching every other full-CRUD sibling.
 
+`list()` pagination fix (found during the Statuses/Priorities/Types
+migration's broader "N individual exceptions" audit, OPM-1627): this method
+previously had no `offset`/`limit` params and never clamped or paginated at
+all -- an unbounded fetch-all, unlike every other full-list migrated
+sibling. Confirmed via git history this is a faithfully-ported pre-existing
+gap from client.py's very first `list_grids` implementation (pre-dating this
+domain's own migration), not a regression this migration introduced.
+`GridListResult` moved from a bare `CollectionResult` to the standard
+`PageResult` shape to match (see `app/ports/grid_api.py`'s module docstring
+for the same note from the Port side).
+
 Deliberate behavior CHANGE from client.py's original delete_grid (found via
 an external Codex review of the unpushed Grids migration commit, before this
 was pushed): the confirmed branch now returns `result=grid` (the deleted
@@ -62,6 +73,7 @@ from typing import Any
 
 from ...config import Settings
 from ...models import GridListResult, GridSummary, GridWriteResult
+from ..pagination import clamp_limit, paginate_client
 from ..policies import access, hidden_fields
 from ..policies.grid_policy import (
     ensure_grid_read_allowed,
@@ -88,9 +100,15 @@ class GridService:
     def _stamp(self, value: Any) -> Any:
         return hidden_fields.apply_hidden_fields("grid", value, settings=self._settings)
 
-    async def list(self, *, scope: str | None = None) -> GridListResult:
+    async def list(self, *, scope: str | None = None, offset: int = 1, limit: int | None = None) -> GridListResult:
         access.ensure_read_enabled("project", settings=self._settings)
-        records = await self._api.list_all(scope_filter=scope)
+        effective_limit = clamp_limit(
+            limit,
+            default_page_size=self._settings.default_page_size,
+            max_page_size=self._settings.max_page_size,
+            max_results=self._settings.max_results,
+        )
+        records = await self._api.list_all(scope_filter=scope, page_size=self._settings.max_results)
         results = [
             self._stamp(record.summary)
             for record in records
@@ -98,7 +116,16 @@ class GridService:
                 record.scope_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
             )
         ]
-        return GridListResult(count=len(results), results=results)
+        page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=results)
+        return GridListResult(
+            offset=offset,
+            limit=effective_limit,
+            total=total,
+            count=len(page),
+            next_offset=next_offset,
+            truncated=truncated,
+            results=page,
+        )
 
     async def get(self, grid_id: int) -> GridSummary:
         access.ensure_read_enabled("project", settings=self._settings)

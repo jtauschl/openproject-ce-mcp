@@ -32,12 +32,15 @@ def _grid_payload(grid_id: int = 1, *, scope_href: str = "/projects/6") -> dict:
 async def test_list_all_requests_grids_without_filter_by_default() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/grids"
-        assert "filters" not in dict(request.url.params)
+        params = dict(request.url.params)
+        assert "filters" not in params
+        assert params["offset"] == "1"
+        assert params["pageSize"] == "200"
         return httpx.Response(200, json={"_embedded": {"elements": [_grid_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
         api = HttpxGridApi(HttpxTransport(http_client), api_prefix="/api/v3/")
-        records = await api.list_all(scope_filter=None)
+        records = await api.list_all(scope_filter=None, page_size=200)
 
     assert len(records) == 1
     summary = records[0].summary
@@ -58,7 +61,7 @@ async def test_list_all_sends_scope_filter_when_given() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxGridApi(HttpxTransport(http_client), api_prefix="/api/v3/")
-        records = await api.list_all(scope_filter="/my/page")
+        records = await api.list_all(scope_filter="/my/page", page_size=200)
 
     assert records == []
 
@@ -70,7 +73,7 @@ async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxGridApi(HttpxTransport(http_client), api_prefix="/api/v3/")
-        records = await api.list_all(scope_filter=None)
+        records = await api.list_all(scope_filter=None, page_size=200)
 
     assert records == []
 

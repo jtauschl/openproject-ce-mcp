@@ -3544,17 +3544,23 @@ async def delete_file_link(
 async def list_grids(
     ctx: Context,
     scope: str | None = None,
+    offset: int = 1,
+    limit: int | None = None,
     select: list[str] | None = None,
 ) -> GridListResult:
     """List dashboard grids, optionally filtered by scope (page path).
 
     select restricts each result row to the given fields (e.g. ["id", "scope"]);
-    an invalid name returns the allowed set.
+    an invalid name returns the allowed set. limit is capped at
+    OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned next_offset as
+    the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_scope = _validate_optional_query(scope, field_name="scope", max_length=500)
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=GridSummary)
-    return await _run_tool(client.list_grids(scope=safe_scope))
+    return await _run_tool(client.list_grids(scope=safe_scope, offset=safe_offset, limit=safe_limit))
 
 
 async def get_grid(ctx: Context, grid_id: int) -> GridSummary:

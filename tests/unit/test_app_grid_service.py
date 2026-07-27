@@ -52,7 +52,7 @@ class _FakeGridApi:
         self.validation_errors: dict[str, str] = {}
         self.commit_result_scope: str | None = "/projects/6"
 
-    async def list_all(self, *, scope_filter: str | None) -> list[GridRecord]:
+    async def list_all(self, *, scope_filter: str | None, page_size: int) -> list[GridRecord]:
         self.list_all_calls.append(scope_filter)
         return list(self._records.values())
 

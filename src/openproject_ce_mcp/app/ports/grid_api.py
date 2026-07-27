@@ -1,4 +1,16 @@
-"""Grids Domain API port (ADR 0001) -- narrow, no universal gateway."""
+"""Grids Domain API port (ADR 0001) -- narrow, no universal gateway.
+
+`list_all`'s `page_size` param is a pagination bugfix found during the
+Statuses/Priorities/Types migration's broader "N individual exceptions"
+audit (OPM-1627): client.py's original `list_grids` never sent an
+offset/pageSize param at all, an unbounded fetch-all unlike every other
+full-list migrated sibling (Boards/Sprints/Views/etc.), which all clamp via
+`clamp_limit` and paginate. Confirmed via git history this was NOT a
+regression introduced by the Grids migration itself -- the very first,
+pre-layered-migration `client.py` implementation already had this shape.
+`GridListResult` moved from a bare `CollectionResult` to the standard
+`PageResult` shape (offset/limit/total/next_offset/truncated) to match.
+"""
 
 from __future__ import annotations
 
@@ -33,7 +45,7 @@ class GridApi(Protocol):
     architecture-boundary test).
     """
 
-    async def list_all(self, *, scope_filter: str | None) -> list[GridRecord]: ...
+    async def list_all(self, *, scope_filter: str | None, page_size: int) -> list[GridRecord]: ...
     async def get(self, grid_id: int) -> GridRecord: ...
     async def create_form(self, payload: dict[str, Any]) -> GridFormResult: ...
     async def update_form(self, grid_id: int, payload: dict[str, Any]) -> GridFormResult: ...
