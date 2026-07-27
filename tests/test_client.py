@@ -7465,6 +7465,39 @@ async def test_list_grids_filters_disallowed_project_scope() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_grids_paginates_client_side() -> None:
+    # Regression test: list_grids previously sent no offset/pageSize at all and
+    # returned every matching grid in one unbounded call. Fixed to clamp and
+    # paginate like every sibling list_* method.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/grids" and request.method == "GET":
+            assert request.url.params.get("offset") == "1"
+            assert request.url.params.get("pageSize") == "100"
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [_make_grid_payload(grid_id=i) for i in range(1, 6)],
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _make_grid_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.list_grids(offset=1, limit=2)
+
+    assert [g.id for g in result.results] == [1, 2]
+    assert result.count == 2
+    assert result.total == 5
+    assert result.next_offset == 2
+    assert result.truncated is True
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_get_grid_denies_disallowed_project_scope() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/grids/55" and request.method == "GET":

@@ -1340,7 +1340,12 @@ class GridSummary:
 
 @dataclass
 class GridListResult:
+    offset: int
+    limit: int
+    total: int
     count: int
+    next_offset: int | None
+    truncated: bool
     results: list[GridSummary]
 
 

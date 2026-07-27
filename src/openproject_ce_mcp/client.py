@@ -3812,11 +3812,14 @@ class OpenProjectClient:
             for u in payload.get("_links", {}).get("reactingUsers", [])
             if isinstance(u, dict)
         ]
-        return EmojiReactionSummary(
-            reaction=payload.get("reaction", ""),
-            emoji=payload.get("emoji"),
-            count=int(payload.get("reactionsCount", 0)),
-            users=[u for u in users if u],
+        return self._apply_hidden_fields(
+            "emoji_reaction",
+            EmojiReactionSummary(
+                reaction=payload.get("reaction", ""),
+                emoji=payload.get("emoji"),
+                count=int(payload.get("reactionsCount", 0)),
+                users=[u for u in users if u],
+            ),
         )
 
     def _emoji_reactions_result(self, payload: dict[str, Any]) -> EmojiReactionListResult:
@@ -4794,18 +4797,33 @@ class OpenProjectClient:
     def _grid_payload_allowed(self, payload: dict[str, Any]) -> bool:
         return self._payload_allowed(lambda: self._ensure_grid_payload_allowed(payload))
 
-    async def list_grids(self, *, scope: str | None = None) -> GridListResult:
+    async def list_grids(
+        self, *, scope: str | None = None, offset: int = 1, limit: int | None = None
+    ) -> GridListResult:
         self._ensure_read_enabled("project")
-        params: dict[str, str] = {}
+        effective_limit = self._resolve_limit(limit)
+        params: dict[str, str] = {"offset": "1", "pageSize": str(self.settings.max_results)}
         if scope is not None:
             params["filters"] = _json_param([{"scope": {"operator": "=", "values": [scope]}}])
-        payload = await self._get("grids", params=params if params else None)
-        results = [
+        payload = await self._get("grids", params=params)
+        filtered = [
             self.normalize_grid(item)
             for item in payload.get("_embedded", {}).get("elements", [])
             if isinstance(item, dict) and self._grid_payload_allowed(item)
         ]
-        return GridListResult(count=len(results), results=results)
+        total = len(filtered)
+        start = (offset - 1) * effective_limit
+        end = start + effective_limit
+        results = filtered[start:end]
+        return GridListResult(
+            offset=offset,
+            limit=effective_limit,
+            total=total,
+            count=len(results),
+            next_offset=offset + 1 if end < total else None,
+            truncated=end < total,
+            results=results,
+        )
 
     async def get_grid(self, grid_id: int) -> GridSummary:
         self._ensure_read_enabled("project")
@@ -6445,13 +6463,16 @@ class OpenProjectClient:
 
     def normalize_priority(self, payload: dict[str, Any]) -> PrioritySummary:
         priority_id = int(payload["id"])
-        return PrioritySummary(
-            id=priority_id,
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Priority {priority_id}",
-            is_default=bool(payload.get("isDefault")),
-            is_active=bool(payload.get("isActive")),
-            color=_trim_text(payload.get("color"), limit=SUBJECT_LIMIT),
-            position=payload.get("position"),
+        return self._apply_hidden_fields(
+            "priority",
+            PrioritySummary(
+                id=priority_id,
+                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Priority {priority_id}",
+                is_default=bool(payload.get("isDefault")),
+                is_active=bool(payload.get("isActive")),
+                color=_trim_text(payload.get("color"), limit=SUBJECT_LIMIT),
+                position=payload.get("position"),
+            ),
         )
 
     def normalize_type(self, payload: dict[str, Any]) -> TypeSummary:
@@ -6499,17 +6520,20 @@ class OpenProjectClient:
             read_ian = bool(payload.get("read"))
         reason_link = links.get("reason")
         reason = _link_title(reason_link) or _trim_text(payload.get("reason"), limit=SUBJECT_LIMIT)
-        return NotificationSummary(
-            id=notification_id,
-            subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Notification {notification_id}",
-            reason=reason,
-            read=bool(read_ian),
-            project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
-            project_name=_link_title(project_link),
-            work_package_id=work_package_id,
-            work_package_subject=work_package_subject,
-            created_at=payload.get("createdAt") or "",
-            url=self._api_href(f"notifications/{notification_id}"),
+        return self._apply_hidden_fields(
+            "notification",
+            NotificationSummary(
+                id=notification_id,
+                subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Notification {notification_id}",
+                reason=reason,
+                read=bool(read_ian),
+                project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
+                project_name=_link_title(project_link),
+                work_package_id=work_package_id,
+                work_package_subject=work_package_subject,
+                created_at=payload.get("createdAt") or "",
+                url=self._api_href(f"notifications/{notification_id}"),
+            ),
         )
 
     def normalize_file_link(self, payload: dict[str, Any]) -> FileLinkSummary:
@@ -6518,15 +6542,18 @@ class OpenProjectClient:
         storage_link = links.get("storage")
         storage_id = _id_from_href(storage_link.get("href")) if isinstance(storage_link, dict) else None
         storage_name = _link_title(storage_link)
-        return FileLinkSummary(
-            id=file_link_id,
-            title=_trim_text(payload.get("title") or payload.get("originData", {}).get("name"), limit=SUBJECT_LIMIT)
-            or f"File link {file_link_id}",
-            storage_id=storage_id,
-            storage_name=storage_name,
-            created_at=payload.get("createdAt"),
-            updated_at=payload.get("updatedAt"),
-            url=self._api_href(f"file_links/{file_link_id}"),
+        return self._apply_hidden_fields(
+            "file_link",
+            FileLinkSummary(
+                id=file_link_id,
+                title=_trim_text(payload.get("title") or payload.get("originData", {}).get("name"), limit=SUBJECT_LIMIT)
+                or f"File link {file_link_id}",
+                storage_id=storage_id,
+                storage_name=storage_name,
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
+                url=self._api_href(f"file_links/{file_link_id}"),
+            ),
         )
 
     def normalize_grid(self, payload: dict[str, Any]) -> GridSummary:
