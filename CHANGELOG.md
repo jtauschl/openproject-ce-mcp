@@ -125,6 +125,20 @@ development baseline.
   permission error instead of silently returning zero results** when it
   cannot prove the query is scoped to only the allowed projects — previously
   indistinguishable from "this project genuinely has no work packages yet."
+- **`list_priorities`/`get_priority` now honor `OPENPROJECT_HIDE_PRIORITY_FIELDS`**,
+  a new environment variable. Priority was previously the only reference-data
+  entity with no hidden-field support at all, unlike its close siblings
+  statuses and types.
+- **New `OPENPROJECT_HIDE_NOTIFICATION_FIELDS` and
+  `OPENPROJECT_HIDE_EMOJI_REACTION_FIELDS` environment variables**, closing
+  the same gap as the priority fix above for these two entities.
+- **`OPENPROJECT_HIDE_FILE_LINK_FIELDS` now actually hides fields.** The
+  variable was already documented and accepted, but had no effect on any
+  response — a configuration gap, not a code path that ever ran.
+- **Breaking: `list_grids` now returns a paginated result** (`offset`/`limit`/
+  `total`/`next_offset`/`truncated`, same shape as `list_boards`/`list_sprints`)
+  instead of every matching grid in one unbounded call, and gains `offset`/
+  `limit` parameters to match.
 
 ### Docs
 
