@@ -53,6 +53,12 @@ development baseline.
   now also resolves via the single-item lookup rather than an undocumented
   collection filter, and the `context` filter uses the current workspace
   syntax instead of the deprecated project-prefixed one.
+- **`create_user`/`update_user`/`lock_user`/`unlock_user` now honor
+  `OPENPROJECT_HIDE_USER_FIELDS` on writes**, not just reads. Every hidden
+  field previously could still be written even though it was masked on
+  read, unlike every other write-capable domain (news, boards, documents,
+  memberships, projects, versions), all of which already reject a write to
+  a hidden field.
 
 ---
 

@@ -6434,6 +6434,72 @@ async def test_update_user_commits_using_form_payload_after_validation() -> None
 
 
 @pytest.mark.asyncio
+async def test_create_user_rejects_when_a_written_field_is_hidden() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(
+        _base_settings(enable_admin_write=True, hidden_fields={"user": ("email",)}),
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_USER_FIELDS"):
+        await client.create_user(
+            login="ada", email="ada@example.com", firstname="Ada", lastname="Lovelace", confirm=True
+        )
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_user_rejects_when_the_only_field_being_written_is_hidden() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(
+        _base_settings(enable_admin_write=True, hidden_fields={"user": ("login",)}),
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_USER_FIELDS"):
+        await client.update_user(9, login="ada2", confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_lock_user_rejects_when_locked_field_is_hidden() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(
+        _base_settings(enable_admin_write=True, hidden_fields={"user": ("locked",)}),
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_USER_FIELDS"):
+        await client.lock_user(9, confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_unlock_user_rejects_when_locked_field_is_hidden() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(
+        _base_settings(enable_admin_write=True, hidden_fields={"user": ("locked",)}),
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_USER_FIELDS"):
+        await client.unlock_user(9, confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_user_preferences_get_and_update() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/my_preferences" and request.method == "GET":

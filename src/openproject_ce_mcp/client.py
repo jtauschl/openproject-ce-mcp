@@ -4408,6 +4408,12 @@ class OpenProjectClient:
         language: str | None = None,
         confirm: bool = False,
     ) -> UserWriteResult:
+        self._ensure_field_writable("user", "login")
+        self._ensure_field_writable("user", "email")
+        self._ensure_field_writable("user", "firstname")
+        self._ensure_field_writable("user", "lastname")
+        self._ensure_field_writable("user", "admin")
+        self._ensure_field_writable("user", "status")
         payload: dict[str, Any] = {
             "login": login,
             "email": email,
@@ -4419,6 +4425,7 @@ class OpenProjectClient:
         if password is not None:
             payload["password"] = password
         if language is not None:
+            self._ensure_field_writable("user", "language")
             payload["language"] = language
         form = await self._post("users/form", json_body=payload)
         return await self._finalize_user_write(
@@ -4444,16 +4451,22 @@ class OpenProjectClient:
     ) -> UserWriteResult:
         payload: dict[str, Any] = {}
         if login is not None:
+            self._ensure_field_writable("user", "login")
             payload["login"] = login
         if email is not None:
+            self._ensure_field_writable("user", "email")
             payload["email"] = email
         if firstname is not None:
+            self._ensure_field_writable("user", "firstname")
             payload["firstName"] = firstname
         if lastname is not None:
+            self._ensure_field_writable("user", "lastname")
             payload["lastName"] = lastname
         if admin is not None:
+            self._ensure_field_writable("user", "admin")
             payload["admin"] = admin
         if language is not None:
+            self._ensure_field_writable("user", "language")
             payload["language"] = language
         form = await self._post(f"users/{user_id}/form", json_body=payload)
         return await self._finalize_user_write(
@@ -4506,6 +4519,7 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> UserWriteResult:
         self._ensure_write_enabled("admin")
+        self._ensure_field_writable("user", "locked")
         payload = {"id": user_id}
         if not confirm:
             return UserWriteResult(
@@ -4540,6 +4554,7 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> UserWriteResult:
         self._ensure_write_enabled("admin")
+        self._ensure_field_writable("user", "locked")
         payload = {"id": user_id}
         if not confirm:
             return UserWriteResult(
