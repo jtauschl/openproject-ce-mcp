@@ -5,17 +5,9 @@ concretely (enforced by the architecture-boundary test). No dedicated
 Resolver for either method: `capability_id` is an opaque string filter value,
 not a semantic reference needing lookup.
 
-`list_actions` is the first genuinely project-independent Service in `app/`:
-every other migrated domain (Versions, Projects, Memberships, News,
-Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards) depends on
-`ProjectRefResolver`, since Projects is the only domain with no domain above
-it to scope against. Actions has no project concept at all in the OpenProject
-API (verified: client.py's original list_actions never resolves or filters by
-a project), so `list_actions` takes no `ProjectRefResolver` dependency --
-future migrations of similarly global/admin-scoped domains (Users, Groups,
-Roles, Principals, query-metadata, help-texts, working-days, custom-options --
-see docs/architecture-migration-runbook.md's "Pick the next domain" section)
-can use this Service as their shape template instead of Categories/Memberships.
+`list_actions` is a purely project-independent Service method: Actions has no
+project concept at all in the OpenProject API, so it takes no
+`ProjectRefResolver` dependency, unlike most other migrated domains.
 
 `list_capabilities`, by contrast, IS project-scoped when a `project` ref is
 given (its `context` filter targets a specific project) -- so it depends on
