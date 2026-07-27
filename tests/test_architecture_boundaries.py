@@ -581,6 +581,25 @@ def test_user_preferences_service_binds_the_api_param_to_user_preferences_api_sp
     )
 
 
+def test_extended_metadata_service_binds_the_api_param_to_extended_metadata_api_specifically() -> None:
+    """Non-generalized regression test for the Extended Metadata domain's
+    exact guarantee, sibling to the checks above: the api param is
+    ExtendedMetadataApi exactly, not just "some Protocol". No dedicated
+    Resolver exists -- none of the five bundled lookups has a project or
+    semantic reference to resolve."""
+    from openproject_ce_mcp.app.adapters.httpx_extended_metadata_api import HttpxExtendedMetadataApi
+    from openproject_ce_mcp.app.ports.extended_metadata_api import ExtendedMetadataApi
+    from openproject_ce_mcp.app.services.extended_metadata_service import ExtendedMetadataService
+
+    hints = typing.get_type_hints(ExtendedMetadataService.__init__)
+    assert hints["api"] is ExtendedMetadataApi, (
+        "ExtendedMetadataService.__init__'s api param must be typed ExtendedMetadataApi"
+    )
+    assert hints["api"] is not HttpxExtendedMetadataApi, (
+        "ExtendedMetadataService.__init__'s api param must not be the concrete adapter"
+    )
+
+
 def test_user_service_binds_the_api_param_to_user_api_specifically() -> None:
     """Non-generalized regression test for the Users domain's exact guarantee,
     sibling to the checks above: the api param is UserApi exactly, not just

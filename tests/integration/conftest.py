@@ -72,6 +72,7 @@ def _integration_settings() -> Settings | None:
         enable_board_write=True,
         enable_personal_read=True,
         enable_personal_write=True,
+        enable_metadata_tools=True,
     )
 
 

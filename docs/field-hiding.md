@@ -26,7 +26,8 @@ Supported entities for `OPENPROJECT_HIDE_<ENTITY>_FIELDS`: `project`,
 `attachment`, `time_entry_activity`, `time_entry`, `work_package`,
 `relation`, `activity`, `reminder`, `version`, `sprint`, `board`, `grid`,
 `current_user`, `instance_configuration`, `status`, `priority`, `type`,
-`watcher`, `notification`, `file_link`, `emoji_reaction`, `user_preferences`.
+`watcher`, `notification`, `file_link`, `emoji_reaction`, `user_preferences`,
+`rendered_text`, `help_text`, `working_day`, `non_working_day`, `custom_option`.
 
 See [Configuration](configuration.md) for the two variables' required/default
 values.

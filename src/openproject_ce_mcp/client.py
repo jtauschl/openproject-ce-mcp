@@ -19,6 +19,7 @@ from .app.adapters.httpx_action_capability_api import HttpxActionCapabilityApi
 from .app.adapters.httpx_board_api import HttpxBoardApi
 from .app.adapters.httpx_category_api import HttpxCategoryApi
 from .app.adapters.httpx_document_api import HttpxDocumentApi
+from .app.adapters.httpx_extended_metadata_api import HttpxExtendedMetadataApi
 from .app.adapters.httpx_grid_api import HttpxGridApi
 from .app.adapters.httpx_group_api import HttpxGroupApi
 from .app.adapters.httpx_membership_api import HttpxMembershipApi
@@ -58,6 +59,7 @@ from .app.ports.action_capability_api import ActionCapabilityApi
 from .app.ports.board_api import BoardApi
 from .app.ports.category_api import CategoryApi
 from .app.ports.document_api import DocumentApi
+from .app.ports.extended_metadata_api import ExtendedMetadataApi
 from .app.ports.grid_api import GridApi
 from .app.ports.group_api import GroupApi
 from .app.ports.membership_api import MembershipApi
@@ -79,6 +81,7 @@ from .app.services.action_capability_service import ActionCapabilityService
 from .app.services.board_service import BoardService
 from .app.services.category_service import CategoryService
 from .app.services.document_service import DocumentService
+from .app.services.extended_metadata_service import ExtendedMetadataService
 from .app.services.grid_service import GridService
 from .app.services.group_service import GroupService
 from .app.services.membership_service import MembershipService
@@ -147,7 +150,6 @@ from .models import (
     NewsListResult,
     NewsSummary,
     NewsWriteResult,
-    NonWorkingDay,
     NonWorkingDayListResult,
     NotificationListResult,
     NotificationMarkResult,
@@ -212,7 +214,6 @@ from .models import (
     WatcherSummary,
     WatcherWriteResult,
     WikiPageDetail,
-    WorkingDay,
     WorkingDayListResult,
     WorkPackageDetail,
     WorkPackageFieldSchema,
@@ -484,6 +485,9 @@ class OpenProjectClient:
             settings=settings,
             resolve_project_ref=self._get_project_payload,
         )
+
+        self._extended_metadata_api: ExtendedMetadataApi = HttpxExtendedMetadataApi(HttpxTransport(self._http))
+        self._extended_metadata_service = ExtendedMetadataService(api=self._extended_metadata_api, settings=settings)
 
     async def initialize(self) -> None:
         # _project_id_to_identifier is consulted for BOTH read and write link-based
@@ -3552,71 +3556,31 @@ class OpenProjectClient:
 
     async def render_text(self, *, text: str, format: str = "markdown") -> RenderedText:
         """Render plain or markdown text to HTML via the OpenProject API."""
-        self._ensure_read_enabled("work_package")
-        endpoint = "render/markdown" if format == "markdown" else "render/plain"
-        data = await self._request_json(
-            "POST",
-            endpoint,
-            content=text.encode("utf-8"),
-            headers={"Content-Type": "text/plain"},
-        )
-        return RenderedText(
-            format=format,
-            raw=text,
-            html=data.get("html", ""),
-        )
+        return await self._extended_metadata_service.render_text(text=text, format=format)
 
     # --- Help Texts ---
 
     async def list_help_texts(self) -> HelpTextListResult:
-        payload = await self._get("help_texts")
-        results = [
-            self.normalize_help_text(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        return HelpTextListResult(count=len(results), results=results)
+        return await self._extended_metadata_service.list_help_texts()
 
     async def get_help_text(self, help_text_id: int) -> HelpTextSummary:
-        payload = await self._get(f"help_texts/{help_text_id}")
-        return self.normalize_help_text(payload)
+        return await self._extended_metadata_service.get_help_text(help_text_id)
 
     # --- Work Schedule / Days ---
 
     async def list_working_days(self) -> WorkingDayListResult:
         """List the Mon–Sun working-day configuration (7 entries)."""
-        payload = await self._get("days/week")
-        results = [
-            self.normalize_working_day(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        return WorkingDayListResult(count=len(results), results=results)
+        return await self._extended_metadata_service.list_working_days()
 
     async def list_non_working_days(self, *, year: int | None = None) -> NonWorkingDayListResult:
         """List non-working days (public holidays / closures) for the given year."""
-        params: dict[str, str] = {}
-        if year is not None:
-            params["filters"] = json.dumps(
-                [{"date": {"operator": "<>d", "values": [f"{year}-01-01", f"{year}-12-31"]}}]
-            )
-        payload = await self._get("days/non_working", params=params or None)
-        results = [
-            self.normalize_non_working_day(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        return NonWorkingDayListResult(count=len(results), results=results)
+        return await self._extended_metadata_service.list_non_working_days(year=year)
 
     # --- Custom Options ---
 
     async def get_custom_option(self, custom_option_id: int) -> CustomOptionSummary:
         """Fetch a single custom field option value by id."""
-        payload = await self._get(f"custom_options/{custom_option_id}")
-        return CustomOptionSummary(
-            id=int(payload["id"]),
-            value=payload.get("value"),
-        )
+        return await self._extended_metadata_service.get_custom_option(custom_option_id)
 
     # --- Relations (update + global list) ---
 
@@ -4453,32 +4417,6 @@ class OpenProjectClient:
                 updated_at=payload.get("updatedAt"),
                 url=self._api_href(f"file_links/{file_link_id}"),
             ),
-        )
-
-    def normalize_help_text(self, payload: dict[str, Any]) -> HelpTextSummary:
-        return HelpTextSummary(
-            id=int(payload["id"]),
-            attribute_name=payload.get("attribute") or payload.get("attributeName"),
-            attribute_caption=payload.get("attributeCaption"),
-            help_text=_trim_text(
-                (payload.get("helpText") or {}).get("raw")
-                if isinstance(payload.get("helpText"), dict)
-                else payload.get("helpText"),
-                limit=FORMATTABLE_LIMIT,
-            ),
-        )
-
-    def normalize_working_day(self, payload: dict[str, Any]) -> WorkingDay:
-        return WorkingDay(
-            name=payload.get("name", ""),
-            day_of_week=int(payload.get("dayOfWeek", 0)),
-            working=bool(payload.get("working", True)),
-        )
-
-    def normalize_non_working_day(self, payload: dict[str, Any]) -> NonWorkingDay:
-        return NonWorkingDay(
-            date=payload.get("date", ""),
-            name=payload.get("name"),
         )
 
     def _normalize_option_value(self, payload: dict[str, Any]) -> OptionValue:

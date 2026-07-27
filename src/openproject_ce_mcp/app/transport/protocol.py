@@ -36,6 +36,12 @@ class Transport(Protocol):
         self, path: str, *, params: dict[str, str] | None = None, json_body: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
+    async def post_raw_json(self, path: str, *, content: bytes, headers: dict[str, str]) -> dict[str, Any]:
+        """POST a raw, non-JSON body (e.g. Content-Type: text/plain) and parse a
+        JSON response -- added for render_text (Extended Metadata domain, 19th
+        migration), the first endpoint to POST raw text rather than a JSON body."""
+        ...
+
     async def patch_json(
         self, path: str, *, params: dict[str, str] | None = None, json_body: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...

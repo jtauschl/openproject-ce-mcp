@@ -139,13 +139,18 @@ tools.py (MCP presentation)
   actions sharing the same result shape; a domain with fewer stays a single flat method instead of
   forcing indirection onto one or zero call sites. A domain bundling several unrelated-but-adjacent
   read-only lookups under one ticket is one Service, not one per lookup, when every method shares
-  an identical read-enablement gate. A domain with no project link and no allowlist concept at all
-  (self-scoped to the token owner, not project-scoped or admin-scoped) uses neither a Policy module
-  nor `app/policies/scope.py`'s helpers — the read/write scope gate alone is its entire enforcement
-  surface.
+  an identical read-enablement gate — this does not require every bundled method to share the exact
+  same scope string: one method reusing a different, pre-existing scope than its siblings inside the
+  same Service is a one-line variation, not a reason to split the domain apart. A domain with no
+  project link and no allowlist concept at all (self-scoped to the token owner, not project-scoped or
+  admin-scoped) uses neither a Policy module nor `app/policies/scope.py`'s helpers — the read/write
+  scope gate alone is its entire enforcement surface.
 - `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under `app/` that
   imports `httpx`; `client.py`'s own HTTP calls for still-flat domains, and `retry_transport.py`,
-  are unaffected and keep importing it directly.
+  are unaffected and keep importing it directly. The `Transport` Protocol (`app/transport/protocol.py`)
+  is extended with a new method when a migrating domain needs a request shape none of the existing
+  methods cover — e.g. `post_raw_json` for a raw, non-JSON request body (`Content-Type: text/plain`),
+  added when a domain's endpoint posts plain text rather than a JSON payload.
 - `OpenProjectClient` remains a 100%-compatible facade: a migrated domain's public method
   signatures stay unchanged unless a deliberate, separately-decided behavior change was bundled
   into that migration — in which case `tools.py`'s matching tool gains the same change, the only

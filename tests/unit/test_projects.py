@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 
@@ -1334,7 +1335,12 @@ async def test_help_texts_and_working_days() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    # Extended Metadata migration (19th domain, 2026-07-27): these four
+    # lookups had NO read-enablement check at all in client.py; the
+    # migration activates the pre-existing, previously-dormant "extended"
+    # scope at the Service layer, matching tools.py's existing registration.
+    settings = dataclasses.replace(make_settings(), enable_metadata_tools=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     help_texts = await client.list_help_texts()
     assert help_texts.count == 1
@@ -1367,7 +1373,10 @@ async def test_get_custom_option() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    # Extended Metadata migration (19th domain, 2026-07-27): see the
+    # comment in test_help_texts_and_working_days above.
+    settings = dataclasses.replace(make_settings(), enable_metadata_tools=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     option = await client.get_custom_option(42)
     assert option.id == 42
