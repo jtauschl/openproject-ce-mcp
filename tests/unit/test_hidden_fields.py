@@ -8,6 +8,7 @@ from _client_test_helpers import _base_settings
 
 from openproject_ce_mcp.app.adapters.httpx_membership_api import normalize_membership
 from openproject_ce_mcp.app.adapters.httpx_sprint_api import normalize_sprint
+from openproject_ce_mcp.app.adapters.httpx_status_priority_type_api import normalize_status, normalize_type
 from openproject_ce_mcp.app.adapters.httpx_user_api import normalize_user
 from openproject_ce_mcp.app.origin import origin_from_url as _origin_from_url
 from openproject_ce_mcp.app.policies import hidden_fields
@@ -404,12 +405,14 @@ async def test_hidden_work_package_scheduling_fields_are_tagged_and_dropped_from
 @pytest.mark.asyncio
 async def test_hidden_status_fields_are_tagged_and_dropped_from_payload() -> None:
     # Status supports OPENPROJECT_HIDE_STATUS_FIELDS, like every other entity.
-    client = OpenProjectClient(
-        _base_settings(hidden_fields={"status": ("default_done_ratio",)}),
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
-    )
+    # normalize_status now lives in app/adapters/httpx_status_priority_type_api.py
+    # (16th migrated domain) and no longer applies hidden-field masking itself --
+    # that moved to the Service layer, so this test calls the adapter's pure
+    # normalizer, then applies masking explicitly via hidden_fields.apply_hidden_fields,
+    # mirroring test_hidden_membership_fields_are_tagged_and_dropped_from_payload.
+    settings = _base_settings(hidden_fields={"status": ("default_done_ratio",)})
 
-    status = client.normalize_status(
+    status = normalize_status(
         {
             "id": 1,
             "name": "In progress",
@@ -420,8 +423,10 @@ async def test_hidden_status_fields_are_tagged_and_dropped_from_payload() -> Non
             "isReadonly": False,
             "defaultDoneRatio": 30,
             "excludedFromTotals": False,
-        }
+        },
+        api_prefix="/api/v3/",
     )
+    status = hidden_fields.apply_hidden_fields("status", status, settings=settings)
 
     assert status._hidden_keys == frozenset({"default_done_ratio"})
     assert status.default_done_ratio == 30  # value preserved on the dataclass
@@ -431,18 +436,15 @@ async def test_hidden_status_fields_are_tagged_and_dropped_from_payload() -> Non
     assert "default_done_ratio" not in serialized
     assert serialized["name"] == "In progress"
 
-    await client.aclose()
-
 
 @pytest.mark.asyncio
 async def test_hidden_type_fields_are_tagged_and_dropped_from_payload() -> None:
     # Type supports OPENPROJECT_HIDE_TYPE_FIELDS, like every other entity.
-    client = OpenProjectClient(
-        _base_settings(hidden_fields={"type": ("updated_at",)}),
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
-    )
+    # normalize_type now lives in app/adapters/httpx_status_priority_type_api.py
+    # (16th migrated domain) -- see test_hidden_status_fields_... above.
+    settings = _base_settings(hidden_fields={"type": ("updated_at",)})
 
-    work_package_type = client.normalize_type(
+    work_package_type = normalize_type(
         {
             "id": 1,
             "name": "Task",
@@ -452,8 +454,10 @@ async def test_hidden_type_fields_are_tagged_and_dropped_from_payload() -> None:
             "isMilestone": False,
             "createdAt": "2026-01-01T00:00:00Z",
             "updatedAt": "2026-06-01T00:00:00Z",
-        }
+        },
+        base_url="https://op.example.com",
     )
+    work_package_type = hidden_fields.apply_hidden_fields("type", work_package_type, settings=settings)
 
     assert work_package_type._hidden_keys == frozenset({"updated_at"})
     assert work_package_type.updated_at == "2026-06-01T00:00:00Z"  # preserved on the dataclass
@@ -461,8 +465,6 @@ async def test_hidden_type_fields_are_tagged_and_dropped_from_payload() -> None:
     serialized = _to_payload(work_package_type)
     assert "updated_at" not in serialized
     assert serialized["name"] == "Task"
-
-    await client.aclose()
 
 
 @pytest.mark.asyncio
@@ -583,8 +585,19 @@ def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() -> None:
 
 @pytest.mark.asyncio
 async def test_hidden_file_link_fields_are_tagged_and_dropped_from_payload() -> None:
-    # normalize_file_link previously never called _apply_hidden_fields at
-    # all, so OPENPROJECT_HIDE_FIELDS for this entity was a silent no-op.
+    # normalize_file_link DOES call _apply_hidden_fields("file_link", ...) --
+    # but config.py's HIDE_FIELD_ENV_BY_ENTITY had no "file_link" entry at all
+    # (found during the Statuses/Priorities/Types migration's broader "N
+    # individual exceptions" audit, OPM-1627), so OPENPROJECT_HIDE_FILE_LINK_FIELDS
+    # never existed as a real env var and settings.hidden_fields could never
+    # contain a "file_link" key -- a permanent, silent no-op in practice.
+    # This test itself was a false positive throughout: it passed even before
+    # the config.py fix, because _base_settings(hidden_fields={...}) injects
+    # directly into Settings.hidden_fields, bypassing HIDE_FIELD_ENV_BY_ENTITY
+    # entirely -- it never actually exercised the real env-var-driven path a
+    # user would hit. See test_file_link_fields_respect_the_env_var_driven_config
+    # below for a test that exercises the real path and would have failed
+    # pre-fix.
     # (Grid's equivalent regression coverage moved to
     # tests/unit/test_app_grid_service.py's test_get_applies_hidden_field_masking
     # after the Grids domain migration -- client.normalize_grid no longer exists.)
@@ -608,6 +621,74 @@ async def test_hidden_file_link_fields_are_tagged_and_dropped_from_payload() -> 
     serialized_file_link = _to_payload(file_link)
     assert "storage_name" not in serialized_file_link
     assert serialized_file_link["storage_id"] == 1
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hidden_notification_fields_are_tagged_and_dropped_from_payload() -> None:
+    # Regression test for a real gap found during the Statuses/Priorities/Types
+    # migration's broader audit (OPM-1627): normalize_notification previously
+    # never called _apply_hidden_fields at all, and config.py's
+    # HIDE_FIELD_ENV_BY_ENTITY had no "notification" entry either --
+    # OPENPROJECT_HIDE_NOTIFICATION_FIELDS never existed as a real env var.
+    # Notifications is still a flat, unmigrated client.py domain (OPM-1629).
+    client = OpenProjectClient(
+        _base_settings(hidden_fields={"notification": ("project_name",)}),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+
+    notification = client.normalize_notification(
+        {
+            "id": 1,
+            "subject": "Work package updated",
+            "readIAN": False,
+            "createdAt": "2026-01-01T00:00:00Z",
+            "_links": {
+                "project": {"href": "/api/v3/projects/6", "title": "Demo Project"},
+            },
+        }
+    )
+
+    assert notification._hidden_keys == frozenset({"project_name"})
+    assert notification.project_name == "Demo Project"  # preserved on the dataclass
+    assert notification.project_id == 6
+    serialized = _to_payload(notification)
+    assert "project_name" not in serialized
+    assert serialized["project_id"] == 6
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hidden_emoji_reaction_fields_are_tagged_and_dropped_from_payload() -> None:
+    # Regression test for a real gap found during the Statuses/Priorities/Types
+    # migration's broader audit (OPM-1627): normalize_emoji_reaction previously
+    # never called _apply_hidden_fields at all, and config.py's
+    # HIDE_FIELD_ENV_BY_ENTITY had no "emoji_reaction" entry either. Weaker
+    # signal than Priority/Notification (no forcing same-shaped sibling), fixed
+    # for consistency per explicit user decision. Emoji Reactions is part of
+    # the still-flat Work Package Activities & Reactions domain (OPM-1624).
+    client = OpenProjectClient(
+        _base_settings(hidden_fields={"emoji_reaction": ("users",)}),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
+
+    reaction = client.normalize_emoji_reaction(
+        {
+            "reaction": "thumbs_up",
+            "emoji": "\U0001f44d",
+            "reactionsCount": 2,
+            "_links": {"reactingUsers": [{"title": "Ada Lovelace"}, {"title": "Alan Turing"}]},
+        }
+    )
+
+    assert reaction._hidden_keys == frozenset({"users"})
+    assert reaction.users == ["Ada Lovelace", "Alan Turing"]  # preserved on the dataclass
+    assert reaction.reaction == "thumbs_up"
+    serialized = _to_payload(reaction)
+    assert "users" not in serialized
+    assert serialized["reaction"] == "thumbs_up"
 
     await client.aclose()
 

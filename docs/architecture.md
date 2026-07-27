@@ -76,9 +76,9 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
-## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards, Actions & Capabilities, Roles, Users, Groups)
+## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards, Actions & Capabilities, Roles, Users, Groups, Statuses/Priorities/Types)
 
-`client.py` stays the small, flat facade described above for most domains, but fifteen
+`client.py` stays the small, flat facade described above for most domains, but sixteen
 domains have been migrated into `app/` for a stricter layered structure: Versions
 (`list_versions`, `get_version`, `create_version`, `update_version`,
 `delete_version` — the original pilot, validating the pattern), Projects
@@ -350,7 +350,7 @@ a field on reads but never blocked writing it. Fixed by adding the guard for
 every written field (including the toggle-only `locked` field on
 `lock`/`unlock`) — a deliberate hardening beyond byte-for-byte porting, since
 every sibling domain already had this protection and there was no reason to
-carry the inconsistency forward once found), and Groups (`list_groups`/
+carry the inconsistency forward once found), Groups (`list_groups`/
 `get_group`/`create_group`/`update_group`/`delete_group` — the fifteenth and,
 at the time of this migration, last individually-screened named candidate in
 the purely-global/admin-scoped bucket alongside Roles/Users. Same
@@ -385,7 +385,88 @@ original `create_group`/`update_group` never called the equivalent
 `_ensure_field_writable` at all, the same class of pre-existing gap the
 Users migration's step-6.5 review found and fixed, found here via this
 migration's own self-audit and fixed as part of the initial implementation
-instead of ported faithfully):
+instead of ported faithfully), and Statuses/Priorities/Types
+(`list_statuses`/`get_status`, `list_priorities`/`get_priority`,
+`list_types`/`get_type` — the sixteenth migration, OPM-1627, picked via a
+fresh screening after no named candidate remained: three unrelated-but-
+bundled read-only lookups, matching client.py's own adjacent placement, same
+bundling rationale as Actions & Capabilities under OPM-276. All three are
+purely global (no `ProjectRefResolver` for Status/Priority; Type's optional
+`project` filter shapes the request URL, not a per-record allowlist check —
+verified the read-scope enforcement for a given `project` ref already
+happens inside `ProjectRefResolver` itself, so no additional Policy file was
+needed). `StatusPriorityTypeService` bundles all three under one Service
+(all six methods share the identical `access.ensure_read_enabled(
+"work_package", ...)` gate) — same rationale as Actions & Capabilities. No
+`to_detail` split on any Record: `get_status`/`get_priority`/`get_type` are
+plain single-item fetches through the same normalizer as list rows.
+`StatusListResult`/`PriorityListResult`/`TypeListResult` stayed plain
+`CollectionResult`s (unpaginated fetch-all, matching Categories' shape, not
+Roles'/Actions' `PageResult` shape) — verbatim port of the pre-migration
+behavior. Two deliberately-different, NOT-unified URL-building shapes were
+preserved from client.py: `normalize_status`'s `url` uses the shared
+`app/api_href.py` helper (a relative `/api/v3/...` href), while
+`normalize_type`'s `url` builds an absolute web URL via `urljoin`, matching
+Category's adapter — a genuine, verified difference in the original code,
+not a copy-paste drift to fix. **Priority hidden-field bugfix**: found while
+reading the source, `normalize_priority` never called `_apply_hidden_fields`
+at all, and `config.py`'s `HIDE_FIELD_ENV_BY_ENTITY` had no `"priority"`
+entry either — unlike `status`/`type`, both of which have full hidden-field
+support, with no principled reason for the asymmetry (`PrioritySummary`/
+`TypeSummary` are structurally near-identical). Fixed in the same migration
+(the config entry, plus the Service's `apply_hidden_fields("priority", ...)`
+calls) rather than preserved. **Widened per user request**: a full audit of
+all 31 `normalize_*` methods in `client.py` against `HIDE_FIELD_ENV_BY_ENTITY`
+found the identical bug class in two more, still-flat, unmigrated domains —
+`normalize_notification` (no call at all, no config entry; Notifications is
+OPM-1629) and `normalize_file_link` (the call existed, but `"file_link"` had
+no config entry, making it a permanent silent no-op; File Links is OPM-1630)
+— plus a weaker fourth instance, `normalize_emoji_reaction` (no forcing
+same-shaped sibling, but fixed for consistency per explicit user decision;
+Emoji Reactions is part of OPM-1624). All three were fixed as standalone,
+adjacent bugfixes (config map entry + missing call site where needed),
+separate from this migration's own commit. A closely-related,
+previously-unknown structural gap was also found and closed: no test in the
+suite exercised `HIDE_FIELD_ENV_BY_ENTITY` through the real
+`Settings.from_env` env-var path — every `test_hidden_fields.py` test
+constructs `Settings` directly with `hidden_fields={...}` pre-populated,
+bypassing the map entirely, so a missing entry for any entity was invisible
+to the whole file (confirmed: the pre-fix `test_hidden_file_link_fields_...`
+test passed identically before and after the `"file_link"` config fix). Two
+new tests close this: an env-var-driven `test_config.py` test proving the
+four new env vars actually work end-to-end, and a new structural AST-walking
+test in `test_architecture_boundaries.py`
+(`test_every_apply_hidden_fields_entity_is_registered_in_config`) that
+extracts every literal entity string passed to `apply_hidden_fields`/
+`_apply_hidden_fields` across `client.py` and `app/**/*.py` and asserts each
+has a `HIDE_FIELD_ENV_BY_ENTITY` entry — verified to fail when the fix is
+reverted, so a future domain repeating this exact mistake fails immediately
+instead of shipping a silently-broken `OPENPROJECT_HIDE_<X>_FIELDS` env var.
+**Second, broader finding (per user request to look beyond hidden fields at
+other "N individual exceptions instead of one unified mechanism" risks)**: a
+pagination-consistency audit across all 15 then-migrated services found
+`GridService.list()` (a previously-migrated, unrelated domain) had no
+`offset`/`limit` params and never clamped or paginated at all — confirmed via
+git history a faithfully-ported pre-existing gap from client.py's very first
+`list_grids`, not a regression. Fixed in the same session as its own
+standalone commit: `GridListResult` moved from a bare `CollectionResult` to
+the standard `PageResult` shape, `HttpxGridApi.list_all` now sends
+`offset`/`pageSize`, and `GridService.list()` clamps via `clamp_limit` and
+paginates via `paginate_client` — the same MCP-tool-schema-visible shape
+change as every other full-list domain, deliberately chosen over a
+narrower "clamp internally, leave the schema alone" fix per explicit user
+decision.
+**Step-6 self-audit findings (across all 16 domains)**: a byte-identical
+`_effective_limit(self, limit)` wrapper method (each just one `clamp_limit(...)`
+call reading `self._settings`'s three page-size fields) was independently
+duplicated in `RoleService`, `ActionCapabilityService`, `GroupService`, and
+`UserService` — past this project's own "3+ identical copies" unification
+threshold (the same threshold `clamp_limit` itself was extracted under).
+Fixed by adding `app/pagination.effective_limit(limit, settings=...)` and
+having all four call it directly instead of keeping a per-class method. The
+security, efficiency, and test-contract review passes found no further
+issues across any of the 16 domains — a clean result, not just an absence of
+looking.):
 
 ```text
 tools.py (MCP presentation)
@@ -690,21 +771,26 @@ The tradeoff is that `client.py` is large and policy-heavy. That is intentional 
 The Policies extraction (scope checks, hidden-field enforcement) is done, for every
 domain — see "Layered architecture" above. Versions, Projects, Memberships, News,
 Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards, Actions &
-Capabilities, Roles, Users, and Groups are migrated; remaining candidates, once each
-migration's own lessons justify the next one:
+Capabilities, Roles, Users, Groups, and Statuses/Priorities/Types are migrated;
+remaining candidates, once each migration's own lessons justify the next one:
 
 - migrating additional domains through the same `app/` layers, one at a time —
   re-evaluate which domain's resolvers most depend on already-flat logic, per the
   pilot's own "validate before extending" approach. See
   [architecture-migration-runbook.md](architecture-migration-runbook.md) for the
-  step-by-step process distilled from the fifteen migrations done so far. Boards,
-  Actions & Capabilities, Roles, Users, and Groups were each picked via a fresh
-  screening against step 0's criteria directly — no pre-named shortlist remained
-  after Grids/Sprints, and Groups was the last individually-screened named
-  candidate in the purely-global/admin-scoped bucket. The next pick needs a fully
-  fresh screening pass against the ~20 remaining still-flat domains — no named
-  candidate remains in this bucket; Project Lifecycle Phases and Project Favorites
-  already migrated as part of Projects, not separate candidates.
+  step-by-step process distilled from the sixteen migrations done so far. Boards,
+  Actions & Capabilities, Roles, Users, Groups, and Statuses/Priorities/Types were
+  each picked via a fresh screening against step 0's criteria directly — no
+  pre-named shortlist remained after Grids/Sprints, and Groups was the last
+  individually-screened named candidate in the purely-global/admin-scoped bucket.
+  The next pick needs a fully fresh screening pass against the ~19 remaining
+  still-flat domains — no named candidate remains in this bucket; Project
+  Lifecycle Phases and Project Favorites already migrated as part of Projects, not
+  separate candidates. Notifications (OPM-1629), File Links (OPM-1630), and Work
+  Package Activities & Reactions (OPM-1624, covers Emoji Reactions) each had a
+  standalone hidden-field config-map fix applied ahead of their own migration (see
+  the Statuses/Priorities/Types entry above) — this does not migrate them, their
+  `client.py` implementations remain fully flat.
 - separate modules for work-package writes and schema handling
 - dedicated integration-test helpers around form endpoints and live smoke tests
 - unifying `VersionResolver`'s/`ProjectResolver`'s hand-rolled page-walk loops onto

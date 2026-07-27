@@ -60,6 +60,33 @@ def test_settings_from_env_loads_and_normalizes_values() -> None:
     assert settings.log_level == "INFO"
 
 
+def test_settings_from_env_loads_priority_notification_file_link_emoji_reaction_hidden_fields() -> None:
+    # Regression test for four real hidden-field-masking gaps found during the
+    # Statuses/Priorities/Types migration (OPM-1627): "priority"/"notification"/
+    # "emoji_reaction" had no HIDE_FIELD_ENV_BY_ENTITY entry at all, and
+    # "file_link" had an entry but was never exercised end-to-end through the
+    # real env-var path by any existing test (every test_hidden_fields.py test
+    # constructs Settings directly with hidden_fields={...} pre-populated,
+    # bypassing HIDE_FIELD_ENV_BY_ENTITY entirely). This test goes through
+    # Settings.from_env with the real env var names, the only way to actually
+    # prove OPENPROJECT_HIDE_<X>_FIELDS works for a user.
+    settings = Settings.from_env(
+        {
+            "OPENPROJECT_BASE_URL": "https://op.example.com/",
+            "OPENPROJECT_API_TOKEN": "token-value",
+            "OPENPROJECT_HIDE_PRIORITY_FIELDS": "color",
+            "OPENPROJECT_HIDE_NOTIFICATION_FIELDS": "project_name",
+            "OPENPROJECT_HIDE_FILE_LINK_FIELDS": "storage_name",
+            "OPENPROJECT_HIDE_EMOJI_REACTION_FIELDS": "users",
+        }
+    )
+
+    assert settings.hidden_fields["priority"] == ("color",)
+    assert settings.hidden_fields["notification"] == ("project_name",)
+    assert settings.hidden_fields["file_link"] == ("storage_name",)
+    assert settings.hidden_fields["emoji_reaction"] == ("users",)
+
+
 def test_settings_from_env_rejects_invalid_relationships() -> None:
     with pytest.raises(ConfigError, match="must not exceed"):
         Settings.from_env(

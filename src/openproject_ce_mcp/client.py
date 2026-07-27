@@ -26,6 +26,8 @@ from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
 from .app.adapters.httpx_role_api import HttpxRoleApi
 from .app.adapters.httpx_sprint_api import HttpxSprintApi
+from .app.adapters.httpx_status_priority_type_api import HttpxStatusPriorityTypeApi
+from .app.adapters.httpx_status_priority_type_api import normalize_status as _normalize_status
 from .app.adapters.httpx_user_api import HttpxUserApi
 from .app.adapters.httpx_version_api import HttpxVersionApi
 from .app.adapters.httpx_view_api import HttpxViewApi
@@ -62,6 +64,7 @@ from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
 from .app.ports.role_api import RoleApi
 from .app.ports.sprint_api import SprintApi
+from .app.ports.status_priority_type_api import StatusPriorityTypeApi
 from .app.ports.user_api import UserApi
 from .app.ports.version_api import VersionApi
 from .app.ports.view_api import ViewApi
@@ -80,6 +83,7 @@ from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
 from .app.services.role_service import RoleService
 from .app.services.sprint_service import SprintService
+from .app.services.status_priority_type_service import StatusPriorityTypeService
 from .app.services.user_service import UserService
 from .app.services.version_service import VersionService
 from .app.services.view_service import ViewService
@@ -451,6 +455,15 @@ class OpenProjectClient:
             api=self._action_capability_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
+            resolve_project_ref=self._get_project_payload,
+        )
+
+        self._status_priority_type_api: StatusPriorityTypeApi = HttpxStatusPriorityTypeApi(
+            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
+        )
+        self._status_priority_type_service = StatusPriorityTypeService(
+            api=self._status_priority_type_api,
+            settings=settings,
             resolve_project_ref=self._get_project_payload,
         )
 
@@ -2114,9 +2127,12 @@ class OpenProjectClient:
             # Deliberately not using get_status() here: it calls
             # _ensure_read_enabled("work_package"), which would incorrectly block this
             # purely internal lookup (and thus the whole status-changing write) on
-            # instances that have work-package writes enabled but reads disabled.
+            # instances that have work-package writes enabled but reads disabled. Calls
+            # the adapter's bare normalize_status directly (not through
+            # StatusPriorityTypeService), bypassing its access.ensure_read_enabled gate
+            # the same way the pre-migration self.normalize_status call did.
             status_payload = await self._get(f"statuses/{status_id}")
-            target_status = self.normalize_status(status_payload)
+            target_status = _normalize_status(status_payload, api_prefix=self._api_prefix)
             if target_status.is_closed:
                 auto_percentage = 100 if want_auto_percentage else None
                 if want_auto_remaining:
@@ -2816,11 +2832,14 @@ class OpenProjectClient:
             for u in payload.get("_links", {}).get("reactingUsers", [])
             if isinstance(u, dict)
         ]
-        return EmojiReactionSummary(
-            reaction=payload.get("reaction", ""),
-            emoji=payload.get("emoji"),
-            count=int(payload.get("reactionsCount", 0)),
-            users=[u for u in users if u],
+        return self._apply_hidden_fields(
+            "emoji_reaction",
+            EmojiReactionSummary(
+                reaction=payload.get("reaction", ""),
+                emoji=payload.get("emoji"),
+                count=int(payload.get("reactionsCount", 0)),
+                users=[u for u in users if u],
+            ),
         )
 
     def _emoji_reactions_result(self, payload: dict[str, Any]) -> EmojiReactionListResult:
@@ -3084,57 +3103,26 @@ class OpenProjectClient:
     # --- Statuses ---
 
     async def list_statuses(self) -> StatusListResult:
-        self._ensure_read_enabled("work_package")
-        payload = await self._get("statuses")
-        results = [
-            self.normalize_status(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        return StatusListResult(count=len(results), results=results)
+        return await self._status_priority_type_service.list_statuses()
 
     async def get_status(self, status_id: int) -> StatusSummary:
-        self._ensure_read_enabled("work_package")
-        payload = await self._get(f"statuses/{status_id}")
-        return self.normalize_status(payload)
+        return await self._status_priority_type_service.get_status(status_id)
 
     # --- Priorities ---
 
     async def list_priorities(self) -> PriorityListResult:
-        self._ensure_read_enabled("work_package")
-        payload = await self._get("priorities")
-        results = [
-            self.normalize_priority(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        return PriorityListResult(count=len(results), results=results)
+        return await self._status_priority_type_service.list_priorities()
 
     async def get_priority(self, priority_id: int) -> PrioritySummary:
-        self._ensure_read_enabled("work_package")
-        payload = await self._get(f"priorities/{priority_id}")
-        return self.normalize_priority(payload)
+        return await self._status_priority_type_service.get_priority(priority_id)
 
     # --- Types ---
 
     async def list_types(self, *, project: str | None = None) -> TypeListResult:
-        self._ensure_read_enabled("work_package")
-        if project is not None:
-            project_id = await self._resolve_project_id(project)
-            payload = await self._get(f"projects/{project_id}/types")
-        else:
-            payload = await self._get("types")
-        results = [
-            self.normalize_type(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        return TypeListResult(count=len(results), results=results)
+        return await self._status_priority_type_service.list_types(project=project)
 
     async def get_type(self, type_id: int) -> TypeSummary:
-        self._ensure_read_enabled("work_package")
-        payload = await self._get(f"types/{type_id}")
-        return self.normalize_type(payload)
+        return await self._status_priority_type_service.get_type(type_id)
 
     # --- Work Package Watchers ---
 
@@ -3497,8 +3485,10 @@ class OpenProjectClient:
 
     # --- Grids ---
 
-    async def list_grids(self, *, scope: str | None = None) -> GridListResult:
-        return await self._grid_service.list(scope=scope)
+    async def list_grids(
+        self, *, scope: str | None = None, offset: int = 1, limit: int | None = None
+    ) -> GridListResult:
+        return await self._grid_service.list(scope=scope, offset=offset, limit=limit)
 
     async def get_grid(self, grid_id: int) -> GridSummary:
         return await self._grid_service.get(grid_id)
@@ -4518,52 +4508,6 @@ class OpenProjectClient:
             ),
         )
 
-    def normalize_status(self, payload: dict[str, Any]) -> StatusSummary:
-        status_id = int(payload["id"])
-        return self._apply_hidden_fields(
-            "status",
-            StatusSummary(
-                id=status_id,
-                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Status {status_id}",
-                is_default=bool(payload.get("isDefault")),
-                is_closed=bool(payload.get("isClosed")),
-                color=_trim_text(payload.get("color"), limit=SUBJECT_LIMIT),
-                position=payload.get("position"),
-                url=self._api_href(f"statuses/{status_id}"),
-                is_readonly=payload.get("isReadonly"),
-                default_done_ratio=payload.get("defaultDoneRatio"),
-                excluded_from_totals=payload.get("excludedFromTotals"),
-            ),
-        )
-
-    def normalize_priority(self, payload: dict[str, Any]) -> PrioritySummary:
-        priority_id = int(payload["id"])
-        return PrioritySummary(
-            id=priority_id,
-            name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Priority {priority_id}",
-            is_default=bool(payload.get("isDefault")),
-            is_active=bool(payload.get("isActive")),
-            color=_trim_text(payload.get("color"), limit=SUBJECT_LIMIT),
-            position=payload.get("position"),
-        )
-
-    def normalize_type(self, payload: dict[str, Any]) -> TypeSummary:
-        type_id = int(payload["id"])
-        return self._apply_hidden_fields(
-            "type",
-            TypeSummary(
-                id=type_id,
-                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Type {type_id}",
-                color=_trim_text(payload.get("color"), limit=SUBJECT_LIMIT),
-                position=payload.get("position"),
-                is_default=bool(payload.get("isDefault")),
-                is_milestone=bool(payload.get("isMilestone")),
-                url=self._web_url(f"types/{type_id}"),
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-            ),
-        )
-
     def normalize_watcher(self, payload: dict[str, Any]) -> WatcherSummary:
         watcher_id = int(payload["id"])
         return self._apply_hidden_fields(
@@ -4592,17 +4536,20 @@ class OpenProjectClient:
             read_ian = bool(payload.get("read"))
         reason_link = links.get("reason")
         reason = _link_title(reason_link) or _trim_text(payload.get("reason"), limit=SUBJECT_LIMIT)
-        return NotificationSummary(
-            id=notification_id,
-            subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Notification {notification_id}",
-            reason=reason,
-            read=bool(read_ian),
-            project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
-            project_name=_link_title(project_link),
-            work_package_id=work_package_id,
-            work_package_subject=work_package_subject,
-            created_at=payload.get("createdAt") or "",
-            url=self._api_href(f"notifications/{notification_id}"),
+        return self._apply_hidden_fields(
+            "notification",
+            NotificationSummary(
+                id=notification_id,
+                subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Notification {notification_id}",
+                reason=reason,
+                read=bool(read_ian),
+                project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
+                project_name=_link_title(project_link),
+                work_package_id=work_package_id,
+                work_package_subject=work_package_subject,
+                created_at=payload.get("createdAt") or "",
+                url=self._api_href(f"notifications/{notification_id}"),
+            ),
         )
 
     def normalize_file_link(self, payload: dict[str, Any]) -> FileLinkSummary:

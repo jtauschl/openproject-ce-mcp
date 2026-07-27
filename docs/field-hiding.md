@@ -24,8 +24,9 @@ Supported entities for `OPENPROJECT_HIDE_<ENTITY>_FIELDS`: `project`,
 `query_filter`, `query_column`, `query_operator`, `query_sort_by`,
 `query_filter_instance_schema`, `document`, `news`, `wiki_page`, `category`,
 `attachment`, `time_entry_activity`, `time_entry`, `work_package`,
-`relation`, `activity`, `reminder`, `version`, `sprint`, `board`,
-`current_user`, `instance_configuration`, `status`, `type`, `watcher`.
+`relation`, `activity`, `reminder`, `version`, `sprint`, `board`, `grid`,
+`current_user`, `instance_configuration`, `status`, `priority`, `type`,
+`watcher`, `notification`, `file_link`, `emoji_reaction`.
 
 See [Configuration](configuration.md) for the two variables' required/default
 values.

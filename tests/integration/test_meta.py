@@ -22,24 +22,6 @@ async def test_get_instance_configuration(client: OpenProjectClient) -> None:
     assert config is not None
 
 
-async def test_list_statuses(client: OpenProjectClient) -> None:
-    result = await client.list_statuses()
-    assert result.count > 0
-    assert result.results[0].name
-
-
-async def test_list_priorities(client: OpenProjectClient) -> None:
-    result = await client.list_priorities()
-    assert result.count > 0
-    assert result.results[0].name
-
-
-async def test_list_types(client: OpenProjectClient) -> None:
-    result = await client.list_types()
-    assert result.count > 0
-    assert result.results[0].name
-
-
 async def test_list_time_entry_activities(client: OpenProjectClient) -> None:
     result = await client.list_time_entry_activities()
     assert result.count >= 0

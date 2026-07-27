@@ -10,12 +10,13 @@ Written so it can be handed to a fresh session (human or agent) as a
 self-contained starting brief — see "Prompt for a fresh session" at the
 bottom for a ready-to-paste version.
 
-Fifteen domains are migrated so far: Versions (pilot), Projects, Memberships,
+Sixteen domains are migrated so far: Versions (pilot), Projects, Memberships,
 News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards,
-Actions & Capabilities, Roles, Users, Groups. ~20 remain, all still flat in
-`client.py`. This runbook distills what each of those fifteen migrations
-actually needed, including mistakes found and fixed along the way — follow
-it literally, don't re-derive the process from scratch.
+Actions & Capabilities, Roles, Users, Groups, Statuses/Priorities/Types.
+~19 remain, all still flat in `client.py`. This runbook distills what each
+of those sixteen migrations actually needed, including mistakes found and
+fixed along the way — follow it literally, don't re-derive the process from
+scratch.
 
 ## 0. Pick the next domain
 
@@ -120,10 +121,54 @@ protection gap the Users migration's step-6.5 review found, this time caught
 by this migration's own self-audit and fixed as part of the initial
 implementation.
 
-With Groups now migrated, the next domain needs its own fresh evaluation
-against the three criteria above — no named candidate remains in the
-purely-global/admin-scoped bucket; the ~20 remaining still-flat domains
-overall haven't all been individually screened yet.
+With Groups migrated, Statuses/Priorities/Types (OPM-1627) was picked next
+via a fresh screening against the three criteria — three unrelated-but-
+bundled read-only lookups (matching client.py's own adjacent placement, same
+bundling rationale as Actions & Capabilities under OPM-276), all purely
+global (no `ProjectRefResolver` for Status/Priority; Type's optional
+`project` filter shapes the request URL only, verified not a per-record
+allowlist concern), small (~15-20 lines each in `client.py`). While reading
+the source (step 1), found `normalize_priority` never called
+`_apply_hidden_fields` and `config.py`'s `HIDE_FIELD_ENV_BY_ENTITY` had no
+`"priority"` entry at all — fixed in this migration, not preserved. A user
+request to widen the check beyond this migration's own scope found the
+identical bug in two more still-flat domains (`normalize_notification`,
+`normalize_file_link` — the latter had the call but no config entry, a
+permanent no-op) plus a weaker fourth instance (`normalize_emoji_reaction`);
+all three fixed as standalone commits.
+This also surfaced a structural test gap worth internalizing for future
+migrations: **no test in the suite exercised `HIDE_FIELD_ENV_BY_ENTITY`
+through the real `Settings.from_env` path** — every `test_hidden_fields.py`
+test constructs `Settings` with `hidden_fields={...}` pre-populated directly,
+bypassing the map entirely, so a missing entry for ANY entity was invisible
+to the whole file (confirmed: the pre-existing File Link hidden-fields test
+passed identically before and after fixing its actual bug). Closed with a
+new AST-walking structural test in `test_architecture_boundaries.py`
+(`test_every_apply_hidden_fields_entity_is_registered_in_config`) that
+extracts every literal entity string passed to `apply_hidden_fields`/
+`_apply_hidden_fields` and asserts each has a config-map entry — verified to
+fail when the fix is reverted. A second, broader audit (per user request to
+look beyond hidden fields at other "N individual exceptions instead of one
+unified mechanism" risks, specifically pagination/search consistency) found
+`GridService.list()` — an unrelated, already-migrated domain — had no
+`offset`/`limit` params and never clamped or paginated at all, a
+faithfully-ported pre-existing gap (confirmed via git history, not a
+regression). Fixed as its own commit: `GridListResult` moved from a bare
+`CollectionResult` to the standard `PageResult` shape (a deliberate,
+schema-visible fix, not a narrower internal-only clamp, per explicit user
+decision). Step 6's self-audit (widened to
+all 16 domains, per its own instruction) found one more real, actionable
+finding: a byte-identical `_effective_limit` wrapper method duplicated
+across `RoleService`/`ActionCapabilityService`/`GroupService`/`UserService`,
+past the "3+ identical copies" threshold — extracted into
+`app/pagination.effective_limit`. Security and efficiency passes found
+nothing further across any of the 16 domains. See architecture.md's
+Statuses/Priorities/Types entry for the full detail on all of the above.
+
+With Statuses/Priorities/Types migrated, the next domain needs its own
+fresh evaluation against the three criteria above — no named candidate
+remains in the purely-global/admin-scoped bucket; the ~19 remaining
+still-flat domains overall haven't all been individually screened yet.
 
 ## 1. Read the real source before planning
 
@@ -475,8 +520,7 @@ same review: an undocumented `capability_id` collection filter (OpenProject
 only documents a collection `id` filter's absence — the correct lookup is a
 single-item `GET /capabilities/{id}`) and a deprecated `context` filter
 value syntax (`p{id}` instead of the current `w{id}`). All three were fixed
-in the same session and ported to `release/0.3.3` independently (that branch
-still has this domain flat). This is the second domain in a row where the
+in the same session. This is the second domain in a row where the
 step-6.5 review earned its keep — treat it as the default next step after
 step 6, not a one-off from the Boards migration.
 

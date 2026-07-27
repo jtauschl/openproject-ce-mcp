@@ -592,6 +592,28 @@ def test_group_service_binds_the_api_param_to_group_api_specifically() -> None:
     assert hints["api"] is not HttpxGroupApi, "GroupService.__init__'s api param must not be the concrete adapter"
 
 
+def test_status_priority_type_service_binds_the_api_param_to_status_priority_type_api_specifically() -> None:
+    """Non-generalized regression test for the Statuses/Priorities/Types
+    domain's exact guarantee, sibling to the checks above: the api param is
+    StatusPriorityTypeApi exactly, not just "some Protocol". No dedicated
+    Resolver exists for status_id/priority_id/type_id -- all three are always
+    numeric values already validated by tools.py. `list_types`' optional
+    `project` filter uses the pre-existing ProjectRefResolver seam instead
+    (a request-shaping parameter, not a semantic reference needing a
+    dedicated Resolver)."""
+    from openproject_ce_mcp.app.adapters.httpx_status_priority_type_api import HttpxStatusPriorityTypeApi
+    from openproject_ce_mcp.app.ports.status_priority_type_api import StatusPriorityTypeApi
+    from openproject_ce_mcp.app.services.status_priority_type_service import StatusPriorityTypeService
+
+    hints = typing.get_type_hints(StatusPriorityTypeService.__init__)
+    assert hints["api"] is StatusPriorityTypeApi, (
+        "StatusPriorityTypeService.__init__'s api param must be typed StatusPriorityTypeApi"
+    )
+    assert hints["api"] is not HttpxStatusPriorityTypeApi, (
+        "StatusPriorityTypeService.__init__'s api param must not be the concrete adapter"
+    )
+
+
 # Names that once lived in app/ports/project_api.py (HAL->model normalize_*
 # translation functions and their private text/href helpers) before they moved
 # to app/adapters/httpx_project_api.py, matching the Versions domain's
@@ -695,3 +717,59 @@ def _reads_env_vars_directly(path: Path) -> bool:
 def test_app_tree_never_reads_environment_variables_directly() -> None:
     offenders = [p for p in APP.rglob("*.py") if _reads_env_vars_directly(p)]
     assert offenders == []
+
+
+# Added during the Statuses/Priorities/Types migration (16th domain, OPM-1627),
+# after a broader audit found FOUR real, silent hidden-field-masking gaps that
+# no existing test caught: normalize_priority/normalize_notification/
+# normalize_emoji_reaction never called _apply_hidden_fields at all, and
+# normalize_file_link called it but "file_link" had no entry in config.py's
+# HIDE_FIELD_ENV_BY_ENTITY map (a permanent, silent no-op). Every
+# tests/unit/test_hidden_fields.py test constructs Settings directly with
+# hidden_fields={...} pre-populated, bypassing HIDE_FIELD_ENV_BY_ENTITY
+# entirely -- none of them would have caught a missing map entry. This test
+# closes that structural gap: it extracts every literal entity string passed
+# to an _apply_hidden_fields/apply_hidden_fields call (in client.py's still-flat
+# normalize_* methods, and in every migrated domain's Service), and asserts
+# each one has a HIDE_FIELD_ENV_BY_ENTITY entry -- so a future domain that
+# repeats this exact mistake fails a test immediately instead of shipping a
+# silently-broken OPENPROJECT_HIDE_<X>_FIELDS env var.
+def _hidden_field_entity_literals(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(), filename=str(path))
+    entities: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        # client.py's call sites are all self._apply_hidden_fields(...) (leading
+        # underscore); app/services/*.py's are hidden_fields.apply_hidden_fields(...)
+        # (no underscore) -- both attribute names must be matched, or this check
+        # silently contributes nothing from client.py (confirmed during this
+        # migration's own self-audit: the underscore-less version alone returns an
+        # EMPTY set for client.py, despite the module docstring above claiming
+        # client.py's still-flat normalize_* methods are covered).
+        is_apply_hidden_fields_call = (
+            isinstance(func, ast.Attribute) and func.attr in ("apply_hidden_fields", "_apply_hidden_fields")
+        ) or (isinstance(func, ast.Name) and func.id in ("apply_hidden_fields", "_apply_hidden_fields"))
+        if not is_apply_hidden_fields_call or not node.args:
+            continue
+        first_arg = node.args[0]
+        if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+            entities.add(first_arg.value)
+    return entities
+
+
+def test_every_apply_hidden_fields_entity_is_registered_in_config() -> None:
+    from openproject_ce_mcp.config import HIDE_FIELD_ENV_BY_ENTITY
+
+    entities: set[str] = set()
+    entities |= _hidden_field_entity_literals(SRC / "client.py")
+    for path in APP.rglob("*.py"):
+        entities |= _hidden_field_entity_literals(path)
+
+    unregistered = sorted(entities - HIDE_FIELD_ENV_BY_ENTITY.keys())
+    assert unregistered == [], (
+        f"Entities passed to apply_hidden_fields/_apply_hidden_fields with no "
+        f"HIDE_FIELD_ENV_BY_ENTITY entry (their OPENPROJECT_HIDE_<X>_FIELDS env "
+        f"var can never work): {unregistered}"
+    )
