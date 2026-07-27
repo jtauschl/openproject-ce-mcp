@@ -51,7 +51,8 @@ from typing import Any
 
 from ...config import Settings
 from ...models import UserDetail, UserListResult, UserWriteResult
-from ..pagination import clamp_limit, paginate_client, paginate_server
+from ..pagination import effective_limit as _effective_limit
+from ..pagination import paginate_client, paginate_server
 from ..policies import access, hidden_fields
 from ..ports.user_api import UserApi
 
@@ -64,19 +65,11 @@ class UserService:
     def _stamp(self, value: Any) -> Any:
         return hidden_fields.apply_hidden_fields("user", value, settings=self._settings)
 
-    def _effective_limit(self, limit: int | None) -> int:
-        return clamp_limit(
-            limit,
-            default_page_size=self._settings.default_page_size,
-            max_page_size=self._settings.max_page_size,
-            max_results=self._settings.max_results,
-        )
-
     async def list_users(
         self, *, search: str | None = None, offset: int = 1, limit: int | None = None
     ) -> UserListResult:
         access.ensure_read_enabled("admin", settings=self._settings)
-        effective_limit = self._effective_limit(limit)
+        effective_limit = _effective_limit(limit, settings=self._settings)
 
         if search is not None:
             records = await self._api.list_users_search(page_size=self._settings.max_results)

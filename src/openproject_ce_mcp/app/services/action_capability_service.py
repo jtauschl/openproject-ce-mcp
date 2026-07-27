@@ -60,7 +60,8 @@ from typing import Any
 from ...config import Settings
 from ...models import ActionListResult, CapabilityListResult
 from ..errors import InvalidInputError
-from ..pagination import clamp_limit, paginate_server
+from ..pagination import effective_limit as _effective_limit
+from ..pagination import paginate_server
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.action_capability_api import ActionCapabilityApi
@@ -93,14 +94,6 @@ class ActionCapabilityService:
         self._project_id_to_identifier = project_id_to_identifier
         self._resolve_project_ref = resolve_project_ref
 
-    def _effective_limit(self, limit: int | None) -> int:
-        return clamp_limit(
-            limit,
-            default_page_size=self._settings.default_page_size,
-            max_page_size=self._settings.max_page_size,
-            max_results=self._settings.max_results,
-        )
-
     def _context_allowed(self, context_link: dict[str, Any] | None) -> bool:
         return scope_policy.payload_allowed(
             lambda: scope_policy.ensure_project_link_allowed(
@@ -110,7 +103,7 @@ class ActionCapabilityService:
 
     async def list_actions(self, *, offset: int = 1, limit: int | None = None) -> ActionListResult:
         access.ensure_read_enabled("membership", settings=self._settings)
-        effective_limit = self._effective_limit(limit)
+        effective_limit = _effective_limit(limit, settings=self._settings)
         records, total = await self._api.list_actions(offset=offset, page_size=effective_limit)
         results = [
             hidden_fields.apply_hidden_fields("action", record.summary, settings=self._settings) for record in records
@@ -137,7 +130,7 @@ class ActionCapabilityService:
         access.ensure_read_enabled("membership", settings=self._settings)
         if project is None and capability_id is None:
             raise InvalidInputError("At least one of project or capability_id is required for capabilities.")
-        effective_limit = self._effective_limit(limit)
+        effective_limit = _effective_limit(limit, settings=self._settings)
 
         project_id: int | None = None
         if project is not None:

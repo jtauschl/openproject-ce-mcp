@@ -58,7 +58,8 @@ from typing import Any
 from ...config import Settings
 from ...models import GroupDetail, GroupListResult, GroupSummary, GroupWriteResult
 from ..api_href import api_href
-from ..pagination import clamp_limit, paginate_client, paginate_server
+from ..pagination import effective_limit as _effective_limit
+from ..pagination import paginate_client, paginate_server
 from ..policies import access, hidden_fields
 from ..ports.group_api import GroupApi
 
@@ -75,19 +76,11 @@ class GroupService:
     def _api_href(self, relative_path: str) -> str:
         return api_href(relative_path, api_prefix=self._api_prefix)
 
-    def _effective_limit(self, limit: int | None) -> int:
-        return clamp_limit(
-            limit,
-            default_page_size=self._settings.default_page_size,
-            max_page_size=self._settings.max_page_size,
-            max_results=self._settings.max_results,
-        )
-
     async def list_groups(
         self, *, search: str | None = None, offset: int = 1, limit: int | None = None
     ) -> GroupListResult:
         access.ensure_read_enabled("admin", settings=self._settings)
-        effective_limit = self._effective_limit(limit)
+        effective_limit = _effective_limit(limit, settings=self._settings)
 
         if search is not None:
             records = await self._api.list_groups_search(page_size=self._settings.max_results)

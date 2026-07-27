@@ -42,6 +42,28 @@ def clamp_limit(limit: int | None, *, default_page_size: int, max_page_size: int
     return min(limit or default_page_size, max_page_size, max_results)
 
 
+def effective_limit(limit: int | None, *, settings: Any) -> int:
+    """`clamp_limit`, but reading `default_page_size`/`max_page_size`/`max_results`
+    directly off a `Settings` instance instead of three separate keyword args.
+
+    A byte-identical `_effective_limit(self, limit)` method (each just this one
+    `clamp_limit(...)` call wrapping `self._settings`'s three fields) was
+    duplicated across RoleService, ActionCapabilityService, GroupService, and
+    UserService -- found during the Statuses/Priorities/Types migration's
+    (16th domain) step-6 self-audit, past this project's own "3+ identical
+    copies" unification threshold. `settings` is typed `Any` here, not
+    `config.Settings`, only to avoid this dependency-free package-root module
+    importing from the parent package -- every call site passes a real
+    `Settings` instance.
+    """
+    return clamp_limit(
+        limit,
+        default_page_size=settings.default_page_size,
+        max_page_size=settings.max_page_size,
+        max_results=settings.max_results,
+    )
+
+
 def paginate_client(*, offset: int, limit: int, results: list[Any]) -> tuple[list[Any], int, int | None, bool]:
     """Slice an already-fetched, already-filtered in-memory list into one page.
 

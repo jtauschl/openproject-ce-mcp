@@ -29,7 +29,8 @@ from __future__ import annotations
 
 from ...config import Settings
 from ...models import RoleListResult
-from ..pagination import clamp_limit, paginate_server
+from ..pagination import effective_limit as _effective_limit
+from ..pagination import paginate_server
 from ..policies import access, hidden_fields
 from ..ports.role_api import RoleApi
 
@@ -39,17 +40,9 @@ class RoleService:
         self._api = api
         self._settings = settings
 
-    def _effective_limit(self, limit: int | None) -> int:
-        return clamp_limit(
-            limit,
-            default_page_size=self._settings.default_page_size,
-            max_page_size=self._settings.max_page_size,
-            max_results=self._settings.max_results,
-        )
-
     async def list_roles(self, *, offset: int = 1, limit: int | None = None) -> RoleListResult:
         access.ensure_read_enabled("role", settings=self._settings)
-        effective_limit = self._effective_limit(limit)
+        effective_limit = _effective_limit(limit, settings=self._settings)
         records, total = await self._api.list_roles(offset=offset, page_size=effective_limit)
         results = [
             hidden_fields.apply_hidden_fields("role", record.summary, settings=self._settings) for record in records
