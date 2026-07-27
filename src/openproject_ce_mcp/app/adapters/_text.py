@@ -18,12 +18,24 @@ skips the formattable-text-first branch) and are not safe to unify without
 changing behavior -- kept as adapter-local, near-identical-but-not-identical
 code, per this project's standing "don't unify what isn't truly the same"
 principle.
+
+`slug_from_href` was added here once a step-6 self-audit (during the Query
+Metadata migration) found it byte-identical across httpx_action_capability_api.py
+and httpx_query_metadata_api.py -- past this project's own "3+ identical
+copies" threshold once a third, genuinely dead copy in httpx_project_api.py
+(defined, but with zero call sites in that file) is counted too; the dead
+copy was removed outright there rather than migrated to an unused import.
+httpx_board_api.py's own `_slug_from_href` stays LOCAL and deliberately
+unmigrated: it uses `rsplit` with no `unquote` call, a genuinely different
+(not just differently-written) behavior for a percent-encoded slug --
+unifying it here would silently change Board's output for any href whose
+final segment needs unquoting, not just remove duplication.
 """
 
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 from ..origin import origin_from_url
 
@@ -48,6 +60,17 @@ def id_from_href(href: str | None) -> int | None:
     try:
         return int(parts[-1])
     except (ValueError, IndexError):
+        return None
+
+
+def slug_from_href(href: str | None) -> str | None:
+    if not href:
+        return None
+    parts = href.rstrip("/").split("/")
+    try:
+        slug = parts[-1]
+        return unquote(slug) or None
+    except IndexError:
         return None
 
 

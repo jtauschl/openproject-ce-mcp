@@ -1,21 +1,14 @@
 """HTTP-backed ActionCapabilityApi adapter (ADR 0001).
 
 No `httpx` import (depends on the `Transport` Protocol only). `id_from_href`/
-`slug_from_href`/`link_title`/`link_to_web_url`/`origin_from_url` would be
-shared via `app/adapters/_text.py`, except `_text.py` has no `slug_from_href`
--- verified: only `app/policies/scope.py` defines it (as a private,
-deliberately duplicated copy, per that module's own docstring), and it is not
-re-exported from `_text.py` for adapter use. Ported here as a small adapter-local
-free function instead of importing across the policies/adapters boundary,
-verified byte-identical against client.py's real module-level `_slug_from_href`
-(client.py:6521-6529) and `app/policies/scope.py`'s own copy.
+`slug_from_href`/`link_title`/`link_to_web_url`/`origin_from_url` are shared
+via `app/adapters/_text.py`.
 """
 
 from __future__ import annotations
 
 import json
 from typing import Any
-from urllib.parse import unquote
 
 from ...models import ActionSummary, CapabilitySummary
 from ..ports.action_capability_api import ActionRecord, CapabilityRecord
@@ -25,18 +18,8 @@ from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import link_to_web_url as _link_to_web_url
 from ._text import origin_from_url as _origin_from_url
+from ._text import slug_from_href as _slug_from_href
 from ._text import trim_text as _trim_text
-
-
-def _slug_from_href(href: str | None) -> str | None:
-    if not href:
-        return None
-    parts = href.rstrip("/").split("/")
-    try:
-        slug = parts[-1]
-        return unquote(slug) or None
-    except IndexError:
-        return None
 
 
 def normalize_action(payload: dict[str, Any], *, base_url: str, origin: str) -> ActionSummary:

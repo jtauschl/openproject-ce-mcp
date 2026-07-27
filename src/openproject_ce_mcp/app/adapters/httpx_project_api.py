@@ -8,12 +8,16 @@ ProjectResolver.resolve_record() forwards from this adapter's own get()/list()
 calls, so no second normalization-without-a-second-HTTP-call concern applies.
 
 `_trim_text`/`_link_title`/`_id_from_href`/`_delimit_user_content`/
-`_origin_from_url`/`SUBJECT_LIMIT` are shared via `app/adapters/_text.py`
-(unified once every domain migrated). Still has its own `_normalize_text`/
-`_trim_text_with_meta`/`_extract_formattable_text_with_meta`/`_slug_from_href`/
-`_normalize_validation_errors` (+ `FORMATTABLE_LIMIT`/`PROJECT_ANCESTORS_LIMIT`)
--- these differ behaviorally from the other adapters' equivalents (see
-`_text.py`'s module docstring) and are not shared.
+`_origin_from_url`/`SUBJECT_LIMIT` are shared via `app/adapters/_text.py`.
+Still has its own `_normalize_text`/`_trim_text_with_meta`/
+`_extract_formattable_text_with_meta`/`_normalize_validation_errors`
+(+ `FORMATTABLE_LIMIT`/`PROJECT_ANCESTORS_LIMIT`) -- these differ
+behaviorally from the other adapters' equivalents (see `_text.py`'s module
+docstring) and are not shared. A local `_slug_from_href` definition existed
+here with zero call sites in this file (found dead during a later
+migration's step-6 self-audit, alongside the discovery that this same
+helper was byte-identically duplicated in two other adapters) -- removed
+rather than imported from `_text.py`, since nothing here actually needs it.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from typing import Any
-from urllib.parse import quote, unquote, urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 from ...models import (
     OptionValue,
@@ -95,17 +99,6 @@ def _extract_formattable_text_with_meta(
 ) -> tuple[str | None, bool, int | None]:
     raw = value.get("raw") or value.get("html") if isinstance(value, dict) else value
     return _trim_text_with_meta(raw, limit=limit, preserve_newlines=preserve_newlines)
-
-
-def _slug_from_href(href: str | None) -> str | None:
-    if not href:
-        return None
-    parts = href.rstrip("/").split("/")
-    try:
-        slug = parts[-1]
-        return unquote(slug) or None
-    except IndexError:
-        return None
 
 
 def normalize_project(
