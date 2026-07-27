@@ -562,6 +562,25 @@ def test_role_service_binds_the_api_param_to_role_api_specifically() -> None:
     assert hints["api"] is not HttpxRoleApi, "RoleService.__init__'s api param must not be the concrete adapter"
 
 
+def test_user_preferences_service_binds_the_api_param_to_user_preferences_api_specifically() -> None:
+    """Non-generalized regression test for the User Preferences domain's
+    exact guarantee, sibling to the checks above: the api param is
+    UserPreferencesApi exactly, not just "some Protocol". No dedicated
+    Resolver exists -- get()/update() operate on the token owner's own
+    singleton resource, with no id or semantic reference to resolve at all."""
+    from openproject_ce_mcp.app.adapters.httpx_user_preferences_api import HttpxUserPreferencesApi
+    from openproject_ce_mcp.app.ports.user_preferences_api import UserPreferencesApi
+    from openproject_ce_mcp.app.services.user_preferences_service import UserPreferencesService
+
+    hints = typing.get_type_hints(UserPreferencesService.__init__)
+    assert hints["api"] is UserPreferencesApi, (
+        "UserPreferencesService.__init__'s api param must be typed UserPreferencesApi"
+    )
+    assert hints["api"] is not HttpxUserPreferencesApi, (
+        "UserPreferencesService.__init__'s api param must not be the concrete adapter"
+    )
+
+
 def test_user_service_binds_the_api_param_to_user_api_specifically() -> None:
     """Non-generalized regression test for the Users domain's exact guarantee,
     sibling to the checks above: the api param is UserApi exactly, not just

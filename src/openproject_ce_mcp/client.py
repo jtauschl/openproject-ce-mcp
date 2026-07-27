@@ -30,6 +30,7 @@ from .app.adapters.httpx_sprint_api import HttpxSprintApi
 from .app.adapters.httpx_status_priority_type_api import HttpxStatusPriorityTypeApi
 from .app.adapters.httpx_status_priority_type_api import normalize_status as _normalize_status
 from .app.adapters.httpx_user_api import HttpxUserApi
+from .app.adapters.httpx_user_preferences_api import HttpxUserPreferencesApi
 from .app.adapters.httpx_version_api import HttpxVersionApi
 from .app.adapters.httpx_view_api import HttpxViewApi
 from .app.adapters.httpx_wiki_page_api import HttpxWikiPageApi
@@ -68,6 +69,7 @@ from .app.ports.role_api import RoleApi
 from .app.ports.sprint_api import SprintApi
 from .app.ports.status_priority_type_api import StatusPriorityTypeApi
 from .app.ports.user_api import UserApi
+from .app.ports.user_preferences_api import UserPreferencesApi
 from .app.ports.version_api import VersionApi
 from .app.ports.view_api import ViewApi
 from .app.ports.wiki_page_api import WikiPageApi
@@ -87,6 +89,7 @@ from .app.services.query_metadata_service import QueryMetadataService
 from .app.services.role_service import RoleService
 from .app.services.sprint_service import SprintService
 from .app.services.status_priority_type_service import StatusPriorityTypeService
+from .app.services.user_preferences_service import UserPreferencesService
 from .app.services.user_service import UserService
 from .app.services.version_service import VersionService
 from .app.services.view_service import ViewService
@@ -371,6 +374,9 @@ class OpenProjectClient:
 
         self._user_api: UserApi = HttpxUserApi(HttpxTransport(self._http), base_url=settings.base_url)
         self._user_service = UserService(api=self._user_api, settings=settings)
+
+        self._user_preferences_api: UserPreferencesApi = HttpxUserPreferencesApi(HttpxTransport(self._http))
+        self._user_preferences_service = UserPreferencesService(api=self._user_preferences_api, settings=settings)
 
         self._group_api: GroupApi = HttpxGroupApi(HttpxTransport(self._http), base_url=settings.base_url)
         self._group_service = GroupService(api=self._group_api, settings=settings, api_prefix=self._api_prefix)
@@ -3521,9 +3527,7 @@ class OpenProjectClient:
     # --- User Preferences ---
 
     async def get_my_preferences(self) -> UserPreferences:
-        self._ensure_read_enabled("personal")
-        payload = await self._get("my_preferences")
-        return self.normalize_user_preferences(payload)
+        return await self._user_preferences_service.get()
 
     async def update_my_preferences(
         self,
@@ -3535,41 +3539,13 @@ class OpenProjectClient:
         auto_hide_popups: bool | None = None,
         confirm: bool = False,
     ) -> UserPreferencesWriteResult:
-        # Self-scoped: only the authenticated token owner's own preferences
-        # (language, timezone, popup behaviour). Gated by "personal" write
-        # (OPENPROJECT_ENABLE_PERSONAL_WRITE); the confirm/preview flow is a
-        # separate, additional guard on top, not a substitute for it.
-        self._ensure_write_enabled("personal")
-        body: dict[str, Any] = {}
-        if lang is not None:
-            body["lang"] = lang
-        if time_zone is not None:
-            body["timeZone"] = time_zone
-        if comment_sort_descending is not None:
-            body["commentSortDescending"] = comment_sort_descending
-        if warn_on_leaving_unsaved is not None:
-            body["warnOnLeavingUnsaved"] = warn_on_leaving_unsaved
-        if auto_hide_popups is not None:
-            body["autoHidePopups"] = auto_hide_popups
-        if not confirm:
-            return UserPreferencesWriteResult(
-                action="update",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to update your preferences. Call again with confirm=true to write.",
-                payload=body,
-                result=None,
-            )
-        response = await self._patch("my_preferences", json_body=body)
-        return UserPreferencesWriteResult(
-            action="update",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Preferences updated successfully.",
-            payload=body,
-            result=self.normalize_user_preferences(response),
+        return await self._user_preferences_service.update(
+            lang=lang,
+            time_zone=time_zone,
+            comment_sort_descending=comment_sort_descending,
+            warn_on_leaving_unsaved=warn_on_leaving_unsaved,
+            auto_hide_popups=auto_hide_popups,
+            confirm=confirm,
         )
 
     # --- Text Rendering ---
@@ -4477,18 +4453,6 @@ class OpenProjectClient:
                 updated_at=payload.get("updatedAt"),
                 url=self._api_href(f"file_links/{file_link_id}"),
             ),
-        )
-
-    def normalize_user_preferences(self, payload: dict[str, Any]) -> UserPreferences:
-        return UserPreferences(
-            id=payload.get("id"),
-            lang=payload.get("lang"),
-            time_zone=payload.get("timeZone"),
-            comment_sort_descending=payload.get("commentSortDescending"),
-            warn_on_leaving_unsaved=payload.get("warnOnLeavingUnsaved"),
-            auto_hide_popups=payload.get("autoHidePopups"),
-            notifications_reminder_time=payload.get("notificationsReminderTime"),
-            updated_at=payload.get("updatedAt"),
         )
 
     def normalize_help_text(self, payload: dict[str, Any]) -> HelpTextSummary:

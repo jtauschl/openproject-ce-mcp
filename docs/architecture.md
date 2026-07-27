@@ -139,7 +139,10 @@ tools.py (MCP presentation)
   actions sharing the same result shape; a domain with fewer stays a single flat method instead of
   forcing indirection onto one or zero call sites. A domain bundling several unrelated-but-adjacent
   read-only lookups under one ticket is one Service, not one per lookup, when every method shares
-  an identical read-enablement gate.
+  an identical read-enablement gate. A domain with no project link and no allowlist concept at all
+  (self-scoped to the token owner, not project-scoped or admin-scoped) uses neither a Policy module
+  nor `app/policies/scope.py`'s helpers — the read/write scope gate alone is its entire enforcement
+  surface.
 - `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under `app/` that
   imports `httpx`; `client.py`'s own HTTP calls for still-flat domains, and `retry_transport.py`,
   are unaffected and keep importing it directly.
