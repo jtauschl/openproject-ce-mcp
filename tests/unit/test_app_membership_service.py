@@ -422,6 +422,39 @@ async def test_create_role_lookup_page_walks_using_max_page_size_not_default() -
 
 
 @pytest.mark.asyncio
+async def test_create_with_numeric_role_id_skips_the_role_list_fetch() -> None:
+    """Efficiency regression test, found during the 19th (Extended Metadata)
+    domain's step-6 self-audit: the full role-collection page-walk is only
+    needed to resolve a BY-NAME reference. When every role ref is already a
+    numeric id (the common case), _resolve_role_hrefs must not fetch the
+    role collection at all -- it previously did, unconditionally, wasting a
+    round trip whose result was never used.
+    """
+    role_api = _FakeRoleApi()
+    api = _FakeMembershipApi()
+    service = _service(api, role_api=role_api)
+
+    result = await service.create(project="demo", principal="me", roles=["8"], confirm=True)
+
+    assert result.confirmed is True
+    assert role_api.list_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_with_mixed_numeric_and_named_roles_still_fetches_once() -> None:
+    """A mix of numeric and by-name refs must still trigger exactly one
+    page-walk (for the by-name ref), not skip it entirely."""
+    role_api = _FakeRoleApi(records=[RoleRecord(summary=RoleSummary(id=2, name="Member", url=f"{BASE_URL}/roles/2"))])
+    api = _FakeMembershipApi()
+    service = _service(api, role_api=role_api)
+
+    result = await service.create(project="demo", principal="me", roles=["8", "Member"], confirm=True)
+
+    assert result.confirmed is True
+    assert len(role_api.list_calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_create_role_lookup_checks_read_enabled() -> None:
     settings = dataclasses.replace(make_settings(), enable_membership_read=False)
     role_api = _FakeRoleApi()

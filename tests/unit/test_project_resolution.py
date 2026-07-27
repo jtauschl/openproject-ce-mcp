@@ -203,11 +203,13 @@ async def test_update_project_denies_disallowed_parent_project() -> None:
         pytest.param("demo", ("*",), ("other",), "write", "WRITE", 1, id="identifier-read_only-write_denied"),
         pytest.param("demo", ("*",), ("*",), "write", None, 3, id="identifier-write_allowed"),
         # membership: create_membership resolves+write-checks the project first (1
-        # request, and where it fails on denial), then resolves role hrefs (GET
-        # /api/v3/roles, unconditional even for a numeric role ref) and posts the
-        # membership preview form — 3 requests when allowed.
+        # request, and where it fails on denial), then resolves role hrefs (a
+        # numeric role ref like "2" needs no /api/v3/roles fetch at all --
+        # fixed during the 19th (Extended Metadata) domain's step-6 self-audit,
+        # see MembershipService._resolve_role_hrefs) and posts the membership
+        # preview form — 2 requests when allowed, not 3.
         pytest.param("demo", ("*",), ("other",), "membership", "WRITE", 1, id="membership-write_denied"),
-        pytest.param("demo", ("*",), ("*",), "membership", None, 3, id="membership-write_allowed"),
+        pytest.param("demo", ("*",), ("*",), "membership", None, 2, id="membership-write_allowed"),
         # board: create_board resolves+write-checks the project (1 request, and
         # where it fails on denial), then _build_board_write_payload separately
         # resolves the project id again (same URL, a second request) before posting

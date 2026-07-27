@@ -38,7 +38,7 @@ from ..ports.membership_api import MembershipApi
 from ..ports.principal_ref import PrincipalRefResolver
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
-from ..ports.role_api import RoleApi
+from ..ports.role_api import RoleApi, RoleRecord
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
@@ -229,20 +229,26 @@ class MembershipService:
         # needs ALL roles regardless of the caller-facing pagination window,
         # and has no serialization step to apply hidden-field masking to.
         access.ensure_read_enabled("role", settings=self._settings)
-        # max_page_size, not clamp_limit(None, ...) (which would resolve to the
-        # smaller default_page_size) -- this walk needs the COMPLETE role set,
-        # so the largest page the server allows minimizes round trips, same as
-        # VersionResolver/ProjectResolver's identical page-walk (see
-        # version_resolver.py's `limit=self._settings.max_page_size`).
-        available_roles = await paginate_all(
-            lambda offset, page_size: self._role_api.list_roles(offset=offset, page_size=page_size),
-            page_size=self._settings.max_page_size,
-        )
+        normalized_refs = [ref.strip() for ref in roles if ref.strip()]
+        # The full role-collection page-walk is only needed to resolve a
+        # BY-NAME reference -- when every ref is already numeric, skip it
+        # entirely (found during the 19th (Extended Metadata) domain's
+        # step-6 self-audit: this fetch previously ran unconditionally even
+        # though the common case, all-numeric role ids, never uses its
+        # result at all).
+        available_roles: list[RoleRecord] = []
+        if any(not ref.isdigit() for ref in normalized_refs):
+            # max_page_size, not clamp_limit(None, ...) (which would resolve to
+            # the smaller default_page_size) -- this walk needs the COMPLETE
+            # role set, so the largest page the server allows minimizes round
+            # trips, same as VersionResolver/ProjectResolver's identical
+            # page-walk (see version_resolver.py's `limit=self._settings.max_page_size`).
+            available_roles = await paginate_all(
+                lambda offset, page_size: self._role_api.list_roles(offset=offset, page_size=page_size),
+                page_size=self._settings.max_page_size,
+            )
         hrefs: list[str] = []
-        for role_ref in roles:
-            normalized = role_ref.strip()
-            if not normalized:
-                continue
+        for normalized in normalized_refs:
             if normalized.isdigit():
                 hrefs.append(self._api_href(f"roles/{normalized}"))
                 continue
@@ -250,9 +256,9 @@ class MembershipService:
                 record for record in available_roles if (record.summary.name or "").casefold() == normalized.casefold()
             ]
             if not matches:
-                raise InvalidInputError(f"OpenProject role '{role_ref}' was not found.")
+                raise InvalidInputError(f"OpenProject role '{normalized}' was not found.")
             if len(matches) > 1:
-                raise InvalidInputError(f"OpenProject role '{role_ref}' is ambiguous. Pass a numeric role id.")
+                raise InvalidInputError(f"OpenProject role '{normalized}' is ambiguous. Pass a numeric role id.")
             hrefs.append(self._api_href(f"roles/{matches[0].summary.id}"))
         if not hrefs:
             raise InvalidInputError("At least one role is required.")
