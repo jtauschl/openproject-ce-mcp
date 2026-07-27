@@ -4822,6 +4822,12 @@ class OpenProjectClient:
         column_count: int | None = None,
         confirm: bool = False,
     ) -> GridWriteResult:
+        self._ensure_field_writable("grid", "name")
+        self._ensure_field_writable("grid", "scope")
+        if row_count is not None:
+            self._ensure_field_writable("grid", "row_count")
+        if column_count is not None:
+            self._ensure_field_writable("grid", "column_count")
         project_ref = self._project_ref_from_scope_href(scope)
         if project_ref is not None:
             await self._get_project_payload(project_ref, write=True)
@@ -4858,10 +4864,13 @@ class OpenProjectClient:
             await self._get_project_payload(project_ref, write=True)
         payload: dict[str, Any] = {}
         if name is not None:
+            self._ensure_field_writable("grid", "name")
             payload["name"] = name
         if row_count is not None:
+            self._ensure_field_writable("grid", "row_count")
             payload["rowCount"] = row_count
         if column_count is not None:
+            self._ensure_field_writable("grid", "column_count")
             payload["columnCount"] = column_count
         form = await self._post(f"grids/{grid_id}/form", json_body=payload)
         return await self._finalize_grid_write(

@@ -7586,6 +7586,59 @@ async def test_update_grid_executes_with_confirm() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_grid_rejects_when_name_field_is_hidden() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(
+        _make_grid_settings({"hidden_fields": {"grid": ("name",)}}), transport=httpx.MockTransport(handler)
+    )
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_GRID_FIELDS"):
+        await client.create_grid(name="Demo Grid", scope="/projects/demo", confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_grid_rejects_when_row_count_field_is_hidden() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(
+        _make_grid_settings({"hidden_fields": {"grid": ("row_count",)}}), transport=httpx.MockTransport(handler)
+    )
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_GRID_FIELDS"):
+        await client.create_grid(name="Demo Grid", scope="/projects/demo", row_count=2, confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_grid_rejects_when_the_only_field_being_written_is_hidden() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/grids/55" and request.method == "GET":
+            return httpx.Response(200, json=_make_grid_payload(), request=request)
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected: {request.method} {request.url}")
+
+    client = OpenProjectClient(
+        _make_grid_settings({"hidden_fields": {"grid": ("name",)}}), transport=httpx.MockTransport(handler)
+    )
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_GRID_FIELDS"):
+        await client.update_grid(grid_id=55, name="Renamed Grid", confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_delete_grid_preview_mode() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/grids/55" and request.method == "GET":

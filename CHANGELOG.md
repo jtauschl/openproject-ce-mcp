@@ -59,6 +59,10 @@ development baseline.
   read, unlike every other write-capable domain (news, boards, documents,
   memberships, projects, versions), all of which already reject a write to
   a hidden field.
+- **`create_grid`/`update_grid` now honor `OPENPROJECT_HIDE_GRID_FIELDS`
+  on writes**, not just reads. Same gap as the `OPENPROJECT_HIDE_USER_FIELDS`
+  fix above — Grids additionally had no such setting at all until now, since
+  `"grid"` was missing entirely from the hidden-fields configuration.
 
 ---
 
