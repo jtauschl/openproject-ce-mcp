@@ -20,6 +20,7 @@ from .app.adapters.httpx_board_api import HttpxBoardApi
 from .app.adapters.httpx_category_api import HttpxCategoryApi
 from .app.adapters.httpx_document_api import HttpxDocumentApi
 from .app.adapters.httpx_grid_api import HttpxGridApi
+from .app.adapters.httpx_group_api import HttpxGroupApi
 from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
@@ -54,6 +55,7 @@ from .app.ports.board_api import BoardApi
 from .app.ports.category_api import CategoryApi
 from .app.ports.document_api import DocumentApi
 from .app.ports.grid_api import GridApi
+from .app.ports.group_api import GroupApi
 from .app.ports.membership_api import MembershipApi
 from .app.ports.news_api import NewsApi
 from .app.ports.project_api import ProjectApi
@@ -71,6 +73,7 @@ from .app.services.board_service import BoardService
 from .app.services.category_service import CategoryService
 from .app.services.document_service import DocumentService
 from .app.services.grid_service import GridService
+from .app.services.group_service import GroupService
 from .app.services.membership_service import MembershipService
 from .app.services.news_service import NewsService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
@@ -122,7 +125,6 @@ from .models import (
     GridWriteResult,
     GroupDetail,
     GroupListResult,
-    GroupSummary,
     GroupWriteResult,
     HelpTextListResult,
     HelpTextSummary,
@@ -362,6 +364,9 @@ class OpenProjectClient:
 
         self._user_api: UserApi = HttpxUserApi(HttpxTransport(self._http), base_url=settings.base_url)
         self._user_service = UserService(api=self._user_api, settings=settings)
+
+        self._group_api: GroupApi = HttpxGroupApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._group_service = GroupService(api=self._group_api, settings=settings, api_prefix=self._api_prefix)
 
         self._membership_api: MembershipApi = HttpxMembershipApi(
             HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
@@ -676,62 +681,10 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> GroupListResult:
-        self._ensure_read_enabled("admin")
-        effective_limit = self._resolve_limit(limit)
-
-        if search is not None:
-            # Same over-fetch-then-filter-then-paginate pattern as list_users above.
-            def post_filter(results: list[GroupSummary]) -> list[GroupSummary]:
-                search_key = search.casefold()
-                return [item for item in results if search_key in (item.name or "").casefold()]
-
-            page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
-                path="groups",
-                params_extra=None,
-                normalize=self.normalize_group,
-                item_allowed=None,
-                post_filter=post_filter,
-                offset=offset,
-                limit=effective_limit,
-            )
-            return GroupListResult(
-                offset=offset,
-                limit=effective_limit,
-                total=total,
-                count=len(page),
-                next_offset=next_offset,
-                truncated=truncated,
-                results=page,
-            )
-
-        payload = await self._get(
-            "groups",
-            params={
-                "offset": str(offset),
-                "pageSize": str(effective_limit),
-            },
-        )
-        results = [
-            self.normalize_group(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        total = int(payload.get("total", len(results)))
-        next_offset, truncated = _paginate_server(offset=offset, limit=effective_limit, total=total)
-        return GroupListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(results),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=results,
-        )
+        return await self._group_service.list_groups(search=search, offset=offset, limit=limit)
 
     async def get_group(self, group_id: int) -> GroupDetail:
-        self._ensure_read_enabled("admin")
-        payload = await self._get(f"groups/{group_id}")
-        return self.normalize_group_detail(payload)
+        return await self._group_service.get_group(group_id)
 
     async def list_actions(
         self,
@@ -3468,36 +3421,7 @@ class OpenProjectClient:
         user_ids: list[int] | None = None,
         confirm: bool = False,
     ) -> GroupWriteResult:
-        self._ensure_write_enabled("admin")
-        body: dict[str, Any] = {"name": name}
-        if user_ids:
-            body["_links"] = {"members": [{"href": self._api_href(f"users/{uid}")} for uid in user_ids]}
-        payload_preview = {"name": name, "user_ids": user_ids or []}
-        if not confirm:
-            return GroupWriteResult(
-                action="create",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to create the group. Ask for confirmation, then call again with confirm=true.",
-                group_id=None,
-                payload=payload_preview,
-                validation_errors={},
-                result=None,
-            )
-        response = await self._post("groups", json_body=body)
-        result = self.normalize_group(response)
-        return GroupWriteResult(
-            action="create",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Group created successfully.",
-            group_id=result.id,
-            payload=payload_preview,
-            validation_errors={},
-            result=result,
-        )
+        return await self._group_service.create(name=name, user_ids=user_ids, confirm=confirm)
 
     async def update_group(
         self,
@@ -3508,59 +3432,12 @@ class OpenProjectClient:
         remove_user_ids: list[int] | None = None,
         confirm: bool = False,
     ) -> GroupWriteResult:
-        self._ensure_write_enabled("admin")
-        body: dict[str, Any] = {}
-        if name is not None:
-            body["name"] = name
-        # The groups PATCH endpoint requires a complete members list (full replacement, not delta).
-        # Fetch current members and compute the new complete set from add/remove requests.
-        if add_user_ids or remove_user_ids:
-            current_payload = await self._get(f"groups/{group_id}")
-            current_member_links = current_payload.get("_links", {}).get("members", [])
-            if not isinstance(current_member_links, list):
-                current_member_links = []
-            current_ids: set[int] = set()
-            for link in current_member_links:
-                uid = _id_from_href(link.get("href"))
-                if uid is not None:
-                    current_ids.add(int(uid))
-            new_ids = current_ids.copy()
-            if add_user_ids:
-                new_ids.update(add_user_ids)
-            if remove_user_ids:
-                new_ids -= set(remove_user_ids)
-            body["_links"] = {"members": [{"href": self._api_href(f"users/{uid}")} for uid in sorted(new_ids)]}
-        payload_preview: dict[str, Any] = {}
-        if name is not None:
-            payload_preview["name"] = name
-        if add_user_ids:
-            payload_preview["add_user_ids"] = add_user_ids
-        if remove_user_ids:
-            payload_preview["remove_user_ids"] = remove_user_ids
-        if not confirm:
-            return GroupWriteResult(
-                action="update",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to update the group. Ask for confirmation, then call again with confirm=true.",
-                group_id=group_id,
-                payload=payload_preview,
-                validation_errors={},
-                result=None,
-            )
-        response = await self._patch(f"groups/{group_id}", json_body=body)
-        result = self.normalize_group(response)
-        return GroupWriteResult(
-            action="update",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Group updated successfully.",
-            group_id=result.id,
-            payload=payload_preview,
-            validation_errors={},
-            result=result,
+        return await self._group_service.update(
+            group_id,
+            name=name,
+            add_user_ids=add_user_ids,
+            remove_user_ids=remove_user_ids,
+            confirm=confirm,
         )
 
     async def delete_group(
@@ -3569,20 +3446,7 @@ class OpenProjectClient:
         *,
         confirm: bool = False,
     ) -> GroupWriteResult:
-        # Checked unconditionally, same reasoning as delete_user above.
-        self._ensure_write_enabled("admin")
-        payload = {"id": group_id}
-        return await self._finalize_delete(
-            result_cls=GroupWriteResult,
-            confirm=confirm,
-            result_kwargs={"group_id": group_id, "payload": payload},
-            preview_result=None,
-            commit_result=None,
-            write_scope="admin",
-            delete_path=f"groups/{group_id}",
-            preview_message="OpenProject is ready to delete the group. Ask for confirmation, then call again with confirm=true.",
-            success_message="Group deleted successfully.",
-        )
+        return await self._group_service.delete(group_id, confirm=confirm)
 
     # --- File Links ---
 
@@ -4182,67 +4046,6 @@ class OpenProjectClient:
                 email=_trim_text(payload.get("email"), limit=SUBJECT_LIMIT),
                 status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
                 url=self._web_url(f"{path_prefix}/{principal_id}"),
-            ),
-        )
-
-    def normalize_group(self, payload: dict[str, Any]) -> GroupSummary:
-        links = payload.get("_links", {})
-        # The real API embeds group members as a flat array, not a
-        # {count, elements} collection object — same shape normalize_group_detail
-        # already tolerates below. A {count, ...} dict is tolerated too in case a
-        # future/older API version does emit that shape.
-        members = payload.get("_embedded", {}).get("members", [])
-        if isinstance(members, dict):
-            member_count = int(members.get("count") or members.get("total") or 0)
-        elif isinstance(members, list):
-            member_count = len(members)
-        else:
-            member_count = 0
-        return self._apply_hidden_fields(
-            "group",
-            GroupSummary(
-                id=int(payload["id"]),
-                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT),
-                member_count=member_count,
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-                can_update=_can_update_from_links(links),
-                can_delete=bool(links.get("delete")),
-                url=self._web_url(f"groups/{payload['id']}"),
-            ),
-        )
-
-    def normalize_group_detail(self, payload: dict[str, Any]) -> GroupDetail:
-        summary = self.normalize_group(payload)
-        # OpenProject embeds group members as a flat array (associated_resources
-        # :users, as: :members). A collection object with "elements" is not the
-        # real shape, but tolerate it defensively rather than crash on .get().
-        members = payload.get("_embedded", {}).get("members", [])
-        if isinstance(members, dict):
-            members = members.get("elements", [])
-        member_names = []
-        if isinstance(members, list):
-            for item in members:
-                if isinstance(item, dict):
-                    label = _trim_text(item.get("name"), limit=SUBJECT_LIMIT) or _link_title(
-                        item.get("_links", {}).get("self")
-                    )
-                    if label:
-                        member_names.append(label)
-        memberships_url = self._link_to_web_url(payload.get("_links", {}).get("memberships", {}).get("href"))
-        return self._apply_hidden_fields(
-            "group",
-            GroupDetail(
-                id=summary.id,
-                name=summary.name,
-                member_count=summary.member_count,
-                members=member_names,
-                memberships_url=memberships_url,
-                created_at=summary.created_at,
-                updated_at=summary.updated_at,
-                can_update=summary.can_update,
-                can_delete=summary.can_delete,
-                url=summary.url,
             ),
         )
 

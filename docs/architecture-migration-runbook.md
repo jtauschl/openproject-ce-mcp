@@ -10,10 +10,10 @@ Written so it can be handed to a fresh session (human or agent) as a
 self-contained starting brief — see "Prompt for a fresh session" at the
 bottom for a ready-to-paste version.
 
-Fourteen domains are migrated so far: Versions (pilot), Projects, Memberships,
+Fifteen domains are migrated so far: Versions (pilot), Projects, Memberships,
 News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards,
-Actions & Capabilities, Roles, Users. ~21 remain, all still flat in
-`client.py`. This runbook distills what each of those fourteen migrations
+Actions & Capabilities, Roles, Users, Groups. ~20 remain, all still flat in
+`client.py`. This runbook distills what each of those fifteen migrations
 actually needed, including mistakes found and fixed along the way — follow
 it literally, don't re-derive the process from scratch.
 
@@ -105,9 +105,24 @@ pre-existing hidden-field-write-protection gap ported faithfully from
 `client.py` and then fixed rather than preserved, and an eager-vs-lazy
 `to_detail` mistake in this migration's own first draft).
 
-With Users now migrated, the next domain needs its own fresh evaluation
-against the three criteria above; Groups is the one remaining named
-candidate in this specific bucket, but the ~21 remaining still-flat domains
+With Users migrated, Groups was picked next — the last remaining named
+candidate in the purely-global/admin-scoped bucket. Same
+zero-`ProjectRefResolver` template as Roles/Users, and `list_groups()`'s
+dual-branch shape confirmed byte-identical to `list_users()`'s (as the Users
+migration predicted). The real structural divergence: Groups' `create`/
+`update` have no `/form` endpoint at all, modeled on News' no-form write
+shape instead of Users' form-based flow; `update()`'s member diff (the
+`PATCH groups/{id}` full-membership-replacement quirk) needed a dedicated
+`GroupApi.get_member_ids()` Port method, since `GroupDetail.members` only
+carries display names, not ids. See architecture.md's Groups entry for the
+full detail, including the same class of pre-existing hidden-field-write-
+protection gap the Users migration's step-6.5 review found, this time caught
+by this migration's own self-audit and fixed as part of the initial
+implementation.
+
+With Groups now migrated, the next domain needs its own fresh evaluation
+against the three criteria above — no named candidate remains in the
+purely-global/admin-scoped bucket; the ~20 remaining still-flat domains
 overall haven't all been individually screened yet.
 
 ## 1. Read the real source before planning

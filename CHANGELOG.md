@@ -58,6 +58,10 @@ development baseline.
   read, unlike every other write-capable domain (news, boards, documents,
   memberships, projects, versions), all of which already reject a write to
   a hidden field.
+- **`create_group`/`update_group` now honor `OPENPROJECT_HIDE_GROUP_FIELDS`
+  on writes**, not just reads. Same gap as the `OPENPROJECT_HIDE_USER_FIELDS`
+  fix above: a hidden `name` or group-membership write was previously never
+  rejected even though it was masked on read.
 - **Breaking: `delete_grid(confirm=true)` now returns the deleted grid's
   summary in `result`**, instead of `null`. Every sibling delete tool
   (`delete_version`, `delete_membership`, `delete_project`) has always

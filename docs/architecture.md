@@ -76,9 +76,9 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
-## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards, Actions & Capabilities, Roles, Users)
+## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards, Actions & Capabilities, Roles, Users, Groups)
 
-`client.py` stays the small, flat facade described above for most domains, but fourteen
+`client.py` stays the small, flat facade described above for most domains, but fifteen
 domains have been migrated into `app/` for a stricter layered structure: Versions
 (`list_versions`, `get_version`, `create_version`, `update_version`,
 `delete_version` — the original pilot, validating the pattern), Projects
@@ -350,7 +350,42 @@ a field on reads but never blocked writing it. Fixed by adding the guard for
 every written field (including the toggle-only `locked` field on
 `lock`/`unlock`) — a deliberate hardening beyond byte-for-byte porting, since
 every sibling domain already had this protection and there was no reason to
-carry the inconsistency forward once found):
+carry the inconsistency forward once found), and Groups (`list_groups`/
+`get_group`/`create_group`/`update_group`/`delete_group` — the fifteenth and,
+at the time of this migration, last individually-screened named candidate in
+the purely-global/admin-scoped bucket alongside Roles/Users. Same
+zero-`ProjectRefResolver` template, and `list_groups()`'s dual-branch shape
+(`paginate_server` no-search / `paginate_client` search-overfetch-then-filter,
+filtering only on `name`) is byte-identical to `list_users()`'s, confirming
+the Users migration's own prediction. The one real structural divergence:
+Groups' `create`/`update` have **no `/form` endpoint** at all (verified:
+neither calls a `groups/form` path) — modeled on `NewsService`'s no-form
+write shape instead of Users' form-based flow, and `GroupWriteResult.result`
+is typed `GroupSummary`, not `GroupDetail` (the write response is normalized
+with `normalize_group`, summary only, matching the original). `update()`
+carries a genuine behavioral requirement with no Users precedent: the
+`PATCH groups/{id}` endpoint requires a COMPLETE `_links.members` array, not
+a delta (no add/remove operation exists), so the Service fetches current
+membership via a dedicated `GroupApi.get_member_ids()` Port method (a raw
+href->id extraction the Adapter exposes separately from `get_group()`, since
+`GroupDetail.members` only carries display names, not ids), computes
+`current | add - remove` in Python, and PATCHes the full replacement list —
+verbatim port of `client.py`'s own read-modify-write step. `create()`/
+`update()`/`delete()` all check `access.ensure_write_enabled("admin", ...)`
+UNCONDITIONALLY, matching `client.py`'s own behavior exactly: even though
+`update()` has a prior GET (for the member diff) it could gate on the way
+`NewsService.update()` gates on its own prior GET, the check still runs
+before both the GET and the `if not confirm` branch — a caller without
+`OPENPROJECT_ENABLE_ADMIN_WRITE` is rejected immediately on `update()`, even
+for a pure preview, and can never see a member-diff preview. Kept as-is to
+match the verified original rather than adopting News' more-permissive-preview
+pattern. `create()`/`update()` add `hidden_fields.ensure_field_writable(
+"group", <field>, ...)` for `name`/`members` as a deliberate hardening: the
+original `create_group`/`update_group` never called the equivalent
+`_ensure_field_writable` at all, the same class of pre-existing gap the
+Users migration's step-6.5 review found and fixed, found here via this
+migration's own self-audit and fixed as part of the initial implementation
+instead of ported faithfully):
 
 ```text
 tools.py (MCP presentation)
@@ -655,22 +690,21 @@ The tradeoff is that `client.py` is large and policy-heavy. That is intentional 
 The Policies extraction (scope checks, hidden-field enforcement) is done, for every
 domain — see "Layered architecture" above. Versions, Projects, Memberships, News,
 Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards, Actions &
-Capabilities, Roles, and Users are migrated; remaining candidates, once each
+Capabilities, Roles, Users, and Groups are migrated; remaining candidates, once each
 migration's own lessons justify the next one:
 
 - migrating additional domains through the same `app/` layers, one at a time —
   re-evaluate which domain's resolvers most depend on already-flat logic, per the
   pilot's own "validate before extending" approach. See
   [architecture-migration-runbook.md](architecture-migration-runbook.md) for the
-  step-by-step process distilled from the fourteen migrations done so far. Boards,
-  Actions & Capabilities, Roles, and Users were each picked via a fresh screening
-  against step 0's criteria directly — no pre-named shortlist remained after
-  Grids/Sprints. The next pick needs the same fresh-screening approach again,
-  against the ~21 remaining still-flat domains (Groups is the one remaining named
-  purely-global candidate in Roles'/Users' bucket, carrying its own documented
-  `PATCH` full-membership-replacement API quirk as a complexity flag); Project
-  Lifecycle Phases and Project Favorites already migrated as part of Projects, not
-  separate candidates.
+  step-by-step process distilled from the fifteen migrations done so far. Boards,
+  Actions & Capabilities, Roles, Users, and Groups were each picked via a fresh
+  screening against step 0's criteria directly — no pre-named shortlist remained
+  after Grids/Sprints, and Groups was the last individually-screened named
+  candidate in the purely-global/admin-scoped bucket. The next pick needs a fully
+  fresh screening pass against the ~20 remaining still-flat domains — no named
+  candidate remains in this bucket; Project Lifecycle Phases and Project Favorites
+  already migrated as part of Projects, not separate candidates.
 - separate modules for work-package writes and schema handling
 - dedicated integration-test helpers around form endpoints and live smoke tests
 - unifying `VersionResolver`'s/`ProjectResolver`'s hand-rolled page-walk loops onto

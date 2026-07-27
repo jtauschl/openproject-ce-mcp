@@ -577,6 +577,21 @@ def test_user_service_binds_the_api_param_to_user_api_specifically() -> None:
     assert hints["api"] is not HttpxUserApi, "UserService.__init__'s api param must not be the concrete adapter"
 
 
+def test_group_service_binds_the_api_param_to_group_api_specifically() -> None:
+    """Non-generalized regression test for the Groups domain's exact guarantee,
+    sibling to the checks above: the api param is GroupApi exactly, not just
+    "some Protocol". No dedicated Resolver exists -- Groups have no project
+    concept and no semantic reference to resolve, following RoleService's/
+    UserService's zero-Resolver template."""
+    from openproject_ce_mcp.app.adapters.httpx_group_api import HttpxGroupApi
+    from openproject_ce_mcp.app.ports.group_api import GroupApi
+    from openproject_ce_mcp.app.services.group_service import GroupService
+
+    hints = typing.get_type_hints(GroupService.__init__)
+    assert hints["api"] is GroupApi, "GroupService.__init__'s api param must be typed GroupApi"
+    assert hints["api"] is not HttpxGroupApi, "GroupService.__init__'s api param must not be the concrete adapter"
+
+
 # Names that once lived in app/ports/project_api.py (HAL->model normalize_*
 # translation functions and their private text/href helpers) before they moved
 # to app/adapters/httpx_project_api.py, matching the Versions domain's
