@@ -5,7 +5,7 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
-from openproject_ce_mcp.app.errors import PermissionDeniedError
+from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.version_api import VersionFormResult, VersionPage, VersionRecord
 from openproject_ce_mcp.app.services.version_service import VersionService
 from openproject_ce_mcp.models import VersionDetail, VersionSummary
@@ -220,6 +220,113 @@ async def test_create_rejects_when_validation_errors_present() -> None:
     assert result.ready is False
     assert result.confirmed is False
     assert result.validation_errors == {"name": "too short"}
+    assert api.commit_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_name_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), enable_version_write=True, hidden_fields={"version": ("name",)})
+    api = _FakeVersionApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(project="demo", name="Release 1", confirm=True)
+
+    assert api.commit_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_defining_project_field_is_hidden() -> None:
+    # project_id is always passed to _build_write_payload from create() (the
+    # `project` kwarg is required), so this check fires unconditionally.
+    settings = dataclasses.replace(
+        make_settings(), enable_version_write=True, hidden_fields={"version": ("defining_project",)}
+    )
+    api = _FakeVersionApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(project="demo", name="Release 1", confirm=True)
+
+    assert api.commit_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_description_field_is_hidden() -> None:
+    settings = dataclasses.replace(
+        make_settings(), enable_version_write=True, hidden_fields={"version": ("description",)}
+    )
+    api = _FakeVersionApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(project="demo", name="Release 1", description="notes", confirm=True)
+
+    assert api.commit_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_start_date_field_is_hidden() -> None:
+    settings = dataclasses.replace(
+        make_settings(), enable_version_write=True, hidden_fields={"version": ("start_date",)}
+    )
+    api = _FakeVersionApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(project="demo", name="Release 1", start_date="2026-01-01", confirm=True)
+
+    assert api.commit_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_end_date_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), enable_version_write=True, hidden_fields={"version": ("end_date",)})
+    api = _FakeVersionApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(project="demo", name="Release 1", end_date="2026-06-01", confirm=True)
+
+    assert api.commit_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_status_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), enable_version_write=True, hidden_fields={"version": ("status",)})
+    api = _FakeVersionApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(project="demo", name="Release 1", status="locked", confirm=True)
+
+    assert api.commit_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_sharing_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), enable_version_write=True, hidden_fields={"version": ("sharing",)})
+    api = _FakeVersionApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(project="demo", name="Release 1", sharing="tree", confirm=True)
+
+    assert api.commit_calls == []
+
+
+@pytest.mark.asyncio
+async def test_update_rejects_when_a_written_field_is_hidden() -> None:
+    # _build_write_payload is shared between create()/update() -- one
+    # representative field is enough here since create()'s tests above
+    # already exercise every field through the same shared helper.
+    settings = dataclasses.replace(make_settings(), enable_version_write=True, hidden_fields={"version": ("name",)})
+    api = _FakeVersionApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.update(version_id=8, name="Release 1.1", confirm=True)
+
     assert api.commit_calls == []
 
 

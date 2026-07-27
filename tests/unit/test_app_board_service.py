@@ -5,7 +5,7 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
-from openproject_ce_mcp.app.errors import PermissionDeniedError
+from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.board_api import BoardFormResult, BoardRecord
 from openproject_ce_mcp.app.services.board_service import BoardService
 from openproject_ce_mcp.models import BoardDetail, BoardSummary
@@ -450,6 +450,182 @@ async def test_create_omits_links_key_when_no_link_fields_given() -> None:
     await service.create(name="My Board", project=None, public=True, confirm=False)
 
     assert "_links" not in api.create_form_calls[0]
+
+
+# --- hidden-field write rejection (via the shared _build_write_payload) -----
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_name_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"board": ("name",)})
+    api = _FakeBoardApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Board", project=None, confirm=True)
+
+    assert api.create_form_calls == []
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_public_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"board": ("public",)})
+    api = _FakeBoardApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Board", project=None, public=True, confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_starred_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"board": ("starred",)})
+    api = _FakeBoardApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Board", project=None, starred=True, confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_hidden_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"board": ("hidden",)})
+    api = _FakeBoardApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Board", project=None, hidden=True, confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_include_subprojects_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"board": ("include_subprojects",)})
+    api = _FakeBoardApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Board", project=None, include_subprojects=True, confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_show_hierarchies_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"board": ("show_hierarchies",)})
+    api = _FakeBoardApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Board", project=None, show_hierarchies=True, confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_timeline_visible_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"board": ("timeline_visible",)})
+    api = _FakeBoardApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Board", project=None, timeline_visible=True, confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_filters_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"board": ("filters",)})
+    api = _FakeBoardApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Board", project=None, filters=[{"n": "status"}], confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_project_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"board": ("project",)})
+    api = _FakeBoardApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Board", project="demo", confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_group_by_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"board": ("group_by",)})
+    api = _FakeBoardApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Board", project=None, group_by="status", confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_columns_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"board": ("columns",)})
+    api = _FakeBoardApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Board", project=None, columns=["status"], confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_sort_by_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"board": ("sort_by",)})
+    api = _FakeBoardApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Board", project=None, sort_by=["status"], confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_highlighted_attributes_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"board": ("highlighted_attributes",)})
+    api = _FakeBoardApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Board", project=None, highlighted_attributes=["status"], confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_update_rejects_when_a_written_field_is_hidden() -> None:
+    # _build_write_payload is shared between create()/update() -- one
+    # representative field is enough here since create()'s tests above
+    # already exercise every field through the same shared helper.
+    settings = dataclasses.replace(make_settings(), hidden_fields={"board": ("name",)})
+    api = _FakeBoardApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.update(board_id=1, name="Renamed", confirm=True)
+
+    assert api.update_form_calls == []
+    assert api.commit_update_calls == []
 
 
 # --- update() ---------------------------------------------------------------

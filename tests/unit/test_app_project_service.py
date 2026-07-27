@@ -6,7 +6,7 @@ import pytest
 from _client_test_helpers import make_settings
 
 from openproject_ce_mcp.app.adapters.httpx_project_api import normalize_project_detail, normalize_project_field_schema
-from openproject_ce_mcp.app.errors import PermissionDeniedError
+from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.project_api import (
     ProjectCopyFormResult,
     ProjectFormResult,
@@ -449,6 +449,111 @@ async def test_create_denies_target_outside_write_allowlist() -> None:
         await service.create(name="New Project", identifier="new-project", confirm=False)
 
     assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_name_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_write=True, hidden_fields={"project": ("name",)})
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="New Project", identifier="new-project", confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_identifier_field_is_hidden() -> None:
+    settings = dataclasses.replace(
+        make_settings(), enable_project_write=True, hidden_fields={"project": ("identifier",)}
+    )
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="New Project", identifier="new-project", confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_description_field_is_hidden() -> None:
+    settings = dataclasses.replace(
+        make_settings(), enable_project_write=True, hidden_fields={"project": ("description",)}
+    )
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="New Project", identifier="new-project", description="notes", confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_public_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_write=True, hidden_fields={"project": ("public",)})
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="New Project", identifier="new-project", public=True, confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_active_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_write=True, hidden_fields={"project": ("active",)})
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="New Project", identifier="new-project", active=True, confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_status_explanation_field_is_hidden() -> None:
+    settings = dataclasses.replace(
+        make_settings(), enable_project_write=True, hidden_fields={"project": ("status_explanation",)}
+    )
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="New Project", identifier="new-project", status_explanation="on track", confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_status_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), enable_project_write=True, hidden_fields={"project": ("status",)})
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="New Project", identifier="new-project", status="on_track", confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_update_rejects_when_a_written_field_is_hidden() -> None:
+    # _build_write_payload is shared between create()/update() -- one
+    # representative field is enough here since create()'s tests above
+    # already exercise every field through the same shared helper.
+    settings = dataclasses.replace(make_settings(), enable_project_write=True, hidden_fields={"project": ("name",)})
+    api = _FakeProjectApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.update(project_ref="demo", name="Renamed", confirm=True)
+
+    assert api.commit_update_calls == []
 
 
 @pytest.mark.asyncio
