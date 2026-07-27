@@ -26,6 +26,18 @@ domain to hit this project's own "3+ write actions" threshold since
 Memberships). delete() has no form step at all, so it stays an inline
 preview/commit method like MembershipService.delete().
 
+`create()`/`update()` call `hidden_fields.ensure_field_writable("grid",
+<field>, ...)` for every field they write ("name", "scope", "row_count",
+"column_count"). This is a DELIBERATE HARDENING found by a step-6
+self-audit run during the Groups migration (the 15th domain): Grids was the
+only full-CRUD domain among all migrated domains with no config entity
+entry at all (`config.py`'s `HIDE_FIELD_ENV_BY_ENTITY` had no `"grid"` key,
+so `OPENPROJECT_HIDE_GRID_FIELDS` never existed), meaning
+`hidden_fields.field_hidden("grid", ...)` could never return True under any
+configuration -- both the write guard AND the config entity were missing,
+not just the guard call sites. Fixed by adding the `"grid"` config entry and
+these calls, matching every other full-CRUD sibling.
+
 Deliberate behavior CHANGE from client.py's original delete_grid (found via
 an external Codex review of the unpushed Grids migration commit, before this
 was pushed): the confirmed branch now returns `result=grid` (the deleted
@@ -108,10 +120,14 @@ class GridService:
         ensure_grid_write_allowed(
             scope, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
+        hidden_fields.ensure_field_writable("grid", "name", settings=self._settings)
+        hidden_fields.ensure_field_writable("grid", "scope", settings=self._settings)
         payload: dict[str, Any] = {"name": name, "_links": {"scope": {"href": scope}}}
         if row_count is not None:
+            hidden_fields.ensure_field_writable("grid", "row_count", settings=self._settings)
             payload["rowCount"] = row_count
         if column_count is not None:
+            hidden_fields.ensure_field_writable("grid", "column_count", settings=self._settings)
             payload["columnCount"] = column_count
         form = await self._api.create_form(payload)
         identity_scope = form.payload.get("_links", {}).get("scope", {}).get("href")
@@ -145,10 +161,13 @@ class GridService:
         )
         payload: dict[str, Any] = {}
         if name is not None:
+            hidden_fields.ensure_field_writable("grid", "name", settings=self._settings)
             payload["name"] = name
         if row_count is not None:
+            hidden_fields.ensure_field_writable("grid", "row_count", settings=self._settings)
             payload["rowCount"] = row_count
         if column_count is not None:
+            hidden_fields.ensure_field_writable("grid", "column_count", settings=self._settings)
             payload["columnCount"] = column_count
         form = await self._api.update_form(grid_id, payload)
         identity_scope = form.payload.get("_links", {}).get("scope", {}).get("href") or current_scope_href

@@ -5,7 +5,7 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
-from openproject_ce_mcp.app.errors import PermissionDeniedError
+from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.grid_api import GridFormResult, GridRecord
 from openproject_ce_mcp.app.services.grid_service import GridService
 from openproject_ce_mcp.models import GridSummary
@@ -272,6 +272,118 @@ async def test_create_allows_missing_scope_when_both_read_and_write_wide_open() 
     result = await service.create(name="My Grid", scope="", confirm=False)
 
     assert result.requires_confirmation is True
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_name_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"grid": ("name",)})
+    api = _FakeGridApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Grid", scope="/projects/6", confirm=True)
+
+    assert api.create_form_calls == []
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_scope_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"grid": ("scope",)})
+    api = _FakeGridApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Grid", scope="/projects/6", confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_row_count_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"grid": ("row_count",)})
+    api = _FakeGridApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Grid", scope="/projects/6", row_count=4, confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_column_count_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"grid": ("column_count",)})
+    api = _FakeGridApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.create(name="My Grid", scope="/projects/6", column_count=6, confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_does_not_check_row_count_or_column_count_when_not_provided() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"grid": ("row_count", "column_count")})
+    api = _FakeGridApi()
+    service = _service(api, settings=settings)
+
+    result = await service.create(name="My Grid", scope="/projects/6", confirm=True)
+
+    assert result.confirmed is True
+    assert len(api.commit_create_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_update_rejects_when_name_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"grid": ("name",)})
+    api = _FakeGridApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.update(grid_id=1, name="Renamed", confirm=True)
+
+    assert api.update_form_calls == []
+    assert api.commit_update_calls == []
+
+
+@pytest.mark.asyncio
+async def test_update_rejects_when_row_count_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"grid": ("row_count",)})
+    api = _FakeGridApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.update(grid_id=1, row_count=8, confirm=True)
+
+    assert api.commit_update_calls == []
+
+
+@pytest.mark.asyncio
+async def test_update_rejects_when_column_count_field_is_hidden() -> None:
+    settings = dataclasses.replace(make_settings(), hidden_fields={"grid": ("column_count",)})
+    api = _FakeGridApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden by"):
+        await service.update(grid_id=1, column_count=8, confirm=True)
+
+    assert api.commit_update_calls == []
+
+
+@pytest.mark.asyncio
+async def test_update_does_not_check_fields_the_caller_did_not_set() -> None:
+    # A field hidden in config but NOT part of this update call must not
+    # block it -- only fields actually present in the call are checked.
+    settings = dataclasses.replace(make_settings(), hidden_fields={"grid": ("row_count",)})
+    api = _FakeGridApi()
+    service = _service(api, settings=settings)
+
+    result = await service.update(grid_id=1, name="Renamed", confirm=True)
+
+    assert result.confirmed is True
+    assert len(api.commit_update_calls) == 1
 
 
 @pytest.mark.asyncio
