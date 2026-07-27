@@ -134,6 +134,75 @@ async def test_global_branch_filters_by_allowlist_before_search_and_pagination()
 
 
 @pytest.mark.asyncio
+async def test_project_scoped_branch_passes_write_false_to_resolve_project_ref() -> None:
+    """fetch_version_page's project-scoped branch (no search) resolves the
+    project via resolve_project_ref -- must ask for a READ-checked
+    (write=False) resolution, not a write-checked one. Same gap class this
+    project's lessons log records recurring across Membership/Documents/
+    Views/News list() paths (all fixed piecemeal), found missing here for
+    Version's list path specifically during the 18th domain's step-6
+    self-audit -- Version's list routing lives in this separate
+    resolvers/version_query.py module rather than going through
+    project_scoped_list.resolve_project_filter_candidates (which is itself
+    correctly pinned), so it never inherited that shared coverage.
+    """
+    calls: list[bool] = []
+
+    async def resolve_project_ref_tracking_write(project_ref: str, *, write: bool = False, context=None) -> dict:
+        calls.append(write)
+        return await _resolve_project_ref(project_ref, write=write, context=context)
+
+    records = [VersionRecord(summary=_summary(1, "v1.0"), defining_project_link=None)]
+    api = _FakeVersionApi(records, server_total=1)
+
+    await fetch_version_page(
+        api=api,
+        resolve_project_ref=resolve_project_ref_tracking_write,
+        settings=make_settings(),
+        project_id_to_identifier={},
+        project="demo",
+        search=None,
+        offset=1,
+        limit=10,
+        context=None,
+    )
+
+    assert calls == [False]
+
+
+@pytest.mark.asyncio
+async def test_project_scoped_with_search_branch_passes_write_false_to_resolve_project_ref() -> None:
+    """Same seam-pin coverage as the branch above, for the OTHER project-scoped
+    call site (line 70 of version_query.py, the search-given/over-fetch
+    branch) -- a distinct code path with its own resolve_project_ref call
+    that could independently regress to write=True without the branch above
+    catching it.
+    """
+    calls: list[bool] = []
+
+    async def resolve_project_ref_tracking_write(project_ref: str, *, write: bool = False, context=None) -> dict:
+        calls.append(write)
+        return await _resolve_project_ref(project_ref, write=write, context=context)
+
+    records = [VersionRecord(summary=_summary(1, "Release 1"), defining_project_link=None)]
+    api = _FakeVersionApi(records)
+
+    await fetch_version_page(
+        api=api,
+        resolve_project_ref=resolve_project_ref_tracking_write,
+        settings=make_settings(),
+        project_id_to_identifier={},
+        project="demo",
+        search="release",
+        offset=1,
+        limit=10,
+        context=None,
+    )
+
+    assert calls == [False]
+
+
+@pytest.mark.asyncio
 async def test_read_gate_enforced_even_without_project() -> None:
     from openproject_ce_mcp.app.errors import PermissionDeniedError
 

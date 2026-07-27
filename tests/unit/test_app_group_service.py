@@ -154,6 +154,28 @@ async def test_list_groups_applies_hidden_field_masking() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_groups_hidden_by_group_scope_not_membership_or_user_scope() -> None:
+    """Regression test for the entity="group" vs a same-named neighbor
+    hide-field bug class (this project's lessons log records this recurring
+    across Role/Document/News/Actions & Capabilities' pre-migration or
+    pre-audit code) -- found missing for Group specifically during the 18th
+    domain's (User Preferences) step-6 self-audit, which widened scope to
+    every already-migrated domain rather than just the newest.
+    """
+    settings_membership_hidden = _admin_settings(hidden_fields={"membership": ("name",)})
+    result_membership_hidden = await _service(settings=settings_membership_hidden).list_groups()
+    assert getattr(result_membership_hidden.results[0], "_hidden_keys", frozenset()) == frozenset()
+
+    settings_user_hidden = _admin_settings(hidden_fields={"user": ("name",)})
+    result_user_hidden = await _service(settings=settings_user_hidden).list_groups()
+    assert getattr(result_user_hidden.results[0], "_hidden_keys", frozenset()) == frozenset()
+
+    settings_group_hidden = _admin_settings(hidden_fields={"group": ("name",)})
+    result_group_hidden = await _service(settings=settings_group_hidden).list_groups()
+    assert getattr(result_group_hidden.results[0], "_hidden_keys", frozenset()) == {"name"}
+
+
+@pytest.mark.asyncio
 async def test_list_groups_search_overfetches_and_filters_then_paginates() -> None:
     records = [
         _record(group_id=1, name="Backend"),

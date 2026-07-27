@@ -180,6 +180,31 @@ async def test_list_users_applies_hidden_field_masking() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_users_hidden_by_user_scope_not_group_or_user_preferences_scope() -> None:
+    """Regression test for the entity="user" vs a same-named neighbor
+    hide-field bug class (this project's lessons log records this recurring
+    across Role/Document/News/Actions & Capabilities' pre-migration or
+    pre-audit code) -- found missing for User specifically during the 18th
+    domain's (User Preferences) step-6 self-audit, which widened scope to
+    every already-migrated domain rather than just the newest. "group" and
+    "user_preferences" are the two most plausible same-named-neighbor mixups
+    for "user" -- both touch user-owned data, and "user_preferences" is a
+    brand new entity string as of this same migration.
+    """
+    settings_group_hidden = _admin_settings(hidden_fields={"group": ("login",)})
+    result_group_hidden = await _service(settings=settings_group_hidden).list_users()
+    assert getattr(result_group_hidden.results[0], "_hidden_keys", frozenset()) == frozenset()
+
+    settings_user_preferences_hidden = _admin_settings(hidden_fields={"user_preferences": ("login",)})
+    result_user_preferences_hidden = await _service(settings=settings_user_preferences_hidden).list_users()
+    assert getattr(result_user_preferences_hidden.results[0], "_hidden_keys", frozenset()) == frozenset()
+
+    settings_user_hidden = _admin_settings(hidden_fields={"user": ("login",)})
+    result_user_hidden = await _service(settings=settings_user_hidden).list_users()
+    assert getattr(result_user_hidden.results[0], "_hidden_keys", frozenset()) == {"login"}
+
+
+@pytest.mark.asyncio
 async def test_list_users_search_overfetches_and_filters_then_paginates() -> None:
     records = [
         _record(user_id=1, login="alice", name="Alice"),
