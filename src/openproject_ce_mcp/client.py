@@ -24,6 +24,7 @@ from .app.adapters.httpx_group_api import HttpxGroupApi
 from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
+from .app.adapters.httpx_query_metadata_api import HttpxQueryMetadataApi
 from .app.adapters.httpx_role_api import HttpxRoleApi
 from .app.adapters.httpx_sprint_api import HttpxSprintApi
 from .app.adapters.httpx_status_priority_type_api import HttpxStatusPriorityTypeApi
@@ -62,6 +63,7 @@ from .app.ports.membership_api import MembershipApi
 from .app.ports.news_api import NewsApi
 from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
+from .app.ports.query_metadata_api import QueryMetadataApi
 from .app.ports.role_api import RoleApi
 from .app.ports.sprint_api import SprintApi
 from .app.ports.status_priority_type_api import StatusPriorityTypeApi
@@ -81,6 +83,7 @@ from .app.services.membership_service import MembershipService
 from .app.services.news_service import NewsService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
+from .app.services.query_metadata_service import QueryMetadataService
 from .app.services.role_service import RoleService
 from .app.services.sprint_service import SprintService
 from .app.services.status_priority_type_service import StatusPriorityTypeService
@@ -467,6 +470,15 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
+        self._query_metadata_api: QueryMetadataApi = HttpxQueryMetadataApi(
+            HttpxTransport(self._http), base_url=settings.base_url, origin=self._origin
+        )
+        self._query_metadata_service = QueryMetadataService(
+            api=self._query_metadata_api,
+            settings=settings,
+            resolve_project_ref=self._get_project_payload,
+        )
+
     async def initialize(self) -> None:
         # _project_id_to_identifier is consulted for BOTH read and write link-based
         # allowlist matching (see _project_candidates), so population must not skip
@@ -720,47 +732,26 @@ class OpenProjectClient:
         )
 
     async def get_query_filter(self, filter_id: str) -> QueryFilterSummary:
-        self._ensure_read_enabled("board")
-        payload = await self._get(f"queries/filters/{quote(filter_id, safe='')}")
-        return self.normalize_query_filter(payload)
+        return await self._query_metadata_service.get_filter(filter_id)
 
     async def get_query_column(self, column_id: str) -> QueryColumnSummary:
-        self._ensure_read_enabled("board")
-        payload = await self._get(f"queries/columns/{quote(column_id, safe='')}")
-        return self.normalize_query_column(payload)
+        return await self._query_metadata_service.get_column(column_id)
 
     async def get_query_operator(self, operator_id: str) -> QueryOperatorSummary:
-        self._ensure_read_enabled("board")
-        payload = await self._get(f"queries/operators/{quote(operator_id, safe='')}")
-        return self.normalize_query_operator(payload)
+        return await self._query_metadata_service.get_operator(operator_id)
 
     async def get_query_sort_by(self, sort_by_id: str) -> QuerySortBySummary:
-        self._ensure_read_enabled("board")
-        payload = await self._get(f"queries/sort_bys/{quote(sort_by_id, safe='')}")
-        return self.normalize_query_sort_by(payload)
+        return await self._query_metadata_service.get_sort_by(sort_by_id)
 
     async def list_query_filter_instance_schemas(
         self,
         *,
         project: str | None = None,
     ) -> QueryFilterInstanceSchemaListResult:
-        self._ensure_read_enabled("board")
-        path = "queries/filter_instance_schemas"
-        if project is not None:
-            project_id = await self._resolve_project_id(project)
-            path = f"projects/{project_id}/queries/filter_instance_schemas"
-        payload = await self._get(path)
-        results = [
-            self.normalize_query_filter_instance_schema(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        return QueryFilterInstanceSchemaListResult(count=len(results), results=results)
+        return await self._query_metadata_service.list_filter_instance_schemas(project=project)
 
     async def get_query_filter_instance_schema(self, schema_id: str) -> QueryFilterInstanceSchemaSummary:
-        self._ensure_read_enabled("board")
-        payload = await self._get(f"queries/filter_instance_schemas/{quote(schema_id, safe='')}")
-        return self.normalize_query_filter_instance_schema(payload)
+        return await self._query_metadata_service.get_filter_instance_schema(schema_id)
 
     async def list_project_memberships(
         self, project_ref: str, *, offset: int = 1, limit: int | None = None
@@ -4279,90 +4270,6 @@ class OpenProjectClient:
         )
         return self._apply_hidden_fields("version", detail)
 
-    def normalize_query_filter(self, payload: dict[str, Any]) -> QueryFilterSummary:
-        links = payload.get("_links", {})
-        self_link, href, filter_id = _query_ref_identity(links, payload)
-        return self._apply_hidden_fields(
-            "query_filter",
-            QueryFilterSummary(
-                id=filter_id,
-                name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
-                url=self._link_to_web_url(href),
-            ),
-        )
-
-    def normalize_query_column(self, payload: dict[str, Any]) -> QueryColumnSummary:
-        links = payload.get("_links", {})
-        self_link, href, column_id = _query_ref_identity(links, payload)
-        return self._apply_hidden_fields(
-            "query_column",
-            QueryColumnSummary(
-                id=column_id,
-                name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
-                type=_trim_text(payload.get("_type"), limit=SUBJECT_LIMIT),
-                relation_type=_trim_text(payload.get("relationType"), limit=SUBJECT_LIMIT),
-                url=self._link_to_web_url(href),
-            ),
-        )
-
-    def normalize_query_operator(self, payload: dict[str, Any]) -> QueryOperatorSummary:
-        links = payload.get("_links", {})
-        self_link, href, operator_id = _query_ref_identity(links, payload)
-        return self._apply_hidden_fields(
-            "query_operator",
-            QueryOperatorSummary(
-                id=operator_id,
-                name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
-                url=self._link_to_web_url(href),
-            ),
-        )
-
-    def normalize_query_sort_by(self, payload: dict[str, Any]) -> QuerySortBySummary:
-        links = payload.get("_links", {})
-        self_link, href, sort_by_id = _query_ref_identity(links, payload)
-        column_link = links.get("column")
-        direction_link = links.get("direction")
-        direction = _trim_text(payload.get("direction"), limit=SUBJECT_LIMIT)
-        if direction is None and isinstance(direction_link, dict):
-            direction = _trim_text(direction_link.get("title"), limit=SUBJECT_LIMIT)
-        return self._apply_hidden_fields(
-            "query_sort_by",
-            QuerySortBySummary(
-                id=sort_by_id,
-                name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),
-                column=_link_title(column_link) if isinstance(column_link, dict) else None,
-                direction=direction,
-                url=self._link_to_web_url(href),
-            ),
-        )
-
-    def normalize_query_filter_instance_schema(self, payload: dict[str, Any]) -> QueryFilterInstanceSchemaSummary:
-        links = payload.get("_links", {})
-        self_link, href, schema_id = _query_ref_identity(links, payload)
-        dependencies = payload.get("_dependencies", [])
-        operator_count = 0
-        if isinstance(dependencies, list):
-            for dependency in dependencies:
-                if isinstance(dependency, dict):
-                    values = dependency.get("dependencies")
-                    if isinstance(values, dict):
-                        operator_count += len(values)
-        return self._apply_hidden_fields(
-            "query_filter_instance_schema",
-            QueryFilterInstanceSchemaSummary(
-                id=schema_id,
-                name=_trim_text(
-                    payload.get("name", {}).get("name")
-                    if isinstance(payload.get("name"), dict)
-                    else payload.get("name"),
-                    limit=SUBJECT_LIMIT,
-                ),
-                filter=_link_title(links.get("filter")),
-                operator_count=operator_count,
-                url=self._link_to_web_url(href),
-            ),
-        )
-
     def normalize_job_status(self, payload: dict[str, Any]) -> JobStatusDetail:
         links = payload.get("_links", {})
         project_link = links.get("project") or links.get("sourceProject")
@@ -5959,14 +5866,6 @@ def _slug_from_href(href: str | None) -> str | None:
         return unquote(slug) or None
     except IndexError:
         return None
-
-
-def _query_ref_identity(links: dict[str, Any], payload: dict[str, Any]) -> tuple[Any, str | None, str]:
-    """Shared self-link/href/id triple repeated across the 5 normalize_query_* methods."""
-    self_link = links.get("self", {})
-    href = self_link.get("href") if isinstance(self_link, dict) else None
-    ref_id = _slug_from_href(href) or _trim_text(payload.get("id"), limit=SUBJECT_LIMIT) or ""
-    return self_link, href, ref_id
 
 
 # _scope_allows_all/_scope_matches_candidates: relocated to app/policies/scope.py

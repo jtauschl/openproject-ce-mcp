@@ -614,6 +614,26 @@ def test_status_priority_type_service_binds_the_api_param_to_status_priority_typ
     )
 
 
+def test_query_metadata_service_binds_the_api_param_to_query_metadata_api_specifically() -> None:
+    """Non-generalized regression test for the Query Metadata domain's exact
+    guarantee, sibling to the checks above: the api param is
+    QueryMetadataApi exactly, not just "some Protocol". No dedicated
+    Resolver exists for filter/column/operator/sort_by/schema ids -- all are
+    opaque strings, not semantic references needing lookup.
+    `list_filter_instance_schemas`' optional `project` filter uses the
+    pre-existing ProjectRefResolver seam instead (a request-shaping
+    parameter, not a semantic reference needing a dedicated Resolver)."""
+    from openproject_ce_mcp.app.adapters.httpx_query_metadata_api import HttpxQueryMetadataApi
+    from openproject_ce_mcp.app.ports.query_metadata_api import QueryMetadataApi
+    from openproject_ce_mcp.app.services.query_metadata_service import QueryMetadataService
+
+    hints = typing.get_type_hints(QueryMetadataService.__init__)
+    assert hints["api"] is QueryMetadataApi, "QueryMetadataService.__init__'s api param must be typed QueryMetadataApi"
+    assert hints["api"] is not HttpxQueryMetadataApi, (
+        "QueryMetadataService.__init__'s api param must not be the concrete adapter"
+    )
+
+
 # Names that once lived in app/ports/project_api.py (HAL->model normalize_*
 # translation functions and their private text/href helpers) before they moved
 # to app/adapters/httpx_project_api.py, matching the Versions domain's
