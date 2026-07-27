@@ -40,6 +40,6 @@ CONTINUE.md
 # Internal review notes
 SELF_REVIEW.md
 
-# AGENTS.md/CLAUDE.md and dev_policies live one level up at the
+# AGENTS.md/CLAUDE.md and sw_dev_handbook live one level up at the
 # umbrella-directory level, not inside this repo. ADRs and other internal
-# engineering docs live in the openproject-ce-mcp-docs companion repo.
+# engineering docs live in the openproject-ce-mcp-int companion repo.

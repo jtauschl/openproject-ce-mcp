@@ -5,7 +5,7 @@ cmd="${1:-}"
 shift || true
 
 usage() {
-    echo "Usage: ./dev {bootstrap|lint|test|build|ci}" >&2
+    echo "Usage: ./dev {bootstrap|lint|test|build|ci|handbook-check}" >&2
     exit 1
 }
 
@@ -46,6 +46,10 @@ build() {
     uvx --from cyclonedx-bom cyclonedx-py requirements requirements.txt --of JSON -o sbom.json
 }
 
+handbook_check() {
+    ./scripts/handbook-check.sh "$@"
+}
+
 case "$cmd" in
 bootstrap) bootstrap ;;
 lint) lint ;;
@@ -56,5 +60,6 @@ ci)
     test_
     build
     ;;
+handbook-check) handbook_check "$@" ;;
 *) usage ;;
 esac
