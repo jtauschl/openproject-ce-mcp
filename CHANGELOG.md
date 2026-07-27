@@ -34,6 +34,9 @@ development baseline.
   `search`** (both the MCP tool parameter and the underlying Python client
   method's keyword argument), matching the naming used by `list_projects`,
   `list_versions`, `list_boards`, and other search-capable tools.
+- **Breaking: `list_roles` now returns a paginated result** (`offset`/`limit`,
+  same shape as `list_actions`) instead of the complete role collection in
+  one call.
 - **Bulk work-package writes reuse resolved project/type/version/sprint
   lookups across items targeting the same project**, reducing redundant API
   calls for large batches.
@@ -49,6 +52,12 @@ development baseline.
 
 ### Fixed
 
+- **`create_user`/`update_user`/`lock_user`/`unlock_user` now honor
+  `OPENPROJECT_HIDE_USER_FIELDS` on writes**, not just reads. Every hidden
+  field previously could still be written even though it was masked on
+  read, unlike every other write-capable domain (news, boards, documents,
+  memberships, projects, versions), all of which already reject a write to
+  a hidden field.
 - **Breaking: `delete_grid(confirm=true)` now returns the deleted grid's
   summary in `result`**, instead of `null`. Every sibling delete tool
   (`delete_version`, `delete_membership`, `delete_project`) has always

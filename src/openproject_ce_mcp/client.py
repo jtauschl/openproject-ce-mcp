@@ -25,6 +25,7 @@ from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
 from .app.adapters.httpx_role_api import HttpxRoleApi
 from .app.adapters.httpx_sprint_api import HttpxSprintApi
+from .app.adapters.httpx_user_api import HttpxUserApi
 from .app.adapters.httpx_version_api import HttpxVersionApi
 from .app.adapters.httpx_view_api import HttpxViewApi
 from .app.adapters.httpx_wiki_page_api import HttpxWikiPageApi
@@ -59,6 +60,7 @@ from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
 from .app.ports.role_api import RoleApi
 from .app.ports.sprint_api import SprintApi
+from .app.ports.user_api import UserApi
 from .app.ports.version_api import VersionApi
 from .app.ports.view_api import ViewApi
 from .app.ports.wiki_page_api import WikiPageApi
@@ -75,6 +77,7 @@ from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
 from .app.services.role_service import RoleService
 from .app.services.sprint_service import SprintService
+from .app.services.user_service import UserService
 from .app.services.version_service import VersionService
 from .app.services.view_service import ViewService
 from .app.services.wiki_page_service import WikiPageService
@@ -185,7 +188,6 @@ from .models import (
     UserListResult,
     UserPreferences,
     UserPreferencesWriteResult,
-    UserSummary,
     UserWriteResult,
     VersionDetail,
     VersionListResult,
@@ -357,6 +359,9 @@ class OpenProjectClient:
 
         self._role_api: RoleApi = HttpxRoleApi(HttpxTransport(self._http), base_url=settings.base_url)
         self._role_service = RoleService(api=self._role_api, settings=settings)
+
+        self._user_api: UserApi = HttpxUserApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._user_service = UserService(api=self._user_api, settings=settings)
 
         self._membership_api: MembershipApi = HttpxMembershipApi(
             HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
@@ -659,71 +664,10 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> UserListResult:
-        self._ensure_read_enabled("admin")
-        effective_limit = self._resolve_limit(limit)
-
-        if search is not None:
-            # No server-side name/login/email filter exists for /users, so over-fetch
-            # up to settings.max_results in one request and paginate the filtered
-            # survivors in memory instead of trusting the server's pre-filter total
-            # (same pattern as list_versions' project-scoped-with-search branch).
-            def post_filter(results: list[UserSummary]) -> list[UserSummary]:
-                search_key = search.casefold()
-                return [
-                    item
-                    for item in results
-                    if search_key in (item.name or "").casefold()
-                    or search_key in (item.login or "").casefold()
-                    or search_key in (item.email or "").casefold()
-                ]
-
-            page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
-                path="users",
-                params_extra=None,
-                normalize=self.normalize_user,
-                item_allowed=None,
-                post_filter=post_filter,
-                offset=offset,
-                limit=effective_limit,
-            )
-            return UserListResult(
-                offset=offset,
-                limit=effective_limit,
-                total=total,
-                count=len(page),
-                next_offset=next_offset,
-                truncated=truncated,
-                results=page,
-            )
-
-        payload = await self._get(
-            "users",
-            params={
-                "offset": str(offset),
-                "pageSize": str(effective_limit),
-            },
-        )
-        results = [
-            self.normalize_user(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        total = int(payload.get("total", len(results)))
-        next_offset, truncated = _paginate_server(offset=offset, limit=effective_limit, total=total)
-        return UserListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(results),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=results,
-        )
+        return await self._user_service.list_users(search=search, offset=offset, limit=limit)
 
     async def get_user(self, user_ref: str) -> UserDetail:
-        self._ensure_read_enabled("admin")
-        payload = await self._get(f"users/{quote(user_ref, safe='')}")
-        return self.normalize_user_detail(payload)
+        return await self._user_service.get_user(user_ref)
 
     async def list_groups(
         self,
@@ -3456,26 +3400,16 @@ class OpenProjectClient:
         language: str | None = None,
         confirm: bool = False,
     ) -> UserWriteResult:
-        payload: dict[str, Any] = {
-            "login": login,
-            "email": email,
-            "firstName": firstname,
-            "lastName": lastname,
-            "admin": admin,
-            "status": status,
-        }
-        if password is not None:
-            payload["password"] = password
-        if language is not None:
-            payload["language"] = language
-        form = await self._post("users/form", json_body=payload)
-        return await self._finalize_user_write(
-            action="create",
+        return await self._user_service.create(
+            login=login,
+            email=email,
+            firstname=firstname,
+            lastname=lastname,
+            password=password,
+            admin=admin,
+            status=status,
+            language=language,
             confirm=confirm,
-            form=form,
-            write_path="users",
-            preview_message="OpenProject validated the user. Ask for confirmation, then call again with confirm=true to create it.",
-            success_message="User created successfully.",
         )
 
     async def update_user(
@@ -3490,28 +3424,15 @@ class OpenProjectClient:
         language: str | None = None,
         confirm: bool = False,
     ) -> UserWriteResult:
-        payload: dict[str, Any] = {}
-        if login is not None:
-            payload["login"] = login
-        if email is not None:
-            payload["email"] = email
-        if firstname is not None:
-            payload["firstName"] = firstname
-        if lastname is not None:
-            payload["lastName"] = lastname
-        if admin is not None:
-            payload["admin"] = admin
-        if language is not None:
-            payload["language"] = language
-        form = await self._post(f"users/{user_id}/form", json_body=payload)
-        return await self._finalize_user_write(
-            action="update",
-            confirm=confirm,
-            form=form,
-            write_path=f"users/{user_id}",
-            write_method="PATCH",
+        return await self._user_service.update(
             user_id=user_id,
-            success_message="User updated successfully.",
+            login=login,
+            email=email,
+            firstname=firstname,
+            lastname=lastname,
+            admin=admin,
+            language=language,
+            confirm=confirm,
         )
 
     async def delete_user(
@@ -3520,22 +3441,7 @@ class OpenProjectClient:
         *,
         confirm: bool = False,
     ) -> UserWriteResult:
-        # Checked unconditionally (not just on confirm) since there's no prior GET
-        # to gate an unauthorized preview request on -- preserved as-is below,
-        # write_scope on the helper call is a harmless redundant re-check.
-        self._ensure_write_enabled("admin")
-        payload = {"id": user_id}
-        return await self._finalize_delete(
-            result_cls=UserWriteResult,
-            confirm=confirm,
-            result_kwargs={"user_id": user_id, "payload": payload},
-            preview_result=None,
-            commit_result=None,
-            write_scope="admin",
-            delete_path=f"users/{user_id}",
-            preview_message="OpenProject is ready to delete the user. Ask for confirmation, then call again with confirm=true.",
-            success_message="User deleted successfully.",
-        )
+        return await self._user_service.delete(user_id, confirm=confirm)
 
     async def lock_user(
         self,
@@ -3543,33 +3449,7 @@ class OpenProjectClient:
         *,
         confirm: bool = False,
     ) -> UserWriteResult:
-        self._ensure_write_enabled("admin")
-        payload = {"id": user_id}
-        if not confirm:
-            return UserWriteResult(
-                action="lock",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to lock the user. Ask for confirmation, then call again with confirm=true.",
-                user_id=user_id,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        response = await self._post(f"users/{user_id}/lock")
-        result = self.normalize_user_detail(response)
-        return UserWriteResult(
-            action="lock",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="User locked successfully.",
-            user_id=result.id,
-            payload=payload,
-            validation_errors={},
-            result=result,
-        )
+        return await self._user_service.lock(user_id, confirm=confirm)
 
     async def unlock_user(
         self,
@@ -3577,37 +3457,7 @@ class OpenProjectClient:
         *,
         confirm: bool = False,
     ) -> UserWriteResult:
-        self._ensure_write_enabled("admin")
-        payload = {"id": user_id}
-        if not confirm:
-            return UserWriteResult(
-                action="unlock",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to unlock the user. Ask for confirmation, then call again with confirm=true.",
-                user_id=user_id,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        # DELETE .../lock already returns the full updated user representation
-        # (OpenProject's user_transition helper responds with UserRepresenter
-        # for both the POST and DELETE lock transitions, verified against
-        # .op-sources) -- no need for a follow-up GET, mirroring lock_user.
-        response = await self._request_json("DELETE", f"users/{user_id}/lock")
-        result = self.normalize_user_detail(response)
-        return UserWriteResult(
-            action="unlock",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="User unlocked successfully.",
-            user_id=result.id,
-            payload=payload,
-            validation_errors={},
-            result=result,
-        )
+        return await self._user_service.unlock(user_id, confirm=confirm)
 
     # --- Group CRUD ---
 
@@ -4332,61 +4182,6 @@ class OpenProjectClient:
                 email=_trim_text(payload.get("email"), limit=SUBJECT_LIMIT),
                 status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
                 url=self._web_url(f"{path_prefix}/{principal_id}"),
-            ),
-        )
-
-    def normalize_user(self, payload: dict[str, Any]) -> UserSummary:
-        links = payload.get("_links", {})
-        avatar_link = links.get("avatar")
-        return self._apply_hidden_fields(
-            "user",
-            UserSummary(
-                id=int(payload["id"]),
-                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT),
-                login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
-                email=_trim_text(payload.get("email"), limit=SUBJECT_LIMIT),
-                status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
-                admin=payload.get("admin"),
-                locked=payload.get("locked"),
-                avatar_url=self._link_to_web_url(avatar_link.get("href")) if isinstance(avatar_link, dict) else None,
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-                url=self._web_url(f"users/{payload['id']}"),
-                firstname=_trim_text(payload.get("firstName"), limit=SUBJECT_LIMIT),
-                lastname=_trim_text(payload.get("lastName"), limit=SUBJECT_LIMIT),
-            ),
-        )
-
-    def normalize_user_detail(self, payload: dict[str, Any]) -> UserDetail:
-        summary = self.normalize_user(payload)
-        links = payload.get("_links", {})
-        groups = [title for item in links.get("groups", []) if isinstance(item, dict) and (title := _link_title(item))]
-        auth_source = _link_title(links.get("authSource"))
-        # The real `identityUrl` API property (OmniAuth/SSO subject),
-        # a top-level property -- not the `showUser` HAL link, which just
-        # duplicates the already-modeled `url` field (both resolve to the same
-        # /users/{id} web path).
-        identity_url = payload.get("identityUrl")
-        return self._apply_hidden_fields(
-            "user",
-            UserDetail(
-                id=summary.id,
-                name=summary.name,
-                login=summary.login,
-                email=summary.email,
-                status=summary.status,
-                admin=summary.admin,
-                locked=summary.locked,
-                avatar_url=summary.avatar_url,
-                created_at=summary.created_at,
-                updated_at=summary.updated_at,
-                language=_trim_text(payload.get("language"), limit=SUBJECT_LIMIT),
-                identity_url=identity_url,
-                auth_source=auth_source,
-                groups=groups,
-                url=summary.url,
-                firstname=summary.firstname,
-                lastname=summary.lastname,
             ),
         )
 
@@ -5657,35 +5452,6 @@ class OpenProjectClient:
         activity_field = schema.get("activity", {})
         allowed = activity_field.get("_embedded", {}).get("allowedValues", [])
         return [self.normalize_time_entry_activity(item) for item in allowed if isinstance(item, dict)]
-
-    async def _finalize_user_write(
-        self,
-        *,
-        action: str,
-        confirm: bool,
-        form: dict[str, Any],
-        write_path: str,
-        write_method: str = "POST",
-        user_id: int | None = None,
-        preview_message: str | None = None,
-        success_message: str | None = None,
-    ) -> UserWriteResult:
-        return await self._finalize_write(
-            result_cls=UserWriteResult,
-            action=action,
-            confirm=confirm,
-            form=form,
-            write_path=write_path,
-            write_method=write_method,
-            write_scope="admin",
-            identity_kwargs=lambda _payload: {"user_id": user_id},
-            normalize=self.normalize_user_detail,
-            committed_kwargs=lambda u: {"user_id": u.id},
-            rejected_message="OpenProject rejected the proposed user changes. Fix the validation errors before confirming.",
-            preview_message=preview_message
-            or "OpenProject validated the user change. Ask for confirmation, then call again with confirm=true to write it.",
-            success_message=success_message or f"User {action}d successfully.",
-        )
 
     def _ensure_write_enabled(self, scope: str) -> None:
         _access_policy.ensure_write_enabled(scope, settings=self.settings)

@@ -76,9 +76,9 @@ This is the main policy boundary of the project.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
-## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards, Actions & Capabilities, Roles)
+## Layered architecture (Versions, Projects, Memberships, News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards, Actions & Capabilities, Roles, Users)
 
-`client.py` stays the small, flat facade described above for most domains, but thirteen
+`client.py` stays the small, flat facade described above for most domains, but fourteen
 domains have been migrated into `app/` for a stricter layered structure: Versions
 (`list_versions`, `get_version`, `create_version`, `update_version`,
 `delete_version` — the original pilot, validating the pattern), Projects
@@ -308,7 +308,49 @@ versus always returning the full collection regardless of paging params
 (some OpenProject "static"/admin-managed collections are known to do the
 latter) — `tests/integration/test_roles.py` exercises this against a live
 instance, but the answer has practical significance only if a real
-installation ever has more than one page of roles):
+installation ever has more than one page of roles), and Users (`list_users`/
+`get_user`/`create_user`/`update_user`/`delete_user`/`lock_user`/
+`unlock_user` — the fourteenth migration, following Roles'/Actions &
+Capabilities' zero-`ProjectRefResolver` template exactly: Users are purely
+global/admin-scoped, with no project concept at all. Unlike Roles, `list()`
+needs BOTH of `app/pagination.py`'s helpers, not just one: a no-search branch
+uses `paginate_server` (exact server-side offset/pageSize slicing), while a
+`search` branch over-fetches a single bounded page (`page_size=max_results`)
+and filters case-insensitively across name/login/email in memory before
+slicing with `paginate_client` — the identical dual-branch shape as
+`client.py`'s still-flat `list_groups`, the obvious next candidate in this
+bucket. `lock`/`unlock` are the first Service methods for a non-CRUD write
+action anywhere in `app/`: no form, no validation-errors branch, POST/DELETE
+on a `users/{id}/lock` sub-resource whose response body already carries the
+full updated representation (no follow-up GET). Modeled on
+`ProjectService.set_favorite`'s toggle-write shape (the closest existing
+precedent) via a small `UserService`-local `_finalize_action` helper shared
+only by `lock`/`unlock` — not `_write_outcome.py`'s `_finalize_write`, which
+assumes a form/validation-errors branch neither action has. `commit_unlock`
+needed a new `Transport.delete_json` method (`DELETE` that parses a JSON
+response body): every existing `Transport` method either mutates without
+reading a body (`delete`) or reads a body from a non-DELETE verb, and
+OpenProject's `DELETE users/{id}/lock` uniquely returns the updated user
+representation as its body. `UserRecord.to_detail` is a lazy
+`Callable[[], UserDetail]` thunk, not an eager field — `normalize_user_detail`
+parses several detail-only fields (`groups`, `authSource`, `identityUrl`,
+`language`) beyond a cheap summary field-copy, and `UserService.list_users()`
+never reads `.to_detail` on the list path (only `get_user()` does), so eager
+computation would waste that parsing on every list row; a first version of
+this migration wrongly reasoned eager was safe since the summary/detail
+truncation limits match, an error caught and fixed by a step-6.5 Codex
+review. That same review caught one more consequential finding, a genuine
+pre-existing gap in the original `client.py` faithfully ported by the first
+draft of this migration and then deliberately fixed rather than preserved:
+`create_user`/`update_user`/`lock_user`/`unlock_user` never called the
+hidden-field-write guard (`hidden_fields.ensure_field_writable`) for any
+field they write, unlike every other full-CRUD Service (News/Board/Document/
+Membership/Project/Version) — meaning `OPENPROJECT_HIDE_USER_FIELDS` masked
+a field on reads but never blocked writing it. Fixed by adding the guard for
+every written field (including the toggle-only `locked` field on
+`lock`/`unlock`) — a deliberate hardening beyond byte-for-byte porting, since
+every sibling domain already had this protection and there was no reason to
+carry the inconsistency forward once found):
 
 ```text
 tools.py (MCP presentation)
@@ -613,20 +655,22 @@ The tradeoff is that `client.py` is large and policy-heavy. That is intentional 
 The Policies extraction (scope checks, hidden-field enforcement) is done, for every
 domain — see "Layered architecture" above. Versions, Projects, Memberships, News,
 Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards, Actions &
-Capabilities, and Roles are migrated; remaining candidates, once each migration's own
-lessons justify the next one:
+Capabilities, Roles, and Users are migrated; remaining candidates, once each
+migration's own lessons justify the next one:
 
 - migrating additional domains through the same `app/` layers, one at a time —
   re-evaluate which domain's resolvers most depend on already-flat logic, per the
   pilot's own "validate before extending" approach. See
   [architecture-migration-runbook.md](architecture-migration-runbook.md) for the
-  step-by-step process distilled from the thirteen migrations done so far. Boards,
-  Actions & Capabilities, and Roles were each picked via a fresh screening against
-  step 0's criteria directly — no pre-named shortlist remained after Grids/Sprints.
-  The next pick needs the same fresh-screening approach again, against the ~22
-  remaining still-flat domains (Users and Groups are the two remaining
-  purely-global candidates in Roles' own bucket); Project Lifecycle Phases and
-  Project Favorites already migrated as part of Projects, not separate candidates.
+  step-by-step process distilled from the fourteen migrations done so far. Boards,
+  Actions & Capabilities, Roles, and Users were each picked via a fresh screening
+  against step 0's criteria directly — no pre-named shortlist remained after
+  Grids/Sprints. The next pick needs the same fresh-screening approach again,
+  against the ~21 remaining still-flat domains (Groups is the one remaining named
+  purely-global candidate in Roles'/Users' bucket, carrying its own documented
+  `PATCH` full-membership-replacement API quirk as a complexity flag); Project
+  Lifecycle Phases and Project Favorites already migrated as part of Projects, not
+  separate candidates.
 - separate modules for work-package writes and schema handling
 - dedicated integration-test helpers around form endpoints and live smoke tests
 - unifying `VersionResolver`'s/`ProjectResolver`'s hand-rolled page-walk loops onto

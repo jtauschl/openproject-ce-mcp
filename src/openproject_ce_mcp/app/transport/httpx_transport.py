@@ -44,6 +44,9 @@ class HttpxTransport:
         if response.status_code not in {200, 202, 204}:
             raise OpenProjectServerError(f"OpenProject delete request failed with status {response.status_code}.")
 
+    async def delete_json(self, path: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
+        return await self._request_json("DELETE", path, params=params)
+
     async def request_raw(
         self, method: str, path: str, *, params: dict[str, str] | None = None, json_body: dict[str, Any] | None = None
     ) -> TransportResponse:

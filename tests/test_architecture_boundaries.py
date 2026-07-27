@@ -562,6 +562,21 @@ def test_role_service_binds_the_api_param_to_role_api_specifically() -> None:
     assert hints["api"] is not HttpxRoleApi, "RoleService.__init__'s api param must not be the concrete adapter"
 
 
+def test_user_service_binds_the_api_param_to_user_api_specifically() -> None:
+    """Non-generalized regression test for the Users domain's exact guarantee,
+    sibling to the checks above: the api param is UserApi exactly, not just
+    "some Protocol". No dedicated Resolver exists -- Users have no project
+    concept and no semantic reference to resolve, following RoleService's
+    zero-Resolver template."""
+    from openproject_ce_mcp.app.adapters.httpx_user_api import HttpxUserApi
+    from openproject_ce_mcp.app.ports.user_api import UserApi
+    from openproject_ce_mcp.app.services.user_service import UserService
+
+    hints = typing.get_type_hints(UserService.__init__)
+    assert hints["api"] is UserApi, "UserService.__init__'s api param must be typed UserApi"
+    assert hints["api"] is not HttpxUserApi, "UserService.__init__'s api param must not be the concrete adapter"
+
+
 # Names that once lived in app/ports/project_api.py (HAL->model normalize_*
 # translation functions and their private text/href helpers) before they moved
 # to app/adapters/httpx_project_api.py, matching the Versions domain's

@@ -7,6 +7,8 @@ import httpx
 import pytest
 from _client_test_helpers import _base_settings, _wp_detail_payload, _write_enabled_settings, make_settings
 
+from openproject_ce_mcp.app.adapters.httpx_user_api import normalize_user_detail
+from openproject_ce_mcp.app.origin import origin_from_url as _origin_from_url
 from openproject_ce_mcp.client import (
     CLEAR,
     CLEAR_PARENT,
@@ -990,8 +992,10 @@ def test_normalize_project_detail_leaves_ancestors_none_when_absent() -> None:
 def test_normalize_user_detail_reads_identity_url_from_the_real_property() -> None:
     """identity_url now sources OpenProject's real identityUrl
     property (top-level, not a _links entry), not the showUser link -- which
-    duplicated the already-modeled `url` field."""
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    duplicated the already-modeled `url` field. Re-anchored on the adapter's
+    module-level normalize_user_detail after the Users domain migration
+    (client.normalize_user_detail no longer exists)."""
+    settings = make_settings()
     payload = {
         "id": 5,
         "name": "SSO User",
@@ -999,7 +1003,7 @@ def test_normalize_user_detail_reads_identity_url_from_the_real_property() -> No
         "_links": {"showUser": {"href": "/users/5"}},
     }
 
-    detail = client.normalize_user_detail(payload)
+    detail = normalize_user_detail(payload, base_url=settings.base_url, origin=_origin_from_url(settings.base_url))
 
     assert detail.identity_url == "https://idp.example.com/subjects/abc123"
 
@@ -1009,14 +1013,14 @@ def test_normalize_user_detail_identity_url_is_none_without_sso_despite_showuser
     derivation -- identity_url is null whenever the real property is absent,
     even though showUser is present (confirmed live: every account has a
     showUser link, only SSO-provisioned accounts have identityUrl)."""
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    settings = make_settings()
     payload = {
         "id": 5,
         "name": "Local User",
         "_links": {"showUser": {"href": "/users/5"}},
     }
 
-    detail = client.normalize_user_detail(payload)
+    detail = normalize_user_detail(payload, base_url=settings.base_url, origin=_origin_from_url(settings.base_url))
 
     assert detail.identity_url is None
 

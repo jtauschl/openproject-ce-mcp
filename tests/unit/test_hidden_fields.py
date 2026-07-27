@@ -8,6 +8,8 @@ from _client_test_helpers import _base_settings
 
 from openproject_ce_mcp.app.adapters.httpx_membership_api import normalize_membership
 from openproject_ce_mcp.app.adapters.httpx_sprint_api import normalize_sprint
+from openproject_ce_mcp.app.adapters.httpx_user_api import normalize_user
+from openproject_ce_mcp.app.origin import origin_from_url as _origin_from_url
 from openproject_ce_mcp.app.policies import hidden_fields
 from openproject_ce_mcp.client import (
     InvalidInputError,
@@ -637,23 +639,30 @@ async def test_hidden_watcher_fields_are_tagged_and_dropped_from_payload() -> No
     await client.aclose()
 
 
-@pytest.mark.asyncio
-async def test_hidden_user_fields_are_tagged_and_dropped_from_payload() -> None:
+def test_hidden_user_fields_are_tagged_and_dropped_from_payload() -> None:
     # firstName/lastName are exposed as read fields, echoing what create_user/
-    # update_user already write. Respects existing OPENPROJECT_HIDE_USER_FIELDS wiring.
-    client = OpenProjectClient(
-        _base_settings(hidden_fields={"user": ("firstname",)}),
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
-    )
+    # update_user already write. Respects existing OPENPROJECT_HIDE_USER_FIELDS
+    # wiring. normalize_user (the adapter's pure HAL->model function) no
+    # longer applies masking itself (ADR 0001 -- masking moved to
+    # UserService); this test applies it via the same
+    # hidden_fields.apply_hidden_fields the Service calls, mirroring
+    # test_hidden_membership_fields_are_tagged_and_dropped_from_payload.
+    settings = _base_settings(hidden_fields={"user": ("firstname",)})
 
-    user = client.normalize_user(
-        {
-            "id": 1,
-            "name": "Ada Lovelace",
-            "firstName": "Ada",
-            "lastName": "Lovelace",
-            "_links": {},
-        }
+    user = hidden_fields.apply_hidden_fields(
+        "user",
+        normalize_user(
+            {
+                "id": 1,
+                "name": "Ada Lovelace",
+                "firstName": "Ada",
+                "lastName": "Lovelace",
+                "_links": {},
+            },
+            base_url=settings.base_url,
+            origin=_origin_from_url(settings.base_url),
+        ),
+        settings=settings,
     )
 
     assert user._hidden_keys == frozenset({"firstname"})
@@ -662,8 +671,6 @@ async def test_hidden_user_fields_are_tagged_and_dropped_from_payload() -> None:
     serialized = _to_payload(user)
     assert "firstname" not in serialized
     assert serialized["lastname"] == "Lovelace"
-
-    await client.aclose()
 
 
 @pytest.mark.asyncio

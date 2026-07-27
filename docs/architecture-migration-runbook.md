@@ -10,12 +10,12 @@ Written so it can be handed to a fresh session (human or agent) as a
 self-contained starting brief — see "Prompt for a fresh session" at the
 bottom for a ready-to-paste version.
 
-Thirteen domains are migrated so far: Versions (pilot), Projects, Memberships,
+Fourteen domains are migrated so far: Versions (pilot), Projects, Memberships,
 News, Documents, Wiki Pages, Categories, Views, Grids, Sprints, Boards,
-Actions & Capabilities, Roles. ~22 remain, all still flat in `client.py`. This
-runbook distills what each of those thirteen migrations actually needed,
-including mistakes found and fixed along the way — follow it literally,
-don't re-derive the process from scratch.
+Actions & Capabilities, Roles, Users. ~21 remain, all still flat in
+`client.py`. This runbook distills what each of those fourteen migrations
+actually needed, including mistakes found and fixed along the way — follow
+it literally, don't re-derive the process from scratch.
 
 ## 0. Pick the next domain
 
@@ -91,9 +91,24 @@ quirk (a complete `_links.members` array is required on every update, no
 add/remove operation exists) as its own complexity flag, distinct from Roles'
 plain read-only shape.
 
-With Roles now migrated, the next domain needs its own fresh evaluation
-against the three criteria above; the ~22 remaining still-flat domains
-haven't been individually screened yet.
+With Roles migrated, Users was picked next — the simpler of the two
+remaining purely-global candidates (Groups still carries its `PATCH`
+full-replacement complexity flag). Full-CRUD-plus-lifecycle (`list`/`get`/
+`create`/`update`/`delete`/`lock`/`unlock`), modeled on Roles'/Actions &
+Capabilities' zero-`ProjectRefResolver` template for the Service, but with
+`list()` needing both of `app/pagination.py`'s helpers (the search branch's
+over-fetch-then-filter needs `paginate_client`, unlike Roles which never
+exercises it) and `lock`/`unlock` introducing this project's first non-CRUD
+write-action Service pattern (see architecture.md's Users entry for the full
+detail, including two real findings a step-6.5 Codex review caught: a
+pre-existing hidden-field-write-protection gap ported faithfully from
+`client.py` and then fixed rather than preserved, and an eager-vs-lazy
+`to_detail` mistake in this migration's own first draft).
+
+With Users now migrated, the next domain needs its own fresh evaluation
+against the three criteria above; Groups is the one remaining named
+candidate in this specific bucket, but the ~21 remaining still-flat domains
+overall haven't all been individually screened yet.
 
 ## 1. Read the real source before planning
 
@@ -189,19 +204,34 @@ In this order (each depends only on the previous):
    dict, not just an extracted href string, since the allowlist check needs
    more than `href` off it. Check the closest sibling BY SHAPE (per step 1
    above) for the actual Record fields to include, not this generic
-   description. Make `to_detail` a **lazy callable**
-   (`Callable[[], <Domain>Detail]`), not a precomputed field, whenever the
-   domain's summary/detail normalizers apply different truncation limits to
-   the same raw text — check by grepping whether the Service's `list()`
-   path ever reads `.detail`; if it never does, eager computation wastes a
-   second extraction pass on every list row (verify this in the ADAPTER,
-   not just architecturally: an eager `detail` field built by re-running the
-   summary's own `normalize_*` function on the raw payload a second time is
-   just as wasteful as a needlessly lazy one — build it as a field-copy off
-   the already-computed `summary` instead, e.g. `version_api.py`'s
+   description. **The question that actually decides eager-vs-lazy is
+   whether the Service's `list()` path ever reads `.detail`/`.to_detail` at
+   all** — check by grepping the Service, not by reasoning about truncation
+   limits (a mistake this runbook's own wording previously invited, and
+   which the Users migration's first draft made: it reasoned eager was safe
+   because the summary/detail truncation limits matched, which only answers
+   whether a field-copy is SAFE, not whether computing it unconditionally
+   on every list row is EFFICIENT — those are different questions). If
+   `list()` never reads `.detail`, make `to_detail` a **lazy callable**
+   (`Callable[[], <Domain>Detail]`) regardless of whether the truncation
+   limits match, so the detail-only parsing (extra fields, a second
+   extraction pass, whatever the domain's detail normalizer does beyond the
+   summary) is paid only when `get()` actually needs it. If `list()` DOES
+   read `.detail` (rare) or the domain has no separate list endpoint at
+   all, an eager field is fine. When different truncation limits ALSO
+   apply to the same raw text, that's an extra reason a naive precomputed
+   field would be wrong (re-running the summary's own `normalize_*`
+   function a second time, not just a field-copy) — but it is not the only
+   reason to go lazy, and matching limits do not by themselves justify
+   eager. Verify this in the ADAPTER, not just architecturally: build
+   `to_detail` as a field-copy off the already-computed `summary` instead
+   of a second raw-payload normalization pass, e.g. `version_api.py`'s
    `summary_to_detail`; this exact double-normalization bug was found
-   independently in both Views' and Sprints' adapters during the Sprints
-   migration's step-6 audit). Only omit `commit_create`/`delete` from the
+   independently in Views' and Sprints' adapters during the Sprints
+   migration's step-6 audit, and again in Users' adapter during its own
+   step-6.5 Codex review (there, fixed by passing the already-computed
+   summary into the lazy thunk rather than letting the thunk re-derive it).
+   Only omit `commit_create`/`delete` from the
    Protocol if the OpenProject API genuinely has no such endpoint (verify
    against the API docs or an existing read-only/limited-CRUD note in
    `docs/claude.md` — don't assume from `client.py`'s current shape alone,
@@ -434,6 +464,43 @@ in the same session and ported to `release/0.3.3` independently (that branch
 still has this domain flat). This is the second domain in a row where the
 step-6.5 review earned its keep — treat it as the default next step after
 step 6, not a one-off from the Boards migration.
+
+Roles (the 13th migration) had no findings from step 6.5 — a useful negative
+data point showing the step doesn't manufacture findings on a small,
+read-only, single-method domain with no write path to get wrong. Users (the
+14th) restored the pattern with two real findings, both worth internalizing:
+- **A pre-existing security gap ported faithfully, not a regression**:
+  `create_user`/`update_user`/`lock_user`/`unlock_user` never called the
+  hidden-field-write guard (`hidden_fields.ensure_field_writable`) for any
+  field they write — verified against `client.py`'s original, which never
+  called the equivalent `_ensure_field_writable` either. This meant
+  `OPENPROJECT_HIDE_USER_FIELDS` masked a field on reads but never blocked
+  writing it, unlike every other full-CRUD Service (News/Board/Document/
+  Membership/Project/Version), all of which gate every written field this
+  way. Same shape as the Boards/Actions & Capabilities findings in spirit
+  (a real, pre-existing gap the self-audit's structural lenses didn't catch)
+  but a different mechanism — not a cross-parameter authorization bypass,
+  just an entire category of check silently absent from one domain's write
+  paths. Fixed by adding the guard everywhere every sibling domain already
+  has it, including the toggle-only `locked` field on `lock`/`unlock`
+  (a field with no direct constructor parameter, easy to miss precisely
+  because it's not part of the normal payload-building `if x is not None`
+  pattern the other fields use).
+- **A self-introduced eager-vs-lazy mistake, not a ported one**: this
+  migration's own first-draft `app/ports/user_api.py` reasoned `to_detail`
+  should be an eager field because the summary/detail truncation limits
+  match — correct reasoning for whether a field-copy is safe, but not for
+  whether computing it unconditionally is efficient. `UserService.list_users()`
+  never reads `.to_detail` on the list path, and `normalize_user_detail`
+  parses several detail-only fields beyond a cheap copy, so eager
+  computation wasted that parsing on every list row regardless of the
+  truncation-limit reasoning being correct. Fixed by making `to_detail` a
+  lazy `Callable[[], UserDetail]` thunk, matching `DocumentRecord`'s/
+  `NewsRecord`'s established pattern. Worth internalizing as its own lesson:
+  "the detail fields reuse the same truncation limit as summary" answers
+  "is a field-copy safe," not "should this be computed unconditionally" —
+  those are two different questions this runbook's own prior wording (see
+  step 2 below) had previously conflated.
 
 **How to apply**: after step 6's fixes are committed, ask Codex to review
 the new commit(s) for correctness, security, and consistency with the
