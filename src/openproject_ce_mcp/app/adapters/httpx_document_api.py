@@ -69,15 +69,23 @@ def normalize_document(payload: dict[str, Any], *, base_url: str) -> DocumentSum
     )
 
 
-def normalize_document_detail(payload: dict[str, Any], *, base_url: str, origin: str) -> DocumentDetail:
+def normalize_document_detail(
+    payload: dict[str, Any], *, base_url: str, origin: str, summary: DocumentSummary | None = None
+) -> DocumentDetail:
     """Verbatim port of client.py's normalize_document_detail. Reuses every
     field from normalize_document() EXCEPT description, which is
     independently re-extracted from the same raw payload at the larger
     FORMATTABLE_LIMIT cap (not SUBJECT_LIMIT) -- the two normalizers apply
     different truncation limits to the same raw text, so this cannot be a
     simple copy of summary.
+
+    `summary` lets a caller that already built a `DocumentSummary` for the
+    same payload (see `_record()`) pass it in directly instead of paying for
+    a second `normalize_document()` call -- callers with only the raw
+    payload (`commit_update`) omit it and get the summary computed here.
     """
-    summary = normalize_document(payload, base_url=base_url)
+    if summary is None:
+        summary = normalize_document(payload, base_url=base_url)
     links = payload.get("_links", {})
     description = _delimit_user_content(_extract_formattable_text(payload.get("description"), limit=FORMATTABLE_LIMIT))
     return DocumentDetail(
@@ -103,15 +111,18 @@ class HttpxDocumentApi:
     def _record(self, payload: dict[str, Any]) -> DocumentRecord:
         base_url = self._base_url
         origin = self._origin
+        summary = normalize_document(payload, base_url=base_url)
         return DocumentRecord(
-            summary=normalize_document(payload, base_url=base_url),
+            summary=summary,
             # Lazy: only get()/update() (single-item paths) ever call this;
             # list_all()'s per-row records never do, so this avoids a second,
             # independent FORMATTABLE_LIMIT-capped re-extraction of every
             # record's description on every list call. The closure captures
-            # only `payload`/`base_url`/`origin` (small, per-record), not
-            # `self` -- it does not keep a whole adapter/transport alive.
-            to_detail=lambda: normalize_document_detail(payload, base_url=base_url, origin=origin),
+            # only `payload`/`base_url`/`origin`/`summary` (small, per-record),
+            # not `self` -- it does not keep a whole adapter/transport alive.
+            # Passing `summary` through avoids re-deriving every OTHER field
+            # (id, title, project, url, ...) a second time inside the thunk.
+            to_detail=lambda: normalize_document_detail(payload, base_url=base_url, origin=origin, summary=summary),
             project_link=payload.get("_links", {}).get("project"),
         )
 

@@ -62,14 +62,21 @@ def normalize_news(payload: dict[str, Any], *, base_url: str) -> NewsSummary:
     )
 
 
-def normalize_news_detail(payload: dict[str, Any], *, base_url: str) -> NewsDetail:
+def normalize_news_detail(payload: dict[str, Any], *, base_url: str, summary: NewsSummary | None = None) -> NewsDetail:
     """Verbatim port of client.py's normalize_news_detail. Reuses every field
     from normalize_news() EXCEPT description, which is independently
     re-extracted from the same raw payload at the larger FORMATTABLE_LIMIT
     cap (not SUBJECT_LIMIT) -- the two normalizers apply different truncation
     limits to the same raw text, so this cannot be a simple copy of summary.
+
+    `summary` lets a caller that already built a `NewsSummary` for the same
+    payload (see `_record()`) pass it in directly instead of paying for a
+    second `normalize_news()` call -- callers with only the raw payload
+    (`commit_create`/`commit_update`) omit it and get the summary computed
+    here.
     """
-    summary = normalize_news(payload, base_url=base_url)
+    if summary is None:
+        summary = normalize_news(payload, base_url=base_url)
     description = _delimit_user_content(_extract_formattable_text(payload.get("description"), limit=FORMATTABLE_LIMIT))
     return NewsDetail(
         id=summary.id,
@@ -93,15 +100,18 @@ class HttpxNewsApi:
 
     def _record(self, payload: dict[str, Any]) -> NewsRecord:
         base_url = self._base_url
+        summary = normalize_news(payload, base_url=base_url)
         return NewsRecord(
-            summary=normalize_news(payload, base_url=base_url),
+            summary=summary,
             # Lazy: only get()/update()/delete() (single-item paths) ever call
             # this; list_all()'s per-row records never do, so this avoids a
             # second, independent FORMATTABLE_LIMIT-capped re-extraction of
             # every record's description on every list call. The closure
-            # captures only `payload`/`base_url` (small, per-record), not
-            # `self` -- it does not keep a whole adapter/transport alive.
-            to_detail=lambda: normalize_news_detail(payload, base_url=base_url),
+            # captures only `payload`/`base_url`/`summary` (small, per-record),
+            # not `self` -- it does not keep a whole adapter/transport alive.
+            # Passing `summary` through avoids re-deriving every OTHER field
+            # (id, title, project, author, url, ...) a second time.
+            to_detail=lambda: normalize_news_detail(payload, base_url=base_url, summary=summary),
             project_link=payload.get("_links", {}).get("project"),
         )
 

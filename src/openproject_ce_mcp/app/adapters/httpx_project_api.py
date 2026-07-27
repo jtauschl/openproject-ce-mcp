@@ -154,14 +154,28 @@ def normalize_project(
 
 
 def normalize_project_detail(
-    payload: dict[str, Any], *, base_url: str, text_limit: int | None = FORMATTABLE_LIMIT
+    payload: dict[str, Any],
+    *,
+    base_url: str,
+    text_limit: int | None = FORMATTABLE_LIMIT,
+    summary: ProjectSummary | None = None,
 ) -> ProjectDetail:
     """Single-project read. ``text_limit=None`` (used by get_project) returns the
     full description/status_explanation uncapped; the FORMATTABLE_LIMIT default
     keeps write-preview callers capped. Verbatim port of client.py's
     normalize_project_detail, minus hidden-field masking (Service concern).
+
+    `summary` lets a caller that already built a `ProjectSummary` for the
+    same payload (see `_record()`) pass it in directly instead of paying for
+    a second `normalize_project()` call -- callers with only the raw payload
+    omit it and get the summary computed here. Only `description`/
+    `status_explanation` are independently re-extracted regardless (with
+    `preserve_newlines=True`, a genuinely different extraction than the
+    summary's, not just a different truncation limit); every other field is
+    a cheap copy off `summary`.
     """
-    summary = normalize_project(payload, base_url=base_url)
+    if summary is None:
+        summary = normalize_project(payload, base_url=base_url)
     links = payload.get("_links", {})
     description, description_truncated, description_length = _extract_formattable_text_with_meta(
         payload.get("description"), limit=text_limit, preserve_newlines=True
@@ -349,14 +363,23 @@ class HttpxProjectApi:
 
     def _record(self, payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT) -> ProjectRecord:
         base_url = self._base_url
+        summary = normalize_project(payload, base_url=base_url, text_limit=text_limit)
         return ProjectRecord(
-            summary=normalize_project(payload, base_url=base_url, text_limit=text_limit),
+            summary=summary,
             # Lazy: most callers (ProjectResolver.resolve()/resolve_id(), used
             # by every domain's project-reference resolution; ProjectService.
             # list()) never read this. The closure captures only
-            # `payload`/`base_url`/`text_limit` (small, per-record), not
-            # `self` -- it does not keep a whole adapter/transport alive.
-            to_detail=lambda: normalize_project_detail(payload, base_url=base_url, text_limit=text_limit),
+            # `payload`/`base_url`/`text_limit`/`summary` (small, per-record),
+            # not `self` -- it does not keep a whole adapter/transport alive.
+            # Passing `summary` through avoids re-deriving every OTHER field
+            # (id, name, identifier, url, status, parent, ...) a second time;
+            # description/status_explanation are still re-extracted
+            # independently inside normalize_project_detail regardless
+            # (preserve_newlines=True there is a genuinely different
+            # extraction, not just a truncation-limit divergence).
+            to_detail=lambda: normalize_project_detail(
+                payload, base_url=base_url, text_limit=text_limit, summary=summary
+            ),
             payload=payload,
         )
 
