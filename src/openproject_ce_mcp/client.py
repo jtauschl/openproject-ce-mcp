@@ -7505,7 +7505,13 @@ class OpenProjectClient:
             links["parent"] = {"href": None}
         elif parent is not None:
             self._ensure_field_writable("project", "parent")
-            parent_id = await self._resolve_project_id(_narrow_cleared(parent, sentinel=CLEAR))
+            # write=True: reparenting must be authorized on the new parent
+            # too, not just on the project being updated -- otherwise a
+            # caller with write access to project A could attach it under
+            # project B they can only read, the same gap update_board's
+            # reparent-target fix already closed for boards.
+            parent_payload = await self._resolve_project_ref(_narrow_cleared(parent, sentinel=CLEAR), write=True)
+            parent_id = parent_payload["id"]
             links["parent"] = {"href": self._api_href(f"projects/{parent_id}")}
         if links:
             payload["_links"] = links

@@ -95,6 +95,12 @@ development baseline.
 - **`create_group`/`update_group` now honor `OPENPROJECT_HIDE_GROUP_FIELDS`
   on writes**, not just reads. Same gap as the `OPENPROJECT_HIDE_USER_FIELDS`
   fix above.
+- **`update_project`'s `parent` reassignment now requires write access on
+  the NEW parent project too, not just on the project being updated.**
+  Previously the new parent was only read-checked, so a caller with write
+  access to one project could attach it under a project they could only
+  read — the same gap `update_board`'s reparent-target fix already closed
+  for boards.
 
 ---
 

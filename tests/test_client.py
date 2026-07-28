@@ -9158,6 +9158,40 @@ async def test_update_project_denies_disallowed_parent_project() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_project_denies_reparent_into_a_readable_but_write_restricted_project() -> None:
+    """Regression test: reparenting must be write-authorized on the NEW
+    parent too, not just on the project being updated. Previously the new
+    parent was only read-checked, so a caller with write access to "demo"
+    could attach it under "other" despite only having read access there --
+    the same gap update_board's reparent-target fix already closed for
+    boards."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/form" and request.method == "POST":
+            return httpx.Response(200, json={"_embedded": {"schema": {}}}, request=request)
+        if request.url.path == "/api/v3/projects/999" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 999, "identifier": "other", "name": "Other"},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("*",), write_projects=("demo",), enable_project_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await client.update_project(project_ref="demo", parent="999", confirm=True)
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_update_project_remembers_project_identifier_in_the_cache() -> None:
     """Same regression coverage as create_project's, for update_project (which
     can also change a project's identifier, not just introduce a new one)."""
