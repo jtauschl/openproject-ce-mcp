@@ -150,7 +150,11 @@ tools.py (MCP presentation)
   the work-package-reference equivalent of `ProjectRefResolver` — a Service can depend on more than
   one domain-API Port at once when two of its methods each need a genuinely different capability
   (e.g. reference resolution for one method, a raw payload fetch for another), rather than forcing
-  every dependency through a single seam that doesn't fit both shapes.
+  every dependency through a single seam that doesn't fit both shapes. `WorkPackageIdResolver(ref,
+  write=True)` also directly replaces the flat-code idiom of a manual work-package fetch plus a
+  write-allowlist check on its project link, when a write method's caller-supplied reference must
+  itself be resolved (as opposed to a write method already holding a concrete numeric id derived
+  from another resource's own link).
 - `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under `app/` that
   imports `httpx`; `client.py`'s own HTTP calls for still-flat domains, and `retry_transport.py`,
   are unaffected and keep importing it directly. The `Transport` Protocol (`app/transport/protocol.py`)
