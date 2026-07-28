@@ -158,6 +158,153 @@ development baseline.
 
 ---
 
+## 0.3.3 – 2026-07-28
+
+### Fixed
+
+- **`update_board` no longer lets a board be moved into a project outside
+  `OPENPROJECT_WRITE_PROJECTS`.** Only the board's current project was
+  authorized against the write allowlist; a `project=` reparent target was
+  resolved for the outgoing request but never checked for write access.
+- **`get_news`/`list_news` description truncation now honors
+  `OPENPROJECT_HIDE_NEWS_FIELDS`**, instead of incorrectly checking
+  `OPENPROJECT_HIDE_PROJECT_FIELDS`.
+- **`get_document`/`list_documents` description truncation and
+  `get_time_entry`/`list_time_entries` comment truncation now honor
+  `OPENPROJECT_HIDE_DOCUMENT_FIELDS`/`OPENPROJECT_HIDE_TIME_ENTRY_FIELDS`
+  respectively**, instead of incorrectly checking
+  `OPENPROJECT_HIDE_PROJECT_FIELDS`/`OPENPROJECT_HIDE_ACTIVITY_FIELDS`.
+- **`get_work_package_relations` no longer leaks a linked work package's id
+  and subject from outside `OPENPROJECT_READ_PROJECTS`.** Only the anchor
+  work package's project was checked; the other side of each relation was
+  not, the same gap `list_relations` had already closed for the identical
+  concern.
+- **`toggle_activity_emoji_reaction` previews (`confirm=false`) no longer
+  require `OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE`.** The write-enablement
+  check ran unconditionally, even during a preview; it now runs only on the
+  confirmed mutation. The project write-allowlist check (an authorization
+  gate on the specific target) is unaffected and still runs during preview.
+- **A project created or renamed through this server was invisible to
+  `get_work_package`/`update_work_package`/`create_work_package` (when
+  linking a `parent`) and every other project-scoped tool under a
+  restrictive `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS`,
+  until the server process restarted**, even though `get_project` and
+  `list_projects` already saw it correctly. The identifier lookup these
+  tools rely on was only ever populated once, at startup; a confirmed
+  `create_project`/`update_project` now keeps it up to date immediately.
+- **`list_work_packages` without an explicit `project` now raises a clear
+  permission error instead of silently returning zero results** when it
+  cannot prove the query is scoped to only the allowed projects — previously
+  indistinguishable from "this project genuinely has no work packages yet."
+- **`list_capabilities` no longer leaks capability records (including project
+  names and principals) from outside `OPENPROJECT_READ_PROJECTS`.** Only the
+  caller-supplied `project` parameter was ever checked against the allowlist;
+  each returned capability's own project link was not, so a `capability_id`
+  lookup with no `project` given skipped the check entirely. `capability_id`
+  now also resolves via the single-item lookup rather than an undocumented
+  collection filter.
+- **`list_capabilities`'s `context` filter rejected every request on
+  OpenProject 16.x with "Filters Context malformed value".** An earlier fix
+  switched the filter's project-scoping value from the project-prefixed
+  form to the workspace-prefixed one, on the mistaken assumption the latter
+  was the current/recommended syntax across all supported versions — the
+  workspace prefix is only accepted from OpenProject 17.0 onward, and the
+  project-prefixed form is the only one that works across the full
+  supported version range (16.0-17.6). Reverted to the project-prefixed
+  form.
+- **`create_user`/`update_user`/`lock_user`/`unlock_user` now honor
+  `OPENPROJECT_HIDE_USER_FIELDS` on writes**, not just reads. Every hidden
+  field previously could still be written even though it was masked on
+  read, unlike every other write-capable domain (news, boards, documents,
+  memberships, projects, versions), all of which already reject a write to
+  a hidden field.
+- **`create_grid`/`update_grid` now honor `OPENPROJECT_HIDE_GRID_FIELDS`
+  on writes**, not just reads. Same gap as the `OPENPROJECT_HIDE_USER_FIELDS`
+  fix above — Grids additionally had no such setting at all until now, since
+  `"grid"` was missing entirely from the hidden-fields configuration.
+- **`get_job_status` no longer leaks a job status scoped only via a
+  `sourceProject` link (e.g. a `copy_project` response referencing the
+  copy's source project) outside `OPENPROJECT_READ_PROJECTS`.** The
+  allowlist check only ever read the `project` link; the response's own
+  `project`/`project_id` fields were already populated from `project` with
+  a `sourceProject` fallback, so a payload scoped only via `sourceProject`
+  bypassed the check entirely despite exposing that project's data.
+- **`list_work_package_watchers`/`list_work_package_file_links` no longer
+  leak watcher and file link data outside `OPENPROJECT_READ_PROJECTS`.**
+  Neither method checked the allowlist at all, not even against the anchor
+  work package's own project — unlike their write-path siblings
+  (`add_work_package_watcher`/`remove_work_package_watcher`,
+  `delete_file_link`), which already resolved the containing work package
+  and checked it first.
+- **`get_work_package` no longer leaks a linked work package's subject and
+  identifier through `children`/`ancestors` outside
+  `OPENPROJECT_READ_PROJECTS`.** OpenProject's parent/child hierarchy is not
+  project-constrained, so a linked work package could belong to a different,
+  unreadable project; only the anchor work package's own project was
+  checked, the same gap `get_work_package_relations` already closed for the
+  identical concern.
+- **Attachment, reminder, and relation writes now honor their hidden-fields
+  configuration**, not just reads. `create_work_package_attachment`'s
+  `description`, `create_work_package_reminder`/`update_reminder`'s
+  `note`/`remind_at`, and `update_relation`'s `description` could all still
+  be written even when configured as hidden — the same class of gap already
+  fixed for Users/Grids above. `update_relation` was additionally
+  asymmetric with its own sibling `create_work_package_relation`, which
+  already rejected a hidden `description`.
+- **`create_group`/`update_group` now honor `OPENPROJECT_HIDE_GROUP_FIELDS`
+  on writes**, not just reads. Same gap as the `OPENPROJECT_HIDE_USER_FIELDS`
+  fix above.
+- **`update_reminder`'s project-write allowlist check could be bypassed by a
+  malformed, truthy non-string `href`** (e.g. `{"href": 42}`) on the
+  reminder's linked work package — it fell through to a raw path lookup
+  instead of failing closed with the intended permission error.
+- **Priorities, notifications, and emoji reactions were never masked by
+  their `OPENPROJECT_HIDE_*_FIELDS` setting**, the same class of gap already
+  fixed for other domains above — file links had a call site for this but no
+  matching config entry, making it a permanent no-op.
+- **`list_grids` never paginated at all** (an unbounded fetch-all, unlike
+  every other `list_*` method); it now clamps and paginates client-side,
+  matching `list_boards`.
+- **`update_project`'s `parent` reassignment now requires write access on
+  the NEW parent project too, not just on the project being updated.**
+  Previously the new parent was only read-checked, so a caller with write
+  access to one project could attach it under a project they could only
+  read — the same gap `update_board`'s reparent-target fix already closed
+  for boards.
+- **A project created via `copy_project` was invisible to every
+  link-shaped allowlist check until the process restarted**, the same gap
+  an earlier fix already closed for `create_project`/`update_project`.
+  `copy_project` itself never observes the new project's numeric id, since
+  it only starts an async copy job and returns immediately; `get_job_status`
+  now resolves and remembers the copied project's real identifier once the
+  job's `createdProject` link reports it. An earlier version of this fix
+  triggered on a `type` field OpenProject's real `createdProject` payload
+  never actually sends (only `href`/`title`), so it silently never fired —
+  found via a Codex review and corrected to key off the link's presence
+  instead.
+- **`create_work_package`/`update_work_package`'s `parent_work_package_id`
+  reassignment now requires write access on the NEW parent work package's
+  project too, not just read access.** Previously the new parent was only
+  read-checked, so a caller with write access to one project could attach
+  a work package under a parent in a project they could only read — the
+  same gap `update_project`'s/`update_board`'s reparent-target fixes
+  already closed. Found via a Codex review of the `update_project` fix
+  above.
+- **`create_work_package_relation`/`update_relation`'s `type` field and
+  `create_work_package_attachment`'s `file_name` field now honor
+  `OPENPROJECT_HIDE_RELATION_FIELDS`/`OPENPROJECT_HIDE_ATTACHMENT_FIELDS`
+  on writes.** Both are mandatory fields written unconditionally, unlike
+  the optional `description` field the existing guards already covered —
+  found via a Codex review of the attachment/reminder/relation
+  hidden-fields fix above.
+- **A `403` from OpenProject now includes OpenProject's own error message**,
+  instead of always showing the same generic "denied access to this
+  resource" text with no further detail — e.g. a project's required module
+  not being enabled for a non-admin user was previously indistinguishable
+  from any other permission denial.
+
+---
+
 ## 0.3.2 – 2026-07-20
 
 ### Fixed
