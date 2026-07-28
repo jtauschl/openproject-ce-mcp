@@ -634,36 +634,20 @@ async def test_hidden_notification_fields_are_tagged_and_dropped_from_payload() 
 
 
 @pytest.mark.asyncio
-async def test_hidden_emoji_reaction_fields_are_tagged_and_dropped_from_payload() -> None:
-    # Regression test for a real gap found during the Statuses/Priorities/Types
-    # migration's broader audit (OPM-1627): normalize_emoji_reaction previously
-    # never called _apply_hidden_fields at all, and config.py's
-    # HIDE_FIELD_ENV_BY_ENTITY had no "emoji_reaction" entry either. Weaker
-    # signal than Priority/Notification (no forcing same-shaped sibling), fixed
-    # for consistency per explicit user decision. Emoji Reactions is part of
-    # the still-flat Work Package Activities & Reactions domain (OPM-1624).
-    client = OpenProjectClient(
-        _base_settings(hidden_fields={"emoji_reaction": ("users",)}),
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
-    )
-
-    reaction = client.normalize_emoji_reaction(
-        {
-            "reaction": "thumbs_up",
-            "emoji": "\U0001f44d",
-            "reactionsCount": 2,
-            "_links": {"reactingUsers": [{"title": "Ada Lovelace"}, {"title": "Alan Turing"}]},
-        }
-    )
-
-    assert reaction._hidden_keys == frozenset({"users"})
-    assert reaction.users == ["Ada Lovelace", "Alan Turing"]  # preserved on the dataclass
-    assert reaction.reaction == "thumbs_up"
-    serialized = _to_payload(reaction)
-    assert "users" not in serialized
-    assert serialized["reaction"] == "thumbs_up"
-
-    await client.aclose()
+# Emoji Reactions' hidden-field-masking regression coverage (originally
+# test_hidden_emoji_reaction_fields_are_tagged_and_dropped_from_payload,
+# added for OPM-1627's config-map gap fix) moved to
+# tests/unit/test_app_httpx_emoji_reaction_api.py (normalize_emoji_reaction's
+# pure HAL->model shape) and tests/unit/test_app_emoji_reaction_service.py
+# (test_list_for_work_package_masks_hidden_users,
+# test_toggle_masks_hidden_users_in_commit_result,
+# test_users_hidden_by_emoji_reaction_scope_not_watcher_scope) after the
+# Emoji Reactions domain migration (OPM-290, scoped to
+# list_work_package_reactions + toggle_activity_emoji_reaction only) --
+# client.normalize_emoji_reaction no longer exists. The real env-var-driven
+# path (OPENPROJECT_HIDE_EMOJI_REACTION_FIELDS) is unaffected by this
+# migration and continues to be exercised via config.py's
+# HIDE_FIELD_ENV_BY_ENTITY map.
 
 
 # Watchers' hidden-field-masking regression coverage (originally

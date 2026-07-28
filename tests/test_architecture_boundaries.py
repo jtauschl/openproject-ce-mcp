@@ -963,3 +963,39 @@ def test_watcher_service_binds_the_api_and_resolver_params_to_the_right_protocol
     assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
         "WatcherService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
     )
+
+
+def test_emoji_reaction_service_binds_its_three_dependencies_to_the_right_protocols() -> None:
+    """Emoji Reactions is the third domain to consume the OPM-318 seams,
+    matching File Links' three-Protocol shape (not Watchers' two): toggle()'s
+    work-package id is already a concrete int derived from the activity's own
+    link (not a caller-supplied reference), so it uses WorkPackageLookupApi
+    directly rather than WorkPackageIdResolver/WorkPackageProjectAllowedCheck
+    -- the same reasoning as FileLinkService.delete()."""
+    from openproject_ce_mcp.app.adapters.httpx_emoji_reaction_api import HttpxEmojiReactionApi
+    from openproject_ce_mcp.app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
+    from openproject_ce_mcp.app.ports.emoji_reaction_api import EmojiReactionApi
+    from openproject_ce_mcp.app.ports.work_package_lookup_api import WorkPackageLookupApi
+    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageIdResolver
+    from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
+    from openproject_ce_mcp.app.services.emoji_reaction_service import EmojiReactionService
+
+    hints = typing.get_type_hints(EmojiReactionService.__init__)
+    assert hints["api"] is EmojiReactionApi, "EmojiReactionService.__init__'s api param must be typed EmojiReactionApi"
+    assert hints["api"] is not HttpxEmojiReactionApi, (
+        "EmojiReactionService.__init__'s api param must not be the concrete adapter"
+    )
+
+    assert hints["work_package_lookup_api"] is WorkPackageLookupApi, (
+        "EmojiReactionService.__init__'s work_package_lookup_api param must be typed WorkPackageLookupApi"
+    )
+    assert hints["work_package_lookup_api"] is not HttpxWorkPackageLookupApi, (
+        "EmojiReactionService.__init__'s work_package_lookup_api param must not be the concrete adapter"
+    )
+
+    assert hints["resolve_work_package_id"] is WorkPackageIdResolver, (
+        "EmojiReactionService.__init__'s resolve_work_package_id param must be typed WorkPackageIdResolver"
+    )
+    assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
+        "EmojiReactionService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
+    )

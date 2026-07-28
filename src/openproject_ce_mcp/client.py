@@ -19,6 +19,7 @@ from .app.adapters.httpx_action_capability_api import HttpxActionCapabilityApi
 from .app.adapters.httpx_board_api import HttpxBoardApi
 from .app.adapters.httpx_category_api import HttpxCategoryApi
 from .app.adapters.httpx_document_api import HttpxDocumentApi
+from .app.adapters.httpx_emoji_reaction_api import HttpxEmojiReactionApi
 from .app.adapters.httpx_extended_metadata_api import HttpxExtendedMetadataApi
 from .app.adapters.httpx_file_link_api import HttpxFileLinkApi
 from .app.adapters.httpx_grid_api import HttpxGridApi
@@ -63,6 +64,7 @@ from .app.ports.action_capability_api import ActionCapabilityApi
 from .app.ports.board_api import BoardApi
 from .app.ports.category_api import CategoryApi
 from .app.ports.document_api import DocumentApi
+from .app.ports.emoji_reaction_api import EmojiReactionApi
 from .app.ports.extended_metadata_api import ExtendedMetadataApi
 from .app.ports.file_link_api import FileLinkApi
 from .app.ports.grid_api import GridApi
@@ -92,6 +94,7 @@ from .app.services.action_capability_service import ActionCapabilityService
 from .app.services.board_service import BoardService
 from .app.services.category_service import CategoryService
 from .app.services.document_service import DocumentService
+from .app.services.emoji_reaction_service import EmojiReactionService
 from .app.services.extended_metadata_service import ExtendedMetadataService
 from .app.services.file_link_service import FileLinkService
 from .app.services.grid_service import GridService
@@ -141,7 +144,6 @@ from .models import (
     DocumentSummary,
     DocumentWriteResult,
     EmojiReactionListResult,
-    EmojiReactionSummary,
     EmojiReactionWriteResult,
     FavoriteWriteResult,
     FileLinkListResult,
@@ -539,6 +541,15 @@ class OpenProjectClient:
         self._watcher_service = WatcherService(
             api=self._watcher_api,
             settings=settings,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
+        )
+
+        self._emoji_reaction_api: EmojiReactionApi = HttpxEmojiReactionApi(HttpxTransport(self._http))
+        self._emoji_reaction_service = EmojiReactionService(
+            api=self._emoji_reaction_api,
+            work_package_lookup_api=self._work_package_lookup_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
             resolve_work_package_id=self._work_package_resolver.resolve_id,
         )
 
@@ -2906,98 +2917,13 @@ class OpenProjectClient:
 
     # --- Emoji reactions (on work-package comment activities) ---
 
-    # Valid reactions per the OpenProject API spec.
-    EMOJI_REACTIONS = (
-        "thumbs_up",
-        "thumbs_down",
-        "grinning_face_with_smiling_eyes",
-        "confused_face",
-        "heart",
-        "party_popper",
-        "rocket",
-        "eyes",
-    )
-
-    def normalize_emoji_reaction(self, payload: dict[str, Any]) -> EmojiReactionSummary:
-        users = [
-            _trim_text(u.get("title"), limit=SUBJECT_LIMIT) or ""
-            for u in payload.get("_links", {}).get("reactingUsers", [])
-            if isinstance(u, dict)
-        ]
-        return self._apply_hidden_fields(
-            "emoji_reaction",
-            EmojiReactionSummary(
-                reaction=payload.get("reaction", ""),
-                emoji=payload.get("emoji"),
-                count=int(payload.get("reactionsCount", 0)),
-                users=[u for u in users if u],
-            ),
-        )
-
-    def _emoji_reactions_result(self, payload: dict[str, Any]) -> EmojiReactionListResult:
-        elements = payload.get("_embedded", {}).get("elements", [])
-        results = [self.normalize_emoji_reaction(item) for item in elements if isinstance(item, dict)]
-        return EmojiReactionListResult(count=len(results), results=results)
-
     async def list_work_package_reactions(self, work_package_id: int | str) -> EmojiReactionListResult:
-        self._ensure_read_enabled("work_package")
-        work_package_id = self._work_package_ref(work_package_id)
-        await self.get_work_package(work_package_id)
-        payload = await self._get(f"work_packages/{work_package_id}/activities_emoji_reactions")
-        return self._emoji_reactions_result(payload)
+        return await self._emoji_reaction_service.list_for_work_package(work_package_id)
 
     async def toggle_activity_emoji_reaction(
         self, activity_id: int, reaction: str, *, confirm: bool = False
     ) -> EmojiReactionWriteResult:
-        if reaction not in self.EMOJI_REACTIONS:
-            raise InvalidInputError(f"reaction must be one of: {', '.join(self.EMOJI_REACTIONS)}.")
-        # Enforce the project write allowlist against the activity's work package.
-        # Fail closed: if the activity has no resolvable workPackage link, refuse
-        # rather than patch an unchecked target. This check always runs, even in
-        # preview mode — it is an authorization gate, not the mutation itself.
-        activity = await self._get(f"activities/{activity_id}")
-        work_package_ref = _id_from_href(activity.get("_links", {}).get("workPackage", {}).get("href"))
-        if not work_package_ref:
-            raise OpenProjectServerError(
-                "OpenProject activity is missing a work package link; cannot verify project write access."
-            )
-        work_package_payload = await self._get(f"work_packages/{work_package_ref}")
-        self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
-        if not confirm:
-            # The resulting add/remove state is not predicted here — OpenProject
-            # decides that server-side and doing so ourselves would need an extra
-            # lookup. The preview names the toggle's nature instead.
-            return EmojiReactionWriteResult(
-                action="toggle_reaction",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message=(
-                    f"Toggles the '{reaction}' reaction on activity {activity_id} — adds it if not "
-                    "already present, removes it if present. Ask for confirmation, then call again "
-                    "with confirm=true to apply it."
-                ),
-                activity_id=activity_id,
-                reaction=reaction,
-                result=None,
-            )
-        self._ensure_write_enabled("work_package")
-        # PATCH toggles: adds the reaction if absent, removes it if present, and
-        # returns the full reaction collection for the activity afterwards.
-        payload = await self._patch(
-            f"activities/{activity_id}/emoji_reactions",
-            json_body={"reaction": reaction},
-        )
-        return EmojiReactionWriteResult(
-            action="toggle_reaction",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message=f"Toggled '{reaction}' reaction on activity {activity_id}.",
-            activity_id=activity_id,
-            reaction=reaction,
-            result=self._emoji_reactions_result(payload),
-        )
+        return await self._emoji_reaction_service.toggle(activity_id, reaction, confirm=confirm)
 
     # --- Reminders (personal, on work packages) ---
 
