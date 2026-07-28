@@ -11,12 +11,15 @@ is the sole masking point). `member_count` tolerates both the real API
 shape (`_embedded.members` as a flat array) and a `{count, ...}`/
 `{total, ...}` collection-object shape defensively, matching the original's
 own tolerance.
+
+`web_url` (imported from `_text.py`) replaces a local copy here, promoted
+during the Watchers migration's step-6 self-audit (OPM-294) once it crossed
+the "3+ identical copies" threshold across adapters.
 """
 
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urljoin
 
 from ...models import GroupDetail, GroupSummary
 from ..ports.group_api import GroupRecord
@@ -28,6 +31,7 @@ from ._text import link_title as _link_title
 from ._text import link_to_web_url as _link_to_web_url
 from ._text import origin_from_url as _origin_from_url
 from ._text import trim_text as _trim_text
+from ._text import web_url as _web_url
 
 
 def _member_count(payload: dict[str, Any]) -> int:
@@ -52,7 +56,7 @@ def normalize_group(payload: dict[str, Any], *, base_url: str) -> GroupSummary:
         updated_at=payload.get("updatedAt"),
         can_update=_can_update_from_links(links),
         can_delete=bool(links.get("delete")),
-        url=_web_url(payload["id"], base_url=base_url),
+        url=_web_url(f"groups/{payload['id']}", base_url=base_url),
     )
 
 
@@ -95,11 +99,6 @@ def normalize_group_detail(
         can_delete=summary.can_delete,
         url=summary.url,
     )
-
-
-def _web_url(group_id: Any, *, base_url: str) -> str:
-    """Verbatim port of client.py's `_web_url(f"groups/{payload['id']}")`."""
-    return urljoin(f"{base_url.rstrip('/')}/", f"groups/{group_id}")
 
 
 class HttpxGroupApi:

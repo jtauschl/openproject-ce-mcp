@@ -2,20 +2,18 @@
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
 `_id_from_href`/`_link_title`/`_delimit_user_content`/`_link_to_web_url`/
-`_origin_from_url`/`SUBJECT_LIMIT` are shared via `app/adapters/_text.py`.
-
-`_web_url` has no shared equivalent (Documents builds its `url` field
-inline with a raw urljoin call in normalize_document, not through a
-helper) -- this is a small Wiki-Pages-local free function verified against
-client.py's bound-method original (client.py:4512-4513: `_web_url(self,
-relative_path)` -> `urljoin(f"{self.settings.base_url.rstrip('/')}/",
+`_origin_from_url`/`_web_url`/`SUBJECT_LIMIT` are shared via
+`app/adapters/_text.py`. `web_url` was promoted there during the Watchers
+migration's step-6 self-audit (OPM-294) once it crossed the "3+ identical
+copies" threshold -- previously a local free function here, verified
+against client.py's bound-method original (client.py:4512-4513:
+`_web_url(self, relative_path)` -> `urljoin(f"{self.settings.base_url.rstrip('/')}/",
 relative_path.lstrip('/'))`).
 """
 
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urljoin
 
 from ...models import WikiPageDetail
 from ..ports.wiki_page_api import WikiPageRecord
@@ -27,15 +25,9 @@ from ._text import link_title as _link_title
 from ._text import link_to_web_url as _link_to_web_url
 from ._text import origin_from_url as _origin_from_url
 from ._text import trim_text as _trim_text
+from ._text import web_url as _web_url
 
 CONTENT_LIMIT = 50_000
-
-
-def _web_url(relative_path: str, *, base_url: str) -> str:
-    """Verbatim port of client.py's _web_url (a relative-path -> absolute
-    web URL join, no same-origin check needed since the input is always a
-    same-server relative path, not a foreign href)."""
-    return urljoin(f"{base_url.rstrip('/')}/", relative_path.lstrip("/"))
 
 
 def normalize_wiki_page(payload: dict[str, Any], *, base_url: str, origin: str) -> WikiPageDetail:

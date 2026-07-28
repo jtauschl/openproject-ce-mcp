@@ -1,7 +1,9 @@
 """HTTP-backed UserApi adapter (14th migrated domain).
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
-`SUBJECT_LIMIT`/`link_to_web_url` are shared via `app/adapters/_text.py`.
+`SUBJECT_LIMIT`/`link_to_web_url`/`web_url` are shared via
+`app/adapters/_text.py` (`web_url` promoted there during the Watchers
+migration's step-6 self-audit, OPM-294, replacing a local copy here).
 No `_visible_formattable_text`/inner masking gate to port -- User has no
 formattable-text field at all (every field is a plain scalar or a
 link-derived title), so the outer `hidden_fields.apply_hidden_fields`
@@ -13,7 +15,7 @@ single `_apply_hidden_fields` call.
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import quote, urljoin
+from urllib.parse import quote
 
 from ...models import UserDetail, UserSummary
 from ..ports.user_api import UserFormResult, UserRecord
@@ -23,6 +25,7 @@ from ._text import link_title as _link_title
 from ._text import link_to_web_url as _link_to_web_url
 from ._text import origin_from_url as _origin_from_url
 from ._text import trim_text as _trim_text
+from ._text import web_url as _web_url
 
 
 def _normalize_validation_errors(value: Any) -> dict[str, str]:
@@ -59,7 +62,7 @@ def normalize_user(payload: dict[str, Any], *, base_url: str, origin: str) -> Us
         else None,
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
-        url=_web_url(payload["id"], base_url=base_url),
+        url=_web_url(f"users/{payload['id']}", base_url=base_url),
         firstname=_trim_text(payload.get("firstName"), limit=SUBJECT_LIMIT),
         lastname=_trim_text(payload.get("lastName"), limit=SUBJECT_LIMIT),
     )
@@ -104,11 +107,6 @@ def normalize_user_detail(
         firstname=summary.firstname,
         lastname=summary.lastname,
     )
-
-
-def _web_url(user_id: Any, *, base_url: str) -> str:
-    """Verbatim port of client.py's `_web_url(f"users/{payload['id']}")`."""
-    return urljoin(f"{base_url.rstrip('/')}/", f"users/{user_id}")
 
 
 class HttpxUserApi:
