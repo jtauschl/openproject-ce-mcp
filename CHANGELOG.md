@@ -101,6 +101,13 @@ development baseline.
   access to one project could attach it under a project they could only
   read — the same gap `update_board`'s reparent-target fix already closed
   for boards.
+- **A project created via `copy_project` was invisible to every
+  link-shaped allowlist check until the process restarted**, the same gap
+  an earlier fix already closed for `create_project`/`update_project`.
+  `copy_project` itself never observes the new project's numeric id, since
+  it only starts an async copy job and returns immediately; `get_job_status`
+  now resolves and remembers the copied project's real identifier once the
+  job reports it as the created resource.
 
 ---
 

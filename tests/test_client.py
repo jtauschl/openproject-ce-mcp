@@ -4157,6 +4157,112 @@ async def test_get_job_status_allows_source_project_link_when_allowlisted() -> N
 
 
 @pytest.mark.asyncio
+async def test_get_job_status_remembers_copied_projects_real_identifier_in_the_shared_cache() -> None:
+    """Regression test (OPM-316): a project created via copy_project was
+    invisible to every link-shaped allowlist check until the process
+    restarted, because _project_id_to_identifier was never written through
+    on the async copy-job-completion path (unlike create_project/
+    update_project, which an earlier fix already closed). A completed copy
+    job's createdProject link is the only place the new project's numeric
+    id becomes known; this resolves it to its REAL identifier (not just the
+    job status response's own display title) and writes it through."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/job_statuses/77":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "JobStatus",
+                    "id": 77,
+                    "status": "success",
+                    "_links": {
+                        "self": {"href": "/api/v3/job_statuses/77"},
+                        "createdProject": {"href": "/api/v3/projects/99", "title": "Demo Copy", "type": "Project"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/99" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 99, "identifier": "demo-copy", "name": "Demo Copy"},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    await client.get_job_status(77)
+
+    assert client._project_id_to_identifier[99] == "demo-copy"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_job_status_does_not_resolve_project_for_non_project_created_resources() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/job_statuses/77":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "JobStatus",
+                    "id": 77,
+                    "status": "success",
+                    "_links": {
+                        "self": {"href": "/api/v3/job_statuses/77"},
+                        "createdResource": {"href": "/api/v3/work_packages/5", "type": "WorkPackage"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    await client.get_job_status(77)
+
+    assert client._project_id_to_identifier == {}
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_job_status_tolerates_the_copied_project_being_unresolvable() -> None:
+    """A race (the copied project was deleted right after the copy
+    completed) must not fail the job-status read itself -- the caller is
+    asking about the JOB, not the project."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/job_statuses/77":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "JobStatus",
+                    "id": 77,
+                    "status": "success",
+                    "_links": {
+                        "self": {"href": "/api/v3/job_statuses/77"},
+                        "createdProject": {"href": "/api/v3/projects/99", "title": "Demo Copy", "type": "Project"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/99" and request.method == "GET":
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.get_job_status(77)
+
+    assert result.id == 77
+    assert client._project_id_to_identifier == {}
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_work_package_watchers_denies_anchor_outside_read_allowlist() -> None:
     """list_work_package_watchers must check the anchor WP's own project.
 

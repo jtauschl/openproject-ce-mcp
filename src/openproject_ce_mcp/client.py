@@ -661,7 +661,33 @@ class OpenProjectClient:
         project_link = links.get("project") or links.get("sourceProject")
         if isinstance(project_link, dict):
             self._ensure_project_link_allowed(project_link)
-        return self.normalize_job_status(payload)
+        detail = self.normalize_job_status(payload)
+        if detail.created_resource_type == "Project" and detail.created_resource_id is not None:
+            await self._remember_copied_project_identifier(detail.created_resource_id)
+        return detail
+
+    async def _remember_copied_project_identifier(self, project_id: int) -> None:
+        """Keep _project_id_to_identifier in sync with a completed copy_project job.
+
+        A project copied through this server was otherwise invisible to
+        every link-shaped allowlist check until the process restarted, the
+        same gap _remember_project_identifier closes for create_project/
+        update_project -- but copy_project itself never observes the new
+        project's numeric id, since it only starts the async copy job and
+        returns immediately. This is the one place that id becomes known.
+        Best-effort: a race (the project was deleted right after the copy
+        completed, or scope tightened) must not fail the job-status read
+        itself -- the caller is asking about the JOB, not the project. Do
+        NOT swallow other errors (e.g. a transient 5xx) the same way -- see
+        _work_package_project_allowed's identical distinction.
+        """
+        try:
+            new_project_payload = await self._get(f"projects/{project_id}")
+        except NotFoundError:
+            return
+        identifier = new_project_payload.get("identifier")
+        if identifier:
+            self._project_id_to_identifier[project_id] = identifier
 
     async def list_roles(self) -> RoleListResult:
         self._ensure_read_enabled("role")
