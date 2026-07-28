@@ -1193,6 +1193,214 @@ async def test_hidden_custom_field_is_rejected_on_write() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hidden_attachment_field_is_rejected_on_write() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        hidden_fields={"attachment": ("description",)},
+        enable_work_package_write=True,
+        attachment_root="/tmp",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_ATTACHMENT_FIELDS"):
+        await client.create_work_package_attachment(
+            work_package_id=42, file_path="/tmp/note.txt", description="secret", confirm=False
+        )
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hidden_reminder_field_is_rejected_on_create() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        hidden_fields={"reminder": ("note",)},
+        enable_work_package_write=True,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_REMINDER_FIELDS"):
+        await client.create_work_package_reminder(
+            work_package_id=42, remind_at="2026-08-01T09:00:00Z", note="secret", confirm=False
+        )
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hidden_reminder_field_is_rejected_on_update() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/reminders/9" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 9, "_links": {"remindable": {"href": "/api/v3/work_packages/42"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        hidden_fields={"reminder": ("note",)},
+        enable_work_package_write=True,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_REMINDER_FIELDS"):
+        await client.update_reminder(reminder_id=9, note="secret", confirm=False)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hidden_relation_field_is_rejected_on_update() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations/3" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 3,
+                    "type": "blocks",
+                    "_links": {
+                        "from": {"href": "/api/v3/work_packages/42"},
+                        "to": {"href": "/api/v3/work_packages/43"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        hidden_fields={"relation": ("description",)},
+        enable_work_package_write=True,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_RELATION_FIELDS"):
+        await client.update_relation(relation_id=3, description="secret", confirm=False)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hidden_group_field_is_rejected_on_create() -> None:
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        hidden_fields={"group": ("name",)},
+        enable_admin_write=True,
+    )
+    client = OpenProjectClient(
+        settings, transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request))
+    )
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_GROUP_FIELDS"):
+        await client.create_group(name="secret-team", confirm=False)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hidden_group_field_is_rejected_on_update() -> None:
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        hidden_fields={"group": ("name",)},
+        enable_admin_write=True,
+    )
+    client = OpenProjectClient(
+        settings, transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request))
+    )
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_GROUP_FIELDS"):
+        await client.update_group(group_id=5, name="renamed", confirm=False)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_work_packages_resolves_type_and_version_filters() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/demo":

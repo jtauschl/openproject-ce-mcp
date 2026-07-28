@@ -84,6 +84,17 @@ development baseline.
   unreadable project; only the anchor work package's own project was
   checked, the same gap `get_work_package_relations` already closed for the
   identical concern.
+- **Attachment, reminder, and relation writes now honor their hidden-fields
+  configuration**, not just reads. `create_work_package_attachment`'s
+  `description`, `create_work_package_reminder`/`update_reminder`'s
+  `note`/`remind_at`, and `update_relation`'s `description` could all still
+  be written even when configured as hidden — the same class of gap already
+  fixed for Users/Grids above. `update_relation` was additionally
+  asymmetric with its own sibling `create_work_package_relation`, which
+  already rejected a hidden `description`.
+- **`create_group`/`update_group` now honor `OPENPROJECT_HIDE_GROUP_FIELDS`
+  on writes**, not just reads. Same gap as the `OPENPROJECT_HIDE_USER_FIELDS`
+  fix above.
 
 ---
 

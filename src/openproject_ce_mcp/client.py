@@ -1632,6 +1632,8 @@ class OpenProjectClient:
         work_package_id = self._work_package_ref(work_package_id)
         work_package_payload = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
+        if description is not None:
+            self._ensure_field_writable("attachment", "description")
         file_info = self._prepare_attachment_file(file_path, include_bytes=confirm)
         await self._validate_attachment_size(file_info["file_size"])
         if not confirm:
@@ -3972,8 +3974,10 @@ class OpenProjectClient:
         work_package_ref = self._work_package_ref(work_package_id)
         current = await self._get(f"work_packages/{work_package_ref}")
         self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
+        self._ensure_field_writable("reminder", "remind_at")
         payload: dict[str, Any] = {"remindAt": remind_at}
         if note is not None:
+            self._ensure_field_writable("reminder", "note")
             payload["note"] = note
         if not confirm:
             return ReminderWriteResult(
@@ -4028,8 +4032,10 @@ class OpenProjectClient:
         await self._ensure_reminder_project_write_allowed(reminder_id)
         payload: dict[str, Any] = {}
         if remind_at is not None:
+            self._ensure_field_writable("reminder", "remind_at")
             payload["remindAt"] = remind_at
         if note is not None:
+            self._ensure_field_writable("reminder", "note")
             payload["note"] = note
         if not payload:
             raise InvalidInputError("At least one field (remind_at or note) is required.")
@@ -4635,8 +4641,10 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> GroupWriteResult:
         self._ensure_write_enabled("admin")
+        self._ensure_field_writable("group", "name")
         body: dict[str, Any] = {"name": name}
         if user_ids:
+            self._ensure_field_writable("group", "members")
             body["_links"] = {"members": [{"href": self._api_href(f"users/{uid}")} for uid in user_ids]}
         payload_preview = {"name": name, "user_ids": user_ids or []}
         if not confirm:
@@ -4677,10 +4685,12 @@ class OpenProjectClient:
         self._ensure_write_enabled("admin")
         body: dict[str, Any] = {}
         if name is not None:
+            self._ensure_field_writable("group", "name")
             body["name"] = name
         # The groups PATCH endpoint requires a complete members list (full replacement, not delta).
         # Fetch current members and compute the new complete set from add/remove requests.
         if add_user_ids or remove_user_ids:
+            self._ensure_field_writable("group", "members")
             current_payload = await self._get(f"groups/{group_id}")
             current_member_links = current_payload.get("_links", {}).get("members", [])
             if not isinstance(current_member_links, list):
@@ -5198,6 +5208,7 @@ class OpenProjectClient:
         if relation_type is not None:
             body["type"] = relation_type
         if description is not None:
+            self._ensure_field_writable("relation", "description")
             body["description"] = description
         if not confirm:
             return RelationUpdateResult(
