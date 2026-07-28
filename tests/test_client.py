@@ -5017,9 +5017,7 @@ async def test_raise_for_status_403_includes_the_original_openproject_message() 
     much harder to find -- the original OpenProject message must survive."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            403, json={"message": "You are not authorized to access this resource."}, request=request
-        )
+        return httpx.Response(403, json={"message": "You are not authorized to access this resource."}, request=request)
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
