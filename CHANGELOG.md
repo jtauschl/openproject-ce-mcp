@@ -302,6 +302,10 @@ development baseline.
   resource" text with no further detail — e.g. a project's required module
   not being enabled for a non-admin user was previously indistinguishable
   from any other permission denial.
+- **`Publish to PyPI` and `Tests` GitHub Actions workflows now pin
+  `actions/checkout` and `astral-sh/setup-uv` to a full-length commit SHA**,
+  as required by this repository's action-pinning ruleset. The previous
+  `@v7` tag references caused every workflow run to be rejected outright.
 
 ---
 

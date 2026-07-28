@@ -59,9 +59,7 @@ class RoleService:
         all_results = [
             hidden_fields.apply_hidden_fields("role", record.summary, settings=self._settings) for record in records
         ]
-        page, total, next_offset, truncated = paginate_client(
-            offset=offset, limit=effective_limit, results=all_results
-        )
+        page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=all_results)
         return RoleListResult(
             offset=offset,
             limit=effective_limit,
