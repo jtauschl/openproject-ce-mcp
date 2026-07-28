@@ -2431,7 +2431,42 @@ class OpenProjectClient:
         self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
         # Default (text_limit=None) returns the full description uncapped: opening
         # a single work package means you want to read/edit it, so nothing is cut.
-        return self.normalize_work_package_detail(payload, text_limit=text_limit)
+        detail = self.normalize_work_package_detail(payload, text_limit=text_limit)
+        return await self._filter_hierarchy_allowlist(detail)
+
+    async def _filter_hierarchy_allowlist(self, detail: WorkPackageDetail) -> WorkPackageDetail:
+        """Drop children/ancestors entries outside OPENPROJECT_READ_PROJECTS.
+
+        OpenProject's parent/child hierarchy is not project-constrained, so a
+        linked work package's subject/display_id can belong to a project the
+        caller isn't allowed to read. Only the anchor work package's own
+        project is checked by the caller; this filters the raw hierarchy
+        links the same way ``_relation_endpoints_allowed`` already filters
+        relation endpoints.
+        """
+        if _scope_allows_all(self.settings.read_projects):
+            return detail
+        cache: dict[str, bool] = {}
+
+        async def keep(entries: list[dict[str, str | None]] | None) -> list[dict[str, str | None]] | None:
+            if not entries:
+                return entries
+            filtered = []
+            for entry in entries:
+                href = entry.get("href")
+                if not href:
+                    continue
+                if href not in cache:
+                    cache[href] = await self._work_package_project_allowed(href)
+                if cache[href]:
+                    filtered.append(entry)
+            return filtered or None
+
+        return replace(
+            detail,
+            children=await keep(detail.children),
+            ancestors=await keep(detail.ancestors),
+        )
 
     async def get_work_packages(
         self,
@@ -4195,7 +4230,9 @@ class OpenProjectClient:
 
     async def list_work_package_watchers(self, work_package_id: int | str) -> WatcherListResult:
         self._ensure_read_enabled("work_package")
-        work_package_id = self._work_package_ref(work_package_id)
+        # Resolving the id already confirms the anchor work package itself is
+        # allowed against OPENPROJECT_READ_PROJECTS before its watchers are fetched.
+        work_package_id = await self._resolve_work_package_id(work_package_id)
         payload = await self._get(f"work_packages/{work_package_id}/watchers")
         results = [
             self.normalize_watcher(item)
@@ -4729,7 +4766,9 @@ class OpenProjectClient:
 
     async def list_work_package_file_links(self, work_package_id: int | str) -> FileLinkListResult:
         self._ensure_read_enabled("work_package")
-        work_package_id = self._work_package_ref(work_package_id)
+        # Resolving the id already confirms the anchor work package itself is
+        # allowed against OPENPROJECT_READ_PROJECTS before its file links are fetched.
+        work_package_id = await self._resolve_work_package_id(work_package_id)
         payload = await self._get(f"work_packages/{work_package_id}/file_links")
         results = [
             self.normalize_file_link(item)

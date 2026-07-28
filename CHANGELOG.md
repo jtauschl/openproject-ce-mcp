@@ -70,6 +70,20 @@ development baseline.
   `project`/`project_id` fields were already populated from `project` with
   a `sourceProject` fallback, so a payload scoped only via `sourceProject`
   bypassed the check entirely despite exposing that project's data.
+- **`list_work_package_watchers`/`list_work_package_file_links` no longer
+  leak watcher and file link data outside `OPENPROJECT_READ_PROJECTS`.**
+  Neither method checked the allowlist at all, not even against the anchor
+  work package's own project — unlike their write-path siblings
+  (`add_work_package_watcher`/`remove_work_package_watcher`,
+  `delete_file_link`), which already resolved the containing work package
+  and checked it first.
+- **`get_work_package` no longer leaks a linked work package's subject and
+  identifier through `children`/`ancestors` outside
+  `OPENPROJECT_READ_PROJECTS`.** OpenProject's parent/child hierarchy is not
+  project-constrained, so a linked work package could belong to a different,
+  unreadable project; only the anchor work package's own project was
+  checked, the same gap `get_work_package_relations` already closed for the
+  identical concern.
 
 ---
 

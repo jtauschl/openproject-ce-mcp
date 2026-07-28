@@ -3949,6 +3949,142 @@ async def test_get_job_status_allows_source_project_link_when_allowlisted() -> N
 
 
 @pytest.mark.asyncio
+async def test_list_work_package_watchers_denies_anchor_outside_read_allowlist() -> None:
+    """list_work_package_watchers must check the anchor WP's own project.
+
+    Previously it fetched work_packages/{id}/watchers directly with no
+    allowlist check at all, leaking watcher names/emails for any WP id."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/9" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 9, "_links": {"project": {"href": "/api/v3/projects/2", "title": "secret"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("allowed",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError):
+        await client.list_work_package_watchers(9)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_package_file_links_denies_anchor_outside_read_allowlist() -> None:
+    """list_work_package_file_links must check the anchor WP's own project.
+
+    Previously it fetched work_packages/{id}/file_links directly with no
+    allowlist check at all, leaking file link filenames/URLs for any WP id."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/9" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 9, "_links": {"project": {"href": "/api/v3/projects/2", "title": "secret"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("allowed",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError):
+        await client.list_work_package_file_links(9)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_work_package_filters_children_and_ancestors_by_read_allowlist() -> None:
+    """get_work_package drops a child/ancestor entry outside OPENPROJECT_READ_PROJECTS.
+
+    OpenProject's parent/child hierarchy is not project-constrained, so a
+    linked work package's subject/display_id must not leak just because it's
+    referenced from an anchor work package the caller IS allowed to read."""
+    wp_project = {5: "allowed", 6: "secret", 7: "allowed", 8: "secret"}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/1" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "subject": "Anchor",
+                    "_links": {
+                        "project": {"href": "/api/v3/projects/1", "title": "allowed"},
+                        "children": [
+                            {"href": "/api/v3/work_packages/5", "title": "Kept child"},
+                            {"href": "/api/v3/work_packages/6", "title": "Secret child"},
+                        ],
+                        "ancestors": [
+                            {"href": "/api/v3/work_packages/7", "title": "Kept ancestor"},
+                            {"href": "/api/v3/work_packages/8", "title": "Secret ancestor"},
+                        ],
+                    },
+                },
+                request=request,
+            )
+        match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if match:
+            wp = int(match.group(1))
+            return httpx.Response(
+                200,
+                json={"id": wp, "_links": {"project": {"title": wp_project[wp]}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("allowed",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    detail = await client.get_work_package(1)
+
+    child_titles = {c["title"] for c in detail.children or []}
+    ancestor_titles = {a["title"] for a in detail.ancestors or []}
+    assert child_titles == {"Kept child"}
+    assert ancestor_titles == {"Kept ancestor"}
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_time_entry_crud_and_activity_listing() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/time_entries/activities":
