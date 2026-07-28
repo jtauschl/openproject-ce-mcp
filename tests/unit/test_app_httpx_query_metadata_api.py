@@ -62,11 +62,15 @@ def test_normalize_query_operator_falls_back_to_self_link_title() -> None:
 
 
 def test_normalize_query_sort_by_falls_back_to_direction_link_title() -> None:
+    # No requested_id passed -- id is derived from the self-link, which carries
+    # OpenProject's real hyphen-joined form ("subject-asc"), not the client's
+    # colon-separated public id ("subject:asc"). See get_sort_by for the
+    # colon-form preservation via requested_id.
     sort_by = normalize_query_sort_by(
         {
             "name": "Subject asc",
             "_links": {
-                "self": {"href": "/api/v3/queries/sort_bys/subject:asc"},
+                "self": {"href": "/api/v3/queries/sort_bys/subject-asc"},
                 "column": {"title": "Subject"},
                 "direction": {"title": "ascending"},
             },
@@ -74,7 +78,7 @@ def test_normalize_query_sort_by_falls_back_to_direction_link_title() -> None:
         base_url=BASE_URL,
         origin=BASE_URL,
     )
-    assert sort_by.id == "subject:asc"
+    assert sort_by.id == "subject-asc"
     assert sort_by.column == "Subject"
     assert sort_by.direction == "ascending"
 
@@ -116,16 +120,17 @@ async def test_get_filter_percent_encodes_the_id_in_the_path() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_sort_by_percent_encodes_special_characters_in_the_id() -> None:
+async def test_get_sort_by_translates_colon_to_hyphen_and_preserves_requested_id() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
-        # "subject:asc" must be percent-encoded so the colon can't be
-        # misread as part of the URL syntax -- verbatim port of client.py's
-        # quote(sort_by_id, safe="") call. httpx.Request.url.raw_path keeps
-        # the encoded bytes; .path decodes them back for display.
-        assert request.url.raw_path == b"/api/v3/queries/sort_bys/subject%3Aasc"
+        # OPM-322: OpenProject's sort_bys route is "queries/sort_bys/:id-:direction"
+        # (hyphen-joined, verified against op-sources/17.6's
+        # query_sort_bys_api.rb and path_helper.rb), not a bare id segment like
+        # filters/columns/operators. The client must request the hyphen form,
+        # not the caller-facing colon form ("subject:asc" -> "subject-asc").
+        assert request.url.raw_path == b"/api/v3/queries/sort_bys/subject-asc"
         return httpx.Response(
             200,
-            json={"_links": {"self": {"href": "/api/v3/queries/sort_bys/subject:asc"}}},
+            json={"_links": {"self": {"href": "/api/v3/queries/sort_bys/subject-asc"}}},
             request=request,
         )
 
@@ -133,6 +138,8 @@ async def test_get_sort_by_percent_encodes_special_characters_in_the_id() -> Non
         api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
         record = await api.get_sort_by("subject:asc")
 
+    # The public id stays in the colon form the caller passed in, even though
+    # the server's own self-link href uses the hyphen form.
     assert record.summary.id == "subject:asc"
 
 

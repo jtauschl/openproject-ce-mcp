@@ -10,8 +10,19 @@ original private helper of the same name and shape.
 
 Every single-item GET path segment is `quote(<id>, safe="")`-encoded, matching
 client.py's original (verbatim) -- these ids can contain characters like `:`
-or `=` (e.g. sort-by id `"subject:asc"`, operator id `"=""`) that would
-otherwise corrupt the URL path if passed through unescaped.
+or `=` (e.g. operator id `"=""`) that would otherwise corrupt the URL path if
+passed through unescaped. `filters`/`columns`/`operators`/
+`filter_instance_schemas` quote the raw id directly.
+
+`sort_bys` is the one exception, not just an encoding detail (OPM-322): the
+route is `queries/sort_bys/:id-:direction` (hyphen-joined, verified against
+`op-sources/17.6/lib/api/v3/queries/sort_bys/query_sort_bys_api.rb:58` and
+`path_helper.rb:448-449`), not a bare id segment like the other four
+resources. `get_sort_by` therefore transforms the caller's colon-separated id
+(`"subject:asc"`) into the hyphen-joined path (`"subject-asc"`) before
+quoting, and passes the original colon-form id through to
+`normalize_query_sort_by` as `requested_id` so the public `id` field stays
+stable regardless of the server's own hyphen-form self-link.
 """
 
 from __future__ import annotations
@@ -80,9 +91,12 @@ def normalize_query_operator(payload: dict[str, Any], *, base_url: str, origin: 
     )
 
 
-def normalize_query_sort_by(payload: dict[str, Any], *, base_url: str, origin: str) -> QuerySortBySummary:
+def normalize_query_sort_by(
+    payload: dict[str, Any], *, base_url: str, origin: str, requested_id: str | None = None
+) -> QuerySortBySummary:
     links = payload.get("_links", {})
-    self_link, href, sort_by_id = _query_ref_identity(links, payload)
+    self_link, href, derived_id = _query_ref_identity(links, payload)
+    sort_by_id = requested_id if requested_id is not None else derived_id
     column_link = links.get("column")
     direction_link = links.get("direction")
     direction = _trim_text(payload.get("direction"), limit=SUBJECT_LIMIT)
@@ -144,8 +158,14 @@ class HttpxQueryMetadataApi:
         )
 
     async def get_sort_by(self, sort_by_id: str) -> QuerySortByRecord:
-        payload = await self._transport.get_json(f"queries/sort_bys/{quote(sort_by_id, safe='')}")
-        return QuerySortByRecord(summary=normalize_query_sort_by(payload, base_url=self._base_url, origin=self._origin))
+        column, _, direction = sort_by_id.partition(":")
+        path_id = f"{column}-{direction}" if direction else sort_by_id
+        payload = await self._transport.get_json(f"queries/sort_bys/{quote(path_id, safe='')}")
+        return QuerySortByRecord(
+            summary=normalize_query_sort_by(
+                payload, base_url=self._base_url, origin=self._origin, requested_id=sort_by_id
+            )
+        )
 
     async def list_filter_instance_schemas(self, *, project_id: int | None) -> list[QueryFilterInstanceSchemaRecord]:
         path = (

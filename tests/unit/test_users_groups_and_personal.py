@@ -376,14 +376,14 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
                 json={"name": "Equals", "_links": {"self": {"href": "/api/v3/queries/operators/%3D"}}},
                 request=request,
             )
-        if request.url.path in {"/api/v3/queries/sort_bys/subject%3Aasc", "/api/v3/queries/sort_bys/subject:asc"}:
+        if request.url.path == "/api/v3/queries/sort_bys/subject-asc":
             return httpx.Response(
                 200,
                 json={
                     "name": "Subject asc",
                     "direction": "asc",
                     "_links": {
-                        "self": {"href": "/api/v3/queries/sort_bys/subject:asc"},
+                        "self": {"href": "/api/v3/queries/sort_bys/subject-asc"},
                         "column": {"title": "Subject"},
                     },
                 },
