@@ -897,3 +897,42 @@ def test_work_package_resolver_methods_structurally_satisfy_the_seam_protocols()
     assert [_comparable(p) for p in allowed_params] == [_comparable(p) for p in protocol_params], (
         "WorkPackageResolver.project_link_allowed no longer structurally satisfies WorkPackageProjectAllowedCheck"
     )
+
+
+def test_file_link_service_binds_its_three_dependencies_to_the_right_protocols() -> None:
+    """File Links (OPM-296) is the first domain to actually consume the
+    OPM-318 seams (previously declared but zero consumers). FileLinkService
+    has THREE Protocol dependencies, not the usual one -- FileLinkApi (its
+    own domain Port), WorkPackageLookupApi (a second domain Port, used
+    directly for delete()'s raw work-package-payload fetch rather than
+    through the resolver), and WorkPackageIdResolver (the actual OPM-318
+    seam, used by list_for_work_package()'s anchor resolution). All three
+    must be pinned to their Protocol, not the concrete adapter/resolver
+    method -- a Codex review of this migration's plan specifically flagged
+    that pinning only two of the three would leave the domain's headline new
+    seam (WorkPackageIdResolver) unverified."""
+    from openproject_ce_mcp.app.adapters.httpx_file_link_api import HttpxFileLinkApi
+    from openproject_ce_mcp.app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
+    from openproject_ce_mcp.app.ports.file_link_api import FileLinkApi
+    from openproject_ce_mcp.app.ports.work_package_lookup_api import WorkPackageLookupApi
+    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageIdResolver
+    from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
+    from openproject_ce_mcp.app.services.file_link_service import FileLinkService
+
+    hints = typing.get_type_hints(FileLinkService.__init__)
+    assert hints["api"] is FileLinkApi, "FileLinkService.__init__'s api param must be typed FileLinkApi"
+    assert hints["api"] is not HttpxFileLinkApi, "FileLinkService.__init__'s api param must not be the concrete adapter"
+
+    assert hints["work_package_lookup_api"] is WorkPackageLookupApi, (
+        "FileLinkService.__init__'s work_package_lookup_api param must be typed WorkPackageLookupApi"
+    )
+    assert hints["work_package_lookup_api"] is not HttpxWorkPackageLookupApi, (
+        "FileLinkService.__init__'s work_package_lookup_api param must not be the concrete adapter"
+    )
+
+    assert hints["resolve_work_package_id"] is WorkPackageIdResolver, (
+        "FileLinkService.__init__'s resolve_work_package_id param must be typed WorkPackageIdResolver"
+    )
+    assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
+        "FileLinkService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
+    )

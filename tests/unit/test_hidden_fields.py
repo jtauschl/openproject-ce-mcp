@@ -583,46 +583,19 @@ def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() -> None:
     assert "created_at" not in serialized
 
 
-@pytest.mark.asyncio
-async def test_hidden_file_link_fields_are_tagged_and_dropped_from_payload() -> None:
-    # normalize_file_link DOES call _apply_hidden_fields("file_link", ...) --
-    # but config.py's HIDE_FIELD_ENV_BY_ENTITY had no "file_link" entry at all
-    # (found during the Statuses/Priorities/Types migration's broader "N
-    # individual exceptions" audit, OPM-1627), so OPENPROJECT_HIDE_FILE_LINK_FIELDS
-    # never existed as a real env var and settings.hidden_fields could never
-    # contain a "file_link" key -- a permanent, silent no-op in practice.
-    # This test itself was a false positive throughout: it passed even before
-    # the config.py fix, because _base_settings(hidden_fields={...}) injects
-    # directly into Settings.hidden_fields, bypassing HIDE_FIELD_ENV_BY_ENTITY
-    # entirely -- it never actually exercised the real env-var-driven path a
-    # user would hit. See test_file_link_fields_respect_the_env_var_driven_config
-    # below for a test that exercises the real path and would have failed
-    # pre-fix.
-    # (Grid's equivalent regression coverage moved to
-    # tests/unit/test_app_grid_service.py's test_get_applies_hidden_field_masking
-    # after the Grids domain migration -- client.normalize_grid no longer exists.)
-    client = OpenProjectClient(
-        _base_settings(hidden_fields={"file_link": ("storage_name",)}),
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
-    )
-
-    file_link = client.normalize_file_link(
-        {
-            "id": 1,
-            "title": "spec.pdf",
-            "createdAt": "2026-01-01T00:00:00Z",
-            "updatedAt": "2026-06-01T00:00:00Z",
-            "_links": {"storage": {"href": "/api/v3/storages/1", "title": "Nextcloud"}},
-        }
-    )
-    assert file_link._hidden_keys == frozenset({"storage_name"})
-    assert file_link.storage_name == "Nextcloud"  # preserved on the dataclass
-    assert file_link.storage_id == 1
-    serialized_file_link = _to_payload(file_link)
-    assert "storage_name" not in serialized_file_link
-    assert serialized_file_link["storage_id"] == 1
-
-    await client.aclose()
+# File Link's hidden-field-masking regression coverage (originally
+# test_hidden_file_link_fields_are_tagged_and_dropped_from_payload, added for
+# OPM-1627's config-map gap fix) moved to
+# tests/unit/test_app_httpx_file_link_api.py (normalize_file_link's pure
+# HAL->model shape) and tests/unit/test_app_file_link_service.py
+# (test_list_for_work_package_masks_hidden_storage_name,
+# test_delete_preview_masks_hidden_storage_name,
+# test_storage_name_hidden_by_file_link_scope_not_grid_scope) after the File
+# Links domain migration (OPM-296) -- client.normalize_file_link no longer
+# exists. The real env-var-driven path (OPENPROJECT_HIDE_FILE_LINK_FIELDS)
+# is exercised by
+# test_settings_from_env_loads_priority_notification_file_link_emoji_reaction_hidden_fields
+# in tests/test_config.py, unaffected by this migration.
 
 
 @pytest.mark.asyncio

@@ -20,6 +20,7 @@ from .app.adapters.httpx_board_api import HttpxBoardApi
 from .app.adapters.httpx_category_api import HttpxCategoryApi
 from .app.adapters.httpx_document_api import HttpxDocumentApi
 from .app.adapters.httpx_extended_metadata_api import HttpxExtendedMetadataApi
+from .app.adapters.httpx_file_link_api import HttpxFileLinkApi
 from .app.adapters.httpx_grid_api import HttpxGridApi
 from .app.adapters.httpx_group_api import HttpxGroupApi
 from .app.adapters.httpx_job_status_api import HttpxJobStatusApi
@@ -62,6 +63,7 @@ from .app.ports.board_api import BoardApi
 from .app.ports.category_api import CategoryApi
 from .app.ports.document_api import DocumentApi
 from .app.ports.extended_metadata_api import ExtendedMetadataApi
+from .app.ports.file_link_api import FileLinkApi
 from .app.ports.grid_api import GridApi
 from .app.ports.group_api import GroupApi
 from .app.ports.job_status_api import JobStatusApi
@@ -89,6 +91,7 @@ from .app.services.board_service import BoardService
 from .app.services.category_service import CategoryService
 from .app.services.document_service import DocumentService
 from .app.services.extended_metadata_service import ExtendedMetadataService
+from .app.services.file_link_service import FileLinkService
 from .app.services.grid_service import GridService
 from .app.services.group_service import GroupService
 from .app.services.job_status_service import JobStatusService
@@ -139,7 +142,6 @@ from .models import (
     EmojiReactionWriteResult,
     FavoriteWriteResult,
     FileLinkListResult,
-    FileLinkSummary,
     FileLinkWriteResult,
     GridListResult,
     GridSummary,
@@ -518,6 +520,15 @@ class OpenProjectClient:
             api=self._work_package_lookup_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
+        )
+
+        self._file_link_api: FileLinkApi = HttpxFileLinkApi(HttpxTransport(self._http), api_prefix=self._api_prefix)
+        self._file_link_service = FileLinkService(
+            api=self._file_link_api,
+            work_package_lookup_api=self._work_package_lookup_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
         )
 
     async def initialize(self) -> None:
@@ -3511,17 +3522,7 @@ class OpenProjectClient:
     # --- File Links ---
 
     async def list_work_package_file_links(self, work_package_id: int | str) -> FileLinkListResult:
-        self._ensure_read_enabled("work_package")
-        # Resolving the id already confirms the anchor work package itself is
-        # allowed against OPENPROJECT_READ_PROJECTS before its file links are fetched.
-        work_package_id = await self._resolve_work_package_id(work_package_id)
-        payload = await self._get(f"work_packages/{work_package_id}/file_links")
-        results = [
-            self.normalize_file_link(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        return FileLinkListResult(count=len(results), results=results)
+        return await self._file_link_service.list_for_work_package(work_package_id)
 
     async def delete_file_link(
         self,
@@ -3529,33 +3530,7 @@ class OpenProjectClient:
         *,
         confirm: bool = False,
     ) -> FileLinkWriteResult:
-        self._ensure_read_enabled("work_package")
-        fl_payload = await self._get(f"file_links/{file_link_id}")
-        file_link = self.normalize_file_link(fl_payload)
-        # Derive work_package_id from the container link
-        links = fl_payload.get("_links", {})
-        container_href = links.get("container", {}).get("href") if isinstance(links.get("container"), dict) else None
-        work_package_id = _id_from_href(container_href)
-        # Enforce the project write allowlist against the container work package,
-        # not just the global write flag. Fail closed when the container cannot be
-        # resolved: _ensure_project_write_link_allowed(None) rejects unless the
-        # write scope is unconfigured / "*".
-        if work_package_id:
-            work_package_payload = await self._get(f"work_packages/{work_package_id}")
-            self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
-        else:
-            self._ensure_project_write_link_allowed(None)
-        return await self._finalize_delete(
-            result_cls=FileLinkWriteResult,
-            confirm=confirm,
-            result_kwargs={"file_link_id": file_link.id, "work_package_id": work_package_id},
-            preview_result=file_link,
-            commit_result=None,
-            write_scope="work_package",
-            delete_path=f"file_links/{file_link_id}",
-            preview_message="OpenProject found the file link. Ask for confirmation, then call again with confirm=true to delete it.",
-            success_message="File link deleted successfully.",
-        )
+        return await self._file_link_service.delete(file_link_id, confirm=confirm)
 
     # --- Grids ---
 
@@ -4438,26 +4413,6 @@ class OpenProjectClient:
                 work_package_subject=work_package_subject,
                 created_at=payload.get("createdAt") or "",
                 url=self._api_href(f"notifications/{notification_id}"),
-            ),
-        )
-
-    def normalize_file_link(self, payload: dict[str, Any]) -> FileLinkSummary:
-        file_link_id = int(payload["id"])
-        links = payload.get("_links", {})
-        storage_link = links.get("storage")
-        storage_id = _id_from_href(storage_link.get("href")) if isinstance(storage_link, dict) else None
-        storage_name = _link_title(storage_link)
-        return self._apply_hidden_fields(
-            "file_link",
-            FileLinkSummary(
-                id=file_link_id,
-                title=_trim_text(payload.get("title") or payload.get("originData", {}).get("name"), limit=SUBJECT_LIMIT)
-                or f"File link {file_link_id}",
-                storage_id=storage_id,
-                storage_name=storage_name,
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-                url=self._api_href(f"file_links/{file_link_id}"),
             ),
         )
 
