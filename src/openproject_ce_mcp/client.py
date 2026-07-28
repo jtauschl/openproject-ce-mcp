@@ -29,6 +29,7 @@ from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
 from .app.adapters.httpx_query_metadata_api import HttpxQueryMetadataApi
+from .app.adapters.httpx_reminder_api import HttpxReminderApi
 from .app.adapters.httpx_role_api import HttpxRoleApi
 from .app.adapters.httpx_sprint_api import HttpxSprintApi
 from .app.adapters.httpx_status_priority_type_api import HttpxStatusPriorityTypeApi
@@ -75,6 +76,7 @@ from .app.ports.news_api import NewsApi
 from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
 from .app.ports.query_metadata_api import QueryMetadataApi
+from .app.ports.reminder_api import ReminderApi
 from .app.ports.role_api import RoleApi
 from .app.ports.sprint_api import SprintApi
 from .app.ports.status_priority_type_api import StatusPriorityTypeApi
@@ -105,6 +107,7 @@ from .app.services.news_service import NewsService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
 from .app.services.query_metadata_service import QueryMetadataService
+from .app.services.reminder_service import ReminderService
 from .app.services.role_service import RoleService
 from .app.services.sprint_service import SprintService
 from .app.services.status_priority_type_service import StatusPriorityTypeService
@@ -197,7 +200,6 @@ from .models import (
     RelationUpdateResult,
     RelationWriteResult,
     ReminderListResult,
-    ReminderSummary,
     ReminderWriteResult,
     RenderedText,
     RoleListResult,
@@ -551,6 +553,18 @@ class OpenProjectClient:
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
             resolve_work_package_id=self._work_package_resolver.resolve_id,
+        )
+
+        self._reminder_api: ReminderApi = HttpxReminderApi(
+            HttpxTransport(self._http), base_url=settings.base_url, origin=self._origin
+        )
+        self._reminder_service = ReminderService(
+            api=self._reminder_api,
+            work_package_lookup_api=self._work_package_lookup_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            work_package_project_allowed=self._work_package_resolver.project_link_allowed,
         )
 
     async def initialize(self) -> None:
@@ -2927,39 +2941,8 @@ class OpenProjectClient:
 
     # --- Reminders (personal, on work packages) ---
 
-    def normalize_reminder(self, payload: dict[str, Any]) -> ReminderSummary:
-        links = payload.get("_links", {})
-        creator = payload.get("_embedded", {}).get("creator", {})
-        return self._apply_hidden_fields(
-            "reminder",
-            ReminderSummary(
-                id=int(payload["id"]),
-                remind_at=payload.get("remindAt"),
-                note=_trim_text(payload.get("note"), limit=SUBJECT_LIMIT),
-                work_package_id=_id_from_href(links.get("remindable", {}).get("href")),
-                creator=_trim_text(creator.get("name"), limit=SUBJECT_LIMIT) if isinstance(creator, dict) else None,
-                url=self._link_to_web_url(links.get("self", {}).get("href")),
-            ),
-        )
-
     async def list_reminders(self) -> ReminderListResult:
-        self._ensure_read_enabled("work_package")
-        if not self.settings.read_projects:
-            return ReminderListResult(count=0, results=[])  # deny-all: skip the network call entirely
-        payload = await self._get("reminders")
-        elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
-        if not _scope_allows_all(self.settings.read_projects):
-            cache = WorkPackageAllowedContext()
-            filtered = []
-            for item in elements:
-                href = item.get("_links", {}).get("remindable", {}).get("href")
-                if not href:
-                    continue  # can't verify -> fail closed
-                if await self._work_package_project_allowed(href, context=cache):
-                    filtered.append(item)
-            elements = filtered
-        results = [self.normalize_reminder(item) for item in elements]
-        return ReminderListResult(count=len(results), results=results)
+        return await self._reminder_service.list_all()
 
     async def create_work_package_reminder(
         self,
@@ -2969,55 +2952,9 @@ class OpenProjectClient:
         note: str | None = None,
         confirm: bool = False,
     ) -> ReminderWriteResult:
-        work_package_ref = self._work_package_ref(work_package_id)
-        current = await self._get(f"work_packages/{work_package_ref}")
-        self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
-        self._ensure_field_writable("reminder", "remind_at")
-        payload: dict[str, Any] = {"remindAt": remind_at}
-        if note is not None:
-            self._ensure_field_writable("reminder", "note")
-            payload["note"] = note
-        if not confirm:
-            return ReminderWriteResult(
-                action="create",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to create this reminder. Ask for confirmation, then call again with confirm=true.",
-                reminder_id=None,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        self._ensure_write_enabled("work_package")
-        # One active reminder per work package/user: a second create returns 409,
-        # surfaced as InvalidInputError with the API's "update or delete" message.
-        response = await self._post(f"work_packages/{work_package_ref}/reminders", json_body=payload)
-        result = self.normalize_reminder(response)
-        return ReminderWriteResult(
-            action="create",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Reminder created successfully.",
-            reminder_id=result.id,
-            payload=payload,
-            validation_errors={},
-            result=result,
+        return await self._reminder_service.create(
+            work_package_id=work_package_id, remind_at=remind_at, note=note, confirm=confirm
         )
-
-    async def _ensure_reminder_project_write_allowed(self, reminder_id: int) -> None:
-        """Apply the project write allowlist to the reminder's work package."""
-        current = await self._get(f"reminders/{reminder_id}")
-        remindable = current.get("_links", {}).get("remindable")
-        if not isinstance(remindable, dict) or not remindable.get("href"):
-            # Fail closed: an unresolvable work-package link must not be bypassed,
-            # even under a fully open READ_PROJECTS=*/WRITE_PROJECTS=* scope.
-            raise PermissionDeniedError(
-                "OpenProject writes to this reminder are disabled by OPENPROJECT_WRITE_PROJECTS."
-            )
-        work_package = await self._get(self._link_to_api_path(remindable["href"]))
-        self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
 
     async def update_reminder(
         self,
@@ -3027,56 +2964,12 @@ class OpenProjectClient:
         note: str | None = None,
         confirm: bool = False,
     ) -> ReminderWriteResult:
-        await self._ensure_reminder_project_write_allowed(reminder_id)
-        payload: dict[str, Any] = {}
-        if remind_at is not None:
-            self._ensure_field_writable("reminder", "remind_at")
-            payload["remindAt"] = remind_at
-        if note is not None:
-            self._ensure_field_writable("reminder", "note")
-            payload["note"] = note
-        if not payload:
-            raise InvalidInputError("At least one field (remind_at or note) is required.")
-        if not confirm:
-            return ReminderWriteResult(
-                action="update",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to update this reminder. Ask for confirmation, then call again with confirm=true.",
-                reminder_id=reminder_id,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        self._ensure_write_enabled("work_package")
-        response = await self._patch(f"reminders/{reminder_id}", json_body=payload)
-        result = self.normalize_reminder(response)
-        return ReminderWriteResult(
-            action="update",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Reminder updated successfully.",
-            reminder_id=result.id,
-            payload=payload,
-            validation_errors={},
-            result=result,
+        return await self._reminder_service.update(
+            reminder_id=reminder_id, remind_at=remind_at, note=note, confirm=confirm
         )
 
     async def delete_reminder(self, *, reminder_id: int, confirm: bool = False) -> ReminderWriteResult:
-        await self._ensure_reminder_project_write_allowed(reminder_id)
-        return await self._finalize_delete(
-            result_cls=ReminderWriteResult,
-            confirm=confirm,
-            result_kwargs={"reminder_id": reminder_id, "payload": {}},
-            preview_result=None,
-            commit_result=None,
-            write_scope="work_package",
-            delete_path=f"reminders/{reminder_id}",
-            preview_message="OpenProject is ready to delete this reminder. Ask for confirmation, then call again with confirm=true.",
-            success_message="Reminder deleted successfully.",
-        )
+        return await self._reminder_service.delete(reminder_id=reminder_id, confirm=confirm)
 
     # --- Project favorites (via the workspaces endpoint) ---
 

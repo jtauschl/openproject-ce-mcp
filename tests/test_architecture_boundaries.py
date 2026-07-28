@@ -999,3 +999,49 @@ def test_emoji_reaction_service_binds_its_three_dependencies_to_the_right_protoc
     assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
         "EmojiReactionService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
     )
+
+
+def test_reminder_service_binds_its_four_dependencies_to_the_right_protocols() -> None:
+    """Reminders (OPM-291) is the fourth domain to consume the OPM-318 seams
+    and the widest seam surface of any domain migrated this session: list()
+    fans out across N different work packages (one per reminder, not a
+    single anchor), so it needs WorkPackageProjectAllowedCheck +
+    WorkPackageAllowedContext (not used by File Links/Watchers/Emoji
+    Reactions, whose list() methods each scope to one already-resolved
+    anchor); create() resolves a genuine caller-supplied reference via
+    WorkPackageIdResolver(ref, write=True) (Watchers' shape); update()/
+    delete() derive an already-concrete work-package id from the reminder's
+    own remindable link via WorkPackageLookupApi directly (Emoji Reactions'/
+    File Links' shape). All four Protocol dependencies must be pinned."""
+    from openproject_ce_mcp.app.adapters.httpx_reminder_api import HttpxReminderApi
+    from openproject_ce_mcp.app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
+    from openproject_ce_mcp.app.ports.reminder_api import ReminderApi
+    from openproject_ce_mcp.app.ports.work_package_lookup_api import WorkPackageLookupApi
+    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageIdResolver, WorkPackageProjectAllowedCheck
+    from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
+    from openproject_ce_mcp.app.services.reminder_service import ReminderService
+
+    hints = typing.get_type_hints(ReminderService.__init__)
+    assert hints["api"] is ReminderApi, "ReminderService.__init__'s api param must be typed ReminderApi"
+    assert hints["api"] is not HttpxReminderApi, "ReminderService.__init__'s api param must not be the concrete adapter"
+
+    assert hints["work_package_lookup_api"] is WorkPackageLookupApi, (
+        "ReminderService.__init__'s work_package_lookup_api param must be typed WorkPackageLookupApi"
+    )
+    assert hints["work_package_lookup_api"] is not HttpxWorkPackageLookupApi, (
+        "ReminderService.__init__'s work_package_lookup_api param must not be the concrete adapter"
+    )
+
+    assert hints["resolve_work_package_id"] is WorkPackageIdResolver, (
+        "ReminderService.__init__'s resolve_work_package_id param must be typed WorkPackageIdResolver"
+    )
+    assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
+        "ReminderService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
+    )
+
+    assert hints["work_package_project_allowed"] is WorkPackageProjectAllowedCheck, (
+        "ReminderService.__init__'s work_package_project_allowed param must be typed WorkPackageProjectAllowedCheck"
+    )
+    assert hints["work_package_project_allowed"] is not WorkPackageResolver, (
+        "ReminderService.__init__'s work_package_project_allowed param must not be the concrete resolver class"
+    )

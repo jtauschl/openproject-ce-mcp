@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+import json
+
+import httpx
+import pytest
+
+from openproject_ce_mcp.app.adapters.httpx_reminder_api import HttpxReminderApi, normalize_reminder
+from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
+
+BASE_URL = "https://op.example.com"
+
+
+def _client(handler) -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        base_url=f"{BASE_URL}/api/v3/", transport=httpx.MockTransport(handler), follow_redirects=True
+    )
+
+
+def _reminder_payload(reminder_id: int = 7, *, remindable_href: str | None = "/api/v3/work_packages/42") -> dict:
+    payload: dict = {
+        "id": reminder_id,
+        "remindAt": "2026-12-01T09:00:00.000Z",
+        "note": "n",
+        "_embedded": {"creator": {"name": "Alice"}},
+        "_links": {"self": {"href": f"/api/v3/reminders/{reminder_id}"}},
+    }
+    if remindable_href is not None:
+        payload["_links"]["remindable"] = {"href": remindable_href}
+    return payload
+
+
+@pytest.mark.asyncio
+async def test_list_all_requests_reminders_and_builds_records() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/reminders"
+        return httpx.Response(200, json={"_embedded": {"elements": [_reminder_payload()]}}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxReminderApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        records = await api.list_all()
+
+    assert len(records) == 1
+    assert records[0].summary().id == 7
+    assert records[0].summary().work_package_id == 42
+    assert records[0].summary().creator == "Alice"
+    assert records[0].remindable_link == {"href": "/api/v3/work_packages/42"}
+
+
+@pytest.mark.asyncio
+async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxReminderApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        records = await api.list_all()
+
+    assert records == []
+
+
+@pytest.mark.asyncio
+async def test_get_requests_single_reminder() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/reminders/7"
+        return httpx.Response(200, json=_reminder_payload(), request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxReminderApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        record = await api.get(7)
+
+    assert record.summary().id == 7
+
+
+@pytest.mark.asyncio
+async def test_get_remindable_link_reads_raw_link_without_full_normalization() -> None:
+    """A payload missing other required fields (e.g. id) must not crash this
+    method -- it never normalizes, unlike get()."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/reminders/7"
+        return httpx.Response(
+            200, json={"_links": {"remindable": {"href": "/api/v3/work_packages/1"}}}, request=request
+        )
+
+    async with _client(handler) as http_client:
+        api = HttpxReminderApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        remindable = await api.get_remindable_link(7)
+
+    assert remindable == {"href": "/api/v3/work_packages/1"}
+
+
+@pytest.mark.asyncio
+async def test_get_remindable_link_returns_none_when_missing() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"_links": {}}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxReminderApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        remindable = await api.get_remindable_link(7)
+
+    assert remindable is None
+
+
+@pytest.mark.asyncio
+async def test_create_posts_to_work_package_reminders_and_returns_normalized() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/work_packages/42/reminders"
+        assert request.method == "POST"
+        payload = json.loads(request.content)
+        assert payload == {"remindAt": "2026-12-01T09:00:00Z", "note": "n"}
+        return httpx.Response(201, json=_reminder_payload(), request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxReminderApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        record = await api.create(42, {"remindAt": "2026-12-01T09:00:00Z", "note": "n"})
+
+    assert record.summary().id == 7
+
+
+@pytest.mark.asyncio
+async def test_update_patches_reminder_and_returns_normalized() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/reminders/7"
+        assert request.method == "PATCH"
+        payload = json.loads(request.content)
+        assert payload == {"note": "updated"}
+        return httpx.Response(200, json=_reminder_payload(), request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxReminderApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        record = await api.update(7, {"note": "updated"})
+
+    assert record.summary().id == 7
+
+
+@pytest.mark.asyncio
+async def test_delete_sends_delete_request() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/reminders/7"
+        assert request.method == "DELETE"
+        return httpx.Response(204, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxReminderApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        await api.delete(7)
+
+
+def test_normalize_reminder_handles_missing_remindable_link() -> None:
+    summary = normalize_reminder(_reminder_payload(remindable_href=None), base_url=BASE_URL, origin=BASE_URL)
+
+    assert summary.work_package_id is None
+
+
+def test_normalize_reminder_handles_non_dict_creator() -> None:
+    payload = _reminder_payload()
+    payload["_embedded"]["creator"] = None
+
+    summary = normalize_reminder(payload, base_url=BASE_URL, origin=BASE_URL)
+
+    assert summary.creator is None
+
+
+def test_normalize_reminder_trims_long_note() -> None:
+    payload = _reminder_payload()
+    payload["note"] = "x" * 300
+
+    summary = normalize_reminder(payload, base_url=BASE_URL, origin=BASE_URL)
+
+    assert len(summary.note) == 255
+    assert summary.note.endswith("…")
