@@ -15,8 +15,8 @@ This is an *existence / symbol* check, not a semantic proof. It catches
 "same symbol, subtly different behaviour" — that is what the Docker runtime
 tests in ``docker/test/`` are for.
 
-Sources come from ``tools/api-check/fetch-sources.sh`` (gitignored clones under
-``.op-sources/<version>/``). Run that first.
+Sources come from ``tools/api-check/fetch-sources.sh`` (clones under the umbrella
+directory's ``op-sources/<version>/``, one level above this repo). Run that first.
 
 Usage:
     python tools/api-check/check_api.py             # curated symbol presence
@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCES = ROOT / ".op-sources"
+SOURCES = ROOT.parent / "op-sources"
 
 
 def _version_key(v: str) -> tuple[int, ...]:
@@ -47,7 +47,7 @@ def _version_key(v: str) -> tuple[int, ...]:
 
 
 def _discover_versions() -> list[str]:
-    """All cloned versions under .op-sources/, sorted numerically (16.0 < 17.5)."""
+    """All cloned versions under op-sources/, sorted numerically (16.0 < 17.5)."""
     if not SOURCES.exists():
         return []
     versions = [p.name for p in SOURCES.iterdir() if p.is_dir()]
@@ -297,7 +297,7 @@ CLIENT_PY = ROOT / "src" / "openproject_ce_mcp" / "client.py"
 class Constant:
     name: str
     client_values: frozenset[str]
-    source_file: str  # path under .op-sources/<version>/
+    source_file: str  # path under op-sources/<version>/
     source_regex: str  # each match group(1) is one source value
 
 

@@ -318,7 +318,7 @@ def _lock_user_handler(request: httpx.Request) -> httpx.Response:
 
 
 def _unlock_user_handler(request: httpx.Request) -> httpx.Response:
-    # OpenProject's user_transition helper (verified against .op-sources)
+    # OpenProject's user_transition helper (verified against op-sources)
     # responds 200 + the full updated UserRepresenter body for both the POST
     # and DELETE lock transitions -- no follow-up GET needed or issued.
     if request.url.path == "/api/v3/users/9/lock" and request.method == "DELETE":

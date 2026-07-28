@@ -33,7 +33,7 @@ run is a claim that every upstream field has been consciously triaged, not
 that everything is exposed:
     0  every checked field is COVERED or EXCLUDED
     1  one or more fields are UNTRIAGED
-    2  .op-sources/<version> missing (run fetch-sources.sh first)
+    2  op-sources/<version> missing (run fetch-sources.sh first)
 
 Usage:
     python tools/api-check/check_field_completeness.py             # report
@@ -53,7 +53,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCES = ROOT / ".op-sources"
+SOURCES = ROOT.parent / "op-sources"
 FIELD_COMPLETENESS_MD = Path(__file__).resolve().parent / "FIELD_COMPLETENESS.md"
 SOURCE_VERSION = "17.6"
 
@@ -449,7 +449,7 @@ def _findings_for_resource(rc: ResourceCheck, texts: list[str], model_module: An
     """The pure classification core: takes already-read source texts, no filesystem access.
 
     This is the monkeypatch-free test seam -- feed fixture Ruby snippets and
-    a fixture model namespace directly, no `.op-sources/` or real `models.py`
+    a fixture model namespace directly, no `op-sources/` or real `models.py`
     dependency required.
     """
     raw: list[RawField] = []
@@ -481,7 +481,7 @@ class MissingSourceError(RuntimeError):
     Distinct from a plain RuntimeError so `main()` can catch exactly this
     case (an incomplete sparse checkout or a stale source_files entry) and
     report it as the same kind of "sources aren't usable" condition as a
-    missing .op-sources/<version>/ directory entirely -- exit 2, not an
+    missing op-sources/<version>/ directory entirely -- exit 2, not an
     uncaught traceback defaulting to exit 1, which would be indistinguishable
     from the documented "real UNTRIAGED findings" exit 1.
     """
@@ -497,7 +497,7 @@ def build_findings() -> list[Finding]:
                 raise MissingSourceError(
                     f"check_field_completeness: curated source_files entry missing for "
                     f"resource {rc.name!r}: {sf} (checked {path}). Either "
-                    f".op-sources/{SOURCE_VERSION}/ needs tools/api-check/fetch-sources.sh, "
+                    f"op-sources/{SOURCE_VERSION}/ needs tools/api-check/fetch-sources.sh, "
                     "or this ResourceCheck's source_files needs re-verifying against "
                     "upstream (see tools/api-check/README.md)."
                 )

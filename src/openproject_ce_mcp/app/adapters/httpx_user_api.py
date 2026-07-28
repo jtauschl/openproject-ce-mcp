@@ -177,7 +177,7 @@ class HttpxUserApi:
         # DELETE .../lock already returns the full updated user representation
         # (OpenProject's user_transition helper responds with UserRepresenter
         # for both the POST and DELETE lock transitions, verified against
-        # .op-sources) -- no follow-up GET needed, mirroring commit_lock.
+        # op-sources) -- no follow-up GET needed, mirroring commit_lock.
         response = await self._transport.delete_json(f"users/{user_id}/lock")
         return normalize_user_detail(response, base_url=self._base_url, origin=self._origin)
 

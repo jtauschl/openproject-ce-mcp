@@ -218,7 +218,7 @@ def test_exit_code_two_with_write_flag_does_not_write(tmp_path, monkeypatch):
 
 
 def test_exit_code_two_when_a_single_curated_source_file_is_missing(tmp_path, monkeypatch, capsys):
-    # .op-sources/<version>/ itself exists (unlike the two tests above), but
+    # op-sources/<version>/ itself exists (unlike the two tests above), but
     # one specific ResourceCheck.source_files entry doesn't -- an incomplete
     # sparse checkout or a stale source_files entry, not "no sources at all".
     # This used to escape as an uncaught RuntimeError/traceback defaulting to

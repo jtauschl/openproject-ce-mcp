@@ -4315,7 +4315,7 @@ def _validate_optional_string_list(
 # Verified live against a real OpenProject 17.5 instance (curl against
 # GET /work_packages?sortBy=.../groupBy=...) and cross-checked against
 # app/models/queries/work_packages/selects/{property,project_phase}_select.rb
-# in .op-sources -- these are the standard (non-custom-field) attributes
+# in op-sources -- these are the standard (non-custom-field) attributes
 # OpenProject actually accepts, not a guess at plausible names. assignee/
 # assignedTo/percentage_done etc. are accepted aliases alongside the
 # canonical Rails attribute name; both are included here rather than

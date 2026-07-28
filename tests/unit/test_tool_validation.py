@@ -470,7 +470,7 @@ def test_validate_sort_by_accepts_real_sortable_columns() -> None:
     # Live-verified 2026-07-20 against real OpenProject 17.5 (Docker
     # harness) -- these column identifiers are what GET /work_packages?sortBy=
     # actually accepts (cross-checked against property_select.rb/
-    # project_phase_select.rb in .op-sources), not a guess at plausible names.
+    # project_phase_select.rb in op-sources), not a guess at plausible names.
     criteria = _validate_sort_by(["status:desc", "assigned_to", "assignee:asc", "cf_5:desc"])
     assert criteria == [
         SortCriterion(field="status", direction="desc"),

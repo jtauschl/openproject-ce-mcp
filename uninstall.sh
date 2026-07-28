@@ -20,13 +20,13 @@ if [ -n "$PYTHON_BIN" ]; then
     "$PYTHON_BIN" configure_mcp.py --uninstall || true
 fi
 
-# Remove local build/dev artifacts and the API-source clones (large, gitignored).
-rm -rf .venv .pytest_cache .ruff_cache .op-sources
+# Remove local build/dev artifacts.
+rm -rf .venv .pytest_cache .ruff_cache
 find . -type d -name "__pycache__" -prune -exec rm -rf {} +
 find . -type d -name "*.egg-info" -prune -exec rm -rf {} +
 
 echo
-echo "Local environment removed (.venv, caches, .op-sources)."
+echo "Local environment removed (.venv, caches)."
 echo "Your .mcp.json was left untouched."
 echo "If you registered the server globally in a client, that entry was removed"
 echo "above (a backup of each edited config was kept)."

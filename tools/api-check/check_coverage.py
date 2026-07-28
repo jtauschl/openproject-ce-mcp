@@ -35,7 +35,7 @@ from base64 import b64encode
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCES = ROOT / ".op-sources"
+SOURCES = ROOT.parent / "op-sources"
 CLIENT = ROOT / "src" / "openproject_ce_mcp" / "client.py"
 COVERAGE_MD = Path(__file__).resolve().parent / "COVERAGE.md"
 SOURCE_VERSION = "17.6"  # inventory reference

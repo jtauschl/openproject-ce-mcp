@@ -289,7 +289,7 @@ def _copy_script(src: Path, dest_dir: Path) -> Path:
 
 
 def _seed_artifacts(root: Path) -> None:
-    for name in (".venv", ".pytest_cache", ".ruff_cache", ".op-sources"):
+    for name in (".venv", ".pytest_cache", ".ruff_cache"):
         d = root / name
         d.mkdir()
         (d / "marker").write_text("x")
@@ -301,8 +301,7 @@ def _seed_artifacts(root: Path) -> None:
 
 def _artifacts_gone(root: Path) -> bool:
     return not any(
-        (root / rel).exists()
-        for rel in (".venv", ".pytest_cache", ".ruff_cache", ".op-sources", "pkg/__pycache__", "foo.egg-info")
+        (root / rel).exists() for rel in (".venv", ".pytest_cache", ".ruff_cache", "pkg/__pycache__", "foo.egg-info")
     )
 
 
@@ -371,7 +370,7 @@ def test_uninstall_scripts_target_the_same_static_paths() -> None:
     assert sh_match and ps1_match
     sh_paths = set(sh_match.group(1).split())
     ps1_paths = {p.strip().strip('"') for p in ps1_match.group(1).split(",")}
-    assert sh_paths == ps1_paths == {".venv", ".pytest_cache", ".ruff_cache", ".op-sources"}
+    assert sh_paths == ps1_paths == {".venv", ".pytest_cache", ".ruff_cache"}
 
 
 def _readme_section(readme: str, heading: str) -> str:
@@ -394,10 +393,10 @@ def test_readme_documents_get_ps1_destination_and_dir_override() -> None:
     assert 'Join-Path $env:USERPROFILE "openproject-ce-mcp"' in GET_PS1.read_text()
 
 
-def test_readme_uninstall_section_mentions_venv_and_op_sources() -> None:
-    # README describes .op-sources descriptively ("the API-source clones"),
-    # not by its literal env/dir name -- check what's actually there.
+def test_readme_uninstall_section_mentions_venv_and_caches() -> None:
+    # op-sources lives one level above the repo (umbrella directory) and is
+    # not touched by uninstall.sh/.ps1 -- only in-repo artifacts are removed.
     section = _readme_section((REPO_ROOT / "docs" / "installation.md").read_text(), "Uninstalling a source install")
     assert ".venv" in section
-    assert "API-source clones" in section
     assert "caches" in section
+    assert "op-sources" not in section

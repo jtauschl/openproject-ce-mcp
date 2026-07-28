@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
 # Fetch the OpenProject source at the versions we verify our API assumptions
-# against. Clones are shallow + sparse (only the API-relevant subtrees) into a
-# gitignored cache, so this stays fast and small. Read-only reference; never
-# committed.
+# against. Clones are shallow + sparse (only the API-relevant subtrees) into
+# op-sources/ one level above this repo (umbrella directory), so this stays
+# fast and small. Read-only reference; not part of this repo, never committed.
 #
 # Usage: tools/api-check/fetch-sources.sh
 #
@@ -47,7 +47,7 @@ SPARSE_PATHS=(
 )
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-DEST_BASE="$ROOT/.op-sources"
+DEST_BASE="$(dirname "$ROOT")/op-sources"
 mkdir -p "$DEST_BASE"
 
 for entry in "${VERSIONS[@]}"; do

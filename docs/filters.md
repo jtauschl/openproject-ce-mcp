@@ -146,7 +146,7 @@ Date filter parameters are mutually exclusive per field:
 All filter keys and operators verified against OpenProject CE 17.6 source code:
 - **Filter definitions:** `app/models/queries/work_packages/filter/*.rb`
 - **Strategy definitions:** `app/models/queries/filters/strategies/*.rb`
-- **Last verified:** 2026-07-17 (unchanged between 17.5 and 17.6, confirmed byte-identical in `.op-sources`)
+- **Last verified:** 2026-07-17 (unchanged between 17.5 and 17.6, confirmed byte-identical in `op-sources`)
 - **Test coverage:** payload-shape contract tests in `tests/unit/`
 
 ## See Also

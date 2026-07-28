@@ -157,7 +157,7 @@ pipx uninstall openproject-ce-mcp   # or: uv tool uninstall openproject-ce-mcp
 <summary><b>Uninstalling a source install</b></summary>
 
 If you installed from source, `uninstall.sh` / `uninstall.ps1` also remove the
-local environment (`.venv`, caches, the API-source clones) in addition to
+local environment (`.venv`, caches) in addition to
 unregistering the client entries — but note these scripts `cd` into the
 install directory first, so the project-local cleanup described above only
 covers that directory, not whatever project you actually work in. If you
