@@ -5011,6 +5011,42 @@ async def test_list_time_entry_activities_skips_projects_without_form_access() -
     await client.aclose()
 
 
+async def test_raise_for_status_403_includes_the_original_openproject_message() -> None:
+    """GitHub #10: a bare 'permission_denied' with no server detail made a real
+    diagnosis (a project's Costs module not being enabled for a non-admin user)
+    much harder to find -- the original OpenProject message must survive."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            403, json={"message": "You are not authorized to access this resource."}, request=request
+        )
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError) as exc_info:
+        await client.get_current_user()
+
+    text = str(exc_info.value)
+    assert "OpenProject denied access to this resource." in text
+    assert "You are not authorized to access this resource." in text
+
+    await client.aclose()
+
+
+async def test_raise_for_status_403_without_a_message_has_no_dangling_parens() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={}, request=request)
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError) as exc_info:
+        await client.get_current_user()
+
+    assert str(exc_info.value) == "OpenProject denied access to this resource."
+
+    await client.aclose()
+
+
 def _empty_scope_settings() -> Settings:
     return Settings(
         base_url="https://op.example.com",

@@ -5393,7 +5393,8 @@ class OpenProjectClient:
             lowered = message.lower()
             if "token" in lowered or "authenticate" in lowered:
                 raise AuthenticationError("OpenProject authentication failed.")
-            raise PermissionDeniedError("OpenProject denied access to this resource.")
+            detail = f" ({message})" if message else ""
+            raise PermissionDeniedError(f"OpenProject denied access to this resource.{detail}")
         if status_code == 404:
             raise NotFoundError("OpenProject resource not found.")
         if status_code in {400, 409, 422}:
