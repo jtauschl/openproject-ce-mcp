@@ -36,6 +36,13 @@ class HttpxRoleApi:
         self._base_url = base_url
 
     async def list_roles(self, *, offset: int, page_size: int) -> tuple[list[RoleRecord], int]:
+        # NB (OPM-324): OpenProject's RolesAPI mounts Endpoints::Index with
+        # RoleCollectionRepresenter, which subclasses UnpaginatedCollection (not
+        # OffsetPaginatedCollection) -- verified against op-sources/17.6. The
+        # server ignores offset/pageSize entirely and always returns every role,
+        # `total` included. Sent here for interface symmetry / forward-compat
+        # only; do not assume this call has already sliced the result. See
+        # RoleService.list_roles for the client-side slicing this requires.
         payload = await self._transport.get_json("roles", params={"offset": str(offset), "pageSize": str(page_size)})
         elements = payload.get("_embedded", {}).get("elements", [])
         records = [
