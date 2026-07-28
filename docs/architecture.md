@@ -108,6 +108,12 @@ tools.py (MCP presentation)
   - A domain whose returned record's parent link carries no reliable identifier/title of its own
     carries the raw HAL link dict, not just an extracted href string, since the allowlist check and
     project-candidate matching need more than `href` off it.
+  - A Port may offer a raw-`dict`-returning method alongside its normalized Record methods when
+    the original flat code read a single field off a payload without ever fully normalizing it —
+    forcing full normalization there would raise a spurious exception on a payload shape the
+    original never needed to parse completely (e.g. a payload missing an unrelated required field
+    like `id`). Confirmed recurring, not a one-off: `EmojiReactionApi.get_activity` and
+    `ReminderApi.get_remindable_link` both exist for this exact reason.
   - Small text/href-parsing helpers (`trim_text`, `id_from_href`, `link_title`,
     `delimit_user_content`, `origin_from_url`, `link_to_web_url`, `can_update_from_links`, plus
     `SUBJECT_LIMIT`) are shared via `app/adapters/_text.py`; every adapter imports what it needs
@@ -154,7 +160,13 @@ tools.py (MCP presentation)
   write=True)` also directly replaces the flat-code idiom of a manual work-package fetch plus a
   write-allowlist check on its project link, when a write method's caller-supplied reference must
   itself be resolved (as opposed to a write method already holding a concrete numeric id derived
-  from another resource's own link).
+  from another resource's own link). A `list()` that fans out across several *different* work
+  packages in one response (one per record, not a single anchor) uses
+  `WorkPackageProjectAllowedCheck` directly, paired with a fresh, request-scoped
+  `WorkPackageAllowedContext` cache (`app/ports/work_package_resolution.py`) so two records
+  sharing the same work package are checked only once — this per-record filtering is Service-level
+  logic, not a Policy module, since the check itself does I/O (a conditional work-package fetch)
+  and `app/policies/` is documented as pure, no-I/O.
 - `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under `app/` that
   imports `httpx`; `client.py`'s own HTTP calls for still-flat domains, and `retry_transport.py`,
   are unaffected and keep importing it directly. The `Transport` Protocol (`app/transport/protocol.py`)
