@@ -26,7 +26,7 @@ Example output:
 ```
 Running OpenProject MCP diagnostics...
 
-[OK] Binary: /usr/local/bin/openproject-ce-mcp (v0.3.0)
+[OK] Binary: /usr/local/bin/openproject-ce-mcp (v0.3.3)
 [OK] Clients: 2 configs found
   - Claude Code (global, detected): ~/.claude.json
   - Claude Desktop (global, detected): ~/Library/.../claude_desktop_config.json
