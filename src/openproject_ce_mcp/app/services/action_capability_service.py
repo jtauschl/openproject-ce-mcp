@@ -40,9 +40,20 @@ capabilities collection endpoint accepts only `action`/`principal`/`context`
 filters (also found during the step-6.5 review; the pre-migration client.py
 sent an undocumented `{"id": ...}` collection filter that this migration
 initially ported verbatim without re-verifying against current API docs).
-The `context` filter's project-scoping value uses the current `w{id}`
-(workspace) syntax, not the deprecated `p{id}` form the pre-migration code
-used.
+
+The `context` filter's project-scoping value is `p{id}` (project), NOT
+`w{id}` (workspace) -- this migration originally switched from the
+pre-migration `p{id}` form to `w{id}` on the assumption that workspace
+syntax was the more current/recommended form, which broke `list_capabilities`
+against OpenProject 16.x (found via a live docker/test/ integration run):
+`Queries::Capabilities::Filters::ContextFilter#split_values` only
+matches "[gp] followed by digits" on 16.0-16.6 (`w` isn't introduced until 17.0,
+where the regex becomes `[gwp]` -- verified against
+`op-sources/<version>/app/models/queries/capabilities/filters/context_filter.rb`
+across all 14 pinned versions). `p` remains accepted on every version
+16.0-17.6 despite a `@deprecated ... for 17.2` comment in the 17.x source that
+was apparently never acted on -- it is the only prefix that works across the
+whole supported version matrix, so this Service reverted to it.
 """
 
 from __future__ import annotations
@@ -136,7 +147,7 @@ class ActionCapabilityService:
                 records = [r for r in records if _context_matches_project(r.context_link, project_id)]
             total = len(records)
         else:
-            filters: list[dict[str, object]] = [{"context": {"operator": "=", "values": [f"w{project_id}"]}}]
+            filters: list[dict[str, object]] = [{"context": {"operator": "=", "values": [f"p{project_id}"]}}]
             fetched, total = await self._api.list_capabilities(
                 filters=filters, offset=offset, page_size=effective_limit
             )

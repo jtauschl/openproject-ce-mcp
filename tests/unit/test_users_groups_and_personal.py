@@ -337,7 +337,7 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
                 request=request,
             )
         if request.url.path == "/api/v3/capabilities":
-            assert request.url.params.get("filters") == '[{"context":{"operator":"=","values":["w1"]}}]'
+            assert request.url.params.get("filters") == '[{"context":{"operator":"=","values":["p1"]}}]'
             return httpx.Response(
                 200,
                 json={

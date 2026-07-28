@@ -73,12 +73,12 @@ async def test_list_actions_missing_embedded_elements_returns_empty_list() -> No
 async def test_list_capabilities_sends_filters_as_json() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/capabilities"
-        assert request.url.params.get("filters") == '[{"context":{"operator":"=","values":["w1"]}}]'
+        assert request.url.params.get("filters") == '[{"context":{"operator":"=","values":["p1"]}}]'
         return httpx.Response(
             200, json={"total": 1, "_embedded": {"elements": [_capability_payload()]}}, request=request
         )
 
-    filters = [{"context": {"operator": "=", "values": ["w1"]}}]
+    filters = [{"context": {"operator": "=", "values": ["p1"]}}]
     async with _client(handler) as http_client:
         api = HttpxActionCapabilityApi(HttpxTransport(http_client), base_url=BASE_URL)
         records, total = await api.list_capabilities(filters=filters, offset=1, page_size=20)

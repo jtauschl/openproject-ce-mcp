@@ -240,7 +240,12 @@ async def test_list_capabilities_by_id_and_project_keeps_a_matching_context() ->
 
 
 @pytest.mark.asyncio
-async def test_list_capabilities_filters_by_project_context_using_workspace_syntax() -> None:
+async def test_list_capabilities_filters_by_project_context_using_project_syntax() -> None:
+    # "p{id}", not "w{id}" -- the context filter's workspace prefix only
+    # exists from OpenProject 17.0 onward; "p" is the only prefix accepted
+    # across the whole supported version matrix (16.0-17.6, verified against
+    # op-sources). See the module docstring for the live-run regression this
+    # test now guards against.
     api = _FakeActionCapabilityApi()
     service = _service(api)
 
@@ -248,7 +253,7 @@ async def test_list_capabilities_filters_by_project_context_using_workspace_synt
 
     assert result.count == 1
     assert result.results[0].principal_name == "Alice"
-    assert api.list_capabilities_calls[0][0] == [{"context": {"operator": "=", "values": ["w6"]}}]
+    assert api.list_capabilities_calls[0][0] == [{"context": {"operator": "=", "values": ["p6"]}}]
 
 
 @pytest.mark.asyncio
