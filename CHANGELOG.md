@@ -52,6 +52,11 @@ development baseline.
 
 ### Fixed
 
+- **`get_job_status` now correctly honors `OPENPROJECT_READ_PROJECTS` for a
+  job status scoped only via its `sourceProject` link** (e.g. the response
+  returned by copying a project), instead of only checking the `project`
+  link. A job status scoped exclusively via `sourceProject` previously
+  bypassed the read allowlist entirely.
 - **`create_user`/`update_user`/`lock_user`/`unlock_user` now honor
   `OPENPROJECT_HIDE_USER_FIELDS` on writes**, not just reads. Every hidden
   field previously could still be written even though it was masked on

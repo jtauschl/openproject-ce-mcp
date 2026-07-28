@@ -623,6 +623,14 @@ async def test_job_status_documents_news_and_wiki() -> None:
                 },
                 request=request,
             )
+        if request.url.path == "/api/v3/projects/88":
+            # OPM-316: get_job_status resolves the createdProject link's real
+            # identifier for the shared allowlist cache.
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 88, "name": "Demo Copy", "identifier": "demo-copy"},
+                request=request,
+            )
         if request.url.path == "/api/v3/documents" and request.method == "GET":
             return httpx.Response(
                 200,

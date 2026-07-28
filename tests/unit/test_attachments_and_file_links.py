@@ -141,6 +141,59 @@ async def test_delete_file_link_allows_write_project() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_work_package_file_links_denies_anchor_outside_read_allowlist() -> None:
+    """list_work_package_file_links must check the anchor WP's own project.
+
+    Previously it fetched work_packages/{id}/file_links directly with no
+    allowlist check at all, leaking file link filenames/URLs for any WP id.
+    """
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/9" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 9, "_links": {"project": {"href": "/api/v3/projects/2", "title": "secret"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("allowed",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError):
+        await client.list_work_package_file_links(9)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_work_package_file_links_allows_anchor_inside_read_allowlist() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/9" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 9, "_links": {"project": {"href": "/api/v3/projects/1", "title": "allowed"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/9/file_links" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_embedded": {"elements": [{"id": 5, "originData": {"name": "spec.pdf"}}]}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("allowed",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_work_package_file_links(9)
+
+    assert result.count == 1
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_delete_file_link_reports_none_work_package_id_when_container_unresolvable() -> None:
     # A file link with no resolvable container used to fake a work_package_id
     # of 0 (a real-looking id) instead of reporting "unknown/none" as None.

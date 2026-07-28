@@ -583,6 +583,35 @@ async def test_update_denies_target_outside_write_allowlist() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_denies_reparent_into_a_project_outside_write_allowlist() -> None:
+    """Regression test: reparenting must be write-authorized on the NEW
+    parent too, not just on the project being updated. A caller with write
+    access to "demo" must not be able to attach it under "root" when they
+    only have read access there -- the same gap update_board's reparent-
+    target fix already closed for boards.
+    """
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("demo",))
+    api = _FakeProjectApi(records=[_record(project_id=6, identifier="demo"), _record(project_id=1, identifier="root")])
+    service = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await service.update(project_ref="demo", parent="root", confirm=False)
+
+    assert api.commit_update_calls == []
+
+
+@pytest.mark.asyncio
+async def test_update_allows_reparent_into_a_project_inside_write_allowlist() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("demo", "root"))
+    api = _FakeProjectApi(records=[_record(project_id=6, identifier="demo"), _record(project_id=1, identifier="root")])
+    service = _service(api, settings=settings)
+
+    result = await service.update(project_ref="demo", parent="root", confirm=False)
+
+    assert result.ready
+
+
+@pytest.mark.asyncio
 async def test_create_remembers_new_project_identifier_in_the_shared_cache() -> None:
     """Regression test for the bug where a project created through this server
     was invisible to every link-shaped allowlist check (ensure_project_link_allowed,

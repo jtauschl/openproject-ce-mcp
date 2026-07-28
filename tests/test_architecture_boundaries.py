@@ -672,6 +672,23 @@ def test_query_metadata_service_binds_the_api_param_to_query_metadata_api_specif
     )
 
 
+def test_job_status_service_binds_the_api_param_to_job_status_api_specifically() -> None:
+    """Non-generalized regression test for the Job Status domain's exact
+    guarantee, sibling to the checks above: the api param is JobStatusApi
+    exactly, not just "some Protocol". No dedicated Resolver: job_status_id
+    is a plain numeric id already validated by tools.py, not a semantic
+    reference needing lookup."""
+    from openproject_ce_mcp.app.adapters.httpx_job_status_api import HttpxJobStatusApi
+    from openproject_ce_mcp.app.ports.job_status_api import JobStatusApi
+    from openproject_ce_mcp.app.services.job_status_service import JobStatusService
+
+    hints = typing.get_type_hints(JobStatusService.__init__)
+    assert hints["api"] is JobStatusApi, "JobStatusService.__init__'s api param must be typed JobStatusApi"
+    assert hints["api"] is not HttpxJobStatusApi, (
+        "JobStatusService.__init__'s api param must not be the concrete adapter"
+    )
+
+
 # Names that once lived in app/ports/project_api.py (HAL->model normalize_*
 # translation functions and their private text/href helpers) before they moved
 # to app/adapters/httpx_project_api.py, matching the Versions domain's

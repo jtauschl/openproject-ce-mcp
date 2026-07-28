@@ -22,6 +22,7 @@ from .app.adapters.httpx_document_api import HttpxDocumentApi
 from .app.adapters.httpx_extended_metadata_api import HttpxExtendedMetadataApi
 from .app.adapters.httpx_grid_api import HttpxGridApi
 from .app.adapters.httpx_group_api import HttpxGroupApi
+from .app.adapters.httpx_job_status_api import HttpxJobStatusApi
 from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
@@ -62,6 +63,7 @@ from .app.ports.document_api import DocumentApi
 from .app.ports.extended_metadata_api import ExtendedMetadataApi
 from .app.ports.grid_api import GridApi
 from .app.ports.group_api import GroupApi
+from .app.ports.job_status_api import JobStatusApi
 from .app.ports.membership_api import MembershipApi
 from .app.ports.news_api import NewsApi
 from .app.ports.project_api import ProjectApi
@@ -84,6 +86,7 @@ from .app.services.document_service import DocumentService
 from .app.services.extended_metadata_service import ExtendedMetadataService
 from .app.services.grid_service import GridService
 from .app.services.group_service import GroupService
+from .app.services.job_status_service import JobStatusService
 from .app.services.membership_service import MembershipService
 from .app.services.news_service import NewsService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
@@ -486,6 +489,16 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
+        self._job_status_api: JobStatusApi = HttpxJobStatusApi(
+            HttpxTransport(self._http), base_url=settings.base_url, origin=self._origin
+        )
+        self._job_status_service = JobStatusService(
+            api=self._job_status_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            project_api=self._project_api,
+        )
+
         self._extended_metadata_api: ExtendedMetadataApi = HttpxExtendedMetadataApi(HttpxTransport(self._http))
         self._extended_metadata_service = ExtendedMetadataService(api=self._extended_metadata_api, settings=settings)
 
@@ -637,12 +650,7 @@ class OpenProjectClient:
         )
 
     async def get_job_status(self, job_status_id: int) -> JobStatusDetail:
-        self._ensure_read_enabled("project")
-        payload = await self._get(f"job_statuses/{job_status_id}")
-        project_link = payload.get("_links", {}).get("project")
-        if isinstance(project_link, dict):
-            self._ensure_project_link_allowed(project_link)
-        return self.normalize_job_status(payload)
+        return await self._job_status_service.get(job_status_id)
 
     async def list_roles(self, *, offset: int = 1, limit: int | None = None) -> RoleListResult:
         return await self._role_service.list_roles(offset=offset, limit=limit)
@@ -1026,6 +1034,9 @@ class OpenProjectClient:
         work_package_id = self._work_package_ref(work_package_id)
         work_package_payload = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
+        self._ensure_field_writable("attachment", "file_name")
+        if description is not None:
+            self._ensure_field_writable("attachment", "description")
         file_info = self._prepare_attachment_file(file_path, include_bytes=confirm)
         await self._validate_attachment_size(file_info["file_size"])
         if not confirm:
@@ -1827,7 +1838,42 @@ class OpenProjectClient:
         self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
         # Default (text_limit=None) returns the full description uncapped: opening
         # a single work package means you want to read/edit it, so nothing is cut.
-        return self.normalize_work_package_detail(payload, text_limit=text_limit)
+        detail = self.normalize_work_package_detail(payload, text_limit=text_limit)
+        return await self._filter_hierarchy_allowlist(detail)
+
+    async def _filter_hierarchy_allowlist(self, detail: WorkPackageDetail) -> WorkPackageDetail:
+        """Drop children/ancestors entries outside OPENPROJECT_READ_PROJECTS.
+
+        OpenProject's parent/child hierarchy is not project-constrained, so a
+        linked work package's subject/display_id can belong to a project the
+        caller isn't allowed to read. Only the anchor work package's own
+        project is checked by the caller; this filters the raw hierarchy
+        links the same way ``_relation_endpoints_allowed`` already filters
+        relation endpoints.
+        """
+        if _scope_allows_all(self.settings.read_projects):
+            return detail
+        cache: dict[str, bool] = {}
+
+        async def keep(entries: list[dict[str, str | None]] | None) -> list[dict[str, str | None]] | None:
+            if not entries:
+                return entries
+            filtered = []
+            for entry in entries:
+                href = entry.get("href")
+                if not href:
+                    continue
+                if href not in cache:
+                    cache[href] = await self._work_package_project_allowed(href)
+                if cache[href]:
+                    filtered.append(entry)
+            return filtered or None
+
+        return replace(
+            detail,
+            children=await keep(detail.children),
+            ancestors=await keep(detail.ancestors),
+        )
 
     async def get_work_packages(
         self,
@@ -1957,7 +2003,10 @@ class OpenProjectClient:
         wp_context.project_context.seed(project_id, project_payload, write=False)
         if parent_work_package_id is not None:
             # parent goes into a HAL link href, which resolves only by numeric id.
-            parent_work_package_id = await self._resolve_work_package_id(parent_work_package_id)
+            # write=True: the new parent must itself be write-authorized, not just
+            # readable -- otherwise a caller could attach a writable work package
+            # under a parent they can only read.
+            parent_work_package_id = await self._resolve_work_package_id(parent_work_package_id, write=True)
         payload = await self._build_write_payload(
             project=project_id,
             type=type,
@@ -2074,8 +2123,11 @@ class OpenProjectClient:
         if parent_work_package_id is not None and parent_work_package_id is not CLEAR_PARENT:
             # parent goes into a HAL link href, which resolves only by numeric id.
             # CLEAR_PARENT is a sentinel (un-parent) and must pass through unresolved.
+            # write=True: the new parent must itself be write-authorized, not just
+            # readable -- otherwise a caller could reparent a writable work package
+            # under a parent they can only read.
             parent_work_package_id = await self._resolve_work_package_id(
-                _narrow_cleared(parent_work_package_id, sentinel=CLEAR_PARENT)
+                _narrow_cleared(parent_work_package_id, sentinel=CLEAR_PARENT), write=True
             )
         current = await self._get(f"work_packages/{work_package_id}")
         project_id = _id_from_href(current.get("_links", {}).get("project", {}).get("href"))
@@ -2437,6 +2489,7 @@ class OpenProjectClient:
         self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
         # Reuse the numeric id from the fetch above rather than a second GET.
         source_numeric_id = int(work_package["id"])
+        self._ensure_field_writable("relation", "type")
         payload: dict[str, Any] = {
             "type": relation_type,
             "_links": {"to": {"href": self._api_href(f"work_packages/{related_numeric_id}")}},
@@ -2957,8 +3010,10 @@ class OpenProjectClient:
         work_package_ref = self._work_package_ref(work_package_id)
         current = await self._get(f"work_packages/{work_package_ref}")
         self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
+        self._ensure_field_writable("reminder", "remind_at")
         payload: dict[str, Any] = {"remindAt": remind_at}
         if note is not None:
+            self._ensure_field_writable("reminder", "note")
             payload["note"] = note
         if not confirm:
             return ReminderWriteResult(
@@ -3013,8 +3068,10 @@ class OpenProjectClient:
         await self._ensure_reminder_project_write_allowed(reminder_id)
         payload: dict[str, Any] = {}
         if remind_at is not None:
+            self._ensure_field_writable("reminder", "remind_at")
             payload["remindAt"] = remind_at
         if note is not None:
+            self._ensure_field_writable("reminder", "note")
             payload["note"] = note
         if not payload:
             raise InvalidInputError("At least one field (remind_at or note) is required.")
@@ -3129,7 +3186,9 @@ class OpenProjectClient:
 
     async def list_work_package_watchers(self, work_package_id: int | str) -> WatcherListResult:
         self._ensure_read_enabled("work_package")
-        work_package_id = self._work_package_ref(work_package_id)
+        # Resolving the id already confirms the anchor work package itself is
+        # allowed against OPENPROJECT_READ_PROJECTS before its watchers are fetched.
+        work_package_id = await self._resolve_work_package_id(work_package_id)
         payload = await self._get(f"work_packages/{work_package_id}/watchers")
         results = [
             self.normalize_watcher(item)
@@ -3441,7 +3500,9 @@ class OpenProjectClient:
 
     async def list_work_package_file_links(self, work_package_id: int | str) -> FileLinkListResult:
         self._ensure_read_enabled("work_package")
-        work_package_id = self._work_package_ref(work_package_id)
+        # Resolving the id already confirms the anchor work package itself is
+        # allowed against OPENPROJECT_READ_PROJECTS before its file links are fetched.
+        work_package_id = await self._resolve_work_package_id(work_package_id)
         payload = await self._get(f"work_packages/{work_package_id}/file_links")
         results = [
             self.normalize_file_link(item)
@@ -3678,8 +3739,10 @@ class OpenProjectClient:
         existing = self.normalize_relation(current)
         body: dict[str, Any] = {}
         if relation_type is not None:
+            self._ensure_field_writable("relation", "type")
             body["type"] = relation_type
         if description is not None:
+            self._ensure_field_writable("relation", "description")
             body["description"] = description
         if not confirm:
             return RelationUpdateResult(
@@ -4209,38 +4272,6 @@ class OpenProjectClient:
             payload, base_url=self.settings.base_url, text_limit=text_limit
         )
         return self._apply_hidden_fields("version", detail)
-
-    def normalize_job_status(self, payload: dict[str, Any]) -> JobStatusDetail:
-        links = payload.get("_links", {})
-        project_link = links.get("project") or links.get("sourceProject")
-        resource_link = links.get("createdProject") or links.get("createdResource") or links.get("result")
-        return self._apply_hidden_fields(
-            "job_status",
-            JobStatusDetail(
-                id=int(payload["id"])
-                if payload.get("id") is not None
-                else _id_from_href(links.get("self", {}).get("href")),
-                type=_trim_text(payload.get("_type"), limit=SUBJECT_LIMIT),
-                status=_trim_text(
-                    payload.get("status") or payload.get("jobStatus") or payload.get("state"), limit=SUBJECT_LIMIT
-                ),
-                message=_trim_text(payload.get("message") or payload.get("error"), limit=FORMATTABLE_LIMIT),
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-                percentage_complete=payload.get("percentageDone") or payload.get("progress"),
-                project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
-                project=_link_title(project_link),
-                created_resource_type=_trim_text(resource_link.get("type"), limit=SUBJECT_LIMIT)
-                if isinstance(resource_link, dict)
-                else None,
-                created_resource_id=_id_from_href(resource_link.get("href"))
-                if isinstance(resource_link, dict)
-                else None,
-                created_resource_name=_link_title(resource_link),
-                links=sorted(links.keys()),
-                url=self._link_to_web_url(links.get("self", {}).get("href")),
-            ),
-        )
 
     def normalize_attachment(self, payload: dict[str, Any]) -> AttachmentSummary:
         links = payload.get("_links", {})
@@ -5280,8 +5311,8 @@ class OpenProjectClient:
     def _api_href(self, relative_path: str) -> str:
         return f"/{self._api_prefix.lstrip('/')}{relative_path.lstrip('/')}"
 
-    async def _resolve_project_id(self, project_ref: str) -> str:
-        return await self._project_resolver.resolve_id(project_ref, write=False)
+    async def _resolve_project_id(self, project_ref: str, *, write: bool = False) -> str:
+        return await self._project_resolver.resolve_id(project_ref, write=write)
 
     async def _resolve_principal_id(self, principal_ref: str) -> str:
         if principal_ref.casefold() == "me":
@@ -5430,7 +5461,7 @@ class OpenProjectClient:
         """
         return quote(str(ref).strip(), safe="")
 
-    async def _resolve_work_package_id(self, ref: int | str) -> int:
+    async def _resolve_work_package_id(self, ref: int | str, *, write: bool = False) -> int:
         """Resolve a work-package reference to its canonical numeric id.
 
         Needed where the numeric id itself is required (e.g. a relation filter or a
@@ -5440,6 +5471,12 @@ class OpenProjectClient:
         its ``id`` is read back. A project-prefixed identifier is resolved the same
         way, but additionally only works on OpenProject 17.5+ (and requires the
         exact, case-sensitive project identifier).
+
+        ``write=True`` checks the WRITE allowlist instead of the read one --
+        needed wherever the resolved work package is a REPARENT/relation
+        TARGET being written into, not just read (e.g. a caller with write
+        access to work package A must not be able to attach it under a work
+        package B they can only read).
         """
         reference = str(ref).strip()
         try:
@@ -5456,7 +5493,11 @@ class OpenProjectClient:
                 "require OpenProject 17.5+ and the exact project identifier (case-sensitive); "
                 "on older instances use the numeric work-package id."
             ) from exc
-        self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
+        project_link = payload.get("_links", {}).get("project")
+        if write:
+            self._ensure_project_write_link_allowed(project_link)
+        else:
+            self._ensure_project_link_allowed(project_link)
         return int(payload["id"])
 
     async def _resolve_status_id(self, status_ref: str) -> str:

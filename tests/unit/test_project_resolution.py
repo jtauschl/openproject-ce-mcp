@@ -85,6 +85,69 @@ async def test_update_work_package_denies_disallowed_parent_project() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_work_package_denies_reparent_into_a_readable_but_write_restricted_project() -> None:
+    """Regression test (found via Codex review): reparenting must be
+    write-authorized on the NEW parent too, not just on the project the new
+    work package is created in. Previously the parent was only
+    read-checked, so a caller with write access to "demo" could attach a
+    new work package under a parent work package in a project they could
+    only read -- the same gap update_project's/update_board's
+    reparent-target fixes already closed."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/999" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 999, "_links": {"project": {"title": "Other", "href": "/api/v3/projects/2"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("*",), write_projects=("demo",), enable_work_package_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await client.create_work_package(
+            project="demo", type="Task", subject="Child", parent_work_package_id=999, confirm=True
+        )
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_denies_reparent_into_a_readable_but_write_restricted_project() -> None:
+    """Regression test (found via Codex review): same gap as the create_work_package
+    counterpart above, for update_work_package's reparent path."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/999" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 999, "_links": {"project": {"title": "Other", "href": "/api/v3/projects/2"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"title": "Demo", "href": "/api/v3/projects/1"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("*",), write_projects=("demo",), enable_work_package_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await client.update_work_package(work_package_id=42, parent_work_package_id=999, confirm=True)
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_create_work_package_relation_denies_disallowed_target_project() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/999" and request.method == "GET":

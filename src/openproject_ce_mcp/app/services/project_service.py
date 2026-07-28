@@ -514,7 +514,12 @@ class ProjectService:
         elif parent is not None:
             hidden_fields.ensure_field_writable("project", "parent", settings=self._settings)
             assert isinstance(parent, str)
-            parent_id = await self._resolver.resolve_id(parent, write=False)
+            # write=True: reparenting must be authorized on the new parent
+            # too, not just on the project being updated -- otherwise a
+            # caller with write access to project A could attach it under
+            # project B they can only read, the same gap update_board's
+            # reparent-target fix already closed for boards.
+            parent_id = await self._resolver.resolve_id(parent, write=True)
             links["parent"] = {"href": self._api_href(f"projects/{parent_id}")}
         if links:
             payload["_links"] = links
