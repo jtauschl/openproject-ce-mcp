@@ -4057,13 +4057,16 @@ class OpenProjectClient:
         """Apply the project write allowlist to the reminder's work package."""
         current = await self._get(f"reminders/{reminder_id}")
         remindable = current.get("_links", {}).get("remindable")
-        if not isinstance(remindable, dict) or not remindable.get("href"):
+        href = remindable.get("href") if isinstance(remindable, dict) else None
+        if not isinstance(href, str) or not href:
             # Fail closed: an unresolvable work-package link must not be bypassed,
-            # even under a fully open READ_PROJECTS=*/WRITE_PROJECTS=* scope.
+            # even under a fully open READ_PROJECTS=*/WRITE_PROJECTS=* scope. A
+            # malformed, truthy non-string href (e.g. {"href": 42}) must fail
+            # closed here too, not fall through to _link_to_api_path/urlparse.
             raise PermissionDeniedError(
                 "OpenProject writes to this reminder are disabled by OPENPROJECT_WRITE_PROJECTS."
             )
-        work_package = await self._get(self._link_to_api_path(remindable["href"]))
+        work_package = await self._get(self._link_to_api_path(href))
         self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
 
     async def update_reminder(

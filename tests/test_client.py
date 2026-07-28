@@ -10480,6 +10480,26 @@ async def test_update_reminder_denies_malformed_remindable_link_even_under_open_
 
 
 @pytest.mark.asyncio
+async def test_update_reminder_denies_non_string_remindable_href_even_under_open_scope() -> None:
+    # A truthy but non-string href (e.g. {"href": 42}) must fail closed the
+    # same way a missing href does, not fall through to
+    # _link_to_api_path/urlparse -- found via a Codex review during the
+    # Reminders domain's app/ migration; ported here since this flat
+    # implementation has the identical pre-existing gap.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/reminders/7":
+            return httpx.Response(200, json={"_links": {"remindable": {"href": 42}}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await client.update_reminder(reminder_id=7, note="Updated", confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_update_reminder_requires_a_field() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/reminders/7":
