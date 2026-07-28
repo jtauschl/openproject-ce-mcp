@@ -662,8 +662,12 @@ class OpenProjectClient:
         if isinstance(project_link, dict):
             self._ensure_project_link_allowed(project_link)
         detail = self.normalize_job_status(payload)
-        if detail.created_resource_type == "Project" and detail.created_resource_id is not None:
-            await self._remember_copied_project_identifier(detail.created_resource_id)
+        created_project_link = links.get("createdProject")
+        created_project_id = (
+            _id_from_href(created_project_link.get("href")) if isinstance(created_project_link, dict) else None
+        )
+        if created_project_id is not None:
+            await self._remember_copied_project_identifier(created_project_id)
         return detail
 
     async def _remember_copied_project_identifier(self, project_id: int) -> None:
@@ -675,6 +679,13 @@ class OpenProjectClient:
         update_project -- but copy_project itself never observes the new
         project's numeric id, since it only starts the async copy job and
         returns immediately. This is the one place that id becomes known.
+
+        Triggered by the presence of the `_links.createdProject` key itself
+        (extracted in get_job_status), NOT by `created_resource_type ==
+        "Project"` -- a Codex review caught that OpenProject's real
+        createdProject payload shape carries only href/title, no type
+        field, so that check silently never fired.
+
         Best-effort: a race (the project was deleted right after the copy
         completed, or scope tightened) must not fail the job-status read
         itself -- the caller is asking about the JOB, not the project. Do
@@ -1658,6 +1669,7 @@ class OpenProjectClient:
         work_package_id = self._work_package_ref(work_package_id)
         work_package_payload = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
+        self._ensure_field_writable("attachment", "file_name")
         if description is not None:
             self._ensure_field_writable("attachment", "description")
         file_info = self._prepare_attachment_file(file_path, include_bytes=confirm)
@@ -2603,7 +2615,10 @@ class OpenProjectClient:
         project_id = str(project_payload["id"])
         if parent_work_package_id is not None:
             # parent goes into a HAL link href, which resolves only by numeric id.
-            parent_work_package_id = await self._resolve_work_package_id(parent_work_package_id)
+            # write=True: the new parent must itself be write-authorized, not just
+            # readable -- otherwise a caller could attach a writable work package
+            # under a parent they can only read.
+            parent_work_package_id = await self._resolve_work_package_id(parent_work_package_id, write=True)
         payload = await self._build_write_payload(
             project=project_id,
             type=type,
@@ -2716,8 +2731,11 @@ class OpenProjectClient:
         if parent_work_package_id is not None and parent_work_package_id is not CLEAR_PARENT:
             # parent goes into a HAL link href, which resolves only by numeric id.
             # CLEAR_PARENT is a sentinel (un-parent) and must pass through unresolved.
+            # write=True: the new parent must itself be write-authorized, not just
+            # readable -- otherwise a caller could reparent a writable work package
+            # under a parent they can only read.
             parent_work_package_id = await self._resolve_work_package_id(
-                _narrow_cleared(parent_work_package_id, sentinel=CLEAR_PARENT)
+                _narrow_cleared(parent_work_package_id, sentinel=CLEAR_PARENT), write=True
             )
         current = await self._get(f"work_packages/{work_package_id}")
         project_id = _id_from_href(current.get("_links", {}).get("project", {}).get("href"))
@@ -3083,6 +3101,7 @@ class OpenProjectClient:
         self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
         # Reuse the numeric id from the fetch above rather than a second GET.
         source_numeric_id = int(work_package["id"])
+        self._ensure_field_writable("relation", "type")
         payload: dict[str, Any] = {
             "type": relation_type,
             "_links": {"to": {"href": self._api_href(f"work_packages/{related_numeric_id}")}},
@@ -5232,6 +5251,7 @@ class OpenProjectClient:
         existing = self.normalize_relation(current)
         body: dict[str, Any] = {}
         if relation_type is not None:
+            self._ensure_field_writable("relation", "type")
             body["type"] = relation_type
         if description is not None:
             self._ensure_field_writable("relation", "description")
@@ -8322,7 +8342,7 @@ class OpenProjectClient:
         """
         return quote(str(ref).strip(), safe="")
 
-    async def _resolve_work_package_id(self, ref: int | str) -> int:
+    async def _resolve_work_package_id(self, ref: int | str, *, write: bool = False) -> int:
         """Resolve a work-package reference to its canonical numeric id.
 
         Needed where the numeric id itself is required (e.g. a relation filter or a
@@ -8332,6 +8352,12 @@ class OpenProjectClient:
         its ``id`` is read back. A project-prefixed identifier is resolved the same
         way, but additionally only works on OpenProject 17.5+ (and requires the
         exact, case-sensitive project identifier).
+
+        ``write=True`` checks the WRITE allowlist instead of the read one --
+        needed wherever the resolved work package is a REPARENT/relation
+        TARGET being written into, not just read (e.g. a caller with write
+        access to work package A must not be able to attach it under a work
+        package B they can only read).
         """
         reference = str(ref).strip()
         try:
@@ -8348,7 +8374,11 @@ class OpenProjectClient:
                 "require OpenProject 17.5+ and the exact project identifier (case-sensitive); "
                 "on older instances use the numeric work-package id."
             ) from exc
-        self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
+        project_link = payload.get("_links", {}).get("project")
+        if write:
+            self._ensure_project_write_link_allowed(project_link)
+        else:
+            self._ensure_project_link_allowed(project_link)
         return int(payload["id"])
 
     async def _resolve_status_id(self, status_ref: str) -> str:

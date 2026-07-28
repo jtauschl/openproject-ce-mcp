@@ -1401,6 +1401,135 @@ async def test_hidden_group_field_is_rejected_on_update() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hidden_relation_type_field_is_rejected_on_create() -> None:
+    """Regression test (found via Codex review): create_work_package_relation's
+    relation_type is a mandatory field written unconditionally, unlike
+    description -- it needs its own guard, not just description's."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/43" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 43, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        hidden_fields={"relation": ("type",)},
+        enable_work_package_write=True,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_RELATION_FIELDS"):
+        await client.create_work_package_relation(
+            work_package_id=42, related_to_work_package_id=43, relation_type="blocks", confirm=False
+        )
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hidden_relation_type_field_is_rejected_on_update() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations/3" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 3,
+                    "type": "blocks",
+                    "_links": {
+                        "from": {"href": "/api/v3/work_packages/42"},
+                        "to": {"href": "/api/v3/work_packages/43"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        hidden_fields={"relation": ("type",)},
+        enable_work_package_write=True,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_RELATION_FIELDS"):
+        await client.update_relation(relation_id=3, relation_type="follows", confirm=False)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hidden_attachment_file_name_field_is_rejected_on_write() -> None:
+    """Regression test (found via Codex review): create_work_package_attachment
+    always writes file_name (a mandatory field), unlike description -- it
+    needs its own guard, not just description's."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        hidden_fields={"attachment": ("file_name",)},
+        enable_work_package_write=True,
+        attachment_root="/tmp",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_ATTACHMENT_FIELDS"):
+        await client.create_work_package_attachment(work_package_id=42, file_path="/tmp/note.txt", confirm=False)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_work_packages_resolves_type_and_version_filters() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/demo":
@@ -3847,6 +3976,14 @@ async def test_job_status_documents_news_and_wiki() -> None:
                 },
                 request=request,
             )
+        if request.url.path == "/api/v3/projects/88":
+            # OPM-316: get_job_status resolves the createdProject link's real
+            # identifier for the shared allowlist cache.
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 88, "name": "Demo Copy", "identifier": "demo-copy"},
+                request=request,
+            )
         if request.url.path == "/api/v3/documents" and request.method == "GET":
             return httpx.Response(
                 200,
@@ -4165,7 +4302,12 @@ async def test_get_job_status_remembers_copied_projects_real_identifier_in_the_s
     update_project, which an earlier fix already closed). A completed copy
     job's createdProject link is the only place the new project's numeric
     id becomes known; this resolves it to its REAL identifier (not just the
-    job status response's own display title) and writes it through."""
+    job status response's own display title) and writes it through.
+
+    Deliberately omits a "type" field on the createdProject link -- a Codex
+    review caught that OpenProject's real payload shape carries only
+    href/title there, so triggering on created_resource_type == "Project"
+    (an earlier version of this fix) silently never fired."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/job_statuses/77":
@@ -4177,7 +4319,7 @@ async def test_get_job_status_remembers_copied_projects_real_identifier_in_the_s
                     "status": "success",
                     "_links": {
                         "self": {"href": "/api/v3/job_statuses/77"},
-                        "createdProject": {"href": "/api/v3/projects/99", "title": "Demo Copy", "type": "Project"},
+                        "createdProject": {"href": "/api/v3/projects/99", "title": "Demo Copy"},
                     },
                 },
                 request=request,
@@ -4243,7 +4385,7 @@ async def test_get_job_status_tolerates_the_copied_project_being_unresolvable() 
                     "status": "success",
                     "_links": {
                         "self": {"href": "/api/v3/job_statuses/77"},
-                        "createdProject": {"href": "/api/v3/projects/99", "title": "Demo Copy", "type": "Project"},
+                        "createdProject": {"href": "/api/v3/projects/99", "title": "Demo Copy"},
                     },
                 },
                 request=request,
@@ -9178,6 +9320,69 @@ async def test_update_work_package_denies_disallowed_parent_project() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await client.update_work_package(work_package_id=42, parent_work_package_id=999, confirm=True)
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_work_package_denies_reparent_into_a_readable_but_write_restricted_project() -> None:
+    """Regression test (found via Codex review): reparenting must be
+    write-authorized on the NEW parent too, not just on the project the new
+    work package is created in. Previously the parent was only
+    read-checked, so a caller with write access to "demo" could attach a
+    new work package under a parent work package in a project they could
+    only read -- the same gap update_project's/update_board's
+    reparent-target fixes already closed."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/999" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 999, "_links": {"project": {"title": "Other", "href": "/api/v3/projects/2"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("*",), write_projects=("demo",), enable_work_package_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await client.create_work_package(
+            project="demo", type="Task", subject="Child", parent_work_package_id=999, confirm=True
+        )
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_denies_reparent_into_a_readable_but_write_restricted_project() -> None:
+    """Regression test (found via Codex review): same gap as the create_work_package
+    counterpart above, for update_work_package's reparent path."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/999" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 999, "_links": {"project": {"title": "Other", "href": "/api/v3/projects/2"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"title": "Demo", "href": "/api/v3/projects/1"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("*",), write_projects=("demo",), enable_work_package_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await client.update_work_package(work_package_id=42, parent_work_package_id=999, confirm=True)
     await client.aclose()
 

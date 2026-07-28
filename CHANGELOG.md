@@ -107,7 +107,26 @@ development baseline.
   `copy_project` itself never observes the new project's numeric id, since
   it only starts an async copy job and returns immediately; `get_job_status`
   now resolves and remembers the copied project's real identifier once the
-  job reports it as the created resource.
+  job's `createdProject` link reports it. An earlier version of this fix
+  triggered on a `type` field OpenProject's real `createdProject` payload
+  never actually sends (only `href`/`title`), so it silently never fired —
+  found via a Codex review and corrected to key off the link's presence
+  instead.
+- **`create_work_package`/`update_work_package`'s `parent_work_package_id`
+  reassignment now requires write access on the NEW parent work package's
+  project too, not just read access.** Previously the new parent was only
+  read-checked, so a caller with write access to one project could attach
+  a work package under a parent in a project they could only read — the
+  same gap `update_project`'s/`update_board`'s reparent-target fixes
+  already closed. Found via a Codex review of the `update_project` fix
+  above.
+- **`create_work_package_relation`/`update_relation`'s `type` field and
+  `create_work_package_attachment`'s `file_name` field now honor
+  `OPENPROJECT_HIDE_RELATION_FIELDS`/`OPENPROJECT_HIDE_ATTACHMENT_FIELDS`
+  on writes.** Both are mandatory fields written unconditionally, unlike
+  the optional `description` field the existing guards already covered —
+  found via a Codex review of the attachment/reminder/relation
+  hidden-fields fix above.
 
 ---
 
