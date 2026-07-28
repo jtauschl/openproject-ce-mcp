@@ -1,16 +1,17 @@
 """Integration tests for grid CRUD operations.
 
 Uses scope="/my/page" (the personal-dashboard carve-out) rather than a
-project-scoped href -- it's always writable regardless of
+project-scoped href -- it's writable for create/update regardless of
 OPENPROJECT_WRITE_PROJECTS and needs no project resolution, keeping this
-test independent of the test project's own configuration.
+test independent of the test project's own configuration. Deletion is a
+different story -- see test_create_get_update_delete_grid's delete step.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from openproject_ce_mcp.client import OpenProjectClient
+from openproject_ce_mcp.client import OpenProjectClient, PermissionDeniedError
 
 pytestmark = pytest.mark.integration
 
@@ -51,7 +52,12 @@ async def test_create_get_update_delete_grid(client: OpenProjectClient, grid_ids
     updated = await client.get_grid(grid_id)
     assert updated.row_count == 5
 
-    # Delete
-    delete_result = await client.delete_grid(grid_id=grid_id, confirm=True)
-    assert delete_result.ready and delete_result.confirmed
-    grid_ids.remove(grid_id)
+    # Delete -- OpenProject rejects deletion of /my/page grids for every user,
+    # including admin (OPM-323, verified against op-sources/17.6:
+    # Grids::Grid#user_deletable? is hardcoded false, Grids::MyPage never
+    # overrides it, and Grids::DeleteContract's delete_permission requires
+    # model.user_deletable? -- only Boards::Grid overrides it to true). There
+    # is no API path that deletes a /my/page grid; this grid is intentionally
+    # left behind, same as every prior run of this test, not a cleanup gap.
+    with pytest.raises(PermissionDeniedError):
+        await client.delete_grid(grid_id=grid_id, confirm=True)
