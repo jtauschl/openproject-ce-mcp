@@ -666,31 +666,17 @@ async def test_hidden_emoji_reaction_fields_are_tagged_and_dropped_from_payload(
     await client.aclose()
 
 
-@pytest.mark.asyncio
-async def test_hidden_watcher_fields_are_tagged_and_dropped_from_payload() -> None:
-    # normalize_watcher applies OPENPROJECT_HIDE_WATCHER_FIELDS,
-    # like every other normalize_* method for user-identifying data.
-    client = OpenProjectClient(
-        _base_settings(hidden_fields={"watcher": ("login",)}),
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
-    )
-
-    watcher = client.normalize_watcher(
-        {
-            "id": 1,
-            "name": "Ada Lovelace",
-            "login": "ada",
-        }
-    )
-
-    assert watcher._hidden_keys == frozenset({"login"})
-    assert watcher.login == "ada"  # preserved on the dataclass
-    assert watcher.name == "Ada Lovelace"
-    serialized = _to_payload(watcher)
-    assert "login" not in serialized
-    assert serialized["name"] == "Ada Lovelace"
-
-    await client.aclose()
+# Watchers' hidden-field-masking regression coverage (originally
+# test_hidden_watcher_fields_are_tagged_and_dropped_from_payload) moved to
+# tests/unit/test_app_httpx_watcher_api.py (normalize_watcher's pure
+# HAL->model shape) and tests/unit/test_app_watcher_service.py
+# (test_list_for_work_package_masks_hidden_login,
+# test_add_masks_hidden_login_in_preview_and_commit,
+# test_login_hidden_by_watcher_scope_not_user_scope) after the Watchers
+# domain migration (OPM-294) -- client.normalize_watcher no longer exists.
+# The real env-var-driven path (OPENPROJECT_HIDE_WATCHER_FIELDS) is
+# unaffected by this migration and continues to be exercised via
+# config.py's HIDE_FIELD_ENV_BY_ENTITY map.
 
 
 def test_hidden_user_fields_are_tagged_and_dropped_from_payload() -> None:

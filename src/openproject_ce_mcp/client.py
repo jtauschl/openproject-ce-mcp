@@ -36,6 +36,7 @@ from .app.adapters.httpx_user_api import HttpxUserApi
 from .app.adapters.httpx_user_preferences_api import HttpxUserPreferencesApi
 from .app.adapters.httpx_version_api import HttpxVersionApi
 from .app.adapters.httpx_view_api import HttpxViewApi
+from .app.adapters.httpx_watcher_api import HttpxWatcherApi
 from .app.adapters.httpx_wiki_page_api import HttpxWikiPageApi
 from .app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
 
@@ -79,6 +80,7 @@ from .app.ports.user_api import UserApi
 from .app.ports.user_preferences_api import UserPreferencesApi
 from .app.ports.version_api import VersionApi
 from .app.ports.view_api import ViewApi
+from .app.ports.watcher_api import WatcherApi
 from .app.ports.wiki_page_api import WikiPageApi
 from .app.ports.work_package_lookup_api import WorkPackageLookupApi
 from .app.ports.work_package_ref import work_package_ref as _work_package_ref_encode
@@ -107,6 +109,7 @@ from .app.services.user_preferences_service import UserPreferencesService
 from .app.services.user_service import UserService
 from .app.services.version_service import VersionService
 from .app.services.view_service import ViewService
+from .app.services.watcher_service import WatcherService
 from .app.services.wiki_page_service import WikiPageService
 from .app.transport.errors import raise_for_status as _map_status_to_error
 from .app.transport.httpx_transport import HttpxTransport
@@ -221,7 +224,6 @@ from .models import (
     ViewListResult,
     ViewSummary,
     WatcherListResult,
-    WatcherSummary,
     WatcherWriteResult,
     WikiPageDetail,
     WorkingDayListResult,
@@ -528,6 +530,15 @@ class OpenProjectClient:
             work_package_lookup_api=self._work_package_lookup_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
+        )
+
+        self._watcher_api: WatcherApi = HttpxWatcherApi(
+            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
+        )
+        self._watcher_service = WatcherService(
+            api=self._watcher_api,
+            settings=settings,
             resolve_work_package_id=self._work_package_resolver.resolve_id,
         )
 
@@ -3210,17 +3221,7 @@ class OpenProjectClient:
     # --- Work Package Watchers ---
 
     async def list_work_package_watchers(self, work_package_id: int | str) -> WatcherListResult:
-        self._ensure_read_enabled("work_package")
-        # Resolving the id already confirms the anchor work package itself is
-        # allowed against OPENPROJECT_READ_PROJECTS before its watchers are fetched.
-        work_package_id = await self._resolve_work_package_id(work_package_id)
-        payload = await self._get(f"work_packages/{work_package_id}/watchers")
-        results = [
-            self.normalize_watcher(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
-        return WatcherListResult(count=len(results), results=results)
+        return await self._watcher_service.list_for_work_package(work_package_id)
 
     async def add_work_package_watcher(
         self,
@@ -3229,40 +3230,7 @@ class OpenProjectClient:
         *,
         confirm: bool = False,
     ) -> WatcherWriteResult:
-        work_package_id = self._work_package_ref(work_package_id)
-        work_package_payload = await self._get(f"work_packages/{work_package_id}")
-        self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
-        if not confirm:
-            user_payload = await self._get(f"users/{user_id}")
-            watcher = self.normalize_watcher(user_payload)
-            return WatcherWriteResult(
-                action="add",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to add the watcher. Ask for confirmation, then call again with confirm=true.",
-                work_package_id=work_package_id,
-                watcher_user_id=user_id,
-                validation_errors={},
-                result=watcher,
-            )
-        self._ensure_write_enabled("work_package")
-        response = await self._post(
-            f"work_packages/{work_package_id}/watchers",
-            json_body={"_links": {"user": {"href": self._api_href(f"users/{user_id}")}}},
-        )
-        watcher = self.normalize_watcher(response)
-        return WatcherWriteResult(
-            action="add",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Watcher added successfully.",
-            work_package_id=work_package_id,
-            watcher_user_id=user_id,
-            validation_errors={},
-            result=watcher,
-        )
+        return await self._watcher_service.add(work_package_id, user_id, confirm=confirm)
 
     async def remove_work_package_watcher(
         self,
@@ -3271,34 +3239,7 @@ class OpenProjectClient:
         *,
         confirm: bool = False,
     ) -> WatcherWriteResult:
-        work_package_id = self._work_package_ref(work_package_id)
-        work_package_payload = await self._get(f"work_packages/{work_package_id}")
-        self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
-        if not confirm:
-            return WatcherWriteResult(
-                action="remove",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to remove the watcher. Ask for confirmation, then call again with confirm=true.",
-                work_package_id=work_package_id,
-                watcher_user_id=user_id,
-                validation_errors={},
-                result=None,
-            )
-        self._ensure_write_enabled("work_package")
-        await self._delete(f"work_packages/{work_package_id}/watchers/{user_id}")
-        return WatcherWriteResult(
-            action="remove",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Watcher removed successfully.",
-            work_package_id=work_package_id,
-            watcher_user_id=user_id,
-            validation_errors={},
-            result=None,
-        )
+        return await self._watcher_service.remove(work_package_id, user_id, confirm=confirm)
 
     # --- Notifications ---
 
@@ -4369,18 +4310,6 @@ class OpenProjectClient:
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
                 url=self._web_url(f"time_entries/{payload['id']}"),
-            ),
-        )
-
-    def normalize_watcher(self, payload: dict[str, Any]) -> WatcherSummary:
-        watcher_id = int(payload["id"])
-        return self._apply_hidden_fields(
-            "watcher",
-            WatcherSummary(
-                id=watcher_id,
-                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"User {watcher_id}",
-                login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
-                url=self._web_url(f"users/{watcher_id}"),
             ),
         )
 

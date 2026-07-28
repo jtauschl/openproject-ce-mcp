@@ -936,3 +936,30 @@ def test_file_link_service_binds_its_three_dependencies_to_the_right_protocols()
     assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
         "FileLinkService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
     )
+
+
+def test_watcher_service_binds_the_api_and_resolver_params_to_the_right_protocols() -> None:
+    """Watchers (OPM-294) is the second domain to consume the OPM-318
+    WorkPackageIdResolver seam -- a cleaner fit than File Links had, since
+    add()/remove() resolve a genuine caller-supplied work-package reference
+    (via WorkPackageIdResolver(ref, write=True)) rather than an
+    already-known numeric id. Only two Protocol dependencies here (WatcherApi,
+    WorkPackageIdResolver) -- no second WorkPackageLookupApi dependency,
+    since neither add() nor remove() needs a raw work-package payload fetch
+    outside the resolver."""
+    from openproject_ce_mcp.app.adapters.httpx_watcher_api import HttpxWatcherApi
+    from openproject_ce_mcp.app.ports.watcher_api import WatcherApi
+    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageIdResolver
+    from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
+    from openproject_ce_mcp.app.services.watcher_service import WatcherService
+
+    hints = typing.get_type_hints(WatcherService.__init__)
+    assert hints["api"] is WatcherApi, "WatcherService.__init__'s api param must be typed WatcherApi"
+    assert hints["api"] is not HttpxWatcherApi, "WatcherService.__init__'s api param must not be the concrete adapter"
+
+    assert hints["resolve_work_package_id"] is WorkPackageIdResolver, (
+        "WatcherService.__init__'s resolve_work_package_id param must be typed WorkPackageIdResolver"
+    )
+    assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
+        "WatcherService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
+    )
