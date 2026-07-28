@@ -848,3 +848,52 @@ def test_every_apply_hidden_fields_entity_is_registered_in_config() -> None:
         f"HIDE_FIELD_ENV_BY_ENTITY entry (their OPENPROJECT_HIDE_<X>_FIELDS env "
         f"var can never work): {unregistered}"
     )
+
+
+def test_work_package_resolver_methods_structurally_satisfy_the_seam_protocols() -> None:
+    """OPM-318: WorkPackageResolver.resolve_id/.project_link_allowed are the
+    concrete methods future migrations bind `WorkPackageIdResolver`/
+    `WorkPackageProjectAllowedCheck` seam parameters to (bound methods
+    `self._work_package_resolver.resolve_id`/`.project_link_allowed`,
+    structural typing, no wrapper class -- mirrors how `ProjectRefResolver`
+    is bound to `self._get_project_payload`). No Service consumes these seams
+    yet (declared for future use only), so there is no existing "api param
+    typed as the Protocol" call site to check statically the way
+    test_project_service_and_resolver_bind_the_api_param_to_project_api_specifically
+    does; instead this proves structural compatibility directly by comparing
+    each bound method's runtime signature (param names, kinds, and defaults)
+    against the corresponding Protocol's `__call__` signature.
+    """
+    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageIdResolver, WorkPackageProjectAllowedCheck
+    from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
+
+    def _bound_params(func: object) -> list[inspect.Parameter]:
+        return [p for p in inspect.signature(func).parameters.values() if p.name != "self"]
+
+    def _comparable(p: inspect.Parameter) -> tuple[object, ...]:
+        # mypy's own structural-typing rule for Protocol.__call__ technically
+        # excludes positional-or-keyword param NAMES (satisfied by any callable
+        # with a compatible positional signature, regardless of that param's
+        # internal name). This codebase's convention is stricter, though (see
+        # ProjectResolver.resolve_id/ProjectRefResolver.__call__, both named
+        # `project_ref`): a resolver method's param name matches its seam
+        # Protocol's exactly, so a keyword call works identically through
+        # either the bound method or the Protocol-typed seam -- a real bug a
+        # Codex review caught in an earlier version of WorkPackageResolver
+        # (its `resolve_id` param was named `ref`, not `work_package_ref` as
+        # in `WorkPackageIdResolver`, silently breaking a hypothetical keyword
+        # call). Comparing the name here, not just kind/default, enforces the
+        # convention rather than just mypy's more permissive minimum.
+        return (p.name, p.kind, p.default)
+
+    resolve_id_params = _bound_params(WorkPackageResolver.resolve_id)
+    protocol_params = _bound_params(WorkPackageIdResolver.__call__)
+    assert [_comparable(p) for p in resolve_id_params] == [_comparable(p) for p in protocol_params], (
+        "WorkPackageResolver.resolve_id no longer structurally satisfies WorkPackageIdResolver"
+    )
+
+    allowed_params = _bound_params(WorkPackageResolver.project_link_allowed)
+    protocol_params = _bound_params(WorkPackageProjectAllowedCheck.__call__)
+    assert [_comparable(p) for p in allowed_params] == [_comparable(p) for p in protocol_params], (
+        "WorkPackageResolver.project_link_allowed no longer structurally satisfies WorkPackageProjectAllowedCheck"
+    )

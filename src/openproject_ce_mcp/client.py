@@ -9,7 +9,7 @@ from dataclasses import replace
 from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any, TypeVar, cast
-from urllib.parse import quote, unquote, urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 import httpx
 
@@ -36,6 +36,7 @@ from .app.adapters.httpx_user_preferences_api import HttpxUserPreferencesApi
 from .app.adapters.httpx_version_api import HttpxVersionApi
 from .app.adapters.httpx_view_api import HttpxViewApi
 from .app.adapters.httpx_wiki_page_api import HttpxWikiPageApi
+from .app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
 
 # AuthenticationError: no longer referenced directly in this module (its only use was
 # inside _raise_for_status, now delegated to app.transport.errors.raise_for_status),
@@ -77,8 +78,12 @@ from .app.ports.user_preferences_api import UserPreferencesApi
 from .app.ports.version_api import VersionApi
 from .app.ports.view_api import ViewApi
 from .app.ports.wiki_page_api import WikiPageApi
+from .app.ports.work_package_lookup_api import WorkPackageLookupApi
+from .app.ports.work_package_ref import work_package_ref as _work_package_ref_encode
+from .app.ports.work_package_resolution import WorkPackageAllowedContext
 from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.version_resolver import VersionResolver
+from .app.resolvers.work_package_resolver import WorkPackageResolver
 from .app.services.action_capability_service import ActionCapabilityService
 from .app.services.board_service import BoardService
 from .app.services.category_service import CategoryService
@@ -501,6 +506,19 @@ class OpenProjectClient:
 
         self._extended_metadata_api: ExtendedMetadataApi = HttpxExtendedMetadataApi(HttpxTransport(self._http))
         self._extended_metadata_service = ExtendedMetadataService(api=self._extended_metadata_api, settings=settings)
+
+        # OPM-318: infrastructure-only extraction (no WorkPackageService yet --
+        # full Work Packages CRUD is still flat, ~1170 lines, the next big
+        # migration). Only the reference-resolution seam 7 other still-flat
+        # domains depend on is layered here.
+        self._work_package_lookup_api: WorkPackageLookupApi = HttpxWorkPackageLookupApi(
+            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
+        )
+        self._work_package_resolver = WorkPackageResolver(
+            api=self._work_package_lookup_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+        )
 
     async def initialize(self) -> None:
         # _project_id_to_identifier is consulted for BOTH read and write link-based
@@ -1853,7 +1871,7 @@ class OpenProjectClient:
         """
         if _scope_allows_all(self.settings.read_projects):
             return detail
-        cache: dict[str, bool] = {}
+        cache = WorkPackageAllowedContext()
 
         async def keep(entries: list[dict[str, str | None]] | None) -> list[dict[str, str | None]] | None:
             if not entries:
@@ -1863,9 +1881,7 @@ class OpenProjectClient:
                 href = entry.get("href")
                 if not href:
                     continue
-                if href not in cache:
-                    cache[href] = await self._work_package_project_allowed(href)
-                if cache[href]:
+                if await self._work_package_project_allowed(href, context=cache):
                     filtered.append(entry)
             return filtered or None
 
@@ -2823,7 +2839,7 @@ class OpenProjectClient:
         # would leak through to_id/to_subject even though it isn't readable
         # on its own. Same helper/caching as list_relations.
         allowlisted = not _scope_allows_all(self.settings.read_projects)
-        wp_allowed: dict[str, bool] = {}
+        wp_allowed = WorkPackageAllowedContext()
 
         async def item_allowed(item: dict[str, Any]) -> bool:
             return not allowlisted or await self._relation_endpoints_allowed(item, wp_allowed)
@@ -2985,15 +3001,13 @@ class OpenProjectClient:
         payload = await self._get("reminders")
         elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
         if not _scope_allows_all(self.settings.read_projects):
-            cache: dict[str, bool] = {}
+            cache = WorkPackageAllowedContext()
             filtered = []
             for item in elements:
                 href = item.get("_links", {}).get("remindable", {}).get("href")
                 if not href:
                     continue  # can't verify -> fail closed
-                if href not in cache:
-                    cache[href] = await self._work_package_project_allowed(href)
-                if cache[href]:
+                if await self._work_package_project_allowed(href, context=cache):
                     filtered.append(item)
             elements = filtered
         results = [self.normalize_reminder(item) for item in elements]
@@ -3301,7 +3315,7 @@ class OpenProjectClient:
             # Server-side pagination has no project filter, so this only scopes the
             # current page — a filtered-empty page does not prove no further allowed
             # notifications exist on later pages (see docs/architecture.md).
-            wp_cache: dict[str, bool] = {}
+            wp_cache = WorkPackageAllowedContext()
             filtered = []
             for item in elements:
                 if await self._notification_payload_allowed(item, wp_cache):
@@ -3310,7 +3324,7 @@ class OpenProjectClient:
         results = [self.normalize_notification(item) for item in filtered]
         return NotificationListResult(count=len(results), total=total, results=results)
 
-    async def _notification_payload_allowed(self, payload: dict[str, Any], wp_cache: dict[str, bool]) -> bool:
+    async def _notification_payload_allowed(self, payload: dict[str, Any], wp_cache: WorkPackageAllowedContext) -> bool:
         links = payload.get("_links", {})
         project_link = links.get("project")
         if isinstance(project_link, dict):
@@ -3321,9 +3335,7 @@ class OpenProjectClient:
             # Work-package-linked notification without its own resolvable project
             # link — resolve via the work package itself instead of trusting the
             # absent link (same helper/cache pattern as list_relations/list_reminders).
-            if resource_href not in wp_cache:
-                wp_cache[resource_href] = await self._work_package_project_allowed(resource_href)
-            return wp_cache[resource_href]
+            return await self._work_package_project_allowed(resource_href, context=wp_cache)
         return True  # no project link and no work-package resource link: genuinely personal/global
 
     async def mark_notification_read(self, notification_id: int, *, confirm: bool = False) -> NotificationMarkResult:
@@ -3667,7 +3679,7 @@ class OpenProjectClient:
         allowlisted = not _scope_allows_all(self.settings.read_projects)
         # Cache project-allow decisions per work package so a batch of relations
         # between the same work packages doesn't refetch (mitigates N+1).
-        wp_allowed: dict[str, bool] = {}
+        wp_allowed = WorkPackageAllowedContext()
 
         async def item_allowed(item: dict[str, Any]) -> bool:
             return not allowlisted or await self._relation_endpoints_allowed(item, wp_allowed)
@@ -3691,7 +3703,7 @@ class OpenProjectClient:
             results=page,
         )
 
-    async def _relation_endpoints_allowed(self, relation: dict[str, Any], cache: dict[str, bool]) -> bool:
+    async def _relation_endpoints_allowed(self, relation: dict[str, Any], cache: WorkPackageAllowedContext) -> bool:
         """True only if BOTH linked work packages are in an allowed project.
 
         Both ``from`` and ``to`` must pass — otherwise a relation to a work
@@ -3704,22 +3716,21 @@ class OpenProjectClient:
             if not isinstance(link, dict) or not link.get("href"):
                 return False
             href = link["href"]
-            if href not in cache:
-                cache[href] = await self._work_package_project_allowed(href)
-            if not cache[href]:
+            if not await self._work_package_project_allowed(href, context=cache):
                 return False
         return True
 
-    async def _work_package_project_allowed(self, href: str) -> bool:
-        try:
-            work_package = await self._get(self._link_to_api_path(href))
-        except NotFoundError:
-            return False
-        # Do NOT swallow server/transport errors as "not allowed" — a transient
-        # 5xx must not silently drop a relation the caller is entitled to see.
-        return self._payload_allowed(
-            lambda: self._ensure_project_link_allowed(work_package.get("_links", {}).get("project"))
-        )
+    async def _work_package_project_allowed(
+        self, href: str, *, context: WorkPackageAllowedContext | None = None
+    ) -> bool:
+        """Delegates to the layered WorkPackageResolver (OPM-318,
+        app/resolvers/work_package_resolver.py), a verbatim behavioral port of
+        this method's former inline implementation, plus an optional
+        ``context`` cache parameter the original method never had (every
+        call site now threads a per-top-level-call WorkPackageAllowedContext
+        through instead of building its own bare ``dict[str, bool]``).
+        """
+        return await self._work_package_resolver.project_link_allowed(href, context=context)
 
     async def update_relation(
         self,
@@ -5458,8 +5469,13 @@ class OpenProjectClient:
         instances without semantic identifiers a project-prefixed reference simply
         yields a 404 (mapped to ``NotFoundError``), while numeric ids keep working on
         every supported version.
+
+        Kept as a stable internal facade (OPM-318): the pure encoding logic now
+        lives in ``app/ports/work_package_ref.py`` (importable by future
+        migrations without pulling in the full resolver), but this thin wrapper
+        stays so the ~28 existing internal call sites keep working unchanged.
         """
-        return quote(str(ref).strip(), safe="")
+        return _work_package_ref_encode(ref)
 
     async def _resolve_work_package_id(self, ref: int | str, *, write: bool = False) -> int:
         """Resolve a work-package reference to its canonical numeric id.
@@ -5477,28 +5493,14 @@ class OpenProjectClient:
         TARGET being written into, not just read (e.g. a caller with write
         access to work package A must not be able to attach it under a work
         package B they can only read).
+
+        Delegates to the layered WorkPackageResolver (OPM-318,
+        app/resolvers/work_package_resolver.py), a verbatim behavioral port of
+        this method's former inline implementation. Kept as a stable internal
+        facade -- every other domain's client.py code that calls this method
+        directly expects the identical contract; only the body changed.
         """
-        reference = str(ref).strip()
-        try:
-            payload = await self._get(f"work_packages/{quote(reference, safe='')}")
-        except NotFoundError as exc:
-            if reference.isdigit():
-                raise
-            # A project-prefixed reference only resolves on OpenProject 17.5+ (and
-            # requires the exact, case-sensitive project identifier). Give a hint
-            # instead of a bare "not found" so a too-old instance or a case/prefix
-            # mismatch is distinguishable from a genuinely missing work package.
-            raise NotFoundError(
-                f"Work package '{reference}' was not found. Semantic references like 'PROJ-123' "
-                "require OpenProject 17.5+ and the exact project identifier (case-sensitive); "
-                "on older instances use the numeric work-package id."
-            ) from exc
-        project_link = payload.get("_links", {}).get("project")
-        if write:
-            self._ensure_project_write_link_allowed(project_link)
-        else:
-            self._ensure_project_link_allowed(project_link)
-        return int(payload["id"])
+        return await self._work_package_resolver.resolve_id(ref, write=write)
 
     async def _resolve_status_id(self, status_ref: str) -> str:
         if status_ref.isdigit():
