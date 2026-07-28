@@ -3872,6 +3872,83 @@ async def test_job_status_documents_news_and_wiki() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_job_status_checks_source_project_link_when_no_project_link() -> None:
+    """Regression test: normalize_job_status already falls back to the
+    `sourceProject` link (e.g. copy_project's response, referencing the
+    source project of a copy operation) when populating the response's own
+    `project`/`project_id` fields, but the allowlist check previously read
+    only the `project` link, ignoring that same fallback. A job-status
+    payload scoped only via `sourceProject` therefore bypassed
+    OPENPROJECT_READ_PROJECTS entirely despite its project being visible in
+    the returned data."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/job_statuses/77":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "JobStatus",
+                    "id": 77,
+                    "status": "in_progress",
+                    "_links": {
+                        "self": {"href": "/api/v3/job_statuses/77"},
+                        "sourceProject": {"href": "/api/v3/projects/6", "title": "Demo"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("other-project",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError):
+        await client.get_job_status(77)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_job_status_allows_source_project_link_when_allowlisted() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/job_statuses/77":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "JobStatus",
+                    "id": 77,
+                    "status": "in_progress",
+                    "_links": {
+                        "self": {"href": "/api/v3/job_statuses/77"},
+                        "sourceProject": {"href": "/api/v3/projects/6", "title": "Demo"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.get_job_status(77)
+
+    assert result.project_id == 6
+    assert result.project == "Demo"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_time_entry_crud_and_activity_listing() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/time_entries/activities":

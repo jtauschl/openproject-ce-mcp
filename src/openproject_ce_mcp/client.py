@@ -657,7 +657,8 @@ class OpenProjectClient:
     async def get_job_status(self, job_status_id: int) -> JobStatusDetail:
         self._ensure_read_enabled("project")
         payload = await self._get(f"job_statuses/{job_status_id}")
-        project_link = payload.get("_links", {}).get("project")
+        links = payload.get("_links", {})
+        project_link = links.get("project") or links.get("sourceProject")
         if isinstance(project_link, dict):
             self._ensure_project_link_allowed(project_link)
         return self.normalize_job_status(payload)

@@ -63,6 +63,13 @@ development baseline.
   on writes**, not just reads. Same gap as the `OPENPROJECT_HIDE_USER_FIELDS`
   fix above — Grids additionally had no such setting at all until now, since
   `"grid"` was missing entirely from the hidden-fields configuration.
+- **`get_job_status` no longer leaks a job status scoped only via a
+  `sourceProject` link (e.g. a `copy_project` response referencing the
+  copy's source project) outside `OPENPROJECT_READ_PROJECTS`.** The
+  allowlist check only ever read the `project` link; the response's own
+  `project`/`project_id` fields were already populated from `project` with
+  a `sourceProject` fallback, so a payload scoped only via `sourceProject`
+  bypassed the check entirely despite exposing that project's data.
 
 ---
 
