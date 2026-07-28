@@ -7,7 +7,7 @@ development baseline.
 
 ---
 
-## 0.3.3 – Unreleased
+## 0.3.3 – 2026-07-28
 
 ### Fixed
 
@@ -51,8 +51,16 @@ development baseline.
   each returned capability's own project link was not, so a `capability_id`
   lookup with no `project` given skipped the check entirely. `capability_id`
   now also resolves via the single-item lookup rather than an undocumented
-  collection filter, and the `context` filter uses the current workspace
-  syntax instead of the deprecated project-prefixed one.
+  collection filter.
+- **`list_capabilities`'s `context` filter rejected every request on
+  OpenProject 16.x with "Filters Context malformed value".** An earlier fix
+  switched the filter's project-scoping value from the project-prefixed
+  form to the workspace-prefixed one, on the mistaken assumption the latter
+  was the current/recommended syntax across all supported versions — the
+  workspace prefix is only accepted from OpenProject 17.0 onward, and the
+  project-prefixed form is the only one that works across the full
+  supported version range (16.0-17.6). Reverted to the project-prefixed
+  form.
 - **`create_user`/`update_user`/`lock_user`/`unlock_user` now honor
   `OPENPROJECT_HIDE_USER_FIELDS` on writes**, not just reads. Every hidden
   field previously could still be written even though it was masked on
@@ -95,6 +103,17 @@ development baseline.
 - **`create_group`/`update_group` now honor `OPENPROJECT_HIDE_GROUP_FIELDS`
   on writes**, not just reads. Same gap as the `OPENPROJECT_HIDE_USER_FIELDS`
   fix above.
+- **`update_reminder`'s project-write allowlist check could be bypassed by a
+  malformed, truthy non-string `href`** (e.g. `{"href": 42}`) on the
+  reminder's linked work package — it fell through to a raw path lookup
+  instead of failing closed with the intended permission error.
+- **Priorities, notifications, and emoji reactions were never masked by
+  their `OPENPROJECT_HIDE_*_FIELDS` setting**, the same class of gap already
+  fixed for other domains above — file links had a call site for this but no
+  matching config entry, making it a permanent no-op.
+- **`list_grids` never paginated at all** (an unbounded fetch-all, unlike
+  every other `list_*` method); it now clamps and paginates client-side,
+  matching `list_boards`.
 - **`update_project`'s `parent` reassignment now requires write access on
   the NEW parent project too, not just on the project being updated.**
   Previously the new parent was only read-checked, so a caller with write
@@ -127,6 +146,11 @@ development baseline.
   the optional `description` field the existing guards already covered —
   found via a Codex review of the attachment/reminder/relation
   hidden-fields fix above.
+- **A `403` from OpenProject now includes OpenProject's own error message**,
+  instead of always showing the same generic "denied access to this
+  resource" text with no further detail — e.g. a project's required module
+  not being enabled for a non-admin user was previously indistinguishable
+  from any other permission denial.
 
 ---
 
