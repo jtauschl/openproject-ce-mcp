@@ -1,10 +1,19 @@
 """Project-scope / allowlist policy (ADR 0001). Pure, no I/O.
 
 Contains small, deliberately duplicated private copies of `_trim_text`/
-`_id_from_href`/`_slug_from_href` (+ `SUBJECT_LIMIT`) -- duplicated rather than
+`_slug_from_href` (+ `SUBJECT_LIMIT`) -- duplicated rather than
 imported from client.py to avoid `app/` importing from `client.py` (these are still
-used ~136/43/15 times respectively by every other domain's normalize_* methods).
+used ~136/15 times respectively by every other domain's normalize_* methods).
 Unify only once every domain has migrated and client.py's copies become truly dead.
+
+`id_from_href` is exported (not underscore-prefixed) because, unlike the two
+helpers above, it crossed this project's own "3+ identical copies" threshold
+WITHIN `app/` itself (this module's own copy, `app/services/project_service.py`,
+and `app/services/file_link_service.py` -- found during the File Links
+migration's step-6 self-audit, OPM-296) -- `services` is permitted to import
+from `policies` (see `tests/test_architecture_boundaries.py`'s
+`_LAYER_DEPENDENCIES`), so this is the natural shared home rather than a new
+package-root module.
 """
 
 from __future__ import annotations
@@ -31,7 +40,7 @@ def _trim_text(value: Any, *, limit: int) -> str | None:
     return text[: limit - 1].rstrip() + "…"
 
 
-def _id_from_href(href: str | None) -> int | None:
+def id_from_href(href: str | None) -> int | None:
     if not href:
         return None
     parts = href.rstrip("/").split("/")
@@ -103,7 +112,7 @@ def project_candidates(
             slug = _slug_from_href(href)
             if slug:
                 candidates.add(slug.casefold())
-            project_id = _id_from_href(href)
+            project_id = id_from_href(href)
             if project_id is not None:
                 candidates.add(str(project_id).casefold())
                 known_identifier = project_id_to_identifier.get(project_id)

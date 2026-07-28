@@ -41,7 +41,7 @@ from ..errors import InvalidInputError, NotFoundError
 from ..pagination import clamp_limit
 from ..policies import access, hidden_fields
 from ..policies import project_policy as project_policy_module
-from ..policies.scope import ensure_project_link_allowed, payload_allowed
+from ..policies.scope import ensure_project_link_allowed, id_from_href, payload_allowed
 from ..ports.project_api import ProjectApi
 from ..resolvers.project_query import fetch_project_page
 from ..resolvers.project_resolver import ProjectResolver
@@ -56,6 +56,12 @@ SUBJECT_LIMIT = 255
 # only), needed here for job-status-URL parsing (copy()), status-href
 # matching (_resolve_status_href), and name trimming (set_favorite()). Unify
 # only once every domain has migrated.
+#
+# id_from_href is NOT duplicated here -- it now lives in
+# app/policies/scope.py (imported above), since it crossed this project's
+# "3+ identical copies" threshold within app/ itself during the File Links
+# migration's step-6 self-audit (OPM-296): this module's own copy,
+# scope.py's own private copy, and file_link_service.py's new copy.
 def _trim_text(value: Any, *, limit: int) -> str | None:
     if value is None:
         return None
@@ -65,16 +71,6 @@ def _trim_text(value: Any, *, limit: int) -> str | None:
     if len(text) <= limit:
         return text
     return text[: limit - 1].rstrip() + "…"
-
-
-def _id_from_href(href: str | None) -> int | None:
-    if not href:
-        return None
-    parts = href.rstrip("/").split("/")
-    try:
-        return int(parts[-1])
-    except (ValueError, IndexError):
-        return None
 
 
 def _slug_from_href(href: str | None) -> str | None:
@@ -428,7 +424,7 @@ class ProjectService:
             source_project=project.name,
             payload=form.payload,
             validation_errors={},
-            job_status_id=_id_from_href(job_status_url),
+            job_status_id=id_from_href(job_status_url),
             job_status_url=job_status_url,
         )
 
