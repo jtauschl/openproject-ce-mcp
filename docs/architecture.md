@@ -144,7 +144,13 @@ tools.py (MCP presentation)
   same Service is a one-line variation, not a reason to split the domain apart. A domain with no
   project link and no allowlist concept at all (self-scoped to the token owner, not project-scoped or
   admin-scoped) uses neither a Policy module nor `app/policies/scope.py`'s helpers — the read/write
-  scope gate alone is its entire enforcement surface.
+  scope gate alone is its entire enforcement surface. A domain whose parent resource is a work
+  package rather than a project resolves that reference through the shared
+  `WorkPackageIdResolver`/`WorkPackageProjectAllowedCheck` seams (`app/ports/work_package_ref.py`),
+  the work-package-reference equivalent of `ProjectRefResolver` — a Service can depend on more than
+  one domain-API Port at once when two of its methods each need a genuinely different capability
+  (e.g. reference resolution for one method, a raw payload fetch for another), rather than forcing
+  every dependency through a single seam that doesn't fit both shapes.
 - `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under `app/` that
   imports `httpx`; `client.py`'s own HTTP calls for still-flat domains, and `retry_transport.py`,
   are unaffected and keep importing it directly. The `Transport` Protocol (`app/transport/protocol.py`)
