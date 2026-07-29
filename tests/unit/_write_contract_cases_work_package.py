@@ -313,13 +313,20 @@ def _create_work_package_reminder_handler(request: httpx.Request) -> httpx.Respo
 
 
 def _update_reminder_handler(request: httpx.Request) -> httpx.Response:
-    if request.method == "GET" and request.url.path == "/api/v3/reminders/5":
+    if request.method == "GET" and request.url.path == "/api/v3/reminders":
         return httpx.Response(
             200,
             json={
-                "id": 5,
-                "remindAt": "2026-12-01T09:00:00Z",
-                "_links": {"remindable": {"href": "/api/v3/work_packages/42"}},
+                "_embedded": {
+                    "elements": [
+                        {
+                            "id": 5,
+                            "remindAt": "2026-12-01T09:00:00Z",
+                            "_links": {"remindable": {"href": "/api/v3/work_packages/42"}},
+                        }
+                    ]
+                },
+                "total": 1,
             },
             request=request,
         )
@@ -344,13 +351,20 @@ def _update_reminder_handler(request: httpx.Request) -> httpx.Response:
 
 
 def _delete_reminder_handler(request: httpx.Request) -> httpx.Response:
-    if request.method == "GET" and request.url.path == "/api/v3/reminders/5":
+    if request.method == "GET" and request.url.path == "/api/v3/reminders":
         return httpx.Response(
             200,
             json={
-                "id": 5,
-                "remindAt": "2026-12-01T09:00:00Z",
-                "_links": {"remindable": {"href": "/api/v3/work_packages/42"}},
+                "_embedded": {
+                    "elements": [
+                        {
+                            "id": 5,
+                            "remindAt": "2026-12-01T09:00:00Z",
+                            "_links": {"remindable": {"href": "/api/v3/work_packages/42"}},
+                        }
+                    ]
+                },
+                "total": 1,
             },
             request=request,
         )

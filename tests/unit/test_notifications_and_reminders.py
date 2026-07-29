@@ -422,10 +422,13 @@ async def test_create_work_package_reminder_posts_and_normalizes() -> None:
 async def test_update_reminder_denies_malformed_remindable_link_even_under_open_scope() -> None:
     # An unresolvable remindable link must be denied even under a fully open
     # READ_PROJECTS=*/WRITE_PROJECTS=* scope — an open scope must not bypass
-    # this check.
+    # this check. OpenProject has no GET reminders/{id} single-item endpoint,
+    # so the allowlist check finds the reminder via the collection endpoint.
     async def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/v3/reminders/7":
-            return httpx.Response(200, json={"_links": {}}, request=request)
+        if request.url.path == "/api/v3/reminders":
+            return httpx.Response(
+                200, json={"_embedded": {"elements": [{"id": 7, "_links": {}}]}, "total": 1}, request=request
+            )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
@@ -439,10 +442,15 @@ async def test_update_reminder_denies_malformed_remindable_link_even_under_open_
 @pytest.mark.asyncio
 async def test_update_reminder_requires_a_field() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/v3/reminders/7":
+        if request.url.path == "/api/v3/reminders":
             return httpx.Response(
                 200,
-                json={"_links": {"remindable": {"href": "/api/v3/work_packages/1"}}},
+                json={
+                    "_embedded": {
+                        "elements": [{"id": 7, "_links": {"remindable": {"href": "/api/v3/work_packages/1"}}}]
+                    },
+                    "total": 1,
+                },
                 request=request,
             )
         if request.url.path == "/api/v3/work_packages/1":

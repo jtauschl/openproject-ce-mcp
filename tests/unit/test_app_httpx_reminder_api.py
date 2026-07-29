@@ -65,9 +65,16 @@ async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
 
 @pytest.mark.asyncio
 async def test_get_requests_single_reminder() -> None:
+    """OpenProject has no GET reminders/{id} single-item endpoint (verified
+    against op-sources: route_param :id mounts only patch/delete) -- get()
+    finds the reminder by paging through the collection instead."""
+
     async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v3/reminders/7"
-        return httpx.Response(200, json=_reminder_payload(), request=request)
+        assert request.url.path == "/api/v3/reminders"
+        assert request.method == "GET"
+        return httpx.Response(
+            200, json={"_embedded": {"elements": [_reminder_payload()]}, "total": 1}, request=request
+        )
 
     async with _client(handler) as http_client:
         api = HttpxReminderApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
@@ -82,9 +89,16 @@ async def test_get_remindable_link_reads_raw_link_without_full_normalization() -
     method -- it never normalizes, unlike get()."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v3/reminders/7"
+        assert request.url.path == "/api/v3/reminders"
         return httpx.Response(
-            200, json={"_links": {"remindable": {"href": "/api/v3/work_packages/1"}}}, request=request
+            200,
+            json={
+                "_embedded": {
+                    "elements": [{"id": 7, "_links": {"remindable": {"href": "/api/v3/work_packages/1"}}}]
+                },
+                "total": 1,
+            },
+            request=request,
         )
 
     async with _client(handler) as http_client:
@@ -97,11 +111,25 @@ async def test_get_remindable_link_reads_raw_link_without_full_normalization() -
 @pytest.mark.asyncio
 async def test_get_remindable_link_returns_none_when_missing() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"_links": {}}, request=request)
+        return httpx.Response(
+            200, json={"_embedded": {"elements": [{"id": 7, "_links": {}}]}, "total": 1}, request=request
+        )
 
     async with _client(handler) as http_client:
         api = HttpxReminderApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
         remindable = await api.get_remindable_link(7)
+
+    assert remindable is None
+
+
+@pytest.mark.asyncio
+async def test_get_remindable_link_returns_none_when_reminder_not_found() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxReminderApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        remindable = await api.get_remindable_link(999)
 
     assert remindable is None
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...models import ReminderSummary
+from ..errors import NotFoundError
 from ..ports.reminder_api import ReminderRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
@@ -67,11 +68,41 @@ class HttpxReminderApi:
         total = int(payload.get("total", len(records)))
         return records, total
 
+    async def _find_raw(self, reminder_id: int) -> dict[str, Any] | None:
+        """Find a reminder's raw payload via the collection endpoint.
+
+        OpenProject has no `GET reminders/{id}` single-item endpoint -- the
+        `route_param :id` block under `resource :reminders` mounts only
+        `patch`/`delete`, never `get` (verified against
+        lib/api/v3/reminders/reminders_api.rb in every vendored OpenProject
+        version). The only way to read a reminder's own payload/`remindable`
+        link is by paging through the collection and matching on id.
+        """
+        offset = 1
+        page_size = 100
+        while True:
+            payload = await self._transport.get_json(
+                "reminders", params={"offset": str(offset), "pageSize": str(page_size)}
+            )
+            elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+            match = next((item for item in elements if item.get("id") == reminder_id), None)
+            if match is not None:
+                return match
+            total = int(payload.get("total", len(elements)))
+            if offset * page_size >= total or not elements:
+                return None
+            offset += 1
+
     async def get(self, reminder_id: int) -> ReminderRecord:
-        return self._record(await self._transport.get_json(f"reminders/{reminder_id}"))
+        payload = await self._find_raw(reminder_id)
+        if payload is None:
+            raise NotFoundError(f"OpenProject reminder {reminder_id} not found.")
+        return self._record(payload)
 
     async def get_remindable_link(self, reminder_id: int) -> dict[str, Any] | None:
-        payload = await self._transport.get_json(f"reminders/{reminder_id}")
+        payload = await self._find_raw(reminder_id)
+        if payload is None:
+            return None
         return payload.get("_links", {}).get("remindable")
 
     async def create(self, work_package_id: int, payload: dict[str, Any]) -> ReminderRecord:
