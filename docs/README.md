@@ -42,7 +42,7 @@ protection, reload, and verification for that specific client:
 
 ## For contributors
 
-- **[Development](development.md)** — dev environment setup, running unit and
+- **[Development](../CONTRIBUTING.md)** — dev environment setup, running unit and
   integration tests, the Docker test instances, and API-drift checks.
 - **[Architecture](architecture.md)** — module layout, request flow, naming
   conventions, and the defense-in-depth safety model.

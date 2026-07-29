@@ -75,6 +75,8 @@ include = [
   "/CHANGELOG.md",
   "/SECURITY.md",
   "/RELEASE.md",
+  "/CONTRIBUTING.md",
+  "/CODE_OF_CONDUCT.md",
   "/LICENSE",
   "/pyproject.toml",
   "/uv.lock",
