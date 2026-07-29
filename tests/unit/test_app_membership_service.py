@@ -311,6 +311,26 @@ async def test_create_passes_write_true_to_resolve_project_ref() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_passes_the_actual_principal_ref_to_resolve_principal_ref() -> None:
+    """create() must forward the caller-supplied principal reference to
+    resolve_principal_ref verbatim, not some transformed/default value --
+    pins the seam's actual argument, matching the resolve_project_ref
+    argument-correctness tests above for the same domain."""
+    principal_refs: list[str] = []
+
+    async def resolve_principal_ref_tracking(principal_ref: str) -> str:
+        principal_refs.append(principal_ref)
+        return await _resolve_principal_ref(principal_ref)
+
+    api = _FakeMembershipApi()
+    service = _service(api, resolve_principal_ref=resolve_principal_ref_tracking)
+
+    await service.create(project="demo", principal="me", roles=["Member"], confirm=True)
+
+    assert principal_refs == ["me"]
+
+
+@pytest.mark.asyncio
 async def test_create_commits_and_stamps_hidden_fields_when_confirmed() -> None:
     # created_at is hidden here rather than a field create() itself writes
     # (project_name/principal_name/role_names) -- hiding one of those would be
