@@ -512,6 +512,9 @@ def _create_time_entry_handler(request: httpx.Request) -> httpx.Response:
             json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
             request=request,
         )
+    if request.method == "POST" and request.url.path == "/api/v3/time_entries/form":
+        body = json.loads(request.content)
+        return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
     if request.method == "POST" and request.url.path == "/api/v3/time_entries":
         return httpx.Response(
             201,
@@ -542,6 +545,9 @@ def _update_time_entry_handler(request: httpx.Request) -> httpx.Response:
             },
             request=request,
         )
+    if request.method == "POST" and request.url.path == "/api/v3/time_entries/8/form":
+        body = json.loads(request.content)
+        return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
     if request.method == "PATCH" and request.url.path == "/api/v3/time_entries/8":
         return httpx.Response(
             200,

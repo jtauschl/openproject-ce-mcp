@@ -1380,33 +1380,25 @@ class OpenProjectClient:
             ongoing=ongoing,
             activity_project_id=activity_project_id,
         )
-        if not confirm:
-            return TimeEntryWriteResult(
-                action="create",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to create this time entry. Ask for confirmation, then call again with confirm=true.",
-                time_entry_id=None,
-                project=project_name,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        self._ensure_write_enabled("work_package")
-        response = await self._post("time_entries", json_body=payload)
-        result = self.normalize_time_entry(response)
-        return TimeEntryWriteResult(
+        # Validate against OpenProject's own CreateFormAPI before reporting
+        # ready=True -- a locally-built payload can pass this server's own
+        # field checks yet still be rejected by OpenProject itself (e.g. an
+        # hours/date/activity combination the schema disallows), which a
+        # hardcoded ready=True/validation_errors={} could never surface.
+        form = await self._post("time_entries/form", json_body=payload)
+        return await self._finalize_write(
+            result_cls=TimeEntryWriteResult,
             action="create",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Time entry created successfully.",
-            time_entry_id=result.id,
-            project=result.project,
-            payload=payload,
-            validation_errors={},
-            result=result,
+            confirm=confirm,
+            form=form,
+            write_path="time_entries",
+            write_scope="work_package",
+            identity_kwargs=lambda _payload: {"time_entry_id": None, "project": project_name},
+            normalize=self.normalize_time_entry,
+            committed_kwargs=lambda d: {"time_entry_id": d.id, "project": d.project},
+            rejected_message="OpenProject rejected the proposed time entry. Fix the validation errors before confirming.",
+            preview_message="OpenProject validated the time entry. Ask for confirmation, then call again with confirm=true to create it.",
+            success_message="Time entry created successfully.",
         )
 
     async def update_time_entry(
@@ -1439,33 +1431,24 @@ class OpenProjectClient:
             ongoing=ongoing,
             activity_project_id=project_id,
         )
-        if not confirm:
-            return TimeEntryWriteResult(
-                action="update",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to update this time entry. Ask for confirmation, then call again with confirm=true.",
-                time_entry_id=time_entry_id,
-                project=_link_title(current.get("_links", {}).get("project")),
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        self._ensure_write_enabled("work_package")
-        response = await self._patch(f"time_entries/{time_entry_id}", json_body=payload)
-        result = self.normalize_time_entry(response)
-        return TimeEntryWriteResult(
+        # Validate against OpenProject's own UpdateFormAPI before reporting
+        # ready=True -- see create_time_entry's identical rationale above.
+        form = await self._post(f"time_entries/{time_entry_id}/form", json_body=payload)
+        project_name = _link_title(current.get("_links", {}).get("project"))
+        return await self._finalize_write(
+            result_cls=TimeEntryWriteResult,
             action="update",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Time entry updated successfully.",
-            time_entry_id=result.id,
-            project=result.project,
-            payload=payload,
-            validation_errors={},
-            result=result,
+            confirm=confirm,
+            form=form,
+            write_path=f"time_entries/{time_entry_id}",
+            write_method="PATCH",
+            write_scope="work_package",
+            identity_kwargs=lambda _payload: {"time_entry_id": time_entry_id, "project": project_name},
+            normalize=self.normalize_time_entry,
+            committed_kwargs=lambda d: {"time_entry_id": d.id, "project": d.project},
+            rejected_message="OpenProject rejected the proposed time entry changes. Fix the validation errors before confirming.",
+            preview_message="OpenProject validated the time entry. Ask for confirmation, then call again with confirm=true to update it.",
+            success_message="Time entry updated successfully.",
         )
 
     async def delete_time_entry(
@@ -2580,7 +2563,11 @@ class OpenProjectClient:
         work_package_id = self._work_package_ref(work_package_id)
         # The target goes into a HAL link href, which OpenProject resolves only by
         # numeric id (not displayId), so resolve a semantic ref to its numeric id.
-        related_numeric_id = await self._resolve_work_package_id(related_to_work_package_id)
+        # write=True: OpenProject authorizes relations primarily via the `from`
+        # work package, but this server's own WRITE_PROJECTS contract must also
+        # hold for the `to` target -- a caller with write on one project must not
+        # be able to link it to a work package in a project they can only read.
+        related_numeric_id = await self._resolve_work_package_id(related_to_work_package_id, write=True)
         work_package = await self._get(f"work_packages/{work_package_id}")
         self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
         # Reuse the numeric id from the fetch above rather than a second GET.
@@ -4523,8 +4510,10 @@ class OpenProjectClient:
         # start/end times require the admin setting; OpenProject rejects them when
         # disabled, so we only include them when the caller provides a value.
         if start_time is not None:
+            self._ensure_field_writable("time_entry", "start_time")
             payload["startTime"] = start_time
         if end_time is not None:
+            self._ensure_field_writable("time_entry", "end_time")
             payload["endTime"] = end_time
         if comment is not None:
             self._ensure_field_writable("time_entry", "comment")

@@ -169,6 +169,41 @@ async def test_create_work_package_relation_denies_disallowed_target_project() -
 
 
 @pytest.mark.asyncio
+async def test_create_work_package_relation_denies_readable_but_write_restricted_target() -> None:
+    """Regression test (found via Codex review): the target's numeric id was
+    resolved with write=False (a plain reference lookup), so only the SOURCE
+    work package's project was ever checked against WRITE_PROJECTS -- a
+    caller with write on one project could link it to a work package in any
+    project they could merely READ, bypassing the write allowlist on the
+    target side entirely. Same gap class as the reparent-target tests above,
+    for create_work_package_relation's `related_to_work_package_id`."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/999" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 999, "_links": {"project": {"title": "Other", "href": "/api/v3/projects/2"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"title": "Demo", "href": "/api/v3/projects/1"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("*",), write_projects=("demo",), enable_work_package_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await client.create_work_package_relation(
+            work_package_id=42, related_to_work_package_id=999, relation_type="blocks", confirm=True
+        )
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_update_work_package_denies_disallowed_sprint_project() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":

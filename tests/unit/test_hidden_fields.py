@@ -283,6 +283,46 @@ async def test_hidden_time_entry_field_is_rejected_on_write() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hidden_time_entry_start_and_end_time_are_rejected_on_write() -> None:
+    """Regression test (found via Codex review): start_time/end_time were the
+    only two TimeEntry fields that omitted the _ensure_field_writable check
+    every sibling field (hours, spent_on, comment, ongoing) already has --
+    a hidden-by-config field could still be written despite being masked on
+    read, the same bug class already fixed for other domains."""
+
+    async def make_client(hidden_field: str) -> OpenProjectClient:
+        return OpenProjectClient(
+            Settings(
+                base_url="https://op.example.com",
+                api_token="token",
+                timeout=12,
+                verify_ssl=True,
+                default_page_size=20,
+                max_page_size=50,
+                max_results=100,
+                log_level="WARNING",
+                hidden_fields={"time_entry": (hidden_field,)},
+                enable_work_package_write=True,
+            ),
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+        )
+
+    client = await make_client("start_time")
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_TIME_ENTRY_FIELDS"):
+        await client.create_time_entry(
+            activity="Development", hours="PT1H", spent_on="2026-03-20", start_time="09:00", confirm=False
+        )
+    await client.aclose()
+
+    client = await make_client("end_time")
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_TIME_ENTRY_FIELDS"):
+        await client.create_time_entry(
+            activity="Development", hours="PT1H", spent_on="2026-03-20", end_time="10:00", confirm=False
+        )
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_hidden_custom_field_is_rejected_on_write() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/demo":
