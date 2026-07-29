@@ -163,9 +163,9 @@ async def test_list_relations_and_update_relation() -> None:
             # list_relations previously omitted pageSize entirely and relied on the
             # server's default page size, so every call re-fetched the same default
             # first page -- entries past it were permanently unreachable regardless
-            # of offset.
+            # of offset. Now walks every server page (pageSize=max_page_size).
             assert request.url.params["offset"] == "1"
-            assert request.url.params["pageSize"] == "100"
+            assert request.url.params["pageSize"] == "50"
             return httpx.Response(
                 200,
                 json={
@@ -458,37 +458,41 @@ async def test_list_work_package_watchers_allows_anchor_inside_read_allowlist() 
     await client.aclose()
 
 
-async def test_list_relations_bounds_fetch_by_max_results_and_paginates_survivors() -> None:
+async def test_list_relations_walks_every_server_page_and_paginates_survivors() -> None:
     # list_relations previously sent no pageSize at all, so it silently relied on
-    # the server's default page size instead of settings.max_results -- every call
-    # re-fetched that same default first page and re-sliced it locally, making
+    # the server's default page size instead of walking every server page -- every
+    # call re-fetched that same default first page and re-sliced it locally, making
     # relations past the default page permanently unreachable no matter what
-    # offset/limit was requested.
-    settings = _base_settings(max_results=5)
+    # offset/limit was requested. 5 raw items across 3 server pages
+    # (max_page_size=2: [1,2], [3,4], [5]) -- proves every server page is
+    # walked, not just a single bounded fetch.
+    settings = _base_settings(max_page_size=2)
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/relations" and request.method == "GET":
-            assert request.url.params["offset"] == "1"
-            assert request.url.params["pageSize"] == "5"
-            return httpx.Response(
-                200,
-                json={
-                    "_embedded": {
-                        "elements": [
-                            {
-                                "id": i,
-                                "type": "blocks",
-                                "_links": {
-                                    "from": {"href": "/api/v3/work_packages/10"},
-                                    "to": {"href": f"/api/v3/work_packages/{i}"},
-                                },
-                            }
-                            for i in range(1, 6)
-                        ]
-                    }
-                },
-                request=request,
-            )
+            page = request.url.params["offset"]
+            assert request.url.params["pageSize"] == "2"
+
+            def relation(i: int) -> dict:
+                return {
+                    "id": i,
+                    "type": "blocks",
+                    "_links": {
+                        "from": {"href": "/api/v3/work_packages/10"},
+                        "to": {"href": f"/api/v3/work_packages/{i}"},
+                    },
+                }
+
+            if page == "1":
+                return httpx.Response(
+                    200, json={"_embedded": {"elements": [relation(1), relation(2)]}}, request=request
+                )
+            if page == "2":
+                return httpx.Response(
+                    200, json={"_embedded": {"elements": [relation(3), relation(4)]}}, request=request
+                )
+            if page == "3":
+                return httpx.Response(200, json={"_embedded": {"elements": [relation(5)]}}, request=request)
         m = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
         if m:
             return httpx.Response(

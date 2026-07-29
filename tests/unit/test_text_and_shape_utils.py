@@ -831,18 +831,18 @@ async def test_get_work_package_relations_paginates_allowed_results() -> None:
     # survivors (not the raw server page), so a restrictive allowlist can't
     # produce a sparse page -- same pattern as list_project_sprints.
     #
-    # Follow-up hardening: the /relations request itself
-    # previously omitted pageSize entirely, so it silently relied on the server's
-    # default page size instead of settings.max_results -- every call re-fetched
-    # that same default first page and re-sliced it locally, making relations
-    # past the default page permanently unreachable. Assert the bounded-fetch
-    # params are actually sent, same as _fetch_bounded_and_paginate.
+    # Follow-up hardening: the /relations request itself previously omitted
+    # pageSize entirely, so it silently relied on the server's default page
+    # size instead of walking every server page -- every call re-fetched that
+    # same default first page and re-sliced it locally, making relations past
+    # the default page permanently unreachable. Assert every server page is
+    # actually walked (pageSize=max_page_size), same as _fetch_bounded_and_paginate.
     settings = make_settings()
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/relations" and request.method == "GET":
             assert request.url.params["offset"] == "1"
-            assert request.url.params["pageSize"] == str(settings.max_results)
+            assert request.url.params["pageSize"] == str(settings.max_page_size)
             return httpx.Response(
                 200,
                 json={

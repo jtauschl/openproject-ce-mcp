@@ -972,14 +972,19 @@ class OpenProjectClient:
         offset: int,
         limit: int,
     ) -> tuple[list[_FetchT], int, int | None, bool]:
-        """Fetch one bounded page (pageSize=settings.max_results), normalize + filter
-        the raw elements, apply an optional post-normalize filter (e.g. project/
-        search predicates), then paginate the survivors in memory via
-        _paginate_client. Shared by every list method that must over-fetch and
-        filter client-side (allowlist/search) rather than trust server-side
-        paging, so a restrictive filter can't produce a sparse page. Any
-        NotFoundError re-wrap (sprints/project_sprints) stays at the call site,
-        not here.
+        """Walk every server page, normalize + filter the raw elements, apply an
+        optional post-normalize filter (e.g. project/search predicates), then
+        paginate the survivors in memory via _paginate_client. Shared by every
+        list method that must over-fetch and filter client-side (allowlist/
+        search) rather than trust server-side paging, so a restrictive filter
+        can't produce a sparse page. Any NotFoundError re-wrap (sprints/
+        project_sprints) stays at the call site, not here.
+
+        A single request capped at settings.max_results (this helper's prior
+        behavior) silently hid any item beyond that cap once the endpoint's
+        real result count exceeded it -- now walks every server page instead,
+        terminating on a short page rather than trusting a possibly-absent/
+        inconsistent `total` field.
 
         item_allowed is async (rather than plain bool) so ACL checks that need
         their own lookups (e.g. relations checking each linked work package's
@@ -987,14 +992,24 @@ class OpenProjectClient:
         async filter had to hand-roll their own fetch+params, which is exactly
         how a prior pageSize-omission bug happened.
         """
-        params = {"offset": "1", "pageSize": str(self.settings.max_results)}
-        if params_extra:
-            params.update(params_extra)
-        payload = await self._get(path, params=params)
-        results = []
-        for item in payload.get("_embedded", {}).get("elements", []):
-            if isinstance(item, dict) and (item_allowed is None or await item_allowed(item)):
-                results.append(normalize(item))
+        server_page_size = self.settings.max_page_size
+        results: list[_FetchT] = []
+        server_offset = 1
+        while True:
+            params = {"offset": str(server_offset), "pageSize": str(server_page_size)}
+            if params_extra:
+                params.update(params_extra)
+            payload = await self._get(path, params=params)
+            raw_elements = payload.get("_embedded", {}).get("elements", [])
+            page_count = 0
+            for item in raw_elements:
+                if isinstance(item, dict):
+                    page_count += 1
+                    if item_allowed is None or await item_allowed(item):
+                        results.append(normalize(item))
+            if page_count < server_page_size:
+                break
+            server_offset += 1
         if post_filter is not None:
             results = post_filter(results)
         return _paginate_client(offset=offset, limit=limit, results=results)
@@ -4906,15 +4921,9 @@ class OpenProjectClient:
             )
             return sprint_ref
 
-        # Page-walk real server pages directly (NOT via list_project_sprints):
-        # that method's over-fetch-then-paginate-in-memory shape always requests
-        # offset=1/pageSize=max_results and paginates the same bounded result
-        # in memory, so calling it again with a different offset just re-fetches
-        # the identical first server page — a project with more sprints than
-        # max_results would never be fully searched no matter how many
-        # "pages" were walked. This resolver instead pages the server itself,
-        # trusting its reported `total` (mirrors VersionResolver.resolve_id's
-        # genuine server-paginated project path).
+        # Page-walk real server pages via list_for_project directly, trusting
+        # its reported `total` (mirrors VersionResolver.resolve_id's genuine
+        # server-paginated project path).
         self._ensure_read_enabled("project")
         project_payload = await self._get_project_payload(project, context=context)
         project_id = int(project_payload["id"])
@@ -4923,9 +4932,7 @@ class OpenProjectClient:
         offset = 1
         while True:
             try:
-                records, total = await self._sprint_api.list_for_project_page(
-                    project_id, offset=offset, page_size=page_size
-                )
+                records, total = await self._sprint_api.list_for_project(project_id, offset=offset, page_size=page_size)
             except NotFoundError as exc:
                 raise NotFoundError(
                     "OpenProject project sprints require the Backlogs module and OpenProject 17.3 or newer."

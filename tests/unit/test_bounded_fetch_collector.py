@@ -1,11 +1,11 @@
 """Direct unit tests for OpenProjectClient._fetch_bounded_and_paginate.
 
-Covers the shared bounded-fetch-filter-paginate shape used by list_views/
-list_documents/list_news/list_time_entries/list_sprints/list_project_sprints/
-list_boards/get_work_package_relations/list_relations: fetch one bounded page,
-normalize + filter raw elements via an async item_allowed, apply an optional
-post_filter over the normalized results, then paginate the survivors in
-memory.
+Covers the shared walk-every-server-page-filter-paginate shape used by
+list_time_entries/get_work_package_relations/list_relations (list_views/
+list_documents/list_news/list_sprints/list_project_sprints/list_boards have
+since migrated to the app/ layer): walk every server page, normalize +
+filter raw elements via an async item_allowed, apply an optional post_filter
+over the normalized results, then paginate the survivors in memory.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from openproject_ce_mcp.client import OpenProjectClient
 def _handler_for(elements: list[dict]) -> httpx.MockTransport:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/widgets"
-        assert request.url.params["pageSize"] == "100"
+        assert request.url.params["pageSize"] == "50"
         return httpx.Response(200, json={"_embedded": {"elements": elements}}, request=request)
 
     return httpx.MockTransport(handler)
