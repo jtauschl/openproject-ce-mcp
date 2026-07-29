@@ -29,6 +29,7 @@ from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_notification_api import HttpxNotificationApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
 from .app.adapters.httpx_query_metadata_api import HttpxQueryMetadataApi
+from .app.adapters.httpx_relation_api import HttpxRelationApi
 from .app.adapters.httpx_reminder_api import HttpxReminderApi
 from .app.adapters.httpx_role_api import HttpxRoleApi
 from .app.adapters.httpx_sprint_api import HttpxSprintApi
@@ -55,7 +56,10 @@ from .app.errors import (
     PermissionDeniedError,
     TransportError,
 )
-from .app.pagination import paginate_client as _paginate_client
+from .app.pagination import fetch_bounded_and_paginate as _fetch_bounded_and_paginate_shared
+from .app.pagination import (
+    paginate_client as _paginate_client,  # noqa: F401 -- re-exported, test_versions_and_sprints.py imports it directly
+)
 from .app.pagination import paginate_server as _paginate_server
 from .app.policies import access as _access_policy
 from .app.policies import hidden_fields as _hidden_fields_policy
@@ -77,6 +81,7 @@ from .app.ports.notification_api import NotificationApi
 from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
 from .app.ports.query_metadata_api import QueryMetadataApi
+from .app.ports.relation_api import RelationApi
 from .app.ports.reminder_api import ReminderApi
 from .app.ports.role_api import RoleApi
 from .app.ports.sprint_api import SprintApi
@@ -109,6 +114,7 @@ from .app.services.notification_service import NotificationService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
 from .app.services.query_metadata_service import QueryMetadataService
+from .app.services.relation_service import RelationService
 from .app.services.reminder_service import ReminderService
 from .app.services.role_service import RoleService
 from .app.services.sprint_service import SprintService
@@ -197,7 +203,6 @@ from .models import (
     QueryOperatorSummary,
     QuerySortBySummary,
     RelationListResult,
-    RelationSummary,
     RelationUpdateResult,
     RelationWriteResult,
     ReminderListResult,
@@ -575,6 +580,17 @@ class OpenProjectClient:
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
             work_package_project_allowed=self._work_package_resolver.project_link_allowed,
+        )
+
+        self._relation_api: RelationApi = HttpxRelationApi(HttpxTransport(self._http), api_prefix=self._api_prefix)
+        self._relation_service = RelationService(
+            api=self._relation_api,
+            work_package_lookup_api=self._work_package_lookup_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            work_package_project_allowed=self._work_package_resolver.project_link_allowed,
+            api_prefix=self._api_prefix,
         )
 
     async def initialize(self) -> None:
@@ -1000,60 +1016,34 @@ class OpenProjectClient:
     ) -> tuple[list[_FetchT], int, int | None, bool]:
         """Walk every server page, normalize + filter the raw elements, apply an
         optional post-normalize filter (e.g. project/search predicates), then
-        paginate the survivors in memory via _paginate_client. Shared by every
-        list method that must over-fetch and filter client-side (allowlist/
-        search) rather than trust server-side paging, so a restrictive filter
-        can't produce a sparse page. Any NotFoundError re-wrap (sprints/
-        project_sprints) stays at the call site, not here.
+        paginate the survivors in memory. Shared by every list method that
+        must over-fetch and filter client-side (allowlist/search) rather than
+        trust server-side paging, so a restrictive filter can't produce a
+        sparse page. Any NotFoundError re-wrap (sprints/project_sprints) stays
+        at the call site, not here.
 
-        A single request capped at settings.max_results (this helper's prior
-        behavior) silently hid any item beyond that cap once the endpoint's
-        real result count exceeded it -- now walks every server page instead,
-        terminating on a short page rather than trusting a possibly-absent/
-        inconsistent `total` field.
-
-        item_allowed is async (rather than plain bool) so ACL checks that need
-        their own lookups (e.g. relations checking each linked work package's
-        project) can use this helper too -- without it, callers needing an
-        async filter had to hand-roll their own fetch+params, which is exactly
-        how a prior pageSize-omission bug happened.
-
-        Some project-scoped sub-collection endpoints (verified live: a
-        project's versions endpoint) silently ignore both offset and
-        pageSize and always return every element -- without the seen-ids
-        check below, `page_count < server_page_size` never becomes true and
-        this loops forever, re-fetching the same full page. Tracked against
-        the RAW element ids (before item_allowed/normalize), so a page that's
-        merely fully filtered out doesn't get mistaken for a repeat.
+        Delegates to app.pagination.fetch_bounded_and_paginate (extracted for
+        the Relations migration, ADR 0001) -- kept here as a thin wrapper only
+        for list_time_entries, its one remaining still-flat caller; Relations
+        and get_work_package_relations, the other two former callers, now use
+        the shared function directly via RelationService.
         """
-        server_page_size = self.settings.max_page_size
-        results: list[_FetchT] = []
-        seen_ids: set[Any] = set()
-        server_offset = 1
-        is_first_page = True
-        while True:
+
+        async def _fetch_page(server_offset: int, server_page_size: int) -> dict[str, Any]:
             params = {"offset": str(server_offset), "pageSize": str(server_page_size)}
             if params_extra:
                 params.update(params_extra)
-            payload = await self._get(path, params=params)
-            raw_elements = payload.get("_embedded", {}).get("elements", [])
-            page_ids = {item.get("id") for item in raw_elements if isinstance(item, dict)}
-            if not is_first_page and page_ids and page_ids <= seen_ids:
-                break
-            is_first_page = False
-            seen_ids.update(page_ids)
-            page_count = 0
-            for item in raw_elements:
-                if isinstance(item, dict):
-                    page_count += 1
-                    if item_allowed is None or await item_allowed(item):
-                        results.append(normalize(item))
-            if page_count < server_page_size:
-                break
-            server_offset += 1
-        if post_filter is not None:
-            results = post_filter(results)
-        return _paginate_client(offset=offset, limit=limit, results=results)
+            return await self._get(path, params=params)
+
+        return await _fetch_bounded_and_paginate_shared(
+            fetch_page=_fetch_page,
+            normalize=normalize,
+            item_allowed=item_allowed,
+            post_filter=post_filter,
+            server_page_size=self.settings.max_page_size,
+            offset=offset,
+            limit=limit,
+        )
 
     async def list_views(
         self,
@@ -2636,58 +2626,13 @@ class OpenProjectClient:
         lag: int | None = None,
         confirm: bool = False,
     ) -> RelationWriteResult:
-        work_package_id = self._work_package_ref(work_package_id)
-        # The target goes into a HAL link href, which OpenProject resolves only by
-        # numeric id (not displayId), so resolve a semantic ref to its numeric id.
-        # write=True: OpenProject authorizes relations primarily via the `from`
-        # work package, but this server's own WRITE_PROJECTS contract must also
-        # hold for the `to` target -- a caller with write on one project must not
-        # be able to link it to a work package in a project they can only read.
-        related_numeric_id = await self._resolve_work_package_id(related_to_work_package_id, write=True)
-        work_package = await self._get(f"work_packages/{work_package_id}")
-        self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
-        # Reuse the numeric id from the fetch above rather than a second GET.
-        source_numeric_id = int(work_package["id"])
-        self._ensure_field_writable("relation", "type")
-        payload: dict[str, Any] = {
-            "type": relation_type,
-            "_links": {"to": {"href": self._api_href(f"work_packages/{related_numeric_id}")}},
-        }
-        if description is not None:
-            self._ensure_field_writable("relation", "description")
-            payload["description"] = description
-        if lag is not None:
-            payload["lag"] = lag
-
-        preview_payload = payload | {"to_work_package_id": related_numeric_id}
-        if not confirm:
-            return RelationWriteResult(
-                action="create",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to create this relation. Ask for confirmation, then call again with confirm=true.",
-                relation_id=None,
-                work_package_id=source_numeric_id,
-                payload=preview_payload,
-                validation_errors={},
-                result=None,
-            )
-
-        self._ensure_write_enabled("work_package")
-        relation = await self._post(f"work_packages/{work_package_id}/relations", json_body=payload)
-        normalized = self.normalize_relation(relation)
-        return RelationWriteResult(
-            action="create",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Relation created successfully.",
-            relation_id=normalized.id,
-            work_package_id=source_numeric_id,
-            payload=preview_payload,
-            validation_errors={},
-            result=normalized,
+        return await self._relation_service.create(
+            work_package_id=work_package_id,
+            related_to_work_package_id=related_to_work_package_id,
+            relation_type=relation_type,
+            description=description,
+            lag=lag,
+            confirm=confirm,
         )
 
     async def delete_work_package(
@@ -2719,31 +2664,7 @@ class OpenProjectClient:
         relation_id: int,
         confirm: bool = False,
     ) -> RelationWriteResult:
-        relation = await self._get(f"relations/{relation_id}")
-        source = relation.get("_links", {}).get("from")
-        if not isinstance(source, dict) or not source.get("href"):
-            raise OpenProjectServerError("OpenProject relation is missing its source work package link.")
-        work_package = await self._get(self._link_to_api_path(source["href"]))
-        self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
-        normalized = self.normalize_relation(relation)
-
-        payload = {
-            "id": normalized.id,
-            "type": normalized.type,
-            "from_id": normalized.from_id,
-            "to_id": normalized.to_id,
-        }
-        return await self._finalize_delete(
-            result_cls=RelationWriteResult,
-            confirm=confirm,
-            result_kwargs={"relation_id": normalized.id, "work_package_id": normalized.from_id, "payload": payload},
-            preview_result=normalized,
-            commit_result=None,
-            write_scope="work_package",
-            delete_path=f"relations/{relation_id}",
-            preview_message="OpenProject is ready to delete this relation. Ask for confirmation, then call again with confirm=true.",
-            success_message="Relation deleted successfully.",
-        )
+        return await self._relation_service.delete(relation_id=relation_id, confirm=confirm)
 
     async def list_my_open_work_packages(
         self,
@@ -2969,42 +2890,7 @@ class OpenProjectClient:
     async def get_work_package_relations(
         self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
     ) -> RelationListResult:
-        self._ensure_read_enabled("work_package")
-        # Resolving the id already confirms the anchor work package itself is
-        # allowed; a second self.get_work_package() fetch here would be redundant.
-        work_package_id = await self._resolve_work_package_id(work_package_id)
-        effective_limit = self._resolve_limit(limit)
-        # The old work_packages/{id}/relations endpoint is deprecated (308 redirect).
-        # Use the canonical relations endpoint with an "involved" filter instead.
-        filters = json.dumps([{"involved": {"operator": "=", "values": [str(work_package_id)]}}])
-        # Filter out relations whose OTHER side sits in a project outside the
-        # READ_PROJECTS allowlist — otherwise that work package's id/subject
-        # would leak through to_id/to_subject even though it isn't readable
-        # on its own. Same helper/caching as list_relations.
-        allowlisted = not _scope_allows_all(self.settings.read_projects)
-        wp_allowed = WorkPackageAllowedContext()
-
-        async def item_allowed(item: dict[str, Any]) -> bool:
-            return not allowlisted or await self._relation_endpoints_allowed(item, wp_allowed)
-
-        page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
-            path="relations",
-            params_extra={"filters": filters},
-            normalize=self.normalize_relation,
-            item_allowed=item_allowed,
-            post_filter=None,
-            offset=offset,
-            limit=effective_limit,
-        )
-        return RelationListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(page),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=page,
-        )
+        return await self._relation_service.list_for_work_package(work_package_id, offset=offset, limit=limit)
 
     async def get_work_package_activities(
         self, work_package_id: int | str, *, limit: int | None = None, text_limit: int | None = None
@@ -3383,61 +3269,7 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> RelationListResult:
-        """List all relations, optionally filtered by type.
-
-        Gated by the work_package read scope and filtered by the project read
-        allowlist: only relations whose source work package is in an allowed
-        project are returned, so this cannot leak work packages from projects the
-        caller may not read.
-        """
-        self._ensure_read_enabled("work_package")
-        effective_limit = self._resolve_limit(limit)
-        params_extra: dict[str, str] | None = None
-        if relation_type is not None:
-            params_extra = {"filters": json.dumps([{"type": {"operator": "=", "values": [relation_type]}}])}
-        allowlisted = not _scope_allows_all(self.settings.read_projects)
-        # Cache project-allow decisions per work package so a batch of relations
-        # between the same work packages doesn't refetch (mitigates N+1).
-        wp_allowed = WorkPackageAllowedContext()
-
-        async def item_allowed(item: dict[str, Any]) -> bool:
-            return not allowlisted or await self._relation_endpoints_allowed(item, wp_allowed)
-
-        page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
-            path="relations",
-            params_extra=params_extra,
-            normalize=self.normalize_relation,
-            item_allowed=item_allowed,
-            post_filter=None,
-            offset=offset,
-            limit=effective_limit,
-        )
-        return RelationListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(page),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=page,
-        )
-
-    async def _relation_endpoints_allowed(self, relation: dict[str, Any], cache: WorkPackageAllowedContext) -> bool:
-        """True only if BOTH linked work packages are in an allowed project.
-
-        Both ``from`` and ``to`` must pass — otherwise a relation to a work
-        package in a project the caller may not read would still leak that work
-        package's id and subject through ``to_id``/``to_subject``.
-        """
-        links = relation.get("_links", {})
-        for side in ("from", "to"):
-            link = links.get(side)
-            if not isinstance(link, dict) or not link.get("href"):
-                return False
-            href = link["href"]
-            if not await self._work_package_project_allowed(href, context=cache):
-                return False
-        return True
+        return await self._relation_service.list_all(relation_type=relation_type, offset=offset, limit=limit)
 
     async def _work_package_project_allowed(
         self, href: str, *, context: WorkPackageAllowedContext | None = None
@@ -3459,44 +3291,8 @@ class OpenProjectClient:
         description: str | None = None,
         confirm: bool = False,
     ) -> RelationUpdateResult:
-        """Update the type or description of an existing relation."""
-        current = await self._get(f"relations/{relation_id}")
-        source = current.get("_links", {}).get("from")
-        if not isinstance(source, dict) or not source.get("href"):
-            raise OpenProjectServerError("OpenProject relation is missing its source work package link.")
-        work_package = await self._get(self._link_to_api_path(source["href"]))
-        self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
-        existing = self.normalize_relation(current)
-        body: dict[str, Any] = {}
-        if relation_type is not None:
-            self._ensure_field_writable("relation", "type")
-            body["type"] = relation_type
-        if description is not None:
-            self._ensure_field_writable("relation", "description")
-            body["description"] = description
-        if not confirm:
-            return RelationUpdateResult(
-                action="update",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message=f"Ready to update relation {relation_id}. Call again with confirm=true.",
-                relation_id=relation_id,
-                payload=body,
-                result=existing,
-            )
-        self._ensure_write_enabled("work_package")
-        response = await self._patch(f"relations/{relation_id}", json_body=body)
-        detail = self.normalize_relation(response)
-        return RelationUpdateResult(
-            action="update",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Relation updated successfully.",
-            relation_id=relation_id,
-            payload=body,
-            result=detail,
+        return await self._relation_service.update(
+            relation_id=relation_id, relation_type=relation_type, description=description, confirm=confirm
         )
 
     async def _get(self, path: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
@@ -3867,26 +3663,6 @@ class OpenProjectClient:
                 percentage_done=payload.get("percentageDone"),
                 derived_percentage_done=payload.get("derivedPercentageDone"),
                 readonly=payload.get("readonly"),
-            ),
-        )
-
-    def normalize_relation(self, payload: dict[str, Any]) -> RelationSummary:
-        links = payload.get("_links", {})
-        # from_subject/to_subject are the linked work packages' titles, so honor
-        # the work_package subject hide list too — not just the relation entity's.
-        wp_subject_hidden = self._field_hidden("work_package", "subject")
-        from_subject = None if wp_subject_hidden else _link_title(links.get("from"))
-        to_subject = None if wp_subject_hidden else _link_title(links.get("to"))
-        return self._apply_hidden_fields(
-            "relation",
-            RelationSummary(
-                id=int(payload["id"]),
-                type=payload.get("type"),
-                description=_delimit_user_content(_trim_text(payload.get("description"), limit=SUBJECT_LIMIT)),
-                from_id=_id_from_href(links.get("from", {}).get("href")),
-                from_subject=from_subject,
-                to_id=_id_from_href(links.get("to", {}).get("href")),
-                to_subject=to_subject,
             ),
         )
 

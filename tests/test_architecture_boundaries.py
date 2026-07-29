@@ -1072,3 +1072,46 @@ def test_notification_service_binds_the_api_param_to_notification_api_specifical
     assert hints["work_package_project_allowed"] is not WorkPackageResolver, (
         "NotificationService.__init__'s work_package_project_allowed param must not be the concrete resolver class"
     )
+
+
+def test_relation_service_binds_its_dependencies_to_the_right_protocols() -> None:
+    """Relations mirrors Reminders' widest seam surface: list_all()/
+    list_for_work_package() each check TWO work packages per relation (from
+    AND to, not a single anchor) via WorkPackageProjectAllowedCheck +
+    WorkPackageAllowedContext; create() resolves a genuine caller-supplied
+    target reference via WorkPackageIdResolver(ref, write=True); update()/
+    delete() derive an already-concrete work package from the relation's own
+    from link via WorkPackageLookupApi directly. All four Protocol
+    dependencies must be pinned."""
+    from openproject_ce_mcp.app.adapters.httpx_relation_api import HttpxRelationApi
+    from openproject_ce_mcp.app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
+    from openproject_ce_mcp.app.ports.relation_api import RelationApi
+    from openproject_ce_mcp.app.ports.work_package_lookup_api import WorkPackageLookupApi
+    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageIdResolver, WorkPackageProjectAllowedCheck
+    from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
+    from openproject_ce_mcp.app.services.relation_service import RelationService
+
+    hints = typing.get_type_hints(RelationService.__init__)
+    assert hints["api"] is RelationApi, "RelationService.__init__'s api param must be typed RelationApi"
+    assert hints["api"] is not HttpxRelationApi, "RelationService.__init__'s api param must not be the concrete adapter"
+
+    assert hints["work_package_lookup_api"] is WorkPackageLookupApi, (
+        "RelationService.__init__'s work_package_lookup_api param must be typed WorkPackageLookupApi"
+    )
+    assert hints["work_package_lookup_api"] is not HttpxWorkPackageLookupApi, (
+        "RelationService.__init__'s work_package_lookup_api param must not be the concrete adapter"
+    )
+
+    assert hints["resolve_work_package_id"] is WorkPackageIdResolver, (
+        "RelationService.__init__'s resolve_work_package_id param must be typed WorkPackageIdResolver"
+    )
+    assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
+        "RelationService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
+    )
+
+    assert hints["work_package_project_allowed"] is WorkPackageProjectAllowedCheck, (
+        "RelationService.__init__'s work_package_project_allowed param must be typed WorkPackageProjectAllowedCheck"
+    )
+    assert hints["work_package_project_allowed"] is not WorkPackageResolver, (
+        "RelationService.__init__'s work_package_project_allowed param must not be the concrete resolver class"
+    )
