@@ -7,7 +7,9 @@ import httpx
 import pytest
 from _client_test_helpers import _base_settings, _wp_detail_payload, _write_enabled_settings, make_settings
 
+from openproject_ce_mcp.app.adapters.httpx_project_api import PROJECT_ANCESTORS_LIMIT, normalize_project_detail
 from openproject_ce_mcp.app.adapters.httpx_user_api import normalize_user_detail
+from openproject_ce_mcp.app.adapters.httpx_version_api import normalize_version
 from openproject_ce_mcp.app.origin import origin_from_url as _origin_from_url
 from openproject_ce_mcp.client import (
     CLEAR,
@@ -267,9 +269,10 @@ def test_normalize_time_entry_comment_is_delimited() -> None:
 
 
 def test_normalize_version_description_is_delimited() -> None:
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
-
-    version = client.normalize_version({"id": 1, "name": "1.0", "description": {"raw": "release notes"}, "_links": {}})
+    version = normalize_version(
+        {"id": 1, "name": "1.0", "description": {"raw": "release notes"}, "_links": {}},
+        base_url="https://op.example.com",
+    )
 
     assert version.description == "<user-content>release notes</user-content>"
 
@@ -939,8 +942,9 @@ def test_normalize_work_package_prefers_start_date_due_date_over_milestone_date_
 
 def test_normalize_project_detail_builds_ancestors_from_links() -> None:
     """get_project's ancestors, mirroring WorkPackageDetail.ancestors
-    (same shape, same client.py-side truncation pattern)."""
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    (same shape, same truncation pattern). Re-anchored on the adapter's
+    module-level normalize_project_detail (ADR 0001 -- client.py's own copy
+    was a dead leftover, deleted after the Projects domain migration)."""
     payload = {
         "id": 9,
         "name": "Sub Project",
@@ -953,7 +957,7 @@ def test_normalize_project_detail_builds_ancestors_from_links() -> None:
         },
     }
 
-    detail = client.normalize_project_detail(payload)
+    detail = normalize_project_detail(payload, base_url="https://op.example.com")
 
     assert detail.ancestors == [
         {"href": "/api/v3/projects/1", "title": "Root", "display_id": None},
@@ -966,13 +970,10 @@ def test_normalize_project_detail_builds_ancestors_from_links() -> None:
 
 
 def test_normalize_project_detail_truncates_long_ancestor_chains() -> None:
-    from openproject_ce_mcp.client import PROJECT_ANCESTORS_LIMIT
-
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
     ancestors = [{"href": f"/api/v3/projects/{i}", "title": f"P{i}"} for i in range(PROJECT_ANCESTORS_LIMIT + 5)]
     payload = {"id": 1, "name": "Deep", "_links": {"ancestors": ancestors}}
 
-    detail = client.normalize_project_detail(payload)
+    detail = normalize_project_detail(payload, base_url="https://op.example.com")
 
     assert detail.ancestors is not None
     assert len(detail.ancestors) == PROJECT_ANCESTORS_LIMIT
@@ -980,10 +981,9 @@ def test_normalize_project_detail_truncates_long_ancestor_chains() -> None:
 
 
 def test_normalize_project_detail_leaves_ancestors_none_when_absent() -> None:
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
     payload = {"id": 1, "name": "Top", "_links": {}}
 
-    detail = client.normalize_project_detail(payload)
+    detail = normalize_project_detail(payload, base_url="https://op.example.com")
 
     assert detail.ancestors is None
     assert detail.ancestors_truncated is False

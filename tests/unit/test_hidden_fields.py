@@ -10,6 +10,7 @@ from openproject_ce_mcp.app.adapters.httpx_membership_api import normalize_membe
 from openproject_ce_mcp.app.adapters.httpx_sprint_api import normalize_sprint
 from openproject_ce_mcp.app.adapters.httpx_status_priority_type_api import normalize_status, normalize_type
 from openproject_ce_mcp.app.adapters.httpx_user_api import normalize_user
+from openproject_ce_mcp.app.adapters.httpx_version_api import normalize_version, normalize_version_detail
 from openproject_ce_mcp.app.origin import origin_from_url as _origin_from_url
 from openproject_ce_mcp.app.policies import hidden_fields
 from openproject_ce_mcp.client import (
@@ -467,14 +468,14 @@ async def test_hidden_type_fields_are_tagged_and_dropped_from_payload() -> None:
     assert serialized["name"] == "Task"
 
 
-@pytest.mark.asyncio
-async def test_hidden_version_fields_are_tagged_and_dropped_from_payload() -> None:
-    # createdAt/updatedAt on VersionSummary/Detail respect the
-    # existing OPENPROJECT_HIDE_VERSION_FIELDS wiring.
-    client = OpenProjectClient(
-        _base_settings(hidden_fields={"version": ("updated_at",)}),
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
-    )
+def test_hidden_version_fields_are_tagged_and_dropped_from_payload() -> None:
+    # createdAt/updatedAt on VersionSummary/Detail respect the existing
+    # OPENPROJECT_HIDE_VERSION_FIELDS wiring. normalize_version/_detail (the
+    # adapter's pure HAL->model functions) no longer apply masking themselves
+    # (ADR 0001 -- masking moved to VersionService); this test applies it via
+    # the same hidden_fields.apply_hidden_fields the Service calls, mirroring
+    # test_hidden_membership_fields_are_tagged_and_dropped_from_payload.
+    settings = _base_settings(hidden_fields={"version": ("updated_at",)})
 
     payload = {
         "id": 1,
@@ -486,18 +487,20 @@ async def test_hidden_version_fields_are_tagged_and_dropped_from_payload() -> No
         "_links": {},
     }
 
-    summary = client.normalize_version(payload)
+    summary = hidden_fields.apply_hidden_fields(
+        "version", normalize_version(payload, base_url=settings.base_url), settings=settings
+    )
     assert summary._hidden_keys == frozenset({"updated_at"})
     assert summary.updated_at == "2026-06-01T00:00:00Z"  # preserved on the dataclass
     assert summary.created_at == "2026-01-01T00:00:00Z"
     serialized = _to_payload(summary)
     assert "updated_at" not in serialized
 
-    detail = client.normalize_version_detail(payload)
+    detail = hidden_fields.apply_hidden_fields(
+        "version", normalize_version_detail(payload, base_url=settings.base_url), settings=settings
+    )
     assert detail._hidden_keys == frozenset({"updated_at"})
     assert detail.created_at == "2026-01-01T00:00:00Z"
-
-    await client.aclose()
 
 
 @pytest.mark.asyncio

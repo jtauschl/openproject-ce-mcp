@@ -14,7 +14,6 @@ from urllib.parse import unquote, urljoin, urlparse
 import httpx
 
 from . import __version__
-from .app.adapters import httpx_version_api as _httpx_version_api
 from .app.adapters.httpx_action_capability_api import HttpxActionCapabilityApi
 from .app.adapters.httpx_board_api import HttpxBoardApi
 from .app.adapters.httpx_category_api import HttpxCategoryApi
@@ -224,7 +223,6 @@ from .models import (
     UserWriteResult,
     VersionDetail,
     VersionListResult,
-    VersionSummary,
     VersionWriteResult,
     ViewDetail,
     ViewListResult,
@@ -257,7 +255,6 @@ SUBJECT_LIMIT = 255
 # Array truncation limits for work package hierarchy and activity details
 WORK_PACKAGE_CHILDREN_LIMIT = 50
 WORK_PACKAGE_ANCESTORS_LIMIT = 20
-PROJECT_ANCESTORS_LIMIT = 20
 ACTIVITY_DETAILS_LIMIT = 20
 BATCH_READ_MAX_IDS = 100
 
@@ -3649,63 +3646,6 @@ class OpenProjectClient:
             ),
         )
 
-    def normalize_project_detail(
-        self, payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT
-    ) -> ProjectDetail:
-        """Single-project read. ``text_limit=None`` (used by get_project) returns
-        the full description/status_explanation uncapped, like get_work_package;
-        the FORMATTABLE_LIMIT default keeps write-preview callers capped."""
-        summary = self.normalize_project(payload)
-        links = payload.get("_links", {})
-        description, description_truncated, description_length = self._visible_formattable_text_with_meta(
-            payload.get("description"), "project", "description", limit=text_limit, preserve_newlines=True
-        )
-        status_explanation, status_explanation_truncated, status_explanation_length = (
-            self._visible_formattable_text_with_meta(
-                payload.get("statusExplanation"),
-                "project",
-                "status_explanation",
-                limit=text_limit,
-                preserve_newlines=True,
-            )
-        )
-        ancestors_raw = links.get("ancestors", [])
-        ancestors = None
-        ancestors_truncated = False
-        if ancestors_raw:
-            ancestors = [
-                {"href": a.get("href"), "title": a.get("title"), "display_id": a.get("displayId")}
-                for a in ancestors_raw[:PROJECT_ANCESTORS_LIMIT]
-            ]
-            ancestors_truncated = len(ancestors_raw) > PROJECT_ANCESTORS_LIMIT
-        return self._apply_hidden_fields(
-            "project",
-            ProjectDetail(
-                id=summary.id,
-                name=summary.name,
-                identifier=summary.identifier,
-                active=summary.active,
-                description=description,
-                description_truncated=description_truncated,
-                description_length=description_length,
-                url=summary.url,
-                public=summary.public,
-                status=summary.status,
-                status_explanation=status_explanation,
-                status_explanation_truncated=status_explanation_truncated,
-                status_explanation_length=status_explanation_length,
-                parent_id=summary.parent_id,
-                parent_name=summary.parent_name,
-                created_at=summary.created_at,
-                updated_at=summary.updated_at,
-                can_update=summary.can_update,
-                can_delete=summary.can_delete,
-                favorited=summary.favorited,
-                ancestors=ancestors,
-                ancestors_truncated=ancestors_truncated,
-            ),
-        )
-
     def normalize_principal(self, payload: dict[str, Any]) -> PrincipalSummary:
         principal_type = _trim_text(payload.get("_type"), limit=SUBJECT_LIMIT)
         principal_id = int(payload["id"])
@@ -3948,20 +3888,6 @@ class OpenProjectClient:
                 details_truncated=details_truncated,
             ),
         )
-
-    def normalize_version(
-        self, payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT
-    ) -> VersionSummary:
-        summary = _httpx_version_api.normalize_version(payload, base_url=self.settings.base_url, text_limit=text_limit)
-        return self._apply_hidden_fields("version", summary)
-
-    def normalize_version_detail(
-        self, payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT
-    ) -> VersionDetail:
-        detail = _httpx_version_api.normalize_version_detail(
-            payload, base_url=self.settings.base_url, text_limit=text_limit
-        )
-        return self._apply_hidden_fields("version", detail)
 
     def normalize_attachment(self, payload: dict[str, Any]) -> AttachmentSummary:
         links = payload.get("_links", {})
