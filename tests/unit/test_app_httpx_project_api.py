@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from openproject_ce_mcp.app.adapters.httpx_project_api import HttpxProjectApi
-from openproject_ce_mcp.app.errors import OpenProjectServerError
+from openproject_ce_mcp.app.errors import InvalidInputError, OpenProjectServerError
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 
 BASE_URL = "https://op.example.com"
@@ -87,6 +87,24 @@ async def test_get_url_escapes_the_project_ref() -> None:
         record = await api.get("demo/slash")
 
     assert record.summary.identifier == "demo/slash"
+
+
+@pytest.mark.asyncio
+async def test_get_rejects_path_traversal_ref() -> None:
+    """Regression (found via a full-diff Codex review on release/0.3.4, ported
+    here): project_ref was interpolated into the URL path with no validation --
+    a value like "../job_statuses/77" quotes to itself unchanged (quote() never
+    escapes ".") and httpx then normalizes ".." away when building the request,
+    redirecting it to an entirely different endpoint and bypassing this
+    domain's own allowlist check."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    async with _client(handler) as http_client:
+        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        with pytest.raises(InvalidInputError, match="project_ref"):
+            await api.get("../job_statuses/77")
 
 
 @pytest.mark.asyncio

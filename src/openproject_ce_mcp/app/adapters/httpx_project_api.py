@@ -52,6 +52,7 @@ from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import link_to_web_url as _shared_link_to_web_url
 from ._text import origin_from_url as _origin_from_url
+from ._text import reject_path_traversal_segments as _reject_path_traversal_segments
 from ._text import trim_text as _trim_text
 
 FORMATTABLE_LIMIT = 1_200
@@ -406,7 +407,8 @@ class HttpxProjectApi:
         return ProjectPage(records=records, server_total=total, exhausted=exhausted)
 
     async def get(self, project_ref: str, *, text_limit: int | None = FORMATTABLE_LIMIT) -> ProjectRecord:
-        payload = await self._transport.get_json(f"projects/{quote(project_ref, safe='')}")
+        safe_ref = _reject_path_traversal_segments(project_ref, field_name="project_ref")
+        payload = await self._transport.get_json(f"projects/{quote(safe_ref, safe='')}")
         return self._record(payload, text_limit=text_limit)
 
     async def create_form(self, payload: dict[str, Any]) -> ProjectFormResult:
