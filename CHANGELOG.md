@@ -86,7 +86,11 @@ development baseline.
   A sub-collection endpoint that returns every element regardless of the
   requested page size (verified live: a project's `versions` endpoint) used
   to make the walk-every-page loop's termination condition never trigger,
-  looping forever; a repeated-page check now stops it.
+  looping forever; a repeated-page check now stops it. Found in a systematic
+  sweep for the same pattern: `list_versions`'s project-scoped branch (and
+  its `_resolve_version_id` caller) and `list_project_memberships` had the
+  identical unguarded loop shape, reached via a separate code path from the
+  already-fixed `_fetch_all_pages`/`_fetch_bounded_and_paginate` helpers.
 
 ## 0.3.3 – 2026-07-28
 

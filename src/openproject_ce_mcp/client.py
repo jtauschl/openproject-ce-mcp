@@ -1088,11 +1088,26 @@ class OpenProjectClient:
         # already gated above), so a straight page walk is safe.
         path = self._link_to_api_path(href)
         memberships: list[MembershipSummary] = []
+        seen_ids: set[Any] = set()
         offset = 1
         page_size = self.settings.max_page_size
+        is_first_page = True
         while True:
             payload = await self._get(path, params={"offset": str(offset), "pageSize": str(page_size)})
-            elements = payload.get("_embedded", {}).get("elements", [])
+            elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+            # A single unparametrized GET's own bug (see the comment above)
+            # was already fixed by sending offset/pageSize explicitly -- but
+            # some project-scoped sub-collection endpoints (verified live: a
+            # project's versions endpoint) silently ignore those params and
+            # always return every element regardless. Without this check,
+            # `_next_offset` (computed from an ever-growing `len(memberships)`
+            # standing in for a missing `total`) would never signal
+            # exhaustion, looping forever.
+            page_ids = {item.get("id") for item in elements}
+            if not is_first_page and page_ids and page_ids <= seen_ids:
+                break
+            is_first_page = False
+            seen_ids.update(page_ids)
             memberships.extend(self.normalize_membership(item) for item in elements)
             total = int(payload.get("total", len(memberships)))
             if _next_offset(offset, page_size, total) is None:
@@ -8407,9 +8422,21 @@ class OpenProjectClient:
 
             wanted_id = int(version_ref) if version_ref.isdigit() else None
             name_matches: list[VersionSummary] = []
+            seen_ids: set[int] = set()
             offset = 1
+            is_first_page = True
             while True:
                 page = await self.list_versions(project=project_ref, offset=offset, limit=self.settings.max_page_size)
+                # Some project-scoped sub-collection endpoints (verified live:
+                # a project's versions endpoint) silently ignore offset/page
+                # size and always return every element -- without this
+                # check, `page.next_offset` never becomes None and this
+                # loops forever, re-fetching the same full page.
+                page_ids = {v.id for v in page.results}
+                if not is_first_page and page_ids and page_ids <= seen_ids:
+                    break
+                is_first_page = False
+                seen_ids.update(page_ids)
                 if wanted_id is not None:
                     if any(v.id == wanted_id for v in page.results):
                         return version_ref
