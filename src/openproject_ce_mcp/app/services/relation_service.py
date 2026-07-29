@@ -167,6 +167,10 @@ class RelationService:
     async def list_for_work_package(
         self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
     ) -> RelationListResult:
+        # Gate before resolving the anchor -- resolving it already issues a
+        # work-package GET, and the original get_work_package_relations checks
+        # this before that fetch, not after (Codex-found migration drift).
+        access.ensure_read_enabled("work_package", settings=self._settings)
         resolved_limit = effective_limit(limit, settings=self._settings)
         resolved_id = await self._resolve_work_package_id(work_package_id)
         filters = json.dumps([{"involved": {"operator": "=", "values": [str(resolved_id)]}}])

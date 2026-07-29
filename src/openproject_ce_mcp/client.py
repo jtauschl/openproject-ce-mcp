@@ -582,7 +582,7 @@ class OpenProjectClient:
             work_package_project_allowed=self._work_package_resolver.project_link_allowed,
         )
 
-        self._relation_api: RelationApi = HttpxRelationApi(HttpxTransport(self._http), api_prefix=self._api_prefix)
+        self._relation_api: RelationApi = HttpxRelationApi(HttpxTransport(self._http))
         self._relation_service = RelationService(
             api=self._relation_api,
             work_package_lookup_api=self._work_package_lookup_api,

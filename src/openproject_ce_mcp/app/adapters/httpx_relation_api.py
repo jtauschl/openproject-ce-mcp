@@ -2,11 +2,17 @@
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`link_title`/`id_from_href`/`delimit_user_content`/
-`SUBJECT_LIMIT` come from `app/adapters/_text.py` -- verified against
-client.py's real `normalize_relation` (client.py:3873-3891): this normalizer
+`SUBJECT_LIMIT` come from `app/adapters/_text.py` -- verified against the
+pre-migration flat client.py's original `normalize_relation`: this normalizer
 needs `trim_text` (description truncation), `delimit_user_content` (description
 wrapped as untrusted user content), `link_title` (from/to subject titles), and
 `id_from_href` (from/to numeric ids from their hrefs).
+
+Unlike most other adapters, this one takes no `api_prefix` -- `RelationSummary`
+has no `url` field of its own (nothing here builds an `_api_href(...)` link),
+and the outgoing paths (`relations`, `relations/{id}`, `work_packages/{ref}/
+relations`) are always passed relative to the transport, never prefix-joined
+locally.
 
 `normalize_relation` here always computes `from_subject`/`to_subject`
 unconditionally -- the work_package-subject-hide check (from_subject/
@@ -51,9 +57,8 @@ def normalize_relation(payload: dict[str, Any]) -> RelationSummary:
 
 
 class HttpxRelationApi:
-    def __init__(self, transport: Transport, *, api_prefix: str = "/api/v3/") -> None:
+    def __init__(self, transport: Transport) -> None:
         self._transport = transport
-        self._api_prefix = api_prefix
 
     def to_record(self, payload: dict[str, Any]) -> RelationRecord:
         links = payload.get("_links", {})

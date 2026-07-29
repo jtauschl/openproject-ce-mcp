@@ -89,7 +89,9 @@ class _FakeRelationApi:
         # directly off the raw dict, before to_record ever runs -- give each
         # element a distinct id. to_record (below) unwraps "__record__" back
         # to the real RelationRecord, ignoring "id" entirely.
-        elements = [{"id": i, "__record__": r} for i, r in enumerate(self._list_records)]
+        start = (offset - 1) * page_size
+        page_records = self._list_records[start : start + page_size]
+        elements = [{"id": start + i, "__record__": r} for i, r in enumerate(page_records)]
         return {"_embedded": {"elements": elements}}
 
     async def get(self, relation_id: int) -> RelationRecord:
@@ -264,6 +266,33 @@ async def test_list_all_checks_both_hrefs_and_reuses_one_cache() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_all_walks_every_server_page_and_paginates_survivors() -> None:
+    """Regression (Codex-found gap): the pre-migration equivalent test
+    (test_list_relations_walks_every_server_page_and_paginates_survivors,
+    against real HTTP via httpx.MockTransport) was removed during the
+    migration with no Service-level replacement proving the same thing --
+    that fetch_bounded_and_paginate's page-walking loop is actually exercised
+    with more than one server page, not just a single bounded fetch. 5 raw
+    items across 3 server pages (max_page_size=2: [1,2], [3,4], [5])."""
+    records = [
+        _record(i, from_href="/api/v3/work_packages/10", to_href=f"/api/v3/work_packages/{i}") for i in range(1, 6)
+    ]
+    api = _FakeRelationApi(records=records)
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), max_page_size=2)
+    service = _service(api=api, settings=settings)
+
+    # max_page_size doubles as both the server page size AND clamp_limit's
+    # client-limit ceiling (see effective_limit) -- go through _list()
+    # directly with an explicit client limit larger than the server page
+    # size, exactly as list_all() would if max_results allowed a bigger page.
+    result = await service._list(filters=None, offset=1, limit=10)
+
+    assert [r.id for r in result.results] == [1, 2, 3, 4, 5]
+    assert result.total == 5
+    assert [call[:2] for call in api.fetch_page_calls] == [(1, 2), (2, 2), (3, 2)]
+
+
+@pytest.mark.asyncio
 async def test_list_all_hides_wp_subject_when_wp_subject_hidden() -> None:
     """from_subject/to_subject honor the work_package subject hide list, and
     stamping order must not lose relation-level hidden fields (verified
@@ -284,6 +313,28 @@ async def test_list_all_hides_wp_subject_when_wp_subject_hidden() -> None:
     assert relation.from_subject is None
     assert relation.to_subject is None
     assert relation._hidden_keys == frozenset({"description"})
+
+
+@pytest.mark.asyncio
+async def test_create_and_update_stamp_hidden_fields_on_their_committed_result() -> None:
+    """Regression (Codex-found gap): only list_all()'s stamping was tested --
+    create()/update() build their committed `.result` via the same _stamp()
+    call (relation_service.py:230/280), but nothing proved a hidden `relation`
+    field is actually masked there too."""
+    api = _FakeRelationApi(records=[_record(7, summary=_summary(7, description="secret note"))])
+    lookup = _FakeWorkPackageLookupApi()
+    settings = dataclasses.replace(make_settings(), hidden_fields={"relation": ("description",)})
+    service = _service(api=api, work_package_lookup_api=lookup, settings=settings)
+
+    created = await service.create(
+        work_package_id=42, related_to_work_package_id=55, relation_type="blocks", confirm=True
+    )
+    updated = await service.update(relation_id=7, relation_type="follows", confirm=True)
+
+    assert created.result is not None
+    assert created.result._hidden_keys == frozenset({"description"})
+    assert updated.result is not None
+    assert updated.result._hidden_keys == frozenset({"description"})
 
 
 # --- create ---------------------------------------------------------------------
