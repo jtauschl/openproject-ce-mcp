@@ -4162,8 +4162,20 @@ class OpenProjectClient:
         )
 
     async def _ensure_reminder_project_write_allowed(self, reminder_id: int) -> None:
-        """Apply the project write allowlist to the reminder's work package."""
-        current = await self._get(f"reminders/{reminder_id}")
+        """Apply the project write allowlist to the reminder's work package.
+
+        OpenProject has no ``GET reminders/{id}`` single-item endpoint -- the
+        ``route_param :id`` block under ``resource :reminders`` mounts only
+        ``patch``/``delete``, never ``get`` (verified against
+        lib/api/v3/reminders/reminders_api.rb in every vendored OpenProject
+        version). The only way to read a reminder's own ``remindable`` link
+        before writing is via the collection endpoint.
+        """
+        payload = await self._get("reminders")
+        elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+        current = next((item for item in elements if item.get("id") == reminder_id), None)
+        if current is None:
+            raise NotFoundError(f"OpenProject reminder {reminder_id} not found.")
         remindable = current.get("_links", {}).get("remindable")
         href = remindable.get("href") if isinstance(remindable, dict) else None
         if not isinstance(href, str) or not href:

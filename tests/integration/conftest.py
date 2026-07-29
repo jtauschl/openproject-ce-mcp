@@ -72,6 +72,7 @@ def _integration_settings() -> Settings | None:
         enable_board_write=True,
         enable_personal_read=True,
         enable_personal_write=True,
+        enable_metadata_tools=True,
     )
 
 
@@ -188,6 +189,24 @@ async def grid_ids(client: OpenProjectClient):
     for grid_id in created:
         try:
             await client.delete_grid(grid_id=grid_id, confirm=True)
+        except Exception:
+            pass
+
+
+@pytest.fixture
+async def reminder_ids(client: OpenProjectClient):
+    """Yields a list to append created reminder IDs; deletes them all after the test.
+
+    Reminders are per-user, not project-scoped -- like group_ids, cleanup
+    reaches outside test_project, but delete_reminder's own allowlist check
+    resolves the reminder's underlying work package's project, which stays
+    within test_project for every current test that uses this fixture.
+    """
+    created: list[int] = []
+    yield created
+    for reminder_id in created:
+        try:
+            await client.delete_reminder(reminder_id=reminder_id, confirm=True)
         except Exception:
             pass
 
