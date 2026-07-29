@@ -809,12 +809,16 @@ async def test_get_version_returns_full_description_by_default() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_versions_project_scoped_uses_exact_server_pagination() -> None:
-    # Unlike the global branch above, the project-scoped branch does no client-side
-    # filtering at all (access to the project is already verified), so it keeps exact
-    # server-side pagination with the caller's own limit as pageSize — this must not be
-    # unified with the global branch's fetch-all-and-slice pattern, since no allowlist
-    # filtering happens here that could produce a sparse page.
+async def test_list_versions_project_scoped_walks_and_slices_client_side() -> None:
+    # Regression (found via a full-diff Codex review on release/0.3.4, ported
+    # here): `projects/{id}/versions` is genuinely UnpaginatedCollection
+    # server-side (verified against op-sources' VersionCollectionRepresenter <
+    # UnpaginatedCollection, via VersionsByProjectAPI) -- offset/pageSize params
+    # are silently ignored and every element is always returned regardless.
+    # This branch used to trust the server's own total/pagination for this
+    # endpoint as if it were genuinely paginated; now it walks (a no-op single
+    # request here, since the fake already returns everything) and slices
+    # client-side, same as the search branch below.
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
             return httpx.Response(
@@ -823,8 +827,8 @@ async def test_list_versions_project_scoped_uses_exact_server_pagination() -> No
                 request=request,
             )
         if request.url.path == "/api/v3/projects/7/versions" and request.method == "GET":
-            assert request.url.params["offset"] == "1"
-            assert request.url.params["pageSize"] == "2"
+            # The server ignores offset/pageSize entirely and always returns
+            # every element -- simulate that real behavior here.
             return httpx.Response(
                 200,
                 json={
@@ -833,6 +837,9 @@ async def test_list_versions_project_scoped_uses_exact_server_pagination() -> No
                         "elements": [
                             {"id": 1, "name": "v1", "_links": {}},
                             {"id": 2, "name": "v2", "_links": {}},
+                            {"id": 3, "name": "v3", "_links": {}},
+                            {"id": 4, "name": "v4", "_links": {}},
+                            {"id": 5, "name": "v5", "_links": {}},
                         ]
                     },
                 },
@@ -843,9 +850,10 @@ async def test_list_versions_project_scoped_uses_exact_server_pagination() -> No
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
     page = await client.list_versions(project="demo", limit=2)
 
+    # list_versions must slice offset=1/limit=2 out of the full 5-element
+    # result set client-side, not trust a server-reported page/total for this
+    # endpoint.
     assert [v.id for v in page.results] == [1, 2]
-    # No client-side filtering happens on this branch, so total is the real
-    # server-reported match count (5), not just this page's item count (2).
     assert page.total == 5
     assert page.count == 2
     assert page.truncated is True
