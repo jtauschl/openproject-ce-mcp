@@ -61,10 +61,17 @@ class HttpxFileLinkApi:
             container_link=payload.get("_links", {}).get("container"),
         )
 
-    async def list_for_work_package(self, work_package_id: int) -> list[FileLinkRecord]:
-        payload = await self._transport.get_json(f"work_packages/{work_package_id}/file_links")
+    async def list_for_work_package(
+        self, work_package_id: int, *, offset: int, page_size: int
+    ) -> tuple[list[FileLinkRecord], int]:
+        payload = await self._transport.get_json(
+            f"work_packages/{work_package_id}/file_links",
+            params={"offset": str(offset), "pageSize": str(page_size)},
+        )
         elements = payload.get("_embedded", {}).get("elements", [])
-        return [self._record(item) for item in elements if isinstance(item, dict)]
+        records = [self._record(item) for item in elements if isinstance(item, dict)]
+        total = int(payload.get("total", len(records)))
+        return records, total
 
     async def get(self, file_link_id: int) -> FileLinkRecord:
         return self._record(await self._transport.get_json(f"file_links/{file_link_id}"))

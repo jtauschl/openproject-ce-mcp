@@ -37,9 +37,12 @@ class _FakeFileLinkApi:
         self.get_calls: list[int] = []
         self.delete_calls: list[int] = []
 
-    async def list_for_work_package(self, work_package_id: int) -> list[FileLinkRecord]:
+    async def list_for_work_package(
+        self, work_package_id: int, *, offset: int, page_size: int
+    ) -> tuple[list[FileLinkRecord], int]:
         self.list_for_work_package_calls.append(work_package_id)
-        return list(self._records.values())
+        records = list(self._records.values())
+        return records, len(records)
 
     async def get(self, file_link_id: int) -> FileLinkRecord:
         self.get_calls.append(file_link_id)

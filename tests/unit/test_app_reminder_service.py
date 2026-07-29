@@ -66,9 +66,9 @@ class _FakeReminderApi:
         self.update_calls: list[tuple[int, dict]] = []
         self.delete_calls: list[int] = []
 
-    async def list_all(self) -> list[ReminderRecord]:
+    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[ReminderRecord], int]:
         self.list_all_calls += 1
-        return list(self._list_records)
+        return list(self._list_records), len(self._list_records)
 
     async def get(self, reminder_id: int) -> ReminderRecord:
         self.get_calls.append(reminder_id)

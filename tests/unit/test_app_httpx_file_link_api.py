@@ -31,15 +31,20 @@ def _file_link_payload(file_link_id: int = 5, *, container_href: str | None = "/
 
 
 @pytest.mark.asyncio
-async def test_list_for_work_package_requests_sub_collection_and_builds_records() -> None:
+async def test_list_for_work_package_requests_sub_collection_with_pagination_params() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/work_packages/9/file_links"
-        return httpx.Response(200, json={"_embedded": {"elements": [_file_link_payload()]}}, request=request)
+        assert request.url.params["offset"] == "1"
+        assert request.url.params["pageSize"] == "20"
+        return httpx.Response(
+            200, json={"_embedded": {"elements": [_file_link_payload()]}, "total": 1}, request=request
+        )
 
     async with _client(handler) as http_client:
         api = HttpxFileLinkApi(HttpxTransport(http_client), api_prefix="/api/v3/")
-        records = await api.list_for_work_package(9)
+        records, total = await api.list_for_work_package(9, offset=1, page_size=20)
 
+    assert total == 1
     assert len(records) == 1
     summary = records[0].summary
     assert summary.id == 5
@@ -57,9 +62,10 @@ async def test_list_for_work_package_missing_embedded_elements_returns_empty_lis
 
     async with _client(handler) as http_client:
         api = HttpxFileLinkApi(HttpxTransport(http_client), api_prefix="/api/v3/")
-        records = await api.list_for_work_package(9)
+        records, total = await api.list_for_work_package(9, offset=1, page_size=20)
 
     assert records == []
+    assert total == 0
 
 
 @pytest.mark.asyncio

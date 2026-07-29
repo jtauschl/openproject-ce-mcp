@@ -69,9 +69,18 @@ class ReminderApi(Protocol):
     """Narrow, Reminders-only Domain API port. ReminderService depends on
     this Protocol, never on HttpxReminderApi concretely (enforced by the
     architecture-boundary test).
+
+    `list_all(offset, page_size)` takes real pagination parameters -- found
+    via an independent Codex review (verified against
+    op-sources/17.2/lib/api/v3/reminders/reminder_collection_representer.rb:
+    `ReminderCollectionRepresenter < OffsetPaginatedCollection`, the same
+    real server-side pagination Roles/Memberships already page-walk) that
+    an earlier version of this method issued a single unparameterized GET,
+    silently returning only the server's default page instead of every
+    reminder.
     """
 
-    async def list_all(self) -> list[ReminderRecord]: ...
+    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[ReminderRecord], int]: ...
     async def get(self, reminder_id: int) -> ReminderRecord: ...
     async def get_remindable_link(self, reminder_id: int) -> dict[str, Any] | None: ...
     async def create(self, work_package_id: int, payload: dict[str, Any]) -> ReminderRecord: ...

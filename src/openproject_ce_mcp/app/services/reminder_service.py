@@ -42,6 +42,7 @@ from __future__ import annotations
 from ...config import Settings
 from ...models import ReminderListResult, ReminderSummary, ReminderWriteResult
 from ..errors import InvalidInputError, PermissionDeniedError
+from ..pagination import paginate_all
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.reminder_api import ReminderApi
@@ -75,7 +76,16 @@ class ReminderService:
         access.ensure_read_enabled("work_package", settings=self._settings)
         if not self._settings.read_projects:
             return ReminderListResult(count=0, results=[])  # deny-all: skip the network call entirely
-        records = await self._api.list_all()
+        # Reminders is really offset-paginated server-side (verified against
+        # op-sources' ReminderCollectionRepresenter < OffsetPaginatedCollection,
+        # found via an independent Codex review) -- a single unparameterized
+        # GET silently returned only the server's default page. Page-walk the
+        # complete set, the same max_page_size-per-round-trip pattern already
+        # used for Roles/Memberships (see app/pagination.paginate_all).
+        records = await paginate_all(
+            lambda offset, page_size: self._api.list_all(offset=offset, page_size=page_size),
+            page_size=self._settings.max_page_size,
+        )
         if not scope_policy.scope_allows_all(self._settings.read_projects):
             cache = WorkPackageAllowedContext()
             filtered = []

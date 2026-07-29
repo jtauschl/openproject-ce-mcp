@@ -31,15 +31,18 @@ def _reminder_payload(reminder_id: int = 7, *, remindable_href: str | None = "/a
 
 
 @pytest.mark.asyncio
-async def test_list_all_requests_reminders_and_builds_records() -> None:
+async def test_list_all_requests_reminders_with_pagination_params() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/reminders"
-        return httpx.Response(200, json={"_embedded": {"elements": [_reminder_payload()]}}, request=request)
+        assert request.url.params["offset"] == "1"
+        assert request.url.params["pageSize"] == "20"
+        return httpx.Response(200, json={"_embedded": {"elements": [_reminder_payload()]}, "total": 1}, request=request)
 
     async with _client(handler) as http_client:
         api = HttpxReminderApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
-        records = await api.list_all()
+        records, total = await api.list_all(offset=1, page_size=20)
 
+    assert total == 1
     assert len(records) == 1
     assert records[0].summary().id == 7
     assert records[0].summary().work_package_id == 42
@@ -54,9 +57,10 @@ async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxReminderApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
-        records = await api.list_all()
+        records, total = await api.list_all(offset=1, page_size=20)
 
     assert records == []
+    assert total == 0
 
 
 @pytest.mark.asyncio

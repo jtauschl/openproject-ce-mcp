@@ -58,10 +58,14 @@ class HttpxReminderApi:
             remindable_link=payload.get("_links", {}).get("remindable"),
         )
 
-    async def list_all(self) -> list[ReminderRecord]:
-        payload = await self._transport.get_json("reminders")
+    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[ReminderRecord], int]:
+        payload = await self._transport.get_json(
+            "reminders", params={"offset": str(offset), "pageSize": str(page_size)}
+        )
         elements = payload.get("_embedded", {}).get("elements", [])
-        return [self._record(item) for item in elements if isinstance(item, dict)]
+        records = [self._record(item) for item in elements if isinstance(item, dict)]
+        total = int(payload.get("total", len(records)))
+        return records, total
 
     async def get(self, reminder_id: int) -> ReminderRecord:
         return self._record(await self._transport.get_json(f"reminders/{reminder_id}"))

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 from ...config import Settings
 from ...models import FileLinkListResult, FileLinkSummary, FileLinkWriteResult
+from ..pagination import paginate_all
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..policies.scope import id_from_href
@@ -67,7 +68,16 @@ class FileLinkService:
         # allowed against OPENPROJECT_READ_PROJECTS before its file links are
         # fetched (verbatim behavior of client.py's original comment/order).
         resolved_id = await self._resolve_work_package_id(work_package_id, write=False)
-        records = await self._api.list_for_work_package(resolved_id)
+        # File Links is really offset-paginated server-side (verified against
+        # op-sources' FileLinkCollectionRepresenter < OffsetPaginatedCollection,
+        # found via an independent Codex review) -- a single unparameterized
+        # GET silently returned only the server's default page. Page-walk the
+        # complete set for this one work package, the same max_page_size-per-
+        # round-trip pattern already used for Roles/Memberships/Reminders.
+        records = await paginate_all(
+            lambda offset, page_size: self._api.list_for_work_package(resolved_id, offset=offset, page_size=page_size),
+            page_size=self._settings.max_page_size,
+        )
         results = [self._stamp(record.summary) for record in records]
         return FileLinkListResult(count=len(results), results=results)
 
