@@ -1115,12 +1115,22 @@ class OpenProjectClient:
         self._ensure_read_enabled("work_package")
         work_package_id = self._work_package_ref(work_package_id)
         work_package = await self.get_work_package(work_package_id)
-        payload = await self._get(f"work_packages/{work_package_id}/attachments")
-        results = [
-            self.normalize_attachment(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
+        # No pageSize was ever sent here, silently relying on OpenProject's own
+        # server-side default page size -- any attachment beyond that default
+        # was permanently unreachable. Walk every server page instead.
+        page_size = self.settings.max_page_size
+        offset = 1
+        results: list[AttachmentSummary] = []
+        while True:
+            payload = await self._get(
+                f"work_packages/{work_package_id}/attachments",
+                params={"offset": str(offset), "pageSize": str(page_size)},
+            )
+            elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+            results.extend(self.normalize_attachment(item) for item in elements)
+            if len(elements) < page_size:
+                break
+            offset += 1
         results = [
             item for item in results if item.container_type == "WorkPackage" and item.container_id == work_package.id
         ]

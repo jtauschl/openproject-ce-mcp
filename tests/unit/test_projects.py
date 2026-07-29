@@ -1214,6 +1214,60 @@ async def test_views_categories_and_attachments() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_work_package_attachments_walks_every_server_page() -> None:
+    """Regression: list_work_package_attachments previously sent no pageSize
+    at all, silently relying on OpenProject's own server-side default page
+    size -- any attachment beyond that default was permanently unreachable.
+    Now walks every server page (max_page_size=2: page 1 has 2, page 2 has
+    the remaining 1)."""
+    requested_offsets: list[str] = []
+
+    def _attachment(attachment_id: int) -> dict:
+        return {
+            "id": attachment_id,
+            "fileName": f"file{attachment_id}.md",
+            "fileSize": 1,
+            "status": "uploaded",
+            "_links": {
+                "self": {"href": f"/api/v3/attachments/{attachment_id}"},
+                "container": {"href": "/api/v3/work_packages/7"},
+            },
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/7" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 7, "subject": "Task", "_links": {"project": {"title": "demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/7/attachments" and request.method == "GET":
+            page = request.url.params["offset"]
+            requested_offsets.append(page)
+            assert request.url.params["pageSize"] == "2"
+            if page == "1":
+                return httpx.Response(
+                    200, json={"_embedded": {"elements": [_attachment(1), _attachment(2)]}}, request=request
+                )
+            if page == "2":
+                return httpx.Response(200, json={"_embedded": {"elements": [_attachment(3)]}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), max_page_size=2, read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_work_package_attachments(7)
+
+    assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
+    assert result.count == 3
+    assert {a.id for a in result.results} == {1, 2, 3}
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_views_search_filters_by_name_substring() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/views" and request.method == "GET":
