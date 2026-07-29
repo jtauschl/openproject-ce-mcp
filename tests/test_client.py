@@ -1154,6 +1154,46 @@ async def test_hidden_time_entry_field_is_rejected_on_write() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hidden_time_entry_start_and_end_time_are_rejected_on_write() -> None:
+    """Regression test (found via Codex review): start_time/end_time were the
+    only two TimeEntry fields that omitted the _ensure_field_writable check
+    every sibling field (hours, spent_on, comment, ongoing) already has --
+    a hidden-by-config field could still be written despite being masked on
+    read, the same bug class already fixed for other domains."""
+
+    async def make_client(hidden_field: str) -> OpenProjectClient:
+        return OpenProjectClient(
+            Settings(
+                base_url="https://op.example.com",
+                api_token="token",
+                timeout=12,
+                verify_ssl=True,
+                default_page_size=20,
+                max_page_size=50,
+                max_results=100,
+                log_level="WARNING",
+                hidden_fields={"time_entry": (hidden_field,)},
+                enable_work_package_write=True,
+            ),
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+        )
+
+    client = await make_client("start_time")
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_TIME_ENTRY_FIELDS"):
+        await client.create_time_entry(
+            activity="Development", hours="PT1H", spent_on="2026-03-20", start_time="09:00", confirm=False
+        )
+    await client.aclose()
+
+    client = await make_client("end_time")
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_TIME_ENTRY_FIELDS"):
+        await client.create_time_entry(
+            activity="Development", hours="PT1H", spent_on="2026-03-20", end_time="10:00", confirm=False
+        )
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_hidden_custom_field_is_rejected_on_write() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/demo":
@@ -4579,34 +4619,37 @@ async def test_time_entry_crud_and_activity_listing() -> None:
             )
         if request.url.path == "/api/v3/time_entries/form" and request.method == "POST":
             body = json.loads(request.content)
-            assert body == {"_links": {"project": {"href": "/api/v3/projects/6"}}}
-            return httpx.Response(
-                200,
-                json={
-                    "_type": "Form",
-                    "_embedded": {
-                        "schema": {
-                            "activity": {
-                                "_embedded": {
-                                    "allowedValues": [
-                                        {
-                                            "id": 3,
-                                            "name": "Development",
-                                            "position": 1,
-                                            "default": True,
-                                            "_links": {
-                                                "self": {"href": "/api/v3/time_entries/activities/3"},
-                                                "projects": [{"href": "/api/v3/projects/6", "title": "Demo"}],
-                                            },
-                                        }
-                                    ]
+            if body == {"_links": {"project": {"href": "/api/v3/projects/6"}}}:
+                # Activity discovery (_time_entry_activities_from_project).
+                return httpx.Response(
+                    200,
+                    json={
+                        "_type": "Form",
+                        "_embedded": {
+                            "schema": {
+                                "activity": {
+                                    "_embedded": {
+                                        "allowedValues": [
+                                            {
+                                                "id": 3,
+                                                "name": "Development",
+                                                "position": 1,
+                                                "default": True,
+                                                "_links": {
+                                                    "self": {"href": "/api/v3/time_entries/activities/3"},
+                                                    "projects": [{"href": "/api/v3/projects/6", "title": "Demo"}],
+                                                },
+                                            }
+                                        ]
+                                    }
                                 }
                             }
-                        }
+                        },
                     },
-                },
-                request=request,
-            )
+                    request=request,
+                )
+            # create_time_entry's own preview validation against CreateFormAPI.
+            return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
         if request.url.path == "/api/v3/time_entries" and request.method == "GET":
             return httpx.Response(
                 200,
@@ -4681,6 +4724,9 @@ async def test_time_entry_crud_and_activity_listing() -> None:
                 },
                 request=request,
             )
+        if request.url.path == "/api/v3/time_entries/10/form" and request.method == "POST":
+            body = json.loads(request.content)
+            return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
         if request.url.path == "/api/v3/time_entries/10" and request.method == "PATCH":
             body = json.loads(request.content)
             assert body == {"hours": "PT2H"}
@@ -4773,6 +4819,9 @@ async def test_update_time_entry_clears_comment_in_http_payload() -> None:
                 },
                 request=request,
             )
+        if request.url.path == "/api/v3/time_entries/10/form" and request.method == "POST":
+            body = json.loads(request.content)
+            return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
         if request.url.path == "/api/v3/time_entries/10" and request.method == "PATCH":
             body = json.loads(request.content)
             assert body == {"comment": {"format": "markdown", "raw": ""}}
@@ -5496,35 +5545,36 @@ async def test_create_time_entry_resolves_activity_from_project_form_context() -
             )
         if request.url.path == "/api/v3/time_entries/form":
             body = json.loads(request.content)
-            assert body == {"_links": {"project": {"href": "/api/v3/projects/6"}}}
-            return httpx.Response(
-                200,
-                json={
-                    "_type": "Form",
-                    "_embedded": {
-                        "schema": {
-                            "activity": {
-                                "_embedded": {
-                                    "allowedValues": [
-                                        {
-                                            "id": 3,
-                                            "name": "Development",
-                                            "_links": {
-                                                "self": {
-                                                    "href": "/api/v3/time_entries/activities/3",
-                                                    "title": "Development",
+            if body == {"_links": {"project": {"href": "/api/v3/projects/6"}}}:
+                return httpx.Response(
+                    200,
+                    json={
+                        "_type": "Form",
+                        "_embedded": {
+                            "schema": {
+                                "activity": {
+                                    "_embedded": {
+                                        "allowedValues": [
+                                            {
+                                                "id": 3,
+                                                "name": "Development",
+                                                "_links": {
+                                                    "self": {
+                                                        "href": "/api/v3/time_entries/activities/3",
+                                                        "title": "Development",
+                                                    },
+                                                    "projects": [{"href": "/api/v3/projects/6", "title": "Demo"}],
                                                 },
-                                                "projects": [{"href": "/api/v3/projects/6", "title": "Demo"}],
-                                            },
-                                        }
-                                    ]
+                                            }
+                                        ]
+                                    }
                                 }
                             }
-                        }
+                        },
                     },
-                },
-                request=request,
-            )
+                    request=request,
+                )
+            return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
         if request.url.path == "/api/v3/time_entries" and request.method == "POST":
             body = json.loads(request.content)
             assert body == {
@@ -9443,6 +9493,41 @@ async def test_create_work_package_relation_denies_disallowed_target_project() -
 
 
 @pytest.mark.asyncio
+async def test_create_work_package_relation_denies_readable_but_write_restricted_target() -> None:
+    """Regression test (found via Codex review): the target's numeric id was
+    resolved with write=False (a plain reference lookup), so only the SOURCE
+    work package's project was ever checked against WRITE_PROJECTS -- a
+    caller with write on one project could link it to a work package in any
+    project they could merely READ, bypassing the write allowlist on the
+    target side entirely. Same gap class as the reparent-target tests above,
+    for create_work_package_relation's `related_to_work_package_id`."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/999" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 999, "_links": {"project": {"title": "Other", "href": "/api/v3/projects/2"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"title": "Demo", "href": "/api/v3/projects/1"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("*",), write_projects=("demo",), enable_work_package_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await client.create_work_package_relation(
+            work_package_id=42, related_to_work_package_id=999, relation_type="blocks", confirm=True
+        )
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_update_work_package_denies_disallowed_sprint_project() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
@@ -10647,6 +10732,9 @@ async def test_create_time_entry_includes_start_and_end_time() -> None:
                 json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
                 request=request,
             )
+        if request.url.path == "/api/v3/time_entries/form" and request.method == "POST":
+            body = json.loads(request.content)
+            return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
         if request.url.path == "/api/v3/time_entries" and request.method == "POST":
             captured["body"] = json.loads(request.content)
             return httpx.Response(
@@ -10699,6 +10787,9 @@ async def test_create_time_entry_entity_link_uses_numeric_id_for_semantic_ref() 
                 json={"id": 7, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
                 request=request,
             )
+        if request.url.path == "/api/v3/time_entries/form" and request.method == "POST":
+            body = json.loads(request.content)
+            return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
         if request.url.path == "/api/v3/time_entries" and request.method == "POST":
             captured["body"] = json.loads(request.content)
             return httpx.Response(201, json={"id": 9, "spentOn": "2026-07-01", "_links": {}}, request=request)
@@ -12828,6 +12919,9 @@ async def test_time_entry_semantic_work_package_ref_uses_numeric_entity_href_sha
                 json={"id": 7, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
                 request=request,
             )
+        if request.url.path == "/api/v3/time_entries/form" and request.method == "POST":
+            body = json.loads(request.content)
+            return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
         if request.url.path == "/api/v3/time_entries" and request.method == "POST":
             captured["body"] = json.loads(request.content)
             return httpx.Response(201, json={"id": 9, "spentOn": "2026-07-01", "_links": {}}, request=request)
@@ -12846,6 +12940,7 @@ async def test_time_entry_semantic_work_package_ref_uses_numeric_entity_href_sha
     assert captured["body"]["_links"]["entity"]["href"] == "/api/v3/work_packages/7"
     assert requests == [
         ("GET", "/api/v3/work_packages/PROJ-7"),
+        ("POST", "/api/v3/time_entries/form"),
         ("POST", "/api/v3/time_entries"),
     ]
 
@@ -13691,3 +13786,76 @@ async def test_normalize_work_package_prefers_start_date_due_date_over_milestone
     assert summary.due_date == "2026-08-10"
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_time_entry_preview_reflects_openproject_validation_errors() -> None:
+    """Regression test (found via Codex review): create_time_entry used to
+    hardcode ready=True/validation_errors={} in its preview instead of
+    consulting OpenProject's own CreateFormAPI (POST time_entries/form) --
+    a payload this server's own field checks accept could still be rejected
+    by OpenProject itself (e.g. hours/date/activity combinations the schema
+    disallows), which the hardcoded preview could never surface."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/time_entries/form" and request.method == "POST":
+            body = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"_embedded": {"payload": body, "validationErrors": {"hours": "must be greater than 0"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.create_time_entry(
+        work_package_id=42, activity=None, hours="PT0H", spent_on="2026-03-20", confirm=False
+    )
+
+    assert result.ready is False
+    assert result.confirmed is False
+    assert result.validation_errors == {"hours": "must be greater than 0"}
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_time_entry_preview_reflects_openproject_validation_errors() -> None:
+    """Same regression as create_time_entry above, for update_time_entry's
+    UpdateFormAPI (POST time_entries/{id}/form)."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/time_entries/8" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 8,
+                    "hours": "PT1H",
+                    "spentOn": "2026-01-01",
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/time_entries/8/form" and request.method == "POST":
+            body = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"_embedded": {"payload": body, "validationErrors": {"hours": "must be greater than 0"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.update_time_entry(time_entry_id=8, hours="PT0H", confirm=False)
+
+    assert result.ready is False
+    assert result.confirmed is False
+    assert result.validation_errors == {"hours": "must be greater than 0"}
