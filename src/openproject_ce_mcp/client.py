@@ -664,14 +664,18 @@ class OpenProjectClient:
             source_project=project.name,
             payload=form_payload,
             validation_errors={},
-            job_status_id=_id_from_href(job_status_url),
+            # Job status ids are UUIDs (OpenProject's job_status API route
+            # declares `job_id` as `type: String, desc: "Job UUID"` on every
+            # supported version), never a plain integer -- _id_from_href's
+            # int() parse would always fail here and silently return None.
+            job_status_id=_slug_from_href(job_status_url),
             job_status_url=job_status_url,
         )
 
-    async def get_job_status(self, job_status_id: int) -> JobStatusDetail:
+    async def get_job_status(self, job_status_id: str) -> JobStatusDetail:
         self._ensure_read_enabled("project")
         payload = await self._get(f"job_statuses/{job_status_id}")
-        links = payload.get("_links", {})
+        links = _job_status_inner_links(payload)
         project_link = links.get("project") or links.get("sourceProject")
         if isinstance(project_link, dict):
             self._ensure_project_link_allowed(project_link)
@@ -967,7 +971,11 @@ class OpenProjectClient:
             # id filter (found via the OpenProject API docs while fixing the
             # allowlist gap below; the previous {"id": ...} collection filter
             # was undocumented and unverified against the live API).
-            payload = await self._get(f"capabilities/{quote(capability_id, safe='')}")
+            # Unlike most single-item lookups, a capability_id is itself a
+            # multi-segment path (e.g. "activities/read/w3-4") that OpenProject
+            # expects as real path segments, not a percent-encoded slash --
+            # quote(..., safe='') would turn "/" into "%2F" and 404.
+            payload = await self._get(f"capabilities/{quote(capability_id, safe='/')}")
             raw_results = [payload] if self._capability_context_allowed(payload) else []
             if project_id is not None:
                 context_href = payload.get("_links", {}).get("context", {}).get("href")
@@ -3857,11 +3865,22 @@ class OpenProjectClient:
         and in-memory offset/limit slicing on top, unchanged.
         """
         elements: list[dict[str, Any]] = []
+        seen_ids: set[Any] = set()
         server_offset = 1
         server_page_size = self.settings.max_page_size
         while True:
             payload = await self._get(path, params={"offset": str(server_offset), "pageSize": str(server_page_size)})
             page = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+            # Some project-scoped sub-collection endpoints (verified live:
+            # projects/{id}/versions) silently ignore both offset and
+            # pageSize and always return every element -- without this
+            # check, `len(page) < server_page_size` never becomes true and
+            # the loop never terminates, re-fetching the same full page
+            # forever.
+            page_ids = {item.get("id") for item in page}
+            if elements and page_ids and page_ids <= seen_ids:
+                break
+            seen_ids.update(page_ids)
             elements.extend(page)
             # A page shorter than the requested size is unambiguously the last one,
             # regardless of whether `total` is present -- don't rely on `total` alone
@@ -5711,7 +5730,13 @@ class OpenProjectClient:
         principal_link = links.get("principal")
         context_link = links.get("context")
         href = self_link.get("href") if isinstance(self_link, dict) else None
-        capability_id = _slug_from_href(href) or _trim_text(payload.get("id"), limit=SUBJECT_LIMIT) or ""
+        # Unlike most resources, a capability's id is multi-segment
+        # (e.g. "activities/read/w3-4") -- _slug_from_href's last-path-segment
+        # extraction collapses every capability in a given project+user
+        # context onto the same trailing "w{project}-{user}" fragment, making
+        # capability_id lookups indistinguishable. The payload's own `id`
+        # field already carries the real, unabbreviated form.
+        capability_id = _trim_text(payload.get("id"), limit=SUBJECT_LIMIT) or _slug_from_href(href) or ""
         return self._apply_hidden_fields(
             "capability",
             CapabilitySummary(
@@ -6370,15 +6395,17 @@ class OpenProjectClient:
         )
 
     def normalize_job_status(self, payload: dict[str, Any]) -> JobStatusDetail:
-        links = payload.get("_links", {})
+        top_level_links = payload.get("_links", {})
+        links = _job_status_inner_links(payload)
         project_link = links.get("project") or links.get("sourceProject")
         resource_link = links.get("createdProject") or links.get("createdResource") or links.get("result")
         return self._apply_hidden_fields(
             "job_status",
             JobStatusDetail(
-                id=int(payload["id"])
-                if payload.get("id") is not None
-                else _id_from_href(links.get("self", {}).get("href")),
+                # Job status ids are UUID strings (payload["jobId"]) on every
+                # supported version -- there is no top-level "id" field.
+                id=_trim_text(payload.get("jobId") or payload.get("id"), limit=SUBJECT_LIMIT)
+                or _slug_from_href(top_level_links.get("self", {}).get("href")),
                 type=_trim_text(payload.get("_type"), limit=SUBJECT_LIMIT),
                 status=_trim_text(
                     payload.get("status") or payload.get("jobStatus") or payload.get("state"), limit=SUBJECT_LIMIT
@@ -6397,7 +6424,7 @@ class OpenProjectClient:
                 else None,
                 created_resource_name=_link_title(resource_link),
                 links=sorted(links.keys()),
-                url=self._link_to_web_url(links.get("self", {}).get("href")),
+                url=self._link_to_web_url(top_level_links.get("self", {}).get("href")),
             ),
         )
 
@@ -8821,6 +8848,26 @@ def _slug_from_href(href: str | None) -> str | None:
         return unquote(slug) or None
     except IndexError:
         return None
+
+
+def _job_status_inner_links(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return a job status response's real resource links.
+
+    OpenProject's JobStatusRepresenter only puts a self link at the
+    top-level `_links` -- any project/sourceProject/createdProject link a
+    specific job (e.g. copy_project) exposes lives one level down, inside
+    the job-specific `payload` object's own `_links` (verified live against
+    17.4: top-level `_links` is `{"self": ...}` only). Falls back to the
+    top-level links for robustness in case some other job type's payload
+    is shaped differently or absent.
+    """
+    inner = payload.get("payload")
+    if isinstance(inner, dict):
+        inner_links = inner.get("_links")
+        if isinstance(inner_links, dict) and inner_links:
+            return inner_links
+    links = payload.get("_links", {})
+    return links if isinstance(links, dict) else {}
 
 
 def _percentage_done(payload: dict[str, Any]) -> int | None:

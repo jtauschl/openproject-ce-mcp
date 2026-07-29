@@ -3934,13 +3934,16 @@ async def test_get_project_configuration_and_copy_project() -> None:
             assert body["identifier"] == "demo-copy"
             return httpx.Response(
                 302,
-                headers={"Location": "/api/v3/job_statuses/77"},
+                # Job status ids are UUIDs on every supported OpenProject
+                # version (the job_status API route declares job_id as
+                # `type: String, desc: "Job UUID"`), never a plain integer.
+                headers={"Location": "/api/v3/job_statuses/32ac4e5e-1e49-4cbd-b70e-bc1c781d8af2"},
                 request=request,
             )
-        if request.url.path == "/api/v3/job_statuses/77":
+        if request.url.path == "/api/v3/job_statuses/32ac4e5e-1e49-4cbd-b70e-bc1c781d8af2":
             return httpx.Response(
                 200,
-                json={"_type": "JobStatus", "id": 77},
+                json={"_type": "JobStatus", "id": "32ac4e5e-1e49-4cbd-b70e-bc1c781d8af2"},
                 request=request,
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
@@ -3982,8 +3985,8 @@ async def test_get_project_configuration_and_copy_project() -> None:
     assert preview.job_status_id is None
     assert preview.job_status_url is None
     assert copied.confirmed is True
-    assert copied.job_status_id == 77
-    assert copied.job_status_url == "https://op.example.com/api/v3/job_statuses/77"
+    assert copied.job_status_id == "32ac4e5e-1e49-4cbd-b70e-bc1c781d8af2"
+    assert copied.job_status_url == "https://op.example.com/api/v3/job_statuses/32ac4e5e-1e49-4cbd-b70e-bc1c781d8af2"
 
     await client.aclose()
 
@@ -4002,16 +4005,23 @@ async def test_job_status_documents_news_and_wiki() -> None:
                 200,
                 json={
                     "_type": "JobStatus",
-                    "id": 77,
+                    "jobId": "77",
                     "status": "in_progress",
                     "message": "Copy running",
                     "percentageDone": 40,
                     "createdAt": "2026-03-20T10:00:00Z",
                     "updatedAt": "2026-03-20T10:05:00Z",
+                    # OpenProject nests a job's own resource links one level
+                    # down, inside `payload._links` -- top-level `_links`
+                    # only ever carries `self`.
+                    "payload": {
+                        "_links": {
+                            "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                            "createdProject": {"href": "/api/v3/projects/88", "title": "Demo Copy"},
+                        },
+                    },
                     "_links": {
                         "self": {"href": "/api/v3/job_statuses/77"},
-                        "project": {"href": "/api/v3/projects/6", "title": "Demo"},
-                        "createdProject": {"href": "/api/v3/projects/88", "title": "Demo Copy"},
                     },
                 },
                 request=request,
@@ -4235,7 +4245,7 @@ async def test_job_status_documents_news_and_wiki() -> None:
     news_updated = await client.update_news(news_id=7, summary="Sprint 8.1 is out", confirm=True)
     news_deleted = await client.delete_news(news_id=7, confirm=True)
     wiki_page = await client.get_wiki_page(9)
-    assert job.id == 77
+    assert job.id == "77"
     assert job.project == "Demo"
     assert job.created_resource_id == 88
     assert documents.count == 1
@@ -4421,11 +4431,15 @@ async def test_get_job_status_tolerates_the_copied_project_being_unresolvable() 
                 200,
                 json={
                     "_type": "JobStatus",
-                    "id": 77,
+                    "jobId": "77",
                     "status": "success",
+                    "payload": {
+                        "_links": {
+                            "createdProject": {"href": "/api/v3/projects/99", "title": "Demo Copy"},
+                        },
+                    },
                     "_links": {
                         "self": {"href": "/api/v3/job_statuses/77"},
-                        "createdProject": {"href": "/api/v3/projects/99", "title": "Demo Copy"},
                     },
                 },
                 request=request,
@@ -4438,7 +4452,7 @@ async def test_get_job_status_tolerates_the_copied_project_being_unresolvable() 
 
     result = await client.get_job_status(77)
 
-    assert result.id == 77
+    assert result.id == "77"
     assert client._project_id_to_identifier == {}
 
     await client.aclose()

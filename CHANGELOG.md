@@ -7,6 +7,87 @@ development baseline.
 
 ---
 
+## 0.3.4 – Unreleased
+
+### Fixed
+
+- **`create_work_package_relation` no longer lets a relation be created to a
+  work package outside `OPENPROJECT_WRITE_PROJECTS`.** Only the source work
+  package's project was authorized against the write allowlist; the relation
+  target was resolved read-only, letting a caller with write access to one
+  project link it to a work package in a project they could only read.
+- **`create_time_entry`/`update_time_entry` now honor
+  `OPENPROJECT_HIDE_TIME_ENTRY_FIELDS` for `start_time`/`end_time` on
+  writes**, not just reads — the only two time entry fields that previously
+  bypassed the hidden-field write check every other field already had.
+- **`create_time_entry`/`update_time_entry` previews now reflect OpenProject's
+  own validation**, instead of always reporting `ready=true`. A locally-built
+  payload could pass this server's own field checks yet still be rejected by
+  OpenProject itself (e.g. an hours/date/activity combination its schema
+  disallows), which the previous hardcoded preview could never surface.
+- **`create_time_entry` with a named `activity` no longer fails with
+  `permission_denied` for a user who only has OpenProject's "Log own time"
+  permission** (not "Log time for other users"), even with the correct role
+  and project module configured. The activity-lookup request only carried a
+  project reference, never the target work package — which OpenProject's own
+  authorization needs to recognize a "log my own time" caller as such. It now
+  carries the work package reference whenever it's already known, matching
+  what the real time entry write already sends.
+- **`get_work_package` no longer crashes on classic/pre-17.5 OpenProject
+  instances (or on ancestor/child links OpenProject didn't tag with a display
+  ID) with a schema validation error.** Hierarchy links were rejected as
+  invalid whenever OpenProject omitted a display ID for them, which it always
+  does for pre-17.5 instances.
+- **`list_capabilities`'s `context` filter rejected every request on
+  OpenProject 16.x with "Filters Context malformed value"**, the same
+  regression already fixed once and since reintroduced. Reverted again to the
+  project-prefixed form, the only one that works across the full supported
+  version range (16.0-17.6).
+- **`get_query_sort_by` returned a 404 on every OpenProject version.** The
+  request path used the raw sort-by id verbatim; OpenProject's actual route
+  requires a hyphen-joined id-direction pair instead.
+- **`get_work_package_relations`/`list_relations` no longer silently
+  truncate results to OpenProject's server-side default page size.** Neither
+  request specified a page size, so any relation beyond that default was
+  permanently unreachable regardless of the requested offset/limit.
+- **`list_project_memberships` no longer silently truncates results to
+  OpenProject's server-side default page size**, the same gap as the
+  relations fix above.
+- **`list_groups`'s `member_count` no longer always reports 0.** The real
+  OpenProject response shape (a flat member list) was never recognized;
+  only an alternate, rarely-used shape was.
+- **A parent-project picklist (`get_project_admin_context`) no longer
+  returns full project details (including description) for every candidate,
+  and no longer includes a candidate outside `OPENPROJECT_READ_PROJECTS`.**
+  Candidates are now a lightweight reference, filtered by the same read
+  allowlist every other project-returning path already applies.
+- **`list_views`/`list_documents`/`list_versions`/`list_sprints` (including
+  project-scoped and search variants) no longer silently cap results at a
+  fixed maximum, hiding any item beyond it.** All four now walk every server
+  page instead of fetching a single bounded page.
+- **`list_capabilities`'s `capability_id` lookup no longer 404s, and
+  `CapabilitySummary.id` is no longer collapsed onto the same value for
+  every capability in a given project/user context.** A capability's real
+  id is multi-segment (e.g. `activities/read/w3-4`); the id was previously
+  extracted from only the last path segment, and the lookup itself
+  percent-encoded the id's slashes into a path OpenProject rejects.
+- **`get_job_status`'s `job_status_id` is no longer always `null` on a real
+  OpenProject instance.** Job status ids are UUID strings, never a plain
+  integer, on every supported version; the field is now typed and returned
+  as a string.
+- **`get_job_status`/`copy_project` no longer silently skip their
+  project/sourceProject/createdProject allowlist checks and identifier-cache
+  write-through.** Those links live inside the job-specific `payload`
+  object's own `_links`, one level below the top-level `_links` (which only
+  ever carries `self`) the code previously read from — the checks were
+  therefore never exercised against real data.
+- **A project/version/sprint/etc. listing that walks every server page no
+  longer hangs indefinitely against an endpoint that ignores `pageSize`.**
+  A sub-collection endpoint that returns every element regardless of the
+  requested page size (verified live: a project's `versions` endpoint) used
+  to make the walk-every-page loop's termination condition never trigger,
+  looping forever; a repeated-page check now stops it.
+
 ## 0.3.3 – 2026-07-28
 
 ### Fixed

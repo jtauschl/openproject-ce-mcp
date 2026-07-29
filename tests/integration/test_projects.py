@@ -7,7 +7,7 @@ import uuid
 
 import pytest
 
-from openproject_ce_mcp.client import NotFoundError, OpenProjectClient
+from openproject_ce_mcp.client import NotFoundError, OpenProjectClient, PermissionDeniedError
 
 pytestmark = pytest.mark.integration
 
@@ -93,3 +93,29 @@ async def test_get_my_project_access(client: OpenProjectClient, test_project: st
 async def test_list_principals(client: OpenProjectClient) -> None:
     result = await client.list_principals()
     assert result.count >= 0  # may be empty on minimal instance
+
+
+async def test_update_project_denies_reparent_into_write_restricted_project(
+    client: OpenProjectClient, test_project: str, project_refs: list[str]
+) -> None:
+    """Regression: update_project's reparent target was only resolved
+    read-only, letting a caller reparent a project they can write into
+    under a different project they could only read -- the same gap
+    update_board's reparent-target fix already closed for boards."""
+    unrestricted_settings = dataclasses.replace(
+        client.settings,
+        read_projects=("*",),
+        write_projects=("*",),
+    )
+    unrestricted_client = OpenProjectClient(unrestricted_settings)
+    await unrestricted_client.initialize()
+
+    target_identifier = f"integration-test-{uuid.uuid4().hex[:8]}"
+    create_result = await unrestricted_client.create_project(
+        name=f"[integration-test] {target_identifier}", identifier=target_identifier, confirm=True
+    )
+    assert create_result.ready, create_result.validation_errors
+    project_refs.append(target_identifier)
+
+    with pytest.raises(PermissionDeniedError):
+        await client.update_project(project_ref=test_project, parent=target_identifier, confirm=True)

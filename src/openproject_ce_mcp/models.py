@@ -121,13 +121,13 @@ class ProjectCopyResult:
     source_project: str | None
     payload: dict[str, Any]
     validation_errors: dict[str, str]
-    job_status_id: int | None
+    job_status_id: str | None
     job_status_url: str | None
 
 
 @dataclass
 class JobStatusDetail:
-    id: int | None
+    id: str | None
     type: str | None
     status: str | None
     message: str | None

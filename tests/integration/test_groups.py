@@ -8,11 +8,12 @@ never against a real, actively-used OpenProject instance.
 
 from __future__ import annotations
 
+import dataclasses
 import uuid
 
 import pytest
 
-from openproject_ce_mcp.client import OpenProjectClient
+from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient
 
 pytestmark = pytest.mark.integration
 
@@ -54,3 +55,16 @@ async def test_list_groups_reports_correct_member_count(client: OpenProjectClien
     matches = [g for g in listed.results if g.id == group_id]
     assert len(matches) == 1
     assert matches[0].member_count == 1
+
+
+async def test_create_group_rejects_hidden_name_field(client: OpenProjectClient) -> None:
+    """Regression: attachment/reminder/relation/group writes bypassed the
+    hidden-fields guard -- group.name/members could be written even with
+    OPENPROJECT_HIDE_GROUP_FIELDS set, unlike every other write-capable
+    entity."""
+    hidden_settings = dataclasses.replace(client.settings, hidden_fields={"group": ("name",)})
+    hidden_client = OpenProjectClient(hidden_settings)
+    await hidden_client.initialize()
+
+    with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_GROUP_FIELDS"):
+        await hidden_client.create_group(name=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=False)

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 
 import pytest
 
-from openproject_ce_mcp.client import OpenProjectClient
+from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient
 
 pytestmark = pytest.mark.integration
 
@@ -74,6 +75,52 @@ async def test_create_get_update_delete_time_entry(
     delete_result = await client.delete_time_entry(time_entry_id=te_id, confirm=True)
     assert delete_result.ready and delete_result.confirmed
     time_entry_ids.remove(te_id)
+
+
+async def test_create_time_entry_rejects_hidden_start_time_field(client: OpenProjectClient, test_project: str) -> None:
+    """Regression: create_time_entry/update_time_entry's start_time/end_time
+    were the only two time entry fields that bypassed the hidden-field
+    write check every other field already had."""
+    activity = await _first_activity_name(client)
+    spent_on = datetime.date.today().isoformat()
+
+    hidden_settings = dataclasses.replace(client.settings, hidden_fields={"time_entry": ("start_time",)})
+    hidden_client = OpenProjectClient(hidden_settings)
+    await hidden_client.initialize()
+
+    with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_TIME_ENTRY_FIELDS"):
+        await hidden_client.create_time_entry(
+            project=test_project,
+            activity=activity,
+            hours="PT1H",
+            spent_on=spent_on,
+            start_time="09:00",
+            confirm=False,
+        )
+
+
+async def test_create_time_entry_preview_surfaces_openproject_validation_error(
+    client: OpenProjectClient, test_project: str
+) -> None:
+    """Regression: create_time_entry/update_time_entry's preview always
+    hardcoded ready=True instead of round-tripping through OpenProject's own
+    form validation -- a payload that passes this server's own field checks
+    (a well-formed activity name, a syntactically valid ISO8601 duration)
+    could still be rejected by OpenProject's own form (e.g. an entity/work
+    package requirement this server doesn't itself enforce), which the
+    previous hardcoded preview could never surface."""
+    activity = await _first_activity_name(client)
+    spent_on = datetime.date.today().isoformat()
+
+    result = await client.create_time_entry(
+        project=test_project,
+        activity=activity,
+        hours="PT0H",
+        spent_on=spent_on,
+        confirm=False,
+    )
+    assert not result.ready
+    assert result.validation_errors
 
 
 async def test_create_time_entry_with_semantic_work_package_ref(

@@ -955,7 +955,7 @@ async def test_job_document_news_and_wiki_tools_pass_arguments() -> None:
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
-    job = await get_job_status(ctx, 77)
+    job = await get_job_status(ctx, "32ac4e5e-1e49-4cbd-b70e-bc1c781d8af2")
     documents = await list_documents(ctx, project="demo")
     document = await get_document(ctx, 5)
     document_update = await update_document(ctx, 5, title="Architecture", confirm=True)
@@ -966,7 +966,7 @@ async def test_job_document_news_and_wiki_tools_pass_arguments() -> None:
     news_delete = await delete_news(ctx, 7, confirm=True)
     wiki_page = await get_wiki_page(ctx, 9)
 
-    assert job["job_status_id"] == 77
+    assert job["job_status_id"] == "32ac4e5e-1e49-4cbd-b70e-bc1c781d8af2"
     assert documents["project"] == "demo"
     assert document["document_id"] == 5
     assert document_update["document_id"] == 5
