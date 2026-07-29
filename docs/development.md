@@ -53,11 +53,9 @@ The package is published to [PyPI](https://pypi.org/project/openproject-ce-mcp/)
 via GitHub Actions using [trusted publishing](https://docs.pypi.org/trusted-publishers/)
 (OIDC — no API token stored), triggered by pushing a `vX.Y.Z` tag. Every push
 and PR also runs the test matrix plus a `build` job (`uv build` +
-`uvx twine check dist/*`) so the package always stays buildable. See
-[RELEASE.md](../RELEASE.md) for the maintainer release process.
+`uvx twine check dist/*`) so the package always stays buildable.
 
 ## See also
 
 - [Documentation hub](README.md) — full documentation index
 - [Architecture](architecture.md) — module layout, request flow, and the safety model
-- [Release checklist](../RELEASE.md) — maintainer release checklist

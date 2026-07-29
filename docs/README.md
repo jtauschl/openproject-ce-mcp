@@ -54,4 +54,3 @@ protection, reload, and verification for that specific client:
 
 - **[Security policy](../SECURITY.md)** — supported versions, vulnerability
   reporting, and the prompt-injection threat model.
-- **[Release checklist](../RELEASE.md)** — the maintainer release checklist.
