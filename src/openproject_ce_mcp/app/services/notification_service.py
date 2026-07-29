@@ -36,6 +36,17 @@ single-flat-method precedent for the same reason.
 Read/write scope uses `"personal"` (not `"work_package"` or a dedicated
 `"notification"` scope) -- verbatim behavior of client.py's
 `_ensure_read_enabled`/`_ensure_write_enabled("personal")` calls.
+
+`mark_read()`/`mark_all_read()` both call `access.ensure_write_enabled("personal",
+...)` unconditionally, BEFORE the `if not confirm:` preview return -- not gated
+inside the confirmed branch like Document's update(). Verbatim port of
+client.py's original `mark_notification_read`/`mark_all_notifications_read`
+placement (`self._ensure_write_enabled("personal")` precedes the `if not
+confirm:` check there too, confirmed against pre-migration history) --
+preserved exactly, matching User Preferences' identical documented choice for
+the same reason: a caller without personal-write can't even preview either
+action today, and normalizing this to the Document-style ordering would
+silently loosen that preview-time behavior.
 """
 
 from __future__ import annotations
