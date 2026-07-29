@@ -3882,7 +3882,7 @@ class OpenProjectClient:
             RelationSummary(
                 id=int(payload["id"]),
                 type=payload.get("type"),
-                description=_trim_text(payload.get("description"), limit=SUBJECT_LIMIT),
+                description=_delimit_user_content(_trim_text(payload.get("description"), limit=SUBJECT_LIMIT)),
                 from_id=_id_from_href(links.get("from", {}).get("href")),
                 from_subject=from_subject,
                 to_id=_id_from_href(links.get("to", {}).get("href")),
@@ -3955,7 +3955,7 @@ class OpenProjectClient:
                 or f"Attachment {payload['id']}",
                 file_name=_trim_text(payload.get("fileName"), limit=SUBJECT_LIMIT),
                 file_size=payload.get("fileSize"),
-                description=_extract_formattable_text(payload.get("description")),
+                description=_delimit_user_content(_extract_formattable_text(payload.get("description"))),
                 content_type=_trim_text(payload.get("contentType"), limit=SUBJECT_LIMIT),
                 status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
                 author=_link_title(links.get("author")),
