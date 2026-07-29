@@ -7417,7 +7417,9 @@ class OpenProjectClient:
             links["user"] = {"href": self._api_href(f"users/{user_id}")}
         if activity is not None:
             self._ensure_field_writable("time_entry", "activity")
-            activity_id = await self._resolve_time_entry_activity_id(activity, project_id=activity_project_id)
+            activity_id = await self._resolve_time_entry_activity_id(
+                activity, project_id=activity_project_id, work_package_id=work_package_id
+            )
             links["activity"] = {"href": self._api_href(f"time_entries/activities/{activity_id}")}
         if links:
             payload["_links"] = links
@@ -7508,11 +7510,23 @@ class OpenProjectClient:
             f"Use a numeric id or exact identifier, or call list_projects(search='{project_ref}')."
         )
 
-    async def _time_entry_activities_from_project(self, project_id: int) -> list[TimeEntryActivitySummary]:
-        form = await self._post(
-            "time_entries/form",
-            json_body={"_links": {"project": {"href": self._api_href(f"projects/{project_id}")}}},
+    async def _time_entry_activities_from_project(
+        self, project_id: int, *, work_package_id: int | None = None
+    ) -> list[TimeEntryActivitySummary]:
+        # OpenProject's CreateContract#allowed_to_log_own? can only validate the
+        # log_own_time permission against a concrete WorkPackage/Meeting entity
+        # (case model.entity ... else false) -- a project-only link makes it fall
+        # through to requiring log_time instead, denying a caller who only has
+        # log_own_time even though they're entitled to log their own time on this
+        # work package. Send the entity link whenever the work package is already
+        # known (verified against op-sources' costs/app/contracts/time_entries/
+        # create_contract.rb), matching what the real create/update payload sends.
+        links: dict[str, dict[str, str]] = (
+            {"entity": {"href": self._api_href(f"work_packages/{work_package_id}")}}
+            if work_package_id is not None
+            else {"project": {"href": self._api_href(f"projects/{project_id}")}}
         )
+        form = await self._post("time_entries/form", json_body={"_links": links})
         schema = form.get("_embedded", {}).get("schema", {})
         activity_field = schema.get("activity", {})
         allowed = activity_field.get("_embedded", {}).get("allowedValues", [])
@@ -8551,13 +8565,15 @@ class OpenProjectClient:
             return assignee_ref
         raise InvalidInputError("assignee must be a positive integer user id or 'me'.")
 
-    async def _resolve_time_entry_activity_id(self, activity_ref: str, *, project_id: int | None = None) -> str:
+    async def _resolve_time_entry_activity_id(
+        self, activity_ref: str, *, project_id: int | None = None, work_package_id: int | None = None
+    ) -> str:
         if activity_ref.isdigit():
             return activity_ref
         if project_id is not None:
             activities = TimeEntryActivityListResult(
                 count=0,
-                results=await self._time_entry_activities_from_project(project_id),
+                results=await self._time_entry_activities_from_project(project_id, work_package_id=work_package_id),
             )
         else:
             activities = await self.list_time_entry_activities()

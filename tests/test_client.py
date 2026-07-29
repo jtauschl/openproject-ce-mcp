@@ -14089,3 +14089,82 @@ async def test_project_admin_context_returns_lean_parent_refs_filtered_by_allowl
     assert not hasattr(context, "project_links")
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_time_entry_resolves_activity_via_entity_link_when_work_package_known() -> None:
+    """Regression (GitHub issue #10): OpenProject's CreateContract#allowed_to_log_own?
+    can only validate the log_own_time permission against a concrete WorkPackage/Meeting
+    entity (case model.entity ... else false) -- a project-only discovery link makes it
+    fall through to requiring log_time instead, denying a caller who only has
+    log_own_time even though they're entitled to log their own time on this work
+    package. When the work package is already known (the normal create_time_entry
+    case), the activity-discovery form request must send the entity link, not just
+    the project link."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/6", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/time_entries/form":
+            body = json.loads(request.content)
+            if body == {"_links": {"entity": {"href": "/api/v3/work_packages/42"}}}:
+                return httpx.Response(
+                    200,
+                    json={
+                        "_embedded": {
+                            "schema": {
+                                "activity": {
+                                    "_embedded": {
+                                        "allowedValues": [
+                                            {
+                                                "id": 3,
+                                                "name": "Development",
+                                                "_links": {
+                                                    "self": {
+                                                        "href": "/api/v3/time_entries/activities/3",
+                                                        "title": "Development",
+                                                    }
+                                                },
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
+                        },
+                    },
+                    request=request,
+                )
+            return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        read_projects=("*",),
+        write_projects=("*",),
+        enable_work_package_write=True,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.create_time_entry(
+        work_package_id=42,
+        activity="Development",
+        hours="PT15M",
+        spent_on="2026-03-20",
+        confirm=False,
+    )
+
+    assert result.ready is True
+    assert result.validation_errors == {}
+
+    await client.aclose()
