@@ -115,9 +115,7 @@ async def test_list_relations_finds_created_relation(
 
     result = await client.list_relations(relation_type="relates")
     assert result.count >= 1
-    assert any(
-        r.from_id == source.work_package_id and r.to_id == target.work_package_id for r in result.results
-    )
+    assert any(r.from_id == source.work_package_id and r.to_id == target.work_package_id for r in result.results)
 
 
 async def test_list_relations_hides_relation_outside_read_allowlist(
