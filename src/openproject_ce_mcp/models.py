@@ -1341,7 +1341,7 @@ class FileLinkWriteResult:
     ready: bool
     message: str
     file_link_id: int | None
-    work_package_id: int
+    work_package_id: int | None
     validation_errors: dict
     result: FileLinkSummary | None
 

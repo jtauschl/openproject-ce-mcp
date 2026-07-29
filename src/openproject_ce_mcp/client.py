@@ -16,6 +16,7 @@ import httpx
 
 from . import __version__
 from .config import HIDE_FIELD_ENV_BY_ENTITY, READ_SCOPE_ENV_VAR, Settings
+from .hal import normalize_links
 from .models import (
     ActionListResult,
     ActionSummary,
@@ -314,8 +315,13 @@ class OpenProjectClient:
                     write_needs_lookup and _scope_matches_candidates(write_scope, candidates)
                 ):
                     self._project_id_to_identifier[project_id] = project_identifier
-        except Exception:
-            pass
+        except OpenProjectError as exc:
+            LOGGER.warning(
+                "initialize: failed to fetch the project list for identifier-cache "
+                "population; identifier-based allowlist matching may reject valid "
+                "projects until the server is restarted and initialization succeeds: %s",
+                exc,
+            )
 
     def _remember_project_identifier(self, result: ProjectWriteResult) -> None:
         """Keep _project_id_to_identifier in sync with a just-committed create/update.
@@ -1699,23 +1705,38 @@ class OpenProjectClient:
         ]
         return CategoryListResult(count=len(results), results=results)
 
-    async def get_category(self, *, project_ref: str, category_id: int) -> CategorySummary:
-        categories = await self.list_categories(project_ref)
-        for category in categories.results:
-            if category.id == category_id:
-                return category
-        raise NotFoundError("OpenProject category not found in this project.")
+    async def get_category(self, *, project_ref: str | None = None, category_id: int) -> CategorySummary:
+        """Fetch a single category via OpenProject's real single-item GET.
+
+        The category's own real ``_links.project`` (returned by the GET) is
+        what is actually checked against the read allowlist via
+        ``_ensure_project_link_allowed`` -- a caller-supplied ``project_ref``,
+        when given, is an ADDITIONAL cross-check that the category actually
+        belongs to the claimed project (raises NotFoundError on mismatch, not
+        silently ignored), not the sole source of authorization.
+        """
+        self._ensure_read_enabled("project")
+        payload = await self._get(f"categories/{category_id}")
+        project_link = payload.get("_links", {}).get("project")
+        self._ensure_project_link_allowed(project_link)
+        project_id = _id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None
+        project_name = _link_title(project_link)
+        if project_ref is not None:
+            expected_project = await self._resolve_project_ref(project_ref, write=False)
+            expected_id = int(expected_project["id"])
+            if project_id != expected_id:
+                raise NotFoundError("OpenProject category not found in this project.")
+        return self.normalize_category(payload, project_id=project_id, project_name=project_name)
 
     async def list_work_package_attachments(self, work_package_id: int | str) -> AttachmentListResult:
         self._ensure_read_enabled("work_package")
         work_package_id = self._work_package_ref(work_package_id)
         work_package = await self.get_work_package(work_package_id)
-        payload = await self._get(f"work_packages/{work_package_id}/attachments")
-        results = [
-            self.normalize_attachment(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
+        # Regression found via a bidirectional bugfix audit against
+        # release/0.4.0: a single unparameterized GET only returns the
+        # server's default page size -- walk every page instead.
+        elements = await self._fetch_all_pages(f"work_packages/{work_package_id}/attachments")
+        results = [self.normalize_attachment(item) for item in elements]
         results = [
             item for item in results if item.container_type == "WorkPackage" and item.container_id == work_package.id
         ]
@@ -1902,18 +1923,14 @@ class OpenProjectClient:
                 user_name = user
 
         effective_limit = self._resolve_limit(limit)
-        payload = await self._get(
-            "time_entries",
-            params={
-                "offset": "1",
-                "pageSize": str(self.settings.max_results),
-            },
-        )
-        raw_entries = [
-            item
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._time_entry_payload_allowed(item)
-        ]
+        # Regression found via a bidirectional bugfix audit against
+        # release/0.4.0: a single bounded fetch capped at max_results
+        # silently hid any time entry beyond that server-side cap -- walk
+        # every server page instead, then filter/paginate the complete
+        # result in memory (this method has its own caller-facing
+        # offset/limit semantics independent of server pagination).
+        elements = await self._fetch_all_pages("time_entries")
+        raw_entries = [item for item in elements if self._time_entry_payload_allowed(item)]
         if project_candidates:
             raw_entries = [
                 item
@@ -2975,6 +2992,7 @@ class OpenProjectClient:
                         description=item.get("description"),
                         type=item.get("type"),
                         version=item.get("version"),
+                        sprint=item.get("sprint"),
                         project_phase=item.get("project_phase"),
                         status=item.get("status"),
                         assignee=item.get("assignee"),
@@ -3860,8 +3878,9 @@ class OpenProjectClient:
         self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
     ) -> RelationListResult:
         self._ensure_read_enabled("work_package")
+        # Resolving the id already confirms the anchor work package itself is
+        # allowed; a second self.get_work_package() fetch here would be redundant.
         work_package_id = await self._resolve_work_package_id(work_package_id)
-        await self.get_work_package(work_package_id)
         effective_limit = self._resolve_limit(limit)
         # The old work_packages/{id}/relations endpoint is deprecated (308 redirect).
         # Use the canonical relations endpoint with an "involved" filter instead.
@@ -3892,7 +3911,9 @@ class OpenProjectClient:
             results=results,
         )
 
-    async def _fetch_all_pages(self, path: str) -> list[dict[str, Any]]:
+    async def _fetch_all_pages(
+        self, path: str, *, extra_params: dict[str, str] | None = None
+    ) -> list[dict[str, Any]]:
         """Walk every server page of a collection endpoint, no filtering.
 
         Used by list methods that filter and paginate the full result set
@@ -3901,13 +3922,21 @@ class OpenProjectClient:
         when the endpoint's real result count exceeded it. Returns every raw
         element from every server page; the caller applies its own filtering
         and in-memory offset/limit slicing on top, unchanged.
+
+        ``extra_params`` (e.g. a ``filters`` query param) is merged into every
+        page request unchanged -- used by callers that need a server-side
+        filter applied on top of the walk-every-page behavior (e.g.
+        list_grids' optional ``scope`` filter).
         """
         elements: list[dict[str, Any]] = []
         seen_ids: set[Any] = set()
         server_offset = 1
         server_page_size = self.settings.max_page_size
         while True:
-            payload = await self._get(path, params={"offset": str(server_offset), "pageSize": str(server_page_size)})
+            params = {"offset": str(server_offset), "pageSize": str(server_page_size)}
+            if extra_params:
+                params.update(extra_params)
+            payload = await self._get(path, params=params)
             page = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
             # Some project-scoped sub-collection endpoints (verified live:
             # projects/{id}/versions) silently ignore both offset and
@@ -4807,9 +4836,10 @@ class OpenProjectClient:
                 validation_errors={},
                 result=None,
             )
-        await self._delete(f"users/{user_id}/lock")
-        # Re-fetch user to return updated detail
-        response = await self._get(f"users/{user_id}")
+        # DELETE .../lock already returns the full updated user representation
+        # (OpenProject's user_transition helper responds with a UserRepresenter
+        # for both the POST and DELETE lock transitions) -- no follow-up GET needed.
+        response = await self._delete_json(f"users/{user_id}/lock")
         result = self.normalize_user_detail(response)
         return UserWriteResult(
             action="unlock",
@@ -4991,7 +5021,7 @@ class OpenProjectClient:
         # Derive work_package_id from the container link
         links = fl_payload.get("_links", {})
         container_href = links.get("container", {}).get("href") if isinstance(links.get("container"), dict) else None
-        work_package_id = _id_from_href(container_href) or 0
+        work_package_id = _id_from_href(container_href)
         # Enforce the project write allowlist against the container work package,
         # not just the global write flag. Fail closed when the container cannot be
         # resolved: _ensure_project_write_link_allowed(None) rejects unless the
@@ -5044,14 +5074,15 @@ class OpenProjectClient:
     ) -> GridListResult:
         self._ensure_read_enabled("project")
         effective_limit = self._resolve_limit(limit)
-        params: dict[str, str] = {"offset": "1", "pageSize": str(self.settings.max_results)}
+        extra_params: dict[str, str] = {}
         if scope is not None:
-            params["filters"] = _json_param([{"scope": {"operator": "=", "values": [scope]}}])
-        payload = await self._get("grids", params=params)
+            extra_params["filters"] = _json_param([{"scope": {"operator": "=", "values": [scope]}}])
+        # Regression found via a bidirectional bugfix audit against
+        # release/0.4.0: a single bounded fetch capped at max_results
+        # silently hid any grid beyond that server-side cap.
+        elements = await self._fetch_all_pages("grids", extra_params=extra_params)
         filtered = [
-            self.normalize_grid(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._grid_payload_allowed(item)
+            self.normalize_grid(item) for item in elements if self._grid_payload_allowed(item)
         ]
         total = len(filtered)
         start = (offset - 1) * effective_limit
@@ -5176,7 +5207,7 @@ class OpenProjectClient:
             scope=scope,
             payload={"id": detail.id},
             validation_errors={},
-            result=None,
+            result=detail,
         )
 
     # --- User Preferences ---
@@ -5211,12 +5242,16 @@ class OpenProjectClient:
         self._ensure_write_enabled("personal")
         body: dict[str, Any] = {}
         if time_zone is not None:
+            self._ensure_field_writable("user_preferences", "time_zone")
             body["timeZone"] = time_zone
         if comment_sort_descending is not None:
+            self._ensure_field_writable("user_preferences", "comment_sort_descending")
             body["commentSortDescending"] = comment_sort_descending
         if warn_on_leaving_unsaved is not None:
+            self._ensure_field_writable("user_preferences", "warn_on_leaving_unsaved")
             body["warnOnLeavingUnsaved"] = warn_on_leaving_unsaved
         if auto_hide_popups is not None:
+            self._ensure_field_writable("user_preferences", "auto_hide_popups")
             body["autoHidePopups"] = auto_hide_popups
         if not confirm:
             return UserPreferencesWriteResult(
@@ -5267,6 +5302,7 @@ class OpenProjectClient:
     # --- Help Texts ---
 
     async def list_help_texts(self) -> HelpTextListResult:
+        self._ensure_read_enabled("extended")
         payload = await self._get("help_texts")
         results = [
             self.normalize_help_text(item)
@@ -5276,6 +5312,7 @@ class OpenProjectClient:
         return HelpTextListResult(count=len(results), results=results)
 
     async def get_help_text(self, help_text_id: int) -> HelpTextSummary:
+        self._ensure_read_enabled("extended")
         payload = await self._get(f"help_texts/{help_text_id}")
         return self.normalize_help_text(payload)
 
@@ -5283,6 +5320,7 @@ class OpenProjectClient:
 
     async def list_working_days(self) -> WorkingDayListResult:
         """List the Mon–Sun working-day configuration (7 entries)."""
+        self._ensure_read_enabled("extended")
         payload = await self._get("days/week")
         results = [
             self.normalize_working_day(item)
@@ -5293,6 +5331,7 @@ class OpenProjectClient:
 
     async def list_non_working_days(self, *, year: int | None = None) -> NonWorkingDayListResult:
         """List non-working days (public holidays / closures) for the given year."""
+        self._ensure_read_enabled("extended")
         params: dict[str, str] = {}
         if year is not None:
             params["filters"] = json.dumps(
@@ -5310,6 +5349,7 @@ class OpenProjectClient:
 
     async def get_custom_option(self, custom_option_id: int) -> CustomOptionSummary:
         """Fetch a single custom field option value by id."""
+        self._ensure_read_enabled("extended")
         payload = await self._get(f"custom_options/{custom_option_id}")
         return CustomOptionSummary(
             id=int(payload["id"]),
@@ -5481,10 +5521,7 @@ class OpenProjectClient:
                 "file": (file_name, file_bytes, content_type),
             },
         )
-        try:
-            return response.json()
-        except ValueError as exc:
-            raise OpenProjectServerError("OpenProject returned invalid JSON.") from exc
+        return _parse_response_json(response)
 
     async def _delete(
         self,
@@ -5496,6 +5533,24 @@ class OpenProjectClient:
         if response.status_code not in {200, 202, 204}:
             raise OpenProjectServerError(f"OpenProject delete request failed with status {response.status_code}.")
 
+    async def _delete_json(
+        self,
+        path: str,
+        *,
+        params: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Like _delete, but parses and returns the response body.
+
+        Some DELETE endpoints (e.g. users/{id}/lock, OpenProject's unlock
+        transition) respond with the full updated resource representation
+        instead of an empty body -- callers that need that representation
+        should use this instead of _delete + a redundant follow-up GET.
+        """
+        response = await self._request("DELETE", path, params=params)
+        if response.status_code not in {200, 202, 204}:
+            raise OpenProjectServerError(f"OpenProject delete request failed with status {response.status_code}.")
+        return _parse_response_json(response)
+
     async def _request_json(
         self,
         method: str,
@@ -5505,10 +5560,7 @@ class OpenProjectClient:
         json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         response = await self._request(method, path, params=params, json_body=json_body)
-        try:
-            return response.json()
-        except ValueError as exc:
-            raise OpenProjectServerError("OpenProject returned invalid JSON.") from exc
+        return _parse_response_json(response)
 
     async def _request(
         self,
@@ -5664,7 +5716,7 @@ class OpenProjectClient:
         links = payload.get("_links", {})
         groups = [title for item in links.get("groups", []) if isinstance(item, dict) and (title := _link_title(item))]
         auth_source = _link_title(links.get("authSource"))
-        identity_url = self._link_to_web_url(links.get("showUser", {}).get("href"))
+        identity_url = payload.get("identityUrl")
         return self._apply_hidden_fields(
             "user",
             UserDetail(
@@ -5860,7 +5912,6 @@ class OpenProjectClient:
         description, truncated, length = self._visible_formattable_text_with_meta(
             payload.get("description"), "work_package", "description", limit=self.settings.text_limit
         )
-        description = _delimit_user_content(description)
         start_date, due_date = self._work_package_dates(payload)
         return self._apply_hidden_fields(
             "work_package",
@@ -5924,7 +5975,6 @@ class OpenProjectClient:
             limit=text_limit,
             preserve_newlines=True,
         )
-        description = _delimit_user_content(description)
 
         # Hierarchy arrays with limits
         children_raw = links.get("children", [])
@@ -6030,14 +6080,21 @@ class OpenProjectClient:
             limit=text_limit,
             preserve_newlines=True,
         )
-        comment = _delimit_user_content(comment)
 
-        # Details array with limit
+        # Details array with limit. OpenProject sends each entry as both a
+        # plain-text "raw" and a markup "html" rendering of the SAME change
+        # description — keep only "raw" (dropping the duplicate "html"/"format"
+        # keys) and delimit it like every other free-text field here, since
+        # it is equally untrusted user-authored content.
         details_raw = payload.get("details", [])
         details = None
         details_truncated = False
         if details_raw:
-            details = details_raw[:ACTIVITY_DETAILS_LIMIT]
+            details = [
+                {"raw": _delimit_user_content(item.get("raw"))}
+                for item in details_raw[:ACTIVITY_DETAILS_LIMIT]
+                if isinstance(item, dict)
+            ]
             details_truncated = len(details_raw) > ACTIVITY_DETAILS_LIMIT
 
         return self._apply_hidden_fields(
@@ -6068,7 +6125,7 @@ class OpenProjectClient:
                 start_date=payload.get("startDate"),
                 end_date=payload.get("endDate"),
                 defining_project=_link_title(links.get("definingProject")),
-                description=_extract_formattable_text(payload.get("description")),
+                description=self._visible_formattable_text(payload.get("description"), "version", "description"),
                 url=self._web_url(f"versions/{payload['id']}"),
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
@@ -6386,7 +6443,6 @@ class OpenProjectClient:
         description = self._visible_formattable_text(
             payload.get("description"), "news", "description", limit=SUBJECT_LIMIT
         )
-        description = _delimit_user_content(description)
         return self._apply_hidden_fields(
             "news",
             NewsSummary(
@@ -6407,7 +6463,6 @@ class OpenProjectClient:
     def normalize_news_detail(self, payload: dict[str, Any]) -> NewsDetail:
         summary = self.normalize_news(payload)
         description = self._visible_formattable_text(payload.get("description"), "news", "description")
-        description = _delimit_user_content(description)
         return self._apply_hidden_fields(
             "news",
             NewsDetail(
@@ -6851,11 +6906,14 @@ class OpenProjectClient:
         )
 
     def normalize_user_preferences(self, payload: dict[str, Any]) -> UserPreferences:
-        return UserPreferences(
-            time_zone=payload.get("timeZone"),
-            comment_sort_descending=payload.get("commentSortDescending"),
-            warn_on_leaving_unsaved=payload.get("warnOnLeavingUnsaved"),
-            auto_hide_popups=payload.get("autoHidePopups"),
+        return self._apply_hidden_fields(
+            "user_preferences",
+            UserPreferences(
+                time_zone=payload.get("timeZone"),
+                comment_sort_descending=payload.get("commentSortDescending"),
+                warn_on_leaving_unsaved=payload.get("warnOnLeavingUnsaved"),
+                auto_hide_popups=payload.get("autoHidePopups"),
+            ),
         )
 
     def normalize_help_text(self, payload: dict[str, Any]) -> HelpTextSummary:
@@ -8313,9 +8371,16 @@ class OpenProjectClient:
         *,
         limit: int = FORMATTABLE_LIMIT,
     ) -> str | None:
+        """Hide-aware, delimited formattable text.
+
+        The returned text is always wrapped by ``_delimit_user_content`` --
+        every caller used to do this immediately after calling this method (or,
+        for several call sites, not at all), so it is folded in here instead of
+        repeated (or missing) at each call site.
+        """
         if self._field_hidden(entity, field_name):
             return None
-        return _extract_formattable_text(value, limit=limit)
+        return _delimit_user_content(_extract_formattable_text(value, limit=limit))
 
     def _visible_formattable_text_with_meta(
         self,
@@ -8326,15 +8391,19 @@ class OpenProjectClient:
         limit: int | None = FORMATTABLE_LIMIT,
         preserve_newlines: bool = False,
     ) -> tuple[str | None, bool, int | None]:
-        """Hide-aware formattable text plus ``(text, truncated, full_length)``.
+        """Hide-aware, delimited formattable text plus ``(text, truncated, full_length)``.
 
         ``limit=None`` returns the full text uncapped. When the field is hidden,
         returns ``(None, False, None)`` — a hidden field is not "truncated", it
-        is simply absent.
+        is simply absent. The returned text is always wrapped by
+        ``_delimit_user_content`` — every caller did this immediately after
+        calling this method, so it is folded in here instead of repeated at
+        each call site.
         """
         if self._field_hidden(entity, field_name):
             return None, False, None
-        return _extract_formattable_text_with_meta(value, limit=limit, preserve_newlines=preserve_newlines)
+        text, truncated, length = _extract_formattable_text_with_meta(value, limit=limit, preserve_newlines=preserve_newlines)
+        return _delimit_user_content(text), truncated, length
 
     def _custom_field_hidden(self, field_name: str, key: str) -> bool:
         patterns = tuple(self.settings.hide_custom_fields)
@@ -8893,6 +8962,13 @@ def _link_title(link: Any) -> str | None:
         return None
     title = link.get("title")
     return _trim_text(title, limit=SUBJECT_LIMIT)
+
+
+def _parse_response_json(response: httpx.Response) -> dict[str, Any]:
+    try:
+        return normalize_links(response.json())
+    except ValueError as exc:
+        raise OpenProjectServerError("OpenProject returned invalid JSON.") from exc
 
 
 def _is_usable_positive_id(value: Any) -> bool:

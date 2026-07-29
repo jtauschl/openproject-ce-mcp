@@ -192,6 +192,7 @@ HIDE_FIELD_ENV_BY_ENTITY: dict[str, str] = {
     "notification": "OPENPROJECT_HIDE_NOTIFICATION_FIELDS",
     "file_link": "OPENPROJECT_HIDE_FILE_LINK_FIELDS",
     "emoji_reaction": "OPENPROJECT_HIDE_EMOJI_REACTION_FIELDS",
+    "user_preferences": "OPENPROJECT_HIDE_USER_PREFERENCES_FIELDS",
 }
 
 

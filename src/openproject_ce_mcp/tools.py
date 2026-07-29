@@ -1855,8 +1855,10 @@ async def bulk_create_work_packages(
                 "project_phase": _validate_optional_query(
                     item.get("project_phase"), field_name=f"items[{i}].project_phase", max_length=100
                 ),
-                "assignee": _validate_optional_user_ref(item.get("assignee")),
-                "responsible": _validate_optional_user_ref(item.get("responsible"), field_name="responsible"),
+                "assignee": _validate_optional_user_ref(item.get("assignee"), field_name=f"items[{i}].assignee"),
+                "responsible": _validate_optional_user_ref(
+                    item.get("responsible"), field_name=f"items[{i}].responsible"
+                ),
                 "priority": _validate_optional_query(
                     item.get("priority"), field_name=f"items[{i}].priority", max_length=100
                 ),
@@ -1886,6 +1888,7 @@ _BULK_UPDATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(
         "description",
         "type",
         "version",
+        "sprint",
         "project_phase",
         "status",
         "assignee",
@@ -1961,14 +1964,21 @@ async def bulk_update_work_packages(
         # version/project_phase/assignee/responsible/category/parent_work_package_id:
         # 'none' (any case) clears the field; otherwise the normal validation applies.
         safe_version = _validate_optional_version(item.get("version"), field_name=f"items[{i}].version")
+        safe_sprint = _clearable(
+            item.get("sprint"),
+            functools.partial(_validate_optional_query, field_name=f"items[{i}].sprint", max_length=100),
+        )
         safe_project_phase = _clearable(
             item.get("project_phase"),
             functools.partial(_validate_optional_query, field_name=f"items[{i}].project_phase", max_length=100),
         )
         safe_status = _validate_optional_query(item.get("status"), field_name=f"items[{i}].status", max_length=100)
-        safe_assignee = _clearable(item.get("assignee"), _validate_optional_user_ref)
+        safe_assignee = _clearable(
+            item.get("assignee"), functools.partial(_validate_optional_user_ref, field_name=f"items[{i}].assignee")
+        )
         safe_responsible = _clearable(
-            item.get("responsible"), functools.partial(_validate_optional_user_ref, field_name="responsible")
+            item.get("responsible"),
+            functools.partial(_validate_optional_user_ref, field_name=f"items[{i}].responsible"),
         )
         safe_priority = _validate_optional_query(
             item.get("priority"), field_name=f"items[{i}].priority", max_length=100
@@ -2000,6 +2010,7 @@ async def bulk_update_work_packages(
                 safe_description,
                 safe_type,
                 safe_version,
+                safe_sprint,
                 safe_project_phase,
                 safe_status,
                 safe_assignee,
@@ -2024,6 +2035,7 @@ async def bulk_update_work_packages(
                 "description": safe_description,
                 "type": safe_type,
                 "version": safe_version,
+                "sprint": safe_sprint,
                 "project_phase": safe_project_phase,
                 "status": safe_status,
                 "assignee": safe_assignee,

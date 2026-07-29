@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 import os
@@ -367,6 +368,66 @@ async def test_initialize_populates_identifier_cache_for_restricted_write_scope_
     await client.initialize()
 
     assert client._project_id_to_identifier == {7: "OPM"}
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_project_tolerates_explicit_null_links() -> None:
+    """Regression, found via a bidirectional bugfix audit against
+    release/0.4.0: HAL+JSON convention says `_links` is always an object, but
+    an explicit JSON `"_links": null` in a response body would otherwise make
+    `payload.get("_links", {})` return None (the key IS present, just null),
+    crashing the very next `.get("status")`/etc. call downstream. The
+    transport layer now normalizes an explicit `_links: null` to `{}`
+    throughout the parsed body before any normalizer sees it."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Project",
+                    "id": 1,
+                    "name": "Demo",
+                    "identifier": "demo",
+                    "_links": None,
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("*",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    project = await client.get_project("demo")
+
+    assert project.identifier == "demo"
+    assert project.status is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_initialize_logs_and_does_not_raise_when_project_fetch_fails(caplog) -> None:
+    """Regression, found via a bidirectional bugfix audit against
+    release/0.4.0: initialize() previously caught a bare `Exception` and
+    silently discarded it. It must still not raise (a failed identifier-cache
+    population must not prevent the server from starting), but the failure
+    should now be logged via LOGGER.warning so it is at least visible, and
+    only OpenProjectError (not e.g. a programming error) is swallowed."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/projects"
+        return httpx.Response(500, json={"message": "boom"}, request=request)
+
+    settings = _base_settings(read_projects=("*",), write_projects=("OPM",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with caplog.at_level(logging.WARNING, logger="openproject_ce_mcp.client"):
+        await client.initialize()
+
+    assert client._project_id_to_identifier == {}
+    assert any("failed to fetch the project list" in r.message for r in caplog.records)
     await client.aclose()
 
 
@@ -5918,6 +5979,20 @@ async def test_views_categories_and_attachments() -> None:
                 },
                 request=request,
             )
+        if request.url.path == "/api/v3/categories/3" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 3,
+                    "name": "Backend",
+                    "isDefault": True,
+                    "_links": {
+                        "self": {"href": "/api/v3/categories/3"},
+                        "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                    },
+                },
+                request=request,
+            )
         if request.url.path == "/api/v3/work_packages/7" and request.method == "GET":
             return httpx.Response(
                 200,
@@ -6058,6 +6133,113 @@ async def test_views_categories_and_attachments() -> None:
     assert created_preview.ready is True
     assert created.attachment_id == 6
     assert deleted.attachment_id == 5
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_category_uses_real_single_item_endpoint() -> None:
+    """get_category must call OpenProject's real GET /api/v3/categories/{id}
+    single-item endpoint (verified against op-sources/17.4's categories_api.rb)
+    instead of re-listing every category in the project and filtering in
+    Python -- the mock only serves the single-item route, so a fallback to
+    list_categories would fail this test with an unmocked-request error."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/categories/3" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 3,
+                    "name": "Backend",
+                    "isDefault": True,
+                    "_links": {
+                        "self": {"href": "/api/v3/categories/3"},
+                        "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    category = await client.get_category(category_id=3)
+    assert category.id == 3
+    assert category.name == "Backend"
+    assert category.project_id == 6
+    assert category.project == "Demo"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_category_enforces_read_allowlist_against_own_project_link() -> None:
+    """The category's own real _links.project (returned by the GET) is what is
+    actually checked against OPENPROJECT_READ_PROJECTS -- a category belonging
+    to a project outside the allowlist must be denied even though the caller
+    never had to name a project to reach it."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/categories/3" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 3,
+                    "name": "Backend",
+                    "isDefault": True,
+                    "_links": {
+                        "self": {"href": "/api/v3/categories/3"},
+                        "project": {"href": "/api/v3/projects/6", "title": "OtherProject"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",), write_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        await client.get_category(category_id=3)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_category_project_ref_mismatch_raises_not_found() -> None:
+    """A caller-supplied project_ref is an ADDITIONAL cross-check, not the sole
+    source of authorization: if the category's real project does not match the
+    claimed project_ref, this must raise NotFoundError (not silently ignore
+    the mismatch and return the category anyway)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/categories/3" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 3,
+                    "name": "Backend",
+                    "isDefault": True,
+                    "_links": {
+                        "self": {"href": "/api/v3/categories/3"},
+                        "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/other":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 99, "name": "Other", "identifier": "other"},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(NotFoundError):
+        await client.get_category(project_ref="other", category_id=3)
 
     await client.aclose()
 
@@ -6706,6 +6888,11 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
                     "admin": True,
                     "locked": False,
                     "language": "en",
+                    # identityUrl is OpenProject's real top-level property for this;
+                    # showUser is a different, unrelated link (kept here to prove it
+                    # is no longer read as a stand-in for identityUrl -- regression
+                    # coverage for a bidirectional bugfix audit against release/0.4.0).
+                    "identityUrl": "https://idp.example.com/users/alice",
                     "createdAt": "2026-01-01T00:00:00Z",
                     "updatedAt": "2026-01-02T00:00:00Z",
                     "_links": {
@@ -6775,6 +6962,10 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
     assert users.results[0].email == "alice@example.com"
     assert user.language == "en"
     assert user.groups == ["Admins"]
+    # Regression: identity_url must come from the real identityUrl property,
+    # not the unrelated showUser link (which just duplicates the already-
+    # modeled `url` field).
+    assert user.identity_url == "https://idp.example.com/users/alice"
     assert groups.count == 1
     assert groups.results[0].member_count == 2
     assert group.members == ["Alice", "Bob"]
@@ -7368,6 +7559,48 @@ async def test_unlock_user_rejects_when_locked_field_is_hidden() -> None:
 
 
 @pytest.mark.asyncio
+async def test_unlock_user_uses_delete_response_without_redundant_get() -> None:
+    """Regression, found via a bidirectional bugfix audit against
+    release/0.4.0: DELETE users/{id}/lock already returns the full updated
+    user representation (OpenProject's user_transition helper responds with
+    a UserRepresenter for both the POST and DELETE lock transitions) -- a
+    follow-up GET users/{id} was unnecessary and is no longer made."""
+    requests: list[tuple[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.method, request.url.path))
+        if request.url.path == "/api/v3/users/9/lock" and request.method == "DELETE":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 9,
+                    "name": "Bob",
+                    "login": "bob",
+                    "email": "bob@example.com",
+                    "status": "active",
+                    "admin": False,
+                    "locked": False,
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(
+        _base_settings(enable_admin_write=True),
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await client.unlock_user(9, confirm=True)
+
+    assert result.confirmed is True
+    assert result.result is not None
+    assert result.result.locked is False
+    assert requests == [("DELETE", "/api/v3/users/9/lock")]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_user_preferences_get_and_update() -> None:
     """Regression: a previous version of this mock simulated "id"/"lang"/
     "updatedAt" fields on the my_preferences response and a "lang" write
@@ -7478,6 +7711,68 @@ async def test_update_my_preferences_succeeds_with_personal_write_enabled() -> N
 
 
 @pytest.mark.asyncio
+async def test_get_my_preferences_masks_hidden_fields() -> None:
+    """OPENPROJECT_HIDE_USER_PREFERENCES_FIELDS must mask fields on the
+    get_my_preferences/update_my_preferences read path, matching every other
+    entity's OPENPROJECT_HIDE_<ENTITY>_FIELDS behavior (previously
+    "user_preferences" had no HIDE_FIELD_ENV_BY_ENTITY entry and
+    normalize_user_preferences never called _apply_hidden_fields at all)."""
+    import dataclasses
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/my_preferences" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "UserPreferences",
+                    "timeZone": "Europe/Berlin",
+                    "commentSortDescending": False,
+                    "warnOnLeavingUnsaved": True,
+                    "autoHidePopups": False,
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = dataclasses.replace(
+        _personal_read_and_write_enabled_settings(),
+        hidden_fields={"user_preferences": ("time_zone",)},
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    prefs = await client.get_my_preferences()
+    payload = _to_payload(prefs)
+    assert "time_zone" not in payload
+    assert payload["comment_sort_descending"] is False
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_my_preferences_rejects_hidden_fields() -> None:
+    """OPENPROJECT_HIDE_USER_PREFERENCES_FIELDS must also reject a write to a
+    hidden field, matching update_group's/update_user's per-field
+    _ensure_field_writable guard idiom (previously update_my_preferences never
+    called _ensure_field_writable at all, so a hidden field could still be
+    written even though it could not be read back)."""
+    import dataclasses
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no request must be issued when the field is hidden")
+
+    settings = dataclasses.replace(
+        _personal_read_and_write_enabled_settings(),
+        hidden_fields={"user_preferences": ("time_zone",)},
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="time_zone.*hidden"):
+        await client.update_my_preferences(time_zone="America/New_York", confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_render_text() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/render/markdown" and request.method == "POST":
@@ -7500,6 +7795,8 @@ async def test_render_text() -> None:
 
 @pytest.mark.asyncio
 async def test_help_texts_and_working_days() -> None:
+    import dataclasses
+
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/help_texts" and request.method == "GET":
             return httpx.Response(
@@ -7559,7 +7856,9 @@ async def test_help_texts_and_working_days() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    client = OpenProjectClient(
+        dataclasses.replace(make_settings(), enable_metadata_tools=True), transport=httpx.MockTransport(handler)
+    )
 
     help_texts = await client.list_help_texts()
     assert help_texts.count == 1
@@ -7577,6 +7876,35 @@ async def test_help_texts_and_working_days() -> None:
     non_working = await client.list_non_working_days()
     assert non_working.count == 1
     assert non_working.results[0].name == "Christmas Day"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_extended_metadata_methods_require_extended_read_scope() -> None:
+    """OPENPROJECT_ENABLE_METADATA_TOOLS / OPENPROJECT_ENABLE_EXTENDED_READ must
+    actually gate list_help_texts/get_help_text/list_working_days/
+    list_non_working_days/get_custom_option -- these five had NO
+    self._ensure_read_enabled(...) call at all, so the config flag was
+    silently ignored and they always worked regardless of its value.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"Unexpected request: {request.method} {request.url} (permission check should short-circuit before any HTTP call)")
+
+    # Default settings (enable_metadata_tools defaults to False) must deny all five.
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="extended read support is disabled"):
+        await client.list_help_texts()
+    with pytest.raises(PermissionDeniedError, match="extended read support is disabled"):
+        await client.get_help_text(5)
+    with pytest.raises(PermissionDeniedError, match="extended read support is disabled"):
+        await client.list_working_days()
+    with pytest.raises(PermissionDeniedError, match="extended read support is disabled"):
+        await client.list_non_working_days()
+    with pytest.raises(PermissionDeniedError, match="extended read support is disabled"):
+        await client.get_custom_option(42)
 
     await client.aclose()
 
@@ -7730,6 +8058,8 @@ async def test_list_relations_and_update_relation() -> None:
 
 @pytest.mark.asyncio
 async def test_get_custom_option() -> None:
+    import dataclasses
+
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/custom_options/42" and request.method == "GET":
             return httpx.Response(
@@ -7739,11 +8069,40 @@ async def test_get_custom_option() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    client = OpenProjectClient(
+        dataclasses.replace(make_settings(), enable_metadata_tools=True), transport=httpx.MockTransport(handler)
+    )
 
     option = await client.get_custom_option(42)
     assert option.id == 42
     assert option.value == "High Priority"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_extended_metadata_methods_denied_without_metadata_tools_enabled() -> None:
+    """Regression, found via a bidirectional bugfix audit against
+    release/0.4.0: list_help_texts/get_help_text/list_working_days/
+    list_non_working_days/get_custom_option previously had no
+    _ensure_read_enabled call at all, silently ignoring
+    OPENPROJECT_ENABLE_EXTENDED_READ (OPENPROJECT_ENABLE_METADATA_TOOLS)."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_EXTENDED_READ"):
+        await client.list_help_texts()
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_EXTENDED_READ"):
+        await client.get_help_text(5)
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_EXTENDED_READ"):
+        await client.list_working_days()
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_EXTENDED_READ"):
+        await client.list_non_working_days()
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_EXTENDED_READ"):
+        await client.get_custom_option(42)
 
     await client.aclose()
 
@@ -8341,7 +8700,9 @@ async def test_list_grids_paginates_client_side() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/grids" and request.method == "GET":
             assert request.url.params.get("offset") == "1"
-            assert request.url.params.get("pageSize") == "100"
+            # list_grids now walks every server page via _fetch_all_pages,
+            # which pages at settings.max_page_size (not settings.max_results).
+            assert request.url.params.get("pageSize") == "50"
             return httpx.Response(
                 200,
                 json={
@@ -8587,6 +8948,11 @@ async def test_delete_grid_executes_with_confirm() -> None:
     assert result.confirmed is True
     assert result.grid_id == 55
     assert deleted["called"] is True
+    # Regression: the deleted grid's own already-fetched summary should be
+    # returned as result (built from `detail` before the DELETE call, since
+    # the resource won't exist to re-fetch afterward), not None.
+    assert result.result is not None
+    assert result.result.id == 55
     await client.aclose()
 
 
@@ -11533,6 +11899,35 @@ async def test_activity_comment_delimited():
 
 
 @pytest.mark.asyncio
+async def test_activity_details_raw_text_delimited():
+    """activity.details[] carries raw user-authored change descriptions (e.g.
+    "changed description from ... to ...") and is equally untrusted content --
+    each entry's "raw" text must be delimited like every other free-text field
+    here (previously details[] passed through completely unwrapped)."""
+    settings = _base_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    activity = client.normalize_activity(
+        {
+            "id": 790,
+            "_type": "Activity::WorkPackage",
+            "_links": {"user": {"href": "/api/v3/users/1", "title": "John Doe"}},
+            "details": [
+                {"format": "markdown", "raw": "Changed description", "html": "<p>Changed description</p>"},
+                {"format": "markdown", "raw": "Changed status", "html": "<p>Changed status</p>"},
+            ],
+        }
+    )
+
+    assert activity.details == [
+        {"raw": "<user-content>Changed description</user-content>"},
+        {"raw": "<user-content>Changed status</user-content>"},
+    ]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_news_description_delimited():
     settings = _base_settings()
     client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
@@ -11603,9 +11998,9 @@ async def test_document_description_hidden_by_document_scope_not_project_scope()
         settings_project_hidden, transport=httpx.MockTransport(lambda r: httpx.Response(200))
     )
     document = client_project_hidden.normalize_document(payload)
-    assert document.description == "Document description content"
+    assert document.description == "<user-content>Document description content</user-content>"
     detail = client_project_hidden.normalize_document_detail(payload)
-    assert detail.description == "Document description content"
+    assert detail.description == "<user-content>Document description content</user-content>"
     await client_project_hidden.aclose()
 
     settings_document_hidden = _base_settings(hidden_fields={"document": ("description",)})
@@ -11638,7 +12033,7 @@ async def test_time_entry_comment_hidden_by_time_entry_scope_not_activity_scope(
         settings_activity_hidden, transport=httpx.MockTransport(lambda r: httpx.Response(200))
     )
     time_entry = client_activity_hidden.normalize_time_entry(payload)
-    assert time_entry.comment == "Time entry comment content"
+    assert time_entry.comment == "<user-content>Time entry comment content</user-content>"
     await client_activity_hidden.aclose()
 
     settings_time_entry_hidden = _base_settings(hidden_fields={"time_entry": ("comment",)})
@@ -11665,6 +12060,148 @@ async def test_wiki_page_content_delimited():
     )
 
     assert wiki_page.content == "<user-content>Wiki page content</user-content>"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_project_description_delimited():
+    """normalize_project's description (and status_explanation, which shares
+    the same _visible_formattable_text helper) must be delimited -- previously
+    the only two _visible_formattable_text call sites with no external
+    _delimit_user_content wrapping at all."""
+    settings = _base_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    project = client.normalize_project(
+        {
+            "id": 1,
+            "identifier": "demo",
+            "name": "Demo",
+            "description": {"format": "markdown", "raw": "Project description content"},
+            "statusExplanation": {"format": "markdown", "raw": "Status explanation content"},
+            "_links": {},
+        }
+    )
+
+    assert project.description == "<user-content>Project description content</user-content>"
+    assert project.status_explanation == "<user-content>Status explanation content</user-content>"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_version_description_delimited():
+    """normalize_version's description previously bypassed both the
+    hidden-fields check AND the delimiter entirely by calling the module-level
+    _extract_formattable_text(...) directly instead of
+    self._visible_formattable_text(...)."""
+    settings = _base_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    version = client.normalize_version(
+        {
+            "id": 3,
+            "name": "1.0",
+            "description": {"format": "markdown", "raw": "Version description content"},
+            "_links": {},
+        }
+    )
+
+    assert version.description == "<user-content>Version description content</user-content>"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_time_entry_comment_delimited():
+    """normalize_time_entry's comment previously passed through
+    self._visible_formattable_text(...) with no external delimiting at all."""
+    settings = _base_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    time_entry = client.normalize_time_entry(
+        {
+            "id": 7,
+            "hours": "PT1H",
+            "spentOn": "2026-03-20",
+            "comment": {"format": "markdown", "raw": "Time entry comment content"},
+            "_links": {
+                "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+                "user": {"href": "/api/v3/users/1", "title": "Admin"},
+            },
+        }
+    )
+
+    assert time_entry.comment == "<user-content>Time entry comment content</user-content>"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_document_description_delimited():
+    """normalize_document/normalize_document_detail's description previously
+    passed through self._visible_formattable_text(...) with no external
+    delimiting at all."""
+    settings = _base_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    payload = {
+        "id": 5,
+        "title": "Architecture",
+        "description": {"format": "markdown", "raw": "Document description content"},
+        "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+    }
+    document = client.normalize_document(payload)
+    assert document.description == "<user-content>Document description content</user-content>"
+    detail = client.normalize_document_detail(payload)
+    assert detail.description == "<user-content>Document description content</user-content>"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_formattable_text_helper_does_not_double_delimit():
+    """Regression guard for the fix itself: _visible_formattable_text and
+    _visible_formattable_text_with_meta now delimit internally. Every caller
+    that used to ALSO call _delimit_user_content(...) externally must have had
+    that redundant call removed, or the result would be double-wrapped
+    (`<user-content><user-content>...</user-content></user-content>`)."""
+    settings = _base_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+
+    news = client.normalize_news(
+        {
+            "id": 10,
+            "title": "News Title",
+            "description": {"format": "markdown", "raw": "News body"},
+            "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+        }
+    )
+    assert news.description == "<user-content>News body</user-content>"
+    assert news.description.count("<user-content>") == 1
+
+    work_package = client.normalize_work_package_summary(
+        {
+            "id": 1,
+            "subject": "Task",
+            "description": {"format": "markdown", "raw": "WP body"},
+            "_links": {},
+        }
+    )
+    assert work_package.description == "<user-content>WP body</user-content>"
+    assert work_package.description.count("<user-content>") == 1
+
+    activity = client.normalize_activity(
+        {
+            "id": 1,
+            "_type": "Activity::Comment",
+            "comment": {"format": "markdown", "raw": "Activity body"},
+            "_links": {},
+        }
+    )
+    assert activity.comment == "<user-content>Activity body</user-content>"
+    assert activity.comment.count("<user-content>") == 1
 
     await client.aclose()
 
@@ -13157,6 +13694,35 @@ async def test_file_link_delete_uses_container_work_package_link_shape() -> None
 
 
 @pytest.mark.asyncio
+async def test_file_link_delete_reports_none_work_package_id_when_container_unresolvable() -> None:
+    """Regression, found via a bidirectional bugfix audit against
+    release/0.4.0: when the file link's container href is missing/unparseable,
+    work_package_id must be None -- a previous version faked it as 0, which
+    looks like a real (falsy-but-present) id rather than "unknown"."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/file_links/5" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 5, "_links": {"self": {"href": "/api/v3/file_links/5"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/file_links/5" and request.method == "DELETE":
+            return httpx.Response(204, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_work_package_write=True, write_projects=("*",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.delete_file_link(5, confirm=True)
+
+    assert result.work_package_id is None
+    assert result.confirmed is True
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_time_entry_semantic_work_package_ref_uses_numeric_entity_href_shape() -> None:
     """Verify semantic WP refs become numeric HAL entity hrefs."""
     captured: dict[str, dict] = {}
@@ -13242,9 +13808,11 @@ async def test_work_package_relations_use_canonical_involved_filter_shape() -> N
     assert filters == [{"involved": {"operator": "=", "values": ["55"]}}]
     assert result.count == 1
     assert result.results[0].id == 12
+    # _resolve_work_package_id("PROJ-7") already fetches and allowlist-checks
+    # the anchor work package -- a second get_work_package(55) fetch would be
+    # redundant and is not made.
     assert requests == [
         ("GET", "/api/v3/work_packages/PROJ-7"),
-        ("GET", "/api/v3/work_packages/55"),
         ("GET", "/api/v3/relations"),
     ]
 
