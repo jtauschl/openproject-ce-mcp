@@ -4520,6 +4520,26 @@ async def test_get_job_status_tolerates_the_copied_project_being_unresolvable() 
 
 
 @pytest.mark.asyncio
+async def test_get_job_status_rejects_path_traversal_id() -> None:
+    """Regression, found via self-review: job_status_id was interpolated
+    into the URL path with no validation at all -- a value like
+    "../projects/42" quotes to itself unchanged (quote() never escapes ".")
+    and httpx then normalizes ".." away when building the request,
+    redirecting the request to an entirely different endpoint and
+    bypassing get_job_status's own allowlist check."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="job_status_id"):
+        await client.get_job_status("../projects/42")
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_work_package_watchers_denies_anchor_outside_read_allowlist() -> None:
     """list_work_package_watchers must check the anchor WP's own project.
 
@@ -6965,6 +6985,26 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
     assert sort_by.direction == "asc"
     assert schemas.count == 1
     assert schemas.results[0].operator_count == 2
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_capabilities_by_id_rejects_path_traversal_id() -> None:
+    """Regression, found via self-review: capability_id is quoted with
+    safe='/' (real capability ids are themselves multi-segment paths), but
+    quote() never escapes "." either way -- a value like "../users/7" quotes
+    to itself unchanged, and httpx then normalizes ".." away when building
+    the request, redirecting it to an entirely different endpoint and
+    bypassing this method's own context-allowlist check."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="capability_id"):
+        await client.list_capabilities(capability_id="../users/7")
 
     await client.aclose()
 
@@ -14041,11 +14081,21 @@ async def test_list_project_memberships_walks_multiple_server_pages() -> None:
                     "id": 1,
                     "identifier": "demo",
                     "name": "Demo",
-                    "_links": {"memberships": {"href": "/api/v3/memberships?filters=..."}},
+                    "_links": {
+                        "memberships": {
+                            "href": '/api/v3/memberships?filters=[{"project":{"operator":"=","values":["1"]}}]'
+                        }
+                    },
                 },
                 request=request,
             )
         if request.url.path == "/api/v3/memberships":
+            # Regression: passing the link's own path string together with a
+            # separate params={...} dict used to make httpx REPLACE the
+            # link's query string outright instead of merging it, silently
+            # dropping this project-scoping filter and returning memberships
+            # from every project. Assert the filter survives every page.
+            assert request.url.params["filters"] == '[{"project":{"operator":"=","values":["1"]}}]'
             page = request.url.params["offset"]
             requested_offsets.append(page)
             assert request.url.params["pageSize"] == "1"

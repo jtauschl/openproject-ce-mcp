@@ -10,7 +10,7 @@ from dataclasses import is_dataclass, replace
 from fnmatch import fnmatch, fnmatchcase
 from pathlib import Path
 from typing import Any, TypeVar, cast
-from urllib.parse import quote, unquote, urljoin, urlparse
+from urllib.parse import parse_qsl, quote, unquote, urljoin, urlparse
 
 import httpx
 
@@ -674,7 +674,8 @@ class OpenProjectClient:
 
     async def get_job_status(self, job_status_id: str) -> JobStatusDetail:
         self._ensure_read_enabled("project")
-        payload = await self._get(f"job_statuses/{job_status_id}")
+        safe_id = _reject_path_traversal_segments(job_status_id, field_name="job_status_id")
+        payload = await self._get(f"job_statuses/{quote(safe_id, safe='')}")
         links = _job_status_inner_links(payload)
         project_link = links.get("project") or links.get("sourceProject")
         if isinstance(project_link, dict):
@@ -974,8 +975,16 @@ class OpenProjectClient:
             # Unlike most single-item lookups, a capability_id is itself a
             # multi-segment path (e.g. "activities/read/w3-4") that OpenProject
             # expects as real path segments, not a percent-encoded slash --
-            # quote(..., safe='') would turn "/" into "%2F" and 404.
-            payload = await self._get(f"capabilities/{quote(capability_id, safe='/')}")
+            # quote(..., safe='') would turn "/" into "%2F" and 404. But
+            # quote() never escapes "." (an unreserved RFC 3986 character
+            # even with safe=""), so a "/"-permissive quote alone lets a
+            # segment like ".." straight through -- httpx then normalizes
+            # ".." away when building the request URL, letting the caller
+            # reach an unrelated endpoint entirely (verified:
+            # capabilities/../users/7 resolves to /api/v3/users/7). Reject
+            # any "."/".." segment before quoting.
+            safe_capability_id = _reject_path_traversal_segments(capability_id, field_name="capability_id")
+            payload = await self._get(f"capabilities/{quote(safe_capability_id, safe='/')}")
             raw_results = [payload] if self._capability_context_allowed(payload) else []
             if project_id is not None:
                 context_href = payload.get("_links", {}).get("context", {}).get("href")
@@ -1086,14 +1095,28 @@ class OpenProjectClient:
         # was silently unreachable. Walk every server page explicitly instead;
         # no per-item allowlist filtering happens here (project access is
         # already gated above), so a straight page walk is safe.
+        #
+        # Regression found via self-review: the project's real `memberships`
+        # link always carries its own project-scoping filter as a query
+        # string (verified against op-sources' project_representer.rb --
+        # `filters: [{project: {operator: "=", values: [id]}}]`). Passing
+        # that path string together with a separate `params={...}` dict to
+        # httpx REPLACES the link's own query string outright rather than
+        # merging it -- silently dropping the project filter and returning
+        # memberships from every visible project, not just this one. The
+        # link's query params must be parsed out and merged into `params`
+        # explicitly instead of relying on them surviving in the path.
         path = self._link_to_api_path(href)
+        path_only, _, query = path.partition("?")
+        base_params = dict(parse_qsl(query)) if query else {}
         memberships: list[MembershipSummary] = []
         seen_ids: set[Any] = set()
         offset = 1
         page_size = self.settings.max_page_size
         is_first_page = True
         while True:
-            payload = await self._get(path, params={"offset": str(offset), "pageSize": str(page_size)})
+            page_params = {**base_params, "offset": str(offset), "pageSize": str(page_size)}
+            payload = await self._get(path_only, params=page_params)
             elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
             # A single unparametrized GET's own bug (see the comment above)
             # was already fixed by sending offset/pageSize explicitly -- but
@@ -8863,6 +8886,27 @@ def _is_usable_positive_id(value: Any) -> bool:
     (e.g. ``int(payload["id"])``), so no string/numeric-string form is
     accepted here."""
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _reject_path_traversal_segments(value: str, *, field_name: str) -> str:
+    """Reject a raw id/slug containing a `.`/`..` path segment.
+
+    Found via self-review: `urllib.parse.quote()` never escapes `.` (an
+    "unreserved" RFC 3986 character even with `safe=""`), so an id like
+    `"../users/7"` passes through quoting completely unchanged. httpx then
+    normalizes that segment away when building the request URL (confirmed:
+    `httpx.Request("GET", ".../job_statuses/../projects/42").url` resolves to
+    `.../projects/42`), letting a caller reach an entirely different
+    endpoint -- bypassing whatever project-link allowlist check the intended
+    endpoint would have applied. Any raw id/slug interpolated directly into
+    a URL path (not run through a numeric id or a project/work-package
+    resolver) must be checked with this before being used in an f-string.
+    """
+    text = str(value)
+    segments = text.split("/")
+    if any(segment in (".", "..") for segment in segments):
+        raise InvalidInputError(f"OpenProject {field_name} must not contain a '.' or '..' path segment.")
+    return text
 
 
 def _next_offset(offset: int, limit: int, total: int) -> int | None:
