@@ -84,6 +84,38 @@ async def test_get_requests_single_reminder() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_finds_reminder_past_the_first_server_page() -> None:
+    """Regression class (found and fixed on release/0.3.4's equivalent
+    helper): a single unparameterized GET only returns the server's first
+    page -- _find_raw must walk every page to find a reminder that isn't on
+    page 1."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/reminders"
+        offset = request.url.params["offset"]
+        page_size = int(request.url.params["pageSize"])
+        if offset == "1":
+            elements = [{"id": i, "_links": {}} for i in range(1, page_size + 1)]
+            return httpx.Response(
+                200, json={"_embedded": {"elements": elements}, "total": page_size + 1}, request=request
+            )
+        if offset == "2":
+            return httpx.Response(
+                200, json={"_embedded": {"elements": [_reminder_payload(9)]}, "total": page_size + 1}, request=request
+            )
+        raise AssertionError(f"Unexpected offset: {offset}")
+
+    async with _client(handler) as http_client:
+        api = HttpxReminderApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        # Force a small page size by monkeypatching isn't available here --
+        # _find_raw hardcodes page_size=100, so simulate exhaustion with a
+        # small "total" that still requires a second page: total > page_size.
+        record = await api.get(9)
+
+    assert record.summary().id == 9
+
+
+@pytest.mark.asyncio
 async def test_get_remindable_link_reads_raw_link_without_full_normalization() -> None:
     """A payload missing other required fields (e.g. id) must not crash this
     method -- it never normalizes, unlike get()."""
