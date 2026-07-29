@@ -60,7 +60,7 @@ class _FakeNotificationApi:
 
     async def list_all(self, *, unread_only: bool, offset: int, limit: int) -> NotificationPage:
         self.list_all_calls.append((unread_only, offset, limit))
-        return NotificationPage(records=list(self._records), total=self._total)
+        return NotificationPage(records=list(self._records), total=self._total, exhausted=True)
 
     async def mark_read(self, notification_id: int) -> None:
         self.mark_read_calls.append(notification_id)
@@ -132,7 +132,11 @@ async def test_list_all_still_issues_a_request_under_empty_read_projects() -> No
 
     result = await service.list_all()
 
-    assert api.list_all_calls == [(False, 1, 20)]
+    # The re-scan loop fetches server pages at max_page_size (50 in
+    # make_settings()), not the caller's own requested limit (20) -- it
+    # doesn't know in advance how many raw records it'll need to scan
+    # through to collect `limit` allowed ones.
+    assert api.list_all_calls == [(False, 1, 50)]
     assert result.count == 1
 
 
@@ -218,6 +222,48 @@ async def test_list_all_uses_server_reported_total_under_wide_open_scope() -> No
     result = await service.list_all()
 
     assert result.total == 50
+
+
+class _FakePaginatedNotificationApi:
+    """Simulates real server-side pagination across multiple pages, unlike
+    _FakeNotificationApi (which always returns everything in one page and
+    exhausted=True) -- needed to prove the re-scan-and-skip loop actually
+    continues past a page whose allowed subset runs dry before the caller's
+    requested limit does."""
+
+    def __init__(self, pages: list[list[NotificationRecord]]) -> None:
+        self._pages = pages
+        self.list_all_calls: list[tuple[bool, int, int]] = []
+
+    async def list_all(self, *, unread_only: bool, offset: int, limit: int) -> NotificationPage:
+        self.list_all_calls.append((unread_only, offset, limit))
+        page_index = offset - 1
+        if page_index >= len(self._pages):
+            return NotificationPage(records=[], total=0, exhausted=True)
+        records = self._pages[page_index]
+        total = sum(len(p) for p in self._pages)
+        exhausted = offset >= len(self._pages)
+        return NotificationPage(records=records, total=total, exhausted=exhausted)
+
+
+@pytest.mark.asyncio
+async def test_list_all_rescans_past_a_page_whose_allowed_subset_runs_dry() -> None:
+    """Regression test (found via Codex review): a filtered-empty server page
+    does not prove no further allowed notifications exist on later pages --
+    the Service must keep fetching subsequent server pages under a
+    restrictive scope, not stop at the first page's filtered result."""
+    allowed = _record(1, project_link={"href": "/api/v3/projects/1", "title": "Demo"})
+    denied = _record(2, project_link={"href": "/api/v3/projects/2", "title": "Other"})
+    api = _FakePaginatedNotificationApi(pages=[[denied], [denied], [allowed]])
+    settings = dataclasses.replace(make_settings(), enable_personal_read=True, read_projects=("demo",))
+    service = _service(api=api, settings=settings)
+
+    result = await service.list_all(limit=1)
+
+    assert result.count == 1
+    assert result.results[0].id == 1
+    # Confirms it actually walked all 3 server pages, not just the first.
+    assert len(api.list_all_calls) == 3
 
 
 # --- mark_read / mark_all_read -------------------------------------------------

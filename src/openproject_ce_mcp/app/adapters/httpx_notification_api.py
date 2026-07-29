@@ -94,7 +94,8 @@ class HttpxNotificationApi:
         elements = payload.get("_embedded", {}).get("elements", [])
         records = [self._record(item) for item in elements if isinstance(item, dict)]
         total = int(payload.get("total", len(records)))
-        return NotificationPage(records=records, total=total)
+        exhausted = offset * limit >= total
+        return NotificationPage(records=records, total=total, exhausted=exhausted)
 
     async def mark_read(self, notification_id: int) -> None:
         await self._transport.request_raw("POST", f"notifications/{notification_id}/read_ian")

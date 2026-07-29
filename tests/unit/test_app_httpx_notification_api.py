@@ -63,6 +63,23 @@ async def test_list_all_requests_notifications_and_builds_records() -> None:
     assert record.project_link == {"href": "/api/v3/projects/1", "title": "Demo"}
     assert record.resource_link is None
     assert record.summary().id == 7
+    assert page.exhausted is True  # 1 offset * 20 page_size >= total (1)
+
+
+@pytest.mark.asyncio
+async def test_list_all_reports_not_exhausted_when_more_pages_remain() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"_embedded": {"elements": [_notification_payload()]}, "total": 100},
+            request=request,
+        )
+
+    async with _client(handler) as http_client:
+        api = HttpxNotificationApi(HttpxTransport(http_client))
+        page = await api.list_all(unread_only=False, offset=1, limit=20)
+
+    assert page.exhausted is False  # 1 * 20 = 20 < 100
 
 
 @pytest.mark.asyncio

@@ -55,10 +55,20 @@ class NotificationPage:
     `int(payload.get("total", len(elements)))`; under a restrictive scope the
     Service instead uses its own post-filter count, exactly like the
     original's `total = len(filtered)`.
+
+    `exhausted` (False if the server page still had more, unscanned results)
+    drives the Service's re-scan-and-skip loop under a restrictive scope --
+    same shape as `ProjectPage.exhausted` (app/ports/project_api.py), needed
+    because a server page's allowed-subset can run out before the caller's
+    own requested page size does, without the server collection itself
+    being exhausted (found via an independent Codex review: a filtered-empty
+    server page does not prove no further allowed notifications exist on
+    later pages, so the Service must keep fetching rather than stopping).
     """
 
     records: list[NotificationRecord]
     total: int
+    exhausted: bool
 
 
 class NotificationApi(Protocol):

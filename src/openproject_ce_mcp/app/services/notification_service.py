@@ -80,23 +80,70 @@ class NotificationService:
     ) -> NotificationListResult:
         access.ensure_read_enabled("personal", settings=self._settings)
         resolved_limit = effective_limit(limit, settings=self._settings)
-        page = await self._api.list_all(unread_only=unread_only, offset=offset, limit=resolved_limit)
         if scope_policy.scope_allows_all(self._settings.read_projects):
+            page = await self._api.list_all(unread_only=unread_only, offset=offset, limit=resolved_limit)
             records = page.records
             total = page.total
         else:
-            cache = WorkPackageAllowedContext()
-            filtered = []
-            for record in page.records:
-                if await self._record_allowed(record, cache):
-                    filtered.append(record)
-            records = filtered
-            total = len(filtered)
+            records, total = await self._rescan_and_skip(unread_only=unread_only, offset=offset, limit=resolved_limit)
         # .summary() is called only AFTER filtering -- matching client.py's
         # original "filter raw, normalize survivors" order (see
         # NotificationRecord's docstring for why this must stay lazy).
         results = [self._stamp(record.summary()) for record in records]
         return NotificationListResult(count=len(results), total=total, results=results)
+
+    async def _rescan_and_skip(
+        self, *, unread_only: bool, offset: int, limit: int
+    ) -> tuple[list[NotificationRecord], int]:
+        """Re-scan server pages from the start, skipping already-seen allowed
+        matches, until `limit` allowed records are collected or the server
+        collection is exhausted -- verbatim shape of
+        `app/resolvers/project_query.fetch_project_page`'s identical
+        re-scan-and-skip loop, needed for the same reason: a restrictive read
+        scope means a server page's allowed subset can run dry before the
+        caller's own requested page size does, without the server collection
+        itself being exhausted. A filtered-empty server page does NOT prove no
+        further allowed notifications exist on later pages (found via an
+        independent Codex review -- this was previously a single un-rescanned
+        page, silently under-returning and reporting a total scoped only to
+        that one page).
+        """
+        skip_count = (offset - 1) * limit
+        skipped = 0
+        results: list[NotificationRecord] = []
+        cache = WorkPackageAllowedContext()
+        server_offset = 1
+        server_page_size = self._settings.max_page_size
+
+        while len(results) < limit:
+            page = await self._api.list_all(unread_only=unread_only, offset=server_offset, limit=server_page_size)
+            if not page.records:
+                break
+
+            allowed_records = [record for record in page.records if await self._record_allowed(record, cache)]
+
+            hit_limit_mid_page = False
+            for record in allowed_records:
+                if skipped < skip_count:
+                    skipped += 1
+                    continue
+                results.append(record)
+                if len(results) >= limit:
+                    hit_limit_mid_page = True
+                    break
+
+            if hit_limit_mid_page:
+                # This page had more allowed matches than needed -- stop without
+                # checking server exhaustion: there's at least one more allowed
+                # notification waiting (the rest of this page), so treating this
+                # as "exhausted" would wrongly hide it from a follow-up call.
+                break
+
+            if page.exhausted:
+                break
+            server_offset += 1
+
+        return results, len(results)
 
     async def _record_allowed(self, record: NotificationRecord, cache: WorkPackageAllowedContext) -> bool:
         if record.project_link is not None:
