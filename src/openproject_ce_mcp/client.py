@@ -4169,10 +4169,11 @@ class OpenProjectClient:
         ``patch``/``delete``, never ``get`` (verified against
         lib/api/v3/reminders/reminders_api.rb in every vendored OpenProject
         version). The only way to read a reminder's own ``remindable`` link
-        before writing is via the collection endpoint.
+        before writing is via the collection endpoint -- walk every server
+        page via ``_fetch_all_pages`` (a single unparameterized GET only
+        returns the first page, which would 404 any reminder past it).
         """
-        payload = await self._get("reminders")
-        elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+        elements = await self._fetch_all_pages("reminders")
         current = next((item for item in elements if item.get("id") == reminder_id), None)
         if current is None:
             raise NotFoundError(f"OpenProject reminder {reminder_id} not found.")

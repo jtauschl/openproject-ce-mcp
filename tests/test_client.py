@@ -1348,6 +1348,62 @@ async def test_hidden_reminder_field_is_rejected_on_update() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_reminder_finds_reminder_past_the_first_server_page() -> None:
+    """Regression: _ensure_reminder_project_write_allowed originally issued a
+    single unparameterized GET reminders, which only returns the server's
+    first page -- any reminder past it 404'd as "not found" even though it
+    genuinely exists. Now walks every page via _fetch_all_pages."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/reminders" and request.method == "GET":
+            offset = request.url.params.get("offset")
+            page_size = int(request.url.params.get("pageSize", "0"))
+            if offset == "1":
+                elements = [{"id": i, "_links": {"remindable": {"href": f"/api/v3/work_packages/{i}"}}} for i in range(1, page_size + 1)]
+                return httpx.Response(
+                    200, json={"_embedded": {"elements": elements}, "total": page_size + 1}, request=request
+                )
+            if offset == "2":
+                return httpx.Response(
+                    200,
+                    json={
+                        "_embedded": {
+                            "elements": [{"id": 9, "_links": {"remindable": {"href": "/api/v3/work_packages/42"}}}]
+                        },
+                        "total": page_size + 1,
+                    },
+                    request=request,
+                )
+            raise AssertionError(f"Unexpected offset: {offset}")
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=2,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="At least one field"):
+        await client.update_reminder(reminder_id=9, confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_hidden_relation_field_is_rejected_on_update() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/relations/3" and request.method == "GET":
