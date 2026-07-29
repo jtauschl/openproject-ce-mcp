@@ -144,6 +144,36 @@ development baseline.
   `total`/`next_offset`/`truncated`, same shape as `list_boards`/`list_sprints`)
   instead of every matching grid in one unbounded call, and gains `offset`/
   `limit` parameters to match.
+- **`list_capabilities`'s `capability_id` lookup no longer 404s, and
+  `CapabilitySummary.id` is no longer collapsed onto the same value for
+  every capability in a given project/user context.** A capability's real
+  id is multi-segment (e.g. `activities/read/w3-4`); the id was previously
+  extracted from only the last path segment, and the lookup itself
+  percent-encoded the id's slashes into a path OpenProject rejects.
+- **`get_job_status`'s `job_status_id` is no longer always `null` on a real
+  OpenProject instance.** Job status ids are UUID strings, never a plain
+  integer, on every supported version; the field is now typed and returned
+  as a string.
+- **`get_job_status`/`copy_project` no longer silently skip their
+  project/sourceProject/createdProject allowlist checks and identifier-cache
+  write-through.** Those links live inside the job-specific `payload`
+  object's own `_links`, one level below the top-level `_links` (which only
+  ever carries `self`) the code previously read from — the checks were
+  therefore never exercised against real data.
+- **A project/version/sprint/etc. listing that walks every server page no
+  longer hangs indefinitely against an endpoint that ignores `pageSize`.**
+  A sub-collection endpoint that returns every element regardless of the
+  requested page size (verified live: a project's `versions` endpoint) used
+  to make the walk-every-page loop's termination condition never trigger,
+  looping forever; a repeated-page check now stops it. A systematic sweep
+  for the same pattern found four more affected loops sharing this
+  vulnerability, some of them a regression introduced by this migration
+  itself: the layered Versions domain's own project-scoped resolver,
+  `_resolve_sprint_id` (previously a single non-looping call, unlike its
+  0.3.x flat equivalent), `list_work_package_attachments` (previously an
+  unbounded single fetch, not a loop), and the shared `paginate_all` helper
+  (used by Documents/Views/Reminders/global Sprints). All now track seen
+  ids/keys across iterations and stop on a repeated page.
 
 ### Docs
 

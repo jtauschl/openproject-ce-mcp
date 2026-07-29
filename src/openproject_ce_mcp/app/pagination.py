@@ -83,7 +83,10 @@ _T = TypeVar("_T")
 
 
 async def paginate_all(
-    fetch_page: Callable[[int, int], Awaitable[tuple[list[_T], int]]], *, page_size: int
+    fetch_page: Callable[[int, int], Awaitable[tuple[list[_T], int]]],
+    *,
+    page_size: int,
+    key: Callable[[_T], Any] | None = None,
 ) -> list[_T]:
     """Walk a server-paginated fetcher (offset, page_size) -> (items, total) to
     completion, returning every item across all pages.
@@ -95,12 +98,32 @@ async def paginate_all(
     but those are tied to project-scoped fetch signatures with per-page
     allowlist checks -- not extracted here to avoid forcing an unrelated
     refactor of that project-scoped machinery onto this purely-global helper.
+
+    Some sub-collection endpoints (verified live: a project's versions
+    endpoint) silently ignore both offset and page size and always return
+    every element -- without the seen-keys check below, `truncated` never
+    becomes False and this loops forever, re-fetching the same full page.
+    `key` extracts a per-item identity (e.g. `lambda r: r.summary.id`) so a
+    repeated page is detected and dropped rather than merely capped; when
+    omitted, an accumulated-count check against `total` still prevents the
+    infinite loop, but a repeated page's items would be duplicated in the
+    result.
     """
     items: list[_T] = []
+    seen_keys: set[Any] = set()
     offset = 1
+    is_first_page = True
     while True:
         page_items, total = await fetch_page(offset, page_size)
+        if key is not None:
+            page_keys = {key(item) for item in page_items}
+            if not is_first_page and page_keys and page_keys <= seen_keys:
+                return items
+            seen_keys.update(page_keys)
+        is_first_page = False
         items.extend(page_items)
+        if len(items) >= total:
+            return items
         next_offset, truncated = paginate_server(offset=offset, limit=page_size, total=total)
         if not truncated:
             return items

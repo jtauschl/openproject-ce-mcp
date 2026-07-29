@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from urllib.parse import quote
 
 from ...models import ActionSummary, CapabilitySummary
 from ..ports.action_capability_api import ActionRecord, CapabilityRecord
@@ -50,7 +51,13 @@ def normalize_capability(payload: dict[str, Any], *, base_url: str, origin: str)
     principal_link = links.get("principal")
     context_link = links.get("context")
     href = self_link.get("href") if isinstance(self_link, dict) else None
-    capability_id = _slug_from_href(href) or _trim_text(payload.get("id"), limit=SUBJECT_LIMIT) or ""
+    # Unlike most resources, a capability's id is multi-segment
+    # (e.g. "activities/read/w3-4") -- _slug_from_href's last-path-segment
+    # extraction collapses every capability in a given project+user
+    # context onto the same trailing "w{project}-{user}" fragment, making
+    # capability_id lookups indistinguishable. The payload's own `id`
+    # field already carries the real, unabbreviated form.
+    capability_id = _trim_text(payload.get("id"), limit=SUBJECT_LIMIT) or _slug_from_href(href) or ""
     return CapabilitySummary(
         id=capability_id,
         action_id=_slug_from_href(action_link.get("href")) if isinstance(action_link, dict) else None,
@@ -100,7 +107,11 @@ class HttpxActionCapabilityApi:
         return records, total
 
     async def get_capability(self, capability_id: str) -> CapabilityRecord:
-        payload = await self._transport.get_json(f"capabilities/{capability_id}")
+        # A capability_id is itself a multi-segment path (e.g.
+        # "activities/read/w3-4") that OpenProject expects as real path
+        # segments, not a percent-encoded slash -- quote(..., safe='')
+        # would turn "/" into "%2F" and 404.
+        payload = await self._transport.get_json(f"capabilities/{quote(capability_id, safe='/')}")
         return CapabilityRecord(
             summary=normalize_capability(payload, base_url=self._base_url, origin=self._origin),
             context_link=payload.get("_links", {}).get("context"),

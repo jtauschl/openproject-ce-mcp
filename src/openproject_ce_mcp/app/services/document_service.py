@@ -83,6 +83,7 @@ class DocumentService:
         records = await paginate_all(
             lambda offset, page_size: self._api.list_all(offset=offset, page_size=page_size),
             page_size=self._settings.max_page_size,
+            key=lambda r: r.summary.id,
         )
         results = [
             self._stamp(record.summary)

@@ -85,6 +85,11 @@ class ReminderService:
         records = await paginate_all(
             lambda offset, page_size: self._api.list_all(offset=offset, page_size=page_size),
             page_size=self._settings.max_page_size,
+            # ReminderRecord.summary is a LAZY callable (never invoked for a
+            # record the allowlist ends up filtering out) -- keying on the
+            # raw remindable_link href instead of calling summary() avoids
+            # forcing that normalization just to detect a repeated page.
+            key=lambda r: (r.remindable_link or {}).get("href"),
         )
         if not scope_policy.scope_allows_all(self._settings.read_projects):
             cache = WorkPackageAllowedContext()

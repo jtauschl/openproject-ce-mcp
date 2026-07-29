@@ -744,7 +744,7 @@ class OpenProjectClient:
             confirm=confirm,
         )
 
-    async def get_job_status(self, job_status_id: int) -> JobStatusDetail:
+    async def get_job_status(self, job_status_id: str) -> JobStatusDetail:
         return await self._job_status_service.get(job_status_id)
 
     async def list_roles(self, *, offset: int = 1, limit: int | None = None) -> RoleListResult:
@@ -991,16 +991,31 @@ class OpenProjectClient:
         project) can use this helper too -- without it, callers needing an
         async filter had to hand-roll their own fetch+params, which is exactly
         how a prior pageSize-omission bug happened.
+
+        Some project-scoped sub-collection endpoints (verified live: a
+        project's versions endpoint) silently ignore both offset and
+        pageSize and always return every element -- without the seen-ids
+        check below, `page_count < server_page_size` never becomes true and
+        this loops forever, re-fetching the same full page. Tracked against
+        the RAW element ids (before item_allowed/normalize), so a page that's
+        merely fully filtered out doesn't get mistaken for a repeat.
         """
         server_page_size = self.settings.max_page_size
         results: list[_FetchT] = []
+        seen_ids: set[Any] = set()
         server_offset = 1
+        is_first_page = True
         while True:
             params = {"offset": str(server_offset), "pageSize": str(server_page_size)}
             if params_extra:
                 params.update(params_extra)
             payload = await self._get(path, params=params)
             raw_elements = payload.get("_embedded", {}).get("elements", [])
+            page_ids = {item.get("id") for item in raw_elements if isinstance(item, dict)}
+            if not is_first_page and page_ids and page_ids <= seen_ids:
+                break
+            is_first_page = False
+            seen_ids.update(page_ids)
             page_count = 0
             for item in raw_elements:
                 if isinstance(item, dict):
@@ -1121,12 +1136,25 @@ class OpenProjectClient:
         page_size = self.settings.max_page_size
         offset = 1
         results: list[AttachmentSummary] = []
+        seen_ids: set[Any] = set()
+        is_first_page = True
         while True:
             payload = await self._get(
                 f"work_packages/{work_package_id}/attachments",
                 params={"offset": str(offset), "pageSize": str(page_size)},
             )
             elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+            # Some work-package-scoped sub-collection endpoints (verified
+            # live: a project's versions endpoint has the same shape) may
+            # silently ignore offset/pageSize and always return every
+            # element -- without this check, `len(elements) < page_size`
+            # never becomes true and this loops forever, re-fetching the
+            # same full page.
+            page_ids = {item.get("id") for item in elements}
+            if not is_first_page and page_ids and page_ids <= seen_ids:
+                break
+            is_first_page = False
+            seen_ids.update(page_ids)
             results.extend(self.normalize_attachment(item) for item in elements)
             if len(elements) < page_size:
                 break
@@ -4953,7 +4981,9 @@ class OpenProjectClient:
         project_id = int(project_payload["id"])
         page_size = self.settings.max_page_size
         matches: list[str] = []
+        seen_ids: set[int] = set()
         offset = 1
+        is_first_page = True
         while True:
             try:
                 records, total = await self._sprint_api.list_for_project(project_id, offset=offset, page_size=page_size)
@@ -4961,6 +4991,16 @@ class OpenProjectClient:
                 raise NotFoundError(
                     "OpenProject project sprints require the Backlogs module and OpenProject 17.3 or newer."
                 ) from exc
+            # Some project-scoped sub-collection endpoints (verified live: a
+            # project's versions endpoint) silently ignore offset/page size
+            # and always return every element -- without this check,
+            # `next_offset` never becomes None and this loops forever,
+            # re-fetching the same full page.
+            page_ids = {record.summary.id for record in records}
+            if not is_first_page and page_ids and page_ids <= seen_ids:
+                break
+            is_first_page = False
+            seen_ids.update(page_ids)
             for record in records:
                 if not _sprint_policy.sprint_payload_allowed(
                     defining_workspace_payload=record.defining_workspace_payload,

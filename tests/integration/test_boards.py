@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import dataclasses
+import uuid
+
 import pytest
 
-from openproject_ce_mcp.client import OpenProjectClient
+from openproject_ce_mcp.client import OpenProjectClient, PermissionDeniedError
 
 pytestmark = pytest.mark.integration
 
@@ -59,3 +62,40 @@ async def test_create_get_update_delete_board(
     delete_result = await client.delete_board(board_id=board_id, confirm=True)
     assert delete_result.ready and delete_result.confirmed
     board_ids.remove(board_id)
+
+
+async def test_update_board_denies_reparent_into_write_restricted_project(
+    client: OpenProjectClient, test_project: str, project_refs: list[str]
+) -> None:
+    """Regression: update_board's own current-project check only proved the
+    BOARD's existing project was write-allowed -- the reparent target (a
+    DIFFERENT project, passed via `project=`) was resolved for href-building
+    only, with no write-allowlist check of its own, letting a caller move a
+    board into a project outside OPENPROJECT_WRITE_PROJECTS."""
+    unrestricted_settings = dataclasses.replace(
+        client.settings,
+        read_projects=("*",),
+        write_projects=("*",),
+    )
+    unrestricted_client = OpenProjectClient(unrestricted_settings)
+    await unrestricted_client.initialize()
+
+    target_identifier = f"integration-test-{uuid.uuid4().hex[:8]}"
+    create_project_result = await unrestricted_client.create_project(
+        name=f"[integration-test] {target_identifier}", identifier=target_identifier, confirm=True
+    )
+    assert create_project_result.ready, create_project_result.validation_errors
+    project_refs.append(target_identifier)
+
+    create_board_result = await client.create_board(
+        name=f"[integration-test] {uuid.uuid4().hex[:8]}", project=test_project, confirm=True
+    )
+    assert create_board_result.ready, create_board_result.validation_errors
+    board_id = create_board_result.board_id
+    assert board_id is not None
+
+    try:
+        with pytest.raises(PermissionDeniedError):
+            await client.update_board(board_id=board_id, project=target_identifier, confirm=True)
+    finally:
+        await client.delete_board(board_id=board_id, confirm=True)

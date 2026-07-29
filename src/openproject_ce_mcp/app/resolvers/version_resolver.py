@@ -49,7 +49,9 @@ class VersionResolver:
 
             wanted_id = int(version_ref) if version_ref.isdigit() else None
             name_matches: list[VersionSummary] = []
+            seen_ids: set[int] = set()
             offset = 1
+            is_first_page = True
             while True:
                 page_results, _total, next_offset, _truncated = await fetch_version_page(
                     api=self._api,
@@ -62,6 +64,16 @@ class VersionResolver:
                     limit=self._settings.max_page_size,
                     context=context,
                 )
+                # Some project-scoped sub-collection endpoints (verified live:
+                # a project's versions endpoint) silently ignore offset/page
+                # size and always return every element -- without this check,
+                # `next_offset` never becomes None and this loops forever,
+                # re-fetching the same full page.
+                page_ids = {v.id for v in page_results}
+                if not is_first_page and page_ids and page_ids <= seen_ids:
+                    break
+                is_first_page = False
+                seen_ids.update(page_ids)
                 if wanted_id is not None:
                     if any(v.id == wanted_id for v in page_results):
                         return version_ref

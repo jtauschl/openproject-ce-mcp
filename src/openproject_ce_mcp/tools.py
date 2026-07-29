@@ -707,11 +707,13 @@ async def copy_project(
 
 async def get_job_status(
     ctx: Context,
-    job_status_id: int,
+    job_status_id: str,
 ) -> JobStatusDetail:
     """Get the current status of a background job such as project copy."""
     client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(job_status_id, field_name="job_status_id")
+    # Job status ids are UUIDs (e.g. "32ac4e5e-1e49-4cbd-b70e-bc1c781d8af2"),
+    # never a plain integer, on every supported OpenProject version.
+    safe_id = _validate_required_text(job_status_id, field_name="job_status_id", max_length=64)
     return await _run_tool(client.get_job_status(safe_id))
 
 

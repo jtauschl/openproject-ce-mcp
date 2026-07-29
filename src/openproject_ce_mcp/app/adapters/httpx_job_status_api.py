@@ -29,6 +29,7 @@ from ._text import SUBJECT_LIMIT
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import link_to_web_url as _link_to_web_url
+from ._text import slug_from_href as _slug_from_href
 from ._text import trim_text as _trim_text
 
 # Matches client.py's module-level FORMATTABLE_LIMIT (1_200) used for the
@@ -39,6 +40,26 @@ from ._text import trim_text as _trim_text
 FORMATTABLE_LIMIT = 1_200
 
 
+def _job_status_inner_links(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return a job status response's real resource links.
+
+    OpenProject's JobStatusRepresenter only puts a self link at the
+    top-level `_links` -- any project/sourceProject/createdProject link a
+    specific job (e.g. copy_project) exposes lives one level down, inside
+    the job-specific `payload` object's own `_links` (verified live against
+    17.4: top-level `_links` is `{"self": ...}` only). Falls back to the
+    top-level links for robustness in case some other job type's payload
+    is shaped differently or absent.
+    """
+    inner = payload.get("payload")
+    if isinstance(inner, dict):
+        inner_links = inner.get("_links")
+        if isinstance(inner_links, dict) and inner_links:
+            return inner_links
+    links = payload.get("_links", {})
+    return links if isinstance(links, dict) else {}
+
+
 def normalize_job_status(payload: dict[str, Any], *, base_url: str, origin: str) -> JobStatusDetail:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
@@ -46,11 +67,15 @@ def normalize_job_status(payload: dict[str, Any], *, base_url: str, origin: str)
     _apply_hidden_fields call -- hidden-field masking is a Service decision
     applied after this returns.
     """
-    links = payload.get("_links", {})
+    top_level_links = payload.get("_links", {})
+    links = _job_status_inner_links(payload)
     project_link = links.get("project") or links.get("sourceProject")
     resource_link = links.get("createdProject") or links.get("createdResource") or links.get("result")
     return JobStatusDetail(
-        id=int(payload["id"]) if payload.get("id") is not None else _id_from_href(links.get("self", {}).get("href")),
+        # Job status ids are UUID strings (payload["jobId"]) on every
+        # supported version -- there is no top-level "id" field.
+        id=_trim_text(payload.get("jobId") or payload.get("id"), limit=SUBJECT_LIMIT)
+        or _slug_from_href(top_level_links.get("self", {}).get("href")),
         type=_trim_text(payload.get("_type"), limit=SUBJECT_LIMIT),
         status=_trim_text(
             payload.get("status") or payload.get("jobStatus") or payload.get("state"), limit=SUBJECT_LIMIT
@@ -67,7 +92,7 @@ def normalize_job_status(payload: dict[str, Any], *, base_url: str, origin: str)
         created_resource_id=_id_from_href(resource_link.get("href")) if isinstance(resource_link, dict) else None,
         created_resource_name=_link_title(resource_link),
         links=sorted(links.keys()),
-        url=_link_to_web_url(links.get("self", {}).get("href"), base_url=base_url, origin=origin),
+        url=_link_to_web_url(top_level_links.get("self", {}).get("href"), base_url=base_url, origin=origin),
     )
 
 
@@ -77,9 +102,9 @@ class HttpxJobStatusApi:
         self._base_url = base_url
         self._origin = origin
 
-    async def get(self, job_status_id: int) -> JobStatusRecord:
+    async def get(self, job_status_id: str) -> JobStatusRecord:
         payload = await self._transport.get_json(f"job_statuses/{job_status_id}")
-        links = payload.get("_links", {})
+        links = _job_status_inner_links(payload)
         project_link = links.get("project") or links.get("sourceProject")
         created_project_link = links.get("createdProject")
         created_project_id = (

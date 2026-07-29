@@ -41,7 +41,7 @@ from ..errors import InvalidInputError, NotFoundError
 from ..pagination import clamp_limit
 from ..policies import access, hidden_fields
 from ..policies import project_policy as project_policy_module
-from ..policies.scope import ensure_project_link_allowed, id_from_href, payload_allowed
+from ..policies.scope import ensure_project_link_allowed, payload_allowed
 from ..ports.project_api import ProjectApi
 from ..resolvers.project_query import fetch_project_page
 from ..resolvers.project_resolver import ProjectResolver
@@ -424,7 +424,11 @@ class ProjectService:
             source_project=project.name,
             payload=form.payload,
             validation_errors={},
-            job_status_id=id_from_href(job_status_url),
+            # Job status ids are UUIDs (OpenProject's job_status API route
+            # declares job_id as `type: String, desc: "Job UUID"` on every
+            # supported version), never a plain integer -- id_from_href's
+            # int() parse would always fail here and silently return None.
+            job_status_id=_slug_from_href(job_status_url),
             job_status_url=job_status_url,
         )
 

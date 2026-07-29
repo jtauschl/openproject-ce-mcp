@@ -115,6 +115,7 @@ class SprintService:
             records = await paginate_all(
                 lambda offset, page_size: self._api.list_all(offset=offset, page_size=page_size),
                 page_size=self._settings.max_page_size,
+                key=lambda r: r.summary.id,
             )
         except NotFoundError as exc:
             raise NotFoundError(
@@ -149,6 +150,7 @@ class SprintService:
             records = await paginate_all(
                 lambda offset, page_size: self._api.list_for_project(project_id, offset=offset, page_size=page_size),
                 page_size=self._settings.max_page_size,
+                key=lambda r: r.summary.id,
             )
         except NotFoundError as exc:
             raise NotFoundError(

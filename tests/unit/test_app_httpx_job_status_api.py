@@ -19,22 +19,29 @@ def test_normalize_job_status_builds_summary_from_project_link() -> None:
     detail = normalize_job_status(
         {
             "_type": "JobStatus",
-            "id": 77,
+            "jobId": "77",
             "status": "in_progress",
             "message": "Copy running",
             "percentageDone": 40,
             "createdAt": "2026-03-20T10:00:00Z",
             "updatedAt": "2026-03-20T10:05:00Z",
+            # OpenProject nests a job's own resource links one level down,
+            # inside `payload._links` -- top-level `_links` only ever
+            # carries `self`.
+            "payload": {
+                "_links": {
+                    "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                    "createdProject": {"href": "/api/v3/projects/88", "title": "Demo Copy"},
+                },
+            },
             "_links": {
                 "self": {"href": "/api/v3/job_statuses/77"},
-                "project": {"href": "/api/v3/projects/6", "title": "Demo"},
-                "createdProject": {"href": "/api/v3/projects/88", "title": "Demo Copy"},
             },
         },
         base_url=BASE_URL,
         origin=BASE_URL,
     )
-    assert detail.id == 77
+    assert detail.id == "77"
     assert detail.status == "in_progress"
     assert detail.message == "Copy running"
     assert detail.percentage_complete == 40
@@ -51,11 +58,13 @@ def test_normalize_job_status_falls_back_to_source_project_link() -> None:
     client.py's original normalize_job_status behavior)."""
     detail = normalize_job_status(
         {
-            "id": 77,
-            "_links": {
-                "self": {"href": "/api/v3/job_statuses/77"},
-                "sourceProject": {"href": "/api/v3/projects/9", "title": "Source Project"},
+            "jobId": "77",
+            "payload": {
+                "_links": {
+                    "sourceProject": {"href": "/api/v3/projects/9", "title": "Source Project"},
+                },
             },
+            "_links": {"self": {"href": "/api/v3/job_statuses/77"}},
         },
         base_url=BASE_URL,
         origin=BASE_URL,
@@ -70,7 +79,7 @@ def test_normalize_job_status_uses_self_href_id_fallback_when_no_id_field() -> N
         base_url=BASE_URL,
         origin=BASE_URL,
     )
-    assert detail.id == 42
+    assert detail.id == "42"
 
 
 def test_normalize_job_status_trims_long_message_to_formattable_limit() -> None:
@@ -92,7 +101,7 @@ async def test_get_requests_job_status_by_id() -> None:
             200,
             json={
                 "_type": "JobStatus",
-                "id": 77,
+                "jobId": "77",
                 "status": "in_progress",
                 "_links": {"self": {"href": "/api/v3/job_statuses/77"}},
             },
@@ -101,9 +110,9 @@ async def test_get_requests_job_status_by_id() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxJobStatusApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
-        record = await api.get(77)
+        record = await api.get("77")
 
-    assert record.summary.id == 77
+    assert record.summary.id == "77"
     assert record.summary.status == "in_progress"
     assert record.project_link is None
 
@@ -114,18 +123,20 @@ async def test_get_record_carries_raw_project_link_for_allowlist_check() -> None
         return httpx.Response(
             200,
             json={
-                "id": 77,
-                "_links": {
-                    "self": {"href": "/api/v3/job_statuses/77"},
-                    "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                "jobId": "77",
+                "payload": {
+                    "_links": {
+                        "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                    },
                 },
+                "_links": {"self": {"href": "/api/v3/job_statuses/77"}},
             },
             request=request,
         )
 
     async with _client(handler) as http_client:
         api = HttpxJobStatusApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
-        record = await api.get(77)
+        record = await api.get("77")
 
     assert record.project_link == {"href": "/api/v3/projects/6", "title": "Demo"}
 
@@ -141,18 +152,20 @@ async def test_get_record_project_link_falls_back_to_source_project() -> None:
         return httpx.Response(
             200,
             json={
-                "id": 77,
-                "_links": {
-                    "self": {"href": "/api/v3/job_statuses/77"},
-                    "sourceProject": {"href": "/api/v3/projects/9", "title": "Source Project"},
+                "jobId": "77",
+                "payload": {
+                    "_links": {
+                        "sourceProject": {"href": "/api/v3/projects/9", "title": "Source Project"},
+                    },
                 },
+                "_links": {"self": {"href": "/api/v3/job_statuses/77"}},
             },
             request=request,
         )
 
     async with _client(handler) as http_client:
         api = HttpxJobStatusApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
-        record = await api.get(77)
+        record = await api.get("77")
 
     assert record.project_link == {"href": "/api/v3/projects/9", "title": "Source Project"}
 
@@ -169,18 +182,20 @@ async def test_get_record_created_project_id_extracted_from_created_project_link
         return httpx.Response(
             200,
             json={
-                "id": 77,
-                "_links": {
-                    "self": {"href": "/api/v3/job_statuses/77"},
-                    "createdProject": {"href": "/api/v3/projects/88", "title": "Demo Copy"},
+                "jobId": "77",
+                "payload": {
+                    "_links": {
+                        "createdProject": {"href": "/api/v3/projects/88", "title": "Demo Copy"},
+                    },
                 },
+                "_links": {"self": {"href": "/api/v3/job_statuses/77"}},
             },
             request=request,
         )
 
     async with _client(handler) as http_client:
         api = HttpxJobStatusApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
-        record = await api.get(77)
+        record = await api.get("77")
 
     assert record.created_project_id == 88
     assert record.summary.created_resource_type is None

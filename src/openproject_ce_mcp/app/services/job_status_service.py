@@ -69,7 +69,7 @@ class JobStatusService:
         self._project_id_to_identifier = project_id_to_identifier
         self._project_api = project_api
 
-    async def get(self, job_status_id: int) -> JobStatusDetail:
+    async def get(self, job_status_id: str) -> JobStatusDetail:
         access.ensure_read_enabled("project", settings=self._settings)
         record = await self._api.get(job_status_id)
         scope_policy.ensure_project_link_allowed(

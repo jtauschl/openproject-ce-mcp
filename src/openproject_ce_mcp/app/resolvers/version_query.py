@@ -36,11 +36,22 @@ async def _fetch_all_pages(
     a possibly-absent/inconsistent server_total -- a single bounded fetch
     (this function's predecessor) silently hid any version beyond
     settings.max_results once the endpoint's real result count exceeded it.
+
+    Some project-scoped sub-collection endpoints (verified live: a project's
+    versions endpoint) silently ignore both offset and page size and always
+    return every element -- without the seen-ids check below, the
+    short-page break above never triggers and this loops forever, re-fetching
+    the same full page.
     """
     records: list[VersionRecord] = []
+    seen_ids: set[int] = set()
     offset = 1
     while True:
         page = await fetch_page(offset)
+        page_ids = {r.summary.id for r in page.records}
+        if records and page_ids and page_ids <= seen_ids:
+            break
+        seen_ids.update(page_ids)
         records.extend(page.records)
         if len(page.records) < page_size:
             break

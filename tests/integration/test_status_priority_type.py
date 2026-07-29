@@ -10,6 +10,8 @@ test_list_types removed in the same commit as this file's addition).
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from openproject_ce_mcp.client import OpenProjectClient
@@ -47,6 +49,24 @@ async def test_get_priority(client: OpenProjectClient) -> None:
 
     assert priority.id == priority_id
     assert priority.name
+
+
+async def test_list_priorities_stamps_hidden_field_for_masking(client: OpenProjectClient) -> None:
+    """Regression: priority/notification/file_link/emoji_reaction were
+    missing from HIDE_FIELD_ENV_BY_ENTITY entirely, so _apply_hidden_fields
+    never stamped a _hidden_keys marker on their results, unlike every other
+    read-normalized entity -- the actual masking happens one layer up, in
+    tools._to_payload, which reads that marker to drop the field from the
+    MCP response entirely. This client-layer test proves the stamp itself is
+    present against a live payload; the drop-from-response behavior is
+    already covered by tools.py's own unit tests (mocked client)."""
+    hidden_settings = dataclasses.replace(client.settings, hidden_fields={"priority": ("color",)})
+    hidden_client = OpenProjectClient(hidden_settings)
+    await hidden_client.initialize()
+
+    result = await hidden_client.list_priorities()
+    assert result.count > 0
+    assert all(getattr(p, "_hidden_keys", None) == frozenset({"color"}) for p in result.results)
 
 
 async def test_list_types(client: OpenProjectClient) -> None:

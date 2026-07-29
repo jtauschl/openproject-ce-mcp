@@ -202,3 +202,33 @@ async def group_ids(client: OpenProjectClient):
             await client.delete_group(group_id=group_id, confirm=True)
         except Exception:
             pass
+
+
+@pytest.fixture
+async def project_refs(client: OpenProjectClient):
+    """Yields a list to append created project identifiers; deletes them all
+    after the test.
+
+    Projects are instance-wide, not scoped to ``test_project`` — the same
+    caveat as ``group_ids`` above. Only used by tests that genuinely need a
+    second, disposable project (e.g. as a parent-project picklist candidate),
+    which by construction lives outside test_project's own read/write
+    allowlist — cleanup therefore needs its own unrestricted client rather
+    than the scoped ``client`` fixture, or delete_project's own allowlist
+    check would reject the cleanup call.
+    """
+    unrestricted_settings = dataclasses.replace(
+        client.settings,
+        read_projects=("*",),
+        write_projects=("*",),
+    )
+    unrestricted_client = OpenProjectClient(unrestricted_settings)
+    await unrestricted_client.initialize()
+
+    created: list[str] = []
+    yield created
+    for project_ref in created:
+        try:
+            await unrestricted_client.delete_project(project_ref=project_ref, confirm=True)
+        except Exception:
+            pass
