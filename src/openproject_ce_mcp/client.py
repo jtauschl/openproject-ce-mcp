@@ -1020,8 +1020,15 @@ class OpenProjectClient:
 
     async def get_query_sort_by(self, sort_by_id: str) -> QuerySortBySummary:
         self._ensure_read_enabled("board")
-        payload = await self._get(f"queries/sort_bys/{quote(sort_by_id, safe='')}")
-        return self.normalize_query_sort_by(payload)
+        # OpenProject's sort_bys route is queries/sort_bys/:id-:direction
+        # (hyphen-joined), not a bare id segment like filters/columns/operators
+        # (OPM-322, verified live against 16.6.10/17.4.1/17.5.1). Translate the
+        # caller's colon-separated id ("subject:asc") to the hyphen form for the
+        # request, but keep the original id as the public contract.
+        column, _, direction = sort_by_id.partition(":")
+        path_id = f"{column}-{direction}" if direction else sort_by_id
+        payload = await self._get(f"queries/sort_bys/{quote(path_id, safe='')}")
+        return self.normalize_query_sort_by(payload, requested_id=sort_by_id)
 
     async def list_query_filter_instance_schemas(
         self,
@@ -6103,11 +6110,17 @@ class OpenProjectClient:
             ),
         )
 
-    def normalize_query_sort_by(self, payload: dict[str, Any]) -> QuerySortBySummary:
+    def normalize_query_sort_by(
+        self, payload: dict[str, Any], *, requested_id: str | None = None
+    ) -> QuerySortBySummary:
         links = payload.get("_links", {})
         self_link = links.get("self", {})
         href = self_link.get("href") if isinstance(self_link, dict) else None
-        sort_by_id = _slug_from_href(href) or _trim_text(payload.get("id"), limit=SUBJECT_LIMIT) or ""
+        derived_id = _slug_from_href(href) or _trim_text(payload.get("id"), limit=SUBJECT_LIMIT) or ""
+        # The server's self-link always uses its own hyphen-joined form
+        # ("subject-asc"); keep the caller's colon-form id stable regardless
+        # (see get_query_sort_by).
+        sort_by_id = requested_id if requested_id is not None else derived_id
         column_link = links.get("column")
         direction_link = links.get("direction")
         direction = _trim_text(payload.get("direction"), limit=SUBJECT_LIMIT)
