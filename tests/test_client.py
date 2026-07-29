@@ -14023,6 +14023,51 @@ async def test_normalize_group_counts_flat_members_array() -> None:
 
 
 @pytest.mark.asyncio
+async def test_normalize_group_counts_link_members_on_the_real_list_endpoint() -> None:
+    """Regression, found via a live integration test against OpenProject
+    17.4.1: list_groups' real response has NO _embedded.members at all for
+    each element -- membership is only ever exposed via _links.members (a
+    bare array of HAL links). The _embedded.members shape the sibling test
+    above exercises is get_group's (single-item) response shape, not
+    list_groups' -- member_count silently stayed 0 for every group returned
+    by list_groups specifically, unlike get_group."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/groups":
+            return httpx.Response(
+                200,
+                json={
+                    "total": 1,
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 7,
+                                "name": "Platform Team",
+                                "_links": {
+                                    "members": [
+                                        {"href": "/api/v3/users/1", "title": "Alice"},
+                                        {"href": "/api/v3/users/2", "title": "Bob"},
+                                    ]
+                                },
+                            }
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_admin_read=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_groups()
+
+    assert result.results[0].member_count == 2
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_project_admin_context_returns_lean_parent_refs_filtered_by_allowlist() -> None:
     """Regression, two findings from d0de2d6's cross-domain review:
 

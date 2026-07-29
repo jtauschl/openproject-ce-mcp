@@ -5620,18 +5620,22 @@ class OpenProjectClient:
 
     def normalize_group(self, payload: dict[str, Any]) -> GroupSummary:
         links = payload.get("_links", {})
-        # OpenProject's real shape is a flat array (_embedded.members, matching
-        # normalize_group_detail's own tolerance below); a {count,...}/
-        # {total,...} collection object is handled defensively too, but was
-        # previously the ONLY shape checked -- member_count was always 0
-        # against the real API response.
-        members = payload.get("_embedded", {}).get("members", [])
-        if isinstance(members, dict):
-            member_count = int(members.get("count") or members.get("total") or 0)
-        elif isinstance(members, list):
-            member_count = len(members)
+        # OpenProject's group representer emits members differently depending
+        # on the endpoint: a single-item GET (get_group) embeds a flat array
+        # under _embedded.members, but the list endpoint (list_groups) only
+        # ever carries _links.members (a bare array of HAL links, no
+        # _embedded.members at all) -- verified live against both endpoints.
+        # A {count,...}/{total,...} collection object is tolerated defensively
+        # too, in case a future version reintroduces it, but neither of the
+        # two real shapes above use it.
+        embedded_members = payload.get("_embedded", {}).get("members", [])
+        if isinstance(embedded_members, dict):
+            member_count = int(embedded_members.get("count") or embedded_members.get("total") or 0)
+        elif isinstance(embedded_members, list) and embedded_members:
+            member_count = len(embedded_members)
         else:
-            member_count = 0
+            link_members = links.get("members", [])
+            member_count = len(link_members) if isinstance(link_members, list) else 0
         return self._apply_hidden_fields(
             "group",
             GroupSummary(
