@@ -141,12 +141,15 @@ def _resolve_work_package_id_ok(resolved_id: int = 55):
 
 def _work_package_project_allowed_from(allowed_hrefs: set[str]):
     calls: list[str] = []
+    contexts: list[object] = []
 
     async def check(href: str, *, context=None) -> bool:
         calls.append(href)
+        contexts.append(context)
         return href in allowed_hrefs
 
     check.calls = calls  # type: ignore[attr-defined]
+    check.contexts = contexts  # type: ignore[attr-defined]
     return check
 
 
@@ -222,6 +225,45 @@ async def test_list_for_work_package_resolves_anchor_and_sends_involved_filter()
 
 
 @pytest.mark.asyncio
+async def test_list_all_checks_both_hrefs_and_reuses_one_cache() -> None:
+    """Regression (test-contract self-audit): a call-list assertion on
+    work_package_project_allowed, not just the filtered outcome -- a bug that
+    swapped from_link/to_link or checked one side twice could otherwise
+    produce a correct-looking result by coincidence. Also proves a SINGLE
+    WorkPackageAllowedContext instance is threaded through every from/to
+    check across the whole list() call (documented optimization in this
+    Service's module docstring, previously untested) -- the cache's actual
+    hit/miss behavior is WorkPackageResolver's own responsibility and is
+    tested in test_app_work_package_resolver.py; what belongs here is proving
+    the Service constructs exactly one context and reuses it, not a fresh one
+    per relation or per side."""
+    first = _record(1, from_href="/api/v3/work_packages/10", to_href="/api/v3/work_packages/11")
+    second = _record(2, from_href="/api/v3/work_packages/12", to_href="/api/v3/work_packages/13")
+    api = _FakeRelationApi(records=[first, second])
+    settings = dataclasses.replace(make_settings(), read_projects=("allowed",))
+    check = _work_package_project_allowed_from(
+        {
+            "/api/v3/work_packages/10",
+            "/api/v3/work_packages/11",
+            "/api/v3/work_packages/12",
+            "/api/v3/work_packages/13",
+        }
+    )
+    service = _service(api=api, settings=settings, work_package_project_allowed=check)
+
+    result = await service.list_all()
+
+    assert [r.id for r in result.results] == [1, 2]
+    assert check.calls == [
+        "/api/v3/work_packages/10",
+        "/api/v3/work_packages/11",
+        "/api/v3/work_packages/12",
+        "/api/v3/work_packages/13",
+    ]
+    assert len({id(c) for c in check.contexts}) == 1, "one WorkPackageAllowedContext must be shared, not recreated"
+
+
+@pytest.mark.asyncio
 async def test_list_all_hides_wp_subject_when_wp_subject_hidden() -> None:
     """from_subject/to_subject honor the work_package subject hide list, and
     stamping order must not lose relation-level hidden fields (verified
@@ -285,6 +327,20 @@ async def test_create_commits_when_confirmed() -> None:
     work_package_ref, payload = api.create_calls[0]
     assert work_package_ref == "42"
     assert payload["_links"]["to"]["href"] == "/api/v3/work_packages/55"
+
+
+@pytest.mark.asyncio
+async def test_create_denies_write_outside_source_project_allowlist_even_without_confirm() -> None:
+    """The source project write-allowlist check runs unconditionally, before
+    the confirm branch -- not only when actually committing (test-contract
+    gap: nothing previously proved this for a preview call)."""
+    api = _FakeRelationApi()
+    lookup = _FakeWorkPackageLookupApi(project_link={"href": "/api/v3/projects/1"})
+    settings = dataclasses.replace(make_settings(), write_projects=("other",))
+    service = _service(api=api, work_package_lookup_api=lookup, settings=settings)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.create(work_package_id=42, related_to_work_package_id=55, relation_type="blocks", confirm=False)
 
 
 @pytest.mark.asyncio
@@ -362,6 +418,20 @@ async def test_update_denies_write_outside_source_project_allowlist() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_denies_write_even_without_confirm() -> None:
+    """The write-allowlist check must run unconditionally, before the
+    confirm branch -- not only when actually committing (test-contract gap:
+    nothing previously proved this for a preview call)."""
+    api = _FakeRelationApi()
+    lookup = _FakeWorkPackageLookupApi(project_link={"href": "/api/v3/projects/1"})
+    settings = dataclasses.replace(make_settings(), write_projects=("other",))
+    service = _service(api=api, work_package_lookup_api=lookup, settings=settings)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.update(relation_id=7, description="updated", confirm=False)
+
+
+@pytest.mark.asyncio
 async def test_update_raises_when_source_link_is_missing() -> None:
     record = _record(7, from_href=None)
     api = _FakeRelationApi(records=[record])
@@ -369,6 +439,22 @@ async def test_update_raises_when_source_link_is_missing() -> None:
 
     with pytest.raises(OpenProjectServerError):
         await service.update(relation_id=7, description="updated", confirm=True)
+
+
+@pytest.mark.asyncio
+async def test_update_uses_the_relations_own_from_href_not_a_hardcoded_one() -> None:
+    """Regression (test-contract self-audit): assert the EXACT href passed to
+    get_by_href, mirroring the equivalent Reminders test -- every fixture in
+    this file happens to share the same from_href, so a hardcoded-href or
+    argument-swap bug would otherwise slip through undetected."""
+    record = _record(7, from_href="/api/v3/work_packages/99", to_href="/api/v3/work_packages/2")
+    api = _FakeRelationApi(records=[record])
+    lookup = _FakeWorkPackageLookupApi()
+    service = _service(api=api, work_package_lookup_api=lookup)
+
+    await service.update(relation_id=7, description="updated", confirm=True)
+
+    assert lookup.get_by_href_calls == ["/api/v3/work_packages/99"]
 
 
 # --- delete -----------------------------------------------------------------
@@ -406,4 +492,30 @@ async def test_delete_denies_write_outside_source_project_allowlist() -> None:
     service = _service(api=api, work_package_lookup_api=lookup, settings=settings)
 
     with pytest.raises(PermissionDeniedError):
+        await service.delete(relation_id=7, confirm=True)
+
+
+@pytest.mark.asyncio
+async def test_delete_denies_write_even_without_confirm() -> None:
+    api = _FakeRelationApi()
+    lookup = _FakeWorkPackageLookupApi(project_link={"href": "/api/v3/projects/1"})
+    settings = dataclasses.replace(make_settings(), write_projects=("other",))
+    service = _service(api=api, work_package_lookup_api=lookup, settings=settings)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.delete(relation_id=7, confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_delete_denies_malformed_from_link_even_under_open_scope() -> None:
+    """Mirrors Reminders' equivalent malformed-link-under-wide-open-scope
+    test -- delete()'s _fetch_source_work_package guard shares its code with
+    update()'s, but only update() had a test proving the missing-link case
+    fails closed even when both allowlists are wide open."""
+    record = _record(7, from_href=None)
+    api = _FakeRelationApi(records=[record])
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("*",))
+    service = _service(api=api, settings=settings)
+
+    with pytest.raises(OpenProjectServerError):
         await service.delete(relation_id=7, confirm=True)
