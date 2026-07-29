@@ -5088,9 +5088,7 @@ class OpenProjectClient:
             self._ensure_field_writable("grid", "row_count")
         if column_count is not None:
             self._ensure_field_writable("grid", "column_count")
-        project_ref = self._project_ref_from_scope_href(scope)
-        if project_ref is not None:
-            await self._get_project_payload(project_ref, write=True)
+        self._ensure_grid_write_scope_allowed(scope)
         payload: dict[str, Any] = {
             "name": name,
             "_links": {"scope": {"href": scope}},
@@ -5119,9 +5117,7 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> GridWriteResult:
         current = await self._get(f"grids/{grid_id}")
-        project_ref = self._project_ref_from_scope_href(current.get("_links", {}).get("scope", {}).get("href"))
-        if project_ref is not None:
-            await self._get_project_payload(project_ref, write=True)
+        self._ensure_grid_write_scope_allowed(current.get("_links", {}).get("scope", {}).get("href"))
         payload: dict[str, Any] = {}
         if name is not None:
             self._ensure_field_writable("grid", "name")
@@ -5151,9 +5147,7 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> GridWriteResult:
         current = await self._get(f"grids/{grid_id}")
-        project_ref = self._project_ref_from_scope_href(current.get("_links", {}).get("scope", {}).get("href"))
-        if project_ref is not None:
-            await self._get_project_payload(project_ref, write=True)
+        self._ensure_grid_write_scope_allowed(current.get("_links", {}).get("scope", {}).get("href"))
         detail = self.normalize_grid(current)
         scope = current.get("_links", {}).get("scope", {}).get("href")
 
@@ -8020,6 +8014,28 @@ class OpenProjectClient:
             raise PermissionDeniedError(
                 "OpenProject writes to this project are disabled by OPENPROJECT_WRITE_PROJECTS."
             )
+
+    def _ensure_grid_write_scope_allowed(self, scope_href: str | None) -> None:
+        """Apply the write allowlist to a grid's scope link.
+
+        Regression found via a bidirectional bugfix audit against
+        release/0.4.0: create_grid/update_grid/delete_grid only ran a write
+        check when `_project_ref_from_scope_href(scope_href)` returned a
+        project ref -- but that helper returns None for ANY scope that
+        doesn't start with "/projects/", including a malformed/unexpected
+        scope shape, silently skipping the allowlist check entirely (not
+        just for the legitimate "/my/page" personal-grid case). Fail closed
+        instead: only "/my/page" and a fully open read+write scope bypass
+        this check; anything else with no resolvable scope is denied, not
+        silently allowed.
+        """
+        if scope_href == "/my/page":
+            return
+        if _scope_allows_all(self.settings.read_projects) and _scope_allows_all(self.settings.write_projects):
+            return
+        if not scope_href:
+            raise PermissionDeniedError("OpenProject writes to this grid are disabled by OPENPROJECT_WRITE_PROJECTS.")
+        self._ensure_project_write_link_allowed({"href": scope_href})
 
     def _ensure_board_payload_allowed(self, payload: dict[str, Any]) -> None:
         project_link = payload.get("_links", {}).get("project")

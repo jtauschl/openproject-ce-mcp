@@ -8590,6 +8590,124 @@ async def test_delete_grid_executes_with_confirm() -> None:
     await client.aclose()
 
 
+@pytest.mark.asyncio
+async def test_create_grid_denies_unrecognized_scope_under_restricted_write_allowlist() -> None:
+    """Regression, found via a bidirectional bugfix audit against
+    release/0.4.0: create_grid only ran a write-allowlist check when
+    _project_ref_from_scope_href(scope) returned a project ref -- but that
+    helper returns None for ANY scope not starting with "/projects/",
+    including a malformed/unrecognized one (not just the legitimate
+    "/my/page" personal-grid case), silently skipping the write check
+    entirely under a restricted WRITE_PROJECTS scope. The new check denies
+    via the read-allowlist path first (an unrecognized scope can't match
+    any candidate), which is the correct, intentional fail-closed order --
+    the point is that it's denied at all, not which specific message wins."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError):
+        await client.create_grid(name="Demo Grid", scope="/something/unexpected", confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_grid_denies_unrecognized_scope_under_restricted_write_allowlist() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/grids/55" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Grid",
+                    "id": 55,
+                    "rowCount": 2,
+                    "columnCount": 3,
+                    "_links": {"scope": {"href": "/something/unexpected"}, "self": {"href": "/api/v3/grids/55"}},
+                },
+                request=request,
+            )
+        raise AssertionError(f"No write request should ever be issued: {request.method} {request.url}")
+
+    client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError):
+        await client.update_grid(grid_id=55, name="Renamed", confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_delete_grid_denies_unrecognized_scope_under_restricted_write_allowlist() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/grids/55" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Grid",
+                    "id": 55,
+                    "rowCount": 2,
+                    "columnCount": 3,
+                    "_links": {"scope": {"href": "/something/unexpected"}, "self": {"href": "/api/v3/grids/55"}},
+                },
+                request=request,
+            )
+        raise AssertionError(f"No delete request should ever be issued: {request.method} {request.url}")
+
+    client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError):
+        await client.delete_grid(grid_id=55, confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_grid_allows_personal_scope_regardless_of_write_allowlist() -> None:
+    """The "/my/page" personal-grid carve-out must still work -- only an
+    UNRECOGNIZED scope should now be denied, not the legitimate personal
+    case."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/grids/form":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "payload": {
+                            "name": "My Dashboard",
+                            "options": {},
+                            "widgets": [],
+                            "_links": {"scope": {"href": "/my/page"}},
+                        },
+                        "validationErrors": {},
+                    }
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/grids" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Grid",
+                    "id": 60,
+                    "options": {},
+                    "widgets": [],
+                    "_links": {"scope": {"href": "/my/page"}, "self": {"href": "/api/v3/grids/60"}},
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected: {request.method} {request.url}")
+
+    client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
+    result = await client.create_grid(name="My Dashboard", scope="/my/page", confirm=True)
+
+    assert result.confirmed is True
+    await client.aclose()
+
+
 def _make_wp_form_response(request: httpx.Request, body: dict) -> httpx.Response:
     return httpx.Response(
         200,
