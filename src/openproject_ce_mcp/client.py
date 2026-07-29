@@ -8538,7 +8538,13 @@ class OpenProjectClient:
         return matches[0]
 
     async def _resolve_role_hrefs(self, roles: list[str]) -> list[str]:
-        available_roles = await self.list_roles()
+        # Only fetch the role collection when at least one ref actually needs
+        # name resolution -- a caller passing only numeric role ids never
+        # needed this list at all (found via a bidirectional bugfix audit
+        # against release/0.4.0).
+        available_roles = None
+        if any(role_ref.strip() and not role_ref.strip().isdigit() for role_ref in roles):
+            available_roles = await self.list_roles()
         hrefs: list[str] = []
         for role_ref in roles:
             normalized = role_ref.strip()
@@ -8547,6 +8553,7 @@ class OpenProjectClient:
             if normalized.isdigit():
                 hrefs.append(self._api_href(f"roles/{normalized}"))
                 continue
+            assert available_roles is not None
             matches = [
                 role for role in available_roles.results if (role.name or "").casefold() == normalized.casefold()
             ]

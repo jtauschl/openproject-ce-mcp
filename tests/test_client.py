@@ -7058,6 +7058,41 @@ async def test_internal_principal_resolution_bypasses_admin_read_gate() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolve_role_hrefs_skips_role_list_fetch_when_all_refs_are_numeric() -> None:
+    """Perf fix found via a bidirectional bugfix audit against
+    release/0.4.0: _resolve_role_hrefs previously always fetched the full
+    role collection even when every supplied ref was already numeric and
+    the fetch result was never used."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo-id" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo-id", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/roles":
+            raise AssertionError("No GET roles request should be issued for purely numeric role refs")
+        if request.url.path == "/api/v3/principals" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_embedded": {"elements": [{"id": 5, "name": "Alice", "login": "alice", "_type": "User"}]}, "total": 1},
+                request=request,
+            )
+        if request.url.path == "/api/v3/memberships/form" and request.method == "POST":
+            return httpx.Response(200, json={"_embedded": {"payload": {}}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_membership_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.create_membership(project="demo-id", principal="Alice", roles=["2"], confirm=False)
+
+    assert result.ready is True
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_actions_capabilities_and_query_metadata_endpoints_normalize_results() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/demo":
