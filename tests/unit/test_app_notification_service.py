@@ -224,6 +224,68 @@ async def test_list_all_uses_server_reported_total_under_wide_open_scope() -> No
     assert result.total == 50
 
 
+@pytest.mark.asyncio
+async def test_list_all_reports_truncated_and_next_offset_under_wide_open_scope() -> None:
+    """Regression (found via a full-diff Codex review on release/0.3.4, ported
+    here): NotificationListResult only ever had count/total -- total was
+    always just len(results) (never a real "there are more" signal), so a
+    caller had no way to detect if more notifications existed beyond the
+    returned page. total=50 with a single-record, limit=1 page must report
+    truncated=True/next_offset=2."""
+    api = _FakeNotificationApi(records=[_record(1)], total=50)
+    settings = dataclasses.replace(make_settings(), enable_personal_read=True, read_projects=("*",))
+    service = _service(api=api, settings=settings)
+
+    result = await service.list_all(limit=1, offset=1)
+
+    assert result.truncated is True
+    assert result.next_offset == 2
+
+    exhausted_api = _FakeNotificationApi(records=[_record(1)], total=1)
+    exhausted_service = _service(api=exhausted_api, settings=settings)
+    exhausted_result = await exhausted_service.list_all(limit=1, offset=1)
+
+    assert exhausted_result.truncated is False
+    assert exhausted_result.next_offset is None
+
+
+@pytest.mark.asyncio
+async def test_list_all_reports_truncated_under_restrictive_scope_when_limit_hit_mid_page() -> None:
+    """Same regression as above, for the restrictive-scope re-scan branch:
+    hitting the caller's limit mid-page means at least one more allowed
+    notification is waiting on a later server page, so truncated must be
+    True -- verbatim scenario of release/0.3.4's
+    test_list_notifications_reports_truncated_under_restrictive_scope_when_limit_hit_mid_page."""
+    allowed_1 = _record(1, project_link={"href": "/api/v3/projects/1", "title": "Demo"})
+    allowed_2 = _record(2, project_link={"href": "/api/v3/projects/1", "title": "Demo"})
+    api = _FakePaginatedNotificationApi(pages=[[allowed_1, allowed_2]])
+    settings = dataclasses.replace(make_settings(), enable_personal_read=True, read_projects=("demo",))
+    service = _service(api=api, settings=settings)
+
+    result = await service.list_all(limit=1)
+
+    assert result.count == 1
+    assert result.truncated is True
+    assert result.next_offset == 2
+
+
+@pytest.mark.asyncio
+async def test_list_all_reports_not_truncated_under_restrictive_scope_when_genuinely_exhausted() -> None:
+    """Counterpart to the above: when the server collection runs out entirely
+    (a short/empty final page) before `limit` allowed matches are found,
+    truncated must be False and next_offset None."""
+    allowed_1 = _record(1, project_link={"href": "/api/v3/projects/1", "title": "Demo"})
+    api = _FakePaginatedNotificationApi(pages=[[allowed_1], []])
+    settings = dataclasses.replace(make_settings(), enable_personal_read=True, read_projects=("demo",))
+    service = _service(api=api, settings=settings)
+
+    result = await service.list_all(limit=5)
+
+    assert result.count == 1
+    assert result.truncated is False
+    assert result.next_offset is None
+
+
 class _FakePaginatedNotificationApi:
     """Simulates real server-side pagination across multiple pages, unlike
     _FakeNotificationApi (which always returns everything in one page and

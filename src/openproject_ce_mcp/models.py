@@ -1172,6 +1172,8 @@ class NotificationSummary:
 class NotificationListResult:
     count: int
     total: int
+    truncated: bool
+    next_offset: int | None
     results: list[NotificationSummary]
 
 

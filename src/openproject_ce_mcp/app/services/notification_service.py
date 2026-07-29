@@ -84,17 +84,26 @@ class NotificationService:
             page = await self._api.list_all(unread_only=unread_only, offset=offset, limit=resolved_limit)
             records = page.records
             total = page.total
+            truncated = total > offset * resolved_limit
         else:
-            records, total = await self._rescan_and_skip(unread_only=unread_only, offset=offset, limit=resolved_limit)
+            records, total, truncated = await self._rescan_and_skip(
+                unread_only=unread_only, offset=offset, limit=resolved_limit
+            )
         # .summary() is called only AFTER filtering -- matching client.py's
         # original "filter raw, normalize survivors" order (see
         # NotificationRecord's docstring for why this must stay lazy).
         results = [self._stamp(record.summary()) for record in records]
-        return NotificationListResult(count=len(results), total=total, results=results)
+        return NotificationListResult(
+            count=len(results),
+            total=total,
+            truncated=truncated,
+            next_offset=offset + 1 if truncated else None,
+            results=results,
+        )
 
     async def _rescan_and_skip(
         self, *, unread_only: bool, offset: int, limit: int
-    ) -> tuple[list[NotificationRecord], int]:
+    ) -> tuple[list[NotificationRecord], int, bool]:
         """Re-scan server pages from the start, skipping already-seen allowed
         matches, until `limit` allowed records are collected or the server
         collection is exhausted -- verbatim shape of
@@ -114,6 +123,7 @@ class NotificationService:
         cache = WorkPackageAllowedContext()
         server_offset = 1
         server_page_size = self._settings.max_page_size
+        truncated = False
 
         while len(results) < limit:
             page = await self._api.list_all(unread_only=unread_only, offset=server_offset, limit=server_page_size)
@@ -135,15 +145,18 @@ class NotificationService:
             if hit_limit_mid_page:
                 # This page had more allowed matches than needed -- stop without
                 # checking server exhaustion: there's at least one more allowed
-                # notification waiting (the rest of this page), so treating this
-                # as "exhausted" would wrongly hide it from a follow-up call.
+                # notification waiting, so treating this as "exhausted" would
+                # wrongly hide it from a follow-up call. Report truncated=True
+                # so the caller knows to request the next offset instead of
+                # assuming this page is everything.
+                truncated = True
                 break
 
             if page.exhausted:
                 break
             server_offset += 1
 
-        return results, len(results)
+        return results, len(results), truncated
 
     async def _record_allowed(self, record: NotificationRecord, cache: WorkPackageAllowedContext) -> bool:
         if record.project_link is not None:

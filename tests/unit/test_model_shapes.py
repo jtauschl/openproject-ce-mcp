@@ -43,7 +43,7 @@ EXPECTED_FIELD_ORDER: dict[str, list[str]] = {
     "MembershipListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "NewsListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "NonWorkingDayListResult": ["count", "results"],
-    "NotificationListResult": ["count", "total", "results"],
+    "NotificationListResult": ["count", "total", "truncated", "next_offset", "results"],
     "PrincipalListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "PriorityListResult": ["count", "results"],
     "ProjectListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
