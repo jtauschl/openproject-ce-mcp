@@ -851,7 +851,8 @@ class OpenProjectClient:
 
     async def get_user(self, user_ref: str) -> UserDetail:
         self._ensure_read_enabled("admin")
-        payload = await self._get(f"users/{quote(user_ref, safe='')}")
+        safe_ref = _reject_path_traversal_segments(user_ref, field_name="user_ref")
+        payload = await self._get(f"users/{quote(safe_ref, safe='')}")
         return self.normalize_user_detail(payload)
 
     async def list_groups(
@@ -1042,17 +1043,20 @@ class OpenProjectClient:
 
     async def get_query_filter(self, filter_id: str) -> QueryFilterSummary:
         self._ensure_read_enabled("board")
-        payload = await self._get(f"queries/filters/{quote(filter_id, safe='')}")
+        safe_id = _reject_path_traversal_segments(filter_id, field_name="filter_id")
+        payload = await self._get(f"queries/filters/{quote(safe_id, safe='')}")
         return self.normalize_query_filter(payload)
 
     async def get_query_column(self, column_id: str) -> QueryColumnSummary:
         self._ensure_read_enabled("board")
-        payload = await self._get(f"queries/columns/{quote(column_id, safe='')}")
+        safe_id = _reject_path_traversal_segments(column_id, field_name="column_id")
+        payload = await self._get(f"queries/columns/{quote(safe_id, safe='')}")
         return self.normalize_query_column(payload)
 
     async def get_query_operator(self, operator_id: str) -> QueryOperatorSummary:
         self._ensure_read_enabled("board")
-        payload = await self._get(f"queries/operators/{quote(operator_id, safe='')}")
+        safe_id = _reject_path_traversal_segments(operator_id, field_name="operator_id")
+        payload = await self._get(f"queries/operators/{quote(safe_id, safe='')}")
         return self.normalize_query_operator(payload)
 
     async def get_query_sort_by(self, sort_by_id: str) -> QuerySortBySummary:
@@ -1064,7 +1068,8 @@ class OpenProjectClient:
         # request, but keep the original id as the public contract.
         column, _, direction = sort_by_id.partition(":")
         path_id = f"{column}-{direction}" if direction else sort_by_id
-        payload = await self._get(f"queries/sort_bys/{quote(path_id, safe='')}")
+        safe_path_id = _reject_path_traversal_segments(path_id, field_name="sort_by_id")
+        payload = await self._get(f"queries/sort_bys/{quote(safe_path_id, safe='')}")
         return self.normalize_query_sort_by(payload, requested_id=sort_by_id)
 
     async def list_query_filter_instance_schemas(
@@ -1087,7 +1092,8 @@ class OpenProjectClient:
 
     async def get_query_filter_instance_schema(self, schema_id: str) -> QueryFilterInstanceSchemaSummary:
         self._ensure_read_enabled("board")
-        payload = await self._get(f"queries/filter_instance_schemas/{quote(schema_id, safe='')}")
+        safe_id = _reject_path_traversal_segments(schema_id, field_name="schema_id")
+        payload = await self._get(f"queries/filter_instance_schemas/{quote(safe_id, safe='')}")
         return self.normalize_query_filter_instance_schema(payload)
 
     async def list_project_memberships(self, project_ref: str) -> MembershipListResult:
@@ -8699,7 +8705,8 @@ class OpenProjectClient:
         yields a 404 (mapped to ``NotFoundError``), while numeric ids keep working on
         every supported version.
         """
-        return quote(str(ref).strip(), safe="")
+        safe_ref = _reject_path_traversal_segments(str(ref).strip(), field_name="work_package_id")
+        return quote(safe_ref, safe="")
 
     async def _resolve_work_package_id(self, ref: int | str, *, write: bool = False) -> int:
         """Resolve a work-package reference to its canonical numeric id.
@@ -8719,8 +8726,9 @@ class OpenProjectClient:
         package B they can only read).
         """
         reference = str(ref).strip()
+        safe_reference = _reject_path_traversal_segments(reference, field_name="work_package_id")
         try:
-            payload = await self._get(f"work_packages/{quote(reference, safe='')}")
+            payload = await self._get(f"work_packages/{quote(safe_reference, safe='')}")
         except NotFoundError as exc:
             if reference.isdigit():
                 raise

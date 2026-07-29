@@ -4604,6 +4604,117 @@ async def test_get_job_status_rejects_path_traversal_id() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_work_package_rejects_path_traversal_ref() -> None:
+    """Regression: _work_package_ref quoted its input with no traversal check,
+    unlike the sibling job_status_id/capability_id fixes -- generalized here."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="work_package_id"):
+        await client.get_work_package("../projects/42")
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resolve_work_package_id_rejects_path_traversal_ref() -> None:
+    """Same fix, applied to _resolve_work_package_id (used by relations/reparent)."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="work_package_id"):
+        await client._resolve_work_package_id("../users/7")
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_user_rejects_path_traversal_ref() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    client = OpenProjectClient(
+        dataclasses.replace(make_settings(), enable_admin_read=True), transport=httpx.MockTransport(handler)
+    )
+
+    with pytest.raises(InvalidInputError, match="user_ref"):
+        await client.get_user("../projects/42")
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_query_filter_rejects_path_traversal_id() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="filter_id"):
+        await client.get_query_filter("../projects/42")
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_query_column_rejects_path_traversal_id() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="column_id"):
+        await client.get_query_column("../projects/42")
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_query_operator_rejects_path_traversal_id() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="operator_id"):
+        await client.get_query_operator("../projects/42")
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_query_sort_by_rejects_path_traversal_id() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="sort_by_id"):
+        await client.get_query_sort_by("../projects/42")
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_query_filter_instance_schema_rejects_path_traversal_id() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="schema_id"):
+        await client.get_query_filter_instance_schema("../projects/42")
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_work_package_watchers_denies_anchor_outside_read_allowlist() -> None:
     """list_work_package_watchers must check the anchor WP's own project.
 
