@@ -1199,7 +1199,6 @@ async def test_time_entry_tools_pass_expected_arguments() -> None:
         hours="PT1H30M",
         spent_on="2026-03-20",
         start_time="2026-03-20T09:00:00Z",
-        end_time="2026-03-20T10:30:00Z",
         confirm=False,
     )
     updated = await update_time_entry(ctx, 5, hours="PT2H", confirm=True)
@@ -1212,7 +1211,7 @@ async def test_time_entry_tools_pass_expected_arguments() -> None:
     assert detail["time_entry_id"] == 5
     assert created["hours"] == "PT1H30M"
     assert created["start_time"] == "2026-03-20T09:00:00Z"
-    assert created["end_time"] == "2026-03-20T10:30:00Z"
+    assert "end_time" not in created
     assert updated["confirm"] is True
     assert deleted["confirm"] is True
 

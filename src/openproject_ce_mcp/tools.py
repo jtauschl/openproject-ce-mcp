@@ -2662,7 +2662,6 @@ async def create_time_entry(
     work_package_id: int | str | None = None,
     user: str | None = None,
     start_time: str | None = None,
-    end_time: str | None = None,
     comment: str | None = None,
     ongoing: bool | None = None,
     confirm: bool = False,
@@ -2671,8 +2670,10 @@ async def create_time_entry(
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     hours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours, 'P1D' for 1 day).
-    start_time/end_time are ISO 8601 date-times and require the instance setting
-    "allow tracking of start and end times"; they are ignored otherwise.
+    start_time is an ISO 8601 date-time and requires the instance setting "allow
+    tracking of start and end times"; ignored otherwise. There is no end_time
+    parameter -- OpenProject's own API schema marks that field as read-only
+    (computed from start_time + hours), so writing it is never supported.
     """
     client = _client_from_context(ctx)
     safe_activity = _validate_required_query(activity, field_name="activity", max_length=100)
@@ -2682,7 +2683,6 @@ async def create_time_entry(
     safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
     safe_user = _validate_optional_user_or_principal_ref(user)
     safe_start_time = _validate_optional_datetime(start_time, field_name="start_time")
-    safe_end_time = _validate_optional_datetime(end_time, field_name="end_time")
     safe_comment = _validate_optional_text(comment, field_name="comment", max_length=10_000)
     if safe_project is None and safe_work_package_id is None:
         raise ValueError("Either project or work_package_id is required.")
@@ -2695,7 +2695,6 @@ async def create_time_entry(
             hours=safe_hours,
             spent_on=safe_spent_on,
             start_time=safe_start_time,
-            end_time=safe_end_time,
             comment=safe_comment,
             ongoing=ongoing,
             confirm=confirm,
@@ -2711,7 +2710,6 @@ async def update_time_entry(
     hours: str | None = None,
     spent_on: str | None = None,
     start_time: str | None = None,
-    end_time: str | None = None,
     comment: str | None = None,
     ongoing: bool | None = None,
     confirm: bool = False,
@@ -2719,7 +2717,9 @@ async def update_time_entry(
     """Prepare or update a time entry.
 
     hours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours, 'P1D' for 1 day).
-    start_time/end_time are ISO 8601 date-times.
+    start_time is an ISO 8601 date-time. There is no end_time parameter --
+    OpenProject's own API schema marks that field as read-only (computed from
+    start_time + hours), so writing it is never supported.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(time_entry_id, field_name="time_entry_id")
@@ -2728,7 +2728,6 @@ async def update_time_entry(
     safe_hours = _validate_optional_duration(hours, field_name="hours")
     safe_spent_on = _validate_optional_date(spent_on, field_name="spent_on")
     safe_start_time = _validate_optional_datetime(start_time, field_name="start_time")
-    safe_end_time = _validate_optional_datetime(end_time, field_name="end_time")
     safe_comment = _validate_optional_update_text(comment, field_name="comment", max_length=10_000)
     if not any(
         value is not None
@@ -2738,7 +2737,6 @@ async def update_time_entry(
             safe_hours,
             safe_spent_on,
             safe_start_time,
-            safe_end_time,
             safe_comment,
             ongoing,
         )
@@ -2752,7 +2750,6 @@ async def update_time_entry(
             hours=safe_hours,
             spent_on=safe_spent_on,
             start_time=safe_start_time,
-            end_time=safe_end_time,
             comment=safe_comment,
             ongoing=ongoing,
             confirm=confirm,

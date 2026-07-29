@@ -7,6 +7,18 @@ development baseline.
 
 ---
 
+## Unreleased
+
+### Fixed
+
+- **`create_time_entry`/`update_time_entry` no longer accept an `end_time`
+  parameter.** OpenProject's own API schema marks `end_time` as read-only
+  (computed from `start_time` + `hours`), and its server-side representer has
+  no setter for it at all — sending it crashed the server with an internal
+  error even though preview validation reported the request as valid.
+  `start_time` remains supported and unaffected; `end_time` is still returned
+  when reading a time entry.
+
 ## 0.3.4 – 2026-07-29
 
 ### Fixed

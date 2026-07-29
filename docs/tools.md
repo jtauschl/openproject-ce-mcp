@@ -251,7 +251,7 @@ Same gating as [Users](#users) above: reads need
 | `list_time_entry_activities` | List available time entry activities |
 | `list_time_entries` | List time entries with optional project, work package, user, and date filters |
 | `get_time_entry` | Fetch a single time entry by id |
-| `create_time_entry` | Validate and then create a time entry (optional `start_time`/`end_time` when the instance allows start/end time tracking); only writes when called again with `confirm=true` |
+| `create_time_entry` | Validate and then create a time entry (optional `start_time` when the instance allows start/end time tracking; `end_time` is read-only on OpenProject's side and not a parameter); only writes when called again with `confirm=true` |
 | `update_time_entry` | Validate and then update a time entry; only writes when called again with `confirm=true` |
 | `delete_time_entry` | Validate and then delete a time entry; only deletes when called again with `confirm=true` |
 

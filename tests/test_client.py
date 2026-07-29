@@ -1261,43 +1261,52 @@ async def test_hidden_time_entry_field_is_rejected_on_write() -> None:
 
 
 @pytest.mark.asyncio
-async def test_hidden_time_entry_start_and_end_time_are_rejected_on_write() -> None:
-    """Regression test (found via Codex review): start_time/end_time were the
-    only two TimeEntry fields that omitted the _ensure_field_writable check
-    every sibling field (hours, spent_on, comment, ongoing) already has --
-    a hidden-by-config field could still be written despite being masked on
-    read, the same bug class already fixed for other domains."""
-
-    async def make_client(hidden_field: str) -> OpenProjectClient:
-        return OpenProjectClient(
-            Settings(
-                base_url="https://op.example.com",
-                api_token="token",
-                timeout=12,
-                verify_ssl=True,
-                default_page_size=20,
-                max_page_size=50,
-                max_results=100,
-                log_level="WARNING",
-                hidden_fields={"time_entry": (hidden_field,)},
-                enable_work_package_write=True,
-            ),
-            transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
-        )
-
-    client = await make_client("start_time")
+async def test_hidden_time_entry_start_time_is_rejected_on_write() -> None:
+    """Regression test (found via Codex review): start_time was omitting the
+    _ensure_field_writable check every sibling field (hours, spent_on,
+    comment, ongoing) already has -- a hidden-by-config field could still be
+    written despite being masked on read, the same bug class already fixed
+    for other domains. end_time has no equivalent write path at all anymore
+    -- see test_create_time_entry_has_no_end_time_parameter -- since
+    OpenProject's own API schema marks it read-only and writing it crashes
+    the server (GitHub issue #17)."""
+    client = OpenProjectClient(
+        Settings(
+            base_url="https://op.example.com",
+            api_token="token",
+            timeout=12,
+            verify_ssl=True,
+            default_page_size=20,
+            max_page_size=50,
+            max_results=100,
+            log_level="WARNING",
+            hidden_fields={"time_entry": ("start_time",)},
+            enable_work_package_write=True,
+        ),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
+    )
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_TIME_ENTRY_FIELDS"):
         await client.create_time_entry(
             activity="Development", hours="PT1H", spent_on="2026-03-20", start_time="09:00", confirm=False
         )
     await client.aclose()
 
-    client = await make_client("end_time")
-    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_TIME_ENTRY_FIELDS"):
-        await client.create_time_entry(
-            activity="Development", hours="PT1H", spent_on="2026-03-20", end_time="10:00", confirm=False
-        )
-    await client.aclose()
+
+def test_create_time_entry_has_no_end_time_parameter() -> None:
+    """Regression (GitHub issue #17): OpenProject's own API schema marks
+    end_time as read-only (schema :end_time, writable: false -- computed
+    from start_time + hours), and the server representer has no end_time=
+    setter at all, so writing it raised a server-side NoMethodError even
+    though preview validation passed. end_time must not be an accepted
+    parameter on create_time_entry/update_time_entry at all."""
+    import inspect
+
+    create_params = inspect.signature(OpenProjectClient.create_time_entry).parameters
+    update_params = inspect.signature(OpenProjectClient.update_time_entry).parameters
+    assert "end_time" not in create_params
+    assert "end_time" not in update_params
+    assert "start_time" in create_params
+    assert "start_time" in update_params
 
 
 @pytest.mark.asyncio
@@ -11771,7 +11780,15 @@ async def test_list_work_packages_version_status_builds_filter() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_time_entry_includes_start_and_end_time() -> None:
+async def test_create_time_entry_includes_start_time_but_never_sends_end_time() -> None:
+    """Regression (GitHub issue #17): end_time must never be sent in the
+    write payload -- OpenProject's own API schema marks it read-only
+    (computed from start_time + hours) and the server has no end_time=
+    setter, so including it crashed with a server-side NoMethodError even
+    though preview validation passed. The server MAY still return endTime
+    in its response (it's a valid read-only field), and normalize_time_entry
+    correctly surfaces that -- this test's mock response includes it to
+    prove the read side is unaffected by the write-side fix."""
     captured: dict[str, dict] = {}
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -11807,12 +11824,11 @@ async def test_create_time_entry_includes_start_and_end_time() -> None:
         hours="PT1H",
         spent_on="2026-07-01",
         start_time="2026-07-01T09:00:00Z",
-        end_time="2026-07-01T10:00:00Z",
         confirm=True,
     )
 
     assert captured["body"]["startTime"] == "2026-07-01T09:00:00Z"
-    assert captured["body"]["endTime"] == "2026-07-01T10:00:00Z"
+    assert "endTime" not in captured["body"]
     assert result.result is not None
     assert result.result.start_time == "2026-07-01T09:00:00Z"
     assert result.result.end_time == "2026-07-01T10:00:00Z"
