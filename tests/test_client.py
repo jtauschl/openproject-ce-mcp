@@ -13976,3 +13976,42 @@ async def test_list_project_memberships_walks_multiple_server_pages() -> None:
     assert {m.id for m in result.results} == {1, 2}
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_normalize_group_counts_flat_members_array() -> None:
+    """Regression: normalize_group only recognized a {count,...}/{total,...}
+    collection-object shape for _embedded.members. OpenProject's real shape
+    (confirmed by normalize_group_detail's own tolerance a few lines below,
+    and by get_group's live response) is a flat array -- member_count was
+    silently always 0 against that real shape."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/groups":
+            return httpx.Response(
+                200,
+                json={
+                    "total": 1,
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 7,
+                                "name": "Platform Team",
+                                "_embedded": {"members": [{"name": "Alice"}, {"name": "Bob"}]},
+                                "_links": {},
+                            }
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(enable_admin_read=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_groups()
+
+    assert result.results[0].member_count == 2
+
+    await client.aclose()

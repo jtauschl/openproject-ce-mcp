@@ -5626,12 +5626,18 @@ class OpenProjectClient:
 
     def normalize_group(self, payload: dict[str, Any]) -> GroupSummary:
         links = payload.get("_links", {})
-        members = payload.get("_embedded", {}).get("members", {})
-        member_count = 0
+        # OpenProject's real shape is a flat array (_embedded.members, matching
+        # normalize_group_detail's own tolerance below); a {count,...}/
+        # {total,...} collection object is handled defensively too, but was
+        # previously the ONLY shape checked -- member_count was always 0
+        # against the real API response.
+        members = payload.get("_embedded", {}).get("members", [])
         if isinstance(members, dict):
             member_count = int(members.get("count") or members.get("total") or 0)
-        elif isinstance(payload.get("memberships"), list):
-            member_count = len(payload.get("memberships", []))
+        elif isinstance(members, list):
+            member_count = len(members)
+        else:
+            member_count = 0
         return self._apply_hidden_fields(
             "group",
             GroupSummary(
