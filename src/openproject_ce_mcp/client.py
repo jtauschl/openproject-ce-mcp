@@ -4557,29 +4557,75 @@ class OpenProjectClient:
     ) -> NotificationListResult:
         self._ensure_read_enabled("personal")
         effective_limit = self._resolve_limit(limit)
-        params: dict[str, str] = {
-            "offset": str(offset),
-            "pageSize": str(effective_limit),
-        }
+        if _scope_allows_all(self.settings.read_projects):
+            payload = await self._get(
+                "notifications",
+                params=self._notification_params(unread_only=unread_only, offset=offset, limit=effective_limit),
+            )
+            elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+            total = int(payload.get("total", len(elements)))
+            results = [self.normalize_notification(item) for item in elements]
+        else:
+            # Regression found via a bidirectional bugfix audit against
+            # release/0.4.0: server-side pagination has no project filter, so a
+            # single fetched page's allowed subset can run dry before the
+            # caller's own requested page size does -- a filtered-empty page
+            # does NOT prove no further allowed notifications exist on later
+            # server pages. Re-scan from the start every call, skipping
+            # already-seen allowed matches, until `limit` allowed records are
+            # collected or the server collection is genuinely exhausted.
+            filtered, total = await self._rescan_notifications(unread_only=unread_only, offset=offset, limit=effective_limit)
+            results = [self.normalize_notification(item) for item in filtered]
+        return NotificationListResult(count=len(results), total=total, results=results)
+
+    def _notification_params(self, *, unread_only: bool, offset: int, limit: int) -> dict[str, str]:
+        params: dict[str, str] = {"offset": str(offset), "pageSize": str(limit)}
         if unread_only:
             params["filters"] = _json_param([{"readIAN": {"operator": "=", "values": ["f"]}}])
-        payload = await self._get("notifications", params=params)
-        elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
-        if _scope_allows_all(self.settings.read_projects):
-            filtered = elements
-            total = int(payload.get("total", len(elements)))
-        else:
-            # Server-side pagination has no project filter, so this only scopes the
-            # current page — a filtered-empty page does not prove no further allowed
-            # notifications exist on later pages (see docs/architecture.md).
-            wp_cache: dict[str, bool] = {}
-            filtered = []
-            for item in elements:
-                if await self._notification_payload_allowed(item, wp_cache):
-                    filtered.append(item)
-            total = len(filtered)
-        results = [self.normalize_notification(item) for item in filtered]
-        return NotificationListResult(count=len(results), total=total, results=results)
+        return params
+
+    async def _rescan_notifications(
+        self, *, unread_only: bool, offset: int, limit: int
+    ) -> tuple[list[dict[str, Any]], int]:
+        skip_count = (offset - 1) * limit
+        skipped = 0
+        results: list[dict[str, Any]] = []
+        wp_cache: dict[str, bool] = {}
+        server_offset = 1
+        server_page_size = self.settings.max_page_size
+
+        while len(results) < limit:
+            payload = await self._get(
+                "notifications",
+                params=self._notification_params(unread_only=unread_only, offset=server_offset, limit=server_page_size),
+            )
+            elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+            if not elements:
+                break
+
+            allowed = [item for item in elements if await self._notification_payload_allowed(item, wp_cache)]
+
+            hit_limit_mid_page = False
+            for item in allowed:
+                if skipped < skip_count:
+                    skipped += 1
+                    continue
+                results.append(item)
+                if len(results) >= limit:
+                    hit_limit_mid_page = True
+                    break
+
+            if hit_limit_mid_page:
+                # This page had more allowed matches than needed -- stop without
+                # checking server exhaustion: there's at least one more allowed
+                # notification waiting, so treating this as "exhausted" would
+                # wrongly hide it from a follow-up call.
+                break
+            if len(elements) < server_page_size:
+                break
+            server_offset += 1
+
+        return results, len(results)
 
     async def _notification_payload_allowed(self, payload: dict[str, Any], wp_cache: dict[str, bool]) -> bool:
         links = payload.get("_links", {})

@@ -10983,6 +10983,70 @@ async def test_list_notifications_resolves_work_package_notification_without_pro
 
 
 @pytest.mark.asyncio
+async def test_list_notifications_rescans_past_a_filtered_empty_first_page() -> None:
+    """Regression, found via a bidirectional bugfix audit against
+    release/0.4.0: under a restrictive read scope, server-side pagination
+    has no project filter -- a page whose entire content gets filtered out
+    by the allowlist does NOT prove no further allowed notifications exist
+    on later server pages. The first server page here is entirely
+    disallowed (a different project); the second has one allowed
+    notification -- it must still be returned, not silently dropped."""
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/notifications":
+            offset = request.url.params["offset"]
+            requested_offsets.append(offset)
+            assert request.url.params["pageSize"] == "1"
+            if offset == "1":
+                return httpx.Response(
+                    200,
+                    json={
+                        "_embedded": {
+                            "elements": [_notification_payload(1, project_href="/api/v3/projects/2", project_title="Other")]
+                        },
+                        "total": 1,
+                    },
+                    request=request,
+                )
+            if offset == "2":
+                return httpx.Response(
+                    200,
+                    json={
+                        "_embedded": {
+                            "elements": [_notification_payload(2, project_href="/api/v3/projects/1", project_title="Demo")]
+                        },
+                        "total": 1,
+                    },
+                    request=request,
+                )
+            raise AssertionError(f"Unexpected offset: {offset}")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=1,
+        max_results=100,
+        log_level="WARNING",
+        read_projects=("demo",),
+        enable_personal_read=True,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_notifications(limit=1)
+
+    assert requested_offsets == ["1", "2"], f"expected to re-scan past page 1, got {requested_offsets}"
+    assert [n.id for n in result.results] == [2]
+    assert result.count == 1
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_reminders_returns_empty_without_a_request_under_empty_read_projects() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         raise AssertionError("no request must be issued when read_projects is empty")
