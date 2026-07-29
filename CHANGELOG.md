@@ -53,9 +53,13 @@ development baseline.
 - **`list_project_memberships` no longer silently truncates results to
   OpenProject's server-side default page size**, the same gap as the
   relations fix above.
-- **`list_groups`'s `member_count` no longer always reports 0.** The real
-  OpenProject response shape (a flat member list) was never recognized;
-  only an alternate, rarely-used shape was.
+- **`list_groups`'s `member_count` no longer always reports 0.** OpenProject
+  exposes a group's membership differently depending on the endpoint: a
+  single-item lookup embeds a flat member list, while the group listing
+  only ever carries a bare array of member links — only the single-item
+  shape was recognized at first, and a follow-up fix added recognition of
+  the listing's own shape too, so `member_count` is now correct from both
+  endpoints.
 - **A parent-project picklist (`get_project_admin_context`) no longer
   returns full project details (including description) for every candidate,
   and no longer includes a candidate outside `OPENPROJECT_READ_PROJECTS`.**
@@ -91,6 +95,90 @@ development baseline.
   its `_resolve_version_id` caller) and `list_project_memberships` had the
   identical unguarded loop shape, reached via a separate code path from the
   already-fixed `_fetch_all_pages`/`_fetch_bounded_and_paginate` helpers.
+- **`update_reminder`/`delete_reminder` no longer fail on every call.** The
+  authorization check that runs before either write fetched a reminder by
+  requesting a single-item GET that does not exist on OpenProject's API;
+  it now finds the reminder through the reminders listing endpoint
+  instead, and correctly walks every page of it rather than only the
+  first, so a reminder past the first page is no longer misreported as
+  not found.
+- **`update_my_preferences`'s `lang` parameter no longer does nothing.**
+  Language is a property of a user account, not of that account's
+  preferences, so the previous request silently succeeded without ever
+  changing anything. The parameter has been removed together with a few
+  other fields the real API never returns; use `update_user`'s `language`
+  field to change a user's language instead.
+- **Two security gaps found during pre-release review have been closed.**
+  `list_project_memberships` could return memberships from every visible
+  project instead of just the requested one, because its own project
+  filter was silently discarded by the way the request's query parameters
+  were combined. Separately, an id passed into a handful of API paths
+  (`get_job_status`, `list_capabilities`'s `capability_id`) could contain
+  `.`/`..` path segments that survived encoding and let the request reach
+  an unintended endpoint, bypassing the allowlist check meant to guard it;
+  such ids are now rejected before the request is made. The same
+  path-traversal guard has since been extended to every other method that
+  builds a URL from a caller-supplied id (`get_user`, `get_query_filter`,
+  `get_query_column`, `get_query_operator`, `get_query_sort_by`,
+  `get_query_filter_instance_schema`, work package lookups by id, and
+  project lookups by id/identifier).
+- **`create_grid`/`update_grid`/`delete_grid` no longer skip their
+  write-allowlist check for a grid whose scope isn't a recognized project
+  or personal-page URL.** Only a `/projects/...` scope was ever checked
+  against `OPENPROJECT_WRITE_PROJECTS`; any other, unrecognized scope
+  value silently bypassed the check entirely instead of being denied.
+- **Several read-side gaps found during a wider pre-release review have
+  been closed:** the "Extended Metadata" tools (help texts, working days,
+  custom options) previously ignored their own read-enablement setting
+  entirely; `update_my_preferences` previously ignored
+  `OPENPROJECT_HIDE_USER_PREFERENCES_FIELDS`; `get_category` re-listed and
+  filtered categories in memory instead of fetching the single category
+  directly, and never checked its project against the read allowlist;
+  and `list_work_package_attachments`, `list_time_entries`, and
+  `list_grids` each fetched only a single bounded page, silently hiding
+  any result beyond it. Project/document/version descriptions, time entry
+  comments, and activity details were never marked as untrusted user
+  content, unlike every other user-supplied text field; that marking is
+  now applied consistently through a shared helper, which also newly
+  covers reminder notes, relation descriptions, and attachment
+  descriptions. Grid results never applied `OPENPROJECT_HIDE_GRID_FIELDS`
+  at all, unlike every other resource type.
+- **A number of smaller correctness fixes from the same review:** a
+  `_links` value of `null` in an API response is now normalized before
+  any field is read from it, instead of risking a crash; a user's
+  `identity_url` now reads the correct property instead of duplicating
+  their profile URL; bulk work package create/update validation errors
+  now name `assignee`/`responsible` consistently with every other field;
+  bulk work package updates now accept a `sprint` field, matching single
+  updates; a file-link write result no longer reports a fake work
+  package id of `0` when the real one can't be resolved; and a couple of
+  redundant follow-up requests (in `unlock_user` and
+  `get_work_package_relations`) have been removed.
+- **`list_notifications` no longer silently misses notifications under a
+  restrictive read scope.** With `OPENPROJECT_READ_PROJECTS` set to
+  anything other than "all projects", results are filtered after
+  fetching, so a page that happened to contain no allowed notifications
+  was previously treated as proof no more existed — it now keeps scanning
+  server pages until enough allowed notifications are found or the
+  collection is genuinely exhausted, and reports pagination metadata
+  (`truncated`/`next_offset`) accurately for both scoped and unscoped
+  requests.
+- **`list_reminders` and `list_work_package_file_links` no longer
+  silently truncate results to the server's default page size**, the
+  same gap already fixed for other listings.
+- **`list_users`/`list_groups` (name search), `list_news`, and
+  `list_versions` (project-scoped) no longer silently cap results at a
+  fixed maximum, hiding any item beyond it** — the same gap already fixed
+  for other listings, closed here for the remaining affected methods. The
+  project-scoped version listing was also switched to reading
+  OpenProject's actual (unpaginated) response shape instead of trusting
+  page parameters the server was silently ignoring. A related internal
+  cache (used to recognize a project by its identifier when checking
+  `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS`) is now built
+  from every visible project instead of only the first page, so an
+  instance with more than 500 projects no longer misses some of them.
+- **Resolving a role by name no longer requires an unnecessary lookup of
+  every role when the caller already passed a numeric role id.**
 
 ## 0.3.3 – 2026-07-28
 
