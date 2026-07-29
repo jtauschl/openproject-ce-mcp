@@ -14,7 +14,7 @@ backlog_buckets            —       —      GAP (CE)
 backups                    —       —      enterprise
 budgets                    —       —      enterprise
 capabilities               yes     —      covered
-categories                 —       —      subresource
+categories                 yes     —      covered
 configuration              yes     —      covered
 cost_entries               —       —      subresource
 cost_types                 —       —      GAP (CE)
@@ -84,7 +84,7 @@ wiki_pages                 yes     —      covered
 work_packages              yes     —      covered
 workspaces                 yes     —      covered
 
-Summary: GAP (CE)=7, covered=35, enterprise=7, internal=9, subresource=18
+Summary: GAP (CE)=7, covered=36, enterprise=7, internal=9, subresource=17
 (live probe skipped — set OPENPROJECT_BASE_URL / OPENPROJECT_API_TOKEN for CE availability)
 ```
 
