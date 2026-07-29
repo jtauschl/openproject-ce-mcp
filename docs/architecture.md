@@ -207,6 +207,6 @@ If the project grows further, likely extraction candidates are:
 ## See also
 
 - [Documentation hub](README.md) — full documentation index
-- [Development](development.md) — dev environment setup and running tests
+- [Development](../CONTRIBUTING.md) — dev environment setup and running tests
 - [Tool reference](tools.md) — every MCP tool this server exposes
 - [Configuration](configuration.md) — the full environment variable reference

@@ -1,7 +1,7 @@
 # Development
 
 <p align="center">
-  <img src="../img/development.jpg" alt="A Python development pipeline passing source modules through tests and containers into a verified package." width="960">
+  <img src="img/development.jpg" alt="A Python development pipeline passing source modules through tests and containers into a verified package." width="960">
 </p>
 
 ## Set up
@@ -57,5 +57,5 @@ and PR also runs the test matrix plus a `build` job (`uv build` +
 
 ## See also
 
-- [Documentation hub](README.md) — full documentation index
-- [Architecture](architecture.md) — module layout, request flow, and the safety model
+- [Documentation hub](docs/README.md) — full documentation index
+- [Architecture](docs/architecture.md) — module layout, request flow, and the safety model

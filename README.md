@@ -125,7 +125,7 @@ Full documentation lives in [`docs/`](https://github.com/jtauschl/openproject-ce
 - **Setup:** [Installation](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/installation.md) · [Clients](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/clients.md) · [Configuration](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/configuration.md) · [Troubleshooting](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/troubleshooting.md)
 - **Using the tools:** [Tool reference](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/tools.md) · [Work package filters](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/filters.md) · [Field hiding](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/field-hiding.md)
 - **Client guides:** [Claude / Claude Code](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/claude.md) · [Claude Desktop](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/claude-desktop.md) · [Codex](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/codex.md) · [Cursor](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/cursor.md) · [VS Code / GitHub Copilot](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/github.md)
-- **Contributing:** [Development](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/development.md) · [Architecture](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/architecture.md) · [Context efficiency](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/context-efficiency.md)
+- **Contributing:** [Development](CONTRIBUTING.md) · [Architecture](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/architecture.md) · [Context efficiency](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/context-efficiency.md)
 
 ---
 
@@ -165,5 +165,5 @@ uv sync --dev
 uv run pytest
 ```
 
-See [Development](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/development.md) for the full test suite (unit,
+See [Development](CONTRIBUTING.md) for the full test suite (unit,
 integration, and Docker test instances).

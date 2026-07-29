@@ -76,4 +76,4 @@ pointed at the seeded test instance).
 
 - [Documentation hub](README.md) — full documentation index
 - [Configuration](configuration.md) — the tool-exposure flags and other context-budget variables
-- [Development](development.md) — running the Docker test instances
+- [Development](../CONTRIBUTING.md) — running the Docker test instances
