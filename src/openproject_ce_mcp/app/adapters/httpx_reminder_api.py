@@ -18,6 +18,7 @@ from ..errors import NotFoundError
 from ..ports.reminder_api import ReminderRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
+from ._text import delimit_user_content as _delimit_user_content
 from ._text import id_from_href as _id_from_href
 from ._text import link_to_web_url as _link_to_web_url
 from ._text import trim_text as _trim_text
@@ -35,7 +36,7 @@ def normalize_reminder(payload: dict[str, Any], *, base_url: str, origin: str) -
     return ReminderSummary(
         id=int(payload["id"]),
         remind_at=payload.get("remindAt"),
-        note=_trim_text(payload.get("note"), limit=SUBJECT_LIMIT),
+        note=_delimit_user_content(_trim_text(payload.get("note"), limit=SUBJECT_LIMIT)),
         work_package_id=_id_from_href(links.get("remindable", {}).get("href")),
         creator=_trim_text(creator.get("name"), limit=SUBJECT_LIMIT) if isinstance(creator, dict) else None,
         url=_link_to_web_url(links.get("self", {}).get("href"), base_url=base_url, origin=origin),
