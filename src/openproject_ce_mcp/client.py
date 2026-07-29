@@ -298,8 +298,12 @@ class OpenProjectClient:
         if not read_needs_lookup and not write_needs_lookup:
             return
         try:
-            payload = await self._get("projects", params={"pageSize": "500"})
-            for item in payload.get("_embedded", {}).get("elements", []):
+            # Projects is genuinely OffsetPaginatedCollection server-side (verified
+            # against op-sources) -- a single bounded fetch capped at 500 used to
+            # silently skip caching the identifier of any project beyond that cap,
+            # which then failed link-based allowlist matching for that project.
+            elements = await self._fetch_all_pages("projects")
+            for item in elements:
                 project_id = item.get("id")
                 project_identifier = item.get("identifier")
                 project_name = item.get("name") or ""
@@ -791,19 +795,15 @@ class OpenProjectClient:
         effective_limit = self._resolve_limit(limit)
 
         if search is not None:
-            # No server-side name/login/email filter exists for /users, so over-fetch
-            # up to settings.max_results in one request and paginate the filtered
-            # survivors in memory instead of trusting the server's pre-filter total
-            # (same pattern as list_versions' project-scoped-with-search branch).
-            payload = await self._get(
-                "users",
-                params={"offset": "1", "pageSize": str(self.settings.max_results)},
-            )
-            results = [
-                self.normalize_user(item)
-                for item in payload.get("_embedded", {}).get("elements", [])
-                if isinstance(item, dict)
-            ]
+            # No server-side name/login/email filter exists for /users, so walk
+            # every server page (Users is genuinely OffsetPaginatedCollection --
+            # verified against op-sources -- a single bounded fetch capped at
+            # max_results would silently hide any match beyond that cap) and
+            # paginate the filtered survivors in memory instead of trusting the
+            # server's pre-filter total (same pattern as list_versions' global
+            # branch).
+            elements = await self._fetch_all_pages("users")
+            results = [self.normalize_user(item) for item in elements]
             search_key = search.casefold()
             results = [
                 item
@@ -866,16 +866,12 @@ class OpenProjectClient:
         effective_limit = self._resolve_limit(limit)
 
         if search is not None:
-            # Same over-fetch-then-filter-then-paginate pattern as list_users above.
-            payload = await self._get(
-                "groups",
-                params={"offset": "1", "pageSize": str(self.settings.max_results)},
-            )
-            results = [
-                self.normalize_group(item)
-                for item in payload.get("_embedded", {}).get("elements", [])
-                if isinstance(item, dict)
-            ]
+            # Same walk-every-page-then-filter-then-paginate pattern as list_users
+            # above -- Groups is genuinely OffsetPaginatedCollection server-side
+            # (verified against op-sources), so a single bounded fetch capped at
+            # max_results would silently hide any match beyond that cap.
+            elements = await self._fetch_all_pages("groups")
+            results = [self.normalize_group(item) for item in elements]
             search_key = search.casefold()
             results = [item for item in results if search_key in (item.name or "").casefold()]
             total = len(results)
@@ -1493,18 +1489,13 @@ class OpenProjectClient:
     ) -> NewsListResult:
         self._ensure_read_enabled("project")
         effective_limit = self._resolve_limit(limit)
-        payload = await self._get(
-            "news",
-            params={
-                "offset": "1",
-                "pageSize": str(self.settings.max_results),
-            },
-        )
-        results = [
-            self.normalize_news(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._news_payload_allowed(item)
-        ]
+        # News is genuinely OffsetPaginatedCollection server-side (verified against
+        # op-sources) and results are filtered client-side against the allowlist --
+        # a single bounded fetch capped at max_results would silently hide any news
+        # item beyond that cap, same bug class as list_project_memberships/
+        # list_versions' global branch.
+        elements = await self._fetch_all_pages("news")
+        results = [self.normalize_news(item) for item in elements if self._news_payload_allowed(item)]
 
         if project is not None:
             project_payload = await self._resolve_project_ref(project, write=False)
@@ -3396,36 +3387,19 @@ class OpenProjectClient:
     ) -> VersionListResult:
         self._ensure_read_enabled("version")
         effective_limit = self._resolve_limit(limit)
-        if project and not search:
+        if project:
             # GET /api/v3/versions has no project filter; use the project-scoped endpoint.
             # Access to the project is verified by _get_project_payload, so per-item
             # allowlist checks are redundant and would fail because the definingProject
-            # link only carries the title (display name), not the identifier. No client-side
-            # filtering happens here, so exact server-side pagination is safe.
-            project_payload = await self._get_project_payload(project)
-            project_id = int(project_payload["id"])
-            params = {"offset": str(offset), "pageSize": str(effective_limit)}
-            payload = await self._get(f"projects/{project_id}/versions", params=params)
-            results = [
-                self.normalize_version(item)
-                for item in payload.get("_embedded", {}).get("elements", [])
-                if isinstance(item, dict)
-            ]
-            server_total = int(payload.get("total", len(results)))
-            return VersionListResult(
-                offset=offset,
-                limit=effective_limit,
-                total=server_total,
-                count=len(results),
-                next_offset=_next_offset(offset, effective_limit, server_total),
-                truncated=server_total > offset * effective_limit,
-                results=results,
-            )
-
-        if project:
-            # search given: no server-side name filter exists for the project-scoped
-            # endpoint either, so a full walk of every server page is required --
-            # a single bounded fetch would silently hide any version beyond that cap.
+            # link only carries the title (display name), not the identifier. This
+            # endpoint's collection is genuinely unpaginated server-side (verified
+            # against op-sources' VersionCollectionRepresenter < UnpaginatedCollection,
+            # via VersionsByProjectAPI) -- offset/pageSize params are silently ignored
+            # and every element is always returned regardless, so a single bounded
+            # fetch would over-fetch (return every version, not just the requested
+            # page) while reporting misleading pagination metadata. Walk (a no-op
+            # single request, since the server already returns everything) and slice
+            # client-side, same as the global/search branches below.
             project_payload = await self._get_project_payload(project)
             project_id = int(project_payload["id"])
             elements = await self._fetch_all_pages(f"projects/{project_id}/versions")
@@ -4144,7 +4118,7 @@ class OpenProjectClient:
             ReminderSummary(
                 id=int(payload["id"]),
                 remind_at=payload.get("remindAt"),
-                note=_trim_text(payload.get("note"), limit=SUBJECT_LIMIT),
+                note=_delimit_user_content(_trim_text(payload.get("note"), limit=SUBJECT_LIMIT)),
                 work_package_id=_id_from_href(links.get("remindable", {}).get("href")),
                 creator=_trim_text(creator.get("name"), limit=SUBJECT_LIMIT) if isinstance(creator, dict) else None,
                 url=self._link_to_web_url(links.get("self", {}).get("href")),
@@ -4569,6 +4543,7 @@ class OpenProjectClient:
             elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
             total = int(payload.get("total", len(elements)))
             results = [self.normalize_notification(item) for item in elements]
+            truncated = total > offset * effective_limit
         else:
             # Regression found via a bidirectional bugfix audit against
             # release/0.4.0: server-side pagination has no project filter, so a
@@ -4578,11 +4553,17 @@ class OpenProjectClient:
             # server pages. Re-scan from the start every call, skipping
             # already-seen allowed matches, until `limit` allowed records are
             # collected or the server collection is genuinely exhausted.
-            filtered, total = await self._rescan_notifications(
+            filtered, total, truncated = await self._rescan_notifications(
                 unread_only=unread_only, offset=offset, limit=effective_limit
             )
             results = [self.normalize_notification(item) for item in filtered]
-        return NotificationListResult(count=len(results), total=total, results=results)
+        return NotificationListResult(
+            count=len(results),
+            total=total,
+            truncated=truncated,
+            next_offset=offset + 1 if truncated else None,
+            results=results,
+        )
 
     def _notification_params(self, *, unread_only: bool, offset: int, limit: int) -> dict[str, str]:
         params: dict[str, str] = {"offset": str(offset), "pageSize": str(limit)}
@@ -4592,13 +4573,14 @@ class OpenProjectClient:
 
     async def _rescan_notifications(
         self, *, unread_only: bool, offset: int, limit: int
-    ) -> tuple[list[dict[str, Any]], int]:
+    ) -> tuple[list[dict[str, Any]], int, bool]:
         skip_count = (offset - 1) * limit
         skipped = 0
         results: list[dict[str, Any]] = []
         wp_cache: dict[str, bool] = {}
         server_offset = 1
         server_page_size = self.settings.max_page_size
+        truncated = False
 
         while len(results) < limit:
             payload = await self._get(
@@ -4625,13 +4607,16 @@ class OpenProjectClient:
                 # This page had more allowed matches than needed -- stop without
                 # checking server exhaustion: there's at least one more allowed
                 # notification waiting, so treating this as "exhausted" would
-                # wrongly hide it from a follow-up call.
+                # wrongly hide it from a follow-up call. Report truncated=True so
+                # the caller knows to request the next offset instead of assuming
+                # this page is everything.
+                truncated = True
                 break
             if len(elements) < server_page_size:
                 break
             server_offset += 1
 
-        return results, len(results)
+        return results, len(results), truncated
 
     async def _notification_payload_allowed(self, payload: dict[str, Any], wp_cache: dict[str, bool]) -> bool:
         links = payload.get("_links", {})
@@ -6109,7 +6094,7 @@ class OpenProjectClient:
             RelationSummary(
                 id=int(payload["id"]),
                 type=payload.get("type"),
-                description=_trim_text(payload.get("description"), limit=SUBJECT_LIMIT),
+                description=_delimit_user_content(_trim_text(payload.get("description"), limit=SUBJECT_LIMIT)),
                 from_id=_id_from_href(links.get("from", {}).get("href")),
                 from_subject=from_subject,
                 to_id=_id_from_href(links.get("to", {}).get("href")),
@@ -6629,7 +6614,7 @@ class OpenProjectClient:
                 or f"Attachment {payload['id']}",
                 file_name=_trim_text(payload.get("fileName"), limit=SUBJECT_LIMIT),
                 file_size=payload.get("fileSize"),
-                description=_extract_formattable_text(payload.get("description")),
+                description=self._visible_formattable_text(payload.get("description"), "attachment", "description"),
                 content_type=_trim_text(payload.get("contentType"), limit=SUBJECT_LIMIT),
                 status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
                 author=_link_title(links.get("author")),
@@ -6941,14 +6926,17 @@ class OpenProjectClient:
         links = payload.get("_links", {})
         scope_href = links.get("scope", {}).get("href") if isinstance(links.get("scope"), dict) else None
         scope = _trim_text(scope_href, limit=SUBJECT_LIMIT)
-        return GridSummary(
-            id=grid_id,
-            row_count=payload.get("rowCount"),
-            column_count=payload.get("columnCount"),
-            scope=scope,
-            created_at=payload.get("createdAt"),
-            updated_at=payload.get("updatedAt"),
-            url=self._api_href(f"grids/{grid_id}"),
+        return self._apply_hidden_fields(
+            "grid",
+            GridSummary(
+                id=grid_id,
+                row_count=payload.get("rowCount"),
+                column_count=payload.get("columnCount"),
+                scope=scope,
+                created_at=payload.get("createdAt"),
+                updated_at=payload.get("updatedAt"),
+                url=self._api_href(f"grids/{grid_id}"),
+            ),
         )
 
     def normalize_user_preferences(self, payload: dict[str, Any]) -> UserPreferences:
@@ -7619,8 +7607,9 @@ class OpenProjectClient:
         match is only trusted once the search has confirmed there is no second project with that same
         name (see _resolve_project_by_name for the exact algorithm).
         """
+        safe_ref = _reject_path_traversal_segments(project_ref, field_name="project_ref")
         try:
-            payload = await self._get(f"projects/{quote(project_ref, safe='')}")
+            payload = await self._get(f"projects/{quote(safe_ref, safe='')}")
         except NotFoundError:
             payload = None
         if payload is not None and payload.get("_type") != "Project":
