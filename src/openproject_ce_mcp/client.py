@@ -27,6 +27,7 @@ from .app.adapters.httpx_group_api import HttpxGroupApi
 from .app.adapters.httpx_job_status_api import HttpxJobStatusApi
 from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
+from .app.adapters.httpx_notification_api import HttpxNotificationApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
 from .app.adapters.httpx_query_metadata_api import HttpxQueryMetadataApi
 from .app.adapters.httpx_reminder_api import HttpxReminderApi
@@ -73,6 +74,7 @@ from .app.ports.group_api import GroupApi
 from .app.ports.job_status_api import JobStatusApi
 from .app.ports.membership_api import MembershipApi
 from .app.ports.news_api import NewsApi
+from .app.ports.notification_api import NotificationApi
 from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
 from .app.ports.query_metadata_api import QueryMetadataApi
@@ -104,6 +106,7 @@ from .app.services.group_service import GroupService
 from .app.services.job_status_service import JobStatusService
 from .app.services.membership_service import MembershipService
 from .app.services.news_service import NewsService
+from .app.services.notification_service import NotificationService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
 from .app.services.query_metadata_service import QueryMetadataService
@@ -171,7 +174,6 @@ from .models import (
     NonWorkingDayListResult,
     NotificationListResult,
     NotificationMarkResult,
-    NotificationSummary,
     OptionValue,
     PrincipalListResult,
     PrincipalSummary,
@@ -564,6 +566,16 @@ class OpenProjectClient:
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
             resolve_work_package_id=self._work_package_resolver.resolve_id,
+            work_package_project_allowed=self._work_package_resolver.project_link_allowed,
+        )
+
+        self._notification_api: NotificationApi = HttpxNotificationApi(
+            HttpxTransport(self._http), api_prefix=self._api_prefix
+        )
+        self._notification_service = NotificationService(
+            api=self._notification_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
             work_package_project_allowed=self._work_package_resolver.project_link_allowed,
         )
 
@@ -3093,105 +3105,13 @@ class OpenProjectClient:
         limit: int | None = None,
         offset: int = 1,
     ) -> NotificationListResult:
-        self._ensure_read_enabled("personal")
-        effective_limit = self._resolve_limit(limit)
-        params: dict[str, str] = {
-            "offset": str(offset),
-            "pageSize": str(effective_limit),
-        }
-        if unread_only:
-            params["filters"] = _json_param([{"readIAN": {"operator": "=", "values": ["f"]}}])
-        payload = await self._get("notifications", params=params)
-        elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
-        if _scope_allows_all(self.settings.read_projects):
-            filtered = elements
-            total = int(payload.get("total", len(elements)))
-        else:
-            # Server-side pagination has no project filter, so this only scopes the
-            # current page — a filtered-empty page does not prove no further allowed
-            # notifications exist on later pages (see docs/architecture.md).
-            wp_cache = WorkPackageAllowedContext()
-            filtered = []
-            for item in elements:
-                if await self._notification_payload_allowed(item, wp_cache):
-                    filtered.append(item)
-            total = len(filtered)
-        results = [self.normalize_notification(item) for item in filtered]
-        return NotificationListResult(count=len(results), total=total, results=results)
-
-    async def _notification_payload_allowed(self, payload: dict[str, Any], wp_cache: WorkPackageAllowedContext) -> bool:
-        links = payload.get("_links", {})
-        project_link = links.get("project")
-        if isinstance(project_link, dict):
-            return self._payload_allowed(lambda: self._ensure_project_link_allowed(project_link))
-        resource_link = links.get("resource")
-        resource_href = resource_link.get("href") if isinstance(resource_link, dict) else None
-        if isinstance(resource_href, str) and "work_packages/" in resource_href:
-            # Work-package-linked notification without its own resolvable project
-            # link — resolve via the work package itself instead of trusting the
-            # absent link (same helper/cache pattern as list_relations/list_reminders).
-            return await self._work_package_project_allowed(resource_href, context=wp_cache)
-        return True  # no project link and no work-package resource link: genuinely personal/global
+        return await self._notification_service.list_all(unread_only=unread_only, limit=limit, offset=offset)
 
     async def mark_notification_read(self, notification_id: int, *, confirm: bool = False) -> NotificationMarkResult:
-        self._ensure_write_enabled("personal")
-        if not confirm:
-            # No OpenProject dry-run endpoint exists for this action — this is a
-            # client-side preview only: ready=True means the request is
-            # valid and will be sent once confirmed, not that OpenProject has
-            # already validated it.
-            return NotificationMarkResult(
-                action="mark_read",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message=(
-                    f"Ask for confirmation, then call again with confirm=true to mark "
-                    f"notification {notification_id} read."
-                ),
-                notification_id=notification_id,
-            )
-        response = await self._request("POST", f"notifications/{notification_id}/read_ian")
-        if response.status_code not in {200, 201, 204}:
-            raise OpenProjectServerError(
-                f"OpenProject mark notification read failed with status {response.status_code}."
-            )
-        return NotificationMarkResult(
-            action="mark_read",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message=f"Notification {notification_id} marked read.",
-            notification_id=notification_id,
-        )
+        return await self._notification_service.mark_read(notification_id, confirm=confirm)
 
     async def mark_all_notifications_read(self, *, confirm: bool = False) -> NotificationMarkResult:
-        self._ensure_write_enabled("personal")
-        if not confirm:
-            return NotificationMarkResult(
-                action="mark_all_read",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message=(
-                    "Marks all currently unread notifications read. Ask for confirmation, "
-                    "then call again with confirm=true to apply it."
-                ),
-                notification_id=None,
-            )
-        response = await self._request("POST", "notifications/read_ian")
-        if response.status_code not in {200, 201, 204}:
-            raise OpenProjectServerError(
-                f"OpenProject mark all notifications read failed with status {response.status_code}."
-            )
-        return NotificationMarkResult(
-            action="mark_all_read",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="All unread notifications marked read.",
-            notification_id=None,
-        )
+        return await self._notification_service.mark_all_read(confirm=confirm)
 
     # --- User CRUD ---
 
@@ -4153,38 +4073,6 @@ class OpenProjectClient:
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
                 url=self._web_url(f"time_entries/{payload['id']}"),
-            ),
-        )
-
-    def normalize_notification(self, payload: dict[str, Any]) -> NotificationSummary:
-        notification_id = int(payload["id"])
-        links = payload.get("_links", {})
-        project_link = links.get("project")
-        resource_link = links.get("resource")
-        resource_href = resource_link.get("href") if isinstance(resource_link, dict) else None
-        work_package_id: int | None = None
-        work_package_subject: str | None = None
-        if isinstance(resource_href, str) and "work_packages/" in resource_href:
-            work_package_id = _id_from_href(resource_href)
-            work_package_subject = _link_title(resource_link)
-        read_ian = payload.get("readIAN")
-        if read_ian is None:
-            read_ian = bool(payload.get("read"))
-        reason_link = links.get("reason")
-        reason = _link_title(reason_link) or _trim_text(payload.get("reason"), limit=SUBJECT_LIMIT)
-        return self._apply_hidden_fields(
-            "notification",
-            NotificationSummary(
-                id=notification_id,
-                subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Notification {notification_id}",
-                reason=reason,
-                read=bool(read_ian),
-                project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
-                project_name=_link_title(project_link),
-                work_package_id=work_package_id,
-                work_package_subject=work_package_subject,
-                created_at=payload.get("createdAt") or "",
-                url=self._api_href(f"notifications/{notification_id}"),
             ),
         )
 

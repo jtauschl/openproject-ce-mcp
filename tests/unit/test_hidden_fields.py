@@ -598,39 +598,14 @@ def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() -> None:
 # in tests/test_config.py, unaffected by this migration.
 
 
-@pytest.mark.asyncio
-async def test_hidden_notification_fields_are_tagged_and_dropped_from_payload() -> None:
-    # Regression test for a real gap found during the Statuses/Priorities/Types
-    # migration's broader audit (OPM-1627): normalize_notification previously
-    # never called _apply_hidden_fields at all, and config.py's
-    # HIDE_FIELD_ENV_BY_ENTITY had no "notification" entry either --
-    # OPENPROJECT_HIDE_NOTIFICATION_FIELDS never existed as a real env var.
-    # Notifications is still a flat, unmigrated client.py domain (OPM-1629).
-    client = OpenProjectClient(
-        _base_settings(hidden_fields={"notification": ("project_name",)}),
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
-    )
-
-    notification = client.normalize_notification(
-        {
-            "id": 1,
-            "subject": "Work package updated",
-            "readIAN": False,
-            "createdAt": "2026-01-01T00:00:00Z",
-            "_links": {
-                "project": {"href": "/api/v3/projects/6", "title": "Demo Project"},
-            },
-        }
-    )
-
-    assert notification._hidden_keys == frozenset({"project_name"})
-    assert notification.project_name == "Demo Project"  # preserved on the dataclass
-    assert notification.project_id == 6
-    serialized = _to_payload(notification)
-    assert "project_name" not in serialized
-    assert serialized["project_id"] == 6
-
-    await client.aclose()
+# Notification's hidden-field-masking regression coverage (originally
+# test_hidden_notification_fields_are_tagged_and_dropped_from_payload, added
+# for OPM-1627's config-map gap fix) moved to
+# tests/unit/test_app_httpx_notification_api.py (normalize_notification's pure
+# HAL->model shape) and tests/unit/test_app_notification_service.py
+# (test_project_name_hidden_by_notification_scope_not_project_scope) after the
+# Notifications domain migration -- client.normalize_notification no longer
+# exists.
 
 
 @pytest.mark.asyncio

@@ -1045,3 +1045,30 @@ def test_reminder_service_binds_its_four_dependencies_to_the_right_protocols() -
     assert hints["work_package_project_allowed"] is not WorkPackageResolver, (
         "ReminderService.__init__'s work_package_project_allowed param must not be the concrete resolver class"
     )
+
+
+def test_notification_service_binds_the_api_param_to_notification_api_specifically() -> None:
+    """Notifications (OPM-318 eighth consumer) mirrors Reminders' list()
+    shape exactly: list_all() fans out across N different work packages (one
+    per notification with a work-package resource link but no project link
+    of its own), so it needs WorkPackageProjectAllowedCheck, not a full
+    WorkPackageIdResolver (Notifications has no create/update/delete method
+    that resolves a caller-supplied work-package reference)."""
+    from openproject_ce_mcp.app.adapters.httpx_notification_api import HttpxNotificationApi
+    from openproject_ce_mcp.app.ports.notification_api import NotificationApi
+    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageProjectAllowedCheck
+    from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
+    from openproject_ce_mcp.app.services.notification_service import NotificationService
+
+    hints = typing.get_type_hints(NotificationService.__init__)
+    assert hints["api"] is NotificationApi, "NotificationService.__init__'s api param must be typed NotificationApi"
+    assert hints["api"] is not HttpxNotificationApi, (
+        "NotificationService.__init__'s api param must not be the concrete adapter"
+    )
+
+    assert hints["work_package_project_allowed"] is WorkPackageProjectAllowedCheck, (
+        "NotificationService.__init__'s work_package_project_allowed param must be typed WorkPackageProjectAllowedCheck"
+    )
+    assert hints["work_package_project_allowed"] is not WorkPackageResolver, (
+        "NotificationService.__init__'s work_package_project_allowed param must not be the concrete resolver class"
+    )
