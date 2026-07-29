@@ -37,9 +37,32 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
+from ..errors import InvalidInputError
 from ..origin import origin_from_url
 
 SUBJECT_LIMIT = 255
+
+
+def reject_path_traversal_segments(value: str, *, field_name: str) -> str:
+    """Reject a raw id/slug containing a `.`/`..` path segment.
+
+    Found via a self-review of release/0.3.4 (this exact helper was added
+    there first, then ported here): `urllib.parse.quote()` never escapes `.`
+    (an "unreserved" RFC 3986 character even with `safe=""`), so an id like
+    `"../users/7"` passes through quoting completely unchanged. httpx then
+    normalizes that segment away when building the request URL (confirmed:
+    `httpx.Request("GET", ".../job_statuses/../projects/42").url` resolves to
+    `.../projects/42`), letting a caller reach an entirely different
+    endpoint -- bypassing whatever project-link allowlist check the intended
+    endpoint would have applied. Any raw id/slug interpolated directly into
+    a URL path (not a numeric id or a project/work-package resolver) must be
+    checked with this before being used in an f-string/quote() call.
+    """
+    text = str(value)
+    segments = text.split("/")
+    if any(segment in (".", "..") for segment in segments):
+        raise InvalidInputError(f"OpenProject {field_name} must not contain a '.' or '..' path segment.")
+    return text
 
 
 def trim_text(value: Any, *, limit: int) -> str | None:

@@ -21,6 +21,7 @@ both the display fields and the scoping link the Service checks.
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 from ...models import JobStatusDetail
 from ..ports.job_status_api import JobStatusRecord
@@ -29,6 +30,7 @@ from ._text import SUBJECT_LIMIT
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import link_to_web_url as _link_to_web_url
+from ._text import reject_path_traversal_segments as _reject_path_traversal_segments
 from ._text import slug_from_href as _slug_from_href
 from ._text import trim_text as _trim_text
 
@@ -103,7 +105,8 @@ class HttpxJobStatusApi:
         self._origin = origin
 
     async def get(self, job_status_id: str) -> JobStatusRecord:
-        payload = await self._transport.get_json(f"job_statuses/{job_status_id}")
+        safe_id = _reject_path_traversal_segments(job_status_id, field_name="job_status_id")
+        payload = await self._transport.get_json(f"job_statuses/{quote(safe_id, safe='')}")
         links = _job_status_inner_links(payload)
         project_link = links.get("project") or links.get("sourceProject")
         created_project_link = links.get("createdProject")

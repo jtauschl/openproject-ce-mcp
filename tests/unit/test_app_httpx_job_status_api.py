@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from openproject_ce_mcp.app.adapters.httpx_job_status_api import HttpxJobStatusApi, normalize_job_status
+from openproject_ce_mcp.app.errors import InvalidInputError
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 
 BASE_URL = "https://op.example.com"
@@ -115,6 +116,24 @@ async def test_get_requests_job_status_by_id() -> None:
     assert record.summary.id == "77"
     assert record.summary.status == "in_progress"
     assert record.project_link is None
+
+
+@pytest.mark.asyncio
+async def test_get_rejects_path_traversal_id() -> None:
+    """Regression (found via self-review on release/0.3.4, ported here):
+    job_status_id was interpolated into the URL path with no validation --
+    a value like "../projects/42" quotes to itself unchanged (quote()
+    never escapes ".") and httpx then normalizes ".." away when building
+    the request, redirecting it to an entirely different endpoint and
+    bypassing this domain's own allowlist check."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    async with _client(handler) as http_client:
+        api = HttpxJobStatusApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        with pytest.raises(InvalidInputError, match="job_status_id"):
+            await api.get("../projects/42")
 
 
 @pytest.mark.asyncio

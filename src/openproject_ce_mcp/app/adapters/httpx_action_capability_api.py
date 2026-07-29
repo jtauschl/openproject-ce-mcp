@@ -19,6 +19,7 @@ from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import link_to_web_url as _link_to_web_url
 from ._text import origin_from_url as _origin_from_url
+from ._text import reject_path_traversal_segments as _reject_path_traversal_segments
 from ._text import slug_from_href as _slug_from_href
 from ._text import trim_text as _trim_text
 
@@ -110,8 +111,15 @@ class HttpxActionCapabilityApi:
         # A capability_id is itself a multi-segment path (e.g.
         # "activities/read/w3-4") that OpenProject expects as real path
         # segments, not a percent-encoded slash -- quote(..., safe='')
-        # would turn "/" into "%2F" and 404.
-        payload = await self._transport.get_json(f"capabilities/{quote(capability_id, safe='/')}")
+        # would turn "/" into "%2F" and 404. But quote() never escapes "."
+        # (an unreserved RFC 3986 character even with safe=""), so a
+        # "/"-permissive quote alone lets a segment like ".." straight
+        # through -- httpx then normalizes ".." away when building the
+        # request URL, letting the caller reach an unrelated endpoint
+        # entirely (verified: capabilities/../users/7 resolves to
+        # /api/v3/users/7). Reject any "."/".." segment before quoting.
+        safe_capability_id = _reject_path_traversal_segments(capability_id, field_name="capability_id")
+        payload = await self._transport.get_json(f"capabilities/{quote(safe_capability_id, safe='/')}")
         return CapabilityRecord(
             summary=normalize_capability(payload, base_url=self._base_url, origin=self._origin),
             context_link=payload.get("_links", {}).get("context"),

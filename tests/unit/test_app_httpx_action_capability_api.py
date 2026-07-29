@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from openproject_ce_mcp.app.adapters.httpx_action_capability_api import HttpxActionCapabilityApi
+from openproject_ce_mcp.app.errors import InvalidInputError
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 
 BASE_URL = "https://op.example.com"
@@ -107,6 +108,25 @@ async def test_get_capability_requests_single_item_endpoint() -> None:
 
     assert record.summary.id == "update-project"
     assert record.context_link == {"href": "/api/v3/projects/1", "title": "Demo"}
+
+
+@pytest.mark.asyncio
+async def test_get_capability_rejects_path_traversal_id() -> None:
+    """Regression (found via self-review on release/0.3.4, ported here):
+    capability_id is quoted with safe='/' (real capability ids are
+    themselves multi-segment paths), but quote() never escapes "." either
+    way -- a value like "../users/7" quotes to itself unchanged, and httpx
+    then normalizes ".." away when building the request, redirecting it to
+    an entirely different endpoint and bypassing this domain's own
+    context-allowlist check."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    async with _client(handler) as http_client:
+        api = HttpxActionCapabilityApi(HttpxTransport(http_client), base_url=BASE_URL)
+        with pytest.raises(InvalidInputError, match="capability_id"):
+            await api.get_capability("../users/7")
 
 
 @pytest.mark.asyncio
