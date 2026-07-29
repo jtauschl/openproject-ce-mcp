@@ -364,6 +364,58 @@ async def test_list_work_package_watchers_denies_anchor_outside_read_allowlist(
         await read_denied_client.list_work_package_watchers(result.work_package_id)
 
 
+async def test_add_and_remove_work_package_watcher(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """Round-trips add_work_package_watcher/remove_work_package_watcher against
+    the real POST/DELETE work_packages/{id}/watchers[/{user_id}] endpoints,
+    watching/unwatching the work package as the current (token-owning) user."""
+    result = await client.create_work_package(
+        project=test_project,
+        type="Task",
+        subject=f"{_SUBJECT} watcher-add-remove-test",
+        confirm=True,
+    )
+    assert result.ready
+    wp_ids.append(result.work_package_id)
+
+    me = await client.get_current_user()
+
+    preview = await client.add_work_package_watcher(result.work_package_id, me.id)
+    assert preview.requires_confirmation
+
+    added = await client.add_work_package_watcher(result.work_package_id, me.id, confirm=True)
+    assert added.confirmed
+    assert added.watcher_user_id == me.id
+
+    watchers_after_add = await client.list_work_package_watchers(result.work_package_id)
+    assert any(w.id == me.id for w in watchers_after_add.results)
+
+    removed = await client.remove_work_package_watcher(result.work_package_id, me.id, confirm=True)
+    assert removed.confirmed
+
+    watchers_after_remove = await client.list_work_package_watchers(result.work_package_id)
+    assert not any(w.id == me.id for w in watchers_after_remove.results)
+
+
+async def test_add_work_package_watcher_denied_outside_write_allowlist(
+    denied_client: OpenProjectClient, client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    result = await client.create_work_package(
+        project=test_project,
+        type="Task",
+        subject=f"{_SUBJECT} watcher-add-denied-test",
+        confirm=True,
+    )
+    assert result.ready
+    wp_ids.append(result.work_package_id)
+
+    me = await client.get_current_user()
+
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.add_work_package_watcher(result.work_package_id, me.id, confirm=True)
+
+
 async def test_list_work_package_file_links_denies_anchor_outside_read_allowlist(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
@@ -388,3 +440,88 @@ async def test_list_work_package_file_links_denies_anchor_outside_read_allowlist
 
     with pytest.raises(PermissionDeniedError):
         await read_denied_client.list_work_package_file_links(result.work_package_id)
+
+
+async def test_get_work_packages_batch_partial_failure(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """get_work_packages fans out one get_work_package call per id via
+    asyncio.gather and tracks per-item success/failure -- never previously
+    exercised live with a mix of a real id and one that must fail."""
+    created = await client.create_work_package(
+        project=test_project, type="Task", subject=f"{_SUBJECT} batch-get", confirm=True
+    )
+    assert created.ready
+    wp_ids.append(created.work_package_id)
+
+    bogus_id = 2**31 - 1  # exceeds any real work package id on a fresh test instance
+    result = await client.get_work_packages(ids=[created.work_package_id, bogus_id])
+
+    assert result.total == 2
+    assert result.succeeded == 1
+    assert result.failed == 1
+
+    by_id = {item.id: item for item in result.results}
+    assert by_id[created.work_package_id].success
+    assert by_id[created.work_package_id].work_package is not None
+    assert not by_id[bogus_id].success
+    assert by_id[bogus_id].error is not None
+
+
+async def test_bulk_update_work_packages_partial_failure(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """bulk_update_work_packages loops update_work_package per item and
+    tracks per-item success/failure -- bulk *create* has live coverage above,
+    but bulk *update* (a distinct code path) did not until now."""
+    first = await client.create_work_package(
+        project=test_project, type="Task", subject=f"{_SUBJECT} bulk-update 1", confirm=True
+    )
+    assert first.ready
+    wp_ids.append(first.work_package_id)
+    second = await client.create_work_package(
+        project=test_project, type="Task", subject=f"{_SUBJECT} bulk-update 2", confirm=True
+    )
+    assert second.ready
+    wp_ids.append(second.work_package_id)
+
+    bogus_id = 2**31 - 1
+    items = [
+        {"work_package_id": first.work_package_id, "subject": f"{_SUBJECT} bulk-update 1 changed"},
+        {"work_package_id": second.work_package_id, "subject": f"{_SUBJECT} bulk-update 2 changed"},
+        {"work_package_id": bogus_id, "subject": "should fail"},
+    ]
+
+    preview = await client.bulk_update_work_packages(items=items, confirm=False)
+    # requires_confirmation is only set when every item validates cleanly
+    # (`not confirm and failed == 0`) -- with one item already failing
+    # validation in preview, there's nothing to confirm yet.
+    assert not preview.requires_confirmation
+    assert preview.succeeded == 2
+    assert preview.failed == 1
+
+    result = await client.bulk_update_work_packages(items=items, confirm=True)
+    assert result.total == 3
+    assert result.succeeded == 2
+    assert result.failed == 1
+
+    updated_first = await client.get_work_package(first.work_package_id)
+    assert "changed" in updated_first.subject
+    updated_second = await client.get_work_package(second.work_package_id)
+    assert "changed" in updated_second.subject
+
+
+async def test_get_project_work_package_context(client: OpenProjectClient, test_project: str) -> None:
+    """Aggregation method: resolves the project, then fetches types,
+    statuses, priorities, categories, and versions in parallel -- and, when
+    a type is given, the create-form schema for that type too. No prior live
+    coverage of either the untyped or typed path."""
+    untyped = await client.get_project_work_package_context(project=test_project)
+    assert untyped.available_types
+    assert untyped.available_statuses
+    assert untyped.available_priorities
+
+    type_name = untyped.available_types[0].title
+    typed = await client.get_project_work_package_context(project=test_project, type=type_name)
+    assert typed.selected_type_name == type_name
+    assert typed.fields
