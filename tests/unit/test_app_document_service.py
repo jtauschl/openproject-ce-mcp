@@ -67,9 +67,10 @@ class _FakeDocumentApi:
         self.commit_update_calls: list[tuple[int, dict]] = []
         self.commit_result_project: str = "Demo Project"
 
-    async def list_all(self, *, page_size: int) -> list[DocumentRecord]:
+    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[DocumentRecord], int]:
         self.list_all_calls.append(page_size)
-        return list(self._records.values())
+        records = list(self._records.values())
+        return records, len(records)
 
     async def get(self, document_id: int) -> DocumentRecord:
         self.get_calls.append(document_id)

@@ -41,8 +41,9 @@ async def test_list_all_sends_bounded_page_and_builds_records() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxDocumentApi(HttpxTransport(http_client), base_url=BASE_URL)
-        records = await api.list_all(page_size=50)
+        records, total = await api.list_all(offset=1, page_size=50)
 
+    assert total == 1
     assert len(records) == 1
     assert records[0].summary.id == 1
     assert records[0].summary.title == "Architecture"
@@ -61,9 +62,10 @@ async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxDocumentApi(HttpxTransport(http_client), base_url=BASE_URL)
-        records = await api.list_all(page_size=50)
+        records, total = await api.list_all(offset=1, page_size=50)
 
     assert records == []
+    assert total == 0
 
 
 @pytest.mark.asyncio

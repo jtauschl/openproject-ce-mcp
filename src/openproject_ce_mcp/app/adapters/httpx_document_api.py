@@ -126,10 +126,14 @@ class HttpxDocumentApi:
             project_link=payload.get("_links", {}).get("project"),
         )
 
-    async def list_all(self, *, page_size: int) -> list[DocumentRecord]:
-        payload = await self._transport.get_json("documents", params={"offset": "1", "pageSize": str(page_size)})
+    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[DocumentRecord], int]:
+        payload = await self._transport.get_json(
+            "documents", params={"offset": str(offset), "pageSize": str(page_size)}
+        )
         elements = payload.get("_embedded", {}).get("elements", [])
-        return [self._record(item) for item in elements if isinstance(item, dict)]
+        records = [self._record(item) for item in elements if isinstance(item, dict)]
+        total = int(payload.get("total", len(records)))
+        return records, total
 
     async def get(self, document_id: int) -> DocumentRecord:
         return self._record(await self._transport.get_json(f"documents/{document_id}"))

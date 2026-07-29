@@ -114,30 +114,20 @@ class HttpxSprintApi:
             defining_workspace_payload=embedded if isinstance(embedded, dict) else None,
         )
 
-    async def list_all(self, *, page_size: int) -> list[SprintRecord]:
-        payload = await self._transport.get_json("sprints", params={"offset": "1", "pageSize": str(page_size)})
+    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[SprintRecord], int]:
+        payload = await self._transport.get_json("sprints", params={"offset": str(offset), "pageSize": str(page_size)})
         elements = payload.get("_embedded", {}).get("elements", [])
-        return [self._record(item) for item in elements if isinstance(item, dict)]
+        records = [self._record(item) for item in elements if isinstance(item, dict)]
+        total = int(payload.get("total", len(records)))
+        return records, total
 
-    async def list_for_project(self, project_id: int, *, page_size: int) -> list[SprintRecord]:
-        records, _total = await self.list_for_project_page(project_id, offset=1, page_size=page_size)
-        return records
-
-    async def list_for_project_page(
-        self, project_id: int, *, offset: int, page_size: int
-    ) -> tuple[list[SprintRecord], int]:
-        """Genuine server-paginated page (distinct request per `offset`), for
-        `_resolve_sprint_id`'s exhaustive by-name search across every server
-        page -- `list_for_project`'s single bounded fetch (mirrors
-        `list_all`'s shape) cannot walk more pages than settings.max_results
-        covers in one request.
-        """
+    async def list_for_project(self, project_id: int, *, offset: int, page_size: int) -> tuple[list[SprintRecord], int]:
         payload = await self._transport.get_json(
             f"projects/{project_id}/sprints", params={"offset": str(offset), "pageSize": str(page_size)}
         )
         elements = payload.get("_embedded", {}).get("elements", [])
         records = [self._record(item) for item in elements if isinstance(item, dict)]
-        total = int(payload.get("total", len(elements)))
+        total = int(payload.get("total", len(records)))
         return records, total
 
     async def get(self, sprint_id: int) -> SprintRecord:

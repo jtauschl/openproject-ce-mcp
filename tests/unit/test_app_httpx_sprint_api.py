@@ -55,8 +55,9 @@ async def test_list_all_requests_the_sprints_endpoint() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxSprintApi(HttpxTransport(http_client), base_url=BASE_URL)
-        records = await api.list_all(page_size=50)
+        records, total = await api.list_all(offset=1, page_size=50)
 
+    assert total == 1
     assert len(records) == 1
     summary = records[0].summary
     assert summary.id == 1
@@ -96,9 +97,10 @@ async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxSprintApi(HttpxTransport(http_client), base_url=BASE_URL)
-        records = await api.list_all(page_size=50)
+        records, total = await api.list_all(offset=1, page_size=50)
 
     assert records == []
+    assert total == 0
 
 
 @pytest.mark.asyncio
@@ -110,14 +112,15 @@ async def test_list_for_project_requests_the_project_scoped_endpoint() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxSprintApi(HttpxTransport(http_client), base_url=BASE_URL)
-        records = await api.list_for_project(7, page_size=50)
+        records, total = await api.list_for_project(7, offset=1, page_size=50)
 
+    assert total == 1
     assert len(records) == 1
     assert records[0].summary.id == 1
 
 
 @pytest.mark.asyncio
-async def test_list_for_project_page_returns_records_and_total() -> None:
+async def test_list_for_project_returns_records_and_total_at_arbitrary_offset() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/projects/7/sprints"
         assert dict(request.url.params) == {"offset": "2", "pageSize": "20"}
@@ -129,7 +132,7 @@ async def test_list_for_project_page_returns_records_and_total() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxSprintApi(HttpxTransport(http_client), base_url=BASE_URL)
-        records, total = await api.list_for_project_page(7, offset=2, page_size=20)
+        records, total = await api.list_for_project(7, offset=2, page_size=20)
 
     assert [r.summary.id for r in records] == [1, 2]
     assert total == 5
@@ -231,4 +234,4 @@ async def test_not_found_propagates_unwrapped_from_the_adapter() -> None:
     async with _client(handler) as http_client:
         api = HttpxSprintApi(HttpxTransport(http_client), base_url=BASE_URL)
         with pytest.raises(NotFoundError, match="OpenProject resource not found."):
-            await api.list_all(page_size=50)
+            await api.list_all(offset=1, page_size=50)

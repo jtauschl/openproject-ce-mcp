@@ -43,7 +43,7 @@ from typing import Any
 from ...config import Settings
 from ...models import SprintDetail, SprintListResult
 from ..errors import NotFoundError
-from ..pagination import clamp_limit, paginate_client
+from ..pagination import clamp_limit, paginate_all, paginate_client
 from ..policies import access, hidden_fields
 from ..policies.sprint_policy import ensure_sprint_workspace_allowed, sprint_payload_allowed
 from ..ports.project_ref import ProjectRefResolver
@@ -109,7 +109,13 @@ class SprintService:
             max_results=self._settings.max_results,
         )
         try:
-            records = await self._api.list_all(page_size=self._settings.max_results)
+            # A single fetch capped at settings.max_results silently hid any
+            # sprint beyond that cap once the endpoint's real result count
+            # exceeded it -- walk every server page instead.
+            records = await paginate_all(
+                lambda offset, page_size: self._api.list_all(offset=offset, page_size=page_size),
+                page_size=self._settings.max_page_size,
+            )
         except NotFoundError as exc:
             raise NotFoundError(
                 "OpenProject sprints require the Backlogs module and OpenProject 17.3 or newer."
@@ -135,7 +141,15 @@ class SprintService:
         project_payload = await self._resolve_project_ref(project, write=False, context=context)
         project_id = int(project_payload["id"])
         try:
-            records = await self._api.list_for_project(project_id, page_size=self._settings.max_results)
+            # Even though this is project-scoped, results are still filtered
+            # client-side (a sprint shared into this project can be *defined*
+            # by a different, possibly disallowed project), so a full walk of
+            # every server page is required -- a single bounded fetch would
+            # silently hide any sprint beyond that cap.
+            records = await paginate_all(
+                lambda offset, page_size: self._api.list_for_project(project_id, offset=offset, page_size=page_size),
+                page_size=self._settings.max_page_size,
+            )
         except NotFoundError as exc:
             raise NotFoundError(
                 "OpenProject project sprints require the Backlogs module and OpenProject 17.3 or newer."

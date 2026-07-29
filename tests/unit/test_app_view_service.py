@@ -70,9 +70,10 @@ class _FakeViewApi:
         self.list_all_calls: list[int] = []
         self.get_calls: list[int] = []
 
-    async def list_all(self, *, page_size: int) -> list[ViewRecord]:
+    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[ViewRecord], int]:
         self.list_all_calls.append(page_size)
-        return list(self._records.values())
+        records = list(self._records.values())
+        return records, len(records)
 
     async def get(self, view_id: int) -> ViewRecord:
         self.get_calls.append(view_id)

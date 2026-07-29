@@ -62,18 +62,9 @@ class SprintApi(Protocol):
     project it was shared into via Backlogs sharing).
     """
 
-    async def list_all(self, *, page_size: int) -> list[SprintRecord]: ...
-    async def list_for_project(self, project_id: int, *, page_size: int) -> list[SprintRecord]: ...
-
-    async def list_for_project_page(
+    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[SprintRecord], int]: ...
+    async def list_for_project(
         self, project_id: int, *, offset: int, page_size: int
-    ) -> tuple[list[SprintRecord], int]:
-        """Genuine server-paginated page (distinct request per `offset`) plus
-        the server-reported `total` -- used only by client.py's
-        `_resolve_sprint_id` exhaustive by-name search, which must walk every
-        server page rather than trust `list_for_project`'s single bounded
-        fetch. Every other read path uses `list_all`/`list_for_project`.
-        """
-        ...
+    ) -> tuple[list[SprintRecord], int]: ...
 
     async def get(self, sprint_id: int) -> SprintRecord: ...

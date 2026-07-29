@@ -15,6 +15,8 @@ identical to masking eagerly during page-building, as the original inline
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 from ...config import Settings
 from ...models import VersionSummary
 from ..pagination import paginate_client, paginate_server
@@ -22,7 +24,28 @@ from ..policies import access
 from ..policies.version_policy import version_payload_allowed
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
-from ..ports.version_api import FORMATTABLE_LIMIT, VersionApi
+from ..ports.version_api import FORMATTABLE_LIMIT, VersionApi, VersionPage, VersionRecord
+
+
+async def _fetch_all_pages(
+    fetch_page: Callable[[int], Awaitable[VersionPage]], *, page_size: int
+) -> list[VersionRecord]:
+    """Walk every server page of a VersionPage-returning fetcher to completion.
+
+    Terminates on a short page (fewer records than requested page_size), not on
+    a possibly-absent/inconsistent server_total -- a single bounded fetch
+    (this function's predecessor) silently hid any version beyond
+    settings.max_results once the endpoint's real result count exceeded it.
+    """
+    records: list[VersionRecord] = []
+    offset = 1
+    while True:
+        page = await fetch_page(offset)
+        records.extend(page.records)
+        if len(page.records) < page_size:
+            break
+        offset += 1
+    return records
 
 
 async def fetch_version_page(
@@ -65,22 +88,29 @@ async def fetch_version_page(
 
     if project:
         # search given: no server-side name filter exists for the project-scoped
-        # endpoint either, so over-fetch this project's versions and filter/paginate
-        # in memory instead of relying on exact server-side pagination.
+        # endpoint either, so a full walk of every server page is required -- a
+        # single bounded fetch would silently hide any version beyond that cap.
         project_payload = await resolve_project_ref(project, write=False, context=context)
-        page = await api.list_for_project(
-            int(project_payload["id"]), offset=1, page_size=settings.max_results, text_limit=text_limit
+        project_id = int(project_payload["id"])
+        records = await _fetch_all_pages(
+            lambda offset: api.list_for_project(
+                project_id, offset=offset, page_size=settings.max_page_size, text_limit=text_limit
+            ),
+            page_size=settings.max_page_size,
         )
-        results = [r.summary for r in page.records]
+        results = [r.summary for r in records]
     else:
         # The global endpoint has no project filter, so results are filtered
-        # client-side against OPENPROJECT_READ_PROJECTS. Fetch up to
-        # settings.max_results in one request and paginate the filtered survivors in
-        # memory instead. Bounded by max_results -- not a full multi-page walk.
-        page = await api.list_global(offset=1, page_size=settings.max_results, text_limit=text_limit)
+        # client-side against OPENPROJECT_READ_PROJECTS -- a full walk of every
+        # server page is required, or any version beyond a single bounded
+        # fetch's cap would be silently hidden.
+        records = await _fetch_all_pages(
+            lambda offset: api.list_global(offset=offset, page_size=settings.max_page_size, text_limit=text_limit),
+            page_size=settings.max_page_size,
+        )
         results = [
             r.summary
-            for r in page.records
+            for r in records
             if version_payload_allowed(
                 {"_links": {"definingProject": r.defining_project_link}},
                 settings=settings,

@@ -730,17 +730,21 @@ async def test_resolve_version_id_no_project_falls_back_to_defining_project_chec
 
 @pytest.mark.asyncio
 async def test_resolve_version_id_project_less_name_match_beyond_first_filtered_page() -> None:
-    # 50 substring-matching-but-not-exact names, then the real exact match — must be
-    # found even though it's beyond page 1 of the search-filtered survivors.
-    def raw_elements() -> list[dict]:
-        decoys = [{"id": i, "name": f"Release Candidate {i}", "_links": {}} for i in range(1, 51)]
-        exact = {"id": 999, "name": "Release", "_links": {}}
-        return [*decoys, exact]
+    # 50 substring-matching-but-not-exact names on server page 1 (exactly
+    # max_page_size), then the real exact match on server page 2 — must be
+    # found even though it's beyond both the first server page AND page 1 of
+    # the search-filtered survivors.
+    decoys = [{"id": i, "name": f"Release Candidate {i}", "_links": {}} for i in range(1, 51)]
+    exact = {"id": 999, "name": "Release", "_links": {}}
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/versions" and request.method == "GET":
-            assert request.url.params["pageSize"] == str(make_settings().max_results)
-            return httpx.Response(200, json={"_embedded": {"elements": raw_elements()}}, request=request)
+            assert request.url.params["pageSize"] == str(make_settings().max_page_size)
+            page = request.url.params["offset"]
+            if page == "1":
+                return httpx.Response(200, json={"_embedded": {"elements": decoys}}, request=request)
+            if page == "2":
+                return httpx.Response(200, json={"_embedded": {"elements": [exact]}}, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))

@@ -102,8 +102,9 @@ async def test_project_scoped_with_search_overfetches_and_filters_in_memory() ->
         context=None,
     )
 
-    # over-fetch uses max_results as page_size, not the caller's limit
-    assert api.list_for_project_calls == [(6, 1, settings.max_results)]
+    # over-fetch walks every server page (max_page_size as page_size), not the
+    # caller's limit
+    assert api.list_for_project_calls == [(6, 1, settings.max_page_size)]
     assert total == 1
     assert next_offset is None
     assert truncated is False

@@ -97,10 +97,12 @@ class HttpxViewApi:
             project_link=payload.get("_links", {}).get("project"),
         )
 
-    async def list_all(self, *, page_size: int) -> list[ViewRecord]:
-        payload = await self._transport.get_json("views", params={"offset": "1", "pageSize": str(page_size)})
+    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[ViewRecord], int]:
+        payload = await self._transport.get_json("views", params={"offset": str(offset), "pageSize": str(page_size)})
         elements = payload.get("_embedded", {}).get("elements", [])
-        return [self._record(item) for item in elements if isinstance(item, dict)]
+        records = [self._record(item) for item in elements if isinstance(item, dict)]
+        total = int(payload.get("total", len(records)))
+        return records, total
 
     async def get(self, view_id: int) -> ViewRecord:
         return self._record(await self._transport.get_json(f"views/{view_id}"))

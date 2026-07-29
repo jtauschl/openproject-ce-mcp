@@ -28,7 +28,7 @@ from typing import Any
 
 from ...config import Settings
 from ...models import ViewDetail, ViewListResult
-from ..pagination import clamp_limit, paginate_client
+from ..pagination import clamp_limit, paginate_all, paginate_client
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.project_ref import ProjectRefResolver
@@ -80,7 +80,13 @@ class ViewService:
             project, resolve_project_ref=self._resolve_project_ref
         )
 
-        records = await self._api.list_all(page_size=self._settings.max_results)
+        # A single fetch capped at settings.max_results silently hid any view
+        # beyond that cap once the endpoint's real result count exceeded it --
+        # walk every server page instead.
+        records = await paginate_all(
+            lambda offset, page_size: self._api.list_all(offset=offset, page_size=page_size),
+            page_size=self._settings.max_page_size,
+        )
         results = [self._stamp(record.summary) for record in records if self._allowed(record.project_link)]
         if project_candidates is not None:
             results = [item for item in results if summary_matches_project_candidates(item, project_candidates)]

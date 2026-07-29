@@ -83,17 +83,19 @@ class _FakeSprintApi:
         self.list_for_project_calls: list[tuple[int, int]] = []
         self.get_calls: list[int] = []
 
-    async def list_all(self, *, page_size: int) -> list[SprintRecord]:
+    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[SprintRecord], int]:
         self.list_all_calls.append(page_size)
         if self._not_found:
             raise NotFoundError("OpenProject resource not found.")
-        return list(self._records.values())
+        records = list(self._records.values())
+        return records, len(records)
 
-    async def list_for_project(self, project_id: int, *, page_size: int) -> list[SprintRecord]:
+    async def list_for_project(self, project_id: int, *, offset: int, page_size: int) -> tuple[list[SprintRecord], int]:
         self.list_for_project_calls.append((project_id, page_size))
         if self._not_found:
             raise NotFoundError("OpenProject resource not found.")
-        return list(self._records.values())
+        records = list(self._records.values())
+        return records, len(records)
 
     async def get(self, sprint_id: int) -> SprintRecord:
         self.get_calls.append(sprint_id)
@@ -213,7 +215,7 @@ async def test_list_for_project_resolves_project_and_lists() -> None:
     result = await service.list_for_project("demo")
 
     assert result.count == 1
-    assert api.list_for_project_calls == [(6, service._settings.max_results)]
+    assert api.list_for_project_calls == [(6, service._settings.max_page_size)]
 
 
 @pytest.mark.asyncio

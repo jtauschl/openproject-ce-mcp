@@ -464,9 +464,10 @@ async def test_list_sprints_normalizes_backlogs_collection() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/sprints" and request.method == "GET":
             assert request.url.params["offset"] == "1"
-            # Fetches up to settings.max_results (not the caller's limit) in one
-            # request, then paginates the filtered survivors in memory.
-            assert request.url.params["pageSize"] == "100"
+            # Walks every server page (max_page_size, not settings.max_results
+            # and not the caller's limit), then paginates the filtered
+            # survivors in memory.
+            assert request.url.params["pageSize"] == "50"
             return httpx.Response(
                 200,
                 json={
@@ -694,8 +695,8 @@ async def test_list_versions_global_backfills_after_allowlist_filter() -> None:
     # limit could return a page that looks sparser than reality once filtered. This
     # returns 6 raw items (3 allowed, 3 disallowed, interleaved) with limit=2 —
     # a naive pageSize=limit request would only ever ask the server for 2 raw items
-    # at a time and could easily return 0-2 allowed ones; instead all 6 must be fetched
-    # in one request (pageSize=settings.max_results), paginating the 3 filtered survivors.
+    # at a time and could easily return 0-2 allowed ones; instead every server page
+    # must be walked (pageSize=max_page_size), paginating the 3 filtered survivors.
     import dataclasses
 
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
@@ -711,7 +712,7 @@ async def test_list_versions_global_backfills_after_allowlist_filter() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/versions" and request.method == "GET":
             assert request.url.params["offset"] == "1"
-            assert request.url.params["pageSize"] == "100"
+            assert request.url.params["pageSize"] == "50"
             return httpx.Response(
                 200,
                 json={
@@ -898,11 +899,11 @@ async def test_list_versions_project_scoped_search_overfetches_and_filters() -> 
                 request=request,
             )
         if request.url.path == "/api/v3/projects/7/versions" and request.method == "GET":
-            # Always requests the over-fetch page (pageSize=max_results), regardless
+            # Always walks every server page (pageSize=max_page_size), regardless
             # of the caller's own limit/offset — those apply only to the filtered
             # in-memory result, confirmed below via the limit=1/offset=2 case.
             assert request.url.params["offset"] == "1"
-            assert request.url.params["pageSize"] == str(make_settings().max_results)
+            assert request.url.params["pageSize"] == str(make_settings().max_page_size)
             return httpx.Response(
                 200,
                 json={
@@ -967,7 +968,7 @@ async def test_list_sprints_backfills_after_allowlist_filter() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/sprints" and request.method == "GET":
             assert request.url.params["offset"] == "1"
-            assert request.url.params["pageSize"] == "100"
+            assert request.url.params["pageSize"] == "50"
             return httpx.Response(
                 200,
                 json={
@@ -1036,7 +1037,7 @@ async def test_list_project_sprints_backfills_after_allowlist_filter() -> None:
             )
         if request.url.path == "/api/v3/projects/7/sprints" and request.method == "GET":
             assert request.url.params["offset"] == "1"
-            assert request.url.params["pageSize"] == "100"
+            assert request.url.params["pageSize"] == "50"
             return httpx.Response(
                 200,
                 json={

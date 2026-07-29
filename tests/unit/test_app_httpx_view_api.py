@@ -42,8 +42,9 @@ async def test_list_all_requests_the_views_endpoint() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxViewApi(HttpxTransport(http_client), base_url=BASE_URL)
-        records = await api.list_all(page_size=50)
+        records, total = await api.list_all(offset=1, page_size=50)
 
+    assert total == 1
     assert len(records) == 1
     summary = records[0].summary
     assert summary.id == 1
@@ -68,7 +69,7 @@ async def test_list_all_normalizes_a_view_without_a_project_link() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxViewApi(HttpxTransport(http_client), base_url=BASE_URL)
-        records = await api.list_all(page_size=50)
+        records, _ = await api.list_all(offset=1, page_size=50)
 
     summary = records[0].summary
     assert summary.project_id is None
@@ -83,9 +84,10 @@ async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxViewApi(HttpxTransport(http_client), base_url=BASE_URL)
-        records = await api.list_all(page_size=50)
+        records, total = await api.list_all(offset=1, page_size=50)
 
     assert records == []
+    assert total == 0
 
 
 @pytest.mark.asyncio
