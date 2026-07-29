@@ -72,9 +72,7 @@ async def test_get_requests_single_reminder() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/reminders"
         assert request.method == "GET"
-        return httpx.Response(
-            200, json={"_embedded": {"elements": [_reminder_payload()]}, "total": 1}, request=request
-        )
+        return httpx.Response(200, json={"_embedded": {"elements": [_reminder_payload()]}, "total": 1}, request=request)
 
     async with _client(handler) as http_client:
         api = HttpxReminderApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
@@ -125,9 +123,7 @@ async def test_get_remindable_link_reads_raw_link_without_full_normalization() -
         return httpx.Response(
             200,
             json={
-                "_embedded": {
-                    "elements": [{"id": 7, "_links": {"remindable": {"href": "/api/v3/work_packages/1"}}}]
-                },
+                "_embedded": {"elements": [{"id": 7, "_links": {"remindable": {"href": "/api/v3/work_packages/1"}}}]},
                 "total": 1,
             },
             request=request,

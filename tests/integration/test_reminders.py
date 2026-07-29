@@ -64,7 +64,11 @@ async def test_list_reminders_finds_created_reminder(
 
 
 async def test_update_reminder_denied_outside_write_allowlist(
-    denied_client: OpenProjectClient, client: OpenProjectClient, test_project: str, wp_ids: list[int], reminder_ids: list[int]
+    denied_client: OpenProjectClient,
+    client: OpenProjectClient,
+    test_project: str,
+    wp_ids: list[int],
+    reminder_ids: list[int],
 ) -> None:
     """update_reminder resolves the reminder's underlying work package and
     authorizes the write against its project -- a caller without write
