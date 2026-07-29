@@ -7,7 +7,7 @@ development baseline.
 
 ---
 
-## 0.3.4 – Unreleased
+## 0.3.4 – 2026-07-29
 
 ### Fixed
 

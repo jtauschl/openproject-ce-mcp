@@ -1,3 +1,3 @@
 """OpenProject CE MCP Server - Model Context Protocol integration for OpenProject Community Edition."""
 
-__version__ = "0.3.3"
+__version__ = "0.3.4"
