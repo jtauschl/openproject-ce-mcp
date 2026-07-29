@@ -259,10 +259,12 @@ async def test_get_project_returns_full_description_by_default_get_projects_caps
 
 
 def test_normalize_time_entry_comment_is_delimited() -> None:
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    from openproject_ce_mcp.app.adapters.httpx_time_entry_api import normalize_time_entry_raw
 
-    entry = client.normalize_time_entry(
+    entry = normalize_time_entry_raw(
         {"id": 1, "comment": {"raw": "worked on it"}, "_links": {}},
+        base_url="https://op.example.com",
+        text_limit=None,
     )
 
     assert entry.comment == "<user-content>worked on it</user-content>"
@@ -406,8 +408,21 @@ async def test_activity_comment_delimited():
     await client.aclose()
 
 
-@pytest.mark.asyncio
-async def test_time_entry_comment_hidden_by_time_entry_scope_not_activity_scope():
+def test_time_entry_comment_hidden_by_time_entry_scope_not_activity_scope():
+    """Hidden-field masking moved from normalize_time_entry (client.py) to
+    TimeEntryService._stamp during the Time Entries migration -- the pure
+    adapter normalizer never applies masking (see
+    normalize_time_entry_raw's callers in httpx_time_entry_api.py); this
+    test exercises _stamp directly via a minimal service instance, keeping
+    the original regression's intent (comment hidden by the "time_entry"
+    scope, NOT the "activity" scope, despite the double
+    ensure_field_writable gate on write) without needing the full Service
+    dependency graph for a pure normalize+mask check."""
+    import dataclasses
+
+    from openproject_ce_mcp.app.adapters.httpx_time_entry_api import normalize_time_entry_raw
+    from openproject_ce_mcp.app.services.time_entry_service import TimeEntryService
+
     payload = {
         "id": 7,
         "hours": "PT1H",
@@ -419,22 +434,31 @@ async def test_time_entry_comment_hidden_by_time_entry_scope_not_activity_scope(
             "activity": {"href": "/api/v3/time_entries/activities/1", "title": "Development"},
         },
     }
+    raw = normalize_time_entry_raw(payload, base_url="https://op.example.com", text_limit=None)
+
+    def _service(settings) -> TimeEntryService:
+        return TimeEntryService(
+            api=None,
+            project_api=None,
+            user_api=None,
+            work_package_lookup_api=None,
+            settings=settings,
+            project_id_to_identifier={},
+            resolve_work_package_id=None,
+            resolve_project_ref=None,
+            resolve_project_id=None,
+            resolve_principal_id=None,
+            get_current_user=None,
+            api_prefix="/api/v3/",
+        )
 
     settings_activity_hidden = _base_settings(hide_activity_fields=("comment",))
-    client_activity_hidden = OpenProjectClient(
-        settings_activity_hidden, transport=httpx.MockTransport(lambda r: httpx.Response(200))
-    )
-    time_entry = client_activity_hidden.normalize_time_entry(payload)
+    time_entry = _service(settings_activity_hidden)._stamp(raw)
     assert time_entry.comment == "<user-content>Time entry comment content</user-content>"
-    await client_activity_hidden.aclose()
 
-    settings_time_entry_hidden = _base_settings(hidden_fields={"time_entry": ("comment",)})
-    client_time_entry_hidden = OpenProjectClient(
-        settings_time_entry_hidden, transport=httpx.MockTransport(lambda r: httpx.Response(200))
-    )
-    time_entry_hidden = client_time_entry_hidden.normalize_time_entry(payload)
+    settings_time_entry_hidden = dataclasses.replace(_base_settings(), hidden_fields={"time_entry": ("comment",)})
+    time_entry_hidden = _service(settings_time_entry_hidden)._stamp(raw)
     assert time_entry_hidden.comment is None
-    await client_time_entry_hidden.aclose()
 
 
 @pytest.mark.asyncio

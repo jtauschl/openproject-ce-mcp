@@ -24,3 +24,20 @@ class ProjectRefResolver(Protocol):
     def __call__(
         self, project_ref: str, *, write: bool = False, context: ProjectResolutionContext | None = None
     ) -> Awaitable[dict[str, Any]]: ...
+
+
+class ProjectIdResolver(Protocol):
+    """Narrow seam onto `self._resolve_project_id`, itself a thin pass-through to
+    `ProjectResolver.resolve_id` (see `app/resolvers/project_resolver.py`) --
+    analogous to `PrincipalRefResolver` (`app/ports/principal_ref.py`), added
+    for the Time Entries migration (`_build_time_entry_write_payload`'s
+    project-id resolution when writing a time entry directly against a
+    project, not a work package). Distinct from `ProjectRefResolver` above:
+    that seam returns the full project payload dict (for reading fields like
+    `name`/`identifier`); this one returns only the resolved numeric id as a
+    string, matching `_resolve_project_id`'s actual return type. The
+    concrete value `OpenProjectClient` hands in is literally the bound method
+    `self._resolve_project_id` (structural typing, no wrapper class needed).
+    """
+
+    def __call__(self, project_ref: str, *, write: bool = False) -> Awaitable[str]: ...

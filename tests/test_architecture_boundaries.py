@@ -1115,3 +1115,82 @@ def test_relation_service_binds_its_dependencies_to_the_right_protocols() -> Non
     assert hints["work_package_project_allowed"] is not WorkPackageResolver, (
         "RelationService.__init__'s work_package_project_allowed param must not be the concrete resolver class"
     )
+
+
+def test_time_entry_service_binds_its_dependencies_to_the_right_protocols() -> None:
+    """Unlike Relations, no Time Entries path dereferences an already-known
+    work-package link the way Relations' from/to sides do -- list_all() only
+    resolves a caller-supplied work-package reference to a numeric id
+    (WorkPackageIdResolver), and create()/update()/delete() check the time
+    entry's own or its work package's project link directly via
+    WorkPackageLookupApi/ProjectRefResolver, never via
+    WorkPackageProjectAllowedCheck. All 8 Protocol dependencies must be
+    pinned."""
+    from openproject_ce_mcp.app.adapters.httpx_project_api import HttpxProjectApi
+    from openproject_ce_mcp.app.adapters.httpx_time_entry_api import HttpxTimeEntryApi
+    from openproject_ce_mcp.app.adapters.httpx_user_api import HttpxUserApi
+    from openproject_ce_mcp.app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
+    from openproject_ce_mcp.app.ports.current_user import CurrentUserLookup
+    from openproject_ce_mcp.app.ports.principal_ref import PrincipalRefResolver
+    from openproject_ce_mcp.app.ports.project_api import ProjectApi
+    from openproject_ce_mcp.app.ports.project_ref import ProjectIdResolver, ProjectRefResolver
+    from openproject_ce_mcp.app.ports.time_entry_api import TimeEntryApi
+    from openproject_ce_mcp.app.ports.user_api import UserApi
+    from openproject_ce_mcp.app.ports.work_package_lookup_api import WorkPackageLookupApi
+    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageIdResolver
+    from openproject_ce_mcp.app.resolvers.project_resolver import ProjectResolver
+    from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
+    from openproject_ce_mcp.app.services.time_entry_service import TimeEntryService
+
+    hints = typing.get_type_hints(TimeEntryService.__init__)
+
+    assert hints["api"] is TimeEntryApi, "TimeEntryService.__init__'s api param must be typed TimeEntryApi"
+    assert hints["api"] is not HttpxTimeEntryApi, (
+        "TimeEntryService.__init__'s api param must not be the concrete adapter"
+    )
+
+    assert hints["project_api"] is ProjectApi, "TimeEntryService.__init__'s project_api param must be typed ProjectApi"
+    assert hints["project_api"] is not HttpxProjectApi, (
+        "TimeEntryService.__init__'s project_api param must not be the concrete adapter"
+    )
+
+    assert hints["user_api"] is UserApi, "TimeEntryService.__init__'s user_api param must be typed UserApi"
+    assert hints["user_api"] is not HttpxUserApi, (
+        "TimeEntryService.__init__'s user_api param must not be the concrete adapter"
+    )
+
+    assert hints["work_package_lookup_api"] is WorkPackageLookupApi, (
+        "TimeEntryService.__init__'s work_package_lookup_api param must be typed WorkPackageLookupApi"
+    )
+    assert hints["work_package_lookup_api"] is not HttpxWorkPackageLookupApi, (
+        "TimeEntryService.__init__'s work_package_lookup_api param must not be the concrete adapter"
+    )
+
+    assert hints["resolve_work_package_id"] is WorkPackageIdResolver, (
+        "TimeEntryService.__init__'s resolve_work_package_id param must be typed WorkPackageIdResolver"
+    )
+    assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
+        "TimeEntryService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
+    )
+
+    assert hints["resolve_project_ref"] is ProjectRefResolver, (
+        "TimeEntryService.__init__'s resolve_project_ref param must be typed ProjectRefResolver"
+    )
+    assert hints["resolve_project_ref"] is not ProjectResolver, (
+        "TimeEntryService.__init__'s resolve_project_ref param must not be the concrete resolver class"
+    )
+
+    assert hints["resolve_project_id"] is ProjectIdResolver, (
+        "TimeEntryService.__init__'s resolve_project_id param must be typed ProjectIdResolver"
+    )
+    assert hints["resolve_project_id"] is not ProjectResolver, (
+        "TimeEntryService.__init__'s resolve_project_id param must not be the concrete resolver class"
+    )
+
+    assert hints["resolve_principal_id"] is PrincipalRefResolver, (
+        "TimeEntryService.__init__'s resolve_principal_id param must be typed PrincipalRefResolver"
+    )
+
+    assert hints["get_current_user"] is CurrentUserLookup, (
+        "TimeEntryService.__init__'s get_current_user param must be typed CurrentUserLookup"
+    )

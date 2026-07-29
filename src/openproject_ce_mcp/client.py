@@ -35,6 +35,7 @@ from .app.adapters.httpx_role_api import HttpxRoleApi
 from .app.adapters.httpx_sprint_api import HttpxSprintApi
 from .app.adapters.httpx_status_priority_type_api import HttpxStatusPriorityTypeApi
 from .app.adapters.httpx_status_priority_type_api import normalize_status as _normalize_status
+from .app.adapters.httpx_time_entry_api import HttpxTimeEntryApi
 from .app.adapters.httpx_user_api import HttpxUserApi
 from .app.adapters.httpx_user_preferences_api import HttpxUserPreferencesApi
 from .app.adapters.httpx_version_api import HttpxVersionApi
@@ -56,7 +57,6 @@ from .app.errors import (
     PermissionDeniedError,
     TransportError,
 )
-from .app.pagination import fetch_bounded_and_paginate as _fetch_bounded_and_paginate_shared
 from .app.pagination import (
     paginate_client as _paginate_client,  # noqa: F401 -- re-exported, test_versions_and_sprints.py imports it directly
 )
@@ -86,6 +86,7 @@ from .app.ports.reminder_api import ReminderApi
 from .app.ports.role_api import RoleApi
 from .app.ports.sprint_api import SprintApi
 from .app.ports.status_priority_type_api import StatusPriorityTypeApi
+from .app.ports.time_entry_api import TimeEntryApi
 from .app.ports.user_api import UserApi
 from .app.ports.user_preferences_api import UserPreferencesApi
 from .app.ports.version_api import VersionApi
@@ -119,6 +120,7 @@ from .app.services.reminder_service import ReminderService
 from .app.services.role_service import RoleService
 from .app.services.sprint_service import SprintService
 from .app.services.status_priority_type_service import StatusPriorityTypeService
+from .app.services.time_entry_service import TimeEntryService
 from .app.services.user_preferences_service import UserPreferencesService
 from .app.services.user_service import UserService
 from .app.services.version_service import VersionService
@@ -215,7 +217,6 @@ from .models import (
     StatusListResult,
     StatusSummary,
     TimeEntryActivityListResult,
-    TimeEntryActivitySummary,
     TimeEntryListResult,
     TimeEntrySummary,
     TimeEntryWriteResult,
@@ -590,6 +591,24 @@ class OpenProjectClient:
             project_id_to_identifier=self._project_id_to_identifier,
             resolve_work_package_id=self._work_package_resolver.resolve_id,
             work_package_project_allowed=self._work_package_resolver.project_link_allowed,
+            api_prefix=self._api_prefix,
+        )
+
+        self._time_entry_api: TimeEntryApi = HttpxTimeEntryApi(
+            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
+        )
+        self._time_entry_service = TimeEntryService(
+            api=self._time_entry_api,
+            project_api=self._project_api,
+            user_api=self._user_api,
+            work_package_lookup_api=self._work_package_lookup_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            resolve_project_ref=self._get_project_payload,
+            resolve_project_id=self._resolve_project_id,
+            resolve_principal_id=self._resolve_principal_id,
+            get_current_user=self.get_current_user,
             api_prefix=self._api_prefix,
         )
 
@@ -1003,48 +1022,6 @@ class OpenProjectClient:
     async def get_project_phase(self, phase_id: int) -> ProjectPhase:
         return await self._project_service.get_phase(phase_id)
 
-    async def _fetch_bounded_and_paginate(
-        self,
-        *,
-        path: str,
-        params_extra: dict[str, str] | None,
-        normalize: Callable[[dict[str, Any]], _FetchT],
-        item_allowed: Callable[[dict[str, Any]], Awaitable[bool]] | None,
-        post_filter: Callable[[list[_FetchT]], list[_FetchT]] | None,
-        offset: int,
-        limit: int,
-    ) -> tuple[list[_FetchT], int, int | None, bool]:
-        """Walk every server page, normalize + filter the raw elements, apply an
-        optional post-normalize filter (e.g. project/search predicates), then
-        paginate the survivors in memory. Shared by every list method that
-        must over-fetch and filter client-side (allowlist/search) rather than
-        trust server-side paging, so a restrictive filter can't produce a
-        sparse page. Any NotFoundError re-wrap (sprints/project_sprints) stays
-        at the call site, not here.
-
-        Delegates to app.pagination.fetch_bounded_and_paginate (extracted for
-        the Relations migration, ADR 0001) -- kept here as a thin wrapper only
-        for list_time_entries, its one remaining still-flat caller; Relations
-        and get_work_package_relations, the other two former callers, now use
-        the shared function directly via RelationService.
-        """
-
-        async def _fetch_page(server_offset: int, server_page_size: int) -> dict[str, Any]:
-            params = {"offset": str(server_offset), "pageSize": str(server_page_size)}
-            if params_extra:
-                params.update(params_extra)
-            return await self._get(path, params=params)
-
-        return await _fetch_bounded_and_paginate_shared(
-            fetch_page=_fetch_page,
-            normalize=normalize,
-            item_allowed=item_allowed,
-            post_filter=post_filter,
-            server_page_size=self.settings.max_page_size,
-            offset=offset,
-            limit=limit,
-        )
-
     async def list_views(
         self,
         *,
@@ -1282,36 +1259,7 @@ class OpenProjectClient:
         )
 
     async def list_time_entry_activities(self) -> TimeEntryActivityListResult:
-        self._ensure_read_enabled("work_package")
-        fallback_errors = (NotFoundError, PermissionDeniedError, OpenProjectServerError)
-        # Try the global endpoint first; fall back to a project-scoped form if it is not available.
-        try:
-            payload = await self._get("time_entries/activities")
-            elements = payload.get("_embedded", {}).get("elements", [])
-            results = [self.normalize_time_entry_activity(item) for item in elements if isinstance(item, dict)]
-            if results:
-                return TimeEntryActivityListResult(count=len(results), results=results)
-        except fallback_errors:
-            pass
-        # Global endpoint not available or returned no results — derive activities from the
-        # time_entries form schema by scanning visible projects until one exposes activities.
-        try:
-            offset = 1
-            while True:
-                projects = await self.list_projects(offset=offset, limit=self.settings.max_page_size)
-                for project in projects.results:
-                    try:
-                        results = await self._time_entry_activities_from_project(project.id)
-                    except fallback_errors:
-                        continue
-                    if results:
-                        return TimeEntryActivityListResult(count=len(results), results=results)
-                if projects.next_offset is None:
-                    break
-                offset = projects.next_offset
-            return TimeEntryActivityListResult(count=0, results=[])
-        except fallback_errors:
-            return TimeEntryActivityListResult(count=0, results=[])
+        return await self._time_entry_service.list_activities()
 
     async def list_time_entries(
         self,
@@ -1324,78 +1272,18 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> TimeEntryListResult:
-        self._ensure_read_enabled("work_package")
-        if work_package_id is not None:
-            work_package_id = await self._resolve_work_package_id(work_package_id)
-        if project is not None:
-            project_payload = await self._get_project_payload(project)
-            project_candidates = {
-                project.casefold(),
-                str(project_payload["id"]).casefold(),
-                (_trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
-                (_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or "").casefold(),
-            }
-        else:
-            project_candidates = set()
-
-        user_name = None
-        if user is not None:
-            if user.casefold() == "me":
-                user_name = (await self.get_current_user()).name
-            elif user.isdigit():
-                user_payload = await self._get(f"users/{user}")
-                user_name = _trim_text(user_payload.get("name"), limit=SUBJECT_LIMIT)
-            else:
-                user_name = user
-
-        effective_limit = self._resolve_limit(limit)
-
-        async def item_allowed(item: dict[str, Any]) -> bool:
-            return self._time_entry_payload_allowed(item) and (
-                not project_candidates
-                or self._link_matches_project_refs(item.get("_links", {}).get("project"), project_candidates)
-            )
-
-        def post_filter(results: list[TimeEntrySummary]) -> list[TimeEntrySummary]:
-            if work_package_id is not None:
-                results = [
-                    item for item in results if item.entity_type == "WorkPackage" and item.entity_id == work_package_id
-                ]
-            if user_name is not None:
-                results = [item for item in results if (item.user or "").casefold() == (user_name or "").casefold()]
-            if spent_on_from is not None:
-                results = [item for item in results if item.spent_on is not None and item.spent_on >= spent_on_from]
-            if spent_on_to is not None:
-                results = [item for item in results if item.spent_on is not None and item.spent_on <= spent_on_to]
-            return results
-
-        page, total, next_offset, truncated = await self._fetch_bounded_and_paginate(
-            path="time_entries",
-            params_extra=None,
-            normalize=lambda item: self.normalize_time_entry(item, text_limit=self.settings.text_limit),
-            item_allowed=item_allowed,
-            post_filter=post_filter,
+        return await self._time_entry_service.list_all(
+            project=project,
+            work_package_id=work_package_id,
+            user=user,
+            spent_on_from=spent_on_from,
+            spent_on_to=spent_on_to,
             offset=offset,
-            limit=effective_limit,
-        )
-        return TimeEntryListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(page),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=page,
+            limit=limit,
         )
 
     async def get_time_entry(self, time_entry_id: int, *, text_limit: int | None = None) -> TimeEntrySummary:
-        # Default (text_limit=None) returns the full comment uncapped, like
-        # get_work_package: opening a single time entry means you want to read it.
-        self._ensure_read_enabled("work_package")
-        payload = await self._get(f"time_entries/{time_entry_id}")
-        project_link = payload.get("_links", {}).get("project")
-        self._ensure_project_link_allowed(project_link)
-        return self.normalize_time_entry(payload, text_limit=text_limit)
+        return await self._time_entry_service.get(time_entry_id, text_limit=text_limit)
 
     async def create_time_entry(
         self,
@@ -1412,30 +1300,9 @@ class OpenProjectClient:
         ongoing: bool | None = None,
         confirm: bool = False,
     ) -> TimeEntryWriteResult:
-        if work_package_id is not None:
-            work_package_id = self._work_package_ref(work_package_id)
-        project_name = None
-        activity_project_id = None
-        # The entity HAL link needs the numeric id (hrefs don't resolve displayId);
-        # read it back from the fetched work package rather than reusing the ref.
-        work_package_numeric_id = None
-        if project is not None:
-            project_payload = await self._get_project_payload(project, write=True)
-            project_name = _trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT)
-            activity_project_id = int(project_payload["id"])
-        if work_package_id is not None:
-            work_package_payload = await self._get(f"work_packages/{work_package_id}")
-            self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
-            work_package_numeric_id = int(work_package_payload["id"])
-            if project_name is None:
-                project_name = _link_title(work_package_payload.get("_links", {}).get("project"))
-            if activity_project_id is None:
-                activity_project_id = _id_from_href(
-                    work_package_payload.get("_links", {}).get("project", {}).get("href")
-                )
-        payload = await self._build_time_entry_write_payload(
+        return await self._time_entry_service.create(
             project=project,
-            work_package_id=work_package_numeric_id,
+            work_package_id=work_package_id,
             user=user,
             activity=activity,
             hours=hours,
@@ -1444,27 +1311,7 @@ class OpenProjectClient:
             end_time=end_time,
             comment=comment,
             ongoing=ongoing,
-            activity_project_id=activity_project_id,
-        )
-        # Validate against OpenProject's own CreateFormAPI before reporting
-        # ready=True -- a locally-built payload can pass this server's own
-        # field checks yet still be rejected by OpenProject itself (e.g. an
-        # hours/date/activity combination the schema disallows), which a
-        # hardcoded ready=True/validation_errors={} could never surface.
-        form = await self._post("time_entries/form", json_body=payload)
-        return await self._finalize_write(
-            result_cls=TimeEntryWriteResult,
-            action="create",
             confirm=confirm,
-            form=form,
-            write_path="time_entries",
-            write_scope="work_package",
-            identity_kwargs=lambda _payload: {"time_entry_id": None, "project": project_name},
-            normalize=self.normalize_time_entry,
-            committed_kwargs=lambda d: {"time_entry_id": d.id, "project": d.project},
-            rejected_message="OpenProject rejected the proposed time entry. Fix the validation errors before confirming.",
-            preview_message="OpenProject validated the time entry. Ask for confirmation, then call again with confirm=true to create it.",
-            success_message="Time entry created successfully.",
         )
 
     async def update_time_entry(
@@ -1481,12 +1328,8 @@ class OpenProjectClient:
         ongoing: bool | None = None,
         confirm: bool = False,
     ) -> TimeEntryWriteResult:
-        current = await self._get(f"time_entries/{time_entry_id}")
-        self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
-        project_id = _id_from_href(current.get("_links", {}).get("project", {}).get("href"))
-        payload = await self._build_time_entry_write_payload(
-            project=None,
-            work_package_id=None,
+        return await self._time_entry_service.update(
+            time_entry_id=time_entry_id,
             user=user,
             activity=activity,
             hours=hours,
@@ -1495,26 +1338,7 @@ class OpenProjectClient:
             end_time=end_time,
             comment=comment,
             ongoing=ongoing,
-            activity_project_id=project_id,
-        )
-        # Validate against OpenProject's own UpdateFormAPI before reporting
-        # ready=True -- see create_time_entry's identical rationale above.
-        form = await self._post(f"time_entries/{time_entry_id}/form", json_body=payload)
-        project_name = _link_title(current.get("_links", {}).get("project"))
-        return await self._finalize_write(
-            result_cls=TimeEntryWriteResult,
-            action="update",
             confirm=confirm,
-            form=form,
-            write_path=f"time_entries/{time_entry_id}",
-            write_method="PATCH",
-            write_scope="work_package",
-            identity_kwargs=lambda _payload: {"time_entry_id": time_entry_id, "project": project_name},
-            normalize=self.normalize_time_entry,
-            committed_kwargs=lambda d: {"time_entry_id": d.id, "project": d.project},
-            rejected_message="OpenProject rejected the proposed time entry changes. Fix the validation errors before confirming.",
-            preview_message="OpenProject validated the time entry. Ask for confirmation, then call again with confirm=true to update it.",
-            success_message="Time entry updated successfully.",
         )
 
     async def delete_time_entry(
@@ -1523,21 +1347,7 @@ class OpenProjectClient:
         time_entry_id: int,
         confirm: bool = False,
     ) -> TimeEntryWriteResult:
-        current = await self._get(f"time_entries/{time_entry_id}")
-        self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
-        detail = self.normalize_time_entry(current)
-        payload = {"id": detail.id, "hours": detail.hours, "spentOn": detail.spent_on}
-        return await self._finalize_delete(
-            result_cls=TimeEntryWriteResult,
-            confirm=confirm,
-            result_kwargs={"time_entry_id": detail.id, "project": detail.project, "payload": payload},
-            preview_result=detail,
-            commit_result=None,
-            write_scope="work_package",
-            delete_path=f"time_entries/{time_entry_id}",
-            preview_message="OpenProject found the time entry. Ask for confirmation, then call again with confirm=true to delete it.",
-            success_message="Time entry deleted successfully.",
-        )
+        return await self._time_entry_service.delete(time_entry_id=time_entry_id, confirm=confirm)
 
     async def get_project_work_package_context(
         self,
@@ -3766,61 +3576,6 @@ class OpenProjectClient:
             ),
         )
 
-    def normalize_time_entry_activity(self, payload: dict[str, Any]) -> TimeEntryActivitySummary:
-        activity_id = int(payload["id"])
-        projects = [
-            _link_title(item) for item in payload.get("_links", {}).get("projects", []) if isinstance(item, dict)
-        ]
-        return self._apply_hidden_fields(
-            "time_entry_activity",
-            TimeEntryActivitySummary(
-                id=activity_id,
-                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Activity {activity_id}",
-                position=payload.get("position"),
-                is_default=bool(payload.get("default")),
-                projects=[item for item in projects if item],
-                url=self._web_url(f"time_entries/activities/{activity_id}"),
-            ),
-        )
-
-    def normalize_time_entry(
-        self, payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT
-    ) -> TimeEntrySummary:
-        """``text_limit=None`` returns the full comment uncapped (get_time_entry);
-        the FORMATTABLE_LIMIT default keeps write-preview callers capped. List rows
-        (list_time_entries) explicitly pass settings.text_limit."""
-        links = payload.get("_links", {})
-        project_link = links.get("project")
-        entity_link = links.get("entity")
-        comment, comment_truncated, comment_length = self._visible_formattable_text_with_meta(
-            payload.get("comment"), "time_entry", "comment", limit=text_limit
-        )
-        return self._apply_hidden_fields(
-            "time_entry",
-            TimeEntrySummary(
-                id=int(payload["id"]),
-                project=_link_title(project_link),
-                entity_type=_trim_text(payload.get("entityType"), limit=SUBJECT_LIMIT),
-                entity_id=_id_from_href(entity_link.get("href")) if isinstance(entity_link, dict) else None,
-                entity_name=_link_title(entity_link),
-                user=_link_title(links.get("user")),
-                activity=_link_title(links.get("activity")),
-                hours=_trim_text(payload.get("hours"), limit=SUBJECT_LIMIT),
-                spent_on=_trim_text(payload.get("spentOn"), limit=SUBJECT_LIMIT),
-                # Only present when the admin enabled allow_tracking_start_and_end_times;
-                # otherwise absent, so these stay None.
-                start_time=_trim_text(payload.get("startTime"), limit=SUBJECT_LIMIT),
-                end_time=_trim_text(payload.get("endTime"), limit=SUBJECT_LIMIT),
-                ongoing=bool(payload.get("ongoing")),
-                comment=comment,
-                comment_truncated=comment_truncated,
-                comment_length=comment_length,
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-                url=self._web_url(f"time_entries/{payload['id']}"),
-            ),
-        )
-
     def _normalize_option_value(self, payload: dict[str, Any]) -> OptionValue:
         href = payload.get("_links", {}).get("self", {}).get("href")
         title = (
@@ -4315,66 +4070,6 @@ class OpenProjectClient:
             success_message=success_message or f"Work package {action}d successfully.",
         )
 
-    async def _build_time_entry_write_payload(
-        self,
-        *,
-        project: str | None,
-        work_package_id: int | None,
-        user: str | None,
-        activity: str | None,
-        hours: str | None,
-        spent_on: str | None,
-        start_time: str | None,
-        end_time: str | None,
-        comment: str | None,
-        ongoing: bool | None,
-        activity_project_id: int | None = None,
-    ) -> dict[str, Any]:
-        payload: dict[str, Any] = {}
-        links: dict[str, dict[str, str]] = {}
-
-        if hours is not None:
-            self._ensure_field_writable("time_entry", "hours")
-            payload["hours"] = hours
-        if spent_on is not None:
-            self._ensure_field_writable("time_entry", "spent_on")
-            payload["spentOn"] = spent_on
-        # start/end times require the admin setting; OpenProject rejects them when
-        # disabled, so we only include them when the caller provides a value.
-        if start_time is not None:
-            self._ensure_field_writable("time_entry", "start_time")
-            payload["startTime"] = start_time
-        if end_time is not None:
-            self._ensure_field_writable("time_entry", "end_time")
-            payload["endTime"] = end_time
-        if comment is not None:
-            self._ensure_field_writable("time_entry", "comment")
-            self._ensure_field_writable("activity", "comment")
-            payload["comment"] = {"format": "markdown", "raw": comment}
-        if ongoing is not None:
-            self._ensure_field_writable("time_entry", "ongoing")
-            payload["ongoing"] = ongoing
-        if work_package_id is not None:
-            self._ensure_field_writable("time_entry", "entity")
-            links["entity"] = {"href": self._api_href(f"work_packages/{work_package_id}")}
-        elif project is not None:
-            self._ensure_field_writable("time_entry", "project")
-            project_id = await self._resolve_project_id(project)
-            links["project"] = {"href": self._api_href(f"projects/{project_id}")}
-        if user is not None:
-            self._ensure_field_writable("time_entry", "user")
-            user_id = await self._resolve_principal_id(user)
-            links["user"] = {"href": self._api_href(f"users/{user_id}")}
-        if activity is not None:
-            self._ensure_field_writable("time_entry", "activity")
-            activity_id = await self._resolve_time_entry_activity_id(
-                activity, project_id=activity_project_id, work_package_id=work_package_id
-            )
-            links["activity"] = {"href": self._api_href(f"time_entries/activities/{activity_id}")}
-        if links:
-            payload["_links"] = links
-        return payload
-
     async def _get_project_payload(
         self,
         project_ref: str,
@@ -4408,28 +4103,6 @@ class OpenProjectClient:
             (_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or "").casefold(),
         }
 
-    async def _time_entry_activities_from_project(
-        self, project_id: int, *, work_package_id: int | None = None
-    ) -> list[TimeEntryActivitySummary]:
-        # OpenProject's CreateContract#allowed_to_log_own? can only validate the
-        # log_own_time permission against a concrete WorkPackage/Meeting entity
-        # (case model.entity ... else false) -- a project-only link makes it fall
-        # through to requiring log_time instead, denying a caller who only has
-        # log_own_time even though they're entitled to log their own time on this
-        # work package. Send the entity link whenever the work package is already
-        # known (verified against op-sources' costs/app/contracts/time_entries/
-        # create_contract.rb), matching what the real create/update payload sends.
-        links: dict[str, dict[str, str]] = (
-            {"entity": {"href": self._api_href(f"work_packages/{work_package_id}")}}
-            if work_package_id is not None
-            else {"project": {"href": self._api_href(f"projects/{project_id}")}}
-        )
-        form = await self._post("time_entries/form", json_body={"_links": links})
-        schema = form.get("_embedded", {}).get("schema", {})
-        activity_field = schema.get("activity", {})
-        allowed = activity_field.get("_embedded", {}).get("allowedValues", [])
-        return [self.normalize_time_entry_activity(item) for item in allowed if isinstance(item, dict)]
-
     def _ensure_write_enabled(self, scope: str) -> None:
         _access_policy.ensure_write_enabled(scope, settings=self.settings)
 
@@ -4458,11 +4131,6 @@ class OpenProjectClient:
             lambda: self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
         )
 
-    def _time_entry_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        return self._payload_allowed(
-            lambda: self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
-        )
-
     def _project_candidates(
         self,
         *,
@@ -4480,9 +4148,6 @@ class OpenProjectClient:
             identifier=identifier,
             name=name,
         )
-
-    def _link_matches_project_refs(self, link: Any, project_refs: set[str]) -> bool:
-        return not self._project_candidates(link=link).isdisjoint(project_refs)
 
     def _summary_matches_project_candidates(
         self,
@@ -4921,29 +4586,6 @@ class OpenProjectClient:
         if assignee_ref.isdigit():
             return assignee_ref
         raise InvalidInputError("assignee must be a positive integer user id or 'me'.")
-
-    async def _resolve_time_entry_activity_id(
-        self, activity_ref: str, *, project_id: int | None = None, work_package_id: int | None = None
-    ) -> str:
-        if activity_ref.isdigit():
-            return activity_ref
-        if project_id is not None:
-            activities = TimeEntryActivityListResult(
-                count=0,
-                results=await self._time_entry_activities_from_project(project_id, work_package_id=work_package_id),
-            )
-        else:
-            activities = await self.list_time_entry_activities()
-        matches = [
-            str(item.id) for item in activities.results if (item.name or "").casefold() == activity_ref.casefold()
-        ]
-        if not matches:
-            raise InvalidInputError(f"OpenProject time entry activity '{activity_ref}' was not found.")
-        if len(matches) > 1:
-            raise InvalidInputError(
-                f"OpenProject time entry activity '{activity_ref}' is ambiguous. Pass a numeric activity id."
-            )
-        return matches[0]
 
 
 def _json_param(value: list[dict[str, Any]]) -> str:
