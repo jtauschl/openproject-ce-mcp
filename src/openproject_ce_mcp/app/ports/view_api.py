@@ -16,13 +16,18 @@ class ViewRecord:
 
     `detail` is precomputed, not a lazy `to_detail` thunk: `summary_to_detail`
     reuses every field from the already-normalized `summary` verbatim and
-    adds exactly one extra field (`links`) -- there is no second/different
-    truncation limit applied to any field, unlike Documents' description. No
-    expensive divergent re-extraction exists to defer, so eager computation
-    here wastes nothing -- provided `detail` is built from `summary`, not by
-    re-running `normalize_view` on the raw payload a second time (an earlier
-    version of the adapter did that; fixed during the Sprints migration's
-    step-6 efficiency audit, which found the same bug in this file too).
+    adds exactly one extra field (`links`, a cheap `sorted(dict.keys())` over
+    the already-fetched payload) -- there is no second/different truncation
+    limit applied to any field, unlike Documents' description, and next to
+    nothing is computed that `list()`'s own callers never read. Provided
+    `detail` is built from `summary`, not by re-running `normalize_view` on
+    the raw payload a second time (an earlier version of the adapter did
+    that; fixed during the Sprints migration's step-6 efficiency audit,
+    which found the same bug in this file too), the marginal per-row cost of
+    eager computation here really is close to free -- unlike BoardRecord's
+    otherwise-identical-looking eager `detail` (group_by/columns/sort_by/
+    highlighted_attributes/filters each parse their own HAL link), where an
+    independent Codex review correctly distinguished "safe" from "free."
 
     `project_link` must be carried separately (mirrors DocumentRecord/
     MembershipRecord) because the allowlist Policy check needs the raw link

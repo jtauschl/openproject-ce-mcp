@@ -21,7 +21,21 @@ class BoardRecord:
     timestamps/filters/timeline_zoom_level/highlighting_mode/created_at/
     updated_at) extracted from the raw payload once -- there is no divergent
     truncation limit applied to any shared field, so eager computation here
-    wastes nothing, mirroring ViewRecord's identical shape/rationale.
+    is SAFE (no crash/masking-correctness risk the way an eager field would
+    be for a domain whose list() filters records pre-normalization, e.g.
+    Reminders/Notifications), mirroring ViewRecord's identical shape/
+    rationale. "Wastes nothing" here means specifically that: no divergent
+    truncation limit and no correctness risk -- NOT that it's free. An
+    independent Codex review correctly noted `list()`'s own call path never
+    reads `.detail` at all, so every list row still pays for parsing
+    group_by/columns/sort_by/highlighted_attributes/filters (each its own
+    HAL-link extraction) that's thrown away unless that row is later
+    `get()`'d individually. Left as eager anyway: Boards/Views/Sprints are
+    typically small per-project collections, and a lazy `Callable[[],
+    BoardDetail]` thunk (Document's/News's/Reminder's shape) would add a
+    layer of indirection to save a few HAL-link parses on lists that rarely
+    exceed a few dozen rows -- a deliberate simplicity-over-marginal-CPU
+    trade-off, not an oversight, but distinct from "free."
 
     `project_link` is carried as the RAW link dict, not just an extracted
     href/id, because `_ensure_board_payload_allowed`/

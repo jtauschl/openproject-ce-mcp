@@ -19,8 +19,15 @@ package happens THERE, before the file-links sub-fetch); `delete()`'s scoping
 is a direct `scope_policy.ensure_project_write_link_allowed` call against the
 container work package's own project link.
 
-No create/update: OpenProject's v3 API has no such endpoint for file links.
-`delete()` is a single flat preview/commit method (same shape as
+No create/update TOOL is exposed here, but this is a deliberate product
+scoping decision, not an absence-of-endpoint fact (see `FileLinkApi`'s own
+docstring for the full rationale, corrected there via an independent Codex
+review after this file's own comment went stale): OpenProject's v3 API DOES
+have a real `POST /api/v3/work_packages/{id}/file_links`; create is left
+unimplemented because it needs storage-specific origin/location data
+(Nextcloud/OneDrive file identifiers) this server has no mechanism to
+source, not because no endpoint exists to call. `PATCH` genuinely does not
+exist. `delete()` is a single flat preview/commit method (same shape as
 `GridService.delete()`/`BoardService.delete()`) -- no shared
 `_write_outcome.py` state machine, since this domain has exactly one write
 action.
