@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...models import GroupDetail, GroupSummary
+from ..pagination import paginate_all
 from ..ports.group_api import GroupRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
@@ -140,12 +141,18 @@ class HttpxGroupApi:
         return records, total
 
     async def list_groups_search(self, *, page_size: int) -> list[GroupRecord]:
-        # Over-fetch a single bounded page for the caller to filter in-memory
-        # -- verbatim port of client.py's search branch, which has no
-        # server-side name filter to delegate to.
-        payload = await self._transport.get_json("groups", params={"offset": "1", "pageSize": str(page_size)})
-        elements = payload.get("_embedded", {}).get("elements", [])
-        return [self._record(item) for item in elements if isinstance(item, dict)]
+        # Walk every server page for the caller to filter in-memory -- no
+        # server-side name filter exists to delegate to. Groups is genuinely
+        # OffsetPaginatedCollection server-side (verified against op-sources),
+        # so a single bounded fetch capped at page_size (this method's prior
+        # behavior) would silently hide any match beyond that cap once the
+        # real group count exceeded it (found via a full-diff Codex review on
+        # release/0.3.4, ported here).
+        return await paginate_all(
+            lambda offset, size: self.list_groups(offset=offset, page_size=size),
+            page_size=page_size,
+            key=lambda r: r.summary.id,
+        )
 
     async def get_group(self, group_id: int) -> GroupRecord:
         return self._record(await self._transport.get_json(f"groups/{group_id}"))

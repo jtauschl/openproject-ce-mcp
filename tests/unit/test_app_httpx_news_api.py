@@ -31,7 +31,7 @@ def _news_payload(news_id: int = 1) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_list_all_sends_bounded_page_and_builds_records() -> None:
+async def test_list_all_walks_a_single_short_page_and_builds_records() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/news"
         params = dict(request.url.params)
@@ -51,6 +51,35 @@ async def test_list_all_sends_bounded_page_and_builds_records() -> None:
     # to produce a correct NewsDetail on demand (e.g. if a future caller
     # needs it), it's just never called by NewsService.list() today.
     assert records[0].to_detail().id == 1
+
+
+@pytest.mark.asyncio
+async def test_list_all_walks_every_server_page() -> None:
+    """Regression (found via a full-diff Codex review on release/0.3.4, ported
+    here): News is genuinely OffsetPaginatedCollection server-side (verified
+    against op-sources) and results are filtered client-side against the read
+    allowlist -- a single bounded fetch capped at page_size (this method's
+    prior behavior) silently hid any news item beyond that cap once the real
+    news count exceeded it. Two full pages (page_size=2) followed by a short
+    3rd page prove the walk continues past the first page."""
+    requested_offsets: list[str | None] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/news"
+        offset = request.url.params.get("offset")
+        requested_offsets.append(offset)
+        page_news = {
+            "1": [_news_payload(news_id=1), _news_payload(news_id=2)],
+            "2": [_news_payload(news_id=3)],
+        }.get(offset, [])
+        return httpx.Response(200, json={"total": 3, "_embedded": {"elements": page_news}}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxNewsApi(HttpxTransport(http_client), base_url=BASE_URL)
+        records = await api.list_all(page_size=2)
+
+    assert requested_offsets == ["1", "2"]
+    assert [r.summary.id for r in records] == [1, 2, 3]
 
 
 @pytest.mark.asyncio

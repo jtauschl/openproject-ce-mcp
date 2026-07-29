@@ -70,7 +70,7 @@ async def test_list_groups_falls_back_to_record_count_when_total_missing() -> No
 
 
 @pytest.mark.asyncio
-async def test_list_groups_search_overfetches_a_single_bounded_page() -> None:
+async def test_list_groups_search_walks_a_single_short_page_to_completion() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/groups"
         assert request.url.params.get("offset") == "1"
@@ -83,6 +83,34 @@ async def test_list_groups_search_overfetches_a_single_bounded_page() -> None:
 
     assert len(records) == 1
     assert records[0].summary.name == "Backend"
+
+
+@pytest.mark.asyncio
+async def test_list_groups_search_walks_every_server_page() -> None:
+    """Regression (found via a full-diff Codex review on release/0.3.4, ported
+    here): Groups is genuinely OffsetPaginatedCollection server-side (verified
+    against op-sources) -- a single bounded fetch capped at page_size (this
+    method's prior behavior) silently hid any match beyond that cap once the
+    real group count exceeded it. Two full pages (page_size=2) followed by a
+    short (empty) 3rd page prove the walk continues past the first page."""
+    requested_offsets: list[str | None] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/groups"
+        offset = request.url.params.get("offset")
+        requested_offsets.append(offset)
+        page_groups = {
+            "1": [_group_payload(group_id=1, name="Alpha"), _group_payload(group_id=2, name="Beta")],
+            "2": [_group_payload(group_id=3, name="Gamma")],
+        }.get(offset, [])
+        return httpx.Response(200, json={"total": 3, "_embedded": {"elements": page_groups}}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxGroupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        records = await api.list_groups_search(page_size=2)
+
+    assert requested_offsets == ["1", "2"]
+    assert [r.summary.id for r in records] == [1, 2, 3]
 
 
 @pytest.mark.asyncio

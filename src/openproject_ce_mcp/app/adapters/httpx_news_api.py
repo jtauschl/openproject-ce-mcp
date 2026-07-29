@@ -16,6 +16,7 @@ from typing import Any
 from urllib.parse import urljoin
 
 from ...models import NewsDetail, NewsSummary
+from ..pagination import paginate_all
 from ..ports.news_api import NewsRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
@@ -115,10 +116,23 @@ class HttpxNewsApi:
             project_link=payload.get("_links", {}).get("project"),
         )
 
-    async def list_all(self, *, page_size: int) -> list[NewsRecord]:
-        payload = await self._transport.get_json("news", params={"offset": "1", "pageSize": str(page_size)})
+    async def _list_page(self, offset: int, page_size: int) -> tuple[list[NewsRecord], int]:
+        payload = await self._transport.get_json("news", params={"offset": str(offset), "pageSize": str(page_size)})
         elements = payload.get("_embedded", {}).get("elements", [])
-        return [self._record(item) for item in elements if isinstance(item, dict)]
+        records = [self._record(item) for item in elements if isinstance(item, dict)]
+        total = int(payload.get("total", len(records)))
+        return records, total
+
+    async def list_all(self, *, page_size: int) -> list[NewsRecord]:
+        # Walk every server page -- results are filtered client-side against
+        # the read allowlist, so a single bounded fetch capped at page_size
+        # (this method's prior behavior) would silently hide any news item
+        # beyond that cap once the real news count exceeded it. News is
+        # genuinely OffsetPaginatedCollection server-side (verified against
+        # op-sources), same bug class as list_users/list_groups' search
+        # branches (found via a full-diff Codex review on release/0.3.4,
+        # ported here).
+        return await paginate_all(self._list_page, page_size=page_size, key=lambda r: r.summary.id)
 
     async def get(self, news_id: int) -> NewsRecord:
         return self._record(await self._transport.get_json(f"news/{news_id}"))
