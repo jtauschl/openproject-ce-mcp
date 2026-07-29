@@ -13919,3 +13919,60 @@ async def test_list_relations_walks_multiple_server_pages_when_allowlist_thins_f
     assert result.next_offset is None
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_project_memberships_walks_multiple_server_pages() -> None:
+    """Regression: list_project_memberships issued a single unparametrized GET
+    against the project's memberships href, relying entirely on OpenProject's
+    own server-side default page size -- any membership beyond that default
+    was silently unreachable. Now walks every server page explicitly."""
+    requested_offsets: list[str] = []
+
+    def _membership(member_id: int) -> dict:
+        return {
+            "id": member_id,
+            "_links": {
+                "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+                "principal": {"href": f"/api/v3/users/{member_id}", "title": f"User {member_id}"},
+                "roles": [{"href": "/api/v3/roles/6", "title": "Member"}],
+            },
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Project",
+                    "id": 1,
+                    "identifier": "demo",
+                    "name": "Demo",
+                    "_links": {"memberships": {"href": "/api/v3/memberships?filters=..."}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/memberships":
+            page = request.url.params["offset"]
+            requested_offsets.append(page)
+            assert request.url.params["pageSize"] == "1"
+            if page == "1":
+                return httpx.Response(
+                    200, json={"total": 2, "_embedded": {"elements": [_membership(1)]}}, request=request
+                )
+            if page == "2":
+                return httpx.Response(
+                    200, json={"total": 2, "_embedded": {"elements": [_membership(2)]}}, request=request
+                )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(max_page_size=1)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_project_memberships("demo")
+
+    assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
+    assert result.count == 2
+    assert {m.id for m in result.results} == {1, 2}
+
+    await client.aclose()

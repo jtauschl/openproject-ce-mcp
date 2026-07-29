@@ -1059,8 +1059,23 @@ class OpenProjectClient:
         href = project_payload.get("_links", {}).get("memberships", {}).get("href")
         if not href:
             return MembershipListResult(count=0, results=[])
-        payload = await self._get(self._link_to_api_path(href))
-        memberships = [self.normalize_membership(item) for item in payload.get("_embedded", {}).get("elements", [])]
+        # A single unparametrized GET relies entirely on OpenProject's own
+        # server-side default page size -- any membership beyond that default
+        # was silently unreachable. Walk every server page explicitly instead;
+        # no per-item allowlist filtering happens here (project access is
+        # already gated above), so a straight page walk is safe.
+        path = self._link_to_api_path(href)
+        memberships: list[MembershipSummary] = []
+        offset = 1
+        page_size = self.settings.max_page_size
+        while True:
+            payload = await self._get(path, params={"offset": str(offset), "pageSize": str(page_size)})
+            elements = payload.get("_embedded", {}).get("elements", [])
+            memberships.extend(self.normalize_membership(item) for item in elements)
+            total = int(payload.get("total", len(memberships)))
+            if _next_offset(offset, page_size, total) is None:
+                break
+            offset += 1
         return MembershipListResult(count=len(memberships), results=memberships)
 
     async def get_membership(self, membership_id: int) -> MembershipSummary:
