@@ -1280,18 +1280,11 @@ class OpenProjectClient:
     ) -> ViewListResult:
         self._ensure_read_enabled("project")
         effective_limit = self._resolve_limit(limit)
-        payload = await self._get(
-            "views",
-            params={
-                "offset": "1",
-                "pageSize": str(self.settings.max_results),
-            },
-        )
-        results = [
-            self.normalize_view(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._view_payload_allowed(item)
-        ]
+        # Filtered client-side against the allowlist, so a full walk of every
+        # server page is required -- a single bounded fetch would silently hide
+        # any view beyond that cap.
+        elements = await self._fetch_all_pages("views")
+        results = [self.normalize_view(item) for item in elements if self._view_payload_allowed(item)]
         if project is not None:
             project_payload = await self._resolve_project_ref(project, write=False)
             project_candidates = {
@@ -1341,18 +1334,11 @@ class OpenProjectClient:
     ) -> DocumentListResult:
         self._ensure_read_enabled("project")
         effective_limit = self._resolve_limit(limit)
-        payload = await self._get(
-            "documents",
-            params={
-                "offset": "1",
-                "pageSize": str(self.settings.max_results),
-            },
-        )
-        results = [
-            self.normalize_document(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._document_payload_allowed(item)
-        ]
+        # Filtered client-side against the allowlist, so a full walk of every
+        # server page is required -- a single bounded fetch would silently hide
+        # any document beyond that cap.
+        elements = await self._fetch_all_pages("documents")
+        results = [self.normalize_document(item) for item in elements if self._document_payload_allowed(item)]
 
         if project is not None:
             project_payload = await self._resolve_project_ref(project, write=False)
@@ -3368,35 +3354,19 @@ class OpenProjectClient:
 
         if project:
             # search given: no server-side name filter exists for the project-scoped
-            # endpoint either, so over-fetch this project's versions and filter/paginate
-            # in memory instead of relying on exact server-side pagination.
+            # endpoint either, so a full walk of every server page is required --
+            # a single bounded fetch would silently hide any version beyond that cap.
             project_payload = await self._get_project_payload(project)
             project_id = int(project_payload["id"])
-            payload = await self._get(
-                f"projects/{project_id}/versions",
-                params={"offset": "1", "pageSize": str(self.settings.max_results)},
-            )
-            results = [
-                self.normalize_version(item)
-                for item in payload.get("_embedded", {}).get("elements", [])
-                if isinstance(item, dict)
-            ]
+            elements = await self._fetch_all_pages(f"projects/{project_id}/versions")
+            results = [self.normalize_version(item) for item in elements]
         else:
             # The global endpoint has no project filter, so results are filtered
-            # client-side against OPENPROJECT_READ_PROJECTS. A single page sized to the
-            # caller's limit could look sparser than reality after filtering; fetch up to
-            # settings.max_results in one request and paginate the filtered survivors in memory
-            # instead (same pattern as list_views/list_documents). Bounded by max_results — not a
-            # full multi-page walk across every server page.
-            payload = await self._get(
-                "versions",
-                params={"offset": "1", "pageSize": str(self.settings.max_results)},
-            )
-            results = [
-                self.normalize_version(item)
-                for item in payload.get("_embedded", {}).get("elements", [])
-                if isinstance(item, dict) and self._version_payload_allowed(item)
-            ]
+            # client-side against OPENPROJECT_READ_PROJECTS -- a full walk of every
+            # server page is required, or any version beyond a single bounded
+            # fetch's cap would be silently hidden.
+            elements = await self._fetch_all_pages("versions")
+            results = [self.normalize_version(item) for item in elements if self._version_payload_allowed(item)]
 
         if search:
             search_key = search.casefold()
@@ -3431,24 +3401,16 @@ class OpenProjectClient:
         self._ensure_read_enabled("project")
         effective_limit = self._resolve_limit(limit)
         # Results are always filtered client-side against the allowlist (sprints can
-        # be shared cross-project via Backlogs sharing). Fetch up to settings.max_results in
-        # one request and paginate the filtered survivors in memory, same pattern as
-        # list_views/list_documents, so a restrictive allowlist can't produce a sparse page.
-        # Bounded by max_results — not a full multi-page walk across every server page.
+        # be shared cross-project via Backlogs sharing), so a full walk of every
+        # server page is required -- a single bounded fetch would silently hide any
+        # sprint beyond that cap.
         try:
-            payload = await self._get(
-                "sprints",
-                params={"offset": "1", "pageSize": str(self.settings.max_results)},
-            )
+            elements = await self._fetch_all_pages("sprints")
         except NotFoundError as exc:
             raise NotFoundError(
                 "OpenProject sprints require the Backlogs module and OpenProject 17.3 or newer."
             ) from exc
-        results = [
-            self.normalize_sprint(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._sprint_payload_allowed(item)
-        ]
+        results = [self.normalize_sprint(item) for item in elements if self._sprint_payload_allowed(item)]
         total = len(results)
         start = (offset - 1) * effective_limit
         end = start + effective_limit
@@ -3476,24 +3438,17 @@ class OpenProjectClient:
         effective_limit = self._resolve_limit(limit)
         # Even though this is project-scoped, results are still filtered client-side
         # (a sprint shared into this project can be *defined* by a different, possibly
-        # disallowed project). Fetch up to settings.max_results in one request and
-        # paginate the filtered survivors in memory, same pattern as list_views/list_documents,
-        # so a restrictive allowlist can't produce a sparse page. Bounded by max_results — not
-        # a full multi-page walk across every server page.
+        # disallowed project), so a full walk of every server page is required -- a
+        # single bounded fetch would silently hide any sprint beyond that cap, which
+        # also broke _resolve_sprint_id's name lookup for a project with more sprints
+        # than the cap.
         try:
-            payload = await self._get(
-                f"projects/{project_id}/sprints",
-                params={"offset": "1", "pageSize": str(self.settings.max_results)},
-            )
+            elements = await self._fetch_all_pages(f"projects/{project_id}/sprints")
         except NotFoundError as exc:
             raise NotFoundError(
                 "OpenProject project sprints require the Backlogs module and OpenProject 17.3 or newer."
             ) from exc
-        results = [
-            self.normalize_sprint(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict) and self._sprint_payload_allowed(item)
-        ]
+        results = [self.normalize_sprint(item) for item in elements if self._sprint_payload_allowed(item)]
         total = len(results)
         start = (offset - 1) * effective_limit
         end = start + effective_limit
@@ -3890,6 +3845,32 @@ class OpenProjectClient:
             truncated=truncated,
             results=results,
         )
+
+    async def _fetch_all_pages(self, path: str) -> list[dict[str, Any]]:
+        """Walk every server page of a collection endpoint, no filtering.
+
+        Used by list methods that filter and paginate the full result set
+        client-side (allowlist, search, project scope) -- a single request
+        capped at settings.max_results silently hid any item beyond that cap
+        when the endpoint's real result count exceeded it. Returns every raw
+        element from every server page; the caller applies its own filtering
+        and in-memory offset/limit slicing on top, unchanged.
+        """
+        elements: list[dict[str, Any]] = []
+        server_offset = 1
+        server_page_size = self.settings.max_page_size
+        while True:
+            payload = await self._get(path, params={"offset": str(server_offset), "pageSize": str(server_page_size)})
+            page = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+            elements.extend(page)
+            # A page shorter than the requested size is unambiguously the last one,
+            # regardless of whether `total` is present -- don't rely on `total` alone
+            # to detect exhaustion (a payload that omits it, or a page walked past
+            # `total`'s own count, would otherwise loop forever).
+            if len(page) < server_page_size:
+                break
+            server_offset += 1
+        return elements
 
     async def _paginate_relations(
         self,
