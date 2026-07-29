@@ -170,9 +170,7 @@ uv run pytest
 ```
 
 See [Development](https://github.com/jtauschl/openproject-ce-mcp/blob/main/docs/development.md) for the full test suite (unit,
-integration, and Docker test instances) and [RELEASE.md](https://github.com/jtauschl/openproject-ce-mcp/blob/main/RELEASE.md) for the
-maintainer release process. This team's internal engineering documentation (architecture decisions, rationale, findings)
-lives in a private companion repository, separate from the public docs above.
+integration, and Docker test instances).
 
 ---
 
