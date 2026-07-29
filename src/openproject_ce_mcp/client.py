@@ -961,11 +961,14 @@ class OpenProjectClient:
                     raw_results = []
             total = len(raw_results)
         else:
-            # w{id} is the current context-filter syntax; p{id} (used by the
-            # pre-fix code) is deprecated. See the allowlist-gap comment
-            # below for why the per-record check below still runs even
-            # though this filter already narrows the query server-side.
-            filters: list[dict[str, Any]] = [{"context": {"operator": "=", "values": [f"w{project_id}"]}}]
+            # p{id} is the context-filter form accepted on every supported
+            # version (16.0-17.6); w{id} (workspace) is only accepted from
+            # 17.0 onward and is rejected as malformed on 16.x (OPM-325,
+            # verified against op-sources across all 14 pinned versions).
+            # See the allowlist-gap comment below for why the per-record
+            # check still runs even though this filter already narrows the
+            # query server-side.
+            filters: list[dict[str, Any]] = [{"context": {"operator": "=", "values": [f"p{project_id}"]}}]
             payload = await self._get(
                 "capabilities",
                 params={
