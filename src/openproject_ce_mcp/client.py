@@ -591,23 +591,49 @@ class OpenProjectClient:
         if not read_needs_lookup and not write_needs_lookup:
             return
         try:
-            payload = await self._get("projects", params={"pageSize": "500"})
-            for item in payload.get("_embedded", {}).get("elements", []):
-                project_id = item.get("id")
-                project_identifier = item.get("identifier")
-                project_name = item.get("name") or ""
-                if not isinstance(project_id, int) or not isinstance(project_identifier, str):
-                    continue
-                candidates: set[str] = {
-                    project_identifier.casefold(),
-                    str(project_id),
-                    project_name.casefold(),
-                    project_name.casefold().replace(" ", "-"),
-                }
-                if (read_needs_lookup and _scope_matches_candidates(read_scope, candidates)) or (
-                    write_needs_lookup and _scope_matches_candidates(write_scope, candidates)
-                ):
-                    self._project_id_to_identifier[project_id] = project_identifier
+            # Projects is genuinely OffsetPaginatedCollection server-side (verified
+            # against op-sources) -- a single bounded fetch capped at 500 (this
+            # method's prior behavior) used to silently skip caching the identifier
+            # of any project beyond that cap, which then failed link-based
+            # allowlist matching for that project (found via a full-diff Codex
+            # review on release/0.3.4, ported here). Walk every server page instead,
+            # terminating on a short page (fewer records than requested page size)
+            # rather than trusting a possibly-absent/inconsistent `total` field.
+            server_page_size = self.settings.max_page_size
+            server_offset = 1
+            seen_ids: set[int] = set()
+            is_first_page = True
+            while True:
+                payload = await self._get(
+                    "projects", params={"offset": str(server_offset), "pageSize": str(server_page_size)}
+                )
+                elements = payload.get("_embedded", {}).get("elements", [])
+                page_ids = {item.get("id") for item in elements if isinstance(item, dict)}
+                if not is_first_page and page_ids and page_ids <= seen_ids:
+                    break
+                is_first_page = False
+                seen_ids.update(page_ids)
+                for item in elements:
+                    if not isinstance(item, dict):
+                        continue
+                    project_id = item.get("id")
+                    project_identifier = item.get("identifier")
+                    project_name = item.get("name") or ""
+                    if not isinstance(project_id, int) or not isinstance(project_identifier, str):
+                        continue
+                    candidates: set[str] = {
+                        project_identifier.casefold(),
+                        str(project_id),
+                        project_name.casefold(),
+                        project_name.casefold().replace(" ", "-"),
+                    }
+                    if (read_needs_lookup and _scope_matches_candidates(read_scope, candidates)) or (
+                        write_needs_lookup and _scope_matches_candidates(write_scope, candidates)
+                    ):
+                        self._project_id_to_identifier[project_id] = project_identifier
+                if len(elements) < server_page_size:
+                    break
+                server_offset += 1
         except OpenProjectError as exc:
             LOGGER.warning(
                 "initialize: failed to fetch the project list for identifier-cache "

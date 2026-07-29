@@ -329,6 +329,38 @@ async def test_initialize_populates_identifier_cache_for_restricted_write_scope_
 
 
 @pytest.mark.asyncio
+async def test_initialize_walks_every_server_page_of_projects() -> None:
+    """Regression (found via a full-diff Codex review on release/0.3.4, ported
+    here): Projects is genuinely OffsetPaginatedCollection server-side
+    (verified against op-sources) -- a single bounded fetch capped at 500
+    (this method's prior behavior) silently skipped caching the identifier of
+    any project beyond that cap, breaking link-based allowlist matching for
+    that project. Two full pages (page_size=max_page_size) followed by a
+    short 3rd page prove the walk continues past the first page and still
+    finds a matching project on the 2nd page."""
+    requested_offsets: list[str | None] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/projects"
+        offset = request.url.params.get("offset")
+        page_size = int(request.url.params["pageSize"])
+        requested_offsets.append(offset)
+        page_1 = [{"id": i, "identifier": f"proj-{i}", "name": f"Project {i}"} for i in range(1, page_size + 1)]
+        page_2 = [{"id": 999, "identifier": "OPM", "name": "OPM OpenProject CE MCP"}]
+        elements = {"1": page_1, "2": page_2}.get(offset, [])
+        return httpx.Response(200, json={"_embedded": {"elements": elements}}, request=request)
+
+    settings = _base_settings(read_projects=("*",), write_projects=("OPM",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    await client.initialize()
+
+    assert requested_offsets == ["1", "2"]
+    assert client._project_id_to_identifier == {999: "OPM"}
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_initialize_logs_and_survives_an_expected_transport_failure(caplog) -> None:
     # Hardening: initialize()'s identifier-cache fetch used to
     # swallow every exception silently (bare `except Exception: pass`). An
