@@ -388,6 +388,26 @@ async def test_get_admin_context_includes_writable_fields_and_parent_projects() 
 
 
 @pytest.mark.asyncio
+async def test_get_admin_context_filters_parent_projects_by_read_allowlist() -> None:
+    """Regression: a parent-project candidate outside OPENPROJECT_READ_PROJECTS
+    must not leak its name/identifier through this picklist just because it's
+    a valid value for the parent field -- same allowlist every other
+    project-returning path already applies. Fail closed: a disallowed
+    candidate is dropped entirely, not just its full detail."""
+    api = _FakeProjectApi()
+    api.parent_projects = [
+        ProjectRef(id=1, identifier="root", name="Root", url=""),
+        ProjectRef(id=2, identifier="secret", name="Secret", url=""),
+    ]
+    settings = dataclasses.replace(make_settings(), read_projects=("demo", "root"))
+    service = _admin_service(api, settings=settings)
+
+    context = await service.get_admin_context("demo")
+
+    assert [ref.identifier for ref in context.available_parent_projects] == ["root"]
+
+
+@pytest.mark.asyncio
 async def test_get_admin_context_zeroes_hidden_description_metadata_on_embedded_project() -> None:
     settings = dataclasses.replace(make_settings(), hide_project_fields=("description",))
     service = _admin_service(settings=settings)
