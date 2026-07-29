@@ -832,10 +832,6 @@ class OpenProjectClient:
     ) -> ActionListResult:
         return await self._action_capability_service.list_actions(offset=offset, limit=limit)
 
-    def _capability_context_allowed(self, payload: dict[str, Any]) -> bool:
-        context_link = payload.get("_links", {}).get("context")
-        return self._payload_allowed(lambda: self._ensure_project_link_allowed(context_link))
-
     async def list_capabilities(
         self,
         *,
@@ -2994,24 +2990,6 @@ class OpenProjectClient:
 
     # --- Project favorites (via the workspaces endpoint) ---
 
-    async def _run_version_gated(self, coro: Awaitable[Any], *, feature: str, min_version: str) -> Any:
-        """Run a call whose endpoint only exists from a newer OpenProject version.
-
-        A NotFoundError from such a call means the endpoint is absent (i.e. the
-        instance is too old), not that some resource is missing. Translating it
-        into a clear "requires OpenProject X+" message matters for an MCP: the
-        calling agent can explain the limitation instead of misreading a raw 404
-        as "the project does not exist". Any prerequisite (e.g. the project) has
-        already been fetched successfully before this runs, so the 404 is
-        unambiguous.
-        """
-        try:
-            return await coro
-        except NotFoundError as exc:
-            raise NotFoundError(
-                f"{feature} requires OpenProject {min_version} or newer; this instance appears to be older."
-            ) from exc
-
     async def _set_project_favorite(self, project: str, *, favorite: bool, confirm: bool) -> FavoriteWriteResult:
         return await self._project_service.set_favorite(project, favorite=favorite, confirm=confirm)
 
@@ -4751,9 +4729,6 @@ class OpenProjectClient:
                 f"Attachment exceeds the configured OpenProject maximum attachment size of {maximum} bytes."
             )
 
-    def _hidden_patterns(self, entity: str) -> tuple[str, ...]:
-        return _hidden_fields_policy.hidden_patterns(entity, settings=self.settings)
-
     def _normalize_hide_token(self, value: str) -> str:
         return _hidden_fields_policy.normalize_hide_token(value)
 
@@ -4762,18 +4737,6 @@ class OpenProjectClient:
 
     def _ensure_field_writable(self, entity: str, field_name: str) -> None:
         _hidden_fields_policy.ensure_field_writable(entity, field_name, settings=self.settings)
-
-    def _visible_formattable_text(
-        self,
-        value: Any,
-        entity: str,
-        field_name: str,
-        *,
-        limit: int = FORMATTABLE_LIMIT,
-    ) -> str | None:
-        if self._field_hidden(entity, field_name):
-            return None
-        return _extract_formattable_text(value, limit=limit)
 
     def _visible_formattable_text_with_meta(
         self,
