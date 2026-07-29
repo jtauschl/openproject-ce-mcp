@@ -33,3 +33,24 @@ async def test_get_group_normalizes_visible_members_admin(client: OpenProjectCli
     # as a bare array, not a {count, elements} collection.
     assert isinstance(group.members, list), "members should be a list"
     assert me.name in group.members
+
+
+async def test_list_groups_reports_correct_member_count(client: OpenProjectClient, group_ids: list[int]) -> None:
+    """Regression: list_groups' real response has no _embedded.members at
+    all for each element -- membership there is only ever exposed via
+    _links.members (a bare array of HAL links), unlike get_group's
+    single-item response shape. member_count silently stayed 0 for every
+    group returned by list_groups specifically."""
+    me = await client.get_current_user()
+    name = f"[integration-test] {uuid.uuid4().hex[:8]}"
+
+    create_result = await client.create_group(name=name, user_ids=[me.id], confirm=True)
+    assert create_result.ready, create_result.validation_errors
+    group_id = create_result.group_id
+    assert group_id is not None
+    group_ids.append(group_id)
+
+    listed = await client.list_groups(search=name)
+    matches = [g for g in listed.results if g.id == group_id]
+    assert len(matches) == 1
+    assert matches[0].member_count == 1

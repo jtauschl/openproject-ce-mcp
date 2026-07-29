@@ -184,6 +184,33 @@ def test_normalize_group_tolerates_list_shaped_members_collection() -> None:
     assert summary.member_count == 2
 
 
+def test_normalize_group_counts_link_members_on_the_real_list_endpoint() -> None:
+    """Regression, found via a live integration test against OpenProject
+    17.4.1: list_all's real response has NO _embedded.members at all for
+    each element -- membership is only ever exposed via _links.members (a
+    bare array of HAL links). The _embedded.members shape the sibling tests
+    above exercise is get's (single-item) response shape, not list_all's --
+    member_count silently stayed 0 for every group returned by list_all
+    specifically, unlike get."""
+    payload = {
+        "id": 3,
+        "name": "Backend",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "updatedAt": "2026-06-01T00:00:00Z",
+        "_links": {
+            "memberships": {"href": "/api/v3/memberships?filters=..."},
+            "members": [
+                {"href": "/api/v3/users/1", "title": "Alice"},
+                {"href": "/api/v3/users/2", "title": "Bob"},
+            ],
+        },
+    }
+
+    summary = normalize_group(payload, base_url=BASE_URL)
+
+    assert summary.member_count == 2
+
+
 def test_normalize_group_detail_falls_back_to_link_title_when_name_missing() -> None:
     payload = _group_payload(members=[{"_links": {"self": {"href": "/api/v3/users/7", "title": "Bob"}}}])
 

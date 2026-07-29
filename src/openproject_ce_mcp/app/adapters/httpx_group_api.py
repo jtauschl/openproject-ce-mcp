@@ -35,12 +35,21 @@ from ._text import web_url as _web_url
 
 
 def _member_count(payload: dict[str, Any]) -> int:
-    members = payload.get("_embedded", {}).get("members", [])
-    if isinstance(members, dict):
-        return int(members.get("count") or members.get("total") or 0)
-    if isinstance(members, list):
-        return len(members)
-    return 0
+    # OpenProject's group representer emits members differently depending on
+    # the endpoint: a single-item GET (get) embeds a flat array under
+    # _embedded.members, but the list endpoint (list_all) only ever carries
+    # _links.members (a bare array of HAL links, no _embedded.members at
+    # all) -- verified live against both endpoints. A {count,...}/
+    # {total,...} collection object is tolerated defensively too,
+    # in case a future version reintroduces it, but neither of the two real
+    # shapes above use it.
+    embedded_members = payload.get("_embedded", {}).get("members", [])
+    if isinstance(embedded_members, dict):
+        return int(embedded_members.get("count") or embedded_members.get("total") or 0)
+    if isinstance(embedded_members, list) and embedded_members:
+        return len(embedded_members)
+    link_members = payload.get("_links", {}).get("members", [])
+    return len(link_members) if isinstance(link_members, list) else 0
 
 
 def normalize_group(payload: dict[str, Any], *, base_url: str) -> GroupSummary:
