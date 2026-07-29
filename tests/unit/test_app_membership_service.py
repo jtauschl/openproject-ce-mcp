@@ -398,11 +398,18 @@ async def test_create_role_ambiguous_raises() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_role_lookup_page_walks_beyond_first_page() -> None:
-    """Regression test for the Roles migration: _resolve_role_hrefs must see
-    ALL roles, not just the first page, now that RoleApi is paginated. A role
-    api with a small page_size and the wanted role on a later page must still
-    resolve successfully.
+async def test_create_role_lookup_calls_role_api_once_not_page_walking() -> None:
+    """Regression test (found via an independent Codex review): _resolve_role_hrefs
+    must call RoleApi.list_roles ONCE, not page-walk via app.pagination.paginate_all
+    -- /api/v3/roles' RoleCollectionRepresenter is a real UnpaginatedCollection
+    (OPM-324), so the server ignores offset/pageSize and always returns the
+    complete collection in a single response. Feeding that into paginate_all
+    (which assumes a genuinely server-paginated fetcher) misreads
+    `total > page_size` as "more pages exist" and duplicates every record --
+    an earlier version of this method did exactly that. The fake here mirrors
+    the real API's actual behavior (always returns everything, regardless of
+    offset/page_size), unlike a genuinely paginated fake -- this pins the real
+    bug, not a page-walk that shouldn't happen at all.
     """
     role_api = _FakeRoleApi(
         records=[
@@ -417,28 +424,25 @@ async def test_create_role_lookup_page_walks_beyond_first_page() -> None:
     result = await service.create(project="demo", principal="me", roles=["Member"], confirm=True)
 
     assert result.confirmed is True
-    assert len(role_api.list_calls) >= 2
+    assert len(role_api.list_calls) == 1
 
 
 @pytest.mark.asyncio
-async def test_create_role_lookup_page_walks_using_max_page_size_not_default() -> None:
-    """_resolve_role_hrefs must page-walk using settings.max_page_size, not
-    settings.default_page_size, to minimize round trips for this
-    fetch-everything-by-value lookup -- same as VersionResolver/
-    ProjectResolver's identical page-walk. A regression here (page-walking
-    with the smaller default_page_size) would still resolve correctly but
-    waste extra HTTP calls; distinguishing the two settings (unlike the
-    "beyond first page" test above, which sets both to 1 and can't tell them
-    apart) is what pins the actual page_size used.
-    """
+async def test_create_role_lookup_uses_max_results_not_max_page_size() -> None:
+    """_resolve_role_hrefs's single call must ask for page_size=max_results
+    (matching RoleService.list_roles' OPM-324 pattern: fetch everything in
+    one call, bounded by max_results, not max_page_size), since the server
+    ignores this value's exact size anyway but a stale max_page_size-sized
+    request would (incorrectly, per the fix above) look like a page walk
+    is needed."""
     role_api = _FakeRoleApi(records=[RoleRecord(summary=RoleSummary(id=1, name="Member", url=f"{BASE_URL}/roles/1"))])
-    settings = dataclasses.replace(make_settings(), default_page_size=1, max_page_size=20)
+    settings = dataclasses.replace(make_settings(), default_page_size=1, max_page_size=20, max_results=100)
     api = _FakeMembershipApi()
     service = _service(api, settings=settings, role_api=role_api)
 
     await service.create(project="demo", principal="me", roles=["Member"], confirm=True)
 
-    assert role_api.list_calls == [(1, 20)]
+    assert role_api.list_calls == [(1, 100)]
 
 
 @pytest.mark.asyncio

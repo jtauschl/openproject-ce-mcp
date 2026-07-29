@@ -10,17 +10,29 @@ domain to warrant a Resolver in the ADR sense.
 `_WriteOutcome`/`_finalize_write` are shared via `app/services/_write_outcome.py`
 (unified once a 3rd domain needed the identical state machine).
 
-`_resolve_role_hrefs` depends on `RoleApi` directly (plus the shared
-`app.pagination.paginate_all` helper) instead of an injected parameterless
-`list_roles` callable, as it did before the Roles domain migration. That
-callable pointed at `client.py`'s then-unpaginated `list_roles`, which always
-returned the complete role collection in one call -- safe for this method's
-"resolve a role name against ALL roles" need. Once Roles moved to a
-paginated `PageResult` (default_page_size=10), a single un-page-walked call
-would silently only see the first page, misreporting real roles beyond it as
-"not found". `paginate_all` page-walks `RoleApi.list_roles` to reassemble the
-complete set, the same shape `VersionResolver`/`ProjectResolver` already use
-for the identical "resolve a name against a paginated list" problem.
+`_resolve_role_hrefs` depends on `RoleApi` directly instead of an injected
+parameterless `list_roles` callable, as it did before the Roles domain
+migration. That callable pointed at `client.py`'s then-unpaginated
+`list_roles`, which always returned the complete role collection in one
+call -- safe for this method's "resolve a role name against ALL roles" need.
+
+A single direct `RoleApi.list_roles` call, NOT a `paginate_all` page-walk
+(an earlier version of this method used one, found and corrected via an
+independent Codex review): `/api/v3/roles`' `RoleCollectionRepresenter` is a
+real `UnpaginatedCollection` (verified against
+`op-sources/17.6/lib/api/v3/roles/role_collection_representer.rb`), so the
+server ignores `offset`/`pageSize` entirely and always returns the complete
+collection, `total` included, in a single response. `paginate_all` assumes
+a genuinely server-paginated fetcher -- feeding it this always-complete
+response would misread `total > page_size` as "more pages exist", re-request
+an identical "next page" from the server (which ignores the new offset and
+returns the exact same complete collection again), and duplicate every
+record. Latent at today's role count (comfortably under `max_page_size`),
+but a real bug once a deployment's role count exceeds it -- unlike
+`VersionResolver`/`ProjectResolver`'s superficially-similar "resolve a name
+against a paginated list" page-walks, which page-walk a GENUINELY
+server-paginated endpoint and so need `paginate_all`'s multi-request logic;
+Roles does not, and using it here was the mistake.
 """
 
 from __future__ import annotations
@@ -31,7 +43,7 @@ from ...config import Settings
 from ...models import MembershipListResult, MembershipSummary, MembershipWriteResult
 from ..api_href import api_href
 from ..errors import InvalidInputError
-from ..pagination import clamp_limit, paginate_all, paginate_server
+from ..pagination import clamp_limit, paginate_server
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.membership_api import MembershipApi
@@ -238,14 +250,21 @@ class MembershipService:
         # result at all).
         available_roles: list[RoleRecord] = []
         if any(not ref.isdigit() for ref in normalized_refs):
-            # max_page_size, not clamp_limit(None, ...) (which would resolve to
-            # the smaller default_page_size) -- this walk needs the COMPLETE
-            # role set, so the largest page the server allows minimizes round
-            # trips, same as VersionResolver/ProjectResolver's identical
-            # page-walk (see version_resolver.py's `limit=self._settings.max_page_size`).
-            available_roles = await paginate_all(
-                lambda offset, page_size: self._role_api.list_roles(offset=offset, page_size=page_size),
-                page_size=self._settings.max_page_size,
+            # A single direct call, NOT paginate_all (found via an independent
+            # Codex review): /api/v3/roles' RoleCollectionRepresenter is a real
+            # UnpaginatedCollection (verified against
+            # op-sources/17.6/lib/api/v3/roles/role_collection_representer.rb),
+            # so the server ignores offset/pageSize and always returns the
+            # complete collection in one response, `total` included. Feeding
+            # that into paginate_all (which assumes a genuinely server-paginated
+            # fetcher) would misread `total > page_size` as "more pages exist",
+            # re-request an identical "next page", and duplicate every record --
+            # latent at today's role count (well under max_page_size) but a real
+            # bug once a deployment's role count exceeds it. RoleService.list_roles
+            # (OPM-324) already established the correct pattern: fetch once with
+            # page_size=max_results, trust the server's own complete response.
+            available_roles, _server_total = await self._role_api.list_roles(
+                offset=1, page_size=self._settings.max_results
             )
         hrefs: list[str] = []
         for normalized in normalized_refs:
