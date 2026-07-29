@@ -1071,7 +1071,12 @@ class RelationSummary:
 
 @dataclass
 class RelationListResult:
+    offset: int
+    limit: int
+    total: int
     count: int
+    next_offset: int | None
+    truncated: bool
     results: list[RelationSummary]
 
 

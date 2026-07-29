@@ -2760,6 +2760,8 @@ async def delete_time_entry(
 async def get_work_package_relations(
     ctx: Context,
     work_package_id: int | str,
+    offset: int = 1,
+    limit: int | None = None,
 ) -> RelationListResult:
     """Get all relations for a work package (blocks, relates to, duplicates, etc.).
 
@@ -2769,10 +2771,14 @@ async def get_work_package_relations(
     OpenProject canonicalizes some relation types at creation time (e.g. a relation requested as 'precedes'
     is stored as 'follows' with from_id/to_id swapped; see create_work_package_relation). Use from_id/to_id
     together with type, not the request you expect to have made, to determine the actual direction.
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.get_work_package_relations(safe_id))
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    return await _run_tool(client.get_work_package_relations(safe_id, offset=safe_offset, limit=safe_limit))
 
 
 async def get_work_package_activities(
@@ -3414,6 +3420,8 @@ async def get_custom_option(ctx: Context, custom_option_id: int) -> CustomOption
 async def list_relations(
     ctx: Context,
     relation_type: str | None = None,
+    offset: int = 1,
+    limit: int | None = None,
 ) -> RelationListResult:
     """List all relations across the instance, optionally filtered by type (e.g. 'blocks', 'follows').
 
@@ -3423,10 +3431,14 @@ async def list_relations(
     as 'precedes' is stored as 'follows' with from_id/to_id swapped; see create_work_package_relation).
     Filtering by relation_type matches the stored (canonical) type, not necessarily the type a caller
     originally requested when creating it.
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_type = _validate_relation_type(relation_type) if relation_type else None
-    return await _run_tool(client.list_relations(relation_type=safe_type))
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    return await _run_tool(client.list_relations(relation_type=safe_type, offset=safe_offset, limit=safe_limit))
 
 
 async def update_relation(

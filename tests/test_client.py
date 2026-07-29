@@ -13859,3 +13859,63 @@ async def test_update_time_entry_preview_reflects_openproject_validation_errors(
     assert result.ready is False
     assert result.confirmed is False
     assert result.validation_errors == {"hours": "must be greater than 0"}
+
+
+@pytest.mark.asyncio
+async def test_list_relations_walks_multiple_server_pages_when_allowlist_thins_first_page() -> None:
+    """Regression: list_relations/get_work_package_relations previously issued
+    a single unparametrized GET /relations, silently truncating results to
+    OpenProject's own server-side default page size. Now paginates like every
+    other list method (offset/pageSize, re-scan-and-skip across server pages):
+    page 1 (server pageSize=2) has zero allowed relations (both endpoints in a
+    disallowed project), page 2 has the one allowed relation."""
+    work_package_projects = {10: "other", 11: "other", 20: "other", 21: "other", 30: "demo", 31: "demo"}
+    requested_offsets: list[str] = []
+
+    def _relation(rel_id: int, from_wp: int, to_wp: int) -> dict:
+        return {
+            "id": rel_id,
+            "type": "relates",
+            "_links": {
+                "from": {"href": f"/api/v3/work_packages/{from_wp}"},
+                "to": {"href": f"/api/v3/work_packages/{to_wp}"},
+            },
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations":
+            page = request.url.params["offset"]
+            requested_offsets.append(page)
+            assert request.url.params["pageSize"] == "2"
+            if page == "1":
+                return httpx.Response(
+                    200,
+                    json={"total": 3, "_embedded": {"elements": [_relation(1, 10, 11), _relation(2, 20, 21)]}},
+                    request=request,
+                )
+            if page == "2":
+                return httpx.Response(
+                    200, json={"total": 3, "_embedded": {"elements": [_relation(3, 30, 31)]}}, request=request
+                )
+        match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if match:
+            wp_id = int(match.group(1))
+            return httpx.Response(
+                200,
+                json={"id": wp_id, "_links": {"project": {"title": work_package_projects[wp_id]}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(max_page_size=2, read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_relations()
+
+    assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
+    assert result.count == 1
+    assert result.results[0].id == 3
+    assert result.truncated is False
+    assert result.next_offset is None
+
+    await client.aclose()

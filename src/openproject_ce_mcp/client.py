@@ -3827,14 +3827,16 @@ class OpenProjectClient:
             result=detail,
         )
 
-    async def get_work_package_relations(self, work_package_id: int | str) -> RelationListResult:
+    async def get_work_package_relations(
+        self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
+    ) -> RelationListResult:
         self._ensure_read_enabled("work_package")
         work_package_id = await self._resolve_work_package_id(work_package_id)
         await self.get_work_package(work_package_id)
+        effective_limit = self._resolve_limit(limit)
         # The old work_packages/{id}/relations endpoint is deprecated (308 redirect).
         # Use the canonical relations endpoint with an "involved" filter instead.
         filters = json.dumps([{"involved": {"operator": "=", "values": [str(work_package_id)]}}])
-        payload = await self._get("relations", params={"filters": filters})
         # get_work_package() above only confirms the ANCHOR work package is
         # allowed; the OTHER side of each relation is unrelated to it and must
         # be checked independently -- otherwise a relation's to_id/to_subject
@@ -3844,14 +3846,80 @@ class OpenProjectClient:
         # Same helper list_relations() already uses for the identical concern.
         allowlisted = not _scope_allows_all(self.settings.read_projects)
         wp_allowed: dict[str, bool] = {}
-        results = []
-        for item in payload.get("_embedded", {}).get("elements", []):
-            if not isinstance(item, dict):
-                continue
-            if allowlisted and not await self._relation_endpoints_allowed(item, wp_allowed):
-                continue
-            results.append(self.normalize_relation(item))
-        return RelationListResult(count=len(results), results=results)
+
+        async def item_allowed(item: dict[str, Any]) -> bool:
+            return not allowlisted or await self._relation_endpoints_allowed(item, wp_allowed)
+
+        results, truncated = await self._paginate_relations(
+            params_extra={"filters": filters}, item_allowed=item_allowed, offset=offset, limit=effective_limit
+        )
+        return RelationListResult(
+            offset=offset,
+            limit=effective_limit,
+            total=len(results),
+            count=len(results),
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
+            results=results,
+        )
+
+    async def _paginate_relations(
+        self,
+        *,
+        params_extra: dict[str, str],
+        item_allowed: Callable[[dict[str, Any]], Awaitable[bool]],
+        offset: int,
+        limit: int,
+    ) -> tuple[list[RelationSummary], bool]:
+        """Re-scan-and-skip pagination for an ACL-filtered relations query.
+
+        `offset`/`limit` paginate in units of the caller's own limit, which can
+        differ from the server's own page size (`max_page_size`) -- the two
+        spaces can't be conflated into one server-side offset (same rationale
+        as list_projects). Every call re-scans from server page 1, skipping the
+        first `(offset - 1) * limit` already-seen allowed matches before
+        collecting the next `limit` -- some redundant server calls on deep
+        pagination, but no allowed relation is ever silently skipped or
+        duplicated across calls.
+        """
+        skip_count = (offset - 1) * limit
+        skipped = 0
+        results: list[RelationSummary] = []
+        server_offset = 1
+        server_page_size = self.settings.max_page_size
+        exhausted = False
+
+        while len(results) < limit:
+            payload = await self._get(
+                "relations",
+                params={"offset": str(server_offset), "pageSize": str(server_page_size), **params_extra},
+            )
+            raw_elements = payload.get("_embedded", {}).get("elements", [])
+            if not raw_elements:
+                exhausted = True
+                break
+
+            allowed_items = [item for item in raw_elements if isinstance(item, dict) and await item_allowed(item)]
+            hit_limit_mid_page = False
+            for item in allowed_items:
+                if skipped < skip_count:
+                    skipped += 1
+                    continue
+                results.append(self.normalize_relation(item))
+                if len(results) >= limit:
+                    hit_limit_mid_page = True
+                    break
+
+            if hit_limit_mid_page:
+                break
+
+            server_total = int(payload.get("total", 0))
+            if _next_offset(server_offset, server_page_size, server_total) is None:
+                exhausted = True
+                break
+            server_offset += 1
+
+        return results, not exhausted
 
     async def get_work_package_activities(
         self, work_package_id: int | str, *, limit: int | None = None, text_limit: int | None = None
@@ -5175,6 +5243,8 @@ class OpenProjectClient:
         self,
         *,
         relation_type: str | None = None,
+        offset: int = 1,
+        limit: int | None = None,
     ) -> RelationListResult:
         """List all relations, optionally filtered by type.
 
@@ -5184,22 +5254,30 @@ class OpenProjectClient:
         caller may not read.
         """
         self._ensure_read_enabled("work_package")
-        params: dict[str, str] = {}
+        effective_limit = self._resolve_limit(limit)
+        params_extra: dict[str, str] = {}
         if relation_type is not None:
-            params["filters"] = json.dumps([{"type": {"operator": "=", "values": [relation_type]}}])
-        payload = await self._get("relations", params=params or None)
-        results: list[RelationSummary] = []
+            params_extra["filters"] = json.dumps([{"type": {"operator": "=", "values": [relation_type]}}])
         allowlisted = not _scope_allows_all(self.settings.read_projects)
         # Cache project-allow decisions per work package so a batch of relations
         # between the same work packages doesn't refetch (mitigates N+1).
         wp_allowed: dict[str, bool] = {}
-        for item in payload.get("_embedded", {}).get("elements", []):
-            if not isinstance(item, dict):
-                continue
-            if allowlisted and not await self._relation_endpoints_allowed(item, wp_allowed):
-                continue
-            results.append(self.normalize_relation(item))
-        return RelationListResult(count=len(results), results=results)
+
+        async def item_allowed(item: dict[str, Any]) -> bool:
+            return not allowlisted or await self._relation_endpoints_allowed(item, wp_allowed)
+
+        results, truncated = await self._paginate_relations(
+            params_extra=params_extra, item_allowed=item_allowed, offset=offset, limit=effective_limit
+        )
+        return RelationListResult(
+            offset=offset,
+            limit=effective_limit,
+            total=len(results),
+            count=len(results),
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
+            results=results,
+        )
 
     async def _relation_endpoints_allowed(self, relation: dict[str, Any], cache: dict[str, bool]) -> bool:
         """True only if BOTH linked work packages are in an allowed project.
