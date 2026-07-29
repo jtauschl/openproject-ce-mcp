@@ -18,14 +18,10 @@ from openproject_ce_mcp.models import UserPreferences
 
 def _preferences(**overrides: object) -> UserPreferences:
     defaults: dict[str, object] = {
-        "id": 1,
-        "lang": "en",
         "time_zone": "Europe/Berlin",
         "comment_sort_descending": True,
         "warn_on_leaving_unsaved": False,
         "auto_hide_popups": True,
-        "notifications_reminder_time": "08:00",
-        "updated_at": "2026-01-01T00:00:00Z",
     }
     defaults.update(overrides)
     return UserPreferences(**defaults)  # type: ignore[arg-type]
@@ -49,7 +45,7 @@ class _FakeUserPreferencesApi:
 
     async def commit_update(self, payload: dict) -> UserPreferences:
         self.commit_update_calls.append(payload)
-        return _preferences(lang=payload.get("lang", self._record.detail.lang))
+        return _preferences(time_zone=payload.get("timeZone", self._record.detail.time_zone))
 
 
 def _service(api: _FakeUserPreferencesApi | None = None, *, settings=None) -> UserPreferencesService:
@@ -63,8 +59,7 @@ async def test_get_returns_stamped_preferences() -> None:
 
     result = await service.get()
 
-    assert result.id == 1
-    assert result.lang == "en"
+    assert result.time_zone == "Europe/Berlin"
     assert api.get_calls == 1
 
 
@@ -82,17 +77,17 @@ async def test_get_checks_read_enabled_before_any_api_call() -> None:
 
 @pytest.mark.asyncio
 async def test_get_applies_hidden_field_masking() -> None:
-    settings = _settings(hidden_fields={"user_preferences": ("lang",)})
+    settings = _settings(hidden_fields={"user_preferences": ("time_zone",)})
     api = _FakeUserPreferencesApi()
     service = _service(api, settings=settings)
 
     result = await service.get()
 
-    assert getattr(result, "_hidden_keys", frozenset()) == {"lang"}
+    assert getattr(result, "_hidden_keys", frozenset()) == {"time_zone"}
 
 
 @pytest.mark.asyncio
-async def test_lang_hidden_by_user_preferences_scope_not_user_or_personal_scope() -> None:
+async def test_time_zone_hidden_by_user_preferences_scope_not_user_or_personal_scope() -> None:
     """Regression test for the entity="user_preferences" vs a same-named
     neighbor mixup. Two different namespaces are at play here: "personal" is
     the access-scope string (read/write gating), "user_preferences" is the
@@ -100,17 +95,17 @@ async def test_lang_hidden_by_user_preferences_scope_not_user_or_personal_scope(
     conflate them, or reuse "user"'s entity string since both domains touch
     user-owned data.
     """
-    settings_user_hidden = _settings(hidden_fields={"user": ("lang",)})
+    settings_user_hidden = _settings(hidden_fields={"user": ("time_zone",)})
     result_user_hidden = await _service(settings=settings_user_hidden).get()
     assert getattr(result_user_hidden, "_hidden_keys", frozenset()) == frozenset()
 
-    settings_personal_hidden = _settings(hidden_fields={"personal": ("lang",)})
+    settings_personal_hidden = _settings(hidden_fields={"personal": ("time_zone",)})
     result_personal_hidden = await _service(settings=settings_personal_hidden).get()
     assert getattr(result_personal_hidden, "_hidden_keys", frozenset()) == frozenset()
 
-    settings_correctly_hidden = _settings(hidden_fields={"user_preferences": ("lang",)})
+    settings_correctly_hidden = _settings(hidden_fields={"user_preferences": ("time_zone",)})
     result_correctly_hidden = await _service(settings=settings_correctly_hidden).get()
-    assert getattr(result_correctly_hidden, "_hidden_keys", frozenset()) == {"lang"}
+    assert getattr(result_correctly_hidden, "_hidden_keys", frozenset()) == {"time_zone"}
 
 
 @pytest.mark.asyncio
@@ -118,12 +113,12 @@ async def test_update_returns_preview_without_committing_when_not_confirmed() ->
     api = _FakeUserPreferencesApi()
     service = _service(api)
 
-    result = await service.update(lang="de", confirm=False)
+    result = await service.update(time_zone="UTC", confirm=False)
 
     assert result.requires_confirmation is True
     assert result.confirmed is False
     assert result.result is None
-    assert result.payload == {"lang": "de"}
+    assert result.payload == {"timeZone": "UTC"}
     assert api.commit_update_calls == []
 
 
@@ -133,10 +128,10 @@ async def test_update_commits_and_stamps_hidden_fields_when_confirmed() -> None:
     api = _FakeUserPreferencesApi()
     service = _service(api, settings=settings)
 
-    result = await service.update(lang="de", confirm=True)
+    result = await service.update(comment_sort_descending=True, confirm=True)
 
     assert result.confirmed is True
-    assert api.commit_update_calls == [{"lang": "de"}]
+    assert api.commit_update_calls == [{"commentSortDescending": True}]
     assert result.result is not None
     assert getattr(result.result, "_hidden_keys", frozenset()) == {"time_zone"}
 
@@ -154,7 +149,7 @@ async def test_update_checks_write_enabled_even_on_preview_not_only_on_commit() 
     service = _service(api, settings=settings)
 
     with pytest.raises(PermissionDeniedError):
-        await service.update(lang="de", confirm=False)
+        await service.update(time_zone="UTC", confirm=False)
 
     assert api.commit_update_calls == []
 
@@ -166,19 +161,19 @@ async def test_update_checks_write_enabled_on_commit() -> None:
     service = _service(api, settings=settings)
 
     with pytest.raises(PermissionDeniedError):
-        await service.update(lang="de", confirm=True)
+        await service.update(time_zone="UTC", confirm=True)
 
     assert api.commit_update_calls == []
 
 
 @pytest.mark.asyncio
 async def test_update_rejects_when_hidden_field_is_being_written() -> None:
-    settings = _settings(hidden_fields={"user_preferences": ("lang",)})
+    settings = _settings(hidden_fields={"user_preferences": ("time_zone",)})
     api = _FakeUserPreferencesApi()
     service = _service(api, settings=settings)
 
     with pytest.raises(InvalidInputError, match="hidden by"):
-        await service.update(lang="de", confirm=True)
+        await service.update(time_zone="UTC", confirm=True)
 
     assert api.commit_update_calls == []
 
@@ -193,6 +188,6 @@ async def test_update_does_not_perform_a_prerequisite_get() -> None:
     api = _FakeUserPreferencesApi()
     service = _service(api)
 
-    await service.update(lang="de", confirm=True)
+    await service.update(time_zone="UTC", confirm=True)
 
     assert api.get_calls == 0

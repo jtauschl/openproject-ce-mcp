@@ -656,30 +656,23 @@ async def test_user_preferences_get_and_update() -> None:
             return httpx.Response(
                 200,
                 json={
-                    "id": 1,
-                    "lang": "en",
                     "timeZone": "Europe/Berlin",
                     "commentSortDescending": False,
                     "warnOnLeavingUnsaved": True,
                     "autoHidePopups": False,
-                    "updatedAt": "2026-03-20T10:00:00Z",
                 },
                 request=request,
             )
         if request.url.path == "/api/v3/my_preferences" and request.method == "PATCH":
             body = json.loads(request.content)
-            assert body["lang"] == "de"
             assert body["timeZone"] == "America/New_York"
             return httpx.Response(
                 200,
                 json={
-                    "id": 1,
-                    "lang": "de",
                     "timeZone": "America/New_York",
                     "commentSortDescending": False,
                     "warnOnLeavingUnsaved": True,
                     "autoHidePopups": False,
-                    "updatedAt": "2026-03-20T11:00:00Z",
                 },
                 request=request,
             )
@@ -703,16 +696,14 @@ async def test_user_preferences_get_and_update() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     prefs = await client.get_my_preferences()
-    assert prefs.lang == "en"
     assert prefs.time_zone == "Europe/Berlin"
     assert prefs.comment_sort_descending is False
 
-    preview = await client.update_my_preferences(lang="de", time_zone="America/New_York", confirm=False)
+    preview = await client.update_my_preferences(time_zone="America/New_York", confirm=False)
     assert preview.requires_confirmation is True
 
-    updated = await client.update_my_preferences(lang="de", time_zone="America/New_York", confirm=True)
+    updated = await client.update_my_preferences(time_zone="America/New_York", confirm=True)
     assert updated.result is not None
-    assert updated.result.lang == "de"
     assert updated.result.time_zone == "America/New_York"
 
     await client.aclose()
@@ -741,7 +732,7 @@ async def test_update_my_preferences_denied_without_personal_write() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_PERSONAL_WRITE"):
-        await client.update_my_preferences(lang="de", confirm=True)
+        await client.update_my_preferences(time_zone="UTC", confirm=True)
     await client.aclose()
 
 
@@ -753,7 +744,7 @@ async def test_update_my_preferences_succeeds_with_personal_write_enabled() -> N
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(_personal_write_enabled_settings(), transport=httpx.MockTransport(handler))
-    result = await client.update_my_preferences(lang="de", confirm=True)
+    result = await client.update_my_preferences(time_zone="UTC", confirm=True)
     assert result.confirmed
     await client.aclose()
 

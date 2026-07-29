@@ -841,10 +841,15 @@ async def test_hidden_reminder_field_is_rejected_on_create() -> None:
 @pytest.mark.asyncio
 async def test_hidden_reminder_field_is_rejected_on_update() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/v3/reminders/9" and request.method == "GET":
+        if request.url.path == "/api/v3/reminders" and request.method == "GET":
             return httpx.Response(
                 200,
-                json={"id": 9, "_links": {"remindable": {"href": "/api/v3/work_packages/42"}}},
+                json={
+                    "_embedded": {
+                        "elements": [{"id": 9, "_links": {"remindable": {"href": "/api/v3/work_packages/42"}}}]
+                    },
+                    "total": 1,
+                },
                 request=request,
             )
         if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":

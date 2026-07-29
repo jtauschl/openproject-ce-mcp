@@ -20,28 +20,20 @@ def _client(handler) -> httpx.AsyncClient:
 
 def _preferences_payload() -> dict:
     return {
-        "id": 1,
-        "lang": "en",
         "timeZone": "Europe/Berlin",
         "commentSortDescending": True,
         "warnOnLeavingUnsaved": False,
         "autoHidePopups": True,
-        "notificationsReminderTime": "08:00",
-        "updatedAt": "2026-01-01T00:00:00Z",
     }
 
 
 def test_normalize_user_preferences_maps_all_fields() -> None:
     preferences = normalize_user_preferences(_preferences_payload())
 
-    assert preferences.id == 1
-    assert preferences.lang == "en"
     assert preferences.time_zone == "Europe/Berlin"
     assert preferences.comment_sort_descending is True
     assert preferences.warn_on_leaving_unsaved is False
     assert preferences.auto_hide_popups is True
-    assert preferences.notifications_reminder_time == "08:00"
-    assert preferences.updated_at == "2026-01-01T00:00:00Z"
 
 
 @pytest.mark.asyncio
@@ -55,8 +47,7 @@ async def test_get_sends_get_my_preferences_and_builds_record() -> None:
         api = HttpxUserPreferencesApi(HttpxTransport(http_client))
         record = await api.get()
 
-    assert record.detail.id == 1
-    assert record.detail.lang == "en"
+    assert record.detail.time_zone == "Europe/Berlin"
 
 
 @pytest.mark.asyncio
@@ -68,7 +59,6 @@ async def test_commit_update_patches_my_preferences_with_given_payload() -> None
         assert request.url.path == "/api/v3/my_preferences"
         body = json.loads(request.content)
         assert body == {
-            "lang": "de",
             "timeZone": "UTC",
             "commentSortDescending": False,
             "warnOnLeavingUnsaved": True,
@@ -79,7 +69,6 @@ async def test_commit_update_patches_my_preferences_with_given_payload() -> None
     async with _client(handler) as http_client:
         api = HttpxUserPreferencesApi(HttpxTransport(http_client))
         payload = {
-            "lang": "de",
             "timeZone": "UTC",
             "commentSortDescending": False,
             "warnOnLeavingUnsaved": True,
@@ -87,5 +76,4 @@ async def test_commit_update_patches_my_preferences_with_given_payload() -> None
         }
         result = await api.commit_update(payload)
 
-    assert result.id == 1
-    assert result.lang == "en"  # response reflects the server's normalized payload, not the request body
+    assert result.time_zone == "Europe/Berlin"  # response reflects the server's normalized payload

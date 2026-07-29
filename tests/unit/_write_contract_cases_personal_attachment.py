@@ -59,13 +59,10 @@ def _update_my_preferences_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
             json={
-                "id": 1,
-                "lang": "de",
                 "timeZone": "America/New_York",
                 "commentSortDescending": False,
                 "warnOnLeavingUnsaved": True,
                 "autoHidePopups": False,
-                "updatedAt": "2026-03-20T11:00:00Z",
             },
             request=request,
         )
@@ -182,7 +179,7 @@ def _materialize_attachment_case(tmp_path: Path) -> MaterializedWriteToolCase:
 PERSONAL_ATTACHMENT_CASES: dict[str, WriteToolCase] = {
     "update_my_preferences": WriteToolCase(
         tool="update_my_preferences",
-        kwargs={"lang": "de", "time_zone": "America/New_York"},
+        kwargs={"time_zone": "America/New_York"},
         settings=_base_personal_settings(),
         write_scope="personal",
         handler=_update_my_preferences_handler,

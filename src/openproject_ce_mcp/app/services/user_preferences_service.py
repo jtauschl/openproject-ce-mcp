@@ -61,19 +61,23 @@ class UserPreferencesService:
     async def update(
         self,
         *,
-        lang: str | None = None,
         time_zone: str | None = None,
         comment_sort_descending: bool | None = None,
         warn_on_leaving_unsaved: bool | None = None,
         auto_hide_popups: bool | None = None,
         confirm: bool = False,
     ) -> UserPreferencesWriteResult:
+        # Note: there is no "lang" parameter here. OpenProject's real
+        # UserPreferenceRepresenter has no "lang" property at all -- language
+        # is a User attribute (see UserService's "language" field), not a
+        # preference. A previous version of this method sent {"lang": ...} to
+        # PATCH /api/v3/my_preferences, which the real API silently ignored
+        # (verified live: even a nonsense value returned 200 with no
+        # validation error and no effect), so it always appeared to succeed
+        # while doing nothing.
         access.ensure_write_enabled("personal", settings=self._settings)
 
         payload: dict[str, Any] = {}
-        if lang is not None:
-            hidden_fields.ensure_field_writable("user_preferences", "lang", settings=self._settings)
-            payload["lang"] = lang
         if time_zone is not None:
             hidden_fields.ensure_field_writable("user_preferences", "time_zone", settings=self._settings)
             payload["timeZone"] = time_zone

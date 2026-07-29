@@ -1242,14 +1242,10 @@ class GridWriteResult(ConfirmationHeader):
 
 @dataclass
 class UserPreferences:
-    id: int | None
-    lang: str | None
     time_zone: str | None
     comment_sort_descending: bool | None
     warn_on_leaving_unsaved: bool | None
     auto_hide_popups: bool | None
-    notifications_reminder_time: str | None
-    updated_at: str | None
 
 
 @dataclass

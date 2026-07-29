@@ -3304,7 +3304,6 @@ class OpenProjectClient:
     async def update_my_preferences(
         self,
         *,
-        lang: str | None = None,
         time_zone: str | None = None,
         comment_sort_descending: bool | None = None,
         warn_on_leaving_unsaved: bool | None = None,
@@ -3312,7 +3311,6 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> UserPreferencesWriteResult:
         return await self._user_preferences_service.update(
-            lang=lang,
             time_zone=time_zone,
             comment_sort_descending=comment_sort_descending,
             warn_on_leaving_unsaved=warn_on_leaving_unsaved,

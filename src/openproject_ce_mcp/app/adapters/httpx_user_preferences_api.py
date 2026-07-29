@@ -20,16 +20,17 @@ def normalize_user_preferences(payload: dict[str, Any]) -> UserPreferences:
     normalize_user_preferences -- there was no _apply_hidden_fields call to
     strip here, the original had none at all (masking is a new capability
     this migration adds at the Service layer, not something being preserved).
+
+    No "id"/"lang"/"notificationsReminderTime"/"updatedAt": OpenProject's real
+    UserPreferenceRepresenter has none of these fields (verified live) --
+    language lives on the User resource, not preferences, and there is no
+    equivalent of the other three at all.
     """
     return UserPreferences(
-        id=payload.get("id"),
-        lang=payload.get("lang"),
         time_zone=payload.get("timeZone"),
         comment_sort_descending=payload.get("commentSortDescending"),
         warn_on_leaving_unsaved=payload.get("warnOnLeavingUnsaved"),
         auto_hide_popups=payload.get("autoHidePopups"),
-        notifications_reminder_time=payload.get("notificationsReminderTime"),
-        updated_at=payload.get("updatedAt"),
     )
 
 

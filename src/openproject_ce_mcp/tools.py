@@ -3651,26 +3651,32 @@ async def delete_grid(
 
 
 async def get_my_preferences(ctx: Context) -> UserPreferences:
-    """Return the current user's OpenProject preferences (language, timezone, sorting, …)."""
+    """Return the current user's OpenProject preferences (timezone, sorting, popups, …).
+
+    Note: language is a User attribute, not a preference -- use update_user's
+    "language" field to change it.
+    """
     client = _client_from_context(ctx)
     return await _run_tool(client.get_my_preferences())
 
 
 async def update_my_preferences(
     ctx: Context,
-    lang: str | None = None,
     time_zone: str | None = None,
     comment_sort_descending: bool | None = None,
     warn_on_leaving_unsaved: bool | None = None,
     auto_hide_popups: bool | None = None,
     confirm: bool = False,
 ) -> UserPreferencesWriteResult:
-    """Prepare or update the current user's preferences (language, timezone, comment sort order, …).
-    Set confirm=true to write."""
+    """Prepare or update the current user's preferences (timezone, comment sort order, popups, …).
+    Set confirm=true to write.
+
+    Note: language is a User attribute, not a preference -- use update_user's
+    "language" field to change it.
+    """
     client = _client_from_context(ctx)
     return await _run_tool(
         client.update_my_preferences(
-            lang=lang,
             time_zone=time_zone,
             comment_sort_descending=comment_sort_descending,
             warn_on_leaving_unsaved=warn_on_leaving_unsaved,
