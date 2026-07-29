@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import dataclasses
+import uuid
+
 import pytest
 
 from openproject_ce_mcp.client import NotFoundError, OpenProjectClient
@@ -24,6 +27,43 @@ async def test_get_project(client: OpenProjectClient, test_project: str) -> None
 async def test_get_project_admin_context(client: OpenProjectClient, test_project: str) -> None:
     ctx = await client.get_project_admin_context(test_project)
     assert ctx is not None
+
+
+async def test_get_project_admin_context_filters_parent_candidates_by_read_allowlist(
+    client: OpenProjectClient, test_project: str, project_refs: list[str]
+) -> None:
+    """Regression: available_parent_projects previously returned every
+    candidate OpenProject considers a valid parent, regardless of
+    OPENPROJECT_READ_PROJECTS -- a project outside the allowlist leaked its
+    name/identifier through this picklist. The fixture's client is
+    restricted to read_projects=(test_project,), so a freshly created,
+    differently-named project must NOT appear as a parent candidate.
+
+    Creating that second project requires its own, unrestricted client:
+    the fixture's client's read_projects/write_projects are both scoped to
+    (test_project,) alone, so create_project's own allowlist check would
+    reject a differently-named project before this test ever reaches the
+    available_parent_projects assertion it's meant to exercise.
+    """
+    unrestricted_settings = dataclasses.replace(
+        client.settings,
+        read_projects=("*",),
+        write_projects=("*",),
+    )
+    unrestricted_client = OpenProjectClient(unrestricted_settings)
+    await unrestricted_client.initialize()
+
+    identifier = f"integration-test-{uuid.uuid4().hex[:8]}"
+    create_result = await unrestricted_client.create_project(
+        name=f"[integration-test] {identifier}", identifier=identifier, confirm=True
+    )
+    assert create_result.ready, create_result.validation_errors
+    project_refs.append(identifier)
+
+    ctx = await client.get_project_admin_context(test_project)
+
+    candidate_identifiers = {ref.identifier for ref in ctx.available_parent_projects}
+    assert identifier not in candidate_identifiers
 
 
 async def test_get_project_configuration(client: OpenProjectClient, test_project: str) -> None:

@@ -90,6 +90,46 @@ async def test_create_subtask(client: OpenProjectClient, test_project: str, wp_i
     assert wp.subject
 
 
+async def test_get_work_package_ancestors_tolerate_missing_display_id(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """Regression: WorkPackageDetail.ancestors/children entries were typed as
+    dict[str, str], but OpenProject only includes displayId on hierarchy
+    links in 17.5+ semantic mode -- on a classic/pre-17.5 instance (like this
+    one, seeded with classic identifiers) display_id is None, and the MCP
+    output schema used to reject that null outright, crashing get_work_package
+    for any work package with ancestors."""
+    parent = await client.create_work_package(
+        project=test_project,
+        type="Task",
+        subject=f"{_SUBJECT} ancestors parent",
+        confirm=True,
+    )
+    assert parent.ready
+    wp_ids.append(parent.work_package_id)
+
+    child = await client.create_subtask(
+        parent_work_package_id=parent.work_package_id,
+        type="Task",
+        subject=f"{_SUBJECT} ancestors child",
+        confirm=True,
+    )
+    assert child.ready
+    wp_ids.append(child.work_package_id)
+
+    wp = await client.get_work_package(child.work_package_id)
+    assert wp.ancestors
+    parent_href_fragment = f"/work_packages/{parent.work_package_id}"
+    ancestor = next(a for a in wp.ancestors if a.get("href", "").endswith(parent_href_fragment))
+    assert ancestor["display_id"] is None  # classic instance: no displayId on hierarchy links
+
+    parent_wp = await client.get_work_package(parent.work_package_id)
+    assert parent_wp.children
+    child_href_fragment = f"/work_packages/{child.work_package_id}"
+    child_link = next(c for c in parent_wp.children if c.get("href", "").endswith(child_href_fragment))
+    assert child_link["display_id"] is None
+
+
 async def test_create_reparent_and_unparent_work_package(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
