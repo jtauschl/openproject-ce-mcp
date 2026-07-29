@@ -1384,14 +1384,14 @@ class GridWriteResult:
 
 @dataclass
 class UserPreferences:
-    id: int | None
-    lang: str | None
+    # Note: OpenProject's real UserPreferenceRepresenter exposes no id, lang,
+    # or updatedAt property at all -- language lives on the User resource
+    # (see update_user's "language" field), not on preferences. Verified
+    # live against a running instance (2026-07-29).
     time_zone: str | None
     comment_sort_descending: bool | None
     warn_on_leaving_unsaved: bool | None
     auto_hide_popups: bool | None
-    notifications_reminder_time: str | None
-    updated_at: str | None
 
 
 @dataclass

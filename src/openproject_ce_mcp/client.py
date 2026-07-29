@@ -5171,7 +5171,6 @@ class OpenProjectClient:
     async def update_my_preferences(
         self,
         *,
-        lang: str | None = None,
         time_zone: str | None = None,
         comment_sort_descending: bool | None = None,
         warn_on_leaving_unsaved: bool | None = None,
@@ -5179,13 +5178,20 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> UserPreferencesWriteResult:
         # Self-scoped: only the authenticated token owner's own preferences
-        # (language, timezone, popup behaviour). Gated by "personal" write
+        # (timezone, popup behaviour). Gated by "personal" write
         # (OPENPROJECT_ENABLE_PERSONAL_WRITE); the confirm/preview flow is a
         # separate, additional guard on top, not a substitute for it.
+        #
+        # Note: there is no "lang" parameter here. OpenProject's real
+        # UserPreferenceRepresenter has no "lang" property at all -- language
+        # is a User attribute (see update_user's "language" field), not a
+        # preference. A previous version of this method sent {"lang": ...} to
+        # PATCH /api/v3/my_preferences, which the real API silently ignored
+        # (verified live: even a nonsense value returned 200 with no
+        # validation error and no effect), so it always appeared to succeed
+        # while doing nothing.
         self._ensure_write_enabled("personal")
         body: dict[str, Any] = {}
-        if lang is not None:
-            body["lang"] = lang
         if time_zone is not None:
             body["timeZone"] = time_zone
         if comment_sort_descending is not None:
@@ -6828,14 +6834,10 @@ class OpenProjectClient:
 
     def normalize_user_preferences(self, payload: dict[str, Any]) -> UserPreferences:
         return UserPreferences(
-            id=payload.get("id"),
-            lang=payload.get("lang"),
             time_zone=payload.get("timeZone"),
             comment_sort_descending=payload.get("commentSortDescending"),
             warn_on_leaving_unsaved=payload.get("warnOnLeavingUnsaved"),
             auto_hide_popups=payload.get("autoHidePopups"),
-            notifications_reminder_time=payload.get("notificationsReminderTime"),
-            updated_at=payload.get("updatedAt"),
         )
 
     def normalize_help_text(self, payload: dict[str, Any]) -> HelpTextSummary:
