@@ -88,6 +88,7 @@ from .models import (
     ProjectPhase,
     ProjectPhaseDefinition,
     ProjectPhaseDefinitionListResult,
+    ProjectRef,
     ProjectSummary,
     ProjectWorkPackageContext,
     ProjectWriteResult,
@@ -436,7 +437,21 @@ class OpenProjectClient:
         ]
         status_field = next((field for field in fields if field.key == "status"), None)
         available_statuses = status_field.allowed_values if status_field else []
-        available_parent_projects = await self._list_available_parent_projects(project.id, schema=schema)
+        parent_candidates = await self._list_available_parent_projects(project.id, schema=schema)
+
+        # Fail closed: a parent-project candidate outside READ_PROJECTS must not
+        # leak its name/identifier through this picklist just because it's a
+        # valid value for the parent field -- same allowlist every other
+        # project-returning path already applies.
+        def _parent_ref_allowed(ref: ProjectRef) -> bool:
+            return self._payload_allowed(
+                lambda: self._ensure_project_allowed(
+                    ref.identifier or str(ref.id),
+                    payload={"id": ref.id, "identifier": ref.identifier, "name": ref.name},
+                )
+            )
+
+        available_parent_projects = [ref for ref in parent_candidates if _parent_ref_allowed(ref)]
         return self._apply_hidden_fields(
             "project_admin_context",
             ProjectAdminContext(
@@ -444,7 +459,6 @@ class OpenProjectClient:
                 available_statuses=available_statuses,
                 available_parent_projects=available_parent_projects,
                 fields=fields,
-                project_links=sorted(payload.get("_links", {}).keys()),
             ),
         )
 
@@ -1222,7 +1236,6 @@ class OpenProjectClient:
                 current_user_id=current_user.id,
                 current_user_name=current_user.name,
                 membership=my_membership,
-                project_links=project_links,
                 inferred_is_project_admin=inferred_is_project_admin,
                 inferred_can_edit_project=inferred_can_edit_project,
                 inferred_can_manage_memberships=inferred_can_manage_memberships,
@@ -7688,7 +7701,7 @@ class OpenProjectClient:
         project_id: int,
         *,
         schema: dict[str, Any],
-    ) -> list[ProjectSummary]:
+    ) -> list[ProjectRef]:
         parent_field = schema.get("parent")
         if not isinstance(parent_field, dict):
             return []
@@ -7696,7 +7709,20 @@ class OpenProjectClient:
         if not href:
             href = f"/api/v3/projects/available_parent_projects?of={project_id}"
         payload = await self._get(self._link_to_api_path(href))
-        return [self.normalize_project(item) for item in payload.get("_embedded", {}).get("elements", [])]
+        elements = payload.get("_embedded", {}).get("elements", [])
+        # Lightweight picklist entries only -- the full ProjectSummary (with a
+        # description/status_explanation up to 1200 chars each) has no benefit
+        # for a caller just picking a parent by reference.
+        return [
+            ProjectRef(
+                id=int(item["id"]),
+                identifier=item.get("identifier"),
+                name=_trim_text(item.get("name"), limit=SUBJECT_LIMIT) or f"Project {item['id']}",
+                url=self._web_url(f"projects/{item.get('identifier') or item['id']}"),
+            )
+            for item in elements
+            if isinstance(item, dict)
+        ]
 
     def _resolve_project_status_href(self, schema: dict[str, Any], raw_value: str) -> str:
         field = schema.get("status")

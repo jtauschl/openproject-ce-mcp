@@ -14015,3 +14015,72 @@ async def test_normalize_group_counts_flat_members_array() -> None:
     assert result.results[0].member_count == 2
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_project_admin_context_returns_lean_parent_refs_filtered_by_allowlist() -> None:
+    """Regression, two findings from d0de2d6's cross-domain review:
+
+    1. available_parent_projects previously returned full ProjectSummary
+       objects (description/status_explanation up to 1200 chars each) for a
+       picklist use case that only needs id/identifier/name/url -- now a
+       lightweight ProjectRef.
+    2. A parent-project candidate outside OPENPROJECT_READ_PROJECTS leaked its
+       name/identifier through this picklist regardless -- the same allowlist
+       every other project-returning path applies was never checked here.
+       Fail closed: a disallowed candidate must not appear at all.
+    """
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/form" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "schema": {
+                            "parent": {
+                                "_links": {"allowedValues": {"href": "/api/v3/projects/available_parent_projects?of=1"}}
+                            }
+                        }
+                    }
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/available_parent_projects":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 2,
+                                "identifier": "demo-parent",
+                                "name": "Demo Parent",
+                                "description": {"raw": "x" * 2000},
+                            },
+                            {"id": 3, "identifier": "secret", "name": "Secret Parent"},
+                        ]
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo", "demo-parent"))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    context = await client.get_project_admin_context("demo")
+
+    assert len(context.available_parent_projects) == 1
+    ref = context.available_parent_projects[0]
+    assert ref.identifier == "demo-parent"
+    assert not hasattr(ref, "description")
+    assert not hasattr(context, "project_links")
+
+    await client.aclose()

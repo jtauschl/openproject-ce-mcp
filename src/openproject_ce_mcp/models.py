@@ -35,6 +35,22 @@ class ProjectSummary:
 
 
 @dataclass
+class ProjectRef:
+    """Lightweight project picklist entry -- id/identifier/name/url only.
+
+    Used where a caller needs to pick a project by reference (e.g. a parent
+    project) but not read its full description/status: the full ProjectSummary
+    would cost a description/status_explanation (up to 1200 chars) per
+    candidate for no benefit to that use case.
+    """
+
+    id: int
+    identifier: str | None
+    name: str
+    url: str
+
+
+@dataclass
 class ProjectListResult:
     offset: int
     limit: int
@@ -149,7 +165,6 @@ class ProjectAccessSummary:
     current_user_id: int
     current_user_name: str | None
     membership: MembershipSummary | None
-    project_links: list[str]
     inferred_is_project_admin: bool
     inferred_can_edit_project: bool
     inferred_can_manage_memberships: bool
@@ -330,9 +345,8 @@ class ProjectFieldSchema:
 class ProjectAdminContext:
     project: ProjectSummary | None
     available_statuses: list[OptionValue]
-    available_parent_projects: list[ProjectSummary]
+    available_parent_projects: list[ProjectRef]
     fields: list[ProjectFieldSchema]
-    project_links: list[str]
 
 
 @dataclass
