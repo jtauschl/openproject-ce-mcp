@@ -95,6 +95,42 @@ async def test_list_principals(client: OpenProjectClient) -> None:
     assert result.count >= 0  # may be empty on minimal instance
 
 
+async def test_add_and_remove_project_favorite(client: OpenProjectClient, test_project: str) -> None:
+    """Round-trips add_project_favorite/remove_project_favorite against the
+    real POST/DELETE workspaces/{id}/favorite endpoints. Restores the
+    pre-test favorite state (unfavorited) regardless of outcome so this test
+    leaves no persistent side effect on the disposable test project."""
+    add_preview = await client.add_project_favorite(project=test_project)
+    assert add_preview.requires_confirmation
+
+    try:
+        added = await client.add_project_favorite(project=test_project, confirm=True)
+        assert added.confirmed
+        assert added.action == "favorite"
+
+        remove_preview = await client.remove_project_favorite(project=test_project)
+        assert remove_preview.requires_confirmation
+
+        removed = await client.remove_project_favorite(project=test_project, confirm=True)
+        assert removed.confirmed
+        assert removed.action == "unfavorite"
+    finally:
+        # Best-effort restore to unfavorited in case an assertion above failed
+        # mid-sequence, so the test project's favorite state doesn't leak
+        # into other tests/runs.
+        try:
+            await client.remove_project_favorite(project=test_project, confirm=True)
+        except Exception:
+            pass
+
+
+async def test_add_project_favorite_denied_outside_write_allowlist(
+    denied_client: OpenProjectClient, test_project: str
+) -> None:
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.add_project_favorite(project=test_project, confirm=True)
+
+
 async def test_update_project_denies_reparent_into_write_restricted_project(
     client: OpenProjectClient, test_project: str, project_refs: list[str]
 ) -> None:
