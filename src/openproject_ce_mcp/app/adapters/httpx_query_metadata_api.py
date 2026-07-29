@@ -48,6 +48,7 @@ from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
 from ._text import link_title as _link_title
 from ._text import link_to_web_url as _link_to_web_url
+from ._text import reject_path_traversal_segments as _reject_path_traversal_segments
 from ._text import slug_from_href as _slug_from_href
 from ._text import trim_text as _trim_text
 
@@ -144,15 +145,18 @@ class HttpxQueryMetadataApi:
         self._origin = origin
 
     async def get_filter(self, filter_id: str) -> QueryFilterRecord:
-        payload = await self._transport.get_json(f"queries/filters/{quote(filter_id, safe='')}")
+        safe_id = _reject_path_traversal_segments(filter_id, field_name="filter_id")
+        payload = await self._transport.get_json(f"queries/filters/{quote(safe_id, safe='')}")
         return QueryFilterRecord(summary=normalize_query_filter(payload, base_url=self._base_url, origin=self._origin))
 
     async def get_column(self, column_id: str) -> QueryColumnRecord:
-        payload = await self._transport.get_json(f"queries/columns/{quote(column_id, safe='')}")
+        safe_id = _reject_path_traversal_segments(column_id, field_name="column_id")
+        payload = await self._transport.get_json(f"queries/columns/{quote(safe_id, safe='')}")
         return QueryColumnRecord(summary=normalize_query_column(payload, base_url=self._base_url, origin=self._origin))
 
     async def get_operator(self, operator_id: str) -> QueryOperatorRecord:
-        payload = await self._transport.get_json(f"queries/operators/{quote(operator_id, safe='')}")
+        safe_id = _reject_path_traversal_segments(operator_id, field_name="operator_id")
+        payload = await self._transport.get_json(f"queries/operators/{quote(safe_id, safe='')}")
         return QueryOperatorRecord(
             summary=normalize_query_operator(payload, base_url=self._base_url, origin=self._origin)
         )
@@ -160,7 +164,8 @@ class HttpxQueryMetadataApi:
     async def get_sort_by(self, sort_by_id: str) -> QuerySortByRecord:
         column, _, direction = sort_by_id.partition(":")
         path_id = f"{column}-{direction}" if direction else sort_by_id
-        payload = await self._transport.get_json(f"queries/sort_bys/{quote(path_id, safe='')}")
+        safe_path_id = _reject_path_traversal_segments(path_id, field_name="sort_by_id")
+        payload = await self._transport.get_json(f"queries/sort_bys/{quote(safe_path_id, safe='')}")
         return QuerySortByRecord(
             summary=normalize_query_sort_by(
                 payload, base_url=self._base_url, origin=self._origin, requested_id=sort_by_id
@@ -184,7 +189,8 @@ class HttpxQueryMetadataApi:
         ]
 
     async def get_filter_instance_schema(self, schema_id: str) -> QueryFilterInstanceSchemaRecord:
-        payload = await self._transport.get_json(f"queries/filter_instance_schemas/{quote(schema_id, safe='')}")
+        safe_id = _reject_path_traversal_segments(schema_id, field_name="schema_id")
+        payload = await self._transport.get_json(f"queries/filter_instance_schemas/{quote(safe_id, safe='')}")
         return QueryFilterInstanceSchemaRecord(
             summary=normalize_query_filter_instance_schema(payload, base_url=self._base_url, origin=self._origin)
         )

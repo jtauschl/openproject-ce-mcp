@@ -11,6 +11,7 @@ from openproject_ce_mcp.app.adapters.httpx_query_metadata_api import (
     normalize_query_operator,
     normalize_query_sort_by,
 )
+from openproject_ce_mcp.app.errors import InvalidInputError
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 
 BASE_URL = "https://op.example.com"
@@ -218,3 +219,54 @@ async def test_get_filter_instance_schema_percent_encodes_the_id() -> None:
         record = await api.get_filter_instance_schema("assignee")
 
     assert record.summary.id == "assignee"
+
+
+async def _no_request_client() -> httpx.AsyncClient:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    return _client(handler)
+
+
+@pytest.mark.asyncio
+async def test_get_filter_rejects_path_traversal_id() -> None:
+    """Regression, ported from release/0.3.4: filter_id was interpolated into
+    the URL path with no validation -- a value like "../projects/42" quotes
+    to itself unchanged (quote() never escapes ".") and httpx then normalizes
+    ".." away when building the request, redirecting to an unrelated endpoint."""
+    async with await _no_request_client() as http_client:
+        api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        with pytest.raises(InvalidInputError, match="filter_id"):
+            await api.get_filter("../projects/42")
+
+
+@pytest.mark.asyncio
+async def test_get_column_rejects_path_traversal_id() -> None:
+    async with await _no_request_client() as http_client:
+        api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        with pytest.raises(InvalidInputError, match="column_id"):
+            await api.get_column("../projects/42")
+
+
+@pytest.mark.asyncio
+async def test_get_operator_rejects_path_traversal_id() -> None:
+    async with await _no_request_client() as http_client:
+        api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        with pytest.raises(InvalidInputError, match="operator_id"):
+            await api.get_operator("../projects/42")
+
+
+@pytest.mark.asyncio
+async def test_get_sort_by_rejects_path_traversal_id() -> None:
+    async with await _no_request_client() as http_client:
+        api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        with pytest.raises(InvalidInputError, match="sort_by_id"):
+            await api.get_sort_by("../projects/42")
+
+
+@pytest.mark.asyncio
+async def test_get_filter_instance_schema_rejects_path_traversal_id() -> None:
+    async with await _no_request_client() as http_client:
+        api = HttpxQueryMetadataApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        with pytest.raises(InvalidInputError, match="schema_id"):
+            await api.get_filter_instance_schema("../projects/42")

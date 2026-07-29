@@ -29,6 +29,7 @@ from collections.abc import Awaitable
 from typing import Protocol
 from urllib.parse import quote
 
+from ..errors import InvalidInputError
 from .work_package_resolution import WorkPackageAllowedContext
 
 
@@ -43,8 +44,22 @@ def work_package_ref(ref: int | str) -> str:
     instances without semantic identifiers a project-prefixed reference simply
     yields a 404 (mapped to ``NotFoundError``), while numeric ids keep working on
     every supported version.
+
+    A literal ``.``/``..`` path segment is rejected first (ported from
+    release/0.3.4's generalized path-traversal guard, `app/adapters/_text.py`'s
+    ``reject_path_traversal_segments`` there is the adapters-layer twin of this
+    check) -- `quote()` never escapes ``.``, so such a value would otherwise pass
+    through unchanged and httpx would silently normalize it away when building
+    the request, redirecting to an unrelated endpoint. Duplicated here rather
+    than imported from `_text.py` because `ports/` may import nothing from
+    `adapters/` (see `tests/test_architecture_boundaries.py`'s layer-dependency
+    rules); `app/errors.py` is shared-kernel and safe to import directly.
     """
-    return quote(str(ref).strip(), safe="")
+    text = str(ref).strip()
+    segments = text.split("/")
+    if any(segment in (".", "..") for segment in segments):
+        raise InvalidInputError("OpenProject work_package_id must not contain a '.' or '..' path segment.")
+    return quote(text, safe="")
 
 
 class WorkPackageIdResolver(Protocol):

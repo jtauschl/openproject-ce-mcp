@@ -24,6 +24,7 @@ from ._text import SUBJECT_LIMIT
 from ._text import link_title as _link_title
 from ._text import link_to_web_url as _link_to_web_url
 from ._text import origin_from_url as _origin_from_url
+from ._text import reject_path_traversal_segments as _reject_path_traversal_segments
 from ._text import trim_text as _trim_text
 from ._text import web_url as _web_url
 
@@ -149,8 +150,12 @@ class HttpxUserApi:
     async def get_user(self, user_ref: str) -> UserRecord:
         # Verbatim port of client.py's `quote(user_ref, safe="")` -- user_ref
         # can be a login (e.g. containing "@"/".") or the literal "me", not
-        # just a numeric id.
-        return self._record(await self._transport.get_json(f"users/{quote(user_ref, safe='')}"))
+        # just a numeric id. A literal "."/".." path segment is still
+        # rejected (ported from release/0.3.4's generalized path-traversal
+        # guard) -- a real login containing a dot never forms a bare "."
+        # segment on its own.
+        safe_ref = _reject_path_traversal_segments(user_ref, field_name="user_ref")
+        return self._record(await self._transport.get_json(f"users/{quote(safe_ref, safe='')}"))
 
     async def create_form(self, payload: dict[str, Any]) -> UserFormResult:
         return self._form_result(await self._transport.post_json("users/form", json_body=payload))

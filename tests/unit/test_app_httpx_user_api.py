@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from openproject_ce_mcp.app.adapters.httpx_user_api import HttpxUserApi, normalize_user, normalize_user_detail
+from openproject_ce_mcp.app.errors import InvalidInputError
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 
 BASE_URL = "https://op.example.com"
@@ -99,6 +100,24 @@ async def test_get_user_quotes_the_ref() -> None:
         record = await api.get_user("ada@example.com")
 
     assert record.summary.login == "ada@example.com"
+
+
+@pytest.mark.asyncio
+async def test_get_user_rejects_path_traversal_ref() -> None:
+    """Regression, ported from release/0.3.4: user_ref was interpolated into
+    the URL path with no validation -- a value like "../projects/42" quotes
+    to itself unchanged (quote() never escapes ".") and httpx then normalizes
+    ".." away when building the request, redirecting to an unrelated endpoint.
+    A real dotted login (see test_get_user_quotes_the_ref above) is unaffected
+    since it never forms a bare "." path segment on its own."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    async with _client(handler) as http_client:
+        api = HttpxUserApi(HttpxTransport(http_client), base_url=BASE_URL)
+        with pytest.raises(InvalidInputError, match="user_ref"):
+            await api.get_user("../projects/42")
 
 
 @pytest.mark.asyncio
