@@ -12,6 +12,13 @@ check -- not the same helper as `_link_to_web_url`, which resolves an href
 and does check origin) against the *API* path `api/v3/categories/{id}`, not
 a bare `categories/{id}` web path (verbatim port of client.py's
 `self._web_url(f"api/v3/categories/{category_id}")`).
+
+`get(category_id)` uses OpenProject's real `GET /api/v3/categories/{id}`
+endpoint (found via an independent Codex review verifying against
+op-sources/17.2/lib/api/v3/categories/categories_api.rb -- a prior version
+of this file, and of app/ports/category_api.py, incorrectly claimed no
+single-category GET exists, so CategoryService.get() re-listed and
+Python-filtered the project's full category list instead).
 """
 
 from __future__ import annotations
@@ -71,8 +78,22 @@ class HttpxCategoryApi:
             CategoryRecord(
                 summary=normalize_category(
                     item, project_id=project_id, project_name=trimmed_project_name, base_url=self._base_url
-                )
+                ),
+                project_link=None,
             )
             for item in elements
             if isinstance(item, dict)
         ]
+
+    async def get(self, category_id: int) -> CategoryRecord:
+        payload = await self._transport.get_json(f"categories/{category_id}")
+        links = payload.get("_links", {})
+        project_link = links.get("project")
+        project_id = _id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None
+        project_name = _link_title(project_link)
+        return CategoryRecord(
+            summary=normalize_category(
+                payload, project_id=project_id, project_name=project_name, base_url=self._base_url
+            ),
+            project_link=project_link,
+        )

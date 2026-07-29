@@ -104,3 +104,42 @@ async def test_list_for_project_handles_missing_default_assignee() -> None:
 
     assert records[0].summary.default_assignee_id is None
     assert records[0].summary.default_assignee is None
+
+
+@pytest.mark.asyncio
+async def test_get_requests_the_real_single_category_endpoint() -> None:
+    """Regression coverage for a Codex-review finding: OpenProject's v3 API
+    DOES have GET /api/v3/categories/{id} (verified against
+    op-sources/17.2/lib/api/v3/categories/categories_api.rb), and its
+    CategoryRepresenter DOES embed _links.project -- an earlier version of
+    this adapter/port incorrectly claimed neither existed."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/categories/1"
+        assert request.method == "GET"
+        payload = _category_payload()
+        payload["_links"]["project"] = {"href": "/api/v3/projects/6", "title": "Demo Project"}
+        return httpx.Response(200, json=payload, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxCategoryApi(HttpxTransport(http_client), base_url=BASE_URL)
+        record = await api.get(1)
+
+    assert record.summary.id == 1
+    assert record.summary.project_id == 6
+    assert record.summary.project == "Demo Project"
+    assert record.project_link == {"href": "/api/v3/projects/6", "title": "Demo Project"}
+
+
+@pytest.mark.asyncio
+async def test_get_handles_missing_project_link() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_category_payload(), request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxCategoryApi(HttpxTransport(http_client), base_url=BASE_URL)
+        record = await api.get(1)
+
+    assert record.summary.project_id is None
+    assert record.summary.project is None
+    assert record.project_link is None

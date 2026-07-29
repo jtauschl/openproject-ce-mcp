@@ -1055,6 +1055,20 @@ async def test_views_categories_and_attachments() -> None:
                 },
                 request=request,
             )
+        if request.url.path == "/api/v3/categories/3" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 3,
+                    "name": "Backend",
+                    "isDefault": True,
+                    "_links": {
+                        "self": {"href": "/api/v3/categories/3"},
+                        "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                    },
+                },
+                request=request,
+            )
         if request.url.path == "/api/v3/work_packages/7" and request.method == "GET":
             return httpx.Response(
                 200,

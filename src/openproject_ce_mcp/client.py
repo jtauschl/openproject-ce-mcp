@@ -437,6 +437,7 @@ class OpenProjectClient:
         self._category_service = CategoryService(
             api=self._category_api,
             settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
             resolve_project_ref=self._get_project_payload,
         )
 
@@ -1096,8 +1097,8 @@ class OpenProjectClient:
     async def list_categories(self, project_ref: str) -> CategoryListResult:
         return await self._category_service.list(project_ref)
 
-    async def get_category(self, *, project_ref: str, category_id: int) -> CategorySummary:
-        return await self._category_service.get(project_ref=project_ref, category_id=category_id)
+    async def get_category(self, *, category_id: int, project_ref: str | None = None) -> CategorySummary:
+        return await self._category_service.get(category_id=category_id, project_ref=project_ref)
 
     async def list_work_package_attachments(self, work_package_id: int | str) -> AttachmentListResult:
         self._ensure_read_enabled("work_package")

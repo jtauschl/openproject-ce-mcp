@@ -554,7 +554,7 @@ async def test_view_category_and_attachment_tools_pass_expected_arguments(tmp_pa
     views = await list_views(ctx, project="demo", type="Views::TeamPlanner", search="planner")
     view = await get_view(ctx, 12)
     categories = await list_categories(ctx, "demo")
-    category = await get_category(ctx, "demo", 3)
+    category = await get_category(ctx, 3, project="demo")
     attachments = await list_work_package_attachments(ctx, "7")
     attachment = await get_attachment(ctx, 5)
     created = await create_work_package_attachment(ctx, "7", str(sample_file), description="Spec", confirm=False)

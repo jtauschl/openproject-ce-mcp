@@ -1360,14 +1360,19 @@ async def list_categories(
 
 async def get_category(
     ctx: Context,
-    project: str,
     category_id: int,
+    project: str | None = None,
 ) -> CategorySummary:
-    """Get a single category from a project's category list."""
+    """Get a single category by id.
+
+    project is optional: when given, it's cross-checked against the
+    category's real project and a mismatch raises a not-found error, rather
+    than being the sole source of authorization.
+    """
     client = _client_from_context(ctx)
-    safe_project = _validate_project_ref(project)
+    safe_project = _validate_optional_project_ref(project)
     safe_id = _validate_positive_int(category_id, field_name="category_id")
-    return await _run_tool(client.get_category(project_ref=safe_project, category_id=safe_id))
+    return await _run_tool(client.get_category(category_id=safe_id, project_ref=safe_project))
 
 
 async def get_project_work_package_context(
