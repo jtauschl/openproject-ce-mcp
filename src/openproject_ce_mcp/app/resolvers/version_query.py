@@ -19,7 +19,7 @@ from collections.abc import Awaitable, Callable
 
 from ...config import Settings
 from ...models import VersionSummary
-from ..pagination import paginate_client, paginate_server
+from ..pagination import paginate_client
 from ..policies import access
 from ..policies.version_policy import version_payload_allowed
 from ..ports.project_ref import ProjectRefResolver
@@ -82,25 +82,21 @@ async def fetch_version_page(
     access.ensure_read_enabled("version", settings=settings)
     effective_limit = min(limit, settings.max_page_size, settings.max_results)
 
-    if project and not search:
+    if project:
         # GET /api/v3/versions has no project filter; use the project-scoped endpoint.
         # Access to the project is verified by resolve_project_ref, so per-item
         # allowlist checks are redundant and would fail because the definingProject
-        # link only carries the title (display name), not the identifier. No
-        # client-side filtering happens here, so exact server-side pagination is safe.
-        project_payload = await resolve_project_ref(project, write=False, context=context)
-        page = await api.list_for_project(
-            int(project_payload["id"]), offset=offset, page_size=effective_limit, text_limit=text_limit
-        )
-        results = [r.summary for r in page.records]
-        server_total = page.server_total if page.server_total is not None else len(results)
-        next_offset, truncated = paginate_server(offset=offset, limit=effective_limit, total=server_total)
-        return results, server_total, next_offset, truncated
-
-    if project:
-        # search given: no server-side name filter exists for the project-scoped
-        # endpoint either, so a full walk of every server page is required -- a
-        # single bounded fetch would silently hide any version beyond that cap.
+        # link only carries the title (display name), not the identifier. This
+        # endpoint's collection is genuinely unpaginated server-side (verified
+        # against op-sources' VersionCollectionRepresenter < UnpaginatedCollection,
+        # via VersionsByProjectAPI) -- offset/pageSize params are silently ignored
+        # and every element is always returned regardless, so a single bounded
+        # fetch would over-fetch (return every version, not just the requested
+        # page) while reporting misleading pagination metadata. Walk (a no-op
+        # single request, since the server already returns everything) and slice
+        # client-side, same as the search/global branches below (this also
+        # covers the search-given case: no server-side name filter exists on
+        # this endpoint either).
         project_payload = await resolve_project_ref(project, write=False, context=context)
         project_id = int(project_payload["id"])
         records = await _fetch_all_pages(

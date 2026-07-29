@@ -57,8 +57,19 @@ async def _resolve_project_ref(project_ref: str, *, write: bool = False, context
 
 
 @pytest.mark.asyncio
-async def test_project_scoped_uses_exact_server_pagination_and_stays_unmasked() -> None:
-    records = [VersionRecord(summary=_summary(1, "v1.0"), defining_project_link=None)]
+async def test_project_scoped_without_search_walks_and_slices_client_side() -> None:
+    """Regression (found via a full-diff Codex review on release/0.3.4, ported
+    here): `projects/{id}/versions` is genuinely UnpaginatedCollection
+    server-side (verified against op-sources' VersionCollectionRepresenter <
+    UnpaginatedCollection, via VersionsByProjectAPI) -- offset/pageSize params
+    are silently ignored and every element is always returned regardless. The
+    project-scoped-without-search branch used to trust the server's own
+    total/pagination for this endpoint (as if it were genuinely paginated),
+    which either under- or over-reported truncation/next_offset against the
+    real, always-complete result set. Fixed by walking (a no-op single
+    request here, since the fake already returns everything) and slicing
+    client-side, same as the project-scoped-with-search branch."""
+    records = [VersionRecord(summary=_summary(i, f"v{i}.0"), defining_project_link=None) for i in range(1, 26)]
     api = _FakeVersionApi(records, server_total=25)
 
     results, total, next_offset, truncated = await fetch_version_page(
@@ -73,11 +84,14 @@ async def test_project_scoped_uses_exact_server_pagination_and_stays_unmasked() 
         context=None,
     )
 
-    assert api.list_for_project_calls == [(6, 2, 10)]
+    # the server ignores offset/page_size entirely and always returns every
+    # element -- fetch_version_page must slice offset=2/limit=10 out of the
+    # full 25-element result set client-side, not trust a server-reported
+    # page/total for this endpoint.
     assert total == 25
     assert next_offset == 3
     assert truncated is True
-    assert results[0].id == 1
+    assert [r.id for r in results] == list(range(11, 21))
     assert not hasattr(results[0], "_hidden_keys")  # unmasked -- masking is VersionService's job
 
 
