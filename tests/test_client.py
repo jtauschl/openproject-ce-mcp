@@ -1420,7 +1420,10 @@ async def test_update_reminder_finds_reminder_past_the_first_server_page() -> No
             offset = request.url.params.get("offset")
             page_size = int(request.url.params.get("pageSize", "0"))
             if offset == "1":
-                elements = [{"id": i, "_links": {"remindable": {"href": f"/api/v3/work_packages/{i}"}}} for i in range(1, page_size + 1)]
+                elements = [
+                    {"id": i, "_links": {"remindable": {"href": f"/api/v3/work_packages/{i}"}}}
+                    for i in range(1, page_size + 1)
+                ]
                 return httpx.Response(
                     200, json={"_embedded": {"elements": elements}, "total": page_size + 1}, request=request
                 )
@@ -4673,6 +4676,55 @@ async def test_list_work_package_file_links_denies_anchor_outside_read_allowlist
 
 
 @pytest.mark.asyncio
+async def test_list_work_package_file_links_walks_multiple_server_pages() -> None:
+    """Regression: list_work_package_file_links issued a single unparametrized
+    GET against work_packages/{id}/file_links, relying on OpenProject's own
+    server-side default page size -- any file link beyond that default was
+    silently unreachable. Now walks every server page via _fetch_all_pages."""
+    requested_offsets: list[str] = []
+
+    def _file_link(file_link_id: int) -> dict:
+        return {
+            "id": file_link_id,
+            "originData": {"name": f"file-{file_link_id}.txt"},
+            "_links": {"storage": {"href": "/api/v3/storages/1"}},
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/9" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 9, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/9/file_links":
+            page = request.url.params["offset"]
+            requested_offsets.append(page)
+            assert request.url.params["pageSize"] == "2"
+            if page == "1":
+                return httpx.Response(
+                    200,
+                    json={"total": 3, "_embedded": {"elements": [_file_link(1), _file_link(2)]}},
+                    request=request,
+                )
+            if page == "2":
+                return httpx.Response(
+                    200, json={"total": 3, "_embedded": {"elements": [_file_link(3)]}}, request=request
+                )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(max_page_size=2, read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_work_package_file_links(9)
+
+    assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
+    assert [r.id for r in result.results] == [1, 2, 3]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_get_work_package_filters_children_and_ancestors_by_read_allowlist() -> None:
     """get_work_package drops a child/ancestor entry outside OPENPROJECT_READ_PROJECTS.
 
@@ -5573,7 +5625,6 @@ async def test_list_projects_walks_multiple_server_pages_when_allowlist_thins_fi
     # one page (not a full page SIZE) compared against the item total, so it keeps
     # scanning past page 1 until page 2's match is found. offset/pageSize below mirror
     # real OpenProject 1-based-page semantics.
-    import dataclasses
 
     settings = dataclasses.replace(make_settings(), max_page_size=2, read_projects=("demo",))
 
@@ -6948,8 +6999,6 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    import dataclasses
-
     settings = dataclasses.replace(make_settings(), enable_admin_read=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -7076,7 +7125,10 @@ async def test_resolve_role_hrefs_skips_role_list_fetch_when_all_refs_are_numeri
         if request.url.path == "/api/v3/principals" and request.method == "GET":
             return httpx.Response(
                 200,
-                json={"_embedded": {"elements": [{"id": 5, "name": "Alice", "login": "alice", "_type": "User"}]}, "total": 1},
+                json={
+                    "_embedded": {"elements": [{"id": 5, "name": "Alice", "login": "alice", "_type": "User"}]},
+                    "total": 1,
+                },
                 request=request,
             )
         if request.url.path == "/api/v3/memberships/form" and request.method == "POST":
@@ -7752,7 +7804,6 @@ async def test_get_my_preferences_masks_hidden_fields() -> None:
     entity's OPENPROJECT_HIDE_<ENTITY>_FIELDS behavior (previously
     "user_preferences" had no HIDE_FIELD_ENV_BY_ENTITY entry and
     normalize_user_preferences never called _apply_hidden_fields at all)."""
-    import dataclasses
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/my_preferences" and request.method == "GET":
@@ -7790,7 +7841,6 @@ async def test_update_my_preferences_rejects_hidden_fields() -> None:
     _ensure_field_writable guard idiom (previously update_my_preferences never
     called _ensure_field_writable at all, so a hidden field could still be
     written even though it could not be read back)."""
-    import dataclasses
 
     async def handler(request: httpx.Request) -> httpx.Response:
         raise AssertionError("no request must be issued when the field is hidden")
@@ -7830,7 +7880,6 @@ async def test_render_text() -> None:
 
 @pytest.mark.asyncio
 async def test_help_texts_and_working_days() -> None:
-    import dataclasses
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/help_texts" and request.method == "GET":
@@ -7925,7 +7974,9 @@ async def test_extended_metadata_methods_require_extended_read_scope() -> None:
     """
 
     def handler(request: httpx.Request) -> httpx.Response:
-        raise AssertionError(f"Unexpected request: {request.method} {request.url} (permission check should short-circuit before any HTTP call)")
+        raise AssertionError(
+            f"Unexpected request: {request.method} {request.url} (permission check should short-circuit before any HTTP call)"
+        )
 
     # Default settings (enable_metadata_tools defaults to False) must deny all five.
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
@@ -8093,7 +8144,6 @@ async def test_list_relations_and_update_relation() -> None:
 
 @pytest.mark.asyncio
 async def test_get_custom_option() -> None:
-    import dataclasses
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/custom_options/42" and request.method == "GET":
@@ -9882,7 +9932,6 @@ def test_normalize_activity_returns_full_comment_by_default() -> None:
 
 def test_summary_cap_follows_text_limit_setting() -> None:
     # OPENPROJECT_TEXT_LIMIT (settings.text_limit) drives the list-preview cap.
-    import dataclasses
 
     settings = dataclasses.replace(make_settings(), text_limit=100)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
@@ -10569,19 +10618,16 @@ async def test_resolve_version_id_project_less_name_match_beyond_first_filtered_
 
 
 def _write_enabled_settings() -> Settings:
-    import dataclasses
 
     return dataclasses.replace(make_settings(), enable_work_package_write=True)
 
 
 def _personal_write_enabled_settings() -> Settings:
-    import dataclasses
 
     return dataclasses.replace(make_settings(), enable_personal_write=True)
 
 
 def _personal_read_and_write_enabled_settings() -> Settings:
-    import dataclasses
 
     return dataclasses.replace(make_settings(), enable_personal_read=True, enable_personal_write=True)
 
@@ -11038,7 +11084,9 @@ async def test_list_notifications_rescans_past_a_filtered_empty_first_page() -> 
                     200,
                     json={
                         "_embedded": {
-                            "elements": [_notification_payload(1, project_href="/api/v3/projects/2", project_title="Other")]
+                            "elements": [
+                                _notification_payload(1, project_href="/api/v3/projects/2", project_title="Other")
+                            ]
                         },
                         "total": 1,
                     },
@@ -11049,7 +11097,9 @@ async def test_list_notifications_rescans_past_a_filtered_empty_first_page() -> 
                     200,
                     json={
                         "_embedded": {
-                            "elements": [_notification_payload(2, project_href="/api/v3/projects/1", project_title="Demo")]
+                            "elements": [
+                                _notification_payload(2, project_href="/api/v3/projects/1", project_title="Demo")
+                            ]
                         },
                         "total": 1,
                     },
@@ -11162,6 +11212,50 @@ async def test_list_reminders_filters_by_read_projects_via_work_package() -> Non
     result = await client.list_reminders()
 
     assert [r.id for r in result.results] == [1]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_reminders_walks_multiple_server_pages() -> None:
+    """Regression: list_reminders issued a single unparametrized GET against
+    /api/v3/reminders, relying on OpenProject's own server-side default page
+    size -- any reminder beyond that default was silently unreachable. Now
+    walks every server page via _fetch_all_pages."""
+    requested_offsets: list[str] = []
+
+    def _reminder(reminder_id: int) -> dict:
+        return {
+            "id": reminder_id,
+            "remindAt": "2026-01-01T00:00:00Z",
+            "note": f"Reminder {reminder_id}",
+            "_links": {"remindable": {"href": "/api/v3/work_packages/1"}},
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/reminders":
+            page = request.url.params["offset"]
+            requested_offsets.append(page)
+            assert request.url.params["pageSize"] == "2"
+            if page == "1":
+                return httpx.Response(
+                    200,
+                    json={"total": 3, "_embedded": {"elements": [_reminder(1), _reminder(2)]}},
+                    request=request,
+                )
+            if page == "2":
+                return httpx.Response(
+                    200, json={"total": 3, "_embedded": {"elements": [_reminder(3)]}}, request=request
+                )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(max_page_size=2)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_reminders()
+
+    assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
+    assert [r.id for r in result.results] == [1, 2, 3]
 
     await client.aclose()
 
@@ -11372,8 +11466,6 @@ async def test_add_project_favorite_uses_workspaces_path_and_empty_body() -> Non
             return httpx.Response(204, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    import dataclasses
-
     settings = dataclasses.replace(make_settings(), enable_project_write=True, write_projects=("demo",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
@@ -11401,8 +11493,6 @@ async def test_add_project_favorite_translates_404_to_version_hint() -> None:
         if request.url.path == "/api/v3/workspaces/6/favorite":
             return httpx.Response(404, json={"message": "Not found"}, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
-
-    import dataclasses
 
     settings = dataclasses.replace(make_settings(), enable_project_write=True, write_projects=("demo",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
@@ -12676,8 +12766,6 @@ async def test_group_members_is_flat_array() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    import dataclasses
-
     settings = dataclasses.replace(make_settings(), enable_admin_read=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     group = await client.get_group(7)
@@ -13100,7 +13188,6 @@ async def test_list_project_sprints_filters_sprints_outside_allowed_projects() -
     # A sprint shared into an allowed project can still be *defined* by a
     # different, disallowed project. list_project_sprints must filter those out the
     # same way list_sprints already does via _sprint_payload_allowed.
-    import dataclasses
 
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
 
@@ -13179,7 +13266,6 @@ async def test_list_versions_global_backfills_after_allowlist_filter() -> None:
     # a naive pageSize=limit request would only ever ask the server for 2 raw items
     # at a time and could easily return 0-2 allowed ones; instead every server page
     # must be walked (pageSize=max_page_size), paginating the 3 filtered survivors.
-    import dataclasses
 
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
 
@@ -13375,8 +13461,6 @@ async def test_list_users_no_search_uses_exact_server_pagination() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    import dataclasses
-
     settings = dataclasses.replace(make_settings(), enable_admin_read=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     page = await client.list_users(limit=2)
@@ -13410,8 +13494,6 @@ async def test_list_users_search_overfetches_and_filters_then_paginates() -> Non
                 request=request,
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
-
-    import dataclasses
 
     settings = dataclasses.replace(make_settings(), enable_admin_read=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
@@ -13453,8 +13535,6 @@ async def test_list_groups_no_search_uses_exact_server_pagination() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    import dataclasses
-
     settings = dataclasses.replace(make_settings(), enable_admin_read=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     page = await client.list_groups(limit=2)
@@ -13489,8 +13569,6 @@ async def test_list_groups_search_overfetches_and_filters_then_paginates() -> No
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    import dataclasses
-
     settings = dataclasses.replace(make_settings(), enable_admin_read=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     page = await client.list_groups(search="alpha")
@@ -13511,7 +13589,6 @@ async def test_list_groups_search_overfetches_and_filters_then_paginates() -> No
 async def test_list_sprints_backfills_after_allowlist_filter() -> None:
     # Same allowlist-safe pagination as list_versions above, applied to the
     # always-filtered list_sprints (sprints can be shared cross-project via Backlogs sharing).
-    import dataclasses
 
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
 
@@ -13574,7 +13651,6 @@ async def test_list_project_sprints_backfills_after_allowlist_filter() -> None:
     # Same allowlist-safe pagination as above, applied to list_project_sprints — still filtered
     # client-side despite being project-scoped, because a sprint shared into this
     # project can be *defined* by a different, possibly disallowed project.
-    import dataclasses
 
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
 

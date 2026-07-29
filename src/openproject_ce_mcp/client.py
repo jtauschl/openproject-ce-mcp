@@ -3911,9 +3911,7 @@ class OpenProjectClient:
             results=results,
         )
 
-    async def _fetch_all_pages(
-        self, path: str, *, extra_params: dict[str, str] | None = None
-    ) -> list[dict[str, Any]]:
+    async def _fetch_all_pages(self, path: str, *, extra_params: dict[str, str] | None = None) -> list[dict[str, Any]]:
         """Walk every server page of a collection endpoint, no filtering.
 
         Used by list methods that filter and paginate the full result set
@@ -4151,8 +4149,8 @@ class OpenProjectClient:
         self._ensure_read_enabled("work_package")
         if not self.settings.read_projects:
             return ReminderListResult(count=0, results=[])  # deny-all: skip the network call entirely
-        payload = await self._get("reminders")
-        elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+        raw_elements = await self._fetch_all_pages("reminders")
+        elements = [item for item in raw_elements if isinstance(item, dict)]
         if not _scope_allows_all(self.settings.read_projects):
             cache: dict[str, bool] = {}
             filtered = []
@@ -4574,7 +4572,9 @@ class OpenProjectClient:
             # server pages. Re-scan from the start every call, skipping
             # already-seen allowed matches, until `limit` allowed records are
             # collected or the server collection is genuinely exhausted.
-            filtered, total = await self._rescan_notifications(unread_only=unread_only, offset=offset, limit=effective_limit)
+            filtered, total = await self._rescan_notifications(
+                unread_only=unread_only, offset=offset, limit=effective_limit
+            )
             results = [self.normalize_notification(item) for item in filtered]
         return NotificationListResult(count=len(results), total=total, results=results)
 
@@ -5047,12 +5047,8 @@ class OpenProjectClient:
         # Resolving the id already confirms the anchor work package itself is
         # allowed against OPENPROJECT_READ_PROJECTS before its file links are fetched.
         work_package_id = await self._resolve_work_package_id(work_package_id)
-        payload = await self._get(f"work_packages/{work_package_id}/file_links")
-        results = [
-            self.normalize_file_link(item)
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
-        ]
+        elements = await self._fetch_all_pages(f"work_packages/{work_package_id}/file_links")
+        results = [self.normalize_file_link(item) for item in elements if isinstance(item, dict)]
         return FileLinkListResult(count=len(results), results=results)
 
     async def delete_file_link(
@@ -5127,9 +5123,7 @@ class OpenProjectClient:
         # release/0.4.0: a single bounded fetch capped at max_results
         # silently hid any grid beyond that server-side cap.
         elements = await self._fetch_all_pages("grids", extra_params=extra_params)
-        filtered = [
-            self.normalize_grid(item) for item in elements if self._grid_payload_allowed(item)
-        ]
+        filtered = [self.normalize_grid(item) for item in elements if self._grid_payload_allowed(item)]
         total = len(filtered)
         start = (offset - 1) * effective_limit
         end = start + effective_limit
@@ -8448,7 +8442,9 @@ class OpenProjectClient:
         """
         if self._field_hidden(entity, field_name):
             return None, False, None
-        text, truncated, length = _extract_formattable_text_with_meta(value, limit=limit, preserve_newlines=preserve_newlines)
+        text, truncated, length = _extract_formattable_text_with_meta(
+            value, limit=limit, preserve_newlines=preserve_newlines
+        )
         return _delimit_user_content(text), truncated, length
 
     def _custom_field_hidden(self, field_name: str, key: str) -> bool:
