@@ -223,8 +223,8 @@ async def test_list_work_package_file_links_allows_anchor_inside_read_allowlist(
 
 @pytest.mark.asyncio
 async def test_delete_file_link_denies_when_container_unresolvable_even_under_wide_open_write_scope() -> None:
-    """OPM-359: a file link with no resolvable container has no verifiable
-    project association -- deleting it must be denied even under
+    """A file link with no resolvable container has no verifiable project
+    association -- deleting it must be denied even under
     write_projects=("*",), not silently allowed with work_package_id=None."""
 
     async def handler(request: httpx.Request) -> httpx.Response:

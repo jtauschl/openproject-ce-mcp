@@ -108,19 +108,22 @@ class HttpxJobStatusApi:
         safe_id = _reject_path_traversal_segments(job_status_id, field_name="job_status_id")
         payload = await self._transport.get_json(f"job_statuses/{quote(safe_id, safe='')}")
         links = _job_status_inner_links(payload)
-        project_link = links.get("project") or links.get("sourceProject")
+        # Select by absence, not truthiness: a falsy-but-present "project"
+        # value (e.g. {}, "", []) is a malformed link, distinct from a
+        # genuinely absent one, and must reach the scope policy as such
+        # rather than being replaced by "sourceProject".
+        project_link = links.get("project")
+        if project_link is None:
+            project_link = links.get("sourceProject")
         created_project_link = links.get("createdProject")
         created_project_id = (
             _id_from_href(created_project_link.get("href")) if isinstance(created_project_link, dict) else None
         )
         return JobStatusRecord(
             summary=normalize_job_status(payload, base_url=self._base_url, origin=self._origin),
-            # OPM-359: pass the RAW value through, unfiltered -- classifying
-            # a link as missing/malformed/legitimately-empty is the scope
-            # policy's job, not the adapter's. Silently coercing any
-            # non-dict value to None here would make a genuinely MALFORMED
-            # link indistinguishable from MISSING before the policy ever
-            # sees it.
+            # Passed through raw, unfiltered: classifying a link as missing,
+            # malformed, or legitimately empty is the scope policy's job,
+            # not the adapter's.
             project_link=project_link,
             created_project_id=created_project_id,
         )

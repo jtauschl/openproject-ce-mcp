@@ -99,10 +99,7 @@ class FileLinkService:
 
         # Fail closed when the container cannot be resolved: an unverifiable
         # project association must never be treated as authorized for a
-        # destructive operation, even under write_projects=("*",) (OPM-359).
-        # ensure_project_write_link_allowed(None) now always denies MISSING,
-        # regardless of scope -- previously (before OPM-359) it did not, and
-        # this exact case was a real fail-open bug.
+        # destructive operation, even under write_projects=("*",).
         if work_package_id:
             work_package_payload = await self._work_package_lookup_api.get(str(work_package_id))
             project_link = work_package_payload.get("_links", {}).get("project")

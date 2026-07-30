@@ -15,30 +15,27 @@ from `policies` (see `tests/test_architecture_boundaries.py`'s
 `_LAYER_DEPENDENCIES`), so this is the natural shared home rather than a new
 package-root module.
 
-OPM-359: `ensure_project_link_allowed`/`ensure_project_write_link_allowed`
-previously returned early (allowed) under a wide-open `*` scope BEFORE
-checking whether `link` was even well-formed -- a missing/malformed link was
-silently treated as allowed instead of denied. Research (independently
-verified against a vendored `op-sources/17.6/` OpenProject source checkout)
-found the real bug is more nuanced than "always fail closed on any missing
-link": OpenProject's own `associated_project` representer macro
-(`lib/api/v3/workspaces/linked_resource.rb`) renders an explicit
-`urn:openproject-org:api:v3:undisclosed` URN link (never omits the link
-itself) when a project exists but is invisible to the caller, and a handful
-of resource types (Membership, View, Board/Query, Job Status) have a
+Every project-link check must classify the link's structure BEFORE deciding
+whether a wide-open scope short-circuits the check -- a missing or malformed
+link is never automatically "allowed" just because the configured scope is
+`*`. OpenProject's own `associated_project` representer macro
+(`lib/api/v3/workspaces/linked_resource.rb` in the vendored source) renders
+an explicit `urn:openproject-org:api:v3:undisclosed` URN link (never omits
+the link itself) when a project exists but is invisible to the caller, and a
+handful of resource types (Membership, View, Board/Query, Job Status) have a
 genuinely optional project association where the server documents an
 explicit empty/absent link as normal, not anomalous.
 
 `classify_project_link` gives every call site a typed answer instead of a
 bare `Any`. `ensure_project_link_allowed`/`ensure_project_write_link_allowed`
-(the two names every existing call site already uses) are now the REQUIRED-
+(the two names every existing call site already uses) are the REQUIRED-
 project-link contract: MISSING/MALFORMED always denied, regardless of scope.
 `ensure_project_link_allowed_if_present`/`ensure_project_write_link_allowed_if_present`
 are the OPTIONAL-project-link contract (Membership/View/Board/Job Status
-only): MISSING/EXPLICITLY_UNSCOPED preserve the pre-fix "* allowed,
-restrictive scope denied" behavior (a documented, legitimate server state,
-not a defect), while MALFORMED is newly, always denied there too -- a
-structurally broken link is never the same thing as "deliberately no link".
+only): MISSING/EXPLICITLY_UNSCOPED are allowed under a wide-open scope and
+denied under a restrictive one (a documented, legitimate server state, not a
+defect), while MALFORMED is always denied there too -- a structurally broken
+link is never the same thing as "deliberately no link".
 """
 
 from __future__ import annotations
@@ -58,7 +55,7 @@ URN_UNDISCLOSED = "urn:openproject-org:api:v3:undisclosed"
 
 
 class LinkState(Enum):
-    """Classification of a raw HAL project-link value (OPM-359).
+    """Classification of a raw HAL project-link value.
 
     RESOLVED: a real project link ({"href": "/api/v3/projects/7", ...}).
     UNDISCLOSED: OpenProject's own URN placeholder for an existing-but-
@@ -228,7 +225,7 @@ def project_link_payload_allowed(
 
 
 def ensure_project_link_allowed(link: Any, *, settings: Settings, project_id_to_identifier: dict[int, str]) -> None:
-    """REQUIRED-project-link contract (OPM-359): for resource types whose
+    """REQUIRED-project-link contract: for resource types whose
     representer always emits a project link (a real one, or OpenProject's own
     URN_UNDISCLOSED placeholder for an invisible-but-existing project).
     MISSING/MALFORMED/an unexpected EXPLICITLY_UNSCOPED are always denied,
@@ -270,13 +267,14 @@ def ensure_project_write_link_allowed(
 def ensure_project_link_allowed_if_present(
     link: Any, *, settings: Settings, project_id_to_identifier: dict[int, str]
 ) -> None:
-    """OPTIONAL-project-link contract (OPM-359): for the few resource types
+    """OPTIONAL-project-link contract: for the few resource types
     (Membership, View, Board/Query, Job Status) whose representer documents
     an explicit empty/absent project link as normal, not anomalous (a global
-    membership, an unbound view, a global query, a projectless job). Preserves
-    the exact pre-fix behavior for MISSING/EXPLICITLY_UNSCOPED (`*` allows,
-    a restrictive scope denies) -- but MALFORMED is now always denied, since a
-    structurally broken link is never the same thing as "deliberately none".
+    membership, an unbound view, a global query, a projectless job).
+    MISSING/EXPLICITLY_UNSCOPED are allowed under a wide-open scope and
+    denied under a restrictive one; MALFORMED is always denied regardless of
+    scope, since a structurally broken link is never the same thing as
+    "deliberately none".
     """
     state = classify_project_link(link)
     if state is LinkState.MALFORMED:

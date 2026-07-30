@@ -6,16 +6,12 @@ Grids-style bespoke carve-out (no `/my/page`-equivalent special case).
 
 A Board is an OpenProject Query under the hood, and `QueryRepresenter`
 explicitly supports a global (project-less) query, rendering an empty
-project link for it (verified against the vendored OpenProject source,
-OPM-359 research) -- so a Board's project link is OPTIONAL, not required.
+project link for it -- so a Board's project link is OPTIONAL, not required.
 Uses `scope.ensure_project_link_allowed_if_present`/
 `ensure_project_write_link_allowed_if_present`: a missing/explicitly-empty
-link keeps the pre-existing "* allows, restrictive scope denies" behavior
-(a real, documented server state, not a defect), while a genuinely MALFORMED
-link is now always rejected -- correcting this module's own former docstring,
-which incorrectly claimed to already be fail-closed on a missing link (it
-wasn't; the underlying `scope.py` bug affected this module exactly like
-every other caller until OPM-359).
+link is allowed under a wide-open scope and denied under a restrictive one
+(a real, documented server state, not a defect), while a structurally
+malformed link is always rejected regardless of scope.
 
 The "global board" business rule (an unscoped/no-project board write requires
 BOTH read_projects and write_projects fully open) is NOT a per-link allowlist

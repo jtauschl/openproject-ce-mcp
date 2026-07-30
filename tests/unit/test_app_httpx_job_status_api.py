@@ -190,6 +190,36 @@ async def test_get_record_project_link_falls_back_to_source_project() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_record_keeps_falsy_present_project_link_instead_of_falling_back_to_source_project() -> None:
+    """A falsy-but-present "project" link (here: {}) is structurally
+    malformed, not absent -- the Record must carry it as-is so the Service's
+    scope policy can classify and reject it, not silently replace it with an
+    allowlisted "sourceProject" link."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "jobId": "77",
+                "payload": {
+                    "_links": {
+                        "project": {},
+                        "sourceProject": {"href": "/api/v3/projects/9", "title": "Source Project"},
+                    },
+                },
+                "_links": {"self": {"href": "/api/v3/job_statuses/77"}},
+            },
+            request=request,
+        )
+
+    async with _client(handler) as http_client:
+        api = HttpxJobStatusApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        record = await api.get("77")
+
+    assert record.project_link == {}
+
+
+@pytest.mark.asyncio
 async def test_get_record_created_project_id_extracted_from_created_project_link() -> None:
     """OpenProject's real createdProject link carries only href/title, no
     type field -- created_project_id is derived from the LINK KEY's presence,

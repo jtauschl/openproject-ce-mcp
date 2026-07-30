@@ -1074,16 +1074,14 @@ def test_normalize_user_detail_identity_url_is_none_without_sso_despite_showuser
 
 @pytest.mark.asyncio
 async def test_explicit_null_links_survives_list_work_packages_end_to_end() -> None:
-    """Proves the fix at the actual integration point (_request_json
-    -> hal.normalize_links, before any normalizer sees the payload), not just
-    the pure helper in isolation. Without it, the second element's
-    `payload.get("_links", {})` read inside normalize_work_package_summary
-    would return None instead of {}, and the following `.get("project")`
-    would raise AttributeError -- rather than the OPM-359 PermissionDeniedError
-    it correctly raises today for a work package with no resolvable project
-    link (a required-project-link resource; a work package with `_links: None`
-    has no project link at all, so it is now denied by the allowlist, not
-    silently passed through with project=None).
+    """Exercises the actual integration point (_request_json ->
+    hal.normalize_links, before any normalizer sees the payload), not just
+    the pure helper in isolation: `payload.get("_links", {})` inside
+    normalize_work_package_summary must read `{}`, never `None`, so the
+    following `.get("project")` cannot raise AttributeError. A work package
+    with `_links: None` has no resolvable project link at all (a
+    required-project-link resource), so the allowlist denies it with
+    PermissionDeniedError rather than passing it through with project=None.
     """
 
     async def handler(request: httpx.Request) -> httpx.Response:

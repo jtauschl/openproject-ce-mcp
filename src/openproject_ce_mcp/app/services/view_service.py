@@ -14,13 +14,12 @@ Read-only, no dedicated policy file: unlike Documents/News/Versions, Views
 needs no <domain>_payload_allowed wrapper around scope.project_link_payload_allowed
 -- there is only ever one link key ("project") to check, and that link is
 NULLABLE (a view need not belong to any project; OpenProject's own
-QueryRepresenter emits an explicit empty link for a global/unbound view, per
-the OPM-359 research). Uses `scope.ensure_project_link_allowed_if_present`
-(the OPTIONAL-project-link contract), not the required one: a missing/
-explicitly-empty link is a documented, legitimate server state here, so it
-keeps the pre-existing "* allows, restrictive scope denies" behavior --
-matching client.py's original _ensure_view_payload_allowed -- while a
-genuinely MALFORMED link (not just absent) is now always rejected.
+QueryRepresenter emits an explicit empty link for a global/unbound view).
+Uses `scope.ensure_project_link_allowed_if_present` (the OPTIONAL-project-
+link contract), not the required one: a missing/explicitly-empty link is a
+documented, legitimate server state here, allowed under a wide-open scope
+and denied under a restrictive one, while a structurally malformed link is
+always rejected regardless of scope.
 """
 
 from __future__ import annotations

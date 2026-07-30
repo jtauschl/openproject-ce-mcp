@@ -121,7 +121,7 @@ class MembershipService:
     async def get(self, membership_id: int) -> MembershipSummary:
         access.ensure_read_enabled("membership", settings=self._settings)
         record = await self._api.get(membership_id)
-        # OPM-359: a Membership's project link is genuinely optional (global
+        # A Membership's project link is genuinely optional (global
         # memberships have no project association at all) -- use the
         # OPTIONAL-project-link contract, not the required one.
         scope_policy.ensure_project_link_allowed_if_present(

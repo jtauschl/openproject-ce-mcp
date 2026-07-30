@@ -16,10 +16,10 @@ allowlist check needs -- not just an extracted href/id, mirroring
 actually used to resolve scope), which is a separate concern from
 `summary.project`/`summary.project_id` (the *display* fields
 `normalize_job_status` populates from the same `project-or-sourceProject`
-fallback for the response body). Typed `Any`, not `dict | None` (OPM-359):
-the adapter must NOT coerce a non-dict value to `None` before the Service's
-`scope.classify_project_link` sees it -- doing so would make a genuinely
-malformed link indistinguishable from a legitimately absent one.
+fallback for the response body). Typed `Any`, not `dict | None`: link
+classification (missing vs. malformed vs. legitimately empty) is
+`scope.classify_project_link`'s responsibility, so the adapter must pass the
+raw value through unmodified.
 
 `created_project_id` is a THIRD, narrower concern: whether the job's
 `_links["createdProject"]` key specifically is present (a copy_project

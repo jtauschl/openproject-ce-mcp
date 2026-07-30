@@ -89,7 +89,7 @@ def test_payload_allowed_converts_permission_denied_to_false() -> None:
     assert scope.payload_allowed(ensure_denied) is False
 
 
-# --- classify_project_link (OPM-359) ------------------------------------------
+# --- classify_project_link ------------------------------------------
 
 
 def test_classify_project_link_resolved() -> None:
@@ -132,7 +132,7 @@ def test_classify_project_link_malformed_non_string_href() -> None:
     assert scope.classify_project_link({"href": 42}) is scope.LinkState.MALFORMED
 
 
-# --- ensure_project_link_allowed: now fail-closed on MISSING/MALFORMED (OPM-359) --
+# --- ensure_project_link_allowed: fail-closed on MISSING/MALFORMED --------------
 
 
 def test_ensure_project_link_allowed_denies_missing_link_even_under_wildcard_scope() -> None:

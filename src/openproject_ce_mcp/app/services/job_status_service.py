@@ -8,10 +8,10 @@ Views, there is only ever one scoping concern to check (the `project`-or-
 reference any project -- OpenProject's own JobStatusRepresenter has no
 guaranteed project link at all, only a self link plus an arbitrary payload).
 Uses `scope.ensure_project_link_allowed_if_present` (the OPTIONAL-project-
-link contract, OPM-359): a missing link is a legitimate, common state here
-(most jobs aren't project-copy jobs), so it keeps the pre-existing "* allows,
-restrictive scope denies" behavior, same rationale as `ViewService.get` --
-while a genuinely MALFORMED link is now always rejected.
+link contract): a missing link is a legitimate, common state here (most jobs
+aren't project-copy jobs), allowed under a wide-open scope and denied under
+a restrictive one, same rationale as `ViewService.get` -- while a
+structurally malformed link is always rejected regardless of scope.
 
 Read-only, single get method -- OpenProject exposes no create/update/delete
 for job statuses. `access.ensure_read_enabled("project", ...)` is the gate
