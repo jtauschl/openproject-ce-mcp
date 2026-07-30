@@ -209,18 +209,23 @@ async def test_delete_denies_write_outside_write_allowlist() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_reports_none_work_package_id_when_container_unresolvable() -> None:
+async def test_delete_denies_when_container_unresolvable_even_under_wide_open_write_scope() -> None:
+    """OPM-359: an unverifiable project association must never be treated as
+    authorized for a destructive operation, even under write_projects=("*",)
+    -- a missing/unresolvable container is now MISSING under
+    classify_project_link, and ensure_project_write_link_allowed always
+    denies MISSING/MALFORMED regardless of scope."""
     api = _FakeFileLinkApi(records=[_record(has_container_link=False)])
     work_package_lookup_api = _FakeWorkPackageLookupApi()
     settings = dataclasses.replace(make_settings(), write_projects=("*",))
     service = _service(api=api, work_package_lookup_api=work_package_lookup_api, settings=settings)
 
-    result = await service.delete(5, confirm=True)
+    with pytest.raises(PermissionDeniedError):
+        await service.delete(5, confirm=True)
 
-    assert result.work_package_id is None
-    assert result.confirmed is True
     # Fail-closed: no work package to fetch a project link from.
     assert work_package_lookup_api.get_calls == []
+    assert api.delete_calls == []
 
 
 @pytest.mark.asyncio

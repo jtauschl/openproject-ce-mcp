@@ -87,3 +87,118 @@ def test_payload_allowed_converts_permission_denied_to_false() -> None:
 
     assert scope.payload_allowed(ensure_ok) is True
     assert scope.payload_allowed(ensure_denied) is False
+
+
+# --- classify_project_link (OPM-359) ------------------------------------------
+
+
+def test_classify_project_link_resolved() -> None:
+    assert scope.classify_project_link({"href": "/api/v3/projects/7", "title": "Demo"}) is scope.LinkState.RESOLVED
+
+
+def test_classify_project_link_undisclosed() -> None:
+    link = {"href": scope.URN_UNDISCLOSED, "title": "Undisclosed project"}
+    assert scope.classify_project_link(link) is scope.LinkState.UNDISCLOSED
+
+
+def test_classify_project_link_explicitly_unscoped() -> None:
+    assert scope.classify_project_link({"href": None}) is scope.LinkState.EXPLICITLY_UNSCOPED
+
+
+def test_classify_project_link_missing() -> None:
+    assert scope.classify_project_link(None) is scope.LinkState.MISSING
+
+
+def test_classify_project_link_malformed_not_a_dict() -> None:
+    assert scope.classify_project_link("not-a-dict") is scope.LinkState.MALFORMED
+    assert scope.classify_project_link(42) is scope.LinkState.MALFORMED
+    assert scope.classify_project_link([]) is scope.LinkState.MALFORMED
+
+
+def test_classify_project_link_malformed_no_href_key() -> None:
+    """A dict with no "href" key at all (e.g. a typo like {"hreef": ...}, or
+    just {"title": "x"}) is never a real representer shape -- distinct from
+    {"href": None}, which IS the documented explicit-empty form."""
+    assert scope.classify_project_link({}) is scope.LinkState.MALFORMED
+    assert scope.classify_project_link({"title": "Demo"}) is scope.LinkState.MALFORMED
+
+
+def test_classify_project_link_malformed_blank_href() -> None:
+    assert scope.classify_project_link({"href": ""}) is scope.LinkState.MALFORMED
+    assert scope.classify_project_link({"href": "   "}) is scope.LinkState.MALFORMED
+
+
+def test_classify_project_link_malformed_non_string_href() -> None:
+    assert scope.classify_project_link({"href": 42}) is scope.LinkState.MALFORMED
+
+
+# --- ensure_project_link_allowed: now fail-closed on MISSING/MALFORMED (OPM-359) --
+
+
+def test_ensure_project_link_allowed_denies_missing_link_even_under_wildcard_scope() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("*",))
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        scope.ensure_project_link_allowed(None, settings=settings, project_id_to_identifier={})
+
+
+def test_ensure_project_link_allowed_denies_malformed_link_even_under_wildcard_scope() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("*",))
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        scope.ensure_project_link_allowed({"title": "Demo"}, settings=settings, project_id_to_identifier={})
+
+
+def test_ensure_project_link_allowed_denies_explicitly_unscoped_link_under_wildcard_scope() -> None:
+    """A required-project-link resource never legitimately sees {"href":
+    None} -- treat it as anomalous (deny), not as an accepted optional state."""
+    settings = dataclasses.replace(make_settings(), read_projects=("*",))
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        scope.ensure_project_link_allowed({"href": None}, settings=settings, project_id_to_identifier={})
+
+
+def test_ensure_project_link_allowed_treats_undisclosed_like_resolved_under_wildcard() -> None:
+    link = {"href": scope.URN_UNDISCLOSED, "title": "Undisclosed project"}
+    settings = dataclasses.replace(make_settings(), read_projects=("*",))
+    scope.ensure_project_link_allowed(link, settings=settings, project_id_to_identifier={})  # must not raise
+
+
+def test_ensure_project_link_allowed_denies_undisclosed_under_restrictive_scope() -> None:
+    """A restrictive scope can never confirm an undisclosed project's real
+    identity is on the allowlist -- always deny, not candidate-match against
+    the meaningless placeholder title/URN."""
+    link = {"href": scope.URN_UNDISCLOSED, "title": "Undisclosed project"}
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        scope.ensure_project_link_allowed(link, settings=settings, project_id_to_identifier={})
+
+
+# --- ensure_project_link_allowed_if_present: preserves the pre-fix optional contract --
+
+
+def test_ensure_project_link_allowed_if_present_allows_missing_link_under_wildcard_scope() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("*",))
+    scope.ensure_project_link_allowed_if_present(None, settings=settings, project_id_to_identifier={})  # no raise
+    scope.ensure_project_link_allowed_if_present(
+        {"href": None}, settings=settings, project_id_to_identifier={}
+    )  # no raise
+
+
+def test_ensure_project_link_allowed_if_present_denies_missing_link_under_restrictive_scope() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        scope.ensure_project_link_allowed_if_present(None, settings=settings, project_id_to_identifier={})
+
+
+def test_ensure_project_link_allowed_if_present_denies_malformed_link_even_under_wildcard_scope() -> None:
+    """Unlike missing/explicitly-empty, MALFORMED is newly always denied here
+    too -- a structurally broken link is never the same as "deliberately none"."""
+    settings = dataclasses.replace(make_settings(), read_projects=("*",))
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        scope.ensure_project_link_allowed_if_present({"title": "Demo"}, settings=settings, project_id_to_identifier={})
+
+
+def test_ensure_project_write_link_allowed_if_present_denies_malformed_link_even_under_wildcard_scope() -> None:
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("*",))
+    with pytest.raises(PermissionDeniedError):
+        scope.ensure_project_write_link_allowed_if_present(
+            {"title": "Demo"}, settings=settings, project_id_to_identifier={}
+        )

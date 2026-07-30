@@ -222,9 +222,11 @@ async def test_list_work_package_file_links_allows_anchor_inside_read_allowlist(
 
 
 @pytest.mark.asyncio
-async def test_delete_file_link_reports_none_work_package_id_when_container_unresolvable() -> None:
-    # A file link with no resolvable container used to fake a work_package_id
-    # of 0 (a real-looking id) instead of reporting "unknown/none" as None.
+async def test_delete_file_link_denies_when_container_unresolvable_even_under_wide_open_write_scope() -> None:
+    """OPM-359: a file link with no resolvable container has no verifiable
+    project association -- deleting it must be denied even under
+    write_projects=("*",), not silently allowed with work_package_id=None."""
+
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/file_links/5" and request.method == "GET":
             return httpx.Response(
@@ -232,16 +234,12 @@ async def test_delete_file_link_reports_none_work_package_id_when_container_unre
                 json={"id": 5, "_links": {"self": {"href": "/api/v3/file_links/5"}}},  # no "container" link
                 request=request,
             )
-        if request.url.path == "/api/v3/file_links/5" and request.method == "DELETE":
-            return httpx.Response(204, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(enable_work_package_write=True, write_projects=("*",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.delete_file_link(5, confirm=True)
-
-    assert result.work_package_id is None
-    assert result.confirmed is True
+    with pytest.raises(PermissionDeniedError):
+        await client.delete_file_link(5, confirm=True)
 
     await client.aclose()

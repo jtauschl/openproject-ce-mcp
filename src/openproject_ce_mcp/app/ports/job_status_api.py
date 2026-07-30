@@ -9,13 +9,17 @@ Record carries a single `JobStatusDetail` directly (matching the Query
 Metadata bundle's five Records, each wrapping one Summary with no
 `to_detail`).
 
-`project_link` carries the RAW `_links` dict entry the Service's allowlist
-check needs -- not just an extracted href/id, mirroring `ViewRecord.project_link`
-and `SprintRecord.project_link`. This is the raw *scoping* link (which of
-`_links["project"]`/`_links["sourceProject"]` was actually used to resolve
-scope), which is a separate concern from `summary.project`/`summary.project_id`
-(the *display* fields `normalize_job_status` populates from the same
-`project-or-sourceProject` fallback for the response body).
+`project_link` carries the RAW, unfiltered `_links` dict entry the Service's
+allowlist check needs -- not just an extracted href/id, mirroring
+`ViewRecord.project_link` and `SprintRecord.project_link`. This is the raw
+*scoping* link (which of `_links["project"]`/`_links["sourceProject"]` was
+actually used to resolve scope), which is a separate concern from
+`summary.project`/`summary.project_id` (the *display* fields
+`normalize_job_status` populates from the same `project-or-sourceProject`
+fallback for the response body). Typed `Any`, not `dict | None` (OPM-359):
+the adapter must NOT coerce a non-dict value to `None` before the Service's
+`scope.classify_project_link` sees it -- doing so would make a genuinely
+malformed link indistinguishable from a legitimately absent one.
 
 `created_project_id` is a THIRD, narrower concern: whether the job's
 `_links["createdProject"]` key specifically is present (a copy_project
@@ -33,7 +37,7 @@ created a project."
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from ...models import JobStatusDetail
 
@@ -41,7 +45,7 @@ from ...models import JobStatusDetail
 @dataclass(frozen=True)
 class JobStatusRecord:
     summary: JobStatusDetail
-    project_link: dict | None
+    project_link: Any
     created_project_id: int | None
 
 

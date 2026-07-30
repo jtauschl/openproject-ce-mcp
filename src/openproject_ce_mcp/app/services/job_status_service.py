@@ -5,9 +5,13 @@ Depends on the JobStatusApi Protocol, never HttpxJobStatusApi concretely
 (enforced by the architecture-boundary test). No dedicated policy file: like
 Views, there is only ever one scoping concern to check (the `project`-or-
 `sourceProject` link), and that link is NULLABLE (a job status need not
-reference any project) -- `scope.ensure_project_link_allowed` already
-produces the correct outcome for a `None` link with no new Policy code, same
-rationale as `ViewService.get`.
+reference any project -- OpenProject's own JobStatusRepresenter has no
+guaranteed project link at all, only a self link plus an arbitrary payload).
+Uses `scope.ensure_project_link_allowed_if_present` (the OPTIONAL-project-
+link contract, OPM-359): a missing link is a legitimate, common state here
+(most jobs aren't project-copy jobs), so it keeps the pre-existing "* allows,
+restrictive scope denies" behavior, same rationale as `ViewService.get` --
+while a genuinely MALFORMED link is now always rejected.
 
 Read-only, single get method -- OpenProject exposes no create/update/delete
 for job statuses. `access.ensure_read_enabled("project", ...)` is the gate
@@ -72,7 +76,7 @@ class JobStatusService:
     async def get(self, job_status_id: str) -> JobStatusDetail:
         access.ensure_read_enabled("project", settings=self._settings)
         record = await self._api.get(job_status_id)
-        scope_policy.ensure_project_link_allowed(
+        scope_policy.ensure_project_link_allowed_if_present(
             record.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
         if record.created_project_id is not None:

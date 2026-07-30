@@ -115,6 +115,12 @@ class HttpxJobStatusApi:
         )
         return JobStatusRecord(
             summary=normalize_job_status(payload, base_url=self._base_url, origin=self._origin),
-            project_link=project_link if isinstance(project_link, dict) else None,
+            # OPM-359: pass the RAW value through, unfiltered -- classifying
+            # a link as missing/malformed/legitimately-empty is the scope
+            # policy's job, not the adapter's. Silently coercing any
+            # non-dict value to None here would make a genuinely MALFORMED
+            # link indistinguishable from MISSING before the policy ever
+            # sees it.
+            project_link=project_link,
             created_project_id=created_project_id,
         )

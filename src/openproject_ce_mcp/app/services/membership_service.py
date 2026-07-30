@@ -121,7 +121,10 @@ class MembershipService:
     async def get(self, membership_id: int) -> MembershipSummary:
         access.ensure_read_enabled("membership", settings=self._settings)
         record = await self._api.get(membership_id)
-        scope_policy.ensure_project_link_allowed(
+        # OPM-359: a Membership's project link is genuinely optional (global
+        # memberships have no project association at all) -- use the
+        # OPTIONAL-project-link contract, not the required one.
+        scope_policy.ensure_project_link_allowed_if_present(
             record.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
         return self._stamp(record.summary)
@@ -175,7 +178,7 @@ class MembershipService:
         confirm: bool = False,
     ) -> MembershipWriteResult:
         current = await self._api.get(membership_id)
-        scope_policy.ensure_project_write_link_allowed(
+        scope_policy.ensure_project_write_link_allowed_if_present(
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
         hidden_fields.ensure_field_writable("membership", "role_names", settings=self._settings)
@@ -200,7 +203,7 @@ class MembershipService:
 
     async def delete(self, *, membership_id: int, confirm: bool = False) -> MembershipWriteResult:
         current = await self._api.get(membership_id)
-        scope_policy.ensure_project_write_link_allowed(
+        scope_policy.ensure_project_write_link_allowed_if_present(
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
         membership = self._stamp(current.summary)

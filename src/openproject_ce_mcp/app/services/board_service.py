@@ -163,7 +163,19 @@ class BoardService:
             )
 
         records, total = await self._api.list_page(offset=offset, limit=effective_limit)
-        results = [self._stamp(record.summary) for record in records]
+        # OPM-359: this server-paginated fast path (wide-open scope, no
+        # project/search filter) never called board_read_allowed at all --
+        # a MALFORMED project link would have passed through completely
+        # unchecked. A missing/explicitly-empty link is still fine here (a
+        # legitimate global board, and read_projects is fully open anyway),
+        # so only MALFORMED is filtered -- the more expensive per-record
+        # allowlist candidate-matching stays skipped, since scope is open.
+        filtered = [
+            record
+            for record in records
+            if scope_policy.classify_project_link(record.project_link) is not scope_policy.LinkState.MALFORMED
+        ]
+        results = [self._stamp(record.summary) for record in filtered]
         next_offset, truncated = paginate_server(offset=offset, limit=effective_limit, total=total)
         return BoardListResult(
             offset=offset,

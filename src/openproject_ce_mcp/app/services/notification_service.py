@@ -82,7 +82,18 @@ class NotificationService:
         resolved_limit = effective_limit(limit, settings=self._settings)
         if scope_policy.scope_allows_all(self._settings.read_projects):
             page = await self._api.list_all(unread_only=unread_only, offset=offset, limit=resolved_limit)
-            records = page.records
+            # OPM-359: this fast path used to trust every record unchecked --
+            # a structurally MALFORMED project_link would never be caught
+            # under a wide-open scope. A missing project_link is still fine
+            # here (resolved via the work-package branch or genuinely
+            # personal/global, same as the restrictive path), so only
+            # MALFORMED is filtered; the more expensive per-record allowlist
+            # candidate-matching stays skipped, since scope is open.
+            records = [
+                record
+                for record in page.records
+                if scope_policy.classify_project_link(record.project_link) is not scope_policy.LinkState.MALFORMED
+            ]
             total = page.total
             truncated = total > offset * resolved_limit
         else:

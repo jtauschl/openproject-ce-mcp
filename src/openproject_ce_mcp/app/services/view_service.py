@@ -13,13 +13,14 @@ client.py's original _ensure_read_enabled("project") call).
 Read-only, no dedicated policy file: unlike Documents/News/Versions, Views
 needs no <domain>_payload_allowed wrapper around scope.project_link_payload_allowed
 -- there is only ever one link key ("project") to check, and that link is
-NULLABLE (a view need not belong to any project). scope.ensure_project_link_allowed
-already produces the correct outcome for a None link with no new Policy code:
-when read_projects is restrictive, project_candidates(link=None) yields an
-empty candidate set, and scope_matches_candidates with an empty set always
-returns False -- so ensure_project_link_allowed raises exactly when
-client.py's original _ensure_view_payload_allowed did (deny an unlinked view
-under a restrictive scope; allow any view, linked or not, under scope="*").
+NULLABLE (a view need not belong to any project; OpenProject's own
+QueryRepresenter emits an explicit empty link for a global/unbound view, per
+the OPM-359 research). Uses `scope.ensure_project_link_allowed_if_present`
+(the OPTIONAL-project-link contract), not the required one: a missing/
+explicitly-empty link is a documented, legitimate server state here, so it
+keeps the pre-existing "* allows, restrictive scope denies" behavior --
+matching client.py's original _ensure_view_payload_allowed -- while a
+genuinely MALFORMED link (not just absent) is now always rejected.
 """
 
 from __future__ import annotations
@@ -55,7 +56,7 @@ class ViewService:
 
     def _allowed(self, project_link: dict | None) -> bool:
         return scope_policy.payload_allowed(
-            lambda: scope_policy.ensure_project_link_allowed(
+            lambda: scope_policy.ensure_project_link_allowed_if_present(
                 project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
             )
         )
@@ -111,7 +112,7 @@ class ViewService:
     async def get(self, view_id: int) -> ViewDetail:
         access.ensure_read_enabled("project", settings=self._settings)
         record = await self._api.get(view_id)
-        scope_policy.ensure_project_link_allowed(
+        scope_policy.ensure_project_link_allowed_if_present(
             record.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
         return self._stamp(record.detail)
