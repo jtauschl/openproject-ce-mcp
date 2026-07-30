@@ -19,8 +19,10 @@ dependent, for the `comment` field) and `self._apply_hidden_fields(...)` (the
 whole object) inline, making them NOT settings-free the way
 `normalize_relation` was. This adapter's functions do ONLY the pure HAL
 extraction -- `comment` is still trimmed/delimited (matching the untrusted-
-user-content handling every other domain applies), but with NO hidden-field
-awareness at all. `TimeEntryService._stamp`/`_stamp_activity` apply the
+user-content handling every other domain applies, via the same `raw`-or-`html`
+fallback, whitespace-collapse, and ellipsis-truncation shape as
+`httpx_project_api.py`'s `_extract_formattable_text_with_meta`), but with NO
+hidden-field awareness at all. `TimeEntryService._stamp`/`_stamp_activity` apply the
 `"time_entry"`/`"time_entry_activity"` hidden-field masking afterwards (see
 that module's docstring for the comment-specific metadata-clearing rationale).
 
@@ -60,9 +62,7 @@ def normalize_time_entry_raw(payload: dict[str, Any], *, base_url: str, text_lim
     links = payload.get("_links", {})
     project_link = links.get("project")
     entity_link = links.get("entity")
-    raw_comment = payload.get("comment")
-    comment_text = raw_comment.get("raw") if isinstance(raw_comment, dict) else raw_comment
-    trimmed, truncated = _trim_text_with_meta(comment_text, limit=text_limit)
+    trimmed, truncated, full_length = _extract_formattable_text_with_meta(payload.get("comment"), limit=text_limit)
     return TimeEntrySummary(
         id=int(payload["id"]),
         project=_link_title(project_link),
@@ -78,19 +78,32 @@ def normalize_time_entry_raw(payload: dict[str, Any], *, base_url: str, text_lim
         ongoing=bool(payload.get("ongoing")),
         comment=_delimit_user_content(trimmed),
         comment_truncated=truncated,
-        comment_length=len(comment_text) if comment_text is not None else None,
+        comment_length=full_length,
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
         url=_web_url(f"time_entries/{payload['id']}", base_url=base_url),
     )
 
 
-def _trim_text_with_meta(value: str | None, *, limit: int | None) -> tuple[str | None, bool]:
+def _normalize_text(value: Any) -> str:
+    return " ".join(str(value).split())
+
+
+def _trim_text_with_meta(value: Any, *, limit: int | None) -> tuple[str | None, bool, int | None]:
     if value is None:
-        return None, False
-    if limit is None or len(value) <= limit:
-        return value, False
-    return value[:limit], True
+        return None, False, None
+    text = _normalize_text(value)
+    if not text:
+        return None, False, None
+    full_length = len(text)
+    if limit is None or full_length <= limit:
+        return text, False, full_length
+    return text[: limit - 1].rstrip() + "…", True, full_length
+
+
+def _extract_formattable_text_with_meta(value: Any, *, limit: int | None) -> tuple[str | None, bool, int | None]:
+    raw = value.get("raw") or value.get("html") if isinstance(value, dict) else value
+    return _trim_text_with_meta(raw, limit=limit)
 
 
 def normalize_time_entry_activity_raw(payload: dict[str, Any], *, base_url: str) -> TimeEntryActivitySummary:

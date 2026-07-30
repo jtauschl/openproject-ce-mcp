@@ -272,6 +272,24 @@ def test_normalize_time_entry_caps_comment_when_text_limit_given() -> None:
 
     assert entry.comment_truncated is True
     assert entry.comment_length == 900
+    assert entry.comment is not None
+    assert entry.comment.endswith("…</user-content>")
+
+
+def test_normalize_time_entry_comment_falls_back_to_html_when_raw_absent() -> None:
+    entry = normalize_time_entry_raw(
+        {"id": 1, "comment": {"html": "<p>hello</p>"}, "_links": {}}, base_url=BASE_URL, text_limit=None
+    )
+
+    assert entry.comment == "<user-content><p>hello</p></user-content>"
+
+
+def test_normalize_time_entry_comment_collapses_whitespace() -> None:
+    entry = normalize_time_entry_raw(
+        {"id": 1, "comment": {"raw": "hello   \n\n  world"}, "_links": {}}, base_url=BASE_URL, text_limit=None
+    )
+
+    assert entry.comment == "<user-content>hello world</user-content>"
 
 
 def test_normalize_time_entry_activity_extracts_fields() -> None:

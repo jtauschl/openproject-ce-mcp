@@ -66,12 +66,14 @@ class _FakeTimeEntryApi:
         project_link: dict | None = None,
         activities: list[TimeEntryActivitySummary] | None = None,
         fetch_activities_result: dict | None = None,
+        form_payload_overrides: dict | None = None,
     ) -> None:
         self._list_summaries = records if records is not None else [_summary()]
         self._project_link = project_link or {"href": "/api/v3/projects/1", "title": "Demo"}
         self._by_id = {time_entry_id: self._list_summaries[0]} if len(self._list_summaries) == 1 else None
         self._activities = activities if activities is not None else [_activity_summary()]
         self._fetch_activities_result = fetch_activities_result
+        self._form_payload_overrides = form_payload_overrides or {}
         self.fetch_page_calls: list[tuple[int, int]] = []
         self.get_raw_calls: list[int] = []
         self.validate_create_calls: list[dict] = []
@@ -115,11 +117,13 @@ class _FakeTimeEntryApi:
 
     async def validate_create(self, payload: dict) -> dict:
         self.validate_create_calls.append(payload)
-        return {"_embedded": {"payload": payload, "validationErrors": {}}}
+        canonical = {**payload, **self._form_payload_overrides}
+        return {"_embedded": {"payload": canonical, "validationErrors": {}}}
 
     async def validate_update(self, time_entry_id: int, payload: dict) -> dict:
         self.validate_update_calls.append((time_entry_id, payload))
-        return {"_embedded": {"payload": payload, "validationErrors": {}}}
+        canonical = {**payload, **self._form_payload_overrides}
+        return {"_embedded": {"payload": canonical, "validationErrors": {}}}
 
     async def create(self, payload: dict) -> TimeEntryRecord:
         self.create_calls.append(payload)
@@ -146,13 +150,16 @@ class _FakeProjectApi:
     """Only used via fetch_project_page -- fetch_project_page itself calls
     api.list(...), so this fake models THAT contract, not TimeEntryApi's."""
 
-    def __init__(self, projects: list[tuple[int, str]] | None = None) -> None:
+    def __init__(self, projects: list[tuple[int, str]] | None = None, *, list_raises: Exception | None = None) -> None:
         self._projects = projects if projects is not None else [(1, "Demo")]
+        self._list_raises = list_raises
 
     async def list(self, *, server_offset: int, server_page_size: int, search, text_limit=None):
         from openproject_ce_mcp.app.ports.project_api import ProjectPage, ProjectRecord
         from openproject_ce_mcp.models import ProjectSummary
 
+        if self._list_raises is not None:
+            raise self._list_raises
         if server_offset > 1:
             return ProjectPage(records=[])
         records = [
@@ -316,6 +323,24 @@ async def test_list_activities_falls_back_to_project_scan_when_global_endpoint_e
     assert api.fetch_activities_for_entity_calls == [(1, None)]
 
 
+@pytest.mark.asyncio
+async def test_list_activities_returns_empty_when_project_scan_itself_fails() -> None:
+    """Regression: the pre-migration original wrapped the ENTIRE project-scan
+    fallback (including the project-listing call itself, not just each
+    per-project form request) in a try/except that returns an empty result
+    for NotFoundError/PermissionDeniedError/OpenProjectServerError. A prior
+    port only guarded the per-project form call, letting a failure from
+    listing projects itself propagate instead of degrading gracefully."""
+    api = _FakeTimeEntryApi(fetch_activities_result=None)
+    project_api = _FakeProjectApi(list_raises=PermissionDeniedError("no access"))
+    service = _service(api=api, project_api=project_api)
+
+    result = await service.list_activities()
+
+    assert result.count == 0
+    assert result.results == []
+
+
 # --- list_all -----------------------------------------------------------------
 
 
@@ -456,6 +481,50 @@ async def test_create_commits_when_confirmed() -> None:
     assert result.result is not None
     assert result.result.id == 650
     assert len(api.create_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_commits_the_server_canonicalized_form_payload_not_the_local_one() -> None:
+    """Regression: OpenProject's own CreateFormAPI can canonicalize/add
+    defaults to the locally-built payload (e.g. normalize hours format). The
+    commit must send back the form's own _embedded.payload, not silently
+    re-send the pre-validation payload the caller originally built."""
+    api = _FakeTimeEntryApi(form_payload_overrides={"hours": "PT2H"})
+    service = _service(api=api)
+
+    await service.create(work_package_id=42, activity="Development", hours="PT1H", spent_on="2026-03-20", confirm=True)
+
+    assert len(api.create_calls) == 1
+    assert api.create_calls[0]["hours"] == "PT2H"
+
+
+@pytest.mark.asyncio
+async def test_update_commits_the_server_canonicalized_form_payload_not_the_local_one() -> None:
+    api = _FakeTimeEntryApi(form_payload_overrides={"hours": "PT3H"})
+    service = _service(api=api)
+
+    await service.update(time_entry_id=7, hours="PT1H", confirm=True)
+
+    assert len(api.update_calls) == 1
+    assert api.update_calls[0][1]["hours"] == "PT3H"
+
+
+@pytest.mark.asyncio
+async def test_create_trims_project_name_from_direct_project_ref() -> None:
+    """Regression: the pre-migration original capped a resolved project's
+    display name at SUBJECT_LIMIT, matching every other project-name field --
+    a prior port returned the raw, untrimmed name instead."""
+    api = _FakeTimeEntryApi()
+    long_name = "x" * 300
+    resolve_project_ref = _resolve_project_ref_ok(name=long_name)
+    service = _service(api=api, resolve_project_ref=resolve_project_ref)
+
+    result = await service.create(
+        project="demo", activity="Development", hours="PT1H", spent_on="2026-03-20", confirm=True
+    )
+
+    assert result.project is not None
+    assert len(result.project) <= 255
 
 
 @pytest.mark.asyncio

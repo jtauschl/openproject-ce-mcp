@@ -86,6 +86,8 @@ from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import WorkPackageIdResolver
 from ..resolvers.project_query import fetch_project_page
 from ._write_outcome import _finalize_write
+from .project_scoped_list import SUBJECT_LIMIT
+from .project_scoped_list import trim_text as _trim_text
 
 _FALLBACK_ERRORS = (NotFoundError, PermissionDeniedError, OpenProjectServerError)
 
@@ -146,27 +148,30 @@ class TimeEntryService:
             if results:
                 return TimeEntryActivityListResult(count=len(results), results=results)
 
-        offset = 1
-        while True:
-            page_results, _total, next_offset, _truncated = await fetch_project_page(
-                api=self._project_api,
-                settings=self._settings,
-                project_id_to_identifier=self._project_id_to_identifier,
-                search=None,
-                offset=offset,
-                limit=self._settings.max_page_size,
-            )
-            for project in page_results:
-                try:
-                    form = await self._api.fetch_activities_for_entity(project_id=project.id, work_package_id=None)
-                except _FALLBACK_ERRORS:
-                    continue
-                results = self._activities_from_form(form)
-                if results:
-                    return TimeEntryActivityListResult(count=len(results), results=results)
-            if next_offset is None:
-                return TimeEntryActivityListResult(count=0, results=[])
-            offset = next_offset
+        try:
+            offset = 1
+            while True:
+                page_results, _total, next_offset, _truncated = await fetch_project_page(
+                    api=self._project_api,
+                    settings=self._settings,
+                    project_id_to_identifier=self._project_id_to_identifier,
+                    search=None,
+                    offset=offset,
+                    limit=self._settings.max_page_size,
+                )
+                for project in page_results:
+                    try:
+                        form = await self._api.fetch_activities_for_entity(project_id=project.id, work_package_id=None)
+                    except _FALLBACK_ERRORS:
+                        continue
+                    results = self._activities_from_form(form)
+                    if results:
+                        return TimeEntryActivityListResult(count=len(results), results=results)
+                if next_offset is None:
+                    return TimeEntryActivityListResult(count=0, results=[])
+                offset = next_offset
+        except _FALLBACK_ERRORS:
+            return TimeEntryActivityListResult(count=0, results=[])
 
     async def list_all(
         self,
@@ -366,7 +371,7 @@ class TimeEntryService:
         work_package_numeric_id: int | None = None
         if project is not None:
             project_payload = await self._resolve_project_ref(project, write=True)
-            project_name = project_payload.get("name")
+            project_name = _trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT)
             activity_project_id = int(project_payload["id"])
         if work_package_id is not None:
             work_package_payload = await self._work_package_lookup_api.get(str(work_package_id))
@@ -403,7 +408,7 @@ class TimeEntryService:
             validation_errors=parsed.validation_errors,
             identity={"time_entry_id": None, "project": project_name},
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
-            commit=lambda _payload: self._api.create(payload),
+            commit=self._api.create,
             committed_identity=lambda record: {
                 "time_entry_id": record.summary().id,
                 "project": record.summary().project,
@@ -455,7 +460,7 @@ class TimeEntryService:
             validation_errors=parsed.validation_errors,
             identity={"time_entry_id": time_entry_id, "project": project_name},
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
-            commit=lambda _payload: self._api.update(time_entry_id, payload),
+            commit=lambda p: self._api.update(time_entry_id, p),
             committed_identity=lambda record: {
                 "time_entry_id": record.summary().id,
                 "project": record.summary().project,
