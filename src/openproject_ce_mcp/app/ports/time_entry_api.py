@@ -1,4 +1,4 @@
-"""Time Entries Domain API port (ADR 0001, OPM-318 consumer).
+"""Time Entries Domain API port (ADR 0001).
 
 `fetch_page` returns the raw HAL page dict (not records), matching
 `RelationApi`'s precedent -- `fetch_bounded_and_paginate`'s `item_allowed`

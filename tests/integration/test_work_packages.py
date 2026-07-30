@@ -114,12 +114,12 @@ async def test_create_subtask(client: OpenProjectClient, test_project: str, wp_i
 async def test_get_work_package_ancestors_tolerate_missing_display_id(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    """Regression: WorkPackageDetail.ancestors/children entries were typed as
-    dict[str, str], but OpenProject only includes displayId on hierarchy
-    links in 17.5+ semantic mode -- on a classic/pre-17.5 instance (like this
-    one, seeded with classic identifiers) display_id is None, and the MCP
-    output schema used to reject that null outright, crashing get_work_package
-    for any work package with ancestors."""
+    """OpenProject only includes displayId on hierarchy links in 17.5+
+    semantic mode -- on a classic/pre-17.5 instance (like this one, seeded
+    with classic identifiers) display_id is None, so
+    WorkPackageDetail.ancestors/children entries must tolerate a null
+    display_id without crashing get_work_package for any work package with
+    ancestors."""
     parent = await client.create_work_package(
         project=test_project,
         type="Task",
@@ -305,8 +305,8 @@ async def test_bulk_create_work_packages(client: OpenProjectClient, test_project
 async def test_bulk_create_work_packages_applies_duration_fields(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    # estimated_time/remaining_time/duration used to be silently dropped by
-    # bulk_create_work_packages instead of applied.
+    # estimated_time/remaining_time/duration must actually be applied by
+    # bulk_create_work_packages, not silently dropped.
     items = [
         {
             "project": test_project,
@@ -446,8 +446,8 @@ async def test_get_work_packages_batch_partial_failure(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
     """get_work_packages fans out one get_work_package call per id via
-    asyncio.gather and tracks per-item success/failure -- never previously
-    exercised live with a mix of a real id and one that must fail."""
+    asyncio.gather and tracks per-item success/failure, live, with a mix of
+    a real id and one that must fail."""
     created = await client.create_work_package(
         project=test_project, type="Task", subject=f"{_SUBJECT} batch-get", confirm=True
     )

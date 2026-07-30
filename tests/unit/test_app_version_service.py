@@ -141,7 +141,7 @@ async def test_get_checks_read_enabled() -> None:
 @pytest.mark.asyncio
 async def test_get_status_hidden_by_version_scope_not_project_scope() -> None:
     """Regression test for the entity-scope class of bug found via News'
-    OPM-266 hotfix and Documents' equivalent: a field must only be masked by
+    hotfix and Documents' equivalent: a field must only be masked by
     its OWN domain's OPENPROJECT_HIDE_<ENTITY>_FIELDS scope, never by a
     same-named field under a different (e.g. project) scope.
     """

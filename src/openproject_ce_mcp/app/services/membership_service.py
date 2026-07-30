@@ -249,10 +249,8 @@ class MembershipService:
         normalized_refs = [ref.strip() for ref in roles if ref.strip()]
         # The full role-collection page-walk is only needed to resolve a
         # BY-NAME reference -- when every ref is already numeric, skip it
-        # entirely (found during the 19th (Extended Metadata) domain's
-        # step-6 self-audit: this fetch previously ran unconditionally even
-        # though the common case, all-numeric role ids, never uses its
-        # result at all).
+        # entirely, since the common case (all-numeric role ids) never uses
+        # its result at all.
         available_roles: list[RoleRecord] = []
         if any(not ref.isdigit() for ref in normalized_refs):
             # A single direct call, NOT paginate_all (found via an independent
@@ -266,7 +264,7 @@ class MembershipService:
             # re-request an identical "next page", and duplicate every record --
             # latent at today's role count (well under max_page_size) but a real
             # bug once a deployment's role count exceeds it. RoleService.list_roles
-            # (OPM-324) already established the correct pattern: fetch once with
+            # already established the correct pattern: fetch once with
             # page_size=max_results, trust the server's own complete response.
             available_roles, _server_total = await self._role_api.list_roles(
                 offset=1, page_size=self._settings.max_results

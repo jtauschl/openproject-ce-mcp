@@ -4,11 +4,11 @@ Holds only the ProjectApi Protocol and its Result dataclasses (ProjectRecord,
 ProjectPage, ProjectFormResult, ProjectSchemaResult, ProjectCopyFormResult,
 ProjectPhaseRecord). HAL->model normalize_* translation lives in
 HttpxProjectApi (app/adapters/httpx_project_api.py), matching the Versions
-domain's convention -- ProjectService no longer normalizes a raw payload
-itself; it consumes the already-normalized ProjectRecord that
+domain's convention: ProjectService never normalizes a raw payload itself;
+it consumes the already-normalized ProjectRecord that
 ProjectResolver.resolve_record() forwards from the adapter (see
-project_resolver.py's module docstring for how the former "second
-normalization without a second HTTP round-trip" concern is resolved).
+project_resolver.py's module docstring for how a second normalization is
+avoided without a second HTTP round-trip).
 """
 
 from __future__ import annotations
@@ -52,11 +52,11 @@ class ProjectRecord:
     reference resolution, plus every still-flat client.py domain via the
     `ProjectRefResolver` seam) only ever read `.payload`, and
     `ProjectService.list()` only ever reads `.summary`. Precomputing detail
-    eagerly on every `_record()` build -- as this used to do -- ran a second,
-    independent text-extraction pass over every resolved/listed project's
-    description AND status_explanation, plus rebuilt its ancestors list, for
-    a value almost no caller reads. Only `ProjectService.get()` (the single-
-    item read path) calls `to_detail()`.
+    eagerly on every `_record()` build would run a second, independent
+    text-extraction pass over every resolved/listed project's description
+    AND status_explanation, plus rebuild its ancestors list, for a value
+    almost no caller reads. Only `ProjectService.get()` (the single-item
+    read path) calls `to_detail()`.
     """
 
     summary: ProjectSummary

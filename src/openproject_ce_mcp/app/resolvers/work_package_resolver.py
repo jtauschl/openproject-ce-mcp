@@ -1,4 +1,4 @@
-"""Work-package-reference resolver (ADR 0001, OPM-318).
+"""Work-package-reference resolver (ADR 0001).
 
 Mirrors `ProjectResolver`'s shape (`app/resolvers/project_resolver.py`):
 constructor takes `api` + `settings`, depends only on the `WorkPackageLookupApi`
@@ -9,13 +9,13 @@ Notifications, File Links) can each migrate independently later without
 waiting for the full Work Packages CRUD migration (~1170 lines, the last big
 blocker, not attempted here).
 
-`resolve_id()` is a verbatim behavioral port of client.py's former
+`resolve_id()` is a verbatim behavioral port of client.py's
 `_resolve_work_package_id` body; `project_link_allowed()` is a verbatim
 behavioral port of `_work_package_project_allowed`, plus an optional
-`WorkPackageAllowedContext` cache parameter the original method never had
-(the 5 client.py call sites that used to build their own bare
-`dict[str, bool] = {}` now thread a `WorkPackageAllowedContext` through
-instead -- see client.py's call sites for `_work_package_project_allowed`).
+`WorkPackageAllowedContext` cache parameter so the 5 client.py call sites
+can thread a shared `WorkPackageAllowedContext` through instead of each
+building their own bare `dict[str, bool] = {}`
+(see client.py's call sites for `_work_package_project_allowed`).
 """
 
 from __future__ import annotations

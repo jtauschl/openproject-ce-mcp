@@ -790,12 +790,12 @@ async def test_get_time_entry_returns_full_comment_by_default() -> None:
 
 @pytest.mark.asyncio
 async def test_create_time_entry_preview_reflects_openproject_validation_errors() -> None:
-    """Regression test (found via Codex review): create_time_entry used to
-    hardcode ready=True/validation_errors={} in its preview instead of
-    consulting OpenProject's own CreateFormAPI (POST time_entries/form) --
-    a payload this server's own field checks accept could still be rejected
-    by OpenProject itself (e.g. hours/date/activity combinations the schema
-    disallows), which the hardcoded preview could never surface."""
+    """create_time_entry's preview must consult OpenProject's own
+    CreateFormAPI (POST time_entries/form) rather than hardcode
+    ready=True/validation_errors={} -- a payload this server's own field
+    checks accept can still be rejected by OpenProject itself (e.g.
+    hours/date/activity combinations the schema disallows), which a
+    hardcoded preview could never surface."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":

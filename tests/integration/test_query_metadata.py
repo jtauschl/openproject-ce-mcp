@@ -36,13 +36,11 @@ async def test_get_query_operator(client: OpenProjectClient) -> None:
 
 
 async def test_get_query_sort_by_resolves_colon_form_id(client: OpenProjectClient) -> None:
-    """Regression (OPM-322): OpenProject's sort_bys route is
-    queries/sort_bys/:id-:direction (hyphen-joined), not a bare id segment.
-    A request built from the caller-facing colon-separated id
-    ("subject:asc") used to hit a 404 on every version -- confirm it now
-    resolves against a real instance, and that the public id contract stays
-    the caller's colon-form regardless of the server's own hyphen-form
-    self-link."""
+    """OpenProject's sort_bys route is queries/sort_bys/:id-:direction
+    (hyphen-joined), not a bare id segment. A request built from the
+    caller-facing colon-separated id ("subject:asc") must resolve against a
+    real instance, and the public id contract must stay the caller's
+    colon-form regardless of the server's own hyphen-form self-link."""
     result = await client.get_query_sort_by("subject:asc")
     assert result.id == "subject:asc"
     assert result.direction is not None

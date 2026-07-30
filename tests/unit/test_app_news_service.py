@@ -185,7 +185,7 @@ async def test_get_applies_hidden_field_masking() -> None:
 
 @pytest.mark.asyncio
 async def test_get_description_hidden_by_news_scope_not_project_scope() -> None:
-    """Regression test for the OPM-266 hotfix (commit 684edad): the OLD,
+    """Regression test for the hotfix (commit 684edad): the OLD,
     buggy client.py normalize_news checked entity="project" instead of
     "news" for the description hide-check. That bug lived in the pre-
     migration flat client -- the new layered Service masks the ENTIRE

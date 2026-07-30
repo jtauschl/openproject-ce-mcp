@@ -78,7 +78,7 @@ async def test_get_applies_hidden_field_masking() -> None:
 @pytest.mark.asyncio
 async def test_get_content_hidden_by_wiki_page_scope_not_project_scope() -> None:
     """Regression test for the entity="wiki_page" vs "project" hide-field bug
-    (same bug class as the OPM-266 News hotfix). This is the single most
+    (same bug class as the News hotfix). This is the single most
     important test in this file -- masking must key off the domain's own
     entity string, not a same-named neighbor.
     """

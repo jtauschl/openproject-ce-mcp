@@ -246,7 +246,7 @@ async def test_delete_fails_closed_when_container_unresolvable_and_write_scope_r
 @pytest.mark.asyncio
 async def test_storage_name_hidden_by_file_link_scope_not_grid_scope() -> None:
     """Regression test for the entity="file_link" vs a same-shaped neighbor
-    hide-field bug class (same bug class as OPM-1627's Priority/Notification
+    hide-field bug class (same bug class as the Priority/Notification
     findings)."""
     settings_grid_hidden = dataclasses.replace(make_settings(), hidden_fields={"grid": ("storage_name",)})
     service_grid_hidden = _service(settings=settings_grid_hidden)

@@ -137,13 +137,11 @@ async def test_get_denies_when_project_link_is_none_and_scope_is_restrictive() -
 
 @pytest.mark.asyncio
 async def test_get_denies_when_only_source_project_link_present_and_not_allowlisted() -> None:
-    """Regression test for the allowlist-leak bug fixed in this migration:
-    the OLD client.py code checked only _links["project"], so a job-status
-    payload scoped exclusively via sourceProject (as in copy_project's
-    response) bypassed OPENPROJECT_READ_PROJECTS entirely. The Adapter now
-    populates JobStatusRecord.project_link via the same project-or-
-    sourceProject fallback normalize_job_status uses for display fields, so
-    this must now be correctly denied when "source-project" isn't
+    """A job-status payload scoped exclusively via sourceProject (as in
+    copy_project's response) must still be subject to
+    OPENPROJECT_READ_PROJECTS. The Adapter populates JobStatusRecord.project_link
+    via the same project-or-sourceProject fallback normalize_job_status uses
+    for display fields, so this must be denied when "source-project" isn't
     allowlisted."""
     api = _FakeJobStatusApi(
         JobStatusRecord(
@@ -215,11 +213,11 @@ async def test_get_passes_job_status_id_through_to_api() -> None:
 
 @pytest.mark.asyncio
 async def test_get_remembers_copied_projects_real_identifier_in_the_shared_cache() -> None:
-    """Regression test (OPM-316): a project created via copy_project was
+    """Regression test: a project created via copy_project was
     invisible to every link-shaped allowlist check until the process
     restarted, because project_id_to_identifier was never written through on
     the async copy-job-completion path (unlike create_project/update_project,
-    which OPM-308 already fixed). A completed copy job's `_links.createdProject`
+    which already handled this). A completed copy job's `_links.createdProject`
     is the only place the new project's numeric id becomes known; this
     resolves it to its REAL identifier (not just the job status response's
     own display title) and writes it through.

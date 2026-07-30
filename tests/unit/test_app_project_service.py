@@ -171,7 +171,7 @@ def _service(api: _FakeProjectApi | None = None, *, settings=None) -> ProjectSer
 @pytest.mark.asyncio
 async def test_get_description_hidden_by_project_scope_not_project_configuration_scope() -> None:
     """Regression test for the entity-scope class of bug found via News'
-    OPM-266 hotfix and Documents' equivalent: a field must only be masked by
+    hotfix and Documents' equivalent: a field must only be masked by
     its OWN domain's OPENPROJECT_HIDE_<ENTITY>_FIELDS scope, never by a
     same-named field under a different, similarly-named scope (here
     "project_configuration", the nearest same-prefixed sibling entity).

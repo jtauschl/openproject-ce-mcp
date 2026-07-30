@@ -13,8 +13,7 @@ shape (`_embedded.members` as a flat array) and a `{count, ...}`/
 own tolerance.
 
 `web_url` (imported from `_text.py`) replaces a local copy here, promoted
-during the Watchers migration's step-6 self-audit (OPM-294) once it crossed
-the "3+ identical copies" threshold across adapters.
+once it crossed the "3+ identical copies" threshold across adapters.
 """
 
 from __future__ import annotations

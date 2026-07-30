@@ -794,7 +794,7 @@ def test_app_tree_never_reads_environment_variables_directly() -> None:
     assert offenders == []
 
 
-# Added during the Statuses/Priorities/Types migration (16th domain, OPM-1627),
+# Added during the Statuses/Priorities/Types migration (16th domain),
 # after a broader audit found FOUR real, silent hidden-field-masking gaps that
 # no existing test caught: normalize_priority/normalize_notification/
 # normalize_emoji_reaction never called _apply_hidden_fields at all, and
@@ -851,7 +851,7 @@ def test_every_apply_hidden_fields_entity_is_registered_in_config() -> None:
 
 
 def test_work_package_resolver_methods_structurally_satisfy_the_seam_protocols() -> None:
-    """OPM-318: WorkPackageResolver.resolve_id/.project_link_allowed are the
+    """WorkPackageResolver.resolve_id/.project_link_allowed are the
     concrete methods future migrations bind `WorkPackageIdResolver`/
     `WorkPackageProjectAllowedCheck` seam parameters to (bound methods
     `self._work_package_resolver.resolve_id`/`.project_link_allowed`,
@@ -900,17 +900,14 @@ def test_work_package_resolver_methods_structurally_satisfy_the_seam_protocols()
 
 
 def test_file_link_service_binds_its_three_dependencies_to_the_right_protocols() -> None:
-    """File Links (OPM-296) is the first domain to actually consume the
-    OPM-318 seams (previously declared but zero consumers). FileLinkService
-    has THREE Protocol dependencies, not the usual one -- FileLinkApi (its
-    own domain Port), WorkPackageLookupApi (a second domain Port, used
-    directly for delete()'s raw work-package-payload fetch rather than
-    through the resolver), and WorkPackageIdResolver (the actual OPM-318
-    seam, used by list_for_work_package()'s anchor resolution). All three
+    """FileLinkService has THREE Protocol dependencies, not the usual one --
+    FileLinkApi (its own domain Port), WorkPackageLookupApi (a second domain
+    Port, used directly for delete()'s raw work-package-payload fetch rather
+    than through the resolver), and WorkPackageIdResolver (used by
+    list_for_work_package()'s anchor resolution). All three
     must be pinned to their Protocol, not the concrete adapter/resolver
-    method -- a Codex review of this migration's plan specifically flagged
-    that pinning only two of the three would leave the domain's headline new
-    seam (WorkPackageIdResolver) unverified."""
+    method, or a caller could accidentally depend on adapter-specific
+    behavior that isn't part of the Protocol contract."""
     from openproject_ce_mcp.app.adapters.httpx_file_link_api import HttpxFileLinkApi
     from openproject_ce_mcp.app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
     from openproject_ce_mcp.app.ports.file_link_api import FileLinkApi
@@ -939,7 +936,7 @@ def test_file_link_service_binds_its_three_dependencies_to_the_right_protocols()
 
 
 def test_watcher_service_binds_the_api_and_resolver_params_to_the_right_protocols() -> None:
-    """Watchers (OPM-294) is the second domain to consume the OPM-318
+    """Watchers is the second domain to consume the
     WorkPackageIdResolver seam -- a cleaner fit than File Links had, since
     add()/remove() resolve a genuine caller-supplied work-package reference
     (via WorkPackageIdResolver(ref, write=True)) rather than an
@@ -966,7 +963,7 @@ def test_watcher_service_binds_the_api_and_resolver_params_to_the_right_protocol
 
 
 def test_emoji_reaction_service_binds_its_three_dependencies_to_the_right_protocols() -> None:
-    """Emoji Reactions is the third domain to consume the OPM-318 seams,
+    """Emoji Reactions is the third domain to consume these seams,
     matching File Links' three-Protocol shape (not Watchers' two): toggle()'s
     work-package id is already a concrete int derived from the activity's own
     link (not a caller-supplied reference), so it uses WorkPackageLookupApi
@@ -1002,8 +999,8 @@ def test_emoji_reaction_service_binds_its_three_dependencies_to_the_right_protoc
 
 
 def test_reminder_service_binds_its_four_dependencies_to_the_right_protocols() -> None:
-    """Reminders (OPM-291) is the fourth domain to consume the OPM-318 seams
-    and the widest seam surface of any domain migrated this session: list()
+    """Reminders is the fourth domain to consume these seams
+    and the widest seam surface of any domain in this migration: list()
     fans out across N different work packages (one per reminder, not a
     single anchor), so it needs WorkPackageProjectAllowedCheck +
     WorkPackageAllowedContext (not used by File Links/Watchers/Emoji
@@ -1048,7 +1045,7 @@ def test_reminder_service_binds_its_four_dependencies_to_the_right_protocols() -
 
 
 def test_notification_service_binds_the_api_param_to_notification_api_specifically() -> None:
-    """Notifications (OPM-318 eighth consumer) mirrors Reminders' list()
+    """Notifications mirrors Reminders' list()
     shape exactly: list_all() fans out across N different work packages (one
     per notification with a work-package resource link but no project link
     of its own), so it needs WorkPackageProjectAllowedCheck, not a full

@@ -1,4 +1,4 @@
-"""HTTP-backed JobStatusApi adapter (20th migrated domain, OPM-311).
+"""HTTP-backed JobStatusApi adapter (20th migrated domain).
 
 No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
 `id_from_href`/`link_title`/`link_to_web_url` are shared via
@@ -9,13 +9,10 @@ safe to reuse).
 `project_link` on the Record deliberately uses the SAME `project-or-
 sourceProject` fallback as `normalize_job_status`'s own `project`/
 `project_id` fields (`links.get("project") or links.get("sourceProject")`).
-The OLD client.py code's allowlist check read only `links.get("project")`,
-missing the `sourceProject` fallback the normalizer already used for field
-population -- a real allowlist leak: a job-status payload scoped only via
-`sourceProject` (e.g. `copy_project`'s response, referencing the source
-project of a copy operation) bypassed `OPENPROJECT_READ_PROJECTS` entirely.
-Fixed here as part of this migration by using the identical fallback for
-both the display fields and the scoping link the Service checks.
+A job-status payload scoped only via `sourceProject` (e.g. `copy_project`'s
+response, referencing the source project of a copy operation) must still be
+subject to `OPENPROJECT_READ_PROJECTS`, so the scoping link the Service
+checks uses the identical fallback as the display fields.
 """
 
 from __future__ import annotations

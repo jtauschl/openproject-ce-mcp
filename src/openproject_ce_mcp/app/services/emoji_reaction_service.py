@@ -1,5 +1,4 @@
-"""Application Service for the Emoji Reactions domain (ADR 0001, OPM-318
-third consumer).
+"""Application Service for the Emoji Reactions domain (ADR 0001).
 
 Depends on the `EmojiReactionApi` Protocol (never `HttpxEmojiReactionApi`
 concretely -- enforced by the architecture-boundary test), on

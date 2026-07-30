@@ -1,4 +1,4 @@
-"""Reminders Domain API port (ADR 0001, OPM-318 fourth consumer).
+"""Reminders Domain API port (ADR 0001).
 
 Full CRUD: list (global, not work-package-scoped -- filtered client-side by
 project allowlist in the Service) + get (used only when the full normalized
@@ -38,7 +38,7 @@ survivors" order exactly.
 
 No `to_detail`: `ReminderSummary` IS the only normalized shape this domain
 has (no separate Detail model exists in models.py), matching every other
-OPM-318-consuming domain migrated this session.
+similarly-shaped domain.
 """
 
 from __future__ import annotations

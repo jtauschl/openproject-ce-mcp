@@ -181,11 +181,8 @@ async def test_get_priority_returns_summary() -> None:
 
 @pytest.mark.asyncio
 async def test_list_priorities_applies_hidden_field_masking() -> None:
-    # Bugfix (found during this migration, OPM-1627): client.py's original
-    # normalize_priority never called _apply_hidden_fields at all, and
-    # config.py's HIDE_FIELD_ENV_BY_ENTITY had no "priority" entry either --
-    # OPENPROJECT_HIDE_PRIORITY_FIELDS was a complete no-op pre-migration.
-    # This test did not (and could not) exist before this fix.
+    # OPENPROJECT_HIDE_PRIORITY_FIELDS must actually take effect on priority
+    # reads, not be a no-op.
     settings = dataclasses.replace(make_settings(), hidden_fields={"priority": ("color",)})
     service = _service(settings=settings)
 
@@ -213,7 +210,7 @@ async def test_get_priority_applies_hidden_field_masking() -> None:
 @pytest.mark.asyncio
 async def test_priority_hidden_by_priority_scope_not_status_scope() -> None:
     """Regression test for the entity="priority" vs a same-named-neighbor
-    hide-field bug class (same class as the OPM-266 News hotfix): masking
+    hide-field bug class (same class as the News hotfix): masking
     must be keyed to "priority", not silently reuse "status"'s or "type"'s
     configured patterns."""
     settings = dataclasses.replace(make_settings(), hidden_fields={"status": ("color",)})

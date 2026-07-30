@@ -107,9 +107,6 @@ async def test_list_returns_stamped_summaries() -> None:
 async def test_list_applies_hidden_field_masking() -> None:
     # defaultAssignee is exposed as a HAL-link pair (id/name), same pattern as
     # parent_id/parent_name on Project. Respects OPENPROJECT_HIDE_CATEGORY_FIELDS.
-    # Re-anchored here at the Service layer -- the pre-migration version of this
-    # test lived in tests/unit/test_hidden_fields.py and called
-    # client.normalize_category directly, which no longer exists post-migration.
     settings = dataclasses.replace(make_settings(), hidden_fields={"category": ("default_assignee",)})
     api = _FakeCategoryApi()
     service = _service(api, settings=settings)
@@ -128,8 +125,8 @@ async def test_list_applies_hidden_field_masking() -> None:
 @pytest.mark.asyncio
 async def test_default_assignee_hidden_by_category_scope_not_project_scope() -> None:
     """Regression test for the entity="category" vs "project" hide-field bug
-    class (same bug class as the OPM-266 News hotfix and OPM-306's Documents/
-    TimeEntry findings). client.py's original normalize_category already used
+    class (same bug class as the News hotfix and Documents'/
+    TimeEntry's findings). client.py's original normalize_category already used
     the correct "category" entity string (verified against source before this
     migration), so this test only guards against a regression, not a fix.
     """
@@ -176,10 +173,8 @@ async def test_list_checks_read_enabled() -> None:
 @pytest.mark.asyncio
 async def test_list_passes_write_false_to_resolve_project_ref() -> None:
     """list() must ask its injected resolve_project_ref for a READ-checked
-    (write=False) resolution -- found missing during this domain's own
-    step-6 self-audit; no domain previously pinned the write=False argument
-    on any read-path resolver call, only the write=True side (e.g.
-    MembershipService's create()) was covered anywhere in this codebase.
+    (write=False) resolution, not the write=True side (e.g.
+    MembershipService's create() covers that side).
     """
     calls: list[bool] = []
 
@@ -197,15 +192,12 @@ async def test_list_passes_write_false_to_resolve_project_ref() -> None:
 
 # --- get -----------------------------------------------------------------
 #
-# Regression coverage for a Codex-review finding: get() previously re-listed
-# the project's full category list and Python-filtered by id, on the
-# mistaken assumption that OpenProject's v3 API has no single-category GET
-# and that an individual category payload carries no own project link.
-# Verified against op-sources/17.2/lib/api/v3/categories/categories_api.rb --
-# both assumptions were wrong. get() now calls CategoryApi.get() directly and
-# checks the read allowlist against the category's REAL project_link, with
-# project_ref becoming an optional additional cross-check rather than the
-# sole source of authorization.
+# OpenProject's v3 API has a real single-category GET, and an individual
+# category payload carries its own project link (verified against
+# op-sources/17.2/lib/api/v3/categories/categories_api.rb). get() calls
+# CategoryApi.get() directly and checks the read allowlist against the
+# category's REAL project_link, with project_ref as an optional additional
+# cross-check rather than the sole source of authorization.
 
 
 @pytest.mark.asyncio

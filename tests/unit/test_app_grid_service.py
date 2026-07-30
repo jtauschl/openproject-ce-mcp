@@ -146,11 +146,8 @@ async def test_list_checks_read_enabled() -> None:
 
 @pytest.mark.asyncio
 async def test_get_applies_hidden_field_masking() -> None:
-    # normalize_grid previously never called _apply_hidden_fields at all, so
-    # OPENPROJECT_HIDE_FIELDS for "grid" was a silent no-op pre-migration.
-    # Re-anchored here at the Service layer -- this test's original version
-    # lived in tests/unit/test_hidden_fields.py and called
-    # client.normalize_grid directly, which no longer exists post-migration.
+    # OPENPROJECT_HIDE_GRID_FIELDS must actually take effect on grid reads,
+    # not be a silent no-op.
     settings = dataclasses.replace(make_settings(), hidden_fields={"grid": ("scope",)})
     api = _FakeGridApi()
     service = _service(api, settings=settings)
@@ -168,7 +165,7 @@ async def test_get_applies_hidden_field_masking() -> None:
 @pytest.mark.asyncio
 async def test_get_row_count_hidden_by_grid_scope_not_project_scope() -> None:
     """Regression test for the entity="grid" vs "project" hide-field bug
-    class (same bug class as OPM-266/OPM-306's News/Documents/TimeEntry
+    class (same bug class as the News/Documents/TimeEntry
     findings)."""
     settings_project_hidden = dataclasses.replace(make_settings(), hide_project_fields=("row_count",))
     service_project_hidden = _service(settings=settings_project_hidden)

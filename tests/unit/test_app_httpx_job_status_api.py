@@ -224,8 +224,8 @@ async def test_get_record_created_project_id_extracted_from_created_project_link
     """OpenProject's real createdProject link carries only href/title, no
     type field -- created_project_id is derived from the LINK KEY's presence,
     not from summary.created_resource_type (which stays None for this
-    payload shape, a bug a Codex review caught in an earlier version of the
-    OPM-316 fix)."""
+    payload shape, a bug a Codex review caught in an earlier version of this
+    fix)."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(

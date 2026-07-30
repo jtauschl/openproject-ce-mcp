@@ -258,7 +258,7 @@ async def test_remove_denies_write_even_without_confirm() -> None:
 @pytest.mark.asyncio
 async def test_login_hidden_by_watcher_scope_not_user_scope() -> None:
     """Regression test for the entity="watcher" vs a same-shaped neighbor
-    hide-field bug class (same bug class as OPM-1627's Priority/Notification
+    hide-field bug class (same bug class as the Priority/Notification
     findings)."""
     settings_user_hidden = dataclasses.replace(make_settings(), hidden_fields={"user": ("login",)})
     service_user_hidden = _service(settings=settings_user_hidden)

@@ -1,17 +1,15 @@
 """Integration tests for async job status tracking (copy_project), 20th
-migrated domain (OPM-311).
+migrated domain.
 
-Originally documented as a deliberate skip of live coverage (job status ids
-are ephemeral, only ever created as a side effect of an async operation like
-copy_project, and copy_project itself creates a real project). That
-rationale no longer holds: JobStatusService.get (app/services/job_status_service.py)
-now has a well-understood, live-verifiable bug-fix history of its own (the
-project-or-sourceProject link fallback, and the copy-path
-project_id_to_identifier write-through via created_project_id) that is only
-provable against a real instance's actual response shapes -- unit tests
+Job status ids are ephemeral, only ever created as a side effect of an async
+operation like copy_project, and copy_project itself creates a real project.
+JobStatusService.get (app/services/job_status_service.py) has behavior --
+the project-or-sourceProject link fallback, and the copy-path
+project_id_to_identifier write-through via created_project_id -- that is
+only provable against a real instance's actual response shapes: unit tests
 against hand-built payloads already cover the normalization/allowlist logic,
-but not that OpenProject's real payload shape feeds it correctly. Both new
-tests below use copy_project deliberately (via the project_refs fixture, so
+but not that OpenProject's real payload shape feeds it correctly. Both tests
+below use copy_project deliberately (via the project_refs fixture, so
 the copied project is cleaned up like any other disposable test project).
 """
 

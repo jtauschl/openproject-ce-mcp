@@ -408,8 +408,8 @@ async def test_mark_all_read_calls_api_after_confirmation() -> None:
 @pytest.mark.asyncio
 async def test_project_name_hidden_by_notification_scope_not_project_scope() -> None:
     """Regression test for the entity="notification" vs a same-shaped
-    neighbor hide-field bug class (same bug class as OPM-1627's
-    Priority/Notification findings, and OPM-296's file_link/grid finding)."""
+    neighbor hide-field bug class (same bug class as the
+    Priority/Notification findings, and the file_link/grid finding)."""
     record = _record(1, project_link={"href": "/api/v3/projects/6", "title": "Demo Project"})
     api = _FakeNotificationApi(records=[record])
 

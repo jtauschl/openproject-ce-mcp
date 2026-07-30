@@ -338,11 +338,10 @@ async def test_list_roles_and_project_memberships_and_my_access() -> None:
 
 @pytest.mark.asyncio
 async def test_list_project_memberships_paginates_and_preserves_project_filter() -> None:
-    # list_project_memberships previously fetched one unbounded page.
-    # Now it must (a) send real offset/pageSize and (b) merge them into the
-    # memberships href's own "filters" query rather than replacing it --
-    # httpx's params= replaces a URL's existing query string outright, which
-    # would have silently dropped the project scoping filter.
+    # list_project_memberships must (a) send real offset/pageSize and (b)
+    # merge them into the memberships href's own "filters" query rather than
+    # replacing it -- httpx's params= replaces a URL's existing query string
+    # outright, which would silently drop the project scoping filter.
     def member(i: int) -> dict:
         return {
             "id": i,
@@ -634,7 +633,7 @@ async def test_job_status_documents_news_and_wiki() -> None:
                 request=request,
             )
         if request.url.path == "/api/v3/projects/88":
-            # OPM-316: get_job_status resolves the createdProject link's real
+            # get_job_status resolves the createdProject link's real
             # identifier for the shared allowlist cache.
             return httpx.Response(
                 200,
@@ -1225,11 +1224,11 @@ async def test_views_categories_and_attachments() -> None:
 
 @pytest.mark.asyncio
 async def test_list_work_package_attachments_walks_every_server_page() -> None:
-    """Regression: list_work_package_attachments previously sent no pageSize
-    at all, silently relying on OpenProject's own server-side default page
-    size -- any attachment beyond that default was permanently unreachable.
-    Now walks every server page (max_page_size=2: page 1 has 2, page 2 has
-    the remaining 1)."""
+    """list_work_package_attachments must send an explicit pageSize and walk
+    every server page, rather than silently relying on OpenProject's own
+    server-side default page size (which would make any attachment beyond
+    that default permanently unreachable). max_page_size=2: page 1 has 2,
+    page 2 has the remaining 1."""
     requested_offsets: list[str] = []
 
     def _attachment(attachment_id: int) -> dict:
@@ -1433,10 +1432,8 @@ async def test_help_texts_and_working_days() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    # Extended Metadata migration (19th domain, 2026-07-27): these four
-    # lookups had NO read-enablement check at all in client.py; the
-    # migration activates the pre-existing, previously-dormant "extended"
-    # scope at the Service layer, matching tools.py's existing registration.
+    # These four lookups are gated by the "extended" read-enablement scope
+    # at the Service layer, matching tools.py's existing registration.
     settings = dataclasses.replace(make_settings(), enable_metadata_tools=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 

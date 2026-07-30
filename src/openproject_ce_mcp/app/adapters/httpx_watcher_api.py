@@ -1,13 +1,12 @@
-"""HTTP-backed WatcherApi adapter (ADR 0001, OPM-318 second consumer).
+"""HTTP-backed WatcherApi adapter (ADR 0001).
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`SUBJECT_LIMIT`/`web_url` come from
 `app/adapters/_text.py` -- verified against client.py's real
 `normalize_watcher` (client.py:4375-4385): this normalizer needs only
 `trim_text` (name truncation, with a "User {id}" fallback) and `web_url`
-(the `url` field builder). `web_url` was promoted to `_text.py` during this
-migration's step-6 self-audit (OPM-294) once it crossed the "3+ identical
-copies" threshold across adapters -- no longer a local copy here.
+(the `url` field builder). `web_url` lives in `_text.py`, shared across
+adapters, rather than as a local copy here.
 """
 
 from __future__ import annotations

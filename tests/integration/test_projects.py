@@ -32,10 +32,10 @@ async def test_get_project_admin_context(client: OpenProjectClient, test_project
 async def test_get_project_admin_context_filters_parent_candidates_by_read_allowlist(
     client: OpenProjectClient, test_project: str, project_refs: list[str]
 ) -> None:
-    """Regression: available_parent_projects previously returned every
-    candidate OpenProject considers a valid parent, regardless of
-    OPENPROJECT_READ_PROJECTS -- a project outside the allowlist leaked its
-    name/identifier through this picklist. The fixture's client is
+    """available_parent_projects must be filtered by OPENPROJECT_READ_PROJECTS,
+    not just by what OpenProject itself considers a valid parent candidate --
+    otherwise a project outside the allowlist would leak its name/identifier
+    through this picklist. The fixture's client is
     restricted to read_projects=(test_project,), so a freshly created,
     differently-named project must NOT appear as a parent candidate.
 

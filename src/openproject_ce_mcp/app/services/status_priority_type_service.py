@@ -1,5 +1,5 @@
 """Application Service for the Statuses/Priorities/Types domain (16th migrated
-domain, OPM-1627).
+domain).
 
 Depends on the StatusPriorityTypeApi Protocol, never HttpxStatusPriorityTypeApi
 concretely (enforced by the architecture-boundary test). No dedicated

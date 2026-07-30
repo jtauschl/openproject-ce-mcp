@@ -56,7 +56,7 @@ async def test_create_get_update_delete_grid(client: OpenProjectClient, grid_ids
     assert updated.row_count == 5
 
     # Delete -- OpenProject rejects deletion of /my/page grids for every user,
-    # including admin (OPM-323, verified against op-sources/17.6:
+    # including admin (verified against op-sources/17.6:
     # Grids::Grid#user_deletable? is hardcoded false, Grids::MyPage never
     # overrides it, and Grids::DeleteContract's delete_permission requires
     # model.user_deletable? -- only Boards::Grid overrides it to true). There
@@ -67,9 +67,8 @@ async def test_create_get_update_delete_grid(client: OpenProjectClient, grid_ids
 
 
 async def test_update_grid_changes_dimensions(client: OpenProjectClient, project_refs: list[str]) -> None:
-    """update_grid POSTs grids/{id}/form then PATCHes grids/{id} -- no live
-    coverage previously exercised this write path, only create's hidden-field
-    rejection and list's pagination. Uses a freshly created, disposable project
+    """update_grid POSTs grids/{id}/form then PATCHes grids/{id}. Uses a
+    freshly created, disposable project
     for the grid's scope: OpenProject only allows one grid per scope, and
     test_project already has one (its own overview dashboard), so creating a
     second grid there fails with "Scope has already been taken". Cleanup of

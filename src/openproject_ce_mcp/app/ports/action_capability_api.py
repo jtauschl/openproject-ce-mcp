@@ -1,7 +1,7 @@
 """Actions & Capabilities Domain API port (ADR 0001) -- narrow, no universal gateway.
 
-Two unrelated-but-bundled read-only lookups (OPM-276 groups them as one
-migration ticket, matching client.py's own adjacent placement), each with its
+Two unrelated-but-bundled read-only lookups (grouped as one
+migration, matching client.py's own adjacent placement), each with its
 own Record. `ActionRecord` carries no link: Actions has no project concept at
 all. `CapabilityRecord` DOES carry the raw `context` HAL link (per the
 OpenProject API docs, `context.href` is a genuine `/api/v3/projects/{id}` or

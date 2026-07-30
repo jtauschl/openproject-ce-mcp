@@ -1,4 +1,4 @@
-"""Application Service for the Relations domain (ADR 0001, OPM-318 consumer).
+"""Application Service for the Relations domain (ADR 0001).
 
 Depends on the `RelationApi` Protocol (never `HttpxRelationApi` concretely --
 enforced by the architecture-boundary test), on `WorkPackageLookupApi`

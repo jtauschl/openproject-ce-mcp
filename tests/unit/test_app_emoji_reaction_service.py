@@ -226,7 +226,7 @@ async def test_toggle_denies_write_even_without_confirm() -> None:
 @pytest.mark.asyncio
 async def test_users_hidden_by_emoji_reaction_scope_not_watcher_scope() -> None:
     """Regression test for the entity="emoji_reaction" vs a same-shaped
-    neighbor hide-field bug class (same bug class as OPM-1627's
+    neighbor hide-field bug class (same bug class as the
     Priority/Notification findings)."""
     settings_watcher_hidden = dataclasses.replace(make_settings(), hidden_fields={"watcher": ("users",)})
     service_watcher_hidden = _service(settings=settings_watcher_hidden)

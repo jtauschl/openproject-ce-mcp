@@ -1,4 +1,4 @@
-"""HTTP-backed ReminderApi adapter (ADR 0001, OPM-318 fourth consumer).
+"""HTTP-backed ReminderApi adapter (ADR 0001).
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`id_from_href`/`link_to_web_url`/`SUBJECT_LIMIT`

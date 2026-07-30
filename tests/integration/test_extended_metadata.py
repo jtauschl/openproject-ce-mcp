@@ -1,11 +1,10 @@
 """Integration tests for the Extended Metadata domain (19th migrated domain):
 render_text, Help Texts, Working Days, Non-Working Days, Custom Options.
 
-render_text and list_working_days were previously covered in test_meta.py
-(pre-migration) -- kept there too (that file also covers unrelated
-still-flat endpoints like get_current_user), duplicated here to give this
-migration's own domain a complete, self-contained test file per the
-project's usual per-domain integration test convention.
+render_text and list_working_days are also covered in test_meta.py, which
+covers unrelated still-flat endpoints like get_current_user; duplicated here
+to give this domain a complete, self-contained test file per the project's
+usual per-domain integration test convention.
 
 get_custom_option has no list/collection endpoint in the OpenProject v3 API
 to source a live id from -- unlike Query Metadata's get-only methods (which

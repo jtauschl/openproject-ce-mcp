@@ -234,9 +234,7 @@ async def test_list_for_project_passes_write_false_to_resolve_project_ref() -> N
     """list_for_project() must ask its injected resolve_project_ref for a
     READ-checked (write=False) resolution, mirroring create()'s existing
     test_create_passes_write_true_to_resolve_project_ref pin for the write
-    side below. Found missing during Categories' step-6 cross-domain
-    self-audit -- no domain previously pinned the write=False argument on
-    any read-path resolver call, only the write=True side was covered.
+    side below.
     """
     calls: list[bool] = []
 
@@ -255,7 +253,7 @@ async def test_list_for_project_passes_write_false_to_resolve_project_ref() -> N
 @pytest.mark.asyncio
 async def test_get_created_at_hidden_by_membership_scope_not_project_scope() -> None:
     """Regression test for the entity-scope class of bug found via News'
-    OPM-266 hotfix and Documents' equivalent: a field must only be masked by
+    hotfix and Documents' equivalent: a field must only be masked by
     its OWN domain's OPENPROJECT_HIDE_<ENTITY>_FIELDS scope, never by a
     same-named field under a different (e.g. project) scope.
     """
@@ -421,8 +419,8 @@ async def test_create_role_ambiguous_raises() -> None:
 async def test_create_role_lookup_calls_role_api_once_not_page_walking() -> None:
     """Regression test (found via an independent Codex review): _resolve_role_hrefs
     must call RoleApi.list_roles ONCE, not page-walk via app.pagination.paginate_all
-    -- /api/v3/roles' RoleCollectionRepresenter is a real UnpaginatedCollection
-    (OPM-324), so the server ignores offset/pageSize and always returns the
+    -- /api/v3/roles' RoleCollectionRepresenter is a real UnpaginatedCollection,
+    so the server ignores offset/pageSize and always returns the
     complete collection in a single response. Feeding that into paginate_all
     (which assumes a genuinely server-paginated fetcher) misreads
     `total > page_size` as "more pages exist" and duplicates every record --
@@ -450,7 +448,7 @@ async def test_create_role_lookup_calls_role_api_once_not_page_walking() -> None
 @pytest.mark.asyncio
 async def test_create_role_lookup_uses_max_results_not_max_page_size() -> None:
     """_resolve_role_hrefs's single call must ask for page_size=max_results
-    (matching RoleService.list_roles' OPM-324 pattern: fetch everything in
+    (matching RoleService.list_roles' pattern: fetch everything in
     one call, bounded by max_results, not max_page_size), since the server
     ignores this value's exact size anyway but a stale max_page_size-sized
     request would (incorrectly, per the fix above) look like a page walk
@@ -467,12 +465,10 @@ async def test_create_role_lookup_uses_max_results_not_max_page_size() -> None:
 
 @pytest.mark.asyncio
 async def test_create_with_numeric_role_id_skips_the_role_list_fetch() -> None:
-    """Efficiency regression test, found during the 19th (Extended Metadata)
-    domain's step-6 self-audit: the full role-collection page-walk is only
-    needed to resolve a BY-NAME reference. When every role ref is already a
-    numeric id (the common case), _resolve_role_hrefs must not fetch the
-    role collection at all -- it previously did, unconditionally, wasting a
-    round trip whose result was never used.
+    """The full role-collection page-walk is only needed to resolve a
+    BY-NAME reference. When every role ref is already a numeric id (the
+    common case), _resolve_role_hrefs must not fetch the role collection at
+    all, avoiding a round trip whose result would never be used.
     """
     role_api = _FakeRoleApi()
     api = _FakeMembershipApi()

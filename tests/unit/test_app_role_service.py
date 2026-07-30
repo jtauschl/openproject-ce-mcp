@@ -41,8 +41,8 @@ async def test_list_roles_returns_stamped_summaries() -> None:
     assert result.count == 1
     assert result.results[0].id == 8
     assert result.results[0].name == "Project admin"
-    # OPM-324: the server ignores offset/pageSize for /api/v3/roles and always
-    # returns the full collection -- the Service now always fetches with
+    # The server ignores offset/pageSize for /api/v3/roles and always
+    # returns the full collection, so the Service always fetches with
     # max_results (not the caller's effective_limit) and slices client-side.
     assert api.list_roles_calls == [(1, make_settings().max_results)]
 
@@ -93,7 +93,7 @@ async def test_role_hidden_by_role_scope_not_membership_scope() -> None:
 
 @pytest.mark.asyncio
 async def test_list_roles_paginates_client_side_when_server_ignores_pagination() -> None:
-    """Regression for OPM-324, found via a live Docker integration run against
+    """Regression found via a live Docker integration run against
     real OpenProject 16.6.10/17.4.1/17.5.1: /api/v3/roles ignores offset/pageSize
     server-side and always returns the full collection (verified against
     op-sources/17.6 -- RoleCollectionRepresenter subclasses UnpaginatedCollection,

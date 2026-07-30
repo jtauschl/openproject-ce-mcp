@@ -190,12 +190,9 @@ async def test_get_applies_hidden_field_masking() -> None:
 
 @pytest.mark.asyncio
 async def test_get_description_hidden_by_document_scope_not_project_scope() -> None:
-    """Regression test for the entity="document" vs "project" hide-field bug
-    (same bug class as the OPM-266 News hotfix, commit 9bc9a4a). Re-anchored
-    here at the Service layer -- the pre-migration version of this test lived
-    in tests/unit/test_text_and_shape_utils.py and called
-    client.normalize_document/normalize_document_detail, which no longer
-    exist after the migration.
+    """Hidden fields configured for entity="document" must not be affected by
+    hide_project_fields, and vice versa -- the two entities' hidden-field
+    configuration must stay independent.
     """
     settings_project_hidden = dataclasses.replace(make_settings(), hide_project_fields=("description",))
     service_project_hidden = _service(settings=settings_project_hidden)

@@ -1,4 +1,4 @@
-"""HTTP-backed NotificationApi adapter (ADR 0001, OPM-318 eighth consumer).
+"""HTTP-backed NotificationApi adapter (ADR 0001).
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`link_title`/`id_from_href`/`SUBJECT_LIMIT` come

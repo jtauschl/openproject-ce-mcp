@@ -203,7 +203,7 @@ def main() -> None:
     bare word (e.g. a typo'd subcommand like "confiugure") is not something any
     MCP client would ever pass, so it's treated as a human mistake and reported
     via argparse's own "invalid choice" error instead of silently starting the
-    server, which previously failed confusingly on missing configuration.
+    server and failing confusingly on missing configuration.
     """
     parser = _build_parser()
     arg = sys.argv[1] if len(sys.argv) > 1 else None

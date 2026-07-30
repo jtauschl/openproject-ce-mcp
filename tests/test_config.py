@@ -62,7 +62,7 @@ def test_settings_from_env_loads_and_normalizes_values() -> None:
 
 def test_settings_from_env_loads_priority_notification_file_link_emoji_reaction_hidden_fields() -> None:
     # Regression test for four real hidden-field-masking gaps found during the
-    # Statuses/Priorities/Types migration (OPM-1627): "priority"/"notification"/
+    # Statuses/Priorities/Types migration: "priority"/"notification"/
     # "emoji_reaction" had no HIDE_FIELD_ENV_BY_ENTITY entry at all, and
     # "file_link" had an entry but was never exercised end-to-end through the
     # real env-var path by any existing test (every test_hidden_fields.py test
@@ -386,9 +386,8 @@ def test_settings_from_env_rejects_invalid_log_level() -> None:
 
 
 def test_settings_from_env_accepts_debug_log_level() -> None:
-    # Regression guard: DEBUG is a real Python logging level and is part of
-    # FastMCP's accepted log_level Literal, but was previously missing from
-    # this validator's allowed set and got wrongly rejected.
+    # DEBUG is a real Python logging level and is part of FastMCP's accepted
+    # log_level Literal, so this validator's allowed set must include it.
     settings = Settings.from_env(
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",

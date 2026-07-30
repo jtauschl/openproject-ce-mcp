@@ -1,4 +1,4 @@
-"""Application Service for the Time Entries domain (ADR 0001, OPM-318 consumer).
+"""Application Service for the Time Entries domain (ADR 0001).
 
 Depends on `TimeEntryApi`, `ProjectApi` (for the activity-fallback project
 walk AND for `list_time_entries`'s numeric-user-id lookup, via `UserApi`),
@@ -16,12 +16,9 @@ link.
 
 Uses the shared `app/services/_write_outcome.py` state machine (`_finalize_write`),
 same as `GridService` -- both go through a `<domain>/form` endpoint with an
-identical rejected/preview/committed shape. Found during this migration's own
-step-6 self-audit: the module previously argued against reuse by citing
-client.py's flat, private `_finalize_write` helper (a different function, one
-that stays in client.py feeding the still-flat Work Package/Attachment
-methods) rather than this already-extracted, generic `app/services/` version
--- that reasoning was a mix-up, not a real distinction; `_to_write_result`
+identical rejected/preview/committed shape. This is a distinct function from
+client.py's flat, private `_finalize_write` helper, which stays in client.py
+feeding the still-flat Work Package/Attachment methods; `_to_write_result`
 below mirrors `GridService`'s identical mapper.
 
 Read/write scope reuses `"work_package"` (not a dedicated `"time_entry"`

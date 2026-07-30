@@ -104,9 +104,8 @@ def test_version_list_result_shape_is_locked_and_matches_the_shared_page_envelop
 
 
 def test_paginate_server_derives_truncated_from_next_offset() -> None:
-    # truncated and next_offset used to be two independently written
-    # (but logically identical) expressions per list method -- this locks in
-    # that they're now one derivation, for every boundary case.
+    # Locks in that truncated is always derived from next_offset as a single
+    # source of truth, for every boundary case.
     next_offset, truncated = _paginate_server(offset=1, limit=10, total=25)
     assert (next_offset, truncated) == (2, True)
 
@@ -839,15 +838,14 @@ async def test_get_version_returns_full_description_by_default() -> None:
 
 @pytest.mark.asyncio
 async def test_list_versions_project_scoped_walks_and_slices_client_side() -> None:
-    # Regression (found via a full-diff Codex review on release/0.3.4, ported
-    # here): `projects/{id}/versions` is genuinely UnpaginatedCollection
+    # `projects/{id}/versions` is genuinely UnpaginatedCollection
     # server-side (verified against op-sources' VersionCollectionRepresenter <
     # UnpaginatedCollection, via VersionsByProjectAPI) -- offset/pageSize params
     # are silently ignored and every element is always returned regardless.
-    # This branch used to trust the server's own total/pagination for this
-    # endpoint as if it were genuinely paginated; now it walks (a no-op single
-    # request here, since the fake already returns everything) and slices
-    # client-side, same as the search branch below.
+    # Trusting the server's own total/pagination for this endpoint as if it
+    # were genuinely paginated would misreport truncation, so this branch
+    # walks (a no-op single request here, since the fake already returns
+    # everything) and slices client-side, same as the search branch below.
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
             return httpx.Response(

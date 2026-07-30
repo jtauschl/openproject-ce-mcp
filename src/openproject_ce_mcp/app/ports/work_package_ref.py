@@ -1,4 +1,4 @@
-"""Work-package-reference resolution ports (ADR 0001, OPM-318).
+"""Work-package-reference resolution ports (ADR 0001).
 
 Two narrow seams onto Work Packages' reference-resolution machinery, analogous
 to how `project_ref.py`'s `ProjectRefResolver` is the seam ~10 existing
@@ -6,7 +6,7 @@ Services depend on today. The concrete values `OpenProjectClient` hands in are
 the bound methods `self._work_package_resolver.resolve_id` /
 `.project_link_allowed` (structural typing, no wrapper class needed) -- see
 `app/resolvers/work_package_resolver.py`. No Service consumes these seams yet
-(OPM-318 is infrastructure-only, preparing for future migrations of
+(this is infrastructure-only, preparing for future migrations of
 Attachments/Time Entries/Reminders/Watchers/Emoji Reactions/Relations/
 Notifications/File Links, which currently depend on client.py's private
 `_resolve_work_package_id`/`_work_package_project_allowed` instead); they are

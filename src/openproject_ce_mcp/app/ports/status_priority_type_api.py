@@ -1,8 +1,8 @@
-"""Statuses/Priorities/Types Domain API port (16th migrated domain, OPM-1627).
+"""Statuses/Priorities/Types Domain API port (16th migrated domain).
 
 Three unrelated-but-bundled read-only lookups (client.py places them
-adjacently, and OPM-1627 groups them as one migration ticket -- same
-bundling rationale as Actions & Capabilities under OPM-276). Each has its
+adjacently, grouped as one migration -- same
+bundling rationale as Actions & Capabilities). Each has its
 own Record; none carries a project link -- Status/Priority have no project
 concept at all, and Type's project-optional `list()` branch shapes the
 *request* (which endpoint to call), not a per-record link to allowlist-check

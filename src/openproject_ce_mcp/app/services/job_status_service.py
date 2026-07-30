@@ -1,5 +1,4 @@
-"""Application Service for the Job Status domain (20th migrated domain,
-OPM-311).
+"""Application Service for the Job Status domain (20th migrated domain).
 
 Depends on the JobStatusApi Protocol, never HttpxJobStatusApi concretely
 (enforced by the architecture-boundary test). No dedicated policy file: like
@@ -14,37 +13,32 @@ a restrictive one, same rationale as `ViewService.get` -- while a
 structurally malformed link is always rejected regardless of scope.
 
 Read-only, single get method -- OpenProject exposes no create/update/delete
-for job statuses. `access.ensure_read_enabled("project", ...)` is the gate
-(verbatim port of client.py's original `self._ensure_read_enabled("project")`
-call for `get_job_status` -- job statuses share the "project" read scope,
-there is no dedicated `OPENPROJECT_ENABLE_JOB_STATUS_*` flag).
+for job statuses. `access.ensure_read_enabled("project", ...)` is the gate --
+job statuses share the "project" read scope, there is no dedicated
+`OPENPROJECT_ENABLE_JOB_STATUS_*` flag.
 
-Bug fix landed in this migration: the OLD client.py code's allowlist check
-read only `payload["_links"]["project"]`, missing the `project-or-
-sourceProject` fallback `normalize_job_status` already used to populate the
-response's own `project`/`project_id` display fields -- a payload scoped
-only via `sourceProject` (e.g. `copy_project`'s response) bypassed
-`OPENPROJECT_READ_PROJECTS` entirely. Fixed by having the Adapter's
-`JobStatusRecord.project_link` use the identical fallback, so the Service's
-allowlist check here is now consistent with what the response body reports.
+The allowlist check here relies on the Adapter's `JobStatusRecord.project_link`
+using the same `project-or-sourceProject` fallback that `normalize_job_status`
+uses to populate the response's own `project`/`project_id` display fields --
+a payload scoped only via `sourceProject` (e.g. `copy_project`'s response)
+must still be subject to `OPENPROJECT_READ_PROJECTS`, so the allowlist check
+stays consistent with what the response body reports.
 
-Second bug fix (OPM-316): a project created via `copy_project` was
-invisible to every link-shaped allowlist check (the same class of gap
-OPM-308 fixed for `create_project`/`update_project`) until the process
-restarted, because `project_id_to_identifier` was never written through on
-the copy path -- the new project's numeric id is only known once the async
-copy job completes, which `copy_project` itself never observes (it returns
-immediately after starting the job). `get()` closes this gap: when
-`record.created_project_id` is set (the job's `_links.createdProject` key
-was present), it resolves the new project by id via `ProjectApi.get()` (an
-extra GET, only on this one code path) and writes its REAL identifier
-through to the shared cache -- not just the job status response's own
-`created_resource_name` display title, which the allowlist matcher
-(`scope.project_candidates`) already tries as a fallback and would add no
-coverage beyond. Uses `created_project_id`, NOT `summary.created_resource_type
-== "Project"` -- a Codex review caught that OpenProject's real
+A project created via `copy_project` is only known by numeric id once the
+async copy job completes, which `copy_project` itself never observes (it
+returns immediately after starting the job) -- until that id is written
+through to the shared `project_id_to_identifier` cache, the new project
+would be invisible to every link-shaped allowlist check. `get()` closes this
+gap: when `record.created_project_id` is set (the job's
+`_links.createdProject` key is present), it resolves the new project by id
+via `ProjectApi.get()` (an extra GET, only on this one code path) and writes
+its REAL identifier through to the shared cache -- not just the job status
+response's own `created_resource_name` display title, which the allowlist
+matcher (`scope.project_candidates`) already tries as a fallback and would
+add no coverage beyond. Uses `created_project_id`, NOT
+`summary.created_resource_type == "Project"`: OpenProject's real
 `createdProject` payload shape carries no `type` field (only `href`/`title`),
-so that check silently never fired; see `job_status_api.py`'s
+so that check would never fire; see `job_status_api.py`'s
 `created_project_id` docstring for the full explanation.
 """
 

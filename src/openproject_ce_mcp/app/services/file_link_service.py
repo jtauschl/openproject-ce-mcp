@@ -1,12 +1,10 @@
-"""Application Service for the File Links domain (ADR 0001, OPM-318 first
-consumer of `WorkPackageIdResolver`).
+"""Application Service for the File Links domain (ADR 0001).
 
 Depends on the `FileLinkApi` Protocol (never `HttpxFileLinkApi` concretely --
 enforced by the architecture-boundary test), on `WorkPackageLookupApi`
 directly, and on `WorkPackageIdResolver`. Three Protocol dependencies, not
 one: `list_for_work_package`'s anchor-resolution goes through
-`WorkPackageIdResolver` (the actual OPM-318 seam this migration proves out),
-while `delete()`'s raw work-package-payload fetch goes through
+`WorkPackageIdResolver`, while `delete()`'s raw work-package-payload fetch goes through
 `WorkPackageLookupApi.get()` directly rather than the resolver -- `delete()`
 already has a concrete numeric work-package id (derived from the file link's
 own container link, not a caller-supplied reference to resolve) and must

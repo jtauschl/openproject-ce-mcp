@@ -221,9 +221,9 @@ def test_exit_code_two_when_a_single_curated_source_file_is_missing(tmp_path, mo
     # op-sources/<version>/ itself exists (unlike the two tests above), but
     # one specific ResourceCheck.source_files entry doesn't -- an incomplete
     # sparse checkout or a stale source_files entry, not "no sources at all".
-    # This used to escape as an uncaught RuntimeError/traceback defaulting to
-    # exit 1, indistinguishable from the documented "real UNTRIAGED findings"
-    # exit 1 -- caught in review.
+    # This must be reported as its own distinct exit code, not escape as an
+    # uncaught RuntimeError/traceback defaulting to exit 1, which would be
+    # indistinguishable from the documented "real UNTRIAGED findings" exit 1.
     (tmp_path / cfc.SOURCE_VERSION).mkdir()
     monkeypatch.setattr(cfc, "SOURCES", tmp_path)
     monkeypatch.setattr(

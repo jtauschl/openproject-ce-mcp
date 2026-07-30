@@ -2,8 +2,7 @@
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
 `SUBJECT_LIMIT`/`link_to_web_url`/`web_url` are shared via
-`app/adapters/_text.py` (`web_url` promoted there during the Watchers
-migration's step-6 self-audit, OPM-294, replacing a local copy here).
+`app/adapters/_text.py` (`web_url` promoted there, replacing a local copy here).
 No `_visible_formattable_text`/inner masking gate to port -- User has no
 formattable-text field at all (every field is a plain scalar or a
 link-derived title), so the outer `hidden_fields.apply_hidden_fields`

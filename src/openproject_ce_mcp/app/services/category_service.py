@@ -11,18 +11,15 @@ there is no dedicated OPENPROJECT_ENABLE_CATEGORY_* flag, so
 access.ensure_read_enabled here uses scope="project" (verbatim behavior of
 client.py's original _ensure_read_enabled("project") call).
 
-get() uses OpenProject's real single-category GET (found via an independent
-Codex review verifying against
-op-sources/17.2/lib/api/v3/categories/categories_api.rb -- an earlier
-version of this Service re-listed the project's full category list and
-Python-filtered by id, on the mistaken assumption no single-category GET
-existed). `project_ref` is now OPTIONAL: the category's own real
-`project_link` (returned by the GET) is what's actually checked against the
-read allowlist via `ensure_project_link_allowed`, matching Documents'/
-Memberships' per-record pattern -- a caller-supplied `project_ref`, when
-given, is an ADDITIONAL cross-check that the category actually belongs to
-the claimed project (raises NotFoundError on mismatch, not silently ignored),
-not the sole source of authorization the way it was before this fix.
+get() uses OpenProject's real single-category GET (verified against
+op-sources/17.2/lib/api/v3/categories/categories_api.rb). `project_ref` is
+OPTIONAL: the category's own real `project_link` (returned by the GET) is
+what's actually checked against the read allowlist via
+`ensure_project_link_allowed`, matching Documents'/Memberships' per-record
+pattern -- a caller-supplied `project_ref`, when given, is an ADDITIONAL
+cross-check that the category actually belongs to the claimed project
+(raises NotFoundError on mismatch, not silently ignored), not the sole
+source of authorization.
 """
 
 from __future__ import annotations

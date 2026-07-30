@@ -59,8 +59,7 @@ SUBJECT_LIMIT = 255
 #
 # id_from_href is NOT duplicated here -- it now lives in
 # app/policies/scope.py (imported above), since it crossed this project's
-# "3+ identical copies" threshold within app/ itself during the File Links
-# migration's step-6 self-audit (OPM-296): this module's own copy,
+# "3+ identical copies" threshold within app/ itself: this module's own copy,
 # scope.py's own private copy, and file_link_service.py's new copy.
 def _trim_text(value: Any, *, limit: int) -> str | None:
     if value is None:

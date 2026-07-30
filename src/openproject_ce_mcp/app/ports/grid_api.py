@@ -2,7 +2,7 @@
 
 `list_all`'s `page_size` param is a pagination bugfix found during the
 Statuses/Priorities/Types migration's broader "N individual exceptions"
-audit (OPM-1627): client.py's original `list_grids` never sent an
+audit: client.py's original `list_grids` never sent an
 offset/pageSize param at all, an unbounded fetch-all unlike every other
 full-list migrated sibling (Boards/Sprints/Views/etc.), which all clamp via
 `clamp_limit` and paginate. Confirmed via git history this was NOT a

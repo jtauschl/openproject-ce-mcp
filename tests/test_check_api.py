@@ -22,10 +22,10 @@ def _stub_versions(monkeypatch):
 
 
 def test_run_full_coverage_fails_when_resource_missing_at_latest_version(monkeypatch, capsys):
-    # Present at 16.0/17.0, absent only at the latest version (17.6) -- this is
-    # the case that previously printed the misleading "All source-verifiable
-    # accesses exist back to 16.0." success line right above a FAIL result,
-    # since it never triggers the (unrelated) introduced_late reporting.
+    # Present at 16.0/17.0, absent only at the latest version (17.6): this
+    # case never triggers the (unrelated) introduced_late reporting, so the
+    # FAIL result must not be accompanied by the misleading "All
+    # source-verifiable accesses exist back to 16.0." success line.
     monkeypatch.setattr(check_api, "_extract_client_resources", lambda: {"widgets"})
     monkeypatch.setattr(check_api, "_extract_client_filters", lambda: set())
     monkeypatch.setattr(check_api, "_resource_present", lambda version, resource: version != "17.6")

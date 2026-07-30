@@ -1,4 +1,4 @@
-"""Work-package lookup port (ADR 0001, OPM-318) -- deliberately minimal.
+"""Work-package lookup port (ADR 0001) -- deliberately minimal.
 
 Unlike `ProjectApi`/`VersionApi` (full Domain API ports covering list/get/create/
 update/delete for their domain), this Protocol exposes only the two GETs the

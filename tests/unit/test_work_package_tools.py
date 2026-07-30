@@ -102,8 +102,8 @@ async def test_get_work_packages_tool_does_not_forward_select_to_client() -> Non
 
 @pytest.mark.asyncio
 async def test_search_work_packages_tool_accepts_parent_display_id_select_field() -> None:
-    # parent_display_id was missing from WorkPackageSummary previously, so this
-    # select value used to raise "not a valid WorkPackageSummary field".
+    # parent_display_id must be a valid select value for WorkPackageSummary,
+    # not raise "not a valid WorkPackageSummary field".
     class StubClient:
         async def search_work_packages(self, **kwargs):
             return kwargs
@@ -1046,7 +1046,7 @@ async def test_bulk_work_packages_accept_semantic_refs() -> None:
             }
 
     # A project-prefixed ref must be accepted by the bulk tools, not only the
-    # single-item tools: previously it failed the whole batch with a raw
+    # single-item tools -- it must not fail the whole batch with a raw
     # TypeError from the int validator.
     await bulk_update_work_packages(
         FakeContext(StubClient()),  # type: ignore[arg-type]

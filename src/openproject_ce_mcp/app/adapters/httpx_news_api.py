@@ -40,8 +40,8 @@ def normalize_news(payload: dict[str, Any], *, base_url: str) -> NewsSummary:
     Verbatim port of client.py's normalize_news, minus the
     _apply_hidden_fields call and the hidden-field-aware text extraction --
     hidden-field masking of the whole `description` value is a Policy/Service
-    decision applied after this returns (client.py's now-fixed entity="news"
-    hide-check, OPM-266/commit 684edad, only ever affected whether the raw
+    decision applied after this returns (client.py's entity="news"
+    hide-check only ever affected whether the raw
     text was extracted at all; since the Service masks the entire field
     afterwards regardless, dropping that check here changes nothing
     observable -- same pattern as normalize_project's port).

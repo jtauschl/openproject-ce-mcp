@@ -172,12 +172,13 @@ def test_enable_membership_read_false_removes_membership_tools() -> None:
 
 
 def test_enable_membership_read_false_removes_previously_ungated_tools() -> None:
-    """Regression guard: get_current_user/list_actions/list_capabilities were
-    always registered regardless of any flag, despite their client method enforcing
-    _ensure_read_enabled("principal"/"membership") at call time — a tool visible but
-    failing on every call. They now correctly disappear together with the rest of
-    the membership group. get_my_project_access (home: project) also disappears,
-    because its client method additionally requires membership read."""
+    """get_current_user/list_actions/list_capabilities each enforce
+    _ensure_read_enabled("principal"/"membership") at call time, so they must
+    be gated out of registration together with the rest of the membership
+    group when that flag is disabled -- otherwise the tool would be visible
+    but fail on every call. get_my_project_access (home: project) also
+    disappears, because its client method additionally requires membership
+    read."""
     mcp = create_app(make_settings(enable_membership_read=False))
     names = _tool_names(mcp)
     assert "get_current_user" not in names
@@ -189,16 +190,18 @@ def test_enable_membership_read_false_removes_previously_ungated_tools() -> None
 
 
 def test_enable_work_package_read_false_removes_previously_ungated_tools() -> None:
-    """list_notifications was always registered despite its client method enforcing
-    _ensure_read_enabled("work_package") — same class of bug as get_current_user."""
+    """list_notifications' client method enforces
+    _ensure_read_enabled("work_package") at call time, so it must be gated
+    out of registration when that flag is disabled."""
     mcp = create_app(make_settings(enable_work_package_read=False))
     names = _tool_names(mcp)
     assert "list_notifications" not in names
 
 
 def test_enable_project_read_false_removes_previously_ungated_tools() -> None:
-    """get_instance_configuration/get_job_status were always registered despite their
-    client method enforcing _ensure_read_enabled("project")."""
+    """get_instance_configuration/get_job_status each enforce
+    _ensure_read_enabled("project") at call time, so they must be gated out
+    of registration when that flag is disabled."""
     mcp = create_app(make_settings(enable_project_read=False))
     names = _tool_names(mcp)
     assert "get_instance_configuration" not in names
@@ -495,8 +498,8 @@ def test_main_unexpected_flag_still_runs_server(monkeypatch) -> None:
 def test_main_unrecognized_subcommand_errors_instead_of_running_server(monkeypatch, capsys) -> None:
     # A typo'd subcommand (e.g. "confiugure") is not something any MCP client
     # would ever pass -- it must fail with a clear "invalid choice" usage
-    # error instead of silently starting the server, which previously failed
-    # confusingly later with an unrelated missing-configuration error.
+    # error instead of silently starting the server and failing confusingly
+    # later with an unrelated missing-configuration error.
     import openproject_ce_mcp.server as srv
 
     monkeypatch.setattr(srv, "_run_server", lambda: (_ for _ in ()).throw(AssertionError("server ran")))

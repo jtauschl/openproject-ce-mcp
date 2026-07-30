@@ -228,17 +228,16 @@ async def test_list_for_work_package_resolves_anchor_and_sends_involved_filter()
 
 @pytest.mark.asyncio
 async def test_list_all_checks_both_hrefs_and_reuses_one_cache() -> None:
-    """Regression (test-contract self-audit): a call-list assertion on
-    work_package_project_allowed, not just the filtered outcome -- a bug that
-    swapped from_link/to_link or checked one side twice could otherwise
-    produce a correct-looking result by coincidence. Also proves a SINGLE
-    WorkPackageAllowedContext instance is threaded through every from/to
-    check across the whole list() call (documented optimization in this
-    Service's module docstring, previously untested) -- the cache's actual
-    hit/miss behavior is WorkPackageResolver's own responsibility and is
-    tested in test_app_work_package_resolver.py; what belongs here is proving
-    the Service constructs exactly one context and reuses it, not a fresh one
-    per relation or per side."""
+    """Asserts the call-list on work_package_project_allowed, not just the
+    filtered outcome -- a bug that swapped from_link/to_link or checked one
+    side twice could otherwise produce a correct-looking result by
+    coincidence. Also proves a SINGLE WorkPackageAllowedContext instance is
+    threaded through every from/to check across the whole list() call
+    (documented optimization in this Service's module docstring) -- the
+    cache's actual hit/miss behavior is WorkPackageResolver's own
+    responsibility and is tested in test_app_work_package_resolver.py; what
+    belongs here is proving the Service constructs exactly one context and
+    reuses it, not a fresh one per relation or per side."""
     first = _record(1, from_href="/api/v3/work_packages/10", to_href="/api/v3/work_packages/11")
     second = _record(2, from_href="/api/v3/work_packages/12", to_href="/api/v3/work_packages/13")
     api = _FakeRelationApi(records=[first, second])
@@ -382,9 +381,8 @@ async def test_create_commits_when_confirmed() -> None:
 
 @pytest.mark.asyncio
 async def test_create_denies_write_outside_source_project_allowlist_even_without_confirm() -> None:
-    """The source project write-allowlist check runs unconditionally, before
-    the confirm branch -- not only when actually committing (test-contract
-    gap: nothing previously proved this for a preview call)."""
+    """The source project write-allowlist check must run unconditionally,
+    before the confirm branch -- not only when actually committing."""
     api = _FakeRelationApi()
     lookup = _FakeWorkPackageLookupApi(project_link={"href": "/api/v3/projects/1"})
     settings = dataclasses.replace(make_settings(), write_projects=("other",))
@@ -471,8 +469,7 @@ async def test_update_denies_write_outside_source_project_allowlist() -> None:
 @pytest.mark.asyncio
 async def test_update_denies_write_even_without_confirm() -> None:
     """The write-allowlist check must run unconditionally, before the
-    confirm branch -- not only when actually committing (test-contract gap:
-    nothing previously proved this for a preview call)."""
+    confirm branch -- not only when actually committing."""
     api = _FakeRelationApi()
     lookup = _FakeWorkPackageLookupApi(project_link={"href": "/api/v3/projects/1"})
     settings = dataclasses.replace(make_settings(), write_projects=("other",))

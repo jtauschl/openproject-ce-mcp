@@ -1,4 +1,4 @@
-"""Watchers Domain API port (ADR 0001, OPM-318 second consumer).
+"""Watchers Domain API port (ADR 0001).
 
 Narrow: list (scoped to one work package) + add + remove. No get-one-watcher
 endpoint -- a watcher's identity is simply the OpenProject user id, so

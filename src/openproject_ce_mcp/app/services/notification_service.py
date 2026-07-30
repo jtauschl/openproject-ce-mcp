@@ -1,5 +1,4 @@
-"""Application Service for the Notifications domain (ADR 0001, OPM-318 eighth
-consumer).
+"""Application Service for the Notifications domain (ADR 0001).
 
 Depends on the `NotificationApi` Protocol (never `HttpxNotificationApi`
 concretely -- enforced by the architecture-boundary test) and on
@@ -122,10 +121,8 @@ class NotificationService:
         scope means a server page's allowed subset can run dry before the
         caller's own requested page size does, without the server collection
         itself being exhausted. A filtered-empty server page does NOT prove no
-        further allowed notifications exist on later pages (found via an
-        independent Codex review -- this was previously a single un-rescanned
-        page, silently under-returning and reporting a total scoped only to
-        that one page).
+        further allowed notifications exist on later pages, so a single page
+        is never treated as conclusive.
         """
         skip_count = (offset - 1) * limit
         skipped = 0

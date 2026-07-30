@@ -1,10 +1,9 @@
-"""Application Service for the Reminders domain (ADR 0001, OPM-318 fourth
-consumer).
+"""Application Service for the Reminders domain (ADR 0001).
 
 Depends on the `ReminderApi` Protocol (never `HttpxReminderApi` concretely --
 enforced by the architecture-boundary test), on `WorkPackageLookupApi`
 directly, on `WorkPackageIdResolver`, and on `WorkPackageProjectAllowedCheck`
--- the widest OPM-318 seam surface of any domain migrated this session,
+-- the widest seam surface of any domain in this migration,
 because each of its four methods scopes differently:
 
 - `list()` fans out across N *different* work packages (one per reminder,

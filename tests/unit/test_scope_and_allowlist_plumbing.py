@@ -298,9 +298,9 @@ async def test_initialize_skips_project_fetch_when_both_scopes_allow_all() -> No
 
 @pytest.mark.asyncio
 async def test_initialize_populates_identifier_cache_for_restricted_write_scope_even_when_read_is_open() -> None:
-    # Regression: initialize() used to bail out entirely whenever read_projects
-    # allowed all, without considering that write_projects might still be
-    # restricted and need the id->identifier cache for link-based matching
+    # initialize() must populate the id->identifier cache whenever
+    # write_projects is restricted, regardless of whether read_projects
+    # allows all -- link-based matching needs the cache
     # (_project_candidates only has the numeric id + display name from an
     # embedded HAL link, never the identifier itself, unless this cache fills
     # it in). READ="*" + WRITE="OPM" is exactly the config that exposed this.
@@ -362,11 +362,10 @@ async def test_initialize_walks_every_server_page_of_projects() -> None:
 
 @pytest.mark.asyncio
 async def test_initialize_logs_and_survives_an_expected_transport_failure(caplog) -> None:
-    # Hardening: initialize()'s identifier-cache fetch used to
-    # swallow every exception silently (bare `except Exception: pass`). An
-    # OpenProjectError-family failure (transport/API) must now be logged with
-    # its concrete cause, not just a generic "something failed" message, and
-    # initialize() must still return normally rather than crash server startup.
+    # An OpenProjectError-family failure (transport/API) during
+    # initialize()'s identifier-cache fetch must be logged with its concrete
+    # cause, not just a generic "something failed" message, and initialize()
+    # must still return normally rather than crash server startup.
     async def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("boom", request=request)
 
@@ -385,10 +384,9 @@ async def test_initialize_logs_and_survives_an_expected_transport_failure(caplog
 
 @pytest.mark.asyncio
 async def test_initialize_propagates_an_unexpected_programming_error() -> None:
-    # The narrowed `except OpenProjectError` must NOT catch a real programming
-    # error -- that's the actual behavior change from the old bare `except
-    # Exception: pass`, which used to hide bugs here just as readily as
-    # legitimate transport failures.
+    # The narrowed `except OpenProjectError` must NOT catch a real
+    # programming error -- a broad `except Exception` would hide bugs here
+    # just as readily as legitimate transport failures.
     async def handler(request: httpx.Request) -> httpx.Response:
         raise RuntimeError("boom")
 

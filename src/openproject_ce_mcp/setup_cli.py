@@ -1785,9 +1785,9 @@ def _apply_changes(
 
     Bundling matters because it's called exactly once, after any preview/confirm
     — never split across the flow, or a decline partway through would leave some
-    mutations applied and others not (the bug this replaces: removals used to run
-    immediately after target selection, before credentials were even collected).
-    ``env`` is None for a pure-removal flow with nothing to write. Returns
+    mutations applied and others not (removals must not run before credentials
+    are collected). ``env`` is None for a pure-removal flow with nothing to write.
+    Returns
     every target that failed to write/remove, across removals, client
     registration, and the generic copy-source — a failure never aborts the
     remaining targets, the caller aggregates this list into a summary and a

@@ -14,11 +14,8 @@ a bare `categories/{id}` web path (verbatim port of client.py's
 `self._web_url(f"api/v3/categories/{category_id}")`).
 
 `get(category_id)` uses OpenProject's real `GET /api/v3/categories/{id}`
-endpoint (found via an independent Codex review verifying against
-op-sources/17.2/lib/api/v3/categories/categories_api.rb -- a prior version
-of this file, and of app/ports/category_api.py, incorrectly claimed no
-single-category GET exists, so CategoryService.get() re-listed and
-Python-filtered the project's full category list instead).
+endpoint (verified against
+op-sources/17.2/lib/api/v3/categories/categories_api.rb).
 """
 
 from __future__ import annotations

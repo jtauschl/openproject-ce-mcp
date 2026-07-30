@@ -521,7 +521,7 @@ class OpenProjectClient:
         self._extended_metadata_api: ExtendedMetadataApi = HttpxExtendedMetadataApi(HttpxTransport(self._http))
         self._extended_metadata_service = ExtendedMetadataService(api=self._extended_metadata_api, settings=settings)
 
-        # OPM-318: infrastructure-only extraction (no WorkPackageService yet --
+        # Infrastructure-only extraction (no WorkPackageService yet --
         # full Work Packages CRUD is still flat, ~1170 lines, the next big
         # migration). Only the reference-resolution seam 7 other still-flat
         # domains depend on is layered here.
@@ -627,13 +627,12 @@ class OpenProjectClient:
             return
         try:
             # Projects is genuinely OffsetPaginatedCollection server-side (verified
-            # against op-sources) -- a single bounded fetch capped at 500 (this
-            # method's prior behavior) used to silently skip caching the identifier
-            # of any project beyond that cap, which then failed link-based
-            # allowlist matching for that project (found via a full-diff Codex
-            # review on release/0.3.4, ported here). Walk every server page instead,
-            # terminating on a short page (fewer records than requested page size)
-            # rather than trusting a possibly-absent/inconsistent `total` field.
+            # against op-sources). A single bounded fetch would silently skip
+            # caching the identifier of any project beyond that cap, which would
+            # then fail link-based allowlist matching for that project. Walk every
+            # server page instead, terminating on a short page (fewer records than
+            # requested page size) rather than trusting a possibly-absent/
+            # inconsistent `total` field.
             server_page_size = self.settings.max_page_size
             server_offset = 1
             seen_ids: set[int] = set()
@@ -3085,8 +3084,8 @@ class OpenProjectClient:
     async def _work_package_project_allowed(
         self, href: str, *, context: WorkPackageAllowedContext | None = None
     ) -> bool:
-        """Delegates to the layered WorkPackageResolver (OPM-318,
-        app/resolvers/work_package_resolver.py), a verbatim behavioral port of
+        """Delegates to the layered WorkPackageResolver
+        (app/resolvers/work_package_resolver.py), a verbatim behavioral port of
         this method's former inline implementation, plus an optional
         ``context`` cache parameter the original method never had (every
         call site now threads a per-top-level-call WorkPackageAllowedContext
@@ -4501,7 +4500,7 @@ class OpenProjectClient:
         yields a 404 (mapped to ``NotFoundError``), while numeric ids keep working on
         every supported version.
 
-        Kept as a stable internal facade (OPM-318): the pure encoding logic now
+        Kept as a stable internal facade: the pure encoding logic now
         lives in ``app/ports/work_package_ref.py`` (importable by future
         migrations without pulling in the full resolver), but this thin wrapper
         stays so the ~28 existing internal call sites keep working unchanged.
@@ -4525,8 +4524,8 @@ class OpenProjectClient:
         access to work package A must not be able to attach it under a work
         package B they can only read).
 
-        Delegates to the layered WorkPackageResolver (OPM-318,
-        app/resolvers/work_package_resolver.py), a verbatim behavioral port of
+        Delegates to the layered WorkPackageResolver
+        (app/resolvers/work_package_resolver.py), a verbatim behavioral port of
         this method's former inline implementation. Kept as a stable internal
         facade -- every other domain's client.py code that calls this method
         directly expects the identical contract; only the body changed.

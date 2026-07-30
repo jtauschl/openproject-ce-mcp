@@ -59,9 +59,8 @@ async def test_list_groups_reports_correct_member_count(client: OpenProjectClien
 
 async def test_update_group_renames_and_manages_members(client: OpenProjectClient, group_ids: list[int]) -> None:
     """update_group PATCHes groups/{id} with a full _links.members replacement
-    (add/remove computed client-side from the current membership) -- no live
-    coverage previously exercised the write path itself, only create/get/list.
-    Also exercises delete_group indirectly via the group_ids cleanup fixture."""
+    (add/remove computed client-side from the current membership). Also
+    exercises delete_group indirectly via the group_ids cleanup fixture."""
     me = await client.get_current_user()
     name = f"[integration-test] {uuid.uuid4().hex[:8]}"
 

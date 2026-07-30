@@ -49,17 +49,15 @@ async def test_get_my_preferences(client: OpenProjectClient) -> None:
 async def test_update_my_preferences_roundtrip(client: OpenProjectClient) -> None:
     """update_my_preferences PATCHes my_preferences, a 308-redirecting alias
     for users/me/preferences (confirmed live: the bare path returns 308/301,
-    followed transparently since the client sets follow_redirects=True) -- no
-    live coverage previously exercised the write path itself, only the read.
+    followed transparently since the client sets follow_redirects=True).
 
-    Regression: a previous version of this client accepted a "lang" parameter
-    here, but OpenProject's real UserPreferenceRepresenter has no "lang"
-    property at all -- language is a User attribute (see update_user),
-    not a preference. Verified live: PATCHing {"lang": ...} silently no-ops
-    with a 200 and no validation error, even for a garbage value. This test
-    exercises timeZone instead, a field the real representer does expose, and
-    restores the token owner's original value afterwards since this mutates
-    real, shared account state rather than disposable test data."""
+    OpenProject's real UserPreferenceRepresenter has no "lang" property at
+    all -- language is a User attribute (see update_user), not a preference.
+    Verified live: PATCHing {"lang": ...} silently no-ops with a 200 and no
+    validation error, even for a garbage value. This test exercises timeZone
+    instead, a field the real representer does expose, and restores the
+    token owner's original value afterwards since this mutates real, shared
+    account state rather than disposable test data."""
     original = await client.get_my_preferences()
     original_time_zone = original.time_zone
 

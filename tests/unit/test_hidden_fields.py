@@ -638,59 +638,43 @@ def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() -> None:
     assert "created_at" not in serialized
 
 
-# File Link's hidden-field-masking regression coverage (originally
-# test_hidden_file_link_fields_are_tagged_and_dropped_from_payload, added for
-# OPM-1627's config-map gap fix) moved to
+# File Link's hidden-field-masking coverage lives in
 # tests/unit/test_app_httpx_file_link_api.py (normalize_file_link's pure
 # HAL->model shape) and tests/unit/test_app_file_link_service.py
 # (test_list_for_work_package_masks_hidden_storage_name,
 # test_delete_preview_masks_hidden_storage_name,
-# test_storage_name_hidden_by_file_link_scope_not_grid_scope) after the File
-# Links domain migration (OPM-296) -- client.normalize_file_link no longer
-# exists. The real env-var-driven path (OPENPROJECT_HIDE_FILE_LINK_FIELDS)
-# is exercised by
+# test_storage_name_hidden_by_file_link_scope_not_grid_scope). The real
+# env-var-driven path (OPENPROJECT_HIDE_FILE_LINK_FIELDS) is exercised by
 # test_settings_from_env_loads_priority_notification_file_link_emoji_reaction_hidden_fields
-# in tests/test_config.py, unaffected by this migration.
+# in tests/test_config.py.
 
 
-# Notification's hidden-field-masking regression coverage (originally
-# test_hidden_notification_fields_are_tagged_and_dropped_from_payload, added
-# for OPM-1627's config-map gap fix) moved to
+# Notification's hidden-field-masking coverage lives in
 # tests/unit/test_app_httpx_notification_api.py (normalize_notification's pure
 # HAL->model shape) and tests/unit/test_app_notification_service.py
-# (test_project_name_hidden_by_notification_scope_not_project_scope) after the
-# Notifications domain migration -- client.normalize_notification no longer
-# exists.
+# (test_project_name_hidden_by_notification_scope_not_project_scope).
 
 
 @pytest.mark.asyncio
-# Emoji Reactions' hidden-field-masking regression coverage (originally
-# test_hidden_emoji_reaction_fields_are_tagged_and_dropped_from_payload,
-# added for OPM-1627's config-map gap fix) moved to
+# Emoji Reactions' hidden-field-masking coverage lives in
 # tests/unit/test_app_httpx_emoji_reaction_api.py (normalize_emoji_reaction's
 # pure HAL->model shape) and tests/unit/test_app_emoji_reaction_service.py
 # (test_list_for_work_package_masks_hidden_users,
 # test_toggle_masks_hidden_users_in_commit_result,
-# test_users_hidden_by_emoji_reaction_scope_not_watcher_scope) after the
-# Emoji Reactions domain migration (OPM-290, scoped to
-# list_work_package_reactions + toggle_activity_emoji_reaction only) --
-# client.normalize_emoji_reaction no longer exists. The real env-var-driven
-# path (OPENPROJECT_HIDE_EMOJI_REACTION_FIELDS) is unaffected by this
-# migration and continues to be exercised via config.py's
-# HIDE_FIELD_ENV_BY_ENTITY map.
+# test_users_hidden_by_emoji_reaction_scope_not_watcher_scope), scoped to
+# list_work_package_reactions + toggle_activity_emoji_reaction only. The real
+# env-var-driven path (OPENPROJECT_HIDE_EMOJI_REACTION_FIELDS) continues to
+# be exercised via config.py's HIDE_FIELD_ENV_BY_ENTITY map.
 
 
-# Watchers' hidden-field-masking regression coverage (originally
-# test_hidden_watcher_fields_are_tagged_and_dropped_from_payload) moved to
+# Watchers' hidden-field-masking coverage lives in
 # tests/unit/test_app_httpx_watcher_api.py (normalize_watcher's pure
 # HAL->model shape) and tests/unit/test_app_watcher_service.py
 # (test_list_for_work_package_masks_hidden_login,
 # test_add_masks_hidden_login_in_preview_and_commit,
-# test_login_hidden_by_watcher_scope_not_user_scope) after the Watchers
-# domain migration (OPM-294) -- client.normalize_watcher no longer exists.
-# The real env-var-driven path (OPENPROJECT_HIDE_WATCHER_FIELDS) is
-# unaffected by this migration and continues to be exercised via
-# config.py's HIDE_FIELD_ENV_BY_ENTITY map.
+# test_login_hidden_by_watcher_scope_not_user_scope). The real
+# env-var-driven path (OPENPROJECT_HIDE_WATCHER_FIELDS) continues to be
+# exercised via config.py's HIDE_FIELD_ENV_BY_ENTITY map.
 
 
 def test_hidden_user_fields_are_tagged_and_dropped_from_payload() -> None:

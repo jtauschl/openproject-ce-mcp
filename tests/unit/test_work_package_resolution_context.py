@@ -1,9 +1,9 @@
-"""Request-count regression tests for WorkPackageResolutionContext.
+"""Request-count tests for WorkPackageResolutionContext.
 
-Verifies the redundancy this fixes: a bulk batch of work-package writes
-in the same project used to re-resolve the project ref AND re-resolve
-type/version/sprint name->id lookups once per item. These tests assert the
-real HTTP call counts, not just that the calls succeed -- reverting the
+A bulk batch of work-package writes in the same project must resolve the
+project ref, and type/version/sprint name->id lookups, only once for the
+whole batch, not once per item. These tests assert the real HTTP call
+counts, not just that the calls succeed -- reverting the
 WorkPackageResolutionContext wiring (e.g. always constructing a fresh one
 per item inside a bulk loop) makes the "same project" tests below fail.
 """

@@ -1,4 +1,4 @@
-"""Notifications Domain API port (ADR 0001, OPM-318 eighth consumer).
+"""Notifications Domain API port (ADR 0001).
 
 List-only for reads (no single-item GET exists in client.py's original --
 `normalize_notification` is only ever called from `list_notifications`), plus
@@ -28,7 +28,7 @@ Port should pre-decide.
 
 No `to_detail`: `NotificationSummary` IS the only normalized shape this
 domain has (no separate Detail model exists in models.py), matching every
-other OPM-318-consuming domain migrated this session.
+other similarly-shaped domain.
 """
 
 from __future__ import annotations

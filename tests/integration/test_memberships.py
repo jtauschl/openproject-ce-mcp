@@ -86,9 +86,8 @@ async def test_create_and_update_membership_in_fresh_project(
 
 
 async def test_delete_membership_in_fresh_project(client: OpenProjectClient, project_refs: list[str]) -> None:
-    """delete_membership DELETEs memberships/{id} -- no live coverage
-    previously exercised this write path. Uses a freshly created, disposable
-    project so this never touches an existing membership."""
+    """delete_membership DELETEs memberships/{id}. Uses a freshly created,
+    disposable project so this never touches an existing membership."""
     unrestricted_settings = dataclasses.replace(client.settings, read_projects=("*",), write_projects=("*",))
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()

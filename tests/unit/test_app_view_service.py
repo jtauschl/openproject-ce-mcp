@@ -237,7 +237,7 @@ async def test_get_applies_hidden_field_masking() -> None:
 @pytest.mark.asyncio
 async def test_get_query_hidden_by_view_scope_not_project_scope() -> None:
     """Regression test for the entity="view" vs "project" hide-field bug
-    class (same bug class as the OPM-266 News hotfix and prior domains'
+    class (same bug class as the News hotfix and prior domains'
     findings). client.py's original normalize_view already used the
     correct "view" entity string, so this test only guards against a
     regression, not a fix.

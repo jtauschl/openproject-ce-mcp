@@ -171,8 +171,7 @@ def web_url(relative_path: str, *, base_url: str) -> str:
     client.py's own `_web_url` bound method.
 
     Extracted here once it crossed this project's "3+ identical copies"
-    threshold (found during the Watchers migration's step-6 self-audit,
-    OPM-294): `httpx_wiki_page_api.py` and `httpx_watcher_api.py` both had
+    threshold: `httpx_wiki_page_api.py` and `httpx_watcher_api.py` both had
     this exact function locally; `httpx_group_api.py`/`httpx_user_api.py`
     each had a reducible special case (`_web_url(<id>, ...)` hardcoding a
     resource-type prefix inline) expressible as

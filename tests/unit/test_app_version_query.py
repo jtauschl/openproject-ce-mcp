@@ -58,16 +58,15 @@ async def _resolve_project_ref(project_ref: str, *, write: bool = False, context
 
 @pytest.mark.asyncio
 async def test_project_scoped_without_search_walks_and_slices_client_side() -> None:
-    """Regression (found via a full-diff Codex review on release/0.3.4, ported
-    here): `projects/{id}/versions` is genuinely UnpaginatedCollection
+    """`projects/{id}/versions` is genuinely UnpaginatedCollection
     server-side (verified against op-sources' VersionCollectionRepresenter <
     UnpaginatedCollection, via VersionsByProjectAPI) -- offset/pageSize params
-    are silently ignored and every element is always returned regardless. The
-    project-scoped-without-search branch used to trust the server's own
-    total/pagination for this endpoint (as if it were genuinely paginated),
-    which either under- or over-reported truncation/next_offset against the
-    real, always-complete result set. Fixed by walking (a no-op single
-    request here, since the fake already returns everything) and slicing
+    are silently ignored and every element is always returned regardless.
+    Trusting the server's own total/pagination for this endpoint (as if it
+    were genuinely paginated) would either under- or over-report
+    truncation/next_offset against the real, always-complete result set, so
+    the project-scoped-without-search branch must walk (a no-op single
+    request here, since the fake already returns everything) and slice
     client-side, same as the project-scoped-with-search branch."""
     records = [VersionRecord(summary=_summary(i, f"v{i}.0"), defining_project_link=None) for i in range(1, 26)]
     api = _FakeVersionApi(records, server_total=25)

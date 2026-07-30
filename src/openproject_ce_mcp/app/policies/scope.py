@@ -9,8 +9,7 @@ Unify only once every domain has migrated and client.py's copies become truly de
 `id_from_href` is exported (not underscore-prefixed) because, unlike the two
 helpers above, it crossed this project's own "3+ identical copies" threshold
 WITHIN `app/` itself (this module's own copy, `app/services/project_service.py`,
-and `app/services/file_link_service.py` -- found during the File Links
-migration's step-6 self-audit, OPM-296) -- `services` is permitted to import
+and `app/services/file_link_service.py`) -- `services` is permitted to import
 from `policies` (see `tests/test_architecture_boundaries.py`'s
 `_LAYER_DEPENDENCIES`), so this is the natural shared home rather than a new
 package-root module.

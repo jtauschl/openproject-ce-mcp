@@ -306,7 +306,7 @@ async def test_get_applies_hidden_field_masking() -> None:
 @pytest.mark.asyncio
 async def test_get_defining_workspace_hidden_by_sprint_scope_not_project_scope() -> None:
     """Regression test for the entity="sprint" vs "project" hide-field bug
-    class (same bug class as OPM-101/OPM-266). client.py's original
+    class (same bug class found in prior domains). client.py's original
     normalize_sprint already used the correct "sprint" entity string, so
     this test only guards against a regression, not a fix.
     """

@@ -466,7 +466,7 @@ async def test_delete_denies_write_even_without_confirm() -> None:
 @pytest.mark.asyncio
 async def test_note_hidden_by_reminder_scope_not_watcher_scope() -> None:
     """Regression test for the entity="reminder" vs a same-shaped neighbor
-    hide-field bug class (same bug class as OPM-1627's Priority/Notification
+    hide-field bug class (same bug class as the Priority/Notification
     findings)."""
     settings_watcher_hidden = dataclasses.replace(make_settings(), hidden_fields={"watcher": ("note",)})
     service_watcher_hidden = _service(settings=settings_watcher_hidden)

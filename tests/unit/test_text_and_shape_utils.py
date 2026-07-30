@@ -178,8 +178,8 @@ def test_normalize_activity_returns_full_comment_by_default() -> None:
 
 
 def test_normalize_activity_details_are_delimited_and_drop_duplicate_html() -> None:
-    # details[] previously bypassed delimiting entirely and
-    # carried both "raw" and "html" copies of the same change description.
+    # details[] must be delimited, and must not carry both "raw" and "html"
+    # copies of the same change description.
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
 
     activity = client.normalize_activity(
@@ -865,17 +865,17 @@ async def test_get_work_package_relations_filters_out_of_scope_other_side() -> N
 
 @pytest.mark.asyncio
 async def test_get_work_package_relations_paginates_allowed_results() -> None:
-    # get_work_package_relations previously returned every relation
-    # in one unbounded response. Pagination is applied to the ACL-filtered
+    # get_work_package_relations must paginate, not return every relation in
+    # one unbounded response. Pagination is applied to the ACL-filtered
     # survivors (not the raw server page), so a restrictive allowlist can't
     # produce a sparse page -- same pattern as list_project_sprints.
     #
-    # Follow-up hardening: the /relations request itself previously omitted
-    # pageSize entirely, so it silently relied on the server's default page
-    # size instead of walking every server page -- every call re-fetched that
-    # same default first page and re-sliced it locally, making relations past
-    # the default page permanently unreachable. Assert every server page is
-    # actually walked (pageSize=max_page_size), same as _fetch_bounded_and_paginate.
+    # The /relations request itself must send an explicit pageSize and walk
+    # every server page (not just rely on the server's default page size and
+    # re-fetch/re-slice the same first page every call), or relations past
+    # the default page would be permanently unreachable. Assert every server
+    # page is actually walked (pageSize=max_page_size), same as
+    # _fetch_bounded_and_paginate.
     settings = make_settings()
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -1032,11 +1032,9 @@ def test_normalize_project_detail_leaves_ancestors_none_when_absent() -> None:
 
 
 def test_normalize_user_detail_reads_identity_url_from_the_real_property() -> None:
-    """identity_url now sources OpenProject's real identityUrl
-    property (top-level, not a _links entry), not the showUser link -- which
-    duplicated the already-modeled `url` field. Re-anchored on the adapter's
-    module-level normalize_user_detail after the Users domain migration
-    (client.normalize_user_detail no longer exists)."""
+    """identity_url sources OpenProject's real identityUrl property
+    (top-level, not a _links entry), not the showUser link -- which would
+    duplicate the already-modeled `url` field."""
     settings = make_settings()
     payload = {
         "id": 5,

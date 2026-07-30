@@ -123,7 +123,7 @@ async def test_get_filter_percent_encodes_the_id_in_the_path() -> None:
 @pytest.mark.asyncio
 async def test_get_sort_by_translates_colon_to_hyphen_and_preserves_requested_id() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
-        # OPM-322: OpenProject's sort_bys route is "queries/sort_bys/:id-:direction"
+        # OpenProject's sort_bys route is "queries/sort_bys/:id-:direction"
         # (hyphen-joined, verified against op-sources/17.6's
         # query_sort_bys_api.rb and path_helper.rb), not a bare id segment like
         # filters/columns/operators. The client must request the hyphen form,

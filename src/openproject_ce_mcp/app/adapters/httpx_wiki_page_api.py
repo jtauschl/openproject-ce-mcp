@@ -3,12 +3,9 @@
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
 `_id_from_href`/`_link_title`/`_delimit_user_content`/`_link_to_web_url`/
 `_origin_from_url`/`_web_url`/`SUBJECT_LIMIT` are shared via
-`app/adapters/_text.py`. `web_url` was promoted there during the Watchers
-migration's step-6 self-audit (OPM-294) once it crossed the "3+ identical
-copies" threshold -- previously a local free function here, verified
-against client.py's bound-method original (client.py:4512-4513:
-`_web_url(self, relative_path)` -> `urljoin(f"{self.settings.base_url.rstrip('/')}/",
-relative_path.lstrip('/'))`).
+`app/adapters/_text.py`, matching client.py's bound-method original
+(client.py:4512-4513: `_web_url(self, relative_path)` ->
+`urljoin(f"{self.settings.base_url.rstrip('/')}/", relative_path.lstrip('/'))`).
 """
 
 from __future__ import annotations

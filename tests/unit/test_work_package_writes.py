@@ -1156,9 +1156,9 @@ async def test_add_work_package_comment_writes_after_confirmation_when_enabled()
 
 @pytest.mark.asyncio
 async def test_add_work_package_comment_echo_is_capped_by_default() -> None:
-    # The write-echo used to be uncapped (text_limit=None), unlike the
-    # analogous work-package description echo -- the caller already has the
-    # comment it just sent, so it should be capped like other write-echoes.
+    # The write-echo must be capped, matching the analogous work-package
+    # description echo -- the caller already has the comment it just sent,
+    # so it should be capped like other write-echoes.
     long_comment = "c" * 1500
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -1795,8 +1795,8 @@ async def test_bulk_create_work_packages_preview_mode() -> None:
 
 @pytest.mark.asyncio
 async def test_bulk_create_work_packages_preview_forwards_duration_fields() -> None:
-    # bulk_create_work_packages used to silently drop estimated_time/
-    # remaining_time/duration instead of forwarding them to create_work_package.
+    # bulk_create_work_packages must forward estimated_time/remaining_time/
+    # duration to create_work_package, not silently drop them.
     posted_bodies: list[dict] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -2363,9 +2363,9 @@ async def test_toggle_activity_emoji_reaction_previews_without_confirm() -> None
 @pytest.mark.asyncio
 async def test_toggle_activity_emoji_reaction_previews_when_write_disabled() -> None:
     """confirm=false must still return a preview when work-package write is
-    disabled — the write-enabled gate belongs to the mutation, not the preview
-    (it previously ran unconditionally at the top of the method, breaking the
-    confirm=False-always-returns-a-preview contract)."""
+    disabled — the write-enabled gate belongs to the mutation, not the
+    preview, or the confirm=False-always-returns-a-preview contract would
+    break."""
     import dataclasses
 
     async def handler(request: httpx.Request) -> httpx.Response:

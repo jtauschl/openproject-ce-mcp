@@ -1,4 +1,4 @@
-"""HTTP-backed FileLinkApi adapter (ADR 0001, OPM-318 first consumer).
+"""HTTP-backed FileLinkApi adapter (ADR 0001).
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`id_from_href`/`link_title`/`SUBJECT_LIMIT` come

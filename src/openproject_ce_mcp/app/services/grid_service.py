@@ -28,43 +28,21 @@ preview/commit method like MembershipService.delete().
 
 `create()`/`update()` call `hidden_fields.ensure_field_writable("grid",
 <field>, ...)` for every field they write ("name", "scope", "row_count",
-"column_count"). This is a DELIBERATE HARDENING found by a step-6
-self-audit run during the Groups migration (the 15th domain): Grids was the
-only full-CRUD domain among all migrated domains with no config entity
-entry at all (`config.py`'s `HIDE_FIELD_ENV_BY_ENTITY` had no `"grid"` key,
-so `OPENPROJECT_HIDE_GRID_FIELDS` never existed), meaning
-`hidden_fields.field_hidden("grid", ...)` could never return True under any
-configuration -- both the write guard AND the config entity were missing,
-not just the guard call sites. Fixed by adding the `"grid"` config entry and
-these calls, matching every other full-CRUD sibling.
+"column_count"), matching every other full-CRUD sibling's write-guard
+pattern; `config.py`'s `HIDE_FIELD_ENV_BY_ENTITY` carries a `"grid"` entry
+(`OPENPROJECT_HIDE_GRID_FIELDS`) so `hidden_fields.field_hidden("grid", ...)`
+can actually return True when configured.
 
-`list()` pagination fix (found during the Statuses/Priorities/Types
-migration's broader "N individual exceptions" audit, OPM-1627): this method
-previously had no `offset`/`limit` params and never clamped or paginated at
-all -- an unbounded fetch-all, unlike every other full-list migrated
-sibling. Confirmed via git history this is a faithfully-ported pre-existing
-gap from client.py's very first `list_grids` implementation (pre-dating this
-domain's own migration), not a regression this migration introduced.
-`GridListResult` moved from a bare `CollectionResult` to the standard
-`PageResult` shape to match (see `app/ports/grid_api.py`'s module docstring
-for the same note from the Port side).
+`list()` clamps/paginates via `offset`/`limit` like every other full-list
+migrated sibling -- an unbounded fetch-all would be unbounded work against
+the server for large grid collections. `GridListResult` uses the standard
+`PageResult` shape (see `app/ports/grid_api.py`'s module docstring for the
+same note from the Port side).
 
-Deliberate behavior CHANGE from client.py's original delete_grid (found via
-an external Codex review of the unpushed Grids migration commit, before this
-was pushed): the confirmed branch now returns `result=grid` (the deleted
-grid's stamped summary), not `result=None`. The original client.py's
-`delete_grid` returned `None` there -- but that was itself an outlier, not a
-deliberate design choice: `delete_version`/`delete_membership`/
-`delete_project` all returned the deleted entity's detail/summary on
-confirmed delete since their very first (pre-app/-migration) implementation,
-and `GridWriteResult.result: GridSummary | None` has always had the same
-shape as those siblings' result fields. Traced back through git history to
-Grids' very first commit -- `result=None` was present from day one, with no
-commit message or code comment ever explaining why Grids alone should
-differ. Kept the more-consistent, now-migrated behavior rather than
-reverting to match the likely-accidental legacy quirk; noted here, in the
-migration's commit message, and in CHANGELOG.md as a behavior-changing fix,
-not a silent one.
+On confirmed delete, `GridWriteResult.result` carries the deleted grid's
+stamped summary, not `None` -- consistent with `delete_version`/
+`delete_membership`/`delete_project`, which all return the deleted entity's
+detail/summary on confirmed delete.
 """
 
 from __future__ import annotations
