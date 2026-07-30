@@ -643,7 +643,8 @@ class OpenProjectClient:
                     "projects", params={"offset": str(server_offset), "pageSize": str(server_page_size)}
                 )
                 elements = payload.get("_embedded", {}).get("elements", [])
-                page_ids = {item.get("id") for item in elements if isinstance(item, dict)}
+                raw_ids = (item.get("id") for item in elements if isinstance(item, dict))
+                page_ids = {raw_id for raw_id in raw_ids if isinstance(raw_id, int)}
                 if not is_first_page and page_ids and page_ids <= seen_ids:
                     break
                 is_first_page = False
