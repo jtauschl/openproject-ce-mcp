@@ -38,14 +38,23 @@ def _versions_payload(version_id: int, name: str) -> dict:
     return {"total": 1, "_embedded": {"elements": [{"id": version_id, "name": name, "_links": {}}]}}
 
 
-def _sprints_payload(sprint_id: int, name: str) -> dict:
+def _sprints_payload(sprint_id: int, name: str, *, project_id: int = 1) -> dict:
     return {
         "_type": "Collection",
         "total": 1,
         "count": 1,
         "pageSize": 100,
         "offset": 1,
-        "_embedded": {"elements": [{"_type": "Sprint", "id": sprint_id, "name": name, "_links": {}}]},
+        "_embedded": {
+            "elements": [
+                {
+                    "_type": "Sprint",
+                    "id": sprint_id,
+                    "name": name,
+                    "_links": {"definingWorkspace": {"href": f"/api/v3/projects/{project_id}", "title": "Demo"}},
+                }
+            ]
+        },
     }
 
 

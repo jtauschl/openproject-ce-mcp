@@ -736,7 +736,7 @@ async def test_list_time_entries_comment_capped_at_text_limit() -> None:
                             {
                                 "id": 1,
                                 "comment": {"raw": long_comment},
-                                "_links": {},
+                                "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
                             }
                         ]
                     },
@@ -765,7 +765,11 @@ async def test_get_time_entry_returns_full_comment_by_default() -> None:
         if request.url.path == "/api/v3/time_entries/1" and request.method == "GET":
             return httpx.Response(
                 200,
-                json={"id": 1, "comment": {"raw": long_comment}, "_links": {}},
+                json={
+                    "id": 1,
+                    "comment": {"raw": long_comment},
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
                 request=request,
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")

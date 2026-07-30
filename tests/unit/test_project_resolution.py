@@ -608,7 +608,12 @@ async def test_resolve_sprint_id_by_name_found_on_real_second_server_page() -> N
             "total": total,
             "_embedded": {
                 "elements": [
-                    {"id": i, "name": f"Sprint {i}", "_links": {}} for i in range(start + 1, start + count + 1)
+                    {
+                        "id": i,
+                        "name": f"Sprint {i}",
+                        "_links": {"definingWorkspace": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                    }
+                    for i in range(start + 1, start + count + 1)
                 ]
             },
         }
@@ -734,8 +739,19 @@ async def test_resolve_version_id_project_less_name_match_beyond_first_filtered_
     # max_page_size), then the real exact match on server page 2 — must be
     # found even though it's beyond both the first server page AND page 1 of
     # the search-filtered survivors.
-    decoys = [{"id": i, "name": f"Release Candidate {i}", "_links": {}} for i in range(1, 51)]
-    exact = {"id": 999, "name": "Release", "_links": {}}
+    decoys = [
+        {
+            "id": i,
+            "name": f"Release Candidate {i}",
+            "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
+        }
+        for i in range(1, 51)
+    ]
+    exact = {
+        "id": 999,
+        "name": "Release",
+        "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
+    }
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/versions" and request.method == "GET":

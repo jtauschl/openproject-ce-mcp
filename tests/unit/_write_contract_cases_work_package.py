@@ -220,7 +220,7 @@ def _delete_work_package_handler(request: httpx.Request) -> httpx.Response:
                 "subject": "Delete me",
                 "lockVersion": 4,
                 "_links": {
-                    "project": {"title": "Demo"},
+                    "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                     "status": {"title": "New"},
                     "type": {"title": "Task"},
                     "activities": {"href": "/api/v3/work_packages/42/activities"},

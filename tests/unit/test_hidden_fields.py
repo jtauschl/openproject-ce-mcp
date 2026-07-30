@@ -557,7 +557,12 @@ async def test_hidden_version_description_also_suppresses_truncation_metadata() 
         if request.url.path == "/api/v3/versions/1" and request.method == "GET":
             return httpx.Response(
                 200,
-                json={"id": 1, "name": "1.0", "description": {"raw": long_description}, "_links": {}},
+                json={
+                    "id": 1,
+                    "name": "1.0",
+                    "description": {"raw": long_description},
+                    "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
                 request=request,
             )
         if request.url.path == "/api/v3/versions" and request.method == "GET":
@@ -565,7 +570,14 @@ async def test_hidden_version_description_also_suppresses_truncation_metadata() 
                 200,
                 json={
                     "_embedded": {
-                        "elements": [{"id": 1, "name": "1.0", "description": {"raw": long_description}, "_links": {}}]
+                        "elements": [
+                            {
+                                "id": 1,
+                                "name": "1.0",
+                                "description": {"raw": long_description},
+                                "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                            }
+                        ]
                     }
                 },
                 request=request,

@@ -727,7 +727,7 @@ async def test_update_work_package_resolves_sprint_by_name() -> None:
                                 "_type": "Sprint",
                                 "id": 1,
                                 "name": "Cleanup",
-                                "_links": {},
+                                "_links": {"definingWorkspace": {"href": "/api/v3/projects/7", "title": "Demo"}},
                             }
                         ]
                     },
@@ -959,7 +959,7 @@ async def test_delete_work_package_requires_confirmation_preview() -> None:
                     "subject": "Delete me",
                     "lockVersion": 4,
                     "_links": {
-                        "project": {"title": "Demo"},
+                        "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                         "status": {"title": "New"},
                         "type": {"title": "Task"},
                         "activities": {"href": "/api/v3/work_packages/42/activities"},
@@ -1006,7 +1006,7 @@ async def test_delete_work_package_deletes_when_enabled_and_confirmed() -> None:
                     "subject": "Delete me",
                     "lockVersion": 4,
                     "_links": {
-                        "project": {"title": "Demo"},
+                        "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                         "status": {"title": "New"},
                         "type": {"title": "Task"},
                         "activities": {"href": "/api/v3/work_packages/42/activities"},
@@ -1055,7 +1055,7 @@ async def test_delete_work_package_requires_write_enablement() -> None:
                     "subject": "Delete me",
                     "lockVersion": 4,
                     "_links": {
-                        "project": {"title": "Demo"},
+                        "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                         "status": {"title": "New"},
                         "type": {"title": "Task"},
                         "activities": {"href": "/api/v3/work_packages/42/activities"},

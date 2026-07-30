@@ -125,7 +125,10 @@ async def test_summary_sets_truncation_flag_and_stays_single_line() -> None:
                             "id": 7,
                             "subject": "Sample",
                             "description": {"raw": long_desc},
-                            "_links": {"status": {"title": "New"}, "project": {"title": "Demo"}},
+                            "_links": {
+                                "status": {"title": "New"},
+                                "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+                            },
                         }
                     ]
                 },
@@ -727,6 +730,7 @@ async def test_work_package_relations_use_canonical_involved_filter_shape() -> N
 async def test_global_relations_allowlist_checks_from_and_to_link_shapes() -> None:
     """Verify global relation listing validates both endpoint links."""
     work_package_projects = {10: "demo", 11: "demo", 20: "other", 30: "demo", 31: "other"}
+    work_package_project_ids = {10: 1, 11: 1, 20: 2, 30: 1, 31: 2}
     fetched_work_packages: list[int] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -773,7 +777,12 @@ async def test_global_relations_allowlist_checks_from_and_to_link_shapes() -> No
                 200,
                 json={
                     "id": work_package_id,
-                    "_links": {"project": {"title": work_package_projects[work_package_id]}},
+                    "_links": {
+                        "project": {
+                            "href": f"/api/v3/projects/{work_package_project_ids[work_package_id]}",
+                            "title": work_package_projects[work_package_id],
+                        }
+                    },
                 },
                 request=request,
             )
@@ -794,6 +803,7 @@ async def test_get_work_package_relations_filters_out_of_scope_other_side() -> N
     linked work package whose project is outside READ_PROJECTS, even though
     the anchor work package itself is in an allowed project."""
     work_package_projects = {10: "demo", 11: "demo", 20: "other"}
+    work_package_project_ids = {10: 1, 11: 1, 20: 2}
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/relations" and request.method == "GET":
@@ -832,7 +842,12 @@ async def test_get_work_package_relations_filters_out_of_scope_other_side() -> N
                 200,
                 json={
                     "id": work_package_id,
-                    "_links": {"project": {"title": work_package_projects[work_package_id]}},
+                    "_links": {
+                        "project": {
+                            "href": f"/api/v3/projects/{work_package_project_ids[work_package_id]}",
+                            "title": work_package_projects[work_package_id],
+                        }
+                    },
                 },
                 request=request,
             )
@@ -890,7 +905,10 @@ async def test_get_work_package_relations_paginates_allowed_results() -> None:
         if match:
             return httpx.Response(
                 200,
-                json={"id": int(match.group(1)), "_links": {"project": {"title": "demo"}}},
+                json={
+                    "id": int(match.group(1)),
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                },
                 request=request,
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
@@ -1061,7 +1079,11 @@ async def test_explicit_null_links_survives_list_work_packages_end_to_end() -> N
     the pure helper in isolation. Without it, the second element's
     `payload.get("_links", {})` read inside normalize_work_package_summary
     would return None instead of {}, and the following `.get("project")`
-    would raise AttributeError.
+    would raise AttributeError -- rather than the OPM-359 PermissionDeniedError
+    it correctly raises today for a work package with no resolvable project
+    link (a required-project-link resource; a work package with `_links: None`
+    has no project link at all, so it is now denied by the allowlist, not
+    silently passed through with project=None).
     """
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -1071,7 +1093,11 @@ async def test_explicit_null_links_survives_list_work_packages_end_to_end() -> N
                 "total": 2,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "subject": "Has links", "_links": {"project": {"title": "Demo"}}},
+                        {
+                            "id": 1,
+                            "subject": "Has links",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                        },
                         {"id": 2, "subject": "Null links", "_links": None},
                     ]
                 },
@@ -1083,8 +1109,11 @@ async def test_explicit_null_links_survives_list_work_packages_end_to_end() -> N
 
     result = await client.list_work_packages()
 
+    # The null-_links element is denied (no resolvable project link), not
+    # crashed on -- this is the actual regression this test guards against:
+    # AttributeError, not PermissionDeniedError, would mean the fix broke.
+    assert len(result.results) == 1
     assert result.results[0].project == "Demo"
-    assert result.results[1].project is None
 
     await client.aclose()
 

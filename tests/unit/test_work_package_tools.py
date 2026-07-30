@@ -49,7 +49,7 @@ async def test_get_work_package_returns_compact_summary() -> None:
                         "priority": {"title": "Normal"},
                         "assignee": {"title": "OpenProject Bot"},
                         "responsible": {"title": "Maintainer"},
-                        "project": {"title": "Demo"},
+                        "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                         "version": {"title": "v1"},
                         "activities": {"href": "/api/v3/work_packages/42/activities"},
                         "relations": {"href": "/api/v3/work_packages/42/relations"},
@@ -163,7 +163,7 @@ async def test_list_work_packages_returns_version_and_description_flags() -> Non
                                 "_links": {
                                     "type": {"title": "Feature"},
                                     "status": {"title": "Open"},
-                                    "project": {"title": "Demo"},
+                                    "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                                     "version": {"title": "Q2"},
                                 },
                             }

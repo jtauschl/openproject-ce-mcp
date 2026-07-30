@@ -143,7 +143,7 @@ async def test_list_work_packages_resolves_type_and_version_filters() -> None:
                                 "_links": {
                                     "type": {"title": "Feature"},
                                     "status": {"title": "New"},
-                                    "project": {"title": "Demo"},
+                                    "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                                     "version": {"title": "v1"},
                                 },
                             }
@@ -194,6 +194,7 @@ async def test_list_work_packages_returns_parent_display_id_when_present() -> No
                                         "title": "Parent",
                                         "displayId": "EMTB-7",
                                     },
+                                    "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                                 },
                             },
                             {
@@ -201,6 +202,7 @@ async def test_list_work_packages_returns_parent_display_id_when_present() -> No
                                 "subject": "Child on classic instance",
                                 "_links": {
                                     "parent": {"href": "/api/v3/work_packages/8", "title": "Parent"},
+                                    "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                                 },
                             },
                         ]
@@ -241,6 +243,7 @@ async def test_search_work_packages_returns_parent_display_id_when_present() -> 
                                     "title": "Parent",
                                     "displayId": "EMTB-7",
                                 },
+                                "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                             },
                         }
                     ]
@@ -271,8 +274,16 @@ async def test_list_work_packages_exposes_real_total_when_scope_unrestricted() -
                 "total": 5,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
-                        {"id": 2, "subject": "B", "_links": {"project": {"title": "demo"}}},
+                        {
+                            "id": 1,
+                            "subject": "A",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
+                        {
+                            "id": 2,
+                            "subject": "B",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
                     ]
                 },
             },
@@ -328,8 +339,16 @@ async def test_list_work_packages_exposes_real_total_when_restricted_scope_filte
                 "total": 5,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
-                        {"id": 2, "subject": "B", "_links": {"project": {"title": "demo"}}},
+                        {
+                            "id": 1,
+                            "subject": "A",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
+                        {
+                            "id": 2,
+                            "subject": "B",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
                     ]
                 },
             },
@@ -365,7 +384,11 @@ async def test_search_work_packages_pagination_hints_do_not_leak_untrusted_total
                 "total": 50,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                        {
+                            "id": 1,
+                            "subject": "A",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
                     ]
                 },
             },
@@ -394,8 +417,16 @@ async def test_search_work_packages_pagination_continues_with_untrusted_total_wh
                 "total": 50,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
-                        {"id": 2, "subject": "B", "_links": {"project": {"title": "demo"}}},
+                        {
+                            "id": 1,
+                            "subject": "A",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
+                        {
+                            "id": 2,
+                            "subject": "B",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
                     ]
                 },
             },
@@ -425,7 +456,11 @@ async def test_search_work_packages_falls_back_to_page_count_without_explicit_pr
                 "total": 50,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                        {
+                            "id": 1,
+                            "subject": "A",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
                     ]
                 },
             },
@@ -457,7 +492,11 @@ async def test_search_work_packages_exposes_real_total_with_explicit_project() -
                 "total": 5,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                        {
+                            "id": 1,
+                            "subject": "A",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
                     ]
                 },
             },
@@ -487,7 +526,11 @@ async def test_list_my_open_work_packages_falls_back_to_page_count_under_restric
                 "total": 50,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                        {
+                            "id": 1,
+                            "subject": "A",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
                     ]
                 },
             },

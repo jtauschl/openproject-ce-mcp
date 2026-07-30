@@ -1248,7 +1248,11 @@ async def test_list_work_package_attachments_walks_every_server_page() -> None:
         if request.url.path == "/api/v3/work_packages/7" and request.method == "GET":
             return httpx.Response(
                 200,
-                json={"id": 7, "subject": "Task", "_links": {"project": {"title": "demo"}}},
+                json={
+                    "id": 7,
+                    "subject": "Task",
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                },
                 request=request,
             )
         if request.url.path == "/api/v3/work_packages/7/attachments" and request.method == "GET":
@@ -1317,8 +1321,16 @@ async def test_list_documents_search_filters_by_title_substring() -> None:
                 json={
                     "_embedded": {
                         "elements": [
-                            {"id": 1, "title": "Architecture Overview", "_links": {}},
-                            {"id": 2, "title": "Onboarding Guide", "_links": {}},
+                            {
+                                "id": 1,
+                                "title": "Architecture Overview",
+                                "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                            },
+                            {
+                                "id": 2,
+                                "title": "Onboarding Guide",
+                                "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                            },
                         ]
                     },
                 },

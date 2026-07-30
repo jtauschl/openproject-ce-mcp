@@ -128,7 +128,7 @@ def _wp_detail_payload(wp_id: int, display_id: str) -> dict:
         "subject": "Sample",
         "displayId": display_id,
         "_links": {
-            "project": {"title": "Demo"},
+            "project": {"href": "/api/v3/projects/1", "title": "Demo"},
             "status": {"title": "New"},
             "type": {"title": "Task"},
             "activities": {"href": f"/api/v3/work_packages/{wp_id}/activities"},

@@ -21,6 +21,7 @@ async def test_get_work_package_filters_children_and_ancestors_by_read_allowlist
     referenced from an anchor work package the caller IS allowed to read.
     """
     wp_project = {5: "allowed", 6: "secret", 7: "allowed", 8: "secret"}
+    wp_project_id = {5: 1, 6: 2, 7: 1, 8: 2}
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/1" and request.method == "GET":
@@ -48,7 +49,10 @@ async def test_get_work_package_filters_children_and_ancestors_by_read_allowlist
             wp = int(m.group(1))
             return httpx.Response(
                 200,
-                json={"id": wp, "_links": {"project": {"title": wp_project[wp]}}},
+                json={
+                    "id": wp,
+                    "_links": {"project": {"href": f"/api/v3/projects/{wp_project_id[wp]}", "title": wp_project[wp]}},
+                },
                 request=request,
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")

@@ -177,7 +177,7 @@ async def test_version_crud_uses_form_endpoints_and_commit_paths() -> None:
                     "startDate": "2026-04-01",
                     "endDate": "2026-04-30",
                     "description": {"raw": "Initial rollout"},
-                    "_links": {"definingProject": {"title": "Demo"}},
+                    "_links": {"definingProject": {"href": "/api/v3/projects/6", "title": "Demo"}},
                 },
                 request=request,
             )
@@ -192,7 +192,7 @@ async def test_version_crud_uses_form_endpoints_and_commit_paths() -> None:
                     "startDate": "2026-04-01",
                     "endDate": "2026-04-30",
                     "description": {"raw": "Initial rollout"},
-                    "_links": {"definingProject": {"title": "Demo"}},
+                    "_links": {"definingProject": {"href": "/api/v3/projects/6", "title": "Demo"}},
                 },
                 request=request,
             )
@@ -222,7 +222,7 @@ async def test_version_crud_uses_form_endpoints_and_commit_paths() -> None:
                     "startDate": "2026-04-01",
                     "endDate": "2026-04-30",
                     "description": {"raw": "Initial rollout"},
-                    "_links": {"definingProject": {"title": "Demo"}},
+                    "_links": {"definingProject": {"href": "/api/v3/projects/6", "title": "Demo"}},
                 },
                 request=request,
             )
@@ -552,9 +552,21 @@ async def test_list_sprints_search_filters_by_name_substring() -> None:
                 json={
                     "_embedded": {
                         "elements": [
-                            {"id": 1, "name": "0.3.0 Release Finalization"},
-                            {"id": 2, "name": "0.4.0 Kickoff"},
-                            {"id": 3, "name": "Backlog"},
+                            {
+                                "id": 1,
+                                "name": "0.3.0 Release Finalization",
+                                "_links": {"definingWorkspace": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                            },
+                            {
+                                "id": 2,
+                                "name": "0.4.0 Kickoff",
+                                "_links": {"definingWorkspace": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                            },
+                            {
+                                "id": 3,
+                                "name": "Backlog",
+                                "_links": {"definingWorkspace": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                            },
                         ]
                     },
                 },
@@ -590,9 +602,21 @@ async def test_list_project_sprints_search_filters_by_name_substring() -> None:
                 json={
                     "_embedded": {
                         "elements": [
-                            {"id": 1, "name": "Sprint 1"},
-                            {"id": 2, "name": "Sprint 2"},
-                            {"id": 3, "name": "Backlog"},
+                            {
+                                "id": 1,
+                                "name": "Sprint 1",
+                                "_links": {"definingWorkspace": {"href": "/api/v3/projects/7", "title": "Demo"}},
+                            },
+                            {
+                                "id": 2,
+                                "name": "Sprint 2",
+                                "_links": {"definingWorkspace": {"href": "/api/v3/projects/7", "title": "Demo"}},
+                            },
+                            {
+                                "id": 3,
+                                "name": "Backlog",
+                                "_links": {"definingWorkspace": {"href": "/api/v3/projects/7", "title": "Demo"}},
+                            },
                         ]
                     },
                 },
@@ -760,7 +784,7 @@ async def test_list_versions_description_capped_at_text_limit() -> None:
                                 "id": 1,
                                 "name": "v1",
                                 "description": {"raw": long_description},
-                                "_links": {},
+                                "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
                             }
                         ]
                     },
@@ -789,7 +813,12 @@ async def test_get_version_returns_full_description_by_default() -> None:
         if request.url.path == "/api/v3/versions/1" and request.method == "GET":
             return httpx.Response(
                 200,
-                json={"id": 1, "name": "v1", "description": {"raw": long_description}, "_links": {}},
+                json={
+                    "id": 1,
+                    "name": "v1",
+                    "description": {"raw": long_description},
+                    "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
                 request=request,
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
@@ -871,9 +900,21 @@ async def test_list_versions_global_search_filters_by_name_substring() -> None:
                 json={
                     "_embedded": {
                         "elements": [
-                            {"id": 1, "name": "0.2.3", "_links": {}},
-                            {"id": 2, "name": "0.3.0", "_links": {}},
-                            {"id": 3, "name": "Rejected", "_links": {}},
+                            {
+                                "id": 1,
+                                "name": "0.2.3",
+                                "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                            },
+                            {
+                                "id": 2,
+                                "name": "0.3.0",
+                                "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                            },
+                            {
+                                "id": 3,
+                                "name": "Rejected",
+                                "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                            },
                         ]
                     },
                 },

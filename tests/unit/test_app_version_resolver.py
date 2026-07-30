@@ -115,7 +115,8 @@ async def test_resolve_numeric_id_without_project_checks_allowlist() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_by_name_without_project_uses_search() -> None:
-    records = [VersionRecord(summary=_summary(8, "v1.0"), defining_project_link=None)]
+    link = {"href": "/api/v3/projects/6", "title": "Demo"}
+    records = [VersionRecord(summary=_summary(8, "v1.0"), defining_project_link=link)]
     resolver = _resolver(records)
 
     result = await resolver.resolve_id("v1.0", project=None)

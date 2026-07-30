@@ -145,7 +145,11 @@ async def test_create_work_package_relation_preview_payload_matches_sent_body_mo
                 request=request,
             )
         if request.url.path == "/api/v3/work_packages/20" and request.method == "GET":
-            return httpx.Response(200, json={"id": 20}, request=request)
+            return httpx.Response(
+                200,
+                json={"id": 20, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
         if request.url.path == "/api/v3/work_packages/10/relations" and request.method == "POST":
             nonlocal sent_body
             sent_body = json.loads(request.content)
@@ -202,7 +206,7 @@ async def test_delete_work_package_preview_and_confirmed_target_the_same_resourc
                     "subject": "Delete me",
                     "lockVersion": 4,
                     "_links": {
-                        "project": {"title": "Demo"},
+                        "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                         "status": {"title": "New"},
                         "type": {"title": "Task"},
                         "activities": {"href": "/api/v3/work_packages/42/activities"},

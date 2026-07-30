@@ -172,7 +172,7 @@ def _update_version_handler(request: httpx.Request) -> httpx.Response:
                 "name": "Release 1",
                 "status": "open",
                 "sharing": "none",
-                "_links": {"definingProject": {"title": "Demo"}},
+                "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
             },
             request=request,
         )
@@ -203,7 +203,7 @@ def _delete_version_handler(request: httpx.Request) -> httpx.Response:
                 "name": "Release 1",
                 "status": "open",
                 "sharing": "none",
-                "_links": {"definingProject": {"title": "Demo"}},
+                "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
             },
             request=request,
         )
