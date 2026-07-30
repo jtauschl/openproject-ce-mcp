@@ -7760,6 +7760,50 @@ async def test_create_user_commits_using_form_payload_after_validation() -> None
 
 
 @pytest.mark.asyncio
+async def test_create_user_restores_password_into_the_committed_payload() -> None:
+    """Regression: OpenProject's users/form response never echoes `password`
+    back (a security precaution, not a validation gap) -- committing the
+    form's own payload verbatim silently dropped it even though the caller's
+    original value passed validation, so a real create against a live
+    instance failed with "Password can't be blank." despite the preview
+    reporting ready=True. The committed payload must restore it from the
+    caller's own value."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/users/form" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "schema": {},
+                        # Deliberately mirrors the real server: no "password" key here.
+                        "payload": {"login": "ada", "email": "ada@example.com"},
+                        "validationErrors": {},
+                    }
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/users" and request.method == "POST":
+            body = json.loads(request.content)
+            assert body == {"login": "ada", "email": "ada@example.com", "password": "Aa1!secret"}
+            return httpx.Response(201, json={"id": 9, "login": "ada", "_links": {}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(
+        _base_settings(enable_admin_write=True, enable_admin_read=True), transport=httpx.MockTransport(handler)
+    )
+
+    result = await client.create_user(
+        login="Ada", email="ada@example.com", firstname="Ada", lastname="Lovelace", password="Aa1!secret", confirm=True
+    )
+
+    assert result.confirmed is True
+    assert result.user_id == 9
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_update_user_preview_echoes_caller_supplied_user_id() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/users/9/form" and request.method == "POST":
@@ -7886,6 +7930,31 @@ async def test_lock_user_rejects_when_locked_field_is_hidden() -> None:
 
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_USER_FIELDS"):
         await client.lock_user(9, confirm=True)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_lock_user_posts_an_empty_json_body() -> None:
+    """Regression: an omitted json_body (None) sends no Content-Type header at
+    all (httpx only sets one when `json` is non-None) -- OpenProject's Grape
+    endpoint rejects a bodyless POST here with 406 "Missing content-type
+    header" even though the request carries no real data. Confirmed live
+    against a real instance; json_body={} is required."""
+    requests: list[tuple[str, str, bytes]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.method, request.url.path, request.content))
+        if request.url.path == "/api/v3/users/9/lock" and request.method == "POST":
+            return httpx.Response(200, json={"id": 9, "login": "ada", "_links": {}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(enable_admin_write=True), transport=httpx.MockTransport(handler))
+
+    result = await client.lock_user(9, confirm=True)
+
+    assert result.confirmed is True
+    assert requests == [("POST", "/api/v3/users/9/lock", b"{}")]
 
     await client.aclose()
 
@@ -11718,10 +11787,10 @@ async def test_mark_notification_read_previews_without_confirm() -> None:
 
 @pytest.mark.asyncio
 async def test_mark_notification_read_posts_after_confirmation() -> None:
-    requests: list[tuple[str, str]] = []
+    requests: list[tuple[str, str, bytes]] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        requests.append((request.method, request.url.path))
+        requests.append((request.method, request.url.path, request.content))
         if request.url.path == "/api/v3/notifications/10/read_ian" and request.method == "POST":
             return httpx.Response(204, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
@@ -11732,7 +11801,12 @@ async def test_mark_notification_read_posts_after_confirmation() -> None:
 
     assert result.confirmed is True
     assert result.notification_id == 10
-    assert requests == [("POST", "/api/v3/notifications/10/read_ian")]
+    # Regression: an omitted json_body (None) sends no Content-Type header at
+    # all (httpx only sets one when `json` is non-None) -- OpenProject's Grape
+    # endpoint rejects a bodyless POST here with 406 "Missing content-type
+    # header" even though the request carries no real data. Confirmed live
+    # against a real instance; json_body={} is required.
+    assert requests == [("POST", "/api/v3/notifications/10/read_ian", b"{}")]
 
     await client.aclose()
 
@@ -11755,10 +11829,10 @@ async def test_mark_all_notifications_read_previews_without_confirm() -> None:
 
 @pytest.mark.asyncio
 async def test_mark_all_notifications_read_posts_after_confirmation() -> None:
-    requests: list[tuple[str, str]] = []
+    requests: list[tuple[str, str, bytes]] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        requests.append((request.method, request.url.path))
+        requests.append((request.method, request.url.path, request.content))
         if request.url.path == "/api/v3/notifications/read_ian" and request.method == "POST":
             return httpx.Response(204, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
@@ -11769,7 +11843,7 @@ async def test_mark_all_notifications_read_posts_after_confirmation() -> None:
 
     assert result.confirmed is True
     assert result.notification_id is None
-    assert requests == [("POST", "/api/v3/notifications/read_ian")]
+    assert requests == [("POST", "/api/v3/notifications/read_ian", b"{}")]
 
     await client.aclose()
 

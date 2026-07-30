@@ -10,6 +10,9 @@ import pytest
 from openproject_ce_mcp.client import CLEAR, CLEAR_PARENT, CLEAR_VERSION, OpenProjectClient
 from openproject_ce_mcp.config import Settings
 from openproject_ce_mcp.tools import (
+    DATETIME_RE,
+    ISO8601_DURATION_RE,
+    _duration_between,
     _validate_optional_duration,
     _validate_optional_non_negative_int,
     _validate_optional_percentage_done,
@@ -33,6 +36,7 @@ from openproject_ce_mcp.tools import (
     create_project,
     create_subtask,
     create_time_entry,
+    create_time_entry_until,
     create_user,
     create_version,
     create_work_package,
@@ -116,6 +120,7 @@ from openproject_ce_mcp.tools import (
     update_relation,
     update_reminder,
     update_time_entry,
+    update_time_entry_until,
     update_user,
     update_version,
     update_work_package,
@@ -1250,6 +1255,99 @@ async def test_create_time_entry_tool_accepts_day_based_hours() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_time_entry_until_computes_hours_and_never_forwards_end_time() -> None:
+    class StubClient:
+        async def create_time_entry(self, **kwargs):
+            return kwargs
+
+    result = await create_time_entry_until(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        project="demo",
+        activity="Development",
+        start_time="2026-03-20T09:00:00Z",
+        end_time="2026-03-20T10:30:00Z",
+        spent_on="2026-03-20",
+        confirm=True,
+    )
+
+    assert result["hours"] == "PT1H30M"
+    assert result["start_time"] == "2026-03-20T09:00:00Z"
+    assert "end_time" not in result
+    assert "ongoing" not in result
+
+
+@pytest.mark.asyncio
+async def test_create_time_entry_until_requires_project_or_work_package() -> None:
+    class StubClient:
+        async def create_time_entry(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match="Either project or work_package_id is required"):
+        await create_time_entry_until(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            activity="Development",
+            start_time="2026-03-20T09:00:00Z",
+            end_time="2026-03-20T10:30:00Z",
+            spent_on="2026-03-20",
+            confirm=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_time_entry_until_rejects_end_time_before_start_time() -> None:
+    class StubClient:
+        async def create_time_entry(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match="end_time must be after start_time"):
+        await create_time_entry_until(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            project="demo",
+            activity="Development",
+            start_time="2026-03-20T10:30:00Z",
+            end_time="2026-03-20T09:00:00Z",
+            spent_on="2026-03-20",
+            confirm=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_update_time_entry_until_computes_hours_and_always_sets_ongoing_false() -> None:
+    class StubClient:
+        async def update_time_entry(self, **kwargs):
+            return kwargs
+
+    result = await update_time_entry_until(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        time_entry_id=5,
+        start_time="2026-03-20T09:00:00Z",
+        end_time="2026-03-20T10:30:00Z",
+        confirm=True,
+    )
+
+    assert result["hours"] == "PT1H30M"
+    assert result["start_time"] == "2026-03-20T09:00:00Z"
+    assert "end_time" not in result
+    assert result["ongoing"] is False
+
+
+@pytest.mark.asyncio
+async def test_update_time_entry_until_rejects_end_time_before_start_time() -> None:
+    class StubClient:
+        async def update_time_entry(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match="end_time must be after start_time"):
+        await update_time_entry_until(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            time_entry_id=5,
+            start_time="2026-03-20T10:30:00Z",
+            end_time="2026-03-20T09:00:00Z",
+            confirm=True,
+        )
+
+
+@pytest.mark.asyncio
 async def test_update_time_entry_tool_clears_comment() -> None:
     class StubClient:
         async def update_time_entry(self, **kwargs):
@@ -2177,6 +2275,97 @@ def test_validate_optional_duration_rejects_malformed() -> None:
     for bad in ("P", "PT", "PY", "P1", "1D", "PD1", "P1X"):
         with pytest.raises(ValueError, match="must use a simple ISO 8601 duration"):
             _validate_optional_duration(bad, field_name="x")
+
+
+def test_validate_optional_duration_accepts_fractional_seconds() -> None:
+    # Verified against the real `iso8601` Ruby gem OpenProject uses server-side
+    # (ISO8601::Duration's grammar permits a decimal fraction on the seconds
+    # atom) -- our own regex must accept what the server actually accepts,
+    # not a narrower subset. Needed by create_time_entry_until/
+    # update_time_entry_until's _duration_between, which can produce a
+    # fractional-second remainder.
+    assert _validate_optional_duration("PT7H30M15.5S", field_name="x") == "PT7H30M15.5S"
+    assert _validate_optional_duration("PT10.4S", field_name="x") == "PT10.4S"
+    assert _validate_optional_duration("PT0.5S", field_name="x") == "PT0.5S"
+
+
+def test_validate_optional_duration_still_rejects_multiple_fractional_components() -> None:
+    # The real gem's grammar (ISO8601::Duration#valid_fractions?) rejects more
+    # than one fractional component -- our regex doesn't need to special-case
+    # this (it only ever accepts a fraction on the seconds atom, H/M stay
+    # integer-only), but this pins that the widened regex didn't accidentally
+    # start accepting a second fractional component too.
+    with pytest.raises(ValueError, match="must use a simple ISO 8601 duration"):
+        _validate_optional_duration("PT1.5H30.5M", field_name="x")
+
+
+class TestDurationBetween:
+    def test_whole_hours(self) -> None:
+        assert _duration_between("2026-01-01T09:00:00Z", "2026-01-01T10:00:00Z") == "PT1H"
+
+    def test_whole_minutes(self) -> None:
+        assert _duration_between("2026-01-01T09:00:00Z", "2026-01-01T09:01:00Z") == "PT1M"
+
+    def test_whole_seconds(self) -> None:
+        assert _duration_between("2026-01-01T09:00:00Z", "2026-01-01T09:00:07Z") == "PT7S"
+
+    def test_mixed_hours_minutes_seconds(self) -> None:
+        assert _duration_between("2026-01-01T09:00:00Z", "2026-01-01T10:30:15Z") == "PT1H30M15S"
+
+    def test_fractional_seconds(self) -> None:
+        result = _duration_between("2026-01-01T09:00:00Z", "2026-01-01T09:00:07.5Z")
+        assert result == "PT7.5S"
+        assert bool(ISO8601_DURATION_RE.fullmatch(result))
+
+    def test_sub_second_total_duration(self) -> None:
+        result = _duration_between("2026-01-01T09:00:00Z", "2026-01-01T09:00:00.25Z")
+        assert result == "PT0.25S"
+        assert bool(ISO8601_DURATION_RE.fullmatch(result))
+
+    def test_59_999999_seconds_carries_correctly_not_to_pt60s(self) -> None:
+        # Regression: an earlier draft formatted the seconds remainder with
+        # `%g`, which rounds to 6 significant digits and silently turned a
+        # genuine 59.999999s remainder into "60" (PT60S) without carrying the
+        # overflow into minutes. The fixed version must never emit "60" (or
+        # higher) as the seconds component.
+        result = _duration_between("2026-01-01T09:00:00Z", "2026-01-01T09:00:59.999999Z")
+        assert result == "PT59.999999S"
+
+    def test_result_always_matches_the_widened_duration_regex(self) -> None:
+        cases = [
+            ("2026-01-01T00:00:00Z", "2026-01-01T00:00:00.000001Z"),  # 1 microsecond
+            ("2026-01-01T00:00:00Z", "2026-01-01T00:00:00.00001Z"),  # 10 microseconds
+            ("2026-01-01T00:00:00Z", "2026-06-15T12:00:00Z"),  # multi-day
+        ]
+        for start, end in cases:
+            result = _duration_between(start, end)
+            assert bool(ISO8601_DURATION_RE.fullmatch(result)), f"{result!r} (from {start} -> {end}) failed the regex"
+
+    def test_different_utc_offsets_including_dst_style_shift(self) -> None:
+        # Different UTC offsets on start/end (e.g. a DST transition between
+        # them) must be compared in absolute time, not rejected or misread.
+        assert _duration_between("2026-01-01T10:00:00+01:00", "2026-01-01T10:00:00+00:00") == "PT1H"
+
+    def test_end_before_start_raises(self) -> None:
+        with pytest.raises(ValueError, match="end_time must be after start_time"):
+            _duration_between("2026-01-01T10:00:00Z", "2026-01-01T09:00:00Z")
+
+    def test_end_equal_start_raises(self) -> None:
+        with pytest.raises(ValueError, match="end_time must be after start_time"):
+            _duration_between("2026-01-01T09:00:00Z", "2026-01-01T09:00:00Z")
+
+    def test_datetime_re_rejects_more_than_microsecond_precision(self) -> None:
+        # Regression: DATETIME_RE previously accepted an unlimited number of
+        # fractional-second digits, but datetime.fromisoformat() (used by
+        # _duration_between) silently truncates anything beyond 6 (microsecond
+        # precision) -- e.g. two distinct 7-digit inputs a nanosecond apart
+        # would parse to the identical microsecond value and _duration_between
+        # would wrongly compute a zero (or otherwise inaccurate) duration
+        # despite its "exact duration" contract. DATETIME_RE must reject what
+        # fromisoformat can't represent exactly, rather than silently
+        # accepting and mis-rounding it.
+        assert DATETIME_RE.fullmatch("2026-01-01T09:00:00.123456Z")
+        assert not DATETIME_RE.fullmatch("2026-01-01T09:00:00.1234567Z")
 
 
 def test_validate_work_package_ref_accepts_numeric_and_semantic() -> None:

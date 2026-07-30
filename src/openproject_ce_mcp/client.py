@@ -4691,7 +4691,11 @@ class OpenProjectClient:
                 ),
                 notification_id=notification_id,
             )
-        response = await self._request("POST", f"notifications/{notification_id}/read_ian")
+        # An empty dict, not omitted -- a bodyless POST here sends no Content-Type
+        # header at all (httpx only sets one when `json` is non-None), and
+        # OpenProject's Grape endpoint rejects that with 406 "Missing
+        # content-type header" even though the POST itself carries no data.
+        response = await self._request("POST", f"notifications/{notification_id}/read_ian", json_body={})
         if response.status_code not in {200, 201, 204}:
             raise OpenProjectServerError(
                 f"OpenProject mark notification read failed with status {response.status_code}."
@@ -4719,7 +4723,7 @@ class OpenProjectClient:
                 ),
                 notification_id=None,
             )
-        response = await self._request("POST", "notifications/read_ian")
+        response = await self._request("POST", "notifications/read_ian", json_body={})
         if response.status_code not in {200, 201, 204}:
             raise OpenProjectServerError(
                 f"OpenProject mark all notifications read failed with status {response.status_code}."
@@ -4775,6 +4779,11 @@ class OpenProjectClient:
             write_path="users",
             preview_message="OpenProject validated the user. Ask for confirmation, then call again with confirm=true to create it.",
             success_message="User created successfully.",
+            # OpenProject's users/form response never echoes `password` back
+            # (a security precaution, not a validation gap) -- committing the
+            # form's own payload verbatim would silently drop it, so it's
+            # restored from the caller's own value before the actual write.
+            commit_payload_override=(lambda p: {**p, "password": password}) if password is not None else None,
         )
 
     async def update_user(
@@ -4873,7 +4882,11 @@ class OpenProjectClient:
                 validation_errors={},
                 result=None,
             )
-        response = await self._post(f"users/{user_id}/lock")
+        # An empty dict, not omitted -- a bodyless POST here sends no Content-Type
+        # header at all (httpx only sets one when `json` is non-None), and
+        # OpenProject's Grape endpoint rejects that with 406 "Missing
+        # content-type header" even though the POST itself carries no data.
+        response = await self._post(f"users/{user_id}/lock", json_body={})
         result = self.normalize_user_detail(response)
         return UserWriteResult(
             action="lock",
@@ -7367,6 +7380,7 @@ class OpenProjectClient:
         rejected_message: str,
         preview_message: str,
         success_message: str,
+        commit_payload_override: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     ) -> ResultT:
         """Shared rejected/preview/committed state machine for the 7 form-based
         write finalizers. Each entity differs in its identity
@@ -7376,6 +7390,14 @@ class OpenProjectClient:
         identity_kwargs receives the extracted payload (not just static caller
         args) because at least one entity (grid) derives part of its identity
         (`scope`) from the payload itself, not from a value the caller passed in.
+
+        commit_payload_override, when given, is applied ONLY to the payload
+        actually sent to write_path on confirm -- the previewed/rejected
+        payload returned to the caller is always the server's own form
+        response, unmodified. Needed for fields OpenProject's form response
+        never echoes back at all (e.g. `password` on create_user): committing
+        the bare form payload would silently drop them even though the
+        caller's original value passed validation.
         """
         embedded = form.get("_embedded", {})
         payload = embedded.get("payload", {})
@@ -7414,10 +7436,11 @@ class OpenProjectClient:
             )
 
         self._ensure_write_enabled(write_scope)
+        commit_payload = commit_payload_override(payload) if commit_payload_override else payload
         if write_method == "PATCH":
-            response = await self._patch(write_path, json_body=payload)
+            response = await self._patch(write_path, json_body=commit_payload)
         else:
-            response = await self._post(write_path, json_body=payload)
+            response = await self._post(write_path, json_body=commit_payload)
         detail = normalize(response)
         return result_cls(  # type: ignore[call-arg]
             action=action,
@@ -8011,6 +8034,7 @@ class OpenProjectClient:
         user_id: int | None = None,
         preview_message: str | None = None,
         success_message: str | None = None,
+        commit_payload_override: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     ) -> UserWriteResult:
         return await self._finalize_write(
             result_cls=UserWriteResult,
@@ -8027,6 +8051,7 @@ class OpenProjectClient:
             preview_message=preview_message
             or "OpenProject validated the user change. Ask for confirmation, then call again with confirm=true to write it.",
             success_message=success_message or f"User {action}d successfully.",
+            commit_payload_override=commit_payload_override,
         )
 
     def _ensure_write_enabled(self, scope: str) -> None:

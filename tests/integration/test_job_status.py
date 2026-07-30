@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import uuid
 
 import pytest
 
 from openproject_ce_mcp.client import OpenProjectClient, PermissionDeniedError
+
+from .conftest import disposable_project_identifier
 
 pytestmark = pytest.mark.integration
 
@@ -43,7 +44,7 @@ async def test_copy_project_result_becomes_visible_to_allowlist_immediately(
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
 
-    new_identifier = f"integration-test-{uuid.uuid4().hex[:8]}"
+    new_identifier = disposable_project_identifier()
     copy_result = await unrestricted_client.copy_project(
         source_project=test_project,
         name=f"[integration-test] {new_identifier}",
@@ -80,7 +81,7 @@ async def test_get_job_status_denies_project_link_outside_read_allowlist(
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
 
-    new_identifier = f"integration-test-{uuid.uuid4().hex[:8]}"
+    new_identifier = disposable_project_identifier()
     copy_result = await unrestricted_client.copy_project(
         source_project=test_project,
         name=f"[integration-test] {new_identifier}",

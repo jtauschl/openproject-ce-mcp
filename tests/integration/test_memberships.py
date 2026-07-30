@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import dataclasses
-import uuid
 
 import pytest
 
 from openproject_ce_mcp.client import OpenProjectClient, PermissionDeniedError
+
+from .conftest import disposable_project_identifier
 
 pytestmark = pytest.mark.integration
 
@@ -58,7 +59,7 @@ async def test_create_and_update_membership_in_fresh_project(
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
 
-    new_identifier = f"integration-test-{uuid.uuid4().hex[:8]}"
+    new_identifier = disposable_project_identifier()
     create_project_result = await unrestricted_client.create_project(
         name=f"[integration-test] {new_identifier}", identifier=new_identifier, confirm=True
     )
@@ -98,7 +99,7 @@ async def test_delete_membership_in_fresh_project(client: OpenProjectClient, pro
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
 
-    new_identifier = f"integration-test-{uuid.uuid4().hex[:8]}"
+    new_identifier = disposable_project_identifier()
     create_project_result = await unrestricted_client.create_project(
         name=f"[integration-test] {new_identifier}", identifier=new_identifier, confirm=True
     )
@@ -134,7 +135,7 @@ async def test_update_membership_denied_outside_write_allowlist(
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
 
-    other_identifier = f"integration-test-{uuid.uuid4().hex[:8]}"
+    other_identifier = disposable_project_identifier()
     create_project_result = await unrestricted_client.create_project(
         name=f"[integration-test] {other_identifier}", identifier=other_identifier, confirm=True
     )

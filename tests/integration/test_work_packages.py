@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import dataclasses
-import uuid
 from types import SimpleNamespace
 
 import pytest
 
 from openproject_ce_mcp import tools
 from openproject_ce_mcp.client import OpenProjectClient, PermissionDeniedError
+
+from .conftest import disposable_project_identifier
 
 pytestmark = pytest.mark.integration
 
@@ -110,11 +111,16 @@ async def test_get_work_package_ancestors_tolerate_missing_display_id(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
     """Regression: WorkPackageDetail.ancestors/children entries were typed as
-    dict[str, str], but OpenProject only includes displayId on hierarchy
-    links in 17.5+ semantic mode -- on a classic/pre-17.5 instance (like this
-    one, seeded with classic identifiers) display_id is None, and the MCP
-    output schema used to reject that null outright, crashing get_work_package
-    for any work package with ancestors."""
+    dict[str, str], but OpenProject only includes displayId on hierarchy links
+    in 17.5+ semantic mode -- on a classic/pre-17.5 instance (or 17.5+ running
+    in classic mode) display_id is None, and the MCP output schema used to
+    reject that null outright, crashing get_work_package for any work package
+    with ancestors. This test's own instance can be running with either
+    semantic mode ON or OFF (both are valid configurations of this suite's
+    Docker harness -- see docker/test/up.sh's SEED_SEMANTIC per service), so
+    the actual regression being guarded against is "doesn't crash either
+    way," not "display_id is always None": assert display_id is well-typed
+    (None or str) rather than assuming one specific value."""
     parent = await client.create_work_package(
         project=test_project,
         type="Task",
@@ -137,13 +143,13 @@ async def test_get_work_package_ancestors_tolerate_missing_display_id(
     assert wp.ancestors
     parent_href_fragment = f"/work_packages/{parent.work_package_id}"
     ancestor = next(a for a in wp.ancestors if a.get("href", "").endswith(parent_href_fragment))
-    assert ancestor["display_id"] is None  # classic instance: no displayId on hierarchy links
+    assert ancestor["display_id"] is None or isinstance(ancestor["display_id"], str)
 
     parent_wp = await client.get_work_package(parent.work_package_id)
     assert parent_wp.children
     child_href_fragment = f"/work_packages/{child.work_package_id}"
     child_link = next(c for c in parent_wp.children if c.get("href", "").endswith(child_href_fragment))
-    assert child_link["display_id"] is None
+    assert child_link["display_id"] is None or isinstance(child_link["display_id"], str)
 
 
 async def test_create_and_update_work_package_deny_reparent_into_write_restricted_parent(
@@ -161,7 +167,7 @@ async def test_create_and_update_work_package_deny_reparent_into_write_restricte
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
 
-    other_identifier = f"integration-test-{uuid.uuid4().hex[:8]}"
+    other_identifier = disposable_project_identifier()
     create_project_result = await unrestricted_client.create_project(
         name=f"[integration-test] {other_identifier}", identifier=other_identifier, confirm=True
     )
@@ -263,6 +269,60 @@ async def test_add_work_package_comment(client: OpenProjectClient, test_project:
 
     activities = await client.get_work_package_activities(result.work_package_id)
     assert activities.count > 0
+
+
+async def test_get_work_package_activities_includes_creation_and_comment(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """Dedicated test for get_work_package_activities itself (previously only
+    ever exercised as a side-effect assertion inside other tests, e.g.
+    test_add_work_package_comment above) -- checks the actual activity
+    shape, not just a non-zero count."""
+    result = await client.create_work_package(
+        project=test_project,
+        type="Task",
+        subject=f"{_SUBJECT} get-activities-test",
+        confirm=True,
+    )
+    assert result.ready
+    wp_ids.append(result.work_package_id)
+
+    # Work package creation itself generates at least one activity (a
+    # "created" system journal entry) with no comment call needed.
+    activities = await client.get_work_package_activities(result.work_package_id)
+    assert activities.count >= 1
+    created_activity = activities.results[0]
+    assert created_activity.id > 0
+    # The initial "created" activity's `user` field itself is None here (the
+    # author instead shows up as an "Author set to ..." entry in `details`) --
+    # not a bug, just this specific activity's real shape.
+    assert created_activity.created_at is not None
+    assert created_activity.details
+
+    comment = await client.add_work_package_comment(
+        work_package_id=result.work_package_id,
+        comment="Integration test comment for get_work_package_activities",
+        confirm=True,
+    )
+    assert comment.ready, comment.validation_errors
+
+    # OpenProject can aggregate a fresh comment into the still-recent "created"
+    # journal entry instead of always creating a new one (confirmed live: count
+    # stayed the same here, with the existing entry's own `comment` field
+    # populated instead) -- so >= growth, not exact +1, is the only safe assertion.
+    after_comment = await client.get_work_package_activities(result.work_package_id)
+    assert after_comment.count >= activities.count
+    # get_work_package_activities returns newest-first (client.py's own
+    # docstring), so the comment's own entry is results[0] -- UNLESS
+    # OpenProject aggregated it into the existing "created" entry instead of
+    # creating a new one (see the comment above), in which case that same
+    # still-newest entry is still results[0], just with `comment` now
+    # populated on it. Either way the newest entry is the one to check, never
+    # results[-1] (the oldest), which only happened to hold the comment by
+    # coincidence when aggregation kept the list at a single element.
+    newest = after_comment.results[0]
+    assert newest.comment is not None
+    assert "Integration test comment for get_work_package_activities" in newest.comment
 
 
 async def test_bulk_create_work_packages_rejects_unknown_item_field(

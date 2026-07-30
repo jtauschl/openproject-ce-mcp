@@ -7,10 +7,37 @@ development baseline.
 
 ---
 
-## Unreleased
+## [Unreleased 0.3.5]
+
+### Added
+
+- **`create_time_entry_until`/`update_time_entry_until`** let a caller specify
+  `start_time`+`end_time` instead of `hours` directly; the exact duration
+  between them is computed locally and sent as `hours` (`end_time` itself is
+  never sent to OpenProject, which rejects it — see the `end_time` removal
+  below). `create_time_entry_until` has no `ongoing` parameter (a time entry
+  with a known end time is complete, not still running); `update_time_entry_until`
+  always sets `ongoing=false`. `hours`'s ISO 8601 duration validation
+  (`ISO8601_DURATION_RE`) now also accepts an optional fractional-second
+  component (e.g. `PT7H30M15.5S`), matching what OpenProject's own
+  server-side duration parser (the `iso8601` gem) actually accepts — this
+  also widens what `hours` accepts on the existing `create_time_entry`/
+  `update_time_entry`.
 
 ### Fixed
 
+- **`lock_user` and `mark_notification_read`/`mark_all_notifications_read`
+  no longer fail with a `406` error** ("Missing content-type header").
+  These are bodyless POST requests; without an explicit (empty) JSON body,
+  the underlying HTTP client sent no `Content-Type` header at all, which
+  OpenProject's API rejects even though the request carries no real data.
+- **`create_user` with a `password` no longer silently fails to create the
+  user.** OpenProject's own create-form response never echoes `password`
+  back (a security precaution), and the write was committing that form
+  response verbatim — dropping the password even though the original
+  request had passed validation, so the actual write failed server-side
+  with "Password can't be blank." despite the preview reporting the request
+  as valid.
 - **`create_time_entry`/`update_time_entry` no longer accept an `end_time`
   parameter.** OpenProject's own API schema marks `end_time` as read-only
   (computed from `start_time` + `hours`), and its server-side representer has

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import dataclasses
-import uuid
 
 import pytest
 
 from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient, PermissionDeniedError
+
+from .conftest import disposable_project_identifier
 
 pytestmark = pytest.mark.integration
 
@@ -28,7 +29,7 @@ async def test_create_relation_denied_when_target_outside_write_allowlist(
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
 
-    other_identifier = f"integration-test-{uuid.uuid4().hex[:8]}"
+    other_identifier = disposable_project_identifier()
     create_project_result = await unrestricted_client.create_project(
         name=f"[integration-test] {other_identifier}", identifier=other_identifier, confirm=True
     )
@@ -133,7 +134,7 @@ async def test_list_relations_hides_relation_outside_read_allowlist(
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
 
-    other_identifier = f"integration-test-{uuid.uuid4().hex[:8]}"
+    other_identifier = disposable_project_identifier()
     create_project_result = await unrestricted_client.create_project(
         name=f"[integration-test] {other_identifier}", identifier=other_identifier, confirm=True
     )
@@ -224,7 +225,10 @@ async def test_update_relation_changes_description(
         relation_id=relation_id, description="updated by integration test", confirm=True
     )
     assert updated.confirmed
-    assert updated.result.description == "updated by integration test"
+    # description is wrapped in <user-content> delimiters (prompt-injection
+    # boundary marker for user-supplied text), same as every other free-text
+    # field this server normalizes.
+    assert updated.result.description == "<user-content>updated by integration test</user-content>"
 
 
 async def test_delete_relation_denied_outside_write_allowlist(

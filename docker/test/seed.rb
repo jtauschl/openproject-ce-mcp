@@ -60,6 +60,61 @@ if wp_role
   log("admin is a member of tst with role #{wp_role.name}")
 end
 
+# Instance-wide setting: without this, OpenProject silently discards any
+# `startTime` written to a time entry (TimeEntry.can_track_start_and_end_time?
+# stays false) instead of storing it or rejecting it -- integration tests for
+# create_time_entry/update_time_entry/create_time_entry_until/
+# update_time_entry_until's start_time/end_time handling can't meaningfully
+# assert anything without this being on.
+unless Setting.allow_tracking_start_and_end_times?
+  Setting.allow_tracking_start_and_end_times = true
+  log("enabled allow_tracking_start_and_end_times")
+else
+  log("allow_tracking_start_and_end_times already enabled")
+end
+
+# Instance-wide setting: OFF by default in a fresh OpenProject install --
+# without it, Users::DeleteContract.deletion_allowed? always returns false
+# for an admin-initiated delete, and delete_user fails with a 403
+# "may not be accessed" that has nothing to do with this MCP server's own
+# write-allowlist logic. Needed for delete_user's integration test to
+# exercise the real DELETE /users/{id} endpoint at all.
+unless Setting.users_deletable_by_admins?
+  Setting.users_deletable_by_admins = true
+  log("enabled users_deletable_by_admins")
+else
+  log("users_deletable_by_admins already enabled")
+end
+
+# Per-user notification setting: the admin's default global NotificationSetting
+# has watched=true but work_package_commented=false -- being a watcher alone
+# does NOT trigger an in-app notification for a new comment; the specific
+# work_package_commented flag must also be on. Needed for
+# test_mark_notification_read_confirmed_roundtrip (a genuinely triggered,
+# then confirmed-read notification) to have anything real to mark read.
+notification_setting = NotificationSetting.find_or_initialize_by(user_id: admin.id, project_id: nil)
+if notification_setting.work_package_commented
+  log("admin already has work_package_commented notifications enabled")
+else
+  notification_setting.work_package_commented = true
+  notification_setting.save!
+  log("enabled work_package_commented notifications for admin")
+end
+
+# Instance-wide setting: OpenProject batches/delays journal aggregation by
+# this many minutes (default: 5) before a Notifications::WorkflowJob for a
+# new comment actually fires -- verified live via GoodJob::Job records
+# (Journals::CompletedJob's scheduled_at is created_at + this setting's
+# value). Without setting this to 0, a test that waits a realistic handful
+# of seconds for a real notification (e.g.
+# test_mark_notification_read_confirmed_roundtrip) can never see it appear.
+if Setting.journal_aggregation_time_minutes.to_i.zero?
+  log("journal_aggregation_time_minutes already 0")
+else
+  Setting.journal_aggregation_time_minutes = 0
+  log("set journal_aggregation_time_minutes to 0")
+end
+
 if project.work_packages.empty?
   type = project.types.first || Type.first
   status = Status.respond_to?(:default) && Status.default ? Status.default : Status.first
@@ -76,6 +131,52 @@ if project.work_packages.empty?
   log("created work package id=#{wp.id} display_id=#{display}")
 else
   log("project TST already has work packages")
+end
+
+# A freshly wiki-module-enabled project has zero wiki pages -- get_wiki_page
+# has no create/list counterpart in this server's API to seed one through, so
+# integration tests need a pre-existing page here.
+#
+# WikiPage#text= takes a raw String on OpenProject 16.6 (a plain `text` column
+# on wiki_pages itself), but a WikiContent instance on 17.x (content moved to
+# a separate, versioned/journaled association). Check for the constant rather
+# than branching on version number, since that's the actual thing that
+# differs.
+if project.wiki && project.wiki.pages.empty?
+  page = WikiPage.create!(wiki: project.wiki, title: "Seed wiki page", author: admin)
+  page.text = if defined?(WikiContent)
+    WikiContent.new(text: "Seeded content for integration tests.", author: admin)
+  else
+    "Seeded content for integration tests."
+  end
+  page.save!
+  log("created wiki page id=#{page.id} title=#{page.title}")
+else
+  log("project TST already has wiki pages (or no wiki)")
+end
+
+# get_project_phase/get_project_phase_definition have no list/create endpoint
+# in this server's API -- a project has zero Project::Phase rows by default
+# (they're an opt-in "life cycle" concept, not automatically present), so
+# integration tests need one pre-existing here. Project::PhaseDefinition rows
+# ARE instance-wide and pre-seeded by OpenProject itself (Initiating/Planning/
+# Executing/Closing) -- only the per-project Phase instance needs creating.
+if defined?(Project::Phase) && Project::Phase.where(project_id: project.id).empty?
+  definition = Project::PhaseDefinition.first
+  if definition
+    phase = Project::Phase.create!(
+      project: project,
+      definition_id: definition.id,
+      active: true,
+      start_date: Date.today,
+      finish_date: Date.today + 7
+    )
+    log("created project phase id=#{phase.id} definition=#{definition.name}")
+  else
+    log("no Project::PhaseDefinition exists on this instance -- skipping project phase seed")
+  end
+else
+  log("project TST already has a project phase (or Project::Phase model unavailable)")
 end
 
 # --- Semantic identifiers (17.5+, opt-in) -------------------------------------
