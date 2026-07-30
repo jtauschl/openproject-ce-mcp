@@ -2,14 +2,14 @@
 
 No `httpx` import (depends on the `Transport` Protocol only).
 
-`_normalize_validation_errors`/`_extract_formattable_text` here are ported
-from client.py's MODULE-LEVEL versions (client.py:6986-6998, 7071-7074), NOT
-copied from HttpxMembershipApi's local copy -- the two genuinely differ:
-client.py's module-level version tries `_extract_formattable_text` first,
+`normalize_form_validation_errors` (from `_text.py`) is client.py's own
+MODULE-LEVEL `_normalize_validation_errors` (client.py:6986-6998, 7071-7074),
+NOT HttpxMembershipApi's local copy -- the two genuinely differ:
+client.py's module-level version tries formattable-text extraction first,
 then `entry.get("message")`, then a raw trim fallback; Memberships' local
-copy skips the `_extract_formattable_text` branch entirely. client.py's
-original create_grid/update_grid used the module-level version (grids never
-had their own local copy in the flat code), so this adapter ports that exact
+copy skips the formattable-text branch entirely. client.py's original
+create_grid/update_grid used the module-level version (grids never had their
+own local copy in the flat code), so this adapter uses that exact
 three-branch shape to stay behaviorally equivalent.
 """
 
@@ -23,28 +23,8 @@ from ..api_href import api_href as _api_href
 from ..ports.grid_api import GridFormResult, GridRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
+from ._text import normalize_form_validation_errors as _normalize_validation_errors
 from ._text import trim_text as _trim_text
-
-
-def _extract_formattable_text(value: Any, *, limit: int) -> str | None:
-    if isinstance(value, dict):
-        return _trim_text(value.get("raw") or value.get("html"), limit=limit)
-    return _trim_text(value, limit=limit)
-
-
-def _normalize_validation_errors(value: Any) -> dict[str, str]:
-    if not isinstance(value, dict):
-        return {}
-    normalized: dict[str, str] = {}
-    for key, entry in value.items():
-        message = _extract_formattable_text(entry, limit=SUBJECT_LIMIT)
-        if message is None and isinstance(entry, dict):
-            message = _trim_text(entry.get("message"), limit=SUBJECT_LIMIT)
-        if message is None:
-            message = _trim_text(entry, limit=SUBJECT_LIMIT)
-        if message:
-            normalized[str(key)] = message
-    return normalized
 
 
 def normalize_grid(payload: dict[str, Any], *, api_prefix: str) -> GridSummary:

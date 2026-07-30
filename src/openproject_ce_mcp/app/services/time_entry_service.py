@@ -14,16 +14,15 @@ here); `create` fetches the work package itself via
 the same pattern `get`/`update`/`delete` use on the time entry's own project
 link.
 
-No shared `_write_outcome.py`/`_finalize_write` state machine: `create`/
-`update` go through OpenProject's own `<domain>/form` endpoint (unlike
-Relations, which has none), but `_finalize_write` remains a `client.py`-
-private helper with 1 remaining direct caller (`_finalize_work_package_write`,
-itself feeding 3 still-flat Work Package methods) after this migration --
-below this project's own "3+ identical copies" unification threshold for an
-`app/services/` extraction while Work Packages/Attachments stay flat. This
-Service inlines the identical 3-way rejected/preview/committed branching
-itself (`_finalize_from_form` below), evaluating OpenProject's own
-CreateFormAPI/UpdateFormAPI response directly.
+Uses the shared `app/services/_write_outcome.py` state machine (`_finalize_write`),
+same as `GridService` -- both go through a `<domain>/form` endpoint with an
+identical rejected/preview/committed shape. Found during this migration's own
+step-6 self-audit: the module previously argued against reuse by citing
+client.py's flat, private `_finalize_write` helper (a different function, one
+that stays in client.py feeding the still-flat Work Package/Attachment
+methods) rather than this already-extracted, generic `app/services/` version
+-- that reasoning was a mix-up, not a real distinction; `_to_write_result`
+below mirrors `GridService`'s identical mapper.
 
 Read/write scope reuses `"work_package"` (not a dedicated `"time_entry"`
 scope) -- verbatim behavior of client.py's `_ensure_read_enabled`/
@@ -86,6 +85,7 @@ from ..ports.user_api import UserApi
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import WorkPackageIdResolver
 from ..resolvers.project_query import fetch_project_page
+from ._write_outcome import _finalize_write
 
 _FALLBACK_ERRORS = (NotFoundError, PermissionDeniedError, OpenProjectServerError)
 
@@ -396,17 +396,23 @@ class TimeEntryService:
             activity_project_id=activity_project_id,
         )
         form = await self._api.validate_create(payload)
-        return await self._finalize_from_form(
-            form,
-            action="create",
+        parsed = self._api.parse_form_result(form)
+        outcome = await _finalize_write(
             confirm=confirm,
-            project_name=project_name,
-            time_entry_id=None,
+            payload=parsed.payload,
+            validation_errors=parsed.validation_errors,
+            identity={"time_entry_id": None, "project": project_name},
+            ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
+            commit=lambda _payload: self._api.create(payload),
+            committed_identity=lambda record: {
+                "time_entry_id": record.summary().id,
+                "project": record.summary().project,
+            },
             rejected_message="OpenProject rejected the proposed time entry. Fix the validation errors before confirming.",
             preview_message="OpenProject validated the time entry. Ask for confirmation, then call again with confirm=true to create it.",
             success_message="Time entry created successfully.",
-            commit=lambda: self._api.create(payload),
         )
+        return self._to_write_result("create", outcome)
 
     async def update(
         self,
@@ -442,76 +448,35 @@ class TimeEntryService:
             activity_project_id=project_id,
         )
         form = await self._api.validate_update(time_entry_id, payload)
-        return await self._finalize_from_form(
-            form,
-            action="update",
+        parsed = self._api.parse_form_result(form)
+        outcome = await _finalize_write(
             confirm=confirm,
-            project_name=project_name,
-            time_entry_id=time_entry_id,
+            payload=parsed.payload,
+            validation_errors=parsed.validation_errors,
+            identity={"time_entry_id": time_entry_id, "project": project_name},
+            ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
+            commit=lambda _payload: self._api.update(time_entry_id, payload),
+            committed_identity=lambda record: {
+                "time_entry_id": record.summary().id,
+                "project": record.summary().project,
+            },
             rejected_message="OpenProject rejected the proposed time entry changes. Fix the validation errors before confirming.",
             preview_message="OpenProject validated the time entry. Ask for confirmation, then call again with confirm=true to update it.",
             success_message="Time entry updated successfully.",
-            commit=lambda: self._api.update(time_entry_id, payload),
         )
+        return self._to_write_result("update", outcome)
 
-    async def _finalize_from_form(
-        self,
-        form: dict[str, Any],
-        *,
-        action: str,
-        confirm: bool,
-        project_name: str | None,
-        time_entry_id: int | None,
-        rejected_message: str,
-        preview_message: str,
-        success_message: str,
-        commit: Any,
-    ) -> TimeEntryWriteResult:
-        parsed = self._api.parse_form_result(form)
-        payload = parsed.payload
-        validation_errors = parsed.validation_errors
-        ready = not validation_errors
-
-        if not ready:
-            return TimeEntryWriteResult(
-                action=action,
-                confirmed=False,
-                requires_confirmation=not confirm,
-                ready=False,
-                message=rejected_message,
-                time_entry_id=time_entry_id,
-                project=project_name,
-                payload=payload,
-                validation_errors=validation_errors,
-                result=None,
-            )
-        if not confirm:
-            return TimeEntryWriteResult(
-                action=action,
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message=preview_message,
-                time_entry_id=time_entry_id,
-                project=project_name,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-        access.ensure_write_enabled("work_package", settings=self._settings)
-        record = await commit()
-        detail = self._stamp(record.summary())
+    def _to_write_result(self, action: str, outcome: Any) -> TimeEntryWriteResult:
         return TimeEntryWriteResult(
             action=action,
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message=success_message,
-            time_entry_id=detail.id,
-            project=detail.project,
-            payload=payload,
-            validation_errors={},
-            result=detail,
+            confirmed=outcome.confirmed,
+            requires_confirmation=outcome.requires_confirmation,
+            ready=outcome.ready,
+            message=outcome.message,
+            payload=outcome.payload,
+            validation_errors=outcome.validation_errors,
+            result=self._stamp(outcome.detail.summary()) if outcome.detail else None,
+            **outcome.identity,
         )
 
     async def delete(self, *, time_entry_id: int, confirm: bool = False) -> TimeEntryWriteResult:

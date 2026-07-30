@@ -11,13 +11,19 @@ Boards' step-6 self-audit. `origin_from_url` moved to the package-root
 `BoardService` needed the identical same-origin check but `services` cannot
 import from `adapters` -- re-exported here unchanged so every existing
 `from ._text import origin_from_url` import keeps working.
-Deliberately excludes `_normalize_validation_errors` and `_extract_formattable_text`:
-those differ meaningfully between adapters (e.g. httpx_project_api.py's
-validation-error path calls a `_with_meta` variant, httpx_membership_api.py's
-skips the formattable-text-first branch) and are not safe to unify without
-changing behavior -- kept as adapter-local, near-identical-but-not-identical
-code, per this project's standing "don't unify what isn't truly the same"
-principle.
+Deliberately excludes most `_normalize_validation_errors`/
+`_extract_formattable_text` variants: several differ meaningfully between
+adapters (e.g. httpx_project_api.py's validation-error path calls a
+`_with_meta` variant, httpx_membership_api.py's skips the
+formattable-text-first branch) and are not safe to unify without changing
+behavior -- kept as adapter-local, near-identical-but-not-identical code, per
+this project's standing "don't unify what isn't truly the same" principle.
+`normalize_form_validation_errors` below is the one exception: it's the exact
+three-branch shape client.py's own MODULE-LEVEL `_normalize_validation_errors`
+used (not a per-adapter local copy), ported byte-identically into both
+httpx_grid_api.py and httpx_time_entry_api.py -- found as a 3rd identical copy
+(client.py's original counts as the first) during the Time Entries migration's
+step-6 self-audit.
 
 `slug_from_href` was added here once a step-6 self-audit (during the Query
 Metadata migration) found it byte-identical across httpx_action_capability_api.py
@@ -112,6 +118,33 @@ def delimit_user_content(text: str | None) -> str | None:
 
 def can_update_from_links(links: dict[str, Any]) -> bool:
     return "update" in links or "updateImmediately" in links
+
+
+def _extract_formattable_text(value: Any, *, limit: int) -> str | None:
+    if isinstance(value, dict):
+        return trim_text(value.get("raw") or value.get("html"), limit=limit)
+    return trim_text(value, limit=limit)
+
+
+def normalize_form_validation_errors(value: Any, *, limit: int = SUBJECT_LIMIT) -> dict[str, str]:
+    """Ported from client.py's MODULE-LEVEL `_normalize_validation_errors` (not
+    a per-adapter local copy): try formattable-text extraction, then
+    `entry.get("message")`, then a raw trim fallback. Used by Grids' and Time
+    Entries' `create`/`update` form-validation responses -- both had this
+    exact three-branch shape in the pre-migration flat code.
+    """
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, str] = {}
+    for key, entry in value.items():
+        message = _extract_formattable_text(entry, limit=limit)
+        if message is None and isinstance(entry, dict):
+            message = trim_text(entry.get("message"), limit=limit)
+        if message is None:
+            message = trim_text(entry, limit=limit)
+        if message:
+            normalized[str(key)] = message
+    return normalized
 
 
 def link_to_web_url(href: str | None, *, base_url: str, origin: str) -> str | None:

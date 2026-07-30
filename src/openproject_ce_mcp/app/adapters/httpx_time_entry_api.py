@@ -2,9 +2,14 @@
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`id_from_href`/`link_title`/`delimit_user_content`/
-`web_url`/`SUBJECT_LIMIT` come from `app/adapters/_text.py` -- verified
-against the pre-migration flat client.py's original `normalize_time_entry`/
-`normalize_time_entry_activity`.
+`web_url`/`SUBJECT_LIMIT`/`normalize_form_validation_errors` come from
+`app/adapters/_text.py` -- verified against the pre-migration flat client.py's
+original `normalize_time_entry`/`normalize_time_entry_activity`.
+`normalize_form_validation_errors` is client.py's own MODULE-LEVEL
+`_normalize_validation_errors` (the exact three-branch shape
+create_time_entry/update_time_entry used), shared with Grids' identical
+situation -- unified into `_text.py` during this migration's step-6
+self-audit once it became a 3rd identical copy.
 
 Unlike `normalize_relation`, `normalize_time_entry_raw`/
 `normalize_time_entry_activity_raw` here are DELIBERATELY split from the
@@ -40,35 +45,9 @@ from ._text import SUBJECT_LIMIT
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
+from ._text import normalize_form_validation_errors as normalize_validation_errors
 from ._text import trim_text as _trim_text
 from ._text import web_url as _web_url
-
-
-def normalize_validation_errors(value: Any) -> dict[str, str]:
-    """Ported from client.py's MODULE-LEVEL `_normalize_validation_errors`
-    (not a per-adapter local copy) -- `create_time_entry`/`update_time_entry`
-    used the module-level three-branch version (try formattable-text extraction,
-    then `entry.get("message")`, then a raw trim fallback), matching Grids'
-    identical situation (see httpx_grid_api.py's module docstring).
-    """
-    if not isinstance(value, dict):
-        return {}
-    normalized: dict[str, str] = {}
-    for key, entry in value.items():
-        message = _extract_formattable_text(entry)
-        if message is None and isinstance(entry, dict):
-            message = _trim_text(entry.get("message"), limit=SUBJECT_LIMIT)
-        if message is None:
-            message = _trim_text(entry, limit=SUBJECT_LIMIT)
-        if message:
-            normalized[str(key)] = message
-    return normalized
-
-
-def _extract_formattable_text(value: Any) -> str | None:
-    if isinstance(value, dict):
-        return _trim_text(value.get("raw") or value.get("html"), limit=SUBJECT_LIMIT)
-    return _trim_text(value, limit=SUBJECT_LIMIT)
 
 
 def normalize_time_entry_raw(payload: dict[str, Any], *, base_url: str, text_limit: int | None) -> TimeEntrySummary:
