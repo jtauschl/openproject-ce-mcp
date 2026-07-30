@@ -4541,6 +4541,50 @@ async def test_get_job_status_checks_source_project_link_when_no_project_link() 
 
 
 @pytest.mark.asyncio
+async def test_get_job_status_rejects_malformed_project_link_instead_of_falling_back_to_source_project() -> None:
+    """A falsy-but-present "project" link (here: {}) is malformed, not
+    absent -- it must be classified and rejected as such, not silently
+    replaced by an allowlisted "sourceProject" link."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/job_statuses/77":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "JobStatus",
+                    "id": 77,
+                    "status": "in_progress",
+                    "_links": {
+                        "self": {"href": "/api/v3/job_statuses/77"},
+                        "project": {},
+                        "sourceProject": {"href": "/api/v3/projects/6", "title": "Demo"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("demo",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError):
+        await client.get_job_status(77)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_get_job_status_allows_source_project_link_when_allowlisted() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/job_statuses/77":
@@ -11454,6 +11498,80 @@ async def test_list_notifications_reports_truncated_under_restrictive_scope_when
 
 
 @pytest.mark.asyncio
+async def test_list_notifications_excludes_malformed_project_link_under_restrictive_scope() -> None:
+    """A structurally malformed project link (not a dict) must be denied by
+    the allowlist, not fall through to the work-package/personal branches as
+    if it were absent."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/notifications":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 1,
+                                "subject": "Malformed link",
+                                "readIAN": False,
+                                "createdAt": "2026-01-01T00:00:00Z",
+                                "_links": {"project": "not-a-dict"},
+                            },
+                            _notification_payload(2, project_href="/api/v3/projects/1", project_title="Demo"),
+                        ]
+                    },
+                    "total": 2,
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = dataclasses.replace(make_settings(), enable_personal_read=True, read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_notifications()
+
+    assert [n.id for n in result.results] == [2]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_notifications_excludes_malformed_project_link_under_wildcard_scope() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/notifications":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 1,
+                                "subject": "Malformed link",
+                                "readIAN": False,
+                                "createdAt": "2026-01-01T00:00:00Z",
+                                "_links": {"project": "not-a-dict"},
+                            },
+                            _notification_payload(2, project_href="/api/v3/projects/1", project_title="Demo"),
+                        ]
+                    },
+                    "total": 2,
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = dataclasses.replace(make_settings(), enable_personal_read=True, read_projects=("*",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_notifications()
+
+    assert [n.id for n in result.results] == [2]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_reminders_returns_empty_without_a_request_under_empty_read_projects() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         raise AssertionError("no request must be issued when read_projects is empty")
@@ -14385,7 +14503,7 @@ async def test_file_link_delete_uses_container_work_package_link_shape() -> None
 
 @pytest.mark.asyncio
 async def test_file_link_delete_denies_when_container_unresolvable_even_under_wide_open_write_scope() -> None:
-    """OPM-359: a file link with no resolvable container has no verifiable
+    """A file link with no resolvable container has no verifiable
     project association -- deleting it must be denied even under
     write_projects=("*",), not silently allowed with work_package_id=None."""
 
@@ -15738,7 +15856,7 @@ async def test_create_time_entry_resolves_activity_via_entity_link_when_work_pac
     await client.aclose()
 
 
-# --- _classify_project_link / _ensure_project_link_allowed (OPM-359) --------
+# --- _classify_project_link / _ensure_project_link_allowed -------------------
 
 
 def test_classify_project_link_resolved() -> None:

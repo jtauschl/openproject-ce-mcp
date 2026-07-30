@@ -688,13 +688,17 @@ class OpenProjectClient:
         safe_id = _reject_path_traversal_segments(job_status_id, field_name="job_status_id")
         payload = await self._get(f"job_statuses/{quote(safe_id, safe='')}")
         links = _job_status_inner_links(payload)
-        project_link = links.get("project") or links.get("sourceProject")
-        # OPM-359: a job status's project link is genuinely optional (most
-        # jobs aren't project-copy jobs at all) -- use the OPTIONAL-project-
-        # link contract, and always call it (not only when project_link
-        # happens to already be a dict): the previous `isinstance` guard
-        # meant a missing link was unconditionally allowed regardless of
-        # scope, weaker than the equivalent 0.4.0 architecture-line behavior.
+        # Select by absence, not truthiness: a falsy-but-present "project"
+        # value (e.g. {}, "", []) is a malformed link, distinct from a
+        # genuinely absent one, and must reach the scope policy as such
+        # rather than being replaced by "sourceProject".
+        project_link = links.get("project")
+        if project_link is None:
+            project_link = links.get("sourceProject")
+        # A job status's project link is genuinely optional (most jobs
+        # aren't project-copy jobs at all) -- use the OPTIONAL-project-link
+        # contract, called unconditionally so a malformed value is
+        # classified and rejected rather than silently passed through.
         self._ensure_project_link_allowed_if_present(project_link)
         detail = self.normalize_job_status(payload)
         created_project_link = links.get("createdProject")
@@ -1155,7 +1159,7 @@ class OpenProjectClient:
     async def get_membership(self, membership_id: int) -> MembershipSummary:
         self._ensure_read_enabled("membership")
         payload = await self._get(f"memberships/{membership_id}")
-        # OPM-359: a Membership's project link is genuinely optional (global
+        # A Membership's project link is genuinely optional (global
         # memberships have no project association at all) -- use the
         # OPTIONAL-project-link contract, not the required one.
         self._ensure_project_link_allowed_if_present(payload.get("_links", {}).get("project"))
@@ -3693,13 +3697,11 @@ class OpenProjectClient:
             },
         )
         raw_elements = payload.get("_embedded", {}).get("elements", [])
-        # OPM-359: this server-paginated fast path (wide-open scope, no
-        # project/search filter) never called _board_payload_allowed at all
-        # -- a MALFORMED project link would have passed through completely
-        # unchecked. A missing/explicitly-empty link is still fine here (a
-        # legitimate global board, and read_projects is fully open anyway),
-        # so only MALFORMED is filtered -- the more expensive per-record
-        # allowlist candidate-matching stays skipped, since scope is open.
+        # A missing/explicitly-empty project link is fine here (a legitimate
+        # global board, and read_projects is fully open on this path anyway),
+        # but a structurally malformed one is never legitimate -- filter it
+        # out without paying for the more expensive per-record allowlist
+        # candidate-matching, which a wide-open scope doesn't need.
         filtered_elements = [
             item
             for item in raw_elements
@@ -4559,13 +4561,12 @@ class OpenProjectClient:
                 params=self._notification_params(unread_only=unread_only, offset=offset, limit=effective_limit),
             )
             elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
-            # OPM-359: this fast path used to trust every record unchecked --
-            # a structurally MALFORMED project_link would never be caught
-            # under a wide-open scope. A missing project_link is still fine
-            # here (resolved via the work-package branch or genuinely
-            # personal/global, same as the restrictive path), so only
-            # MALFORMED is filtered; the more expensive per-record allowlist
-            # candidate-matching stays skipped, since scope is open.
+            # A missing project_link is fine under a wide-open scope
+            # (resolved via the work-package branch or genuinely personal/
+            # global, same as the restrictive path), but a structurally
+            # malformed one is never legitimate -- filter it out even here,
+            # without paying for the more expensive per-record allowlist
+            # candidate-matching, which a wide-open scope doesn't need.
             elements = [
                 item
                 for item in elements
@@ -4651,7 +4652,11 @@ class OpenProjectClient:
     async def _notification_payload_allowed(self, payload: dict[str, Any], wp_cache: dict[str, bool]) -> bool:
         links = payload.get("_links", {})
         project_link = links.get("project")
-        if isinstance(project_link, dict):
+        # Branch on presence, not dict-ness: a malformed (non-dict, non-None)
+        # project_link must still go through _ensure_project_link_allowed,
+        # which denies it -- falling through to the work-package/personal
+        # branches below would treat it as if no project link existed.
+        if project_link is not None:
             try:
                 self._ensure_project_link_allowed(project_link)
                 return True
@@ -5088,9 +5093,7 @@ class OpenProjectClient:
         # Enforce the project write allowlist against the container work package,
         # not just the global write flag. Fail closed when the container cannot be
         # resolved: an unverifiable project association must never be treated as
-        # authorized for a destructive operation, even under
-        # write_projects=("*",) (OPM-359) -- _ensure_project_write_link_allowed(None)
-        # now always denies MISSING, regardless of scope.
+        # authorized for a destructive operation, even under write_projects=("*",).
         if work_package_id:
             work_package_payload = await self._get(f"work_packages/{work_package_id}")
             self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
@@ -8125,7 +8128,7 @@ class OpenProjectClient:
         return _scope_matches_candidates(self.settings.read_projects, {project_name.casefold()})
 
     def _ensure_project_link_allowed(self, link: Any) -> None:
-        """REQUIRED-project-link contract (OPM-359): for resource types whose
+        """REQUIRED-project-link contract: for resource types whose
         representer always emits a project link (a real one, or OpenProject's
         own URN_UNDISCLOSED placeholder for an invisible-but-existing project).
         MISSING/MALFORMED/an unexpected EXPLICITLY_UNSCOPED are always denied,
@@ -8165,14 +8168,14 @@ class OpenProjectClient:
             )
 
     def _ensure_project_link_allowed_if_present(self, link: Any) -> None:
-        """OPTIONAL-project-link contract (OPM-359): for the few resource
-        types (Membership, View, Board/Query, Job Status) whose representer
+        """OPTIONAL-project-link contract: for the few resource types
+        (Membership, View, Board/Query, Job Status) whose representer
         documents an explicit empty/absent project link as normal, not
         anomalous (a global membership, an unbound view, a global query, a
-        projectless job). Preserves the exact pre-fix behavior for
-        MISSING/EXPLICITLY_UNSCOPED (`*` allows, a restrictive scope denies)
-        -- but MALFORMED is now always denied, since a structurally broken
-        link is never the same thing as "deliberately none".
+        projectless job). MISSING/EXPLICITLY_UNSCOPED are allowed under a
+        wide-open scope and denied under a restrictive one; MALFORMED is
+        always denied regardless of scope, since a structurally broken link
+        is never the same thing as "deliberately none".
         """
         state = _classify_project_link(link)
         if state is LinkState.MALFORMED:
@@ -8229,8 +8232,8 @@ class OpenProjectClient:
     def _ensure_board_payload_allowed(self, payload: dict[str, Any]) -> None:
         """A Board is an OpenProject Query under the hood, and its project
         link is genuinely optional (QueryRepresenter renders an explicit
-        empty link for a global query, OPM-359 research) -- use the
-        OPTIONAL-project-link contract.
+        empty link for a global query) -- use the OPTIONAL-project-link
+        contract.
         """
         project_link = payload.get("_links", {}).get("project")
         self._ensure_project_link_allowed_if_present(project_link)
@@ -8245,7 +8248,7 @@ class OpenProjectClient:
     def _ensure_view_payload_allowed(self, payload: dict[str, Any]) -> None:
         """A view's project link is genuinely optional (OpenProject's own
         QueryRepresenter renders an explicit empty link for an unbound/global
-        view, OPM-359 research) -- use the OPTIONAL-project-link contract.
+        view) -- use the OPTIONAL-project-link contract.
         """
         project_link = payload.get("_links", {}).get("project")
         self._ensure_project_link_allowed_if_present(project_link)
@@ -9197,7 +9200,7 @@ URN_UNDISCLOSED = "urn:openproject-org:api:v3:undisclosed"
 
 
 class LinkState(Enum):
-    """Classification of a raw HAL project-link value (OPM-359).
+    """Classification of a raw HAL project-link value.
 
     RESOLVED: a real project link ({"href": "/api/v3/projects/7", ...}).
     UNDISCLOSED: OpenProject's own URN placeholder for an existing-but-
