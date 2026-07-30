@@ -101,6 +101,7 @@ for entry in "${SEMANTIC[@]}"; do
 OPENPROJECT_BASE_URL=http://localhost:$port \\
 OPENPROJECT_API_TOKEN=$token \\
 OPENPROJECT_TEST_PROJECT=$test_project \\
+OPENPROJECT_DOCKER_SERVICE=$svc \\
 uv run pytest -m integration -v
 EOF
 done

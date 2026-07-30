@@ -111,7 +111,10 @@ async def test_update_reminder_changes_note(
         reminder_id=created.reminder_id, note="updated by integration test", confirm=True
     )
     assert updated.confirmed
-    assert updated.result.note == "updated by integration test"
+    # note is wrapped in <user-content> delimiters (prompt-injection boundary
+    # marker for user-supplied text), same as every other free-text field
+    # this server normalizes.
+    assert updated.result.note == "<user-content>updated by integration test</user-content>"
 
 
 async def test_delete_reminder_denied_outside_write_allowlist(

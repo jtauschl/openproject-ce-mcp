@@ -7,7 +7,15 @@ development baseline.
 
 ---
 
-## [Unreleased]
+## [Unreleased 0.4.0]
+
+These are fixes and features genuinely exclusive to the `release/0.4.0`
+architecture-migration branch — either only possible because of the layered
+`app/` migration itself, or not yet ported to/from `release/0.3.5`. See
+[Unreleased 0.3.5](#unreleased-035) below for changes shared with (or
+originating on) that branch; once 0.4.0 actually releases, its final
+changelog entry will be assembled from the latest released 0.3.x entry plus
+only this chapter.
 
 ### Added
 
@@ -86,22 +94,10 @@ development baseline.
   `assignee`/`responsible` validation errors indexed per item** (e.g.
   `items[0].assignee`), like every sibling field, instead of the unprefixed
   field name.
-- **Breaking: `get_user`'s `identity_url` field now reflects OpenProject's
-  real SSO identity property**, instead of duplicating the already-present
-  `url` field (both previously resolved to the identical web link). It is
-  now `null` unless the account is provisioned via SSO/OmniAuth.
-- **Hardened reads of a response's `_links` object against an explicit
-  `null`** (as opposed to the key being absent, which was already handled).
-  No confirmed case of OpenProject actually sending this has been observed;
-  this is defensive hardening, not a fix for an observed failure.
-- **`get_project` no longer crashes on a project that has a parent, and
-  `get_work_package` no longer crashes on a classic/pre-17.5 OpenProject
-  instance for a work package with ancestors/children.** Project ancestor
-  links never carry a `displayId` (that field is a work-package-only
-  concept), and work-package hierarchy links only carry `displayId` in 17.5+
-  semantic mode — either way `ancestors[].display_id`/`children[].display_id`
-  can be `null`, but the output schema required a string there and rejected
-  the `null`.
+- **`get_project` now additionally handles a project that has a parent**
+  (project ancestor links never carry a `displayId`, that field is a
+  work-package-only concept) — building on the `get_work_package`
+  ancestor/child `displayId` fix already released in 0.3.4.
 - **`configure`'s generic copy-source for MCP clients without native support
   (Zed, Continue, ...) no longer writes to `.mcp.json`** — that path is
   Claude Code's own active project config, so a non-Claude project-scoped
@@ -118,14 +114,6 @@ development baseline.
   half-written or missing file; a failure on one target no longer aborts the
   remaining ones, and the process now exits non-zero with a summary of every
   target that failed instead of silently reporting success.
-- **A project created or renamed through this server was invisible to
-  `get_work_package`/`update_work_package`/`create_work_package` (when
-  linking a `parent`) and every other project-scoped tool under a
-  restrictive `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS`,
-  until the server process restarted**, even though `get_project` and
-  `list_projects` already saw it correctly. The identifier lookup these
-  tools rely on was only ever populated once, at startup; a confirmed
-  `create_project`/`update_project` now keeps it up to date immediately.
 - **`list_work_packages` without an explicit `project` now raises a clear
   permission error instead of silently returning zero results** when it
   cannot prove the query is scoped to only the allowed projects — previously
@@ -150,6 +138,147 @@ development baseline.
   id is multi-segment (e.g. `activities/read/w3-4`); the id was previously
   extracted from only the last path segment, and the lookup itself
   percent-encoded the id's slashes into a path OpenProject rejects.
+- **Four more unguarded walk-every-server-page loops shared the same
+  hang-forever vulnerability already fixed in 0.3.4 for `list_versions`'s
+  project-scoped branch and `list_project_memberships`** (an endpoint that
+  ignores `pageSize` and returns every element regardless — verified live
+  against a project's `versions` endpoint — never triggers such a loop's
+  repeated-page termination check). A systematic sweep of this migration's
+  own code found four more affected loops, some of them a regression
+  introduced by the migration itself: the layered Versions domain's own
+  project-scoped resolver, `_resolve_sprint_id` (previously a single
+  non-looping call, unlike its 0.3.x flat equivalent),
+  `list_work_package_attachments` (previously an unbounded single fetch, not
+  a loop), and the shared `paginate_all` helper (used by
+  Documents/Views/Reminders/global Sprints). All now track seen ids/keys
+  across iterations and stop on a repeated page.
+
+### Docs
+
+- Added the missing "Notes" section to the Cursor client guide
+  (`OPENPROJECT_READ_PROJECTS`/`WRITE_PROJECTS` semantics), matching every
+  other client guide.
+- Documented the monorepo/umbrella-directory case where `configure` writes
+  to the wrong place relative to where an AI client actually opens its
+  workspace, with a troubleshooting entry for it.
+- Clarified that the VS Code/Copilot guide is about VS Code's own MCP host,
+  not a standalone "GitHub MCP server".
+
+---
+
+## [Unreleased 0.3.5]
+
+Carried over verbatim from `release/0.3.5`'s own `CHANGELOG.md` — these
+changes originate on (or are shared with) that branch, which is expected to
+release first. Do not add new entries here directly; port them from
+`release/0.3.5` instead, keeping this chapter in sync with that branch's own
+Unreleased section.
+
+### Added
+
+- **`create_time_entry_until`/`update_time_entry_until`** let a caller specify
+  `start_time`+`end_time` instead of `hours` directly; the exact duration
+  between them is computed locally and sent as `hours` (`end_time` itself is
+  never sent to OpenProject, which rejects it — see the `end_time` removal
+  below). `create_time_entry_until` has no `ongoing` parameter (a time entry
+  with a known end time is complete, not still running); `update_time_entry_until`
+  always sets `ongoing=false`. `hours`'s ISO 8601 duration validation
+  (`ISO8601_DURATION_RE`) now also accepts an optional fractional-second
+  component (e.g. `PT7H30M15.5S`), matching what OpenProject's own
+  server-side duration parser (the `iso8601` gem) actually accepts — this
+  also widens what `hours` accepts on the existing `create_time_entry`/
+  `update_time_entry`.
+
+### Fixed
+
+- **`lock_user` and `mark_notification_read`/`mark_all_notifications_read`
+  no longer fail with a `406` error** ("Missing content-type header").
+  These are bodyless POST requests; without an explicit (empty) JSON body,
+  the underlying HTTP client sent no `Content-Type` header at all, which
+  OpenProject's API rejects even though the request carries no real data.
+- **`create_user` with a `password` no longer silently fails to create the
+  user.** OpenProject's own create-form response never echoes `password`
+  back (a security precaution), and the write was committing that form
+  response verbatim — dropping the password even though the original
+  request had passed validation, so the actual write failed server-side
+  with "Password can't be blank." despite the preview reporting the request
+  as valid.
+- **`create_time_entry`/`update_time_entry` no longer accept an `end_time`
+  parameter.** OpenProject's own API schema marks `end_time` as read-only
+  (computed from `start_time` + `hours`), and its server-side representer has
+  no setter for it at all — sending it crashed the server with an internal
+  error even though preview validation reported the request as valid.
+  `start_time` remains supported and unaffected; `end_time` is still returned
+  when reading a time entry.
+
+## 0.3.4 – 2026-07-29
+
+### Fixed
+
+- **`create_work_package_relation` no longer lets a relation be created to a
+  work package outside `OPENPROJECT_WRITE_PROJECTS`.** Only the source work
+  package's project was authorized against the write allowlist; the relation
+  target was resolved read-only, letting a caller with write access to one
+  project link it to a work package in a project they could only read.
+- **`create_time_entry`/`update_time_entry` now honor
+  `OPENPROJECT_HIDE_TIME_ENTRY_FIELDS` for `start_time`/`end_time` on
+  writes**, not just reads — the only two time entry fields that previously
+  bypassed the hidden-field write check every other field already had.
+- **`create_time_entry`/`update_time_entry` previews now reflect OpenProject's
+  own validation**, instead of always reporting `ready=true`. A locally-built
+  payload could pass this server's own field checks yet still be rejected by
+  OpenProject itself (e.g. an hours/date/activity combination its schema
+  disallows), which the previous hardcoded preview could never surface.
+- **`create_time_entry` with a named `activity` no longer fails with
+  `permission_denied` for a user who only has OpenProject's "Log own time"
+  permission** (not "Log time for other users"), even with the correct role
+  and project module configured. The activity-lookup request only carried a
+  project reference, never the target work package — which OpenProject's own
+  authorization needs to recognize a "log my own time" caller as such. It now
+  carries the work package reference whenever it's already known, matching
+  what the real time entry write already sends.
+- **`get_work_package` no longer crashes on classic/pre-17.5 OpenProject
+  instances (or on ancestor/child links OpenProject didn't tag with a display
+  ID) with a schema validation error.** Hierarchy links were rejected as
+  invalid whenever OpenProject omitted a display ID for them, which it always
+  does for pre-17.5 instances.
+- **`list_capabilities`'s `context` filter rejected every request on
+  OpenProject 16.x with "Filters Context malformed value"**, the same
+  regression already fixed once and since reintroduced. Reverted again to the
+  project-prefixed form, the only one that works across the full supported
+  version range (16.0-17.6).
+- **`get_query_sort_by` returned a 404 on every OpenProject version.** The
+  request path used the raw sort-by id verbatim; OpenProject's actual route
+  requires a hyphen-joined id-direction pair instead.
+- **`get_work_package_relations`/`list_relations` no longer silently
+  truncate results to OpenProject's server-side default page size.** Neither
+  request specified a page size, so any relation beyond that default was
+  permanently unreachable regardless of the requested offset/limit.
+- **`list_project_memberships` no longer silently truncates results to
+  OpenProject's server-side default page size**, the same gap as the
+  relations fix above.
+- **`list_groups`'s `member_count` no longer always reports 0.** OpenProject
+  exposes a group's membership differently depending on the endpoint: a
+  single-item lookup embeds a flat member list, while the group listing
+  only ever carries a bare array of member links — only the single-item
+  shape was recognized at first, and a follow-up fix added recognition of
+  the listing's own shape too, so `member_count` is now correct from both
+  endpoints.
+- **A parent-project picklist (`get_project_admin_context`) no longer
+  returns full project details (including description) for every candidate,
+  and no longer includes a candidate outside `OPENPROJECT_READ_PROJECTS`.**
+  Candidates are now a lightweight reference, filtered by the same read
+  allowlist every other project-returning path already applies.
+- **`list_views`/`list_documents`/`list_versions`/`list_sprints` (including
+  project-scoped and search variants) no longer silently cap results at a
+  fixed maximum, hiding any item beyond it.** All four now walk every server
+  page instead of fetching a single bounded page.
+- **`list_capabilities`'s `capability_id` lookup no longer 404s, and
+  `CapabilitySummary.id` is no longer collapsed onto the same value for
+  every capability in a given project/user context.** A capability's real
+  id is multi-segment (e.g. `activities/read/w3-4`); the id was previously
+  extracted from only the last path segment, and the lookup itself
+  percent-encoded the id's slashes into a path OpenProject rejects.
 - **`get_job_status`'s `job_status_id` is no longer always `null` on a real
   OpenProject instance.** Job status ids are UUID strings, never a plain
   integer, on every supported version; the field is now typed and returned
@@ -165,26 +294,95 @@ development baseline.
   A sub-collection endpoint that returns every element regardless of the
   requested page size (verified live: a project's `versions` endpoint) used
   to make the walk-every-page loop's termination condition never trigger,
-  looping forever; a repeated-page check now stops it. A systematic sweep
-  for the same pattern found four more affected loops sharing this
-  vulnerability, some of them a regression introduced by this migration
-  itself: the layered Versions domain's own project-scoped resolver,
-  `_resolve_sprint_id` (previously a single non-looping call, unlike its
-  0.3.x flat equivalent), `list_work_package_attachments` (previously an
-  unbounded single fetch, not a loop), and the shared `paginate_all` helper
-  (used by Documents/Views/Reminders/global Sprints). All now track seen
-  ids/keys across iterations and stop on a repeated page.
-
-### Docs
-
-- Added the missing "Notes" section to the Cursor client guide
-  (`OPENPROJECT_READ_PROJECTS`/`WRITE_PROJECTS` semantics), matching every
-  other client guide.
-- Documented the monorepo/umbrella-directory case where `configure` writes
-  to the wrong place relative to where an AI client actually opens its
-  workspace, with a troubleshooting entry for it.
-- Clarified that the VS Code/Copilot guide is about VS Code's own MCP host,
-  not a standalone "GitHub MCP server".
+  looping forever; a repeated-page check now stops it. Found in a systematic
+  sweep for the same pattern: `list_versions`'s project-scoped branch (and
+  its `_resolve_version_id` caller) and `list_project_memberships` had the
+  identical unguarded loop shape, reached via a separate code path from the
+  already-fixed `_fetch_all_pages`/`_fetch_bounded_and_paginate` helpers.
+- **`update_reminder`/`delete_reminder` no longer fail on every call.** The
+  authorization check that runs before either write fetched a reminder by
+  requesting a single-item GET that does not exist on OpenProject's API;
+  it now finds the reminder through the reminders listing endpoint
+  instead, and correctly walks every page of it rather than only the
+  first, so a reminder past the first page is no longer misreported as
+  not found.
+- **`update_my_preferences`'s `lang` parameter no longer does nothing.**
+  Language is a property of a user account, not of that account's
+  preferences, so the previous request silently succeeded without ever
+  changing anything. The parameter has been removed together with a few
+  other fields the real API never returns; use `update_user`'s `language`
+  field to change a user's language instead.
+- **Two security gaps found during pre-release review have been closed.**
+  `list_project_memberships` could return memberships from every visible
+  project instead of just the requested one, because its own project
+  filter was silently discarded by the way the request's query parameters
+  were combined. Separately, an id passed into a handful of API paths
+  (`get_job_status`, `list_capabilities`'s `capability_id`) could contain
+  `.`/`..` path segments that survived encoding and let the request reach
+  an unintended endpoint, bypassing the allowlist check meant to guard it;
+  such ids are now rejected before the request is made. The same
+  path-traversal guard has since been extended to every other method that
+  builds a URL from a caller-supplied id (`get_user`, `get_query_filter`,
+  `get_query_column`, `get_query_operator`, `get_query_sort_by`,
+  `get_query_filter_instance_schema`, work package lookups by id, and
+  project lookups by id/identifier).
+- **`create_grid`/`update_grid`/`delete_grid` no longer skip their
+  write-allowlist check for a grid whose scope isn't a recognized project
+  or personal-page URL.** Only a `/projects/...` scope was ever checked
+  against `OPENPROJECT_WRITE_PROJECTS`; any other, unrecognized scope
+  value silently bypassed the check entirely instead of being denied.
+- **Several read-side gaps found during a wider pre-release review have
+  been closed:** the "Extended Metadata" tools (help texts, working days,
+  custom options) previously ignored their own read-enablement setting
+  entirely; `update_my_preferences` previously ignored
+  `OPENPROJECT_HIDE_USER_PREFERENCES_FIELDS`; `get_category` re-listed and
+  filtered categories in memory instead of fetching the single category
+  directly, and never checked its project against the read allowlist;
+  and `list_work_package_attachments`, `list_time_entries`, and
+  `list_grids` each fetched only a single bounded page, silently hiding
+  any result beyond it. Project/document/version descriptions, time entry
+  comments, and activity details were never marked as untrusted user
+  content, unlike every other user-supplied text field; that marking is
+  now applied consistently through a shared helper, which also newly
+  covers reminder notes, relation descriptions, and attachment
+  descriptions. Grid results never applied `OPENPROJECT_HIDE_GRID_FIELDS`
+  at all, unlike every other resource type.
+- **A number of smaller correctness fixes from the same review:** a
+  `_links` value of `null` in an API response is now normalized before
+  any field is read from it, instead of risking a crash; a user's
+  `identity_url` now reads the correct property instead of duplicating
+  their profile URL; bulk work package create/update validation errors
+  now name `assignee`/`responsible` consistently with every other field;
+  bulk work package updates now accept a `sprint` field, matching single
+  updates; a file-link write result no longer reports a fake work
+  package id of `0` when the real one can't be resolved; and a couple of
+  redundant follow-up requests (in `unlock_user` and
+  `get_work_package_relations`) have been removed.
+- **`list_notifications` no longer silently misses notifications under a
+  restrictive read scope.** With `OPENPROJECT_READ_PROJECTS` set to
+  anything other than "all projects", results are filtered after
+  fetching, so a page that happened to contain no allowed notifications
+  was previously treated as proof no more existed — it now keeps scanning
+  server pages until enough allowed notifications are found or the
+  collection is genuinely exhausted, and reports pagination metadata
+  (`truncated`/`next_offset`) accurately for both scoped and unscoped
+  requests.
+- **`list_reminders` and `list_work_package_file_links` no longer
+  silently truncate results to the server's default page size**, the
+  same gap already fixed for other listings.
+- **`list_users`/`list_groups` (name search), `list_news`, and
+  `list_versions` (project-scoped) no longer silently cap results at a
+  fixed maximum, hiding any item beyond it** — the same gap already fixed
+  for other listings, closed here for the remaining affected methods. The
+  project-scoped version listing was also switched to reading
+  OpenProject's actual (unpaginated) response shape instead of trusting
+  page parameters the server was silently ignoring. A related internal
+  cache (used to recognize a project by its identifier when checking
+  `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS`) is now built
+  from every visible project instead of only the first page, so an
+  instance with more than 500 projects no longer misses some of them.
+- **Resolving a role by name no longer requires an unnecessary lookup of
+  every role when the caller already passed a numeric role id.**
 
 ---
 

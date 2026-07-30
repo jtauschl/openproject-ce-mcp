@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import dataclasses
-import uuid
 
 import pytest
 
 from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient, PermissionDeniedError
+
+from .conftest import disposable_project_identifier
 
 pytestmark = pytest.mark.integration
 
@@ -28,7 +29,7 @@ async def test_create_relation_denied_when_target_outside_write_allowlist(
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
 
-    other_identifier = f"integration-test-{uuid.uuid4().hex[:8]}"
+    other_identifier = disposable_project_identifier()
     create_project_result = await unrestricted_client.create_project(
         name=f"[integration-test] {other_identifier}", identifier=other_identifier, confirm=True
     )
@@ -118,6 +119,49 @@ async def test_delete_relation_denied_outside_write_allowlist(
 
     # Clean up directly since the denied client couldn't remove it.
     await client.delete_relation(relation_id=relation_id, confirm=True)
+
+
+async def test_update_relation_changes_description_and_type(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    source = await client.create_work_package(
+        project=test_project, type="Task", subject="[integration-test] update_relation source", confirm=True
+    )
+    assert source.ready
+    wp_ids.append(source.work_package_id)
+    target = await client.create_work_package(
+        project=test_project, type="Task", subject="[integration-test] update_relation target", confirm=True
+    )
+    assert target.ready
+    wp_ids.append(target.work_package_id)
+
+    created = await client.create_work_package_relation(
+        work_package_id=source.work_package_id,
+        related_to_work_package_id=target.work_package_id,
+        relation_type="relates",
+        confirm=True,
+    )
+    assert created.ready
+    relation_id = created.result.id
+
+    try:
+        preview = await client.update_relation(
+            relation_id=relation_id, description="Integration test description", confirm=False
+        )
+        assert preview.requires_confirmation
+
+        updated = await client.update_relation(
+            relation_id=relation_id, description="Integration test description", relation_type="blocks", confirm=True
+        )
+        assert updated.confirmed
+        assert updated.result is not None
+        # description is wrapped in <user-content> delimiters (prompt-injection
+        # boundary marker for user-supplied text), same as every other
+        # free-text field this server normalizes.
+        assert updated.result.description == "<user-content>Integration test description</user-content>"
+        assert updated.result.type == "blocks"
+    finally:
+        await client.delete_relation(relation_id=relation_id, confirm=True)
 
 
 async def test_delete_relation_removes_it(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:

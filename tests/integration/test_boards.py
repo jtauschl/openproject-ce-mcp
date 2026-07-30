@@ -9,6 +9,8 @@ import pytest
 
 from openproject_ce_mcp.client import OpenProjectClient, PermissionDeniedError
 
+from .conftest import disposable_project_identifier
+
 pytestmark = pytest.mark.integration
 
 
@@ -80,7 +82,7 @@ async def test_update_board_denies_reparent_into_write_restricted_project(
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
 
-    target_identifier = f"integration-test-{uuid.uuid4().hex[:8]}"
+    target_identifier = disposable_project_identifier()
     create_project_result = await unrestricted_client.create_project(
         name=f"[integration-test] {target_identifier}", identifier=target_identifier, confirm=True
     )

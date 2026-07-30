@@ -24,6 +24,16 @@ async def test_delete_file_link_denied_outside_allowlist(
     # create, so this is inherently best-effort: skip if none exist anywhere
     # in test_project rather than failing (consistent with this suite's
     # existing graceful-skip pattern for other unseeded live preconditions).
+    #
+    # This means delete_file_link's SUCCESSFUL delete path (not just this
+    # denial path) has no deterministic live coverage either -- it only runs
+    # when a file link happens to pre-exist, which this Docker test instance
+    # never has by default (zero Storages::Storage rows; a real Storages::
+    # FileLink additionally needs a configured Storage row, e.g. a
+    # Storages::NextcloudStorage, which this suite deliberately does not set
+    # up -- tracked as a follow-up for a future session/release, not done
+    # here). Confirmed live: docker/test's seeded instance has 0 storages and
+    # 0 file links.
     work_packages = await client.list_work_packages(project=test_project, limit=50)
     file_link_id = None
     for wp in work_packages.results:

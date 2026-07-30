@@ -4,12 +4,32 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+from dataclasses import dataclass
+from types import SimpleNamespace
 
 import pytest
 
+from openproject_ce_mcp import tools
 from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient
 
 pytestmark = pytest.mark.integration
+
+
+@dataclass
+class _FakeAppContext:
+    client: OpenProjectClient
+
+
+class _FakeContext:
+    """Minimal Context stand-in so a tools.py function can be exercised
+    directly against a real client -- create_time_entry_until/
+    update_time_entry_until are tools.py-layer only (they compute `hours`
+    locally, then delegate to client.create_time_entry/update_time_entry),
+    with no dedicated client.py method of their own to call directly, unlike
+    every other time entry operation this file otherwise tests via `client`."""
+
+    def __init__(self, client: OpenProjectClient) -> None:
+        self.request_context = SimpleNamespace(lifespan_context=_FakeAppContext(client=client))
 
 
 async def _first_activity_name(client: OpenProjectClient) -> str:
@@ -75,6 +95,105 @@ async def test_create_get_update_delete_time_entry(
     delete_result = await client.delete_time_entry(time_entry_id=te_id, confirm=True)
     assert delete_result.ready and delete_result.confirmed
     time_entry_ids.remove(te_id)
+
+
+async def test_create_get_update_time_entry_until(
+    client: OpenProjectClient, test_project: str, time_entry_ids: list[int]
+) -> None:
+    """create_time_entry_until/update_time_entry_until compute `hours` from
+    start_time/end_time locally and must never forward `end_time` itself to
+    OpenProject (the server rejects it as a write field -- see the
+    create_time_entry/update_time_entry `end_time` removal). Uses whole
+    seconds throughout: OpenProject's own hours-to-ISO8601-duration API
+    serialization truncates (not rounds) a fractional-second remainder --
+    verified against a live instance and against op-sources: `hours` itself
+    is stored with full float precision (confirmed via a direct DB read),
+    but the response serializer builds `Duration.new(seconds: hours * 3600)`
+    (the `ruby-duration` gem's own `Duration` class, not `ActiveSupport::
+    Duration`/`ISO8601::Duration`), whose constructor does `args[:seconds]
+    .to_i`, and Ruby's `Float#to_i` truncates toward zero. So a fractional
+    end_time would not round-trip byte-identically through a subsequent read
+    -- a server property, not something create_time_entry_until's own
+    arithmetic could be wrong about, so not re-verified here.
+
+    `hours` is always asserted -- it's this tool's own computed value,
+    independent of instance configuration. `start_time`/`end_time` on the
+    result are only asserted if the instance actually stored `start_time`
+    (gated by its own "allow tracking of start and end times" setting,
+    `TimeEntry.can_track_start_and_end_time?`); if that instance setting is
+    off, OpenProject silently accepts and discards `startTime` rather than
+    rejecting it, so start_time/end_time on the read-back result being None
+    is expected instance behavior, not a bug in this test or in
+    create_time_entry_until."""
+    ctx = _FakeContext(client)  # type: ignore[arg-type]
+    activity = await _first_activity_name(client)
+    wp_id = await _first_wp_id(client, test_project)
+    spent_on = datetime.date.today().isoformat()
+
+    result = await tools.create_time_entry_until(
+        ctx,
+        activity=activity,
+        start_time=f"{spent_on}T09:00:00Z",
+        end_time=f"{spent_on}T10:30:00Z",
+        spent_on=spent_on,
+        project=test_project,
+        work_package_id=wp_id,
+        comment="Integration test time entry (until)",
+        confirm=True,
+    )
+    assert result.ready, result.validation_errors
+    te_id = result.time_entry_id
+    assert te_id > 0
+    time_entry_ids.append(te_id)
+    assert result.result is not None
+    assert result.result.hours == "PT1H30M"
+    if result.result.start_time is None:
+        pytest.skip("Instance does not have start/end time tracking enabled (start_time was silently discarded)")
+    assert result.result.start_time == f"{spent_on}T09:00:00.000Z"
+    assert result.result.end_time == f"{spent_on}T10:30:00.000Z"
+
+    te = await client.get_time_entry(te_id)
+    assert te.id == te_id
+    assert te.hours == "PT1H30M"
+
+    update_result = await tools.update_time_entry_until(
+        ctx,
+        time_entry_id=te_id,
+        start_time=f"{spent_on}T09:00:00Z",
+        end_time=f"{spent_on}T11:00:00Z",
+        spent_on=spent_on,
+        confirm=True,
+    )
+    assert update_result.ready, update_result.validation_errors
+    assert update_result.result is not None
+    assert update_result.result.hours == "PT2H"
+    assert update_result.result.end_time == f"{spent_on}T11:00:00.000Z"
+    assert update_result.result.ongoing is False
+
+    delete_result = await client.delete_time_entry(time_entry_id=te_id, confirm=True)
+    assert delete_result.ready and delete_result.confirmed
+    time_entry_ids.remove(te_id)
+
+
+async def test_create_time_entry_until_rejects_end_time_before_start_time(
+    client: OpenProjectClient, test_project: str
+) -> None:
+    ctx = _FakeContext(client)  # type: ignore[arg-type]
+    activity = await _first_activity_name(client)
+    wp_id = await _first_wp_id(client, test_project)
+    spent_on = datetime.date.today().isoformat()
+
+    with pytest.raises(ValueError, match="end_time must be after start_time"):
+        await tools.create_time_entry_until(
+            ctx,
+            activity=activity,
+            start_time=f"{spent_on}T10:30:00Z",
+            end_time=f"{spent_on}T09:00:00Z",
+            spent_on=spent_on,
+            project=test_project,
+            work_package_id=wp_id,
+            confirm=False,
+        )
 
 
 async def test_create_time_entry_rejects_hidden_start_time_field(client: OpenProjectClient, test_project: str) -> None:

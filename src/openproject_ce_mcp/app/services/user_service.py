@@ -171,7 +171,14 @@ class UserService:
                 result=None,
             )
         access.ensure_write_enabled("admin", settings=self._settings)
-        detail = await self._api.commit_create(form.payload)
+        commit_payload = form.payload
+        if password is not None:
+            # OpenProject's users/form response never echoes `password` back
+            # (a security precaution, not a validation gap) -- committing
+            # form.payload verbatim would silently drop it, so it's restored
+            # from the caller's own value before the actual write.
+            commit_payload = {**commit_payload, "password": password}
+        detail = await self._api.commit_create(commit_payload)
         return self._write_result(
             action="create",
             confirmed=True,

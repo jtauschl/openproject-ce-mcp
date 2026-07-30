@@ -181,7 +181,11 @@ class HttpxUserApi:
         await self._transport.delete(f"users/{user_id}")
 
     async def commit_lock(self, user_id: int) -> UserDetail:
-        response = await self._transport.post_json(f"users/{user_id}/lock")
+        # An empty dict, not None -- a bodyless POST here sends no Content-Type
+        # header at all (httpx only sets one when `json` is non-None), and
+        # OpenProject's Grape endpoint rejects that with 406 "Missing
+        # content-type header" even though the POST itself carries no data.
+        response = await self._transport.post_json(f"users/{user_id}/lock", json_body={})
         return normalize_user_detail(response, base_url=self._base_url, origin=self._origin)
 
     async def commit_unlock(self, user_id: int) -> UserDetail:

@@ -153,8 +153,13 @@ from .tools_validation import (
     _validate_positive_int,
 )
 
-# ISO 8601 date-time, e.g. 2026-12-01T09:00:00Z or with a +HH:MM offset.
-DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
+# ISO 8601 date-time, e.g. 2026-12-01T09:00:00Z or with a +HH:MM offset. The
+# fractional-second component is capped at 6 digits (microsecond precision) --
+# datetime.fromisoformat() silently truncates anything beyond that, and
+# _duration_between relies on fromisoformat's parsed value being the caller's
+# actual intent, not a silently-rounded approximation of a sub-microsecond
+# value the regex would otherwise have let through.
+DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$")
 # Full ISO 8601 duration: either weeks alone ("P2W") or a year/month/day date part
 # and/or a "T"-prefixed time part (hours/minutes/seconds) — the week designator
 # cannot combine with anything else, per the ISO 8601 standard's own week-format
@@ -163,9 +168,15 @@ DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+
 # unchanged (an earlier version of this regex rejected day-based values entirely,
 # based on an incorrect assumption), while "P1W2D"/"P2WT3H" (week mixed with
 # another designator) are rejected by OpenProject itself with a format error —
-# confirmed here too, not just assumed from the standard.
+# confirmed here too, not just assumed from the standard. The seconds component
+# additionally allows an optional decimal fraction (e.g. "PT7H30M15.5S") —
+# verified directly against the `iso8601` Ruby gem OpenProject uses server-side
+# (ISO8601::Duration.new(...), see time_entry_representer.rb's `hours=` setter):
+# its grammar permits a fractional value on any single non-zero component, as
+# long as it's the last one, which our own H/M-integer-only + optionally-
+# fractional-S shape always satisfies.
 ISO8601_DURATION_RE = re.compile(
-    r"^P(?:\d+W|(?=\d|T)(?:\d+Y)?(?:\d+M)?(?:\d+D)?(?:T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+S)?)?)$"
+    r"^P(?:\d+W|(?=\d|T)(?:\d+Y)?(?:\d+M)?(?:\d+D)?(?:T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+(?:\.\d+)?S)?)?)$"
 )
 PROJECT_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 # A project-based work package reference: a project identifier followed by "-<number>"
@@ -345,6 +356,8 @@ WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "remove_work_package_watcher",
         "create_time_entry",
         "update_time_entry",
+        "create_time_entry_until",
+        "update_time_entry_until",
         "delete_time_entry",
         "update_relation",
         "delete_file_link",
@@ -2921,7 +2934,6 @@ async def create_time_entry(
     work_package_id: int | str | None = None,
     user: str | None = None,
     start_time: str | None = None,
-    end_time: str | None = None,
     comment: str | None = None,
     ongoing: bool | None = None,
     confirm: bool = False,
@@ -2930,8 +2942,11 @@ async def create_time_entry(
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     hours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours, 'P1D' for 1 day).
-    start_time/end_time are ISO 8601 date-times and require the instance setting
-    "allow tracking of start and end times"; they are ignored otherwise.
+    start_time is an ISO 8601 date-time and requires the instance setting "allow
+    tracking of start and end times"; ignored otherwise. There is no end_time
+    parameter -- OpenProject's own API schema marks that field as read-only
+    (computed from start_time + hours), so writing it is never supported. Use
+    create_time_entry_until to specify an end time instead of hours directly.
     """
     client = _client_from_context(ctx)
     safe_activity = _validate_required_query(activity, field_name="activity", max_length=100)
@@ -2941,7 +2956,6 @@ async def create_time_entry(
     safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
     safe_user = _validate_optional_user_or_principal_ref(user)
     safe_start_time = _validate_optional_datetime(start_time, field_name="start_time")
-    safe_end_time = _validate_optional_datetime(end_time, field_name="end_time")
     safe_comment = _validate_optional_text(comment, field_name="comment", max_length=10_000)
     if safe_project is None and safe_work_package_id is None:
         raise ValueError("Either project or work_package_id is required.")
@@ -2954,7 +2968,6 @@ async def create_time_entry(
             hours=safe_hours,
             spent_on=safe_spent_on,
             start_time=safe_start_time,
-            end_time=safe_end_time,
             comment=safe_comment,
             ongoing=ongoing,
             confirm=confirm,
@@ -2970,7 +2983,6 @@ async def update_time_entry(
     hours: str | None = None,
     spent_on: str | None = None,
     start_time: str | None = None,
-    end_time: str | None = None,
     comment: str | None = None,
     ongoing: bool | None = None,
     confirm: bool = False,
@@ -2978,7 +2990,10 @@ async def update_time_entry(
     """Prepare or update a time entry.
 
     hours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours, 'P1D' for 1 day).
-    start_time/end_time are ISO 8601 date-times.
+    start_time is an ISO 8601 date-time. There is no end_time parameter --
+    OpenProject's own API schema marks that field as read-only (computed from
+    start_time + hours), so writing it is never supported. Use
+    update_time_entry_until to specify an end time instead of hours directly.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(time_entry_id, field_name="time_entry_id")
@@ -2987,7 +3002,6 @@ async def update_time_entry(
     safe_hours = _validate_optional_duration(hours, field_name="hours")
     safe_spent_on = _validate_optional_date(spent_on, field_name="spent_on")
     safe_start_time = _validate_optional_datetime(start_time, field_name="start_time")
-    safe_end_time = _validate_optional_datetime(end_time, field_name="end_time")
     safe_comment = _validate_optional_update_text(comment, field_name="comment", max_length=10_000)
     _require_at_least_one(
         safe_user,
@@ -2995,7 +3009,6 @@ async def update_time_entry(
         safe_hours,
         safe_spent_on,
         safe_start_time,
-        safe_end_time,
         safe_comment,
         ongoing,
         message="At least one field to update is required.",
@@ -3008,9 +3021,99 @@ async def update_time_entry(
             hours=safe_hours,
             spent_on=safe_spent_on,
             start_time=safe_start_time,
-            end_time=safe_end_time,
             comment=safe_comment,
             ongoing=ongoing,
+            confirm=confirm,
+        )
+    )
+
+
+async def create_time_entry_until(
+    ctx: Context,
+    activity: str,
+    start_time: str,
+    end_time: str,
+    spent_on: str,
+    project: str | None = None,
+    work_package_id: int | str | None = None,
+    user: str | None = None,
+    comment: str | None = None,
+    confirm: bool = False,
+) -> TimeEntryWriteResult:
+    """Prepare or create a time entry by start/end time instead of a duration.
+
+    Computes hours = end_time - start_time locally; only hours and start_time
+    are sent to OpenProject (end_time itself is never accepted by the server,
+    see create_time_entry's docstring). end_time must be strictly after
+    start_time. There is no ongoing parameter here -- a time entry with a
+    known end time is complete, not still running; use create_time_entry for
+    an ongoing entry.
+    """
+    client = _client_from_context(ctx)
+    safe_activity = _validate_required_query(activity, field_name="activity", max_length=100)
+    safe_start_time = _validate_required_datetime(start_time, field_name="start_time")
+    safe_end_time = _validate_required_datetime(end_time, field_name="end_time")
+    safe_hours = _validate_required_duration(_duration_between(safe_start_time, safe_end_time), field_name="hours")
+    safe_spent_on = _validate_required_date(spent_on, field_name="spent_on")
+    safe_project = _validate_optional_project_ref(project)
+    safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
+    safe_user = _validate_optional_user_or_principal_ref(user)
+    safe_comment = _validate_optional_text(comment, field_name="comment", max_length=10_000)
+    if safe_project is None and safe_work_package_id is None:
+        raise ValueError("Either project or work_package_id is required.")
+    return await _run_tool(
+        client.create_time_entry(
+            project=safe_project,
+            work_package_id=safe_work_package_id,
+            user=safe_user,
+            activity=safe_activity,
+            hours=safe_hours,
+            spent_on=safe_spent_on,
+            start_time=safe_start_time,
+            comment=safe_comment,
+            confirm=confirm,
+        )
+    )
+
+
+async def update_time_entry_until(
+    ctx: Context,
+    time_entry_id: int,
+    start_time: str,
+    end_time: str,
+    user: str | None = None,
+    activity: str | None = None,
+    spent_on: str | None = None,
+    comment: str | None = None,
+    confirm: bool = False,
+) -> TimeEntryWriteResult:
+    """Prepare or update a time entry by start/end time instead of a duration.
+
+    Computes hours = end_time - start_time locally; only hours and start_time
+    are sent to OpenProject (end_time itself is never accepted by the server,
+    see update_time_entry's docstring). end_time must be strictly after
+    start_time. Always sets ongoing=False, since a completed time span with a
+    known end time cannot still be running.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(time_entry_id, field_name="time_entry_id")
+    safe_start_time = _validate_required_datetime(start_time, field_name="start_time")
+    safe_end_time = _validate_required_datetime(end_time, field_name="end_time")
+    safe_hours = _validate_required_duration(_duration_between(safe_start_time, safe_end_time), field_name="hours")
+    safe_user = _validate_optional_user_or_principal_ref(user)
+    safe_activity = _validate_optional_query(activity, field_name="activity", max_length=100)
+    safe_spent_on = _validate_optional_date(spent_on, field_name="spent_on")
+    safe_comment = _validate_optional_update_text(comment, field_name="comment", max_length=10_000)
+    return await _run_tool(
+        client.update_time_entry(
+            time_entry_id=safe_id,
+            user=safe_user,
+            activity=safe_activity,
+            hours=safe_hours,
+            spent_on=safe_spent_on,
+            start_time=safe_start_time,
+            comment=safe_comment,
+            ongoing=False,
             confirm=confirm,
         )
     )
@@ -4182,6 +4285,43 @@ def _validate_required_duration(value: str, *, field_name: str) -> str:
     if not normalized:
         raise ValueError(f"{field_name} is required.")
     return normalized
+
+
+def _duration_between(start_time: str, end_time: str) -> str:
+    """Compute an ISO 8601 duration string for end_time - start_time.
+
+    Used by create_time_entry_until/update_time_entry_until to derive `hours`
+    locally, since OpenProject's own API never accepts `end_time` as a write
+    field (see ISO8601_DURATION_RE's comment and the create_time_entry
+    docstring). Uses timedelta's own exact integer fields (days/seconds/
+    microseconds), never total_seconds() -- a float -- for the whole-unit
+    breakdown, so the hours/minutes/seconds split is exact by construction.
+    """
+    start = datetime.datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+    end = datetime.datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+    delta = end - start
+    if delta <= datetime.timedelta(0):
+        raise ValueError("end_time must be after start_time.")
+    total_seconds = delta.days * 86400 + delta.seconds
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    microseconds = delta.microseconds
+    # Only the seconds component ever carries a fractional part (ISO 8601
+    # duration semantics; see ISO8601_DURATION_RE's comment). `microseconds` is
+    # an exact integer (0-999999) added to the already-whole `seconds`, then
+    # formatted with a fixed decimal count (never `%g`/`str(float)`), avoiding
+    # both scientific notation on tiny fractions and any rounding-induced carry.
+    if microseconds:
+        seconds_str = f"{seconds + microseconds / 1_000_000:.6f}".rstrip("0").rstrip(".")
+    else:
+        seconds_str = str(seconds)
+    parts = [
+        f"{hours}H" if hours else "",
+        f"{minutes}M" if minutes else "",
+        f"{seconds_str}S" if seconds or microseconds else "",
+    ]
+    body = "".join(p for p in parts if p)
+    return f"PT{body}"
 
 
 def _clearable_duration(value: str | None, *, field_name: str) -> str | object | None:

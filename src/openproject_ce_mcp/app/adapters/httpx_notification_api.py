@@ -98,7 +98,12 @@ class HttpxNotificationApi:
         return NotificationPage(records=records, total=total, exhausted=exhausted)
 
     async def mark_read(self, notification_id: int) -> None:
-        await self._transport.request_raw("POST", f"notifications/{notification_id}/read_ian")
+        # An empty dict, not None -- a bodyless POST here sends no Content-Type
+        # header at all (httpx only sets one when `json` is non-None), and
+        # OpenProject's Grape endpoint rejects that with 406 "Missing
+        # content-type header" even though the POST itself carries no data
+        # (same class of bug as UserApi.commit_lock).
+        await self._transport.request_raw("POST", f"notifications/{notification_id}/read_ian", json_body={})
 
     async def mark_all_read(self) -> None:
-        await self._transport.request_raw("POST", "notifications/read_ian")
+        await self._transport.request_raw("POST", "notifications/read_ian", json_body={})

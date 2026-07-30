@@ -126,33 +126,38 @@ async def test_list_all_never_normalizes_until_summary_is_called() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mark_read_posts_with_no_body() -> None:
-    requests: list[tuple[str, str]] = []
+async def test_mark_read_posts_an_empty_json_body() -> None:
+    """Regression: an omitted json_body (None) sends no Content-Type header
+    at all (httpx only sets one when `json` is non-None) -- OpenProject's
+    Grape endpoint rejects a bodyless POST here with 406 "Missing
+    content-type header" even though the request carries no real data.
+    Confirmed live against a real instance; `json_body={}` is required."""
+    requests: list[tuple[str, str, bytes]] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        requests.append((request.method, request.url.path))
+        requests.append((request.method, request.url.path, request.content))
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
         api = HttpxNotificationApi(HttpxTransport(http_client))
         await api.mark_read(10)
 
-    assert requests == [("POST", "/api/v3/notifications/10/read_ian")]
+    assert requests == [("POST", "/api/v3/notifications/10/read_ian", b"{}")]
 
 
 @pytest.mark.asyncio
-async def test_mark_all_read_posts_with_no_body() -> None:
-    requests: list[tuple[str, str]] = []
+async def test_mark_all_read_posts_an_empty_json_body() -> None:
+    requests: list[tuple[str, str, bytes]] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        requests.append((request.method, request.url.path))
+        requests.append((request.method, request.url.path, request.content))
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
         api = HttpxNotificationApi(HttpxTransport(http_client))
         await api.mark_all_read()
 
-    assert requests == [("POST", "/api/v3/notifications/read_ian")]
+    assert requests == [("POST", "/api/v3/notifications/read_ian", b"{}")]
 
 
 def test_normalize_notification_resolves_work_package_resource_link() -> None:

@@ -279,7 +279,6 @@ class TimeEntryService:
         hours: str | None,
         spent_on: str | None,
         start_time: str | None,
-        end_time: str | None,
         comment: str | None,
         ongoing: bool | None,
         activity_project_id: int | None,
@@ -293,12 +292,14 @@ class TimeEntryService:
         if spent_on is not None:
             hidden_fields.ensure_field_writable("time_entry", "spent_on", settings=self._settings)
             payload["spentOn"] = spent_on
+        # end_time is deliberately never sent: OpenProject's own API schema marks
+        # it read-only (schema :end_time, writable: false in
+        # time_entry_schema_representer.rb -- it's computed from start_time +
+        # hours), and the server representer has no end_time= setter at all, so
+        # writing it raises a NoMethodError server-side (GitHub issue #17).
         if start_time is not None:
             hidden_fields.ensure_field_writable("time_entry", "start_time", settings=self._settings)
             payload["startTime"] = start_time
-        if end_time is not None:
-            hidden_fields.ensure_field_writable("time_entry", "end_time", settings=self._settings)
-            payload["endTime"] = end_time
         if comment is not None:
             hidden_fields.ensure_field_writable("time_entry", "comment", settings=self._settings)
             hidden_fields.ensure_field_writable("activity", "comment", settings=self._settings)
@@ -358,7 +359,6 @@ class TimeEntryService:
         hours: str,
         spent_on: str,
         start_time: str | None = None,
-        end_time: str | None = None,
         comment: str | None = None,
         ongoing: bool | None = None,
         confirm: bool = False,
@@ -392,7 +392,6 @@ class TimeEntryService:
             hours=hours,
             spent_on=spent_on,
             start_time=start_time,
-            end_time=end_time,
             comment=comment,
             ongoing=ongoing,
             activity_project_id=activity_project_id,
@@ -425,7 +424,6 @@ class TimeEntryService:
         hours: str | None = None,
         spent_on: str | None = None,
         start_time: str | None = None,
-        end_time: str | None = None,
         comment: str | None = None,
         ongoing: bool | None = None,
         confirm: bool = False,
@@ -444,7 +442,6 @@ class TimeEntryService:
             hours=hours,
             spent_on=spent_on,
             start_time=start_time,
-            end_time=end_time,
             comment=comment,
             ongoing=ongoing,
             activity_project_id=project_id,

@@ -216,6 +216,12 @@ async def test_commit_lock_posts_to_the_lock_subresource() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
         assert request.url.path == "/api/v3/users/5/lock"
+        # Regression: an omitted json_body (None) sends no Content-Type header
+        # at all (httpx only sets one when `json` is non-None) -- OpenProject's
+        # Grape endpoint rejects a bodyless POST here with 406 "Missing
+        # content-type header" even though the request carries no real data.
+        # Confirmed live against a real instance; json_body={} is required.
+        assert request.content == b"{}"
         return httpx.Response(200, json=_user_payload(), request=request)
 
     async with _client(handler) as http_client:

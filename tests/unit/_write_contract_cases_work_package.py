@@ -765,6 +765,32 @@ WORK_PACKAGE_CASES: dict[str, WriteToolCase] = {
         handler=_update_time_entry_handler,
         write_request=("PATCH", "/api/v3/time_entries/8"),
     ),
+    "create_time_entry_until": WriteToolCase(
+        tool="create_time_entry_until",
+        kwargs={
+            "work_package_id": 42,
+            "activity": "1",
+            "start_time": "2026-01-01T09:00:00Z",
+            "end_time": "2026-01-01T10:00:00Z",
+            "spent_on": "2026-01-01",
+        },
+        settings=_SETTINGS,
+        write_scope="work_package",
+        handler=_create_time_entry_handler,
+        write_request=("POST", "/api/v3/time_entries"),
+    ),
+    "update_time_entry_until": WriteToolCase(
+        tool="update_time_entry_until",
+        kwargs={
+            "time_entry_id": 8,
+            "start_time": "2026-01-01T09:00:00Z",
+            "end_time": "2026-01-01T10:00:00Z",
+        },
+        settings=_SETTINGS,
+        write_scope="work_package",
+        handler=_update_time_entry_handler,
+        write_request=("PATCH", "/api/v3/time_entries/8"),
+    ),
     "delete_time_entry": WriteToolCase(
         tool="delete_time_entry",
         kwargs={"time_entry_id": 8},

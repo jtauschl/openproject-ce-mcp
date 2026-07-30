@@ -590,7 +590,10 @@ async def test_create_time_entry_resolves_activity_from_project_form_context() -
 
 
 @pytest.mark.asyncio
-async def test_create_time_entry_includes_start_and_end_time() -> None:
+async def test_create_time_entry_sends_start_time_but_never_end_time() -> None:
+    """end_time is server-computed and read-only (schema `writable: false`);
+    only start_time is ever sent in the write payload. The server still
+    returns endTime on read, which normalize_time_entry_raw must surface."""
     captured: dict[str, dict] = {}
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -626,12 +629,11 @@ async def test_create_time_entry_includes_start_and_end_time() -> None:
         hours="PT1H",
         spent_on="2026-07-01",
         start_time="2026-07-01T09:00:00Z",
-        end_time="2026-07-01T10:00:00Z",
         confirm=True,
     )
 
     assert captured["body"]["startTime"] == "2026-07-01T09:00:00Z"
-    assert captured["body"]["endTime"] == "2026-07-01T10:00:00Z"
+    assert "endTime" not in captured["body"]
     assert result.result is not None
     assert result.result.start_time == "2026-07-01T09:00:00Z"
     assert result.result.end_time == "2026-07-01T10:00:00Z"

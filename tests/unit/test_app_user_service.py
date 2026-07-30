@@ -93,7 +93,14 @@ class _FakeUserApi:
 
     async def create_form(self, payload: dict) -> UserFormResult:
         self.create_form_calls.append(payload)
-        return UserFormResult(payload=payload, validation_errors=self.validation_errors)
+        # Real OpenProject never echoes `password` back in the form response
+        # (a security precaution) -- mirroring that here is what makes
+        # test_create_restores_password_into_the_commit_payload below able to
+        # actually catch a regression of the commit_payload_override fix; a
+        # fake that echoed password back verbatim would pass even if
+        # UserService.create() went back to committing form.payload as-is.
+        echoed = {k: v for k, v in payload.items() if k != "password"}
+        return UserFormResult(payload=echoed, validation_errors=self.validation_errors)
 
     async def update_form(self, user_id: int, payload: dict) -> UserFormResult:
         self.update_form_calls.append((user_id, payload))
@@ -310,6 +317,42 @@ async def test_create_commits_when_confirmed_and_admin_write_enabled() -> None:
             "lastName": "Lovelace",
             "admin": False,
             "status": "active",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_create_restores_password_into_the_commit_payload() -> None:
+    # Regression: OpenProject's users/form response never echoes `password`
+    # back (see _FakeUserApi.create_form's own comment on this). An earlier
+    # version of create() committed form.payload verbatim, silently dropping
+    # password even though the original request (including it) had passed
+    # validation -- the real write then failed server-side with "Password
+    # can't be blank." despite the preview reporting ready=True. This test
+    # would NOT catch that regression without create_form's fake also
+    # dropping password from its echoed payload, same as the real server.
+    api = _FakeUserApi()
+    service = _service(api, settings=_admin_write_settings())
+
+    result = await service.create(
+        login="ada",
+        email="ada@example.com",
+        firstname="Ada",
+        lastname="Lovelace",
+        password="Aa1!secret",
+        confirm=True,
+    )
+
+    assert result.confirmed is True
+    assert api.commit_create_calls == [
+        {
+            "login": "ada",
+            "email": "ada@example.com",
+            "firstName": "Ada",
+            "lastName": "Lovelace",
+            "admin": False,
+            "status": "active",
+            "password": "Aa1!secret",
         }
     ]
 

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import dataclasses
-import uuid
 
 import pytest
 
 from openproject_ce_mcp.client import NotFoundError, OpenProjectClient, PermissionDeniedError
+
+from .conftest import disposable_project_identifier
 
 pytestmark = pytest.mark.integration
 
@@ -20,7 +21,12 @@ async def test_list_projects(client: OpenProjectClient) -> None:
 
 async def test_get_project(client: OpenProjectClient, test_project: str) -> None:
     project = await client.get_project(test_project)
-    assert project.identifier == test_project
+    # OpenProject identifiers are always lowercase server-side (docker/test/
+    # seed.rb creates the project as "tst" even when OPENPROJECT_TEST_PROJECT
+    # is "TST", per that script's own comment) -- compare case-insensitively,
+    # not as an exact match.
+    assert project.identifier is not None
+    assert project.identifier.casefold() == test_project.casefold()
     assert project.name
 
 
@@ -53,7 +59,7 @@ async def test_get_project_admin_context_filters_parent_candidates_by_read_allow
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
 
-    identifier = f"integration-test-{uuid.uuid4().hex[:8]}"
+    identifier = disposable_project_identifier()
     create_result = await unrestricted_client.create_project(
         name=f"[integration-test] {identifier}", identifier=identifier, confirm=True
     )
@@ -104,7 +110,16 @@ async def test_add_and_remove_project_favorite(client: OpenProjectClient, test_p
     assert add_preview.requires_confirmation
 
     try:
-        added = await client.add_project_favorite(project=test_project, confirm=True)
+        try:
+            added = await client.add_project_favorite(project=test_project, confirm=True)
+        except NotFoundError as exc:
+            # _run_version_gated raises this with a specific message when the
+            # endpoint itself doesn't exist yet (favorites require OpenProject
+            # 17.0+) -- distinct from a genuine 404 on a real resource, which
+            # this test isn't exercising.
+            if "requires OpenProject" in str(exc):
+                pytest.skip(str(exc))
+            raise
         assert added.confirmed
         assert added.action == "favorite"
 
@@ -146,7 +161,7 @@ async def test_update_project_denies_reparent_into_write_restricted_project(
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
 
-    target_identifier = f"integration-test-{uuid.uuid4().hex[:8]}"
+    target_identifier = disposable_project_identifier()
     create_result = await unrestricted_client.create_project(
         name=f"[integration-test] {target_identifier}", identifier=target_identifier, confirm=True
     )

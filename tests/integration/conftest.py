@@ -21,11 +21,55 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import subprocess
+import uuid
 
 import pytest
 
 from openproject_ce_mcp.client import OpenProjectClient
 from openproject_ce_mcp.config import Settings
+
+# Directory containing docker/test/compose.yml -- `docker compose exec` needs
+# to run with this as its cwd (or -f pointed at it) to resolve the service name.
+_DOCKER_TEST_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "docker", "test")
+
+
+def _run_rails_script(script: str, *, result_key: str, env: dict[str, str] | None = None) -> str:
+    """Run a Ruby script via `docker compose exec ... rails runner` and return
+    the value of a `puts "<result_key>=<value>"` line it's expected to print.
+
+    Side channel for state OpenProject's own REST API has no endpoint for
+    (minting another user's API token, reading DB-only identifiers) --
+    requires OPENPROJECT_DOCKER_SERVICE; callers must check/skip on that
+    themselves before calling this, since the skip reason differs per caller.
+
+    `env`, when given, is passed to the container via `docker compose exec -e`
+    (one flag pair per entry) so a caller-controlled value (e.g. a project
+    identifier) reaches the script through `ENV[...]` in Ruby rather than
+    being interpolated into the script's own source text -- interpolating an
+    arbitrary Python-side string into Ruby source via f-string + repr() is a
+    real code-injection risk (a value containing a single quote can make
+    repr() emit a double-quoted Ruby literal, enabling "#{...}" interpolation
+    inside the runner), not just a style preference.
+    """
+    service = os.environ["OPENPROJECT_DOCKER_SERVICE"]
+    env_args = [arg for key, value in (env or {}).items() for arg in ("-e", f"{key}={value}")]
+    proc = subprocess.run(
+        ["docker", "compose", "exec", "-T", *env_args, service, "bundle", "exec", "rails", "runner", "-"],
+        input=script,
+        cwd=_DOCKER_TEST_DIR,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if proc.returncode != 0:
+        pytest.fail(f"Rails runner script failed:\n{proc.stderr}")
+    prefix = f"{result_key}="
+    line = next((line for line in proc.stdout.splitlines() if line.startswith(prefix)), None)
+    if line is None:
+        pytest.fail(f"Rails runner did not print a {prefix} line:\n{proc.stdout}\n{proc.stderr}")
+    return line.removeprefix(prefix)
+
 
 # Project identifiers that must never be used as the disposable test project.
 # These name real, non-throwaway projects; running the write suite against them
@@ -44,6 +88,22 @@ def _resolve_test_project() -> str:
             f"project (default: mcp-test)."
         )
     return project
+
+
+def disposable_project_identifier() -> str:
+    """A fresh, valid project identifier for a test's own throwaway project.
+
+    Must satisfy BOTH identifier grammars this suite can run against: classic
+    mode's lowercase/hyphen-friendly rules, and semantic mode's much stricter
+    ones (uppercase letters/digits/underscore only, must start with a letter,
+    max 10 characters -- verified live against a Docker instance with
+    SEED_SEMANTIC=1, e.g. Project#identifier's format/length validators
+    reject "integration-test-<8 hex chars>", the pattern every call site here
+    used before this helper existed). An uppercase, <=10-char identifier is
+    accepted by both grammars, so this format works unconditionally rather
+    than needing to branch on which mode the instance is running in.
+    """
+    return f"IT{uuid.uuid4().hex[:8].upper()}"
 
 
 def _integration_settings() -> Settings | None:
@@ -220,6 +280,133 @@ async def group_ids(client: OpenProjectClient):
             await client.delete_group(group_id=group_id, confirm=True)
         except Exception:
             pass
+
+
+@pytest.fixture
+async def user_ids(client: OpenProjectClient):
+    """Yields a list to append created user IDs; deletes them all after the test.
+
+    Users are instance-wide, not project-scoped — the same caveat as
+    ``group_ids``/``project_refs`` above.
+    """
+    created: list[int] = []
+    yield created
+    for user_id in created:
+        try:
+            await client.delete_user(user_id, confirm=True)
+        except Exception:
+            pass
+
+
+@pytest.fixture
+async def second_user_client(client: OpenProjectClient, user_ids: list[int]):
+    """Creates a real, disposable second OpenProject user via create_user, then
+    mints an API token for them via a Rails-runner side channel (the same
+    mechanism docker/test/seed.rb uses for the admin's own token — OpenProject's
+    REST API has no endpoint to mint a token for another user, only the Rails
+    console can) and returns a second, fully independent OpenProjectClient
+    authenticated as that user.
+
+    Needed for tests that must prove a notification/activity was triggered BY
+    one user and observed FROM a different user's own perspective (list_notifications/
+    mark_notification_read have no `user` parameter -- they always act on the
+    token owner's own inbox), which a single admin-token client can't exercise.
+
+    Requires OPENPROJECT_DOCKER_SERVICE (e.g. "op-17-4") naming the running
+    docker/test/compose.yml service to `docker compose exec` into; skips
+    cleanly if unset, since minting a second real user's token has no
+    REST-API-only equivalent to fall back to. Only ever run this against the
+    disposable Docker test instance -- never a real, actively-used one.
+    """
+    service = os.environ.get("OPENPROJECT_DOCKER_SERVICE")
+    if not service:
+        pytest.skip("OPENPROJECT_DOCKER_SERVICE not set (needed to mint a second user's API token)")
+
+    suffix = uuid.uuid4().hex[:8]
+    login = f"integration-test-{suffix}"
+    create_result = await client.create_user(
+        login=login,
+        email=f"{login}@example.invalid",
+        firstname="Integration",
+        lastname=f"Test {suffix}",
+        # Never used for login (auth is via the minted token below); must still
+        # satisfy the instance's password complexity policy (lower/upper/digit/special).
+        password=f"Aa1!{uuid.uuid4().hex}",
+        confirm=True,
+    )
+    assert create_result.ready, create_result.validation_errors
+    user_id = create_result.user_id
+    assert user_id is not None
+    user_ids.append(user_id)
+
+    script = f"""
+        user = User.find({user_id})
+        token = Token::API.create!(user: user)
+        puts "TOKEN=#{{token.plain_value}}"
+    """
+    token = _run_rails_script(script, result_key="TOKEN")
+
+    second_settings = dataclasses.replace(client.settings, api_token=token)
+    second_client = OpenProjectClient(second_settings)
+    await second_client.initialize()
+    return user_id, second_client
+
+
+@pytest.fixture
+def seed_wiki_page_id(test_project: str) -> int:
+    """Returns the id of test_project's seeded wiki page.
+
+    get_wiki_page has no create/list counterpart in OpenProject's own API (see
+    docker/test/seed.rb's own comment on this) -- the seed script creates one
+    page ahead of time, but its numeric id depends on the instance's DB
+    history, not a fixed/predictable value, so it must be looked up via the
+    same Rails-runner side channel used elsewhere in this file. Requires
+    OPENPROJECT_DOCKER_SERVICE; skips cleanly if unset.
+    """
+    service = os.environ.get("OPENPROJECT_DOCKER_SERVICE")
+    if not service:
+        pytest.skip("OPENPROJECT_DOCKER_SERVICE not set (needed to look up the seeded wiki page id)")
+
+    # Project.find_by(identifier:) is case-sensitive, and the stored casing
+    # itself varies: classic mode always lowercases, but semantic mode
+    # (verified live against a Docker instance with SEED_SEMANTIC=1) stores
+    # the identifier exactly as seeded (e.g. "TST", uppercase) -- comparing
+    # case-insensitively in Ruby avoids having to guess which mode produced
+    # the running instance's actual casing.
+    script = """
+        project = Project.find_by("LOWER(identifier) = ?", ENV.fetch("PROJECT_IDENTIFIER").downcase)
+        page = project&.wiki&.pages&.first
+        puts "PAGE_ID=#{page&.id}"
+    """
+    value = _run_rails_script(script, result_key="PAGE_ID", env={"PROJECT_IDENTIFIER": test_project.strip()})
+    if value == "":
+        pytest.skip(f"test_project {test_project!r} has no wiki page (unexpected -- check docker/test/seed.rb ran)")
+    return int(value)
+
+
+@pytest.fixture
+def seed_project_phase_id(test_project: str) -> int:
+    """Returns the id of test_project's seeded Project::Phase instance.
+
+    get_project_phase has no list/create counterpart in OpenProject's own API
+    (a project has zero phase instances by default; docker/test/seed.rb
+    creates one ahead of time). Requires OPENPROJECT_DOCKER_SERVICE; skips
+    cleanly if unset, same as seed_wiki_page_id.
+    """
+    service = os.environ.get("OPENPROJECT_DOCKER_SERVICE")
+    if not service:
+        pytest.skip("OPENPROJECT_DOCKER_SERVICE not set (needed to look up the seeded project phase id)")
+
+    # Same case-insensitivity rationale as seed_wiki_page_id above.
+    script = """
+        project = Project.find_by("LOWER(identifier) = ?", ENV.fetch("PROJECT_IDENTIFIER").downcase)
+        phase = project && Project::Phase.where(project_id: project.id).first
+        puts "PHASE_ID=#{phase&.id}"
+    """
+    value = _run_rails_script(script, result_key="PHASE_ID", env={"PROJECT_IDENTIFIER": test_project.strip()})
+    if value == "":
+        pytest.skip(f"test_project {test_project!r} has no project phase (unexpected -- check docker/test/seed.rb ran)")
+    return int(value)
 
 
 @pytest.fixture

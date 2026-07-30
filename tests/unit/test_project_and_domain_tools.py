@@ -17,6 +17,7 @@ from openproject_ce_mcp.tools import (
     create_news,
     create_project,
     create_time_entry,
+    create_time_entry_until,
     create_user,
     create_version,
     create_work_package_attachment,
@@ -86,6 +87,7 @@ from openproject_ce_mcp.tools import (
     update_project,
     update_reminder,
     update_time_entry,
+    update_time_entry_until,
     update_user,
     update_version,
 )
@@ -608,7 +610,6 @@ async def test_time_entry_tools_pass_expected_arguments() -> None:
         hours="PT1H30M",
         spent_on="2026-03-20",
         start_time="2026-03-20T09:00:00Z",
-        end_time="2026-03-20T10:30:00Z",
         confirm=False,
     )
     updated = await update_time_entry(ctx, 5, hours="PT2H", confirm=True)
@@ -621,7 +622,7 @@ async def test_time_entry_tools_pass_expected_arguments() -> None:
     assert detail["time_entry_id"] == 5
     assert created["hours"] == "PT1H30M"
     assert created["start_time"] == "2026-03-20T09:00:00Z"
-    assert created["end_time"] == "2026-03-20T10:30:00Z"
+    assert "end_time" not in created
     assert updated["confirm"] is True
     assert deleted["confirm"] is True
 
@@ -634,6 +635,99 @@ async def test_time_entry_tools_pass_expected_arguments() -> None:
             spent_on="2026-03-20",
             start_time="09:00",
             confirm=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_time_entry_until_computes_hours_and_never_forwards_end_time() -> None:
+    class StubClient:
+        async def create_time_entry(self, **kwargs):
+            return kwargs
+
+    result = await create_time_entry_until(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        project="demo",
+        activity="Development",
+        start_time="2026-03-20T09:00:00Z",
+        end_time="2026-03-20T10:30:00Z",
+        spent_on="2026-03-20",
+        confirm=True,
+    )
+
+    assert result["hours"] == "PT1H30M"
+    assert result["start_time"] == "2026-03-20T09:00:00Z"
+    assert "end_time" not in result
+    assert "ongoing" not in result
+
+
+@pytest.mark.asyncio
+async def test_create_time_entry_until_requires_project_or_work_package() -> None:
+    class StubClient:
+        async def create_time_entry(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match="Either project or work_package_id is required"):
+        await create_time_entry_until(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            activity="Development",
+            start_time="2026-03-20T09:00:00Z",
+            end_time="2026-03-20T10:30:00Z",
+            spent_on="2026-03-20",
+            confirm=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_time_entry_until_rejects_end_time_before_start_time() -> None:
+    class StubClient:
+        async def create_time_entry(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match="end_time must be after start_time"):
+        await create_time_entry_until(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            project="demo",
+            activity="Development",
+            start_time="2026-03-20T10:30:00Z",
+            end_time="2026-03-20T09:00:00Z",
+            spent_on="2026-03-20",
+            confirm=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_update_time_entry_until_computes_hours_and_always_sets_ongoing_false() -> None:
+    class StubClient:
+        async def update_time_entry(self, **kwargs):
+            return kwargs
+
+    result = await update_time_entry_until(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        time_entry_id=5,
+        start_time="2026-03-20T09:00:00Z",
+        end_time="2026-03-20T10:30:00Z",
+        confirm=True,
+    )
+
+    assert result["hours"] == "PT1H30M"
+    assert result["start_time"] == "2026-03-20T09:00:00Z"
+    assert "end_time" not in result
+    assert result["ongoing"] is False
+
+
+@pytest.mark.asyncio
+async def test_update_time_entry_until_rejects_end_time_before_start_time() -> None:
+    class StubClient:
+        async def update_time_entry(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match="end_time must be after start_time"):
+        await update_time_entry_until(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            time_entry_id=5,
+            start_time="2026-03-20T10:30:00Z",
+            end_time="2026-03-20T09:00:00Z",
+            confirm=True,
         )
 
 
