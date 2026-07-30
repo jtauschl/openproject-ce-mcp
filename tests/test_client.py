@@ -14,12 +14,15 @@ from openproject_ce_mcp.client import (
     CLEAR,
     CLEAR_PARENT,
     CLEAR_VERSION,
+    URN_UNDISCLOSED,
     AuthenticationError,
     InvalidInputError,
+    LinkState,
     NotFoundError,
     OpenProjectClient,
     OpenProjectServerError,
     PermissionDeniedError,
+    _classify_project_link,
     _extract_formattable_text,
     _extract_formattable_text_with_meta,
     _narrow_cleared,
@@ -1806,7 +1809,7 @@ async def test_list_work_packages_resolves_type_and_version_filters() -> None:
                                 "_links": {
                                     "type": {"title": "Feature"},
                                     "status": {"title": "New"},
-                                    "project": {"title": "Demo"},
+                                    "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                                     "version": {"title": "v1"},
                                 },
                             }
@@ -1852,6 +1855,7 @@ async def test_list_work_packages_returns_parent_display_id_when_present() -> No
                                 "id": 42,
                                 "subject": "Child with semantic parent",
                                 "_links": {
+                                    "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                                     "parent": {
                                         "href": "/api/v3/work_packages/7",
                                         "title": "Parent",
@@ -1863,6 +1867,7 @@ async def test_list_work_packages_returns_parent_display_id_when_present() -> No
                                 "id": 43,
                                 "subject": "Child on classic instance",
                                 "_links": {
+                                    "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                                     "parent": {"href": "/api/v3/work_packages/8", "title": "Parent"},
                                 },
                             },
@@ -1899,6 +1904,7 @@ async def test_search_work_packages_returns_parent_display_id_when_present() -> 
                             "id": 42,
                             "subject": "Block D task",
                             "_links": {
+                                "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                                 "parent": {
                                     "href": "/api/v3/work_packages/7",
                                     "title": "Parent",
@@ -1934,8 +1940,16 @@ async def test_list_work_packages_exposes_real_total_when_scope_unrestricted() -
                 "total": 5,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
-                        {"id": 2, "subject": "B", "_links": {"project": {"title": "demo"}}},
+                        {
+                            "id": 1,
+                            "subject": "A",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
+                        {
+                            "id": 2,
+                            "subject": "B",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
                     ]
                 },
             },
@@ -1991,8 +2005,16 @@ async def test_list_work_packages_exposes_real_total_when_restricted_scope_filte
                 "total": 5,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
-                        {"id": 2, "subject": "B", "_links": {"project": {"title": "demo"}}},
+                        {
+                            "id": 1,
+                            "subject": "A",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
+                        {
+                            "id": 2,
+                            "subject": "B",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
                     ]
                 },
             },
@@ -2028,7 +2050,11 @@ async def test_search_work_packages_pagination_hints_do_not_leak_untrusted_total
                 "total": 50,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                        {
+                            "id": 1,
+                            "subject": "A",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
                     ]
                 },
             },
@@ -2057,8 +2083,16 @@ async def test_search_work_packages_pagination_continues_with_untrusted_total_wh
                 "total": 50,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
-                        {"id": 2, "subject": "B", "_links": {"project": {"title": "demo"}}},
+                        {
+                            "id": 1,
+                            "subject": "A",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
+                        {
+                            "id": 2,
+                            "subject": "B",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
                     ]
                 },
             },
@@ -2088,7 +2122,11 @@ async def test_search_work_packages_falls_back_to_page_count_without_explicit_pr
                 "total": 50,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                        {
+                            "id": 1,
+                            "subject": "A",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
                     ]
                 },
             },
@@ -2120,7 +2158,11 @@ async def test_search_work_packages_exposes_real_total_with_explicit_project() -
                 "total": 5,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                        {
+                            "id": 1,
+                            "subject": "A",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
                     ]
                 },
             },
@@ -2150,7 +2192,11 @@ async def test_list_my_open_work_packages_falls_back_to_page_count_under_restric
                 "total": 50,
                 "_embedded": {
                     "elements": [
-                        {"id": 1, "subject": "A", "_links": {"project": {"title": "demo"}}},
+                        {
+                            "id": 1,
+                            "subject": "A",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
                     ]
                 },
             },
@@ -2867,7 +2913,7 @@ async def test_update_work_package_resolves_sprint_by_name() -> None:
                                 "_type": "Sprint",
                                 "id": 1,
                                 "name": "Cleanup",
-                                "_links": {},
+                                "_links": {"definingWorkspace": {"href": "/api/v3/projects/7", "title": "Demo"}},
                             }
                         ]
                     },
@@ -2895,7 +2941,7 @@ async def test_update_work_package_resolves_sprint_by_name() -> None:
                     "subject": "WP",
                     "lockVersion": 4,
                     "_links": {
-                        "project": {"title": "Demo"},
+                        "project": {"href": "/api/v3/projects/7", "title": "Demo"},
                         "status": {"title": "New"},
                         "type": {"title": "Task"},
                         "sprint": {"href": "/api/v3/sprints/1", "title": "Cleanup"},
@@ -3099,7 +3145,7 @@ async def test_delete_work_package_requires_confirmation_preview() -> None:
                     "subject": "Delete me",
                     "lockVersion": 4,
                     "_links": {
-                        "project": {"title": "Demo"},
+                        "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                         "status": {"title": "New"},
                         "type": {"title": "Task"},
                         "activities": {"href": "/api/v3/work_packages/42/activities"},
@@ -3146,7 +3192,7 @@ async def test_delete_work_package_deletes_when_enabled_and_confirmed() -> None:
                     "subject": "Delete me",
                     "lockVersion": 4,
                     "_links": {
-                        "project": {"title": "Demo"},
+                        "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                         "status": {"title": "New"},
                         "type": {"title": "Task"},
                         "activities": {"href": "/api/v3/work_packages/42/activities"},
@@ -3195,7 +3241,7 @@ async def test_delete_work_package_requires_write_enablement() -> None:
                     "subject": "Delete me",
                     "lockVersion": 4,
                     "_links": {
-                        "project": {"title": "Demo"},
+                        "project": {"href": "/api/v3/projects/1", "title": "Demo"},
                         "status": {"title": "New"},
                         "type": {"title": "Task"},
                         "activities": {"href": "/api/v3/work_packages/42/activities"},
@@ -4923,9 +4969,14 @@ async def test_get_work_package_filters_children_and_ancestors_by_read_allowlist
         match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
         if match:
             wp = int(match.group(1))
+            project_name = wp_project[wp]
+            project_id = {"allowed": 1, "secret": 2}[project_name]
             return httpx.Response(
                 200,
-                json={"id": wp, "_links": {"project": {"title": wp_project[wp]}}},
+                json={
+                    "id": wp,
+                    "_links": {"project": {"href": f"/api/v3/projects/{project_id}", "title": project_name}},
+                },
                 request=request,
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
@@ -6504,7 +6555,7 @@ async def test_version_crud_uses_form_endpoints_and_commit_paths() -> None:
                     "startDate": "2026-04-01",
                     "endDate": "2026-04-30",
                     "description": {"raw": "Initial rollout"},
-                    "_links": {"definingProject": {"title": "Demo"}},
+                    "_links": {"definingProject": {"href": "/api/v3/projects/6", "title": "Demo"}},
                 },
                 request=request,
             )
@@ -6519,7 +6570,7 @@ async def test_version_crud_uses_form_endpoints_and_commit_paths() -> None:
                     "startDate": "2026-04-01",
                     "endDate": "2026-04-30",
                     "description": {"raw": "Initial rollout"},
-                    "_links": {"definingProject": {"title": "Demo"}},
+                    "_links": {"definingProject": {"href": "/api/v3/projects/6", "title": "Demo"}},
                 },
                 request=request,
             )
@@ -6549,7 +6600,7 @@ async def test_version_crud_uses_form_endpoints_and_commit_paths() -> None:
                     "startDate": "2026-04-01",
                     "endDate": "2026-04-30",
                     "description": {"raw": "Initial rollout"},
-                    "_links": {"definingProject": {"title": "Demo"}},
+                    "_links": {"definingProject": {"href": "/api/v3/projects/6", "title": "Demo"}},
                 },
                 request=request,
             )
@@ -8258,7 +8309,11 @@ async def test_list_relations_and_update_relation() -> None:
             # the project write allowlist before patching.
             return httpx.Response(
                 200,
-                json={"id": 1, "subject": "Task A", "_links": {"project": {"title": "Demo"}}},
+                json={
+                    "id": 1,
+                    "subject": "Task A",
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
                 request=request,
             )
         if request.url.path == "/api/v3/relations/7" and request.method == "PATCH":
@@ -10068,7 +10123,10 @@ async def test_summary_sets_truncation_flag_and_stays_single_line() -> None:
                             "id": 7,
                             "subject": "Sample",
                             "description": {"raw": long_desc},
-                            "_links": {"status": {"title": "New"}, "project": {"title": "Demo"}},
+                            "_links": {
+                                "status": {"title": "New"},
+                                "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+                            },
                         }
                     ]
                 },
@@ -10142,7 +10200,7 @@ def _wp_detail_payload(wp_id: int, display_id: str) -> dict:
         "subject": "Sample",
         "displayId": display_id,
         "_links": {
-            "project": {"title": "Demo"},
+            "project": {"href": "/api/v3/projects/1", "title": "Demo"},
             "status": {"title": "New"},
             "type": {"title": "Task"},
             "activities": {"href": f"/api/v3/work_packages/{wp_id}/activities"},
@@ -10783,8 +10841,19 @@ async def test_resolve_version_id_project_less_name_match_beyond_first_filtered_
     # max_page_size), then the real exact match on server page 2 — must be
     # found even though it's beyond both the first server page AND page 1 of
     # the search-filtered survivors.
-    decoys = [{"id": i, "name": f"Release Candidate {i}", "_links": {}} for i in range(1, 51)]
-    exact = {"id": 999, "name": "Release", "_links": {}}
+    decoys = [
+        {
+            "id": i,
+            "name": f"Release Candidate {i}",
+            "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
+        }
+        for i in range(1, 51)
+    ]
+    exact = {
+        "id": 999,
+        "name": "Release",
+        "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
+    }
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/versions" and request.method == "GET":
@@ -12031,9 +12100,14 @@ async def test_list_relations_filters_by_read_allowlist_both_sides() -> None:
         m = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
         if m:
             wp = int(m.group(1))
+            project_name = wp_project[wp]
+            project_id = {"allowed": 100, "secret": 200}[project_name]
             return httpx.Response(
                 200,
-                json={"id": wp, "_links": {"project": {"title": wp_project[wp]}}},
+                json={
+                    "id": wp,
+                    "_links": {"project": {"href": f"/api/v3/projects/{project_id}", "title": project_name}},
+                },
                 request=request,
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
@@ -12071,9 +12145,17 @@ async def test_create_relation_resolves_semantic_target_to_numeric() -> None:
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/PROJ-20" and request.method == "GET":
-            return httpx.Response(200, json={"id": 20, "_links": {"project": {"title": "Demo"}}}, request=request)
+            return httpx.Response(
+                200,
+                json={"id": 20, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
         if request.url.path == "/api/v3/work_packages/PROJ-10" and request.method == "GET":
-            return httpx.Response(200, json={"id": 10, "_links": {"project": {"title": "Demo"}}}, request=request)
+            return httpx.Response(
+                200,
+                json={"id": 10, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
         if request.url.path == "/api/v3/work_packages/PROJ-10/relations" and request.method == "POST":
             posted.update(json.loads(request.content))
             return httpx.Response(
@@ -13750,9 +13832,21 @@ async def test_list_versions_global_search_filters_by_name_substring() -> None:
                 json={
                     "_embedded": {
                         "elements": [
-                            {"id": 1, "name": "0.2.3", "_links": {}},
-                            {"id": 2, "name": "0.3.0", "_links": {}},
-                            {"id": 3, "name": "Rejected", "_links": {}},
+                            {
+                                "id": 1,
+                                "name": "0.2.3",
+                                "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                            },
+                            {
+                                "id": 2,
+                                "name": "0.3.0",
+                                "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                            },
+                            {
+                                "id": 3,
+                                "name": "Rejected",
+                                "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                            },
                         ]
                     },
                 },
@@ -14290,11 +14384,10 @@ async def test_file_link_delete_uses_container_work_package_link_shape() -> None
 
 
 @pytest.mark.asyncio
-async def test_file_link_delete_reports_none_work_package_id_when_container_unresolvable() -> None:
-    """Regression, found via a bidirectional bugfix audit against
-    release/0.4.0: when the file link's container href is missing/unparseable,
-    work_package_id must be None -- a previous version faked it as 0, which
-    looks like a real (falsy-but-present) id rather than "unknown"."""
+async def test_file_link_delete_denies_when_container_unresolvable_even_under_wide_open_write_scope() -> None:
+    """OPM-359: a file link with no resolvable container has no verifiable
+    project association -- deleting it must be denied even under
+    write_projects=("*",), not silently allowed with work_package_id=None."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/file_links/5" and request.method == "GET":
@@ -14303,17 +14396,13 @@ async def test_file_link_delete_reports_none_work_package_id_when_container_unre
                 json={"id": 5, "_links": {"self": {"href": "/api/v3/file_links/5"}}},
                 request=request,
             )
-        if request.url.path == "/api/v3/file_links/5" and request.method == "DELETE":
-            return httpx.Response(204, request=request)
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     settings = _base_settings(enable_work_package_write=True, write_projects=("*",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.delete_file_link(5, confirm=True)
-
-    assert result.work_package_id is None
-    assert result.confirmed is True
+    with pytest.raises(PermissionDeniedError):
+        await client.delete_file_link(5, confirm=True)
 
     await client.aclose()
 
@@ -14426,7 +14515,7 @@ async def test_get_work_package_relations_filters_by_read_allowlist_other_side()
 
     def _anchor_payload() -> dict:
         payload = _wp_detail_payload(55, "PROJ-7")
-        payload["_links"]["project"] = {"title": "allowed"}
+        payload["_links"]["project"] = {"href": "/api/v3/projects/1", "title": "allowed"}
         return payload
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -14462,8 +14551,15 @@ async def test_get_work_package_relations_filters_by_read_allowlist_other_side()
         m = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
         if m:
             wp = int(m.group(1))
+            project_name = wp_project[wp]
+            project_id = {"allowed": 1, "secret": 2}[project_name]
             return httpx.Response(
-                200, json={"id": wp, "_links": {"project": {"title": wp_project[wp]}}}, request=request
+                200,
+                json={
+                    "id": wp,
+                    "_links": {"project": {"href": f"/api/v3/projects/{project_id}", "title": project_name}},
+                },
+                request=request,
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
@@ -14524,11 +14620,13 @@ async def test_global_relations_allowlist_checks_from_and_to_link_shapes() -> No
         if match:
             work_package_id = int(match.group(1))
             fetched_work_packages.append(work_package_id)
+            project_name = work_package_projects[work_package_id]
+            project_id = {"demo": 1, "other": 2}[project_name]
             return httpx.Response(
                 200,
                 json={
                     "id": work_package_id,
-                    "_links": {"project": {"title": work_package_projects[work_package_id]}},
+                    "_links": {"project": {"href": f"/api/v3/projects/{project_id}", "title": project_name}},
                 },
                 request=request,
             )
@@ -15315,9 +15413,14 @@ async def test_list_relations_walks_multiple_server_pages_when_allowlist_thins_f
         match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
         if match:
             wp_id = int(match.group(1))
+            project_name = work_package_projects[wp_id]
+            project_id = {"demo": 1, "other": 2}[project_name]
             return httpx.Response(
                 200,
-                json={"id": wp_id, "_links": {"project": {"title": work_package_projects[wp_id]}}},
+                json={
+                    "id": wp_id,
+                    "_links": {"project": {"href": f"/api/v3/projects/{project_id}", "title": project_name}},
+                },
                 request=request,
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
@@ -15632,4 +15735,117 @@ async def test_create_time_entry_resolves_activity_via_entity_link_when_work_pac
     assert result.ready is True
     assert result.validation_errors == {}
 
+    await client.aclose()
+
+
+# --- _classify_project_link / _ensure_project_link_allowed (OPM-359) --------
+
+
+def test_classify_project_link_resolved() -> None:
+    assert _classify_project_link({"href": "/api/v3/projects/7", "title": "Demo"}) is LinkState.RESOLVED
+
+
+def test_classify_project_link_undisclosed() -> None:
+    link = {"href": URN_UNDISCLOSED, "title": "Undisclosed project"}
+    assert _classify_project_link(link) is LinkState.UNDISCLOSED
+
+
+def test_classify_project_link_explicitly_unscoped() -> None:
+    assert _classify_project_link({"href": None}) is LinkState.EXPLICITLY_UNSCOPED
+
+
+def test_classify_project_link_missing() -> None:
+    assert _classify_project_link(None) is LinkState.MISSING
+
+
+def test_classify_project_link_malformed_not_a_dict() -> None:
+    assert _classify_project_link("not-a-dict") is LinkState.MALFORMED
+    assert _classify_project_link(42) is LinkState.MALFORMED
+    assert _classify_project_link([]) is LinkState.MALFORMED
+
+
+def test_classify_project_link_malformed_no_href_key() -> None:
+    """A dict with no "href" key at all (e.g. a typo like {"hreef": ...}, or
+    just {"title": "x"}) is never a real representer shape -- distinct from
+    {"href": None}, which IS the documented explicit-empty form."""
+    assert _classify_project_link({}) is LinkState.MALFORMED
+    assert _classify_project_link({"title": "Demo"}) is LinkState.MALFORMED
+
+
+def test_classify_project_link_malformed_blank_href() -> None:
+    assert _classify_project_link({"href": ""}) is LinkState.MALFORMED
+    assert _classify_project_link({"href": "   "}) is LinkState.MALFORMED
+
+
+def test_classify_project_link_malformed_non_string_href() -> None:
+    assert _classify_project_link({"href": 42}) is LinkState.MALFORMED
+
+
+async def test_ensure_project_link_allowed_denies_missing_link_even_under_wildcard_scope() -> None:
+    settings = _base_settings(read_projects=("*",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        client._ensure_project_link_allowed(None)
+    await client.aclose()
+
+
+async def test_ensure_project_link_allowed_denies_malformed_link_even_under_wildcard_scope() -> None:
+    settings = _base_settings(read_projects=("*",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        client._ensure_project_link_allowed({"title": "Demo"})
+    await client.aclose()
+
+
+async def test_ensure_project_link_allowed_treats_undisclosed_like_resolved_under_wildcard() -> None:
+    link = {"href": URN_UNDISCLOSED, "title": "Undisclosed project"}
+    settings = _base_settings(read_projects=("*",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
+    client._ensure_project_link_allowed(link)  # must not raise
+    await client.aclose()
+
+
+async def test_ensure_project_link_allowed_denies_undisclosed_under_restrictive_scope() -> None:
+    """A restrictive scope can never confirm an undisclosed project's real
+    identity is on the allowlist -- always deny, not candidate-match against
+    the meaningless placeholder title/URN."""
+    link = {"href": URN_UNDISCLOSED, "title": "Undisclosed project"}
+    settings = _base_settings(read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        client._ensure_project_link_allowed(link)
+    await client.aclose()
+
+
+async def test_ensure_project_link_allowed_if_present_allows_missing_link_under_wildcard_scope() -> None:
+    settings = _base_settings(read_projects=("*",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
+    client._ensure_project_link_allowed_if_present(None)  # must not raise
+    client._ensure_project_link_allowed_if_present({"href": None})  # must not raise
+    await client.aclose()
+
+
+async def test_ensure_project_link_allowed_if_present_denies_missing_link_under_restrictive_scope() -> None:
+    settings = _base_settings(read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        client._ensure_project_link_allowed_if_present(None)
+    await client.aclose()
+
+
+async def test_ensure_project_link_allowed_if_present_denies_malformed_link_even_under_wildcard_scope() -> None:
+    """Unlike missing/explicitly-empty, MALFORMED is newly always denied here
+    too -- a structurally broken link is never the same as "deliberately none"."""
+    settings = _base_settings(read_projects=("*",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
+        client._ensure_project_link_allowed_if_present({"title": "Demo"})
+    await client.aclose()
+
+
+async def test_ensure_project_write_link_allowed_if_present_denies_malformed_link_even_under_wildcard_scope() -> None:
+    settings = _base_settings(read_projects=("*",), write_projects=("*",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
+    with pytest.raises(PermissionDeniedError):
+        client._ensure_project_write_link_allowed_if_present({"title": "Demo"})
     await client.aclose()
