@@ -285,6 +285,26 @@ async def test_create_returns_preview_without_committing() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_preview_trims_project_name_to_subject_limit() -> None:
+    """Regression: the pre-migration original capped the preview's project
+    name at SUBJECT_LIMIT (`_trim_text(project_payload.get("name"),
+    limit=SUBJECT_LIMIT)`) -- a prior port returned the raw, untrimmed name
+    in the confirm=False preview response instead."""
+    api = _FakeMembershipApi()
+    long_name = "x" * 300
+
+    async def resolve_project_ref_long_name(project_ref: str, *, write: bool = False, context=None) -> dict:
+        return {**await _resolve_project_ref(project_ref, write=write, context=context), "name": long_name}
+
+    service = _service(api, resolve_project_ref=resolve_project_ref_long_name)
+
+    result = await service.create(project="demo", principal="me", roles=["Member"], confirm=False)
+
+    assert result.project is not None
+    assert len(result.project) <= 255
+
+
+@pytest.mark.asyncio
 async def test_create_passes_write_true_to_resolve_project_ref() -> None:
     """create() must ask its injected resolve_project_ref for a WRITE-checked
     resolution (write=True), not a read-only one -- the actual write-

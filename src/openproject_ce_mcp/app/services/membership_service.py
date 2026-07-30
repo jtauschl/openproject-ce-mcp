@@ -52,6 +52,8 @@ from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
 from ..ports.role_api import RoleApi, RoleRecord
 from ._write_outcome import _finalize_write, _WriteOutcome
+from .project_scoped_list import SUBJECT_LIMIT
+from .project_scoped_list import trim_text as _trim_text
 
 
 class MembershipService:
@@ -154,7 +156,7 @@ class MembershipService:
             confirm=confirm,
             payload=form.payload,
             validation_errors=form.validation_errors,
-            identity={"membership_id": None, "project": project_payload.get("name")},
+            identity={"membership_id": None, "project": _trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT)},
             ensure_write_enabled=lambda: access.ensure_write_enabled("membership", settings=self._settings),
             commit=self._api.commit_create,
             committed_identity=lambda summary: {"membership_id": summary.id, "project": summary.project_name},
