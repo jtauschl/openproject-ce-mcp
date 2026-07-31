@@ -8388,7 +8388,15 @@ class OpenProjectClient:
     ) -> int:
         container_link = payload.get("_links", {}).get("container")
         href = container_link.get("href") if isinstance(container_link, dict) else None
-        if not isinstance(href, str) or "work_packages/" not in href:
+        if not isinstance(href, str):
+            raise InvalidInputError("Only work package attachments are supported.")
+        # Match the `work_packages/<id>` path-segment pair exactly, not a raw
+        # substring test -- the substring form would also accept an unrelated
+        # resource whose path merely CONTAINS "work_packages/" (e.g.
+        # `/api/v3/not_work_packages/9`), authorizing against an unrelated
+        # work package's project instead of failing closed.
+        segments = href.rstrip("/").split("/")
+        if len(segments) < 2 or segments[-2] != "work_packages":
             raise InvalidInputError("Only work package attachments are supported.")
         work_package_id = _id_from_href(href)
         if work_package_id is None:

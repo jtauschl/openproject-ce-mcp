@@ -12734,6 +12734,39 @@ async def test_attachment_description_delimited():
 
 
 @pytest.mark.asyncio
+async def test_get_attachment_rejects_a_container_href_only_substring_matching_work_packages() -> None:
+    """Codex-found (during the 0.4.0 migration, ported back here since this
+    branch's own client.py still has the identical flat pre-migration bug):
+    `_ensure_attachment_container_allowed`'s old `"work_packages/" not in
+    href` substring check would wrongly accept a foreign resource whose path
+    merely CONTAINS that substring, e.g. `/api/v3/not_work_packages/9` --
+    authorizing against an unrelated work package's project rather than
+    failing closed. The fixed check requires an exact `work_packages/<id>`
+    path-segment pair."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/attachments/5":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 5,
+                    "fileName": "report.pdf",
+                    "_links": {"container": {"href": "/api/v3/not_work_packages/9"}},
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="Only work package attachments are supported"):
+        await client.get_attachment(5)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_news_description_hidden_by_news_scope_not_project_scope():
     payload = {
         "id": 10,
