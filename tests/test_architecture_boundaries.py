@@ -1193,6 +1193,40 @@ def test_time_entry_service_binds_its_dependencies_to_the_right_protocols() -> N
     )
 
 
+def test_attachment_service_binds_its_three_dependencies_to_the_right_protocols() -> None:
+    """Attachments follows File Links' three-Protocol shape: its own Port,
+    WorkPackageLookupApi (get()/delete()'s container-derived id), and
+    WorkPackageIdResolver (list()'s anchor, create()'s caller-supplied
+    reference)."""
+    from openproject_ce_mcp.app.adapters.httpx_attachment_api import HttpxAttachmentApi
+    from openproject_ce_mcp.app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
+    from openproject_ce_mcp.app.ports.attachment_api import AttachmentApi
+    from openproject_ce_mcp.app.ports.work_package_lookup_api import WorkPackageLookupApi
+    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageIdResolver
+    from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
+    from openproject_ce_mcp.app.services.attachment_service import AttachmentService
+
+    hints = typing.get_type_hints(AttachmentService.__init__)
+    assert hints["api"] is AttachmentApi, "AttachmentService.__init__'s api param must be typed AttachmentApi"
+    assert hints["api"] is not HttpxAttachmentApi, (
+        "AttachmentService.__init__'s api param must not be the concrete adapter"
+    )
+
+    assert hints["work_package_lookup_api"] is WorkPackageLookupApi, (
+        "AttachmentService.__init__'s work_package_lookup_api param must be typed WorkPackageLookupApi"
+    )
+    assert hints["work_package_lookup_api"] is not HttpxWorkPackageLookupApi, (
+        "AttachmentService.__init__'s work_package_lookup_api param must not be the concrete adapter"
+    )
+
+    assert hints["resolve_work_package_id"] is WorkPackageIdResolver, (
+        "AttachmentService.__init__'s resolve_work_package_id param must be typed WorkPackageIdResolver"
+    )
+    assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
+        "AttachmentService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
+    )
+
+
 def test_activity_service_binds_the_api_param_to_activity_api_specifically() -> None:
     """Activities is the simplest work-package-reference-dependent domain
     this session: no WorkPackageLookupApi at all, only its own Port plus

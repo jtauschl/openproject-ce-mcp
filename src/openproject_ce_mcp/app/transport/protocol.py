@@ -42,6 +42,24 @@ class Transport(Protocol):
         migration), the first endpoint to POST raw text rather than a JSON body."""
         ...
 
+    async def post_multipart(
+        self,
+        path: str,
+        *,
+        metadata: dict[str, Any],
+        file_name: str,
+        file_bytes: bytes,
+        content_type: str,
+    ) -> dict[str, Any]:
+        """POST a multipart/form-data body (a JSON metadata part plus a file
+        part) and parse a JSON response -- added for Attachments (29th
+        migration), the first endpoint to POST a file upload rather than a
+        JSON or raw-text body. Verbatim of client.py's `_post_multipart`: the
+        metadata part must be a plain form field with no filename in its
+        Content-Disposition (a filename makes Rails' multipart parser treat
+        it as an uploaded file, not a JSON string, and OpenProject 500s)."""
+        ...
+
     async def patch_json(
         self, path: str, *, params: dict[str, str] | None = None, json_body: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...

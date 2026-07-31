@@ -3,11 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import mimetypes
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from fnmatch import fnmatchcase
-from pathlib import Path
 from typing import Any, TypeVar, cast
 from urllib.parse import unquote, urljoin, urlparse
 
@@ -16,6 +14,7 @@ import httpx
 from . import __version__
 from .app.adapters.httpx_action_capability_api import HttpxActionCapabilityApi
 from .app.adapters.httpx_activity_api import HttpxActivityApi
+from .app.adapters.httpx_attachment_api import HttpxAttachmentApi
 from .app.adapters.httpx_board_api import HttpxBoardApi
 from .app.adapters.httpx_category_api import HttpxCategoryApi
 from .app.adapters.httpx_document_api import HttpxDocumentApi
@@ -68,6 +67,7 @@ from .app.policies import scope as _scope_policy
 from .app.policies import sprint_policy as _sprint_policy
 from .app.ports.action_capability_api import ActionCapabilityApi
 from .app.ports.activity_api import ActivityApi
+from .app.ports.attachment_api import AttachmentApi
 from .app.ports.board_api import BoardApi
 from .app.ports.category_api import CategoryApi
 from .app.ports.document_api import DocumentApi
@@ -103,6 +103,7 @@ from .app.resolvers.version_resolver import VersionResolver
 from .app.resolvers.work_package_resolver import WorkPackageResolver
 from .app.services.action_capability_service import ActionCapabilityService
 from .app.services.activity_service import ActivityService
+from .app.services.attachment_service import AttachmentService
 from .app.services.board_service import BoardService
 from .app.services.category_service import CategoryService
 from .app.services.document_service import DocumentService
@@ -622,6 +623,17 @@ class OpenProjectClient:
             resolve_work_package_id=self._work_package_resolver.resolve_id,
         )
 
+        self._attachment_api: AttachmentApi = HttpxAttachmentApi(
+            HttpxTransport(self._http), base_url=settings.base_url, origin=self._origin
+        )
+        self._attachment_service = AttachmentService(
+            api=self._attachment_api,
+            work_package_lookup_api=self._work_package_lookup_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
+        )
+
     async def initialize(self) -> None:
         # _project_id_to_identifier is consulted for BOTH read and write link-based
         # allowlist matching (see _project_candidates), so population must not skip
@@ -1130,49 +1142,10 @@ class OpenProjectClient:
         return await self._category_service.get(category_id=category_id, project_ref=project_ref)
 
     async def list_work_package_attachments(self, work_package_id: int | str) -> AttachmentListResult:
-        self._ensure_read_enabled("work_package")
-        work_package_id = self._work_package_ref(work_package_id)
-        work_package = await self.get_work_package(work_package_id)
-        # No pageSize was ever sent here, silently relying on OpenProject's own
-        # server-side default page size -- any attachment beyond that default
-        # was permanently unreachable. Walk every server page instead.
-        page_size = self.settings.max_page_size
-        offset = 1
-        results: list[AttachmentSummary] = []
-        seen_ids: set[Any] = set()
-        is_first_page = True
-        while True:
-            payload = await self._get(
-                f"work_packages/{work_package_id}/attachments",
-                params={"offset": str(offset), "pageSize": str(page_size)},
-            )
-            elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
-            # Some work-package-scoped sub-collection endpoints (verified
-            # live: a project's versions endpoint has the same shape) may
-            # silently ignore offset/pageSize and always return every
-            # element -- without this check, `len(elements) < page_size`
-            # never becomes true and this loops forever, re-fetching the
-            # same full page.
-            page_ids = {item.get("id") for item in elements}
-            if not is_first_page and page_ids and page_ids <= seen_ids:
-                break
-            is_first_page = False
-            seen_ids.update(page_ids)
-            results.extend(self.normalize_attachment(item) for item in elements)
-            if len(elements) < page_size:
-                break
-            offset += 1
-        results = [
-            item for item in results if item.container_type == "WorkPackage" and item.container_id == work_package.id
-        ]
-        return AttachmentListResult(count=len(results), results=results)
+        return await self._attachment_service.list_for_work_package(work_package_id)
 
     async def get_attachment(self, attachment_id: int) -> AttachmentSummary:
-        self._ensure_read_enabled("work_package")
-        payload = await self._get(f"attachments/{attachment_id}")
-        attachment = self.normalize_attachment(payload)
-        await self._ensure_attachment_container_allowed(payload)
-        return attachment
+        return await self._attachment_service.get(attachment_id)
 
     async def create_work_package_attachment(
         self,
@@ -1182,59 +1155,8 @@ class OpenProjectClient:
         description: str | None = None,
         confirm: bool = False,
     ) -> AttachmentWriteResult:
-        work_package_id = self._work_package_ref(work_package_id)
-        work_package_payload = await self._get(f"work_packages/{work_package_id}")
-        self._ensure_project_write_link_allowed(work_package_payload.get("_links", {}).get("project"))
-        self._ensure_field_writable("attachment", "file_name")
-        if description is not None:
-            self._ensure_field_writable("attachment", "description")
-        file_info = self._prepare_attachment_file(file_path, include_bytes=confirm)
-        await self._validate_attachment_size(file_info["file_size"])
-        if not confirm:
-            return AttachmentWriteResult(
-                action="create",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to upload this attachment. Ask for confirmation, then call again with confirm=true.",
-                attachment_id=None,
-                work_package_id=work_package_id,
-                payload={
-                    "fileName": file_info["file_name"],
-                    "fileSize": file_info["file_size"],
-                    "description": description,
-                },
-                validation_errors={},
-                result=None,
-            )
-
-        self._ensure_write_enabled("work_package")
-        response = await self._post_multipart(
-            f"work_packages/{work_package_id}/attachments",
-            metadata={
-                "fileName": file_info["file_name"],
-                **({"description": {"format": "markdown", "raw": description}} if description is not None else {}),
-            },
-            file_name=file_info["file_name"],
-            file_bytes=file_info["file_bytes"],
-            content_type=file_info["content_type"],
-        )
-        result = self.normalize_attachment(response)
-        return AttachmentWriteResult(
-            action="create",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Attachment uploaded successfully.",
-            attachment_id=result.id,
-            work_package_id=work_package_id,
-            payload={
-                "fileName": file_info["file_name"],
-                "fileSize": file_info["file_size"],
-                "description": description,
-            },
-            validation_errors={},
-            result=result,
+        return await self._attachment_service.create(
+            work_package_id=work_package_id, file_path=file_path, description=description, confirm=confirm
         )
 
     async def delete_attachment(
@@ -1243,30 +1165,7 @@ class OpenProjectClient:
         attachment_id: int,
         confirm: bool = False,
     ) -> AttachmentWriteResult:
-        payload = await self._get(f"attachments/{attachment_id}")
-        attachment = self.normalize_attachment(payload)
-        work_package_id = await self._ensure_attachment_container_allowed(payload, write=True)
-        preview_payload = {
-            "id": attachment.id,
-            "title": attachment.title,
-            "fileName": attachment.file_name,
-            "fileSize": attachment.file_size,
-        }
-        return await self._finalize_delete(
-            result_cls=AttachmentWriteResult,
-            confirm=confirm,
-            result_kwargs={
-                "attachment_id": attachment.id,
-                "work_package_id": work_package_id,
-                "payload": preview_payload,
-            },
-            preview_result=attachment,
-            commit_result=None,
-            write_scope="work_package",
-            delete_path=f"attachments/{attachment_id}",
-            preview_message="OpenProject found the attachment. Ask for confirmation, then call again with confirm=true to delete it.",
-            success_message="Attachment deleted successfully.",
-        )
+        return await self._attachment_service.delete(attachment_id, confirm=confirm)
 
     async def list_time_entry_activities(self) -> TimeEntryActivityListResult:
         return await self._time_entry_service.list_activities()
@@ -2711,9 +2610,7 @@ class OpenProjectClient:
     async def get_work_package_activities(
         self, work_package_id: int | str, *, limit: int | None = None, text_limit: int | None = None
     ) -> ActivityListResult:
-        return await self._activity_service.list_for_work_package(
-            work_package_id, limit=limit, text_limit=text_limit
-        )
+        return await self._activity_service.list_for_work_package(work_package_id, limit=limit, text_limit=text_limit)
 
     # --- Emoji reactions (on work-package comment activities) ---
 
@@ -3143,30 +3040,6 @@ class OpenProjectClient:
     ) -> dict[str, Any]:
         return await self._request_json("PATCH", path, params=params, json_body=json_body)
 
-    async def _post_multipart(
-        self,
-        path: str,
-        *,
-        metadata: dict[str, Any],
-        file_name: str,
-        file_bytes: bytes,
-        content_type: str,
-    ) -> dict[str, Any]:
-        response = await self._request(
-            "POST",
-            path,
-            files={
-                # The metadata part must be a plain form field, NOT a file part: it
-                # carries no filename in its Content-Disposition. If a filename is set,
-                # Rails' multipart parser treats it as an uploaded file (a Hash with a
-                # tempfile) instead of a JSON string, and OpenProject 500s with
-                # "no implicit conversion of HashWithIndifferentAccess into String".
-                "metadata": (None, json.dumps(metadata), "application/json"),
-                "file": (file_name, file_bytes, content_type),
-            },
-        )
-        return _parse_response_json(response)
-
     async def _delete(
         self,
         path: str,
@@ -3509,41 +3382,6 @@ class OpenProjectClient:
                 comment_length=length,
                 details=details,
                 details_truncated=details_truncated,
-            ),
-        )
-
-    def normalize_attachment(self, payload: dict[str, Any]) -> AttachmentSummary:
-        links = payload.get("_links", {})
-        container_link = links.get("container")
-        container_href = container_link.get("href") if isinstance(container_link, dict) else None
-        container_type = None
-        if isinstance(container_href, str):
-            if "work_packages/" in container_href:
-                container_type = "WorkPackage"
-            else:
-                container_type = _slug_from_href(container_href)
-        download_href = None
-        if isinstance(links.get("downloadLocation"), dict):
-            download_href = links["downloadLocation"].get("href")
-        if not download_href and isinstance(links.get("staticDownloadLocation"), dict):
-            download_href = links["staticDownloadLocation"].get("href")
-        return self._apply_hidden_fields(
-            "attachment",
-            AttachmentSummary(
-                id=int(payload["id"]),
-                title=_trim_text(payload.get("title") or payload.get("fileName"), limit=SUBJECT_LIMIT)
-                or f"Attachment {payload['id']}",
-                file_name=_trim_text(payload.get("fileName"), limit=SUBJECT_LIMIT),
-                file_size=payload.get("fileSize"),
-                description=_delimit_user_content(_extract_formattable_text(payload.get("description"))),
-                content_type=_trim_text(payload.get("contentType"), limit=SUBJECT_LIMIT),
-                status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
-                author=_link_title(links.get("author")),
-                container_type=container_type,
-                container_id=_id_from_href(container_href),
-                created_at=payload.get("createdAt"),
-                download_url=self._link_to_web_url(download_href),
-                url=self._web_url(f"api/v3/attachments/{payload['id']}"),
             ),
         )
 
@@ -4154,106 +3992,6 @@ class OpenProjectClient:
                 (item.project or "").casefold(),
             }
         )
-
-    async def _ensure_attachment_container_allowed(
-        self,
-        payload: dict[str, Any],
-        *,
-        write: bool = False,
-    ) -> int:
-        container_link = payload.get("_links", {}).get("container")
-        href = container_link.get("href") if isinstance(container_link, dict) else None
-        if not isinstance(href, str) or "work_packages/" not in href:
-            raise InvalidInputError("Only work package attachments are supported.")
-        work_package_id = _id_from_href(href)
-        if work_package_id is None:
-            raise OpenProjectServerError("OpenProject returned an attachment without a valid container id.")
-        work_package = await self._get(f"work_packages/{work_package_id}")
-        if write:
-            self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
-        else:
-            self._ensure_project_link_allowed(work_package.get("_links", {}).get("project"))
-        return work_package_id
-
-    def _attachment_root(self) -> Path:
-        """The directory attachment uploads are confined to.
-
-        OPENPROJECT_ATTACHMENT_ROOT must be set to an absolute directory; there
-        is no current-working-directory fallback (a globally installed MCP
-        server's cwd is unpredictable, so silently falling back to it would let
-        an upload land in, or escape from, whatever directory happened to
-        launch the server). This bounds which local files a caller can upload,
-        so a malicious/confused agent cannot exfiltrate arbitrary host files
-        (e.g. the API token in .mcp.json, SSH keys, /etc/passwd). tools.py also
-        only registers create_work_package_attachment when this is set;
-        this check is defense-in-depth for a caller that constructs
-        OpenProjectClient directly, bypassing that registration gate (as
-        several tests in tests/unit/ already do).
-        """
-        configured = self.settings.attachment_root
-        if not configured:
-            raise PermissionDeniedError(
-                "Attachment uploads are disabled: OPENPROJECT_ATTACHMENT_ROOT is not set. "
-                "There is no current-working-directory fallback — set it to an absolute, "
-                "existing directory to allow local file uploads."
-            )
-        return Path(configured).expanduser().resolve()
-
-    # Files that must never be uploaded even from inside the attachment root:
-    # the config often lives in the server's working directory, so directory
-    # containment alone would still expose the API token and other secrets.
-    _ATTACHMENT_DENY_NAMES = frozenset(
-        {
-            ".mcp.json",
-            ".env",
-            "credentials",
-            "id_rsa",
-            "id_ed25519",
-        }
-    )
-    _ATTACHMENT_DENY_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
-
-    def _is_sensitive_attachment(self, path: Path) -> bool:
-        name = path.name
-        lower = name.lower()
-        if lower in self._ATTACHMENT_DENY_NAMES:
-            return True
-        if lower.startswith(".mcp.json"):  # e.g. .mcp.json.bak.<ts>
-            return True
-        return any(lower.endswith(suffix) for suffix in self._ATTACHMENT_DENY_SUFFIXES)
-
-    def _prepare_attachment_file(self, file_path: str, *, include_bytes: bool) -> dict[str, Any]:
-        root = self._attachment_root()
-        # Resolve symlinks and .. so the containment check cannot be defeated.
-        path = Path(file_path).expanduser().resolve()
-        if root not in path.parents and path != root:
-            raise InvalidInputError(
-                f"Attachment file '{file_path}' is outside the allowed attachment directory "
-                f"({root}). Set OPENPROJECT_ATTACHMENT_ROOT to permit another location."
-            )
-        if self._is_sensitive_attachment(path):
-            raise InvalidInputError(
-                f"Attachment file '{file_path}' looks like a credential/config file and cannot be "
-                "uploaded. This protects the API token and other local secrets."
-            )
-        if not path.is_file():
-            raise InvalidInputError(f"Attachment file '{file_path}' does not exist or is not a file.")
-        file_bytes = path.read_bytes() if include_bytes else None
-        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        return {
-            "file_name": path.name,
-            "file_size": path.stat().st_size,
-            "file_bytes": file_bytes,
-            "content_type": content_type,
-        }
-
-    async def _validate_attachment_size(self, file_size: int) -> None:
-        configuration = await self.get_instance_configuration()
-        maximum = configuration.maximum_attachment_file_size
-        if maximum is not None and file_size > maximum:
-            raise InvalidInputError(
-                f"Attachment exceeds the configured OpenProject maximum attachment size of {maximum} bytes."
-            )
 
     def _normalize_hide_token(self, value: str) -> str:
         return _hidden_fields_policy.normalize_hide_token(value)

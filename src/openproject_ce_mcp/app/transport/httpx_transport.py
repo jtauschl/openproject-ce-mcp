@@ -6,6 +6,7 @@ architecture-boundary test, Slice 6).
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
@@ -36,6 +37,25 @@ class HttpxTransport:
 
     async def post_raw_json(self, path: str, *, content: bytes, headers: dict[str, str]) -> dict[str, Any]:
         response = await self._request("POST", path, content=content, headers=headers)
+        return self._parse_json(response)
+
+    async def post_multipart(
+        self,
+        path: str,
+        *,
+        metadata: dict[str, Any],
+        file_name: str,
+        file_bytes: bytes,
+        content_type: str,
+    ) -> dict[str, Any]:
+        response = await self._request(
+            "POST",
+            path,
+            files={
+                "metadata": (None, json.dumps(metadata), "application/json"),
+                "file": (file_name, file_bytes, content_type),
+            },
+        )
         return self._parse_json(response)
 
     async def patch_json(
@@ -89,10 +109,11 @@ class HttpxTransport:
         json_body: dict[str, Any] | None = None,
         content: bytes | None = None,
         headers: dict[str, str] | None = None,
+        files: dict[str, Any] | None = None,
     ) -> httpx.Response:
         try:
             response = await self._client.request(
-                method, path, params=params, json=json_body, content=content, headers=headers
+                method, path, params=params, json=json_body, content=content, headers=headers, files=files
             )
         except httpx.TimeoutException as exc:
             raise TransportError("OpenProject request timed out.") from exc
