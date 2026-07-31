@@ -6,10 +6,12 @@ import pytest
 from _client_test_helpers import make_settings
 
 from openproject_ce_mcp.app.errors import InvalidInputError, NotFoundError, PermissionDeniedError
-from openproject_ce_mcp.app.ports.work_package_api import WorkPackagePage, WorkPackageRecord
+from openproject_ce_mcp.app.ports.activity_api import ActivityRecord
+from openproject_ce_mcp.app.ports.status_priority_type_api import StatusRecord
+from openproject_ce_mcp.app.ports.work_package_api import WorkPackageFormResult, WorkPackagePage, WorkPackageRecord
 from openproject_ce_mcp.app.ports.work_package_resolution import WorkPackageAllowedContext
 from openproject_ce_mcp.app.services.work_package_service import WorkPackageService
-from openproject_ce_mcp.models import CurrentUser, WorkPackageDetail, WorkPackageSummary
+from openproject_ce_mcp.models import ActivitySummary, CurrentUser, StatusSummary, WorkPackageDetail, WorkPackageSummary
 
 PROJECT_ID_TO_IDENTIFIER = {1: "demo", 20: "other"}
 
@@ -95,6 +97,17 @@ class _FakeWorkPackageApi:
         self._records_by_id: dict[int, WorkPackageRecord] = {6: _record(6)}
         self.list_calls: list[dict] = []
         self.get_calls: list[str] = []
+        self.validate_create_calls: list[tuple[str, dict]] = []
+        self.validate_update_calls: list[tuple[str, dict]] = []
+        self.commit_create_calls: list[dict] = []
+        self.commit_update_calls: list[tuple[str, dict]] = []
+        self.delete_calls: list[str] = []
+        self.post_comment_calls: list[dict] = []
+        # Each entry in validation_errors_queue is consumed once per
+        # validate_create/validate_update call, in order -- lets a test force
+        # a rejection on a specific call without affecting others.
+        self.validation_errors_queue: list[dict[str, str]] = []
+        self.next_schema: dict = {}
 
     async def list(self, *, filters, offset, limit, sort_by, group_by) -> WorkPackagePage:
         self.list_calls.append({"filters": filters, "offset": offset, "limit": limit})
@@ -113,6 +126,118 @@ class _FakeWorkPackageApi:
             return self._records_by_id[wp_id]
         raise NotFoundError(f"OpenProject work package {wp_id} was not found.")
 
+    def _next_validation_errors(self) -> dict[str, str]:
+        return self.validation_errors_queue.pop(0) if self.validation_errors_queue else {}
+
+    async def validate_create(self, project_id: str, payload: dict) -> dict:
+        self.validate_create_calls.append((project_id, payload))
+        return {
+            "_embedded": {
+                "payload": payload,
+                "validationErrors": self._next_validation_errors(),
+                "schema": self.next_schema,
+            }
+        }
+
+    async def validate_update(self, work_package_ref: str, payload: dict) -> dict:
+        self.validate_update_calls.append((work_package_ref, payload))
+        return {
+            "_embedded": {
+                "payload": payload,
+                "validationErrors": self._next_validation_errors(),
+                "schema": self.next_schema,
+            }
+        }
+
+    def parse_form(self, form: dict) -> WorkPackageFormResult:
+        embedded = form.get("_embedded", {})
+        return WorkPackageFormResult(
+            payload=embedded.get("payload", {}),
+            validation_errors=embedded.get("validationErrors", {}),
+            schema=embedded.get("schema", {}),
+        )
+
+    async def commit_create(self, payload: dict, *, text_limit: int | None) -> WorkPackageRecord:
+        self.commit_create_calls.append(payload)
+        return _record(99, summary=_summary(99), payload=_payload(99))
+
+    async def commit_update(self, work_package_ref: str, payload: dict, *, text_limit: int | None) -> WorkPackageRecord:
+        self.commit_update_calls.append((work_package_ref, payload))
+        wp_id = int(work_package_ref)
+        return self._records_by_id.get(wp_id, _record(wp_id, payload=payload))
+
+    async def delete(self, work_package_ref: str) -> None:
+        self.delete_calls.append(work_package_ref)
+
+    async def post_comment(self, work_package_ref: str, *, comment: str, internal: bool, notify: bool) -> dict:
+        self.post_comment_calls.append(
+            {"work_package_ref": work_package_ref, "comment": comment, "internal": internal, "notify": notify}
+        )
+        return {"id": 55, "_type": "Activity", "comment": {"raw": comment}, "_links": {}}
+
+
+class _FakeStatusApi:
+    def __init__(self, *, is_closed: bool = False) -> None:
+        self.is_closed = is_closed
+        self.get_status_calls: list[int] = []
+
+    async def get_status(self, status_id: int) -> StatusRecord:
+        self.get_status_calls.append(status_id)
+        return StatusRecord(
+            summary=StatusSummary(
+                id=status_id,
+                name="Closed" if self.is_closed else "New",
+                is_default=False,
+                is_closed=self.is_closed,
+                color=None,
+                position=1,
+                url="https://op.example.com/statuses/1",
+            )
+        )
+
+    async def list_statuses(self):
+        raise NotImplementedError
+
+    async def list_priorities(self):
+        raise NotImplementedError
+
+    async def get_priority(self, priority_id: int):
+        raise NotImplementedError
+
+    async def list_types(self, *, project_id):
+        raise NotImplementedError
+
+    async def get_type(self, type_id: int):
+        raise NotImplementedError
+
+
+class _FakeActivityApi:
+    def __init__(self) -> None:
+        self.get_raw_calls: list[int] = []
+        self.next_get_raw: dict | None = None
+
+    async def list_for_work_package(self, work_package_id: int):
+        return []
+
+    def to_record(self, payload: dict) -> ActivityRecord:
+        def to_summary(text_limit):
+            return ActivitySummary(
+                id=payload["id"],
+                type=payload.get("_type"),
+                version=None,
+                user=payload.get("_links", {}).get("user", {}).get("title"),
+                comment=(payload.get("comment") or {}).get("raw"),
+                created_at=payload.get("createdAt"),
+            )
+
+        return ActivityRecord(to_summary=to_summary)
+
+    async def get_raw(self, activity_id: int) -> dict:
+        self.get_raw_calls.append(activity_id)
+        if self.next_get_raw is not None:
+            return self.next_get_raw
+        return {"id": activity_id, "_type": "Activity", "_links": {}}
+
 
 async def _no_project_allowed(href: str, *, context: WorkPackageAllowedContext | None = None) -> bool:
     return False
@@ -128,6 +253,9 @@ def _service(
     settings=None,
     project_id_to_identifier: dict[int, str] | None = None,
     work_package_project_allowed=None,
+    status_api: _FakeStatusApi | None = None,
+    activity_api: _FakeActivityApi | None = None,
+    resolve_work_package_id=None,
 ) -> tuple[WorkPackageService, _FakeWorkPackageApi]:
     fake_api = api or _FakeWorkPackageApi()
 
@@ -149,6 +277,19 @@ def _service(
     async def resolve_principal_id(principal_ref):
         return "8"
 
+    async def resolve_assignee_id(assignee_ref):
+        if assignee_ref.casefold() == "me":
+            return "42"
+        if assignee_ref.isdigit():
+            return assignee_ref
+        raise InvalidInputError("assignee must be a positive integer user id or 'me'.")
+
+    async def resolve_sprint_id(sprint_ref, *, project, context=None):
+        return "9"
+
+    async def default_resolve_work_package_id(ref, *, write=False):
+        return int(ref)
+
     async def current_user():
         return CurrentUser(id=42, name="Admin", login="admin", url="https://op.example.com/users/42")
 
@@ -164,8 +305,14 @@ def _service(
         resolve_status_id=resolve_status_id,
         resolve_priority_id=resolve_priority_id,
         resolve_principal_id=resolve_principal_id,
+        resolve_assignee_id=resolve_assignee_id,
+        resolve_sprint_id=resolve_sprint_id,
+        resolve_work_package_id=resolve_work_package_id or default_resolve_work_package_id,
+        status_api=status_api or _FakeStatusApi(),
+        activity_api=activity_api or _FakeActivityApi(),
         current_user=current_user,
         work_package_project_allowed=work_package_project_allowed or _all_project_allowed,
+        api_prefix="/api/v3/",
     )
     return service, fake_api
 
@@ -610,3 +757,284 @@ async def test_get_hierarchy_truncated_flag_preserved_when_nothing_filtered_out(
 
     assert result.ancestors == ancestors
     assert result.ancestors_truncated is True
+
+
+# ----------------------------------------------------------------------
+# create()
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_preview_without_commit_does_not_call_commit_create() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.create(project="demo", type="Task", subject="New WP", confirm=False)
+
+    assert result.requires_confirmation is True
+    assert result.confirmed is False
+    assert result.ready is True
+    assert api.commit_create_calls == []
+    assert len(api.validate_create_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_commit_calls_commit_create_and_masks_result() -> None:
+    api = _FakeWorkPackageApi()
+    settings = dataclasses.replace(make_settings(), hidden_fields={"work_package": ("description",)})
+    service, _ = _service(api, settings=settings)
+
+    result = await service.create(project="demo", type="Task", subject="New WP", confirm=True)
+
+    assert result.confirmed is True
+    assert result.ready is True
+    assert len(api.commit_create_calls) == 1
+    assert result.result is not None
+    # apply_hidden_fields stamps a _hidden_keys marker; it does not blank the
+    # field itself -- tools._to_payload's serialization layer drops the key
+    # entirely at the MCP response boundary.
+    assert result.result._hidden_keys == frozenset({"description"})
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_when_write_scope_denies_project() -> None:
+    api = _FakeWorkPackageApi()
+
+    async def resolve_project_ref_denied(project_ref, *, write=False, context=None):
+        raise PermissionDeniedError("OpenProject writes to this project are disabled by OPENPROJECT_WRITE_PROJECTS.")
+
+    service, _ = _service(api)
+    service._resolve_project_ref = resolve_project_ref_denied  # type: ignore[method-assign]
+
+    with pytest.raises(PermissionDeniedError):
+        await service.create(project="demo", type="Task", subject="New WP", confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_write_to_hidden_field() -> None:
+    api = _FakeWorkPackageApi()
+    settings = dataclasses.replace(make_settings(), hidden_fields={"work_package": ("subject",)})
+    service, _ = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden"):
+        await service.create(project="demo", type="Task", subject="New WP", confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_create_reports_validation_errors_as_not_ready() -> None:
+    api = _FakeWorkPackageApi()
+    api.validation_errors_queue.append({"subject": "can't be blank"})
+    service, _ = _service(api)
+
+    result = await service.create(project="demo", type="Task", subject="New WP", confirm=False)
+
+    assert result.ready is False
+    assert result.validation_errors == {"subject": "can't be blank"}
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_custom_field_input_rejected_by_raw_key() -> None:
+    api = _FakeWorkPackageApi()
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("Story points",))
+    service, _ = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_CUSTOM_FIELDS"):
+        await service.create(
+            project="demo", type="Task", subject="New WP", custom_fields={"Story points": 8}, confirm=False
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_custom_field_resolved_via_schema() -> None:
+    api = _FakeWorkPackageApi()
+    api.next_schema = {
+        "customField10": {"name": "Story points", "location": "payload"},
+    }
+    service, _ = _service(api)
+
+    result = await service.create(
+        project="demo", type="Task", subject="New WP", custom_fields={"customField10": 8}, confirm=False
+    )
+
+    assert result.ready is True
+    assert result.payload["customField10"] == 8
+
+
+@pytest.mark.asyncio
+async def test_create_custom_field_rejected_after_schema_resolution_by_resolved_name() -> None:
+    api = _FakeWorkPackageApi()
+    api.next_schema = {
+        "customField10": {"name": "Story points", "location": "payload"},
+    }
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("Story points",))
+    service, _ = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_CUSTOM_FIELDS"):
+        await service.create(
+            project="demo", type="Task", subject="New WP", custom_fields={"customField10": 8}, confirm=False
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_assignee_rejects_name_search() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    with pytest.raises(InvalidInputError, match="assignee must be a positive integer user id or 'me'"):
+        await service.create(project="demo", type="Task", subject="New WP", assignee="Jane Doe", confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_create_resolves_parent_with_write_true() -> None:
+    api = _FakeWorkPackageApi()
+    seen_write: list[bool] = []
+
+    async def resolve_work_package_id(ref, *, write=False):
+        seen_write.append(write)
+        return int(ref)
+
+    service, _ = _service(api, resolve_work_package_id=resolve_work_package_id)
+
+    await service.create(project="demo", type="Task", subject="Child", parent_work_package_id=6, confirm=False)
+
+    assert seen_write == [True]
+
+
+# ----------------------------------------------------------------------
+# create_subtask()
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_subtask_derives_project_from_parent_link() -> None:
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, payload=_payload(6, project_href="/api/v3/projects/1", project_title="Demo"))
+    service, _ = _service(api)
+
+    result = await service.create_subtask(parent_work_package_id=6, type="Task", subject="Child task", confirm=False)
+
+    assert result.ready is True
+    project_id, payload = api.validate_create_calls[0]
+    assert project_id == "1"
+    assert payload["_links"]["parent"]["href"] == "/api/v3/work_packages/6"
+
+
+@pytest.mark.asyncio
+async def test_create_subtask_denies_write_when_parent_project_not_write_allowed() -> None:
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, payload=_payload(6, project_href="/api/v3/projects/20", project_title="Other"))
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("demo",))
+    service, _ = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.create_subtask(parent_work_package_id=6, type="Task", subject="Child task", confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_create_subtask_missing_project_link_raises() -> None:
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, payload={"id": 6, "subject": "Parent", "_links": {}})
+    service, _ = _service(api)
+
+    with pytest.raises(InvalidInputError, match="missing a project link"):
+        await service.create_subtask(parent_work_package_id=6, type="Task", subject="Child task", confirm=False)
+
+
+# ----------------------------------------------------------------------
+# bulk_create()
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_preview_reports_success_without_committing() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.bulk_create(
+        items=[
+            {"project": "demo", "type": "Task", "subject": "One"},
+            {"project": "demo", "type": "Task", "subject": "Two"},
+        ],
+        confirm=False,
+    )
+
+    assert result.total == 2
+    assert result.succeeded == 2
+    assert result.failed == 0
+    assert result.confirmed is False
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_commit_creates_every_item() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.bulk_create(
+        items=[
+            {"project": "demo", "type": "Task", "subject": "One"},
+            {"project": "demo", "type": "Task", "subject": "Two"},
+        ],
+        confirm=True,
+    )
+
+    assert result.succeeded == 2
+    assert len(api.commit_create_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_partial_failure_is_isolated_per_item() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.bulk_create(
+        items=[
+            {"project": "demo", "type": "Task", "subject": "Good"},
+            {"project": "demo", "type": "Task", "subject": "Bad", "assignee": "Jane Doe"},
+        ],
+        confirm=False,
+    )
+
+    assert result.total == 2
+    assert result.succeeded == 1
+    assert result.failed == 1
+    assert result.items[1].success is False
+    assert "assignee" in result.items[1].error
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_shares_resolution_context_across_items_in_same_project() -> None:
+    api = _FakeWorkPackageApi()
+    project_resolve_calls = 0
+
+    def make_resolve_project_ref():
+        async def resolve_project_ref(project_ref, *, write=False, context=None):
+            nonlocal project_resolve_calls
+            if context is not None:
+                cached = context._cache.get((project_ref, write))
+                if cached is not None:
+                    return cached
+            project_resolve_calls += 1
+            payload = {"id": 1, "identifier": "demo", "name": "Demo"}
+            if context is not None:
+                context.seed(project_ref, payload, write=write)
+            return payload
+
+        return resolve_project_ref
+
+    service, _ = _service(api)
+    service._resolve_project_ref = make_resolve_project_ref()  # type: ignore[method-assign]
+
+    await service.bulk_create(
+        items=[
+            {"project": "demo", "type": "Task", "subject": "One"},
+            {"project": "demo", "type": "Task", "subject": "Two"},
+            {"project": "demo", "type": "Task", "subject": "Three"},
+        ],
+        confirm=False,
+    )
+
+    # Only the FIRST item's create() should trigger a real project resolve --
+    # the rest hit the shared WorkPackageResolutionContext's cache.
+    assert project_resolve_calls == 1

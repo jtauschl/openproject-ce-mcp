@@ -542,18 +542,24 @@ class OpenProjectClient:
             project_id_to_identifier=self._project_id_to_identifier,
         )
 
-        # READ-only slice of the Work Packages domain migration. A separate,
-        # parallel port/adapter from work_package_lookup_api above -- see
-        # app/ports/work_package_api.py's module docstring for why this does
-        # NOT wrap/replace WorkPackageLookupApi, and why WorkPackageResolver
-        # above stays completely unchanged (still bound to
-        # work_package_lookup_api, still the seam the 8 already-migrated
-        # work-package-reference-dependent domains use). Write paths
-        # (create/update/delete/bulk_*/add_comment/create_subtask) remain
-        # flat in this class -- a later, separate migration step.
+        # Domain API port/adapter for the Work Packages migration -- covers
+        # both the READ slice (list/search/get/batch/list_my_open) and the
+        # write slice (create/update/delete/bulk_*/add_comment/create_subtask,
+        # OPM-286's second sub-step). A separate, parallel port/adapter from
+        # work_package_lookup_api above -- see app/ports/work_package_api.py's
+        # module docstring for why this does NOT wrap/replace
+        # WorkPackageLookupApi, and why WorkPackageResolver above stays
+        # completely unchanged (still bound to work_package_lookup_api, still
+        # the seam the 8 already-migrated work-package-reference-dependent
+        # domains use).
         self._work_package_api: WorkPackageApi = HttpxWorkPackageApi(
             HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
         )
+        # Constructed here (moved up from its own block further below) so
+        # WorkPackageService can depend on it directly for add_comment()'s
+        # reuse of the already-migrated Activities normalizer, instead of
+        # duplicating that logic onto WorkPackageApi.
+        self._activity_api: ActivityApi = HttpxActivityApi(HttpxTransport(self._http))
         self._work_package_service = WorkPackageService(
             api=self._work_package_api,
             settings=settings,
@@ -564,8 +570,14 @@ class OpenProjectClient:
             resolve_status_id=self._resolve_status_id,
             resolve_priority_id=self._resolve_priority_id,
             resolve_principal_id=self._resolve_principal_id,
+            resolve_assignee_id=self._resolve_assignee_id,
+            resolve_sprint_id=self._resolve_sprint_id,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            status_api=self._status_priority_type_api,
+            activity_api=self._activity_api,
             current_user=self.get_current_user,
             work_package_project_allowed=self._work_package_resolver.project_link_allowed,
+            api_prefix=self._api_prefix,
         )
 
         self._file_link_api: FileLinkApi = HttpxFileLinkApi(HttpxTransport(self._http), api_prefix=self._api_prefix)
@@ -646,7 +658,6 @@ class OpenProjectClient:
             api_prefix=self._api_prefix,
         )
 
-        self._activity_api: ActivityApi = HttpxActivityApi(HttpxTransport(self._http))
         self._activity_service = ActivityService(
             api=self._activity_api,
             settings=settings,

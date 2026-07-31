@@ -20,20 +20,22 @@ normalize itself -- is how the HAL->model translation stays entirely inside
 the Adapter while still letting the Service control WHEN it runs; the same
 shape `ReminderRecord.summary` already established.
 
-NOTE: `client.py`'s own `normalize_activity`/`ACTIVITY_DETAILS_LIMIT` are NOT
-deleted by this migration -- `add_work_package_comment` (a still-flat,
-separate write path, out of this migration's scope) also calls
-`self.normalize_activity` directly to build its write-echo result. The
-Adapter's copy here is verified byte-identical to that still-live original
-at migration time; both copies coexist until Work Packages' own eventual
-migration removes the last caller of the client.py version.
+Extended additively (Work Packages write-path migration, OPM-286) with
+`to_record`/`get_raw`: `add_work_package_comment` needed to normalize a
+just-posted comment's raw activity payload and to fetch a fallback single
+activity by id (the `_fill_missing_activity_user` best-effort pattern) --
+both now reuse THIS Port/Adapter instead of a duplicated normalizer on
+`WorkPackageApi`, since `HttpxActivityApi.normalize_activity` is already
+verified byte-identical to client.py's own `normalize_activity`. client.py's
+flat `normalize_activity`/`ACTIVITY_DETAILS_LIMIT` are deleted once
+`add_work_package_comment` (their last caller) migrates onto this Port.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from ...models import ActivitySummary
 
@@ -44,9 +46,29 @@ class ActivityRecord:
 
 
 class ActivityApi(Protocol):
-    """Narrow, Activities-only Domain API port. ActivityService depends on
-    this Protocol, never on HttpxActivityApi concretely (enforced by the
+    """Narrow, Activities-only Domain API port. ActivityService (and, since
+    the write-path migration, WorkPackageService too) depends on this
+    Protocol, never on HttpxActivityApi concretely (enforced by the
     architecture-boundary test).
     """
 
     async def list_for_work_package(self, work_package_id: int) -> list[ActivityRecord]: ...
+
+    def to_record(self, payload: dict[str, Any]) -> ActivityRecord:
+        """Pure, synchronous wrap of an already-fetched raw activity payload
+        (e.g. the response of a comment-posting POST) into an `ActivityRecord`
+        -- no HTTP call. Exists as a Protocol method (not a bare module-level
+        function) so a Service depends only on the `ActivityApi` Protocol,
+        never importing the concrete adapter's `normalize_activity` directly.
+        """
+        ...
+
+    async def get_raw(self, activity_id: int) -> dict[str, Any]:
+        """Raw, unnormalized GET `activities/{activity_id}` -- used by the
+        `_fill_missing_activity_user` best-effort fallback fetch, which only
+        reads `_links.user` off the result. Lets errors propagate; the one
+        caller that needs a catch-and-log-and-continue behavior does so
+        itself (matches `TimeEntryApi.fetch_activities_for_entity`'s "let
+        errors propagate, only ONE specific caller catches" precedent).
+        """
+        ...

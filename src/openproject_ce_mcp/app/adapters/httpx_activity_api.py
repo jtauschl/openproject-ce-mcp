@@ -155,3 +155,9 @@ class HttpxActivityApi:
         payload = await self._transport.get_json(f"work_packages/{work_package_id}/activities")
         elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
         return [_record(item) for item in elements]
+
+    def to_record(self, payload: dict[str, Any]) -> ActivityRecord:
+        return _record(payload)
+
+    async def get_raw(self, activity_id: int) -> dict[str, Any]:
+        return await self._transport.get_json(f"activities/{activity_id}")

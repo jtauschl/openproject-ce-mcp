@@ -1,19 +1,43 @@
-"""Application Service for the Work Packages domain -- READ-only slice (ADR 0001).
+"""Application Service for the Work Packages domain (ADR 0001).
 
-Covers list/search/list_my_open/get/get_batch only. Write methods
-(create/update/delete/bulk_*/add_comment/create_subtask) are a later, separate
-migration step and are NOT implemented here; client.py's flat write paths are
-untouched by this Service.
+Covers the full domain: list/search/list_my_open/get/get_batch (the original
+READ-only slice) plus create/create_subtask/update/delete/bulk_create/
+bulk_update/add_comment (the write-path migration, OPM-286's second
+sub-step). Both slices live on this one class, not two -- ADR 0001 and the
+"one Service per domain" convention every other full-CRUD sibling (Time
+Entries, Versions, Memberships, Projects) already follows.
 
 Depends on `WorkPackageApi` (never the concrete `HttpxWorkPackageApi` --
 enforced by `tests/test_architecture_boundaries.py`), `ProjectRefResolver`,
 `TypeRefResolver`, `VersionIdResolver`, `StatusRefResolver`,
-`PriorityRefResolver`, `PrincipalRefResolver`, `CurrentUserLookup`, and
-`WorkPackageProjectAllowedCheck` (the existing OPM-318 seam bound to
-`self._work_package_resolver.project_link_allowed` -- `WorkPackageResolver`
-itself is untouched by this migration; this Service becomes its ninth
-consumer, alongside the eight already-migrated domains that depend on the
-same resolver via `app/ports/work_package_ref.py`'s seams).
+`PriorityRefResolver`, `PrincipalRefResolver`, `AssigneeRefResolver`,
+`SprintIdResolver`, `WorkPackageIdResolver`, `StatusPriorityTypeApi`,
+`ActivityApi`, `CurrentUserLookup`, and `WorkPackageProjectAllowedCheck` (the
+existing OPM-318 seam bound to `self._work_package_resolver.project_link_allowed`
+-- `WorkPackageResolver` itself is untouched by this migration; this Service
+becomes its ninth consumer, alongside the eight already-migrated domains that
+depend on the same resolver via `app/ports/work_package_ref.py`'s seams).
+
+`AssigneeRefResolver` is deliberately NOT `PrincipalRefResolver`: the write
+path's assignee resolution accepts only "me" or a bare numeric id, never a
+name search (a real, pre-existing behavioral asymmetry vs. the read-side
+`assignee`/`assignee_me` list filters, which do accept names via
+`PrincipalRefResolver`) -- see `app/ports/assignee_ref.py`'s module docstring.
+
+`StatusPriorityTypeApi` (the Port, not `StatusPriorityTypeService`) is
+injected directly for the auto-percentage/auto-remaining-time derivation's
+status-detail lookup (`update()` needs the resolved status's `is_closed` flag,
+not just a name/ref->id resolution) -- `StatusPriorityTypeService` must NOT
+be used here, since it enforces `access.ensure_read_enabled("work_package")`,
+while this internal lookup deliberately bypasses that gate (an instance can
+have work-package writes enabled with reads disabled, and the auto-derivation
+must still work, matching client.py's original comment on this exact point).
+
+`ActivityApi` is injected directly (the same "Service depending on multiple
+Ports" pattern `TimeEntryService` already uses) so `add_comment()` reuses the
+EXISTING, already-migrated Activities normalizer instead of duplicating it
+onto `WorkPackageApi` -- see `app/ports/activity_api.py`'s extended module
+docstring.
 
 `search()`/`list()` stay two separate methods (not one parametrized method):
 they have non-overlapping required/exclusive parameters in client.py today
@@ -56,40 +80,180 @@ import asyncio
 import builtins
 import dataclasses
 import datetime
+import logging
 from typing import Any
 
 from ...config import Settings
 from ...models import (
     BatchWorkPackageReadItemResult,
     BatchWorkPackageReadResult,
+    BulkWorkPackageItemResult,
+    BulkWorkPackageWriteResult,
     SortCriterion,
     WorkPackageDetail,
     WorkPackageListResult,
     WorkPackageSummary,
+    WorkPackageWriteResult,
 )
+from ..api_href import api_href as _api_href
 from ..errors import InvalidInputError, OpenProjectError, PermissionDeniedError
 from ..pagination import effective_limit, paginate_server
 from ..policies import access, hidden_fields
 from ..policies import work_package_policy as _work_package_policy
-from ..policies.scope import ensure_project_link_allowed, scope_allows_all
+from ..policies.scope import ensure_project_link_allowed, ensure_project_write_link_allowed, scope_allows_all
+from ..ports.activity_api import ActivityApi
+from ..ports.assignee_ref import AssigneeRefResolver
 from ..ports.current_user import CurrentUserLookup
 from ..ports.principal_ref import PrincipalRefResolver
 from ..ports.priority_ref import PriorityRefResolver
 from ..ports.project_ref import ProjectRefResolver
-from ..ports.project_resolution import ProjectResolutionContext
+from ..ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
+from ..ports.sprint_ref import SprintIdResolver
+from ..ports.status_priority_type_api import StatusPriorityTypeApi
 from ..ports.status_ref import StatusRefResolver
 from ..ports.type_ref import TypeRefResolver
 from ..ports.version_ref import VersionIdResolver
 from ..ports.work_package_api import WorkPackageApi
-from ..ports.work_package_ref import WorkPackageProjectAllowedCheck
+from ..ports.work_package_ref import WorkPackageIdResolver, WorkPackageProjectAllowedCheck, work_package_ref
 from ..ports.work_package_resolution import WorkPackageAllowedContext
+from ._write_outcome import _finalize_write, _WriteOutcome
+
+LOGGER = logging.getLogger(__name__)
 
 BATCH_READ_MAX_IDS = 100
+
+# Matches the flat write normalizer's default cap for create/update responses
+# and the delete preview -- NOT the uncapped default get()'s own single-item
+# path uses. Verified against client.py's normalize_work_package_detail.
+FORMATTABLE_LIMIT = 1_200
+
+# Sentinel for update(): distinguishes "clear the parent" (make the work
+# package top-level via _links.parent = {"href": null}) from "leave unchanged"
+# (None). A dedicated object avoids colliding with numeric ids or the
+# resolve_work_package_id path, and cannot be confused with any valid parent
+# reference. Canonical home for this domain's sentinels (re-exported
+# unchanged from client.py -- see client.py's own CLEAR_PARENT import).
+CLEAR_PARENT = object()
+
+# Sentinel for create()/update(): distinguishes "clear the version" (unassign
+# via _links.version = {"href": null}) from "leave unchanged" (None). Same
+# rationale as CLEAR_PARENT -- it must bypass version-name resolution.
+CLEAR_VERSION = object()
+
+# Generic "clear this field" sentinel, shared by both nullable HAL-link fields
+# (assignee, responsible, category, project_phase) and plain scalar fields
+# (estimated_time, remaining_time, duration -- cleared via <field>: null
+# directly in the payload). Distinguishes "clear this field" from "leave
+# unchanged" (None). parent/version keep their own sentinels above for
+# historical reasons; every other clearable field shares this one.
+CLEAR = object()
+
+
+def _narrow_cleared(value: Any, *, sentinel: object = None) -> Any:
+    """Narrow a value after the caller has already ruled out None and a clear sentinel.
+
+    Verbatim port of client.py's own `_narrow_cleared` (moved here as this
+    domain's canonical home, re-exported unchanged from client.py). See that
+    original's docstring for the full mypy-narrowing rationale.
+    """
+    if value is None or value is sentinel:
+        raise AssertionError(f"_narrow_cleared: expected a resolved value, got the clear sentinel or None: {value!r}")
+    return value
+
+
+SUBJECT_LIMIT = 255
 
 
 def _empty_list_result(*, offset: int, limit: int) -> WorkPackageListResult:
     return WorkPackageListResult(
         offset=offset, limit=limit, total=0, count=0, next_offset=None, truncated=False, results=[]
+    )
+
+
+def _trim_text(value: Any, *, limit: int = SUBJECT_LIMIT) -> str | None:
+    """Local, deliberately duplicated (Services cannot import from Adapters,
+    per ADR 0001 -- matches `app/services/project_service.py`'s own local copy)."""
+    if value is None:
+        return None
+    text = " ".join(str(value).split())
+    if not text:
+        return None
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def _id_from_href(href: str | None) -> int | None:
+    """Local, deliberately duplicated (Services cannot import from Adapters)."""
+    if not href:
+        return None
+    parts = href.rstrip("/").split("/")
+    try:
+        return int(parts[-1])
+    except (ValueError, IndexError):
+        return None
+
+
+def _bulk_item_result(*, index: int, result: WorkPackageWriteResult) -> BulkWorkPackageItemResult:
+    """Verbatim port of client.py's own `_bulk_item_result`. "success" is
+    defined purely by `result.ready` (i.e. no OpenProject validation errors),
+    not by `result.confirmed` -- a `confirm=False` preview call that
+    validates cleanly is intentionally reported as `success=True`."""
+    if not result.ready:
+        return BulkWorkPackageItemResult(index=index, success=False, error=result.message, result=result)
+    return BulkWorkPackageItemResult(index=index, success=True, error=None, result=result)
+
+
+def _bulk_summary_message(*, confirm: bool, succeeded: int, failed: int, total: int, verb: str, past_tense: str) -> str:
+    """Verbatim port of client.py's own `_bulk_summary_message`."""
+    if confirm:
+        return (
+            f"{succeeded} of {total} work packages {past_tense} successfully."
+            if failed == 0
+            else f"{succeeded} {past_tense}, {failed} failed."
+        )
+    return (
+        f"Validated {succeeded} of {total} work packages. Call again with confirm=true to {verb} them."
+        if failed == 0
+        else f"{succeeded} validated, {failed} failed validation."
+    )
+
+
+def _log_bulk_cancellation(
+    operation: str, *, confirm: bool, total: int, item_results: builtins.list[BulkWorkPackageItemResult]
+) -> None:
+    """Diagnostic logging only -- does not close the gap that the MCP caller
+    receives no result on cancellation; must not overclaim whether an
+    in-flight request reached OpenProject. Verbatim port of client.py's own
+    `_log_bulk_cancellation`."""
+    completed = len(item_results)
+    completed_range = f"0-{completed - 1}" if completed else "none"
+    if completed < total:
+        if confirm:
+            in_flight_desc = (
+                f"item at index {completed} has an unknown outcome (may have been in flight when "
+                "cancelled; not necessarily written to OpenProject)"
+            )
+        else:
+            in_flight_desc = (
+                f"item at index {completed} has an unknown validation outcome (was in flight when "
+                "cancelled); confirm=false means no item in this call could have been written to "
+                "OpenProject regardless"
+            )
+        not_started = max(0, total - completed - 1)
+    else:
+        in_flight_desc = "no item was in flight (all items already had a known outcome)"
+        not_started = 0
+    LOGGER.warning(
+        "%s cancelled (confirm=%s): %d/%d item(s) completed before cancellation (indices %s); "
+        "%s; %d item(s) were not yet attempted.",
+        operation,
+        confirm,
+        completed,
+        total,
+        completed_range,
+        in_flight_desc,
+        not_started,
     )
 
 
@@ -106,8 +270,14 @@ class WorkPackageService:
         resolve_status_id: StatusRefResolver,
         resolve_priority_id: PriorityRefResolver,
         resolve_principal_id: PrincipalRefResolver,
+        resolve_assignee_id: AssigneeRefResolver,
+        resolve_sprint_id: SprintIdResolver,
+        resolve_work_package_id: WorkPackageIdResolver,
+        status_api: StatusPriorityTypeApi,
+        activity_api: ActivityApi,
         current_user: CurrentUserLookup,
         work_package_project_allowed: WorkPackageProjectAllowedCheck,
+        api_prefix: str,
     ) -> None:
         self._api = api
         self._settings = settings
@@ -118,8 +288,14 @@ class WorkPackageService:
         self._resolve_status_id = resolve_status_id
         self._resolve_priority_id = resolve_priority_id
         self._resolve_principal_id = resolve_principal_id
+        self._resolve_assignee_id = resolve_assignee_id
+        self._resolve_sprint_id = resolve_sprint_id
+        self._resolve_work_package_id = resolve_work_package_id
+        self._status_api = status_api
+        self._activity_api = activity_api
         self._current_user = current_user
         self._work_package_project_allowed = work_package_project_allowed
+        self._api_prefix = api_prefix
 
     def _stamp(self, summary: WorkPackageSummary) -> WorkPackageSummary:
         if hidden_fields.field_hidden("work_package", "description", settings=self._settings):
@@ -132,6 +308,29 @@ class WorkPackageService:
         if hidden_fields.field_hidden("work_package", "description", settings=self._settings):
             detail = dataclasses.replace(detail, description_truncated=False, description_length=None)
         return hidden_fields.apply_hidden_fields("work_package", detail, settings=self._settings)
+
+    def _stamp_activity(self, summary: Any) -> Any:
+        return hidden_fields.apply_hidden_fields("activity", summary, settings=self._settings)
+
+    def _replace_and_restamp(self, entity: str, value: Any, **changes: Any) -> Any:
+        """Like `dataclasses.replace()`, but preserves the `_hidden_keys` stamp.
+
+        `dataclasses.replace()` rebuilds the instance via the constructor,
+        which drops any `_hidden_keys` attribute `apply_hidden_fields`
+        previously stamped onto it -- re-stamp so a configured hide-fields
+        entry still takes effect on the replaced instance. Verbatim port of
+        client.py's own `_replace_and_restamp` (already correct there:
+        replace-then-stamp, in that order, in one call).
+        """
+        return hidden_fields.apply_hidden_fields(entity, dataclasses.replace(value, **changes), settings=self._settings)
+
+    def _new_wp_context(self) -> WorkPackageResolutionContext:
+        """Construct a fresh, per-call WorkPackageResolutionContext (never
+        reused across calls; see ProjectResolutionContext's lifetime rule).
+        `bulk_create`/`bulk_update` deliberately construct exactly one and
+        share it across their whole loop instead (safe: the id cache is keyed
+        by (project, kind, ref), never cross-project)."""
+        return WorkPackageResolutionContext(ProjectResolutionContext(self._resolve_project_ref))
 
     def _payload_allowed(self, payload: dict[str, Any]) -> bool:
         return _work_package_policy.work_package_payload_allowed(
@@ -551,4 +750,579 @@ class WorkPackageService:
             failed=failed,
             message=message,
             results=items,
+        )
+
+    # ------------------------------------------------------------------
+    # Write paths (OPM-286 write-path migration).
+    # ------------------------------------------------------------------
+
+    async def _resolve_wp_ref_id(
+        self,
+        kind: str,
+        ref: str,
+        *,
+        project: str,
+        cache: WorkPackageResolutionContext | None,
+        resolve: Any,
+    ) -> str:
+        """Cache-then-resolve wrapper around resolve_type_id/resolve_version_id/
+        resolve_sprint_id. When `cache` is shared across a bulk call's items,
+        a repeated name->id lookup for the same (project, kind, ref) is
+        skipped instead of re-querying OpenProject once per item. Verbatim
+        port of client.py's own `_resolve_wp_ref_id`."""
+        if cache is not None:
+            cached = cache.get_id(kind, project, ref)
+            if cached is not None:
+                return cached
+        resolved = await resolve()
+        if cache is not None:
+            cache.store_id(kind, project, ref, resolved)
+        return resolved
+
+    async def _get_write_schema(
+        self,
+        *,
+        project: str,
+        type: str | None,
+        work_package_id: int | str | None,
+        draft_payload: dict[str, Any],
+        lock_version: int | None,
+        project_context: ProjectResolutionContext | None,
+    ) -> dict[str, Any]:
+        """Embedded schema probe (call #1 of up to 3 `/form` POSTs per
+        `update()` -- see `app/ports/work_package_api.py`'s module docstring).
+        Verbatim port of client.py's own `_get_write_schema`."""
+        if work_package_id is not None:
+            # OpenProject 17.x rejects the work-package form endpoint with a
+            # "could not be updated due to conflicting modifications" (409)
+            # error unless the current lockVersion is included, even for a
+            # schema-only probe.
+            schema_body = dict(draft_payload)
+            if lock_version is not None:
+                schema_body["lockVersion"] = lock_version
+            form = await self._api.validate_update(str(work_package_id), schema_body)
+            return self._api.parse_form(form).schema
+
+        schema_payload = dict(draft_payload)
+        schema_links = dict(schema_payload.get("_links", {}))
+        if type is not None and "type" not in schema_links:
+            # Latent/unreachable in current call patterns: _build_write_payload
+            # already puts "type" in schema_links whenever `type` is given, so
+            # this branch only fires for a hypothetical future caller that
+            # doesn't. Still threaded through for consistency with every other
+            # resolver call in this flow.
+            type_id = await self._resolve_type_id(type, project=project, context=project_context)
+            schema_links["type"] = {"href": _api_href(f"types/{type_id}", api_prefix=self._api_prefix)}
+        if schema_links:
+            schema_payload["_links"] = schema_links
+        form = await self._api.validate_create(project, schema_payload)
+        return self._api.parse_form(form).schema
+
+    def _resolve_schema_option_href(self, schema: dict[str, Any], key: str, raw_value: Any) -> str:
+        """Verbatim port of client.py's own `_resolve_schema_option_href`."""
+        field = schema.get(key)
+        if not isinstance(field, dict):
+            raise InvalidInputError(f"OpenProject schema does not expose field '{key}' for this work package.")
+        allowed_values = field.get("_embedded", {}).get("allowedValues", [])
+        if not isinstance(allowed_values, list):
+            raise InvalidInputError(f"OpenProject schema does not expose allowed values for field '{key}'.")
+
+        normalized = str(raw_value).strip()
+        if not normalized:
+            raise InvalidInputError(f"{key} must not be empty.")
+
+        for item in allowed_values:
+            href = item.get("_links", {}).get("self", {}).get("href")
+            if not href:
+                continue
+            item_id = _id_from_href(href)
+            title = _trim_text(item.get("name") or item.get("_links", {}).get("self", {}).get("title"))
+            if normalized.isdigit() and item_id is not None and int(normalized) == item_id:
+                return str(href)
+            if title and title.casefold() == normalized.casefold():
+                return str(href)
+        raise InvalidInputError(f"OpenProject value '{raw_value}' is not allowed for field '{key}'.")
+
+    def _resolve_custom_field_key(self, schema: dict[str, Any], raw_key: str) -> str:
+        """Verbatim port of client.py's own `_resolve_custom_field_key`."""
+        normalized = str(raw_key).strip()
+        if not normalized:
+            raise InvalidInputError("custom field keys must not be empty.")
+        if normalized in schema:
+            return normalized
+        if normalized.casefold().startswith("customfield") and normalized[11:].isdigit():
+            candidate = f"customField{normalized[11:]}"
+            if candidate in schema:
+                return candidate
+        for key, field in schema.items():
+            if not key.startswith("customField") or not isinstance(field, dict):
+                continue
+            name = _trim_text(field.get("name"))
+            if name and name.casefold() == normalized.casefold():
+                return key
+        raise InvalidInputError(f"OpenProject custom field '{raw_key}' is not available for this work package.")
+
+    def _resolve_custom_field_links(self, field: dict[str, Any], raw_value: Any, key: str) -> builtins.list[str]:
+        """Verbatim port of client.py's own `_resolve_custom_field_links`."""
+        values = raw_value if isinstance(raw_value, list) else [raw_value]
+        hrefs = [self._resolve_schema_option_href({key: field}, key, value) for value in values]
+        if not hrefs:
+            raise InvalidInputError(f"OpenProject custom field '{key}' requires at least one value.")
+        return hrefs
+
+    def _apply_custom_fields(
+        self,
+        payload: dict[str, Any],
+        links: dict[str, Any],
+        schema: dict[str, Any],
+        custom_fields: dict[str, Any],
+    ) -> None:
+        """Verbatim port of client.py's own `_apply_custom_fields`."""
+        for raw_key, raw_value in custom_fields.items():
+            hidden_fields.ensure_custom_field_input_writable(raw_key, settings=self._settings)
+            schema_key = self._resolve_custom_field_key(schema, raw_key)
+            field = schema[schema_key]
+            hidden_fields.ensure_custom_field_writable(
+                _trim_text(field.get("name")) or schema_key, schema_key, settings=self._settings
+            )
+            location = field.get("location")
+            if location == "_links":
+                hrefs = self._resolve_custom_field_links(field, raw_value, schema_key)
+                if len(hrefs) == 1:
+                    links[schema_key] = {"href": hrefs[0]}
+                else:
+                    links[schema_key] = [{"href": href} for href in hrefs]
+            else:
+                payload[schema_key] = raw_value
+
+    async def _build_write_payload(
+        self,
+        *,
+        project: str,
+        type: str | None = None,
+        subject: str | None = None,
+        description: str | None = None,
+        version: Any = None,
+        sprint: Any = None,
+        project_phase: Any = None,
+        status: str | None = None,
+        assignee: Any = None,
+        responsible: Any = None,
+        priority: str | None = None,
+        category: Any = None,
+        custom_fields: dict[str, Any] | None = None,
+        parent_work_package_id: Any = None,
+        start_date: str | None = None,
+        due_date: str | None = None,
+        estimated_time: Any = None,
+        remaining_time: Any = None,
+        duration: Any = None,
+        percentage_done: int | None = None,
+        work_package_id: int | str | None = None,
+        lock_version: int | None = None,
+        resolution_context: WorkPackageResolutionContext | None = None,
+    ) -> dict[str, Any]:
+        """Build the HAL JSON payload for create()/update(). Verbatim port of
+        client.py's own `_build_write_payload` -- see that method and
+        `app/ports/work_package_api.py`'s module docstring for the full
+        field-by-field / sentinel-handling rationale."""
+        project_context = resolution_context.project_context if resolution_context is not None else None
+        payload: dict[str, Any] = {}
+        links: dict[str, Any] = {}
+
+        if custom_fields:
+            for raw_key in custom_fields:
+                hidden_fields.ensure_custom_field_input_writable(raw_key, settings=self._settings)
+
+        if subject is not None:
+            hidden_fields.ensure_field_writable("work_package", "subject", settings=self._settings)
+            payload["subject"] = subject
+        if description is not None:
+            hidden_fields.ensure_field_writable("work_package", "description", settings=self._settings)
+            payload["description"] = {"format": "markdown", "raw": description}
+        if start_date is not None:
+            hidden_fields.ensure_field_writable("work_package", "start_date", settings=self._settings)
+            payload["startDate"] = start_date
+        if due_date is not None:
+            hidden_fields.ensure_field_writable("work_package", "due_date", settings=self._settings)
+            payload["dueDate"] = due_date
+        if estimated_time is CLEAR:
+            hidden_fields.ensure_field_writable("work_package", "estimated_time", settings=self._settings)
+            payload["estimatedTime"] = None
+        elif estimated_time is not None:
+            hidden_fields.ensure_field_writable("work_package", "estimated_time", settings=self._settings)
+            payload["estimatedTime"] = estimated_time
+        if remaining_time is CLEAR:
+            hidden_fields.ensure_field_writable("work_package", "remaining_time", settings=self._settings)
+            payload["remainingTime"] = None
+        elif remaining_time is not None:
+            hidden_fields.ensure_field_writable("work_package", "remaining_time", settings=self._settings)
+            payload["remainingTime"] = remaining_time
+        if percentage_done is not None:
+            hidden_fields.ensure_field_writable("work_package", "percentage_done", settings=self._settings)
+            payload["percentageDone"] = percentage_done
+        if duration is CLEAR:
+            hidden_fields.ensure_field_writable("work_package", "duration", settings=self._settings)
+            payload["duration"] = None
+        elif duration is not None:
+            hidden_fields.ensure_field_writable("work_package", "duration", settings=self._settings)
+            payload["duration"] = duration
+
+        if type is not None:
+            hidden_fields.ensure_field_writable("work_package", "type", settings=self._settings)
+            type_id = await self._resolve_wp_ref_id(
+                "type",
+                type,
+                project=project,
+                cache=resolution_context,
+                resolve=lambda: self._resolve_type_id(type, project=project, context=project_context),
+            )
+            links["type"] = {"href": _api_href(f"types/{type_id}", api_prefix=self._api_prefix)}
+        if version is CLEAR_VERSION:
+            hidden_fields.ensure_field_writable("work_package", "version", settings=self._settings)
+            links["version"] = {"href": None}
+        elif version is not None:
+            hidden_fields.ensure_field_writable("work_package", "version", settings=self._settings)
+            version_ref = _narrow_cleared(version, sentinel=CLEAR_VERSION)
+            version_id = await self._resolve_wp_ref_id(
+                "version",
+                version_ref,
+                project=project,
+                cache=resolution_context,
+                resolve=lambda: self._resolve_version_id(version_ref, project=project, context=project_context),
+            )
+            links["version"] = {"href": _api_href(f"versions/{version_id}", api_prefix=self._api_prefix)}
+        if sprint is CLEAR:
+            hidden_fields.ensure_field_writable("work_package", "sprint", settings=self._settings)
+            links["sprint"] = {"href": None}
+        elif sprint is not None:
+            hidden_fields.ensure_field_writable("work_package", "sprint", settings=self._settings)
+            sprint_ref = _narrow_cleared(sprint, sentinel=CLEAR)
+            sprint_id = await self._resolve_wp_ref_id(
+                "sprint",
+                sprint_ref,
+                project=project,
+                cache=resolution_context,
+                resolve=lambda: self._resolve_sprint_id(sprint_ref, project=project, context=project_context),
+            )
+            links["sprint"] = {"href": _api_href(f"sprints/{sprint_id}", api_prefix=self._api_prefix)}
+        if status is not None:
+            hidden_fields.ensure_field_writable("work_package", "status", settings=self._settings)
+            status_id = await self._resolve_status_id(status)
+            links["status"] = {"href": _api_href(f"statuses/{status_id}", api_prefix=self._api_prefix)}
+        if assignee is CLEAR:
+            hidden_fields.ensure_field_writable("work_package", "assignee", settings=self._settings)
+            links["assignee"] = {"href": None}
+        elif assignee is not None:
+            hidden_fields.ensure_field_writable("work_package", "assignee", settings=self._settings)
+            assignee_ref = _narrow_cleared(assignee, sentinel=CLEAR)
+            assignee_id = await self._resolve_assignee_id(assignee_ref)
+            links["assignee"] = {"href": _api_href(f"users/{assignee_id}", api_prefix=self._api_prefix)}
+        if parent_work_package_id is CLEAR_PARENT:
+            hidden_fields.ensure_field_writable("work_package", "parent", settings=self._settings)
+            links["parent"] = {"href": None}
+        elif parent_work_package_id is not None:
+            hidden_fields.ensure_field_writable("work_package", "parent", settings=self._settings)
+            links["parent"] = {
+                "href": _api_href(f"work_packages/{parent_work_package_id}", api_prefix=self._api_prefix)
+            }
+
+        if responsible is CLEAR:
+            hidden_fields.ensure_field_writable("work_package", "responsible", settings=self._settings)
+            links["responsible"] = {"href": None}
+        if category is CLEAR:
+            hidden_fields.ensure_field_writable("work_package", "category", settings=self._settings)
+            links["category"] = {"href": None}
+        if project_phase is CLEAR:
+            hidden_fields.ensure_field_writable("work_package", "project_phase", settings=self._settings)
+            links["project_phase"] = {"href": None}
+
+        schema_needs = any(
+            value is not None and value is not CLEAR
+            for value in (responsible, priority, category, project_phase, custom_fields)
+        )
+        if schema_needs:
+            if links:
+                payload["_links"] = links
+            schema = await self._get_write_schema(
+                project=project,
+                type=type,
+                work_package_id=work_package_id,
+                draft_payload=payload,
+                lock_version=lock_version,
+                project_context=project_context,
+            )
+            if responsible is not None and responsible is not CLEAR:
+                hidden_fields.ensure_field_writable("work_package", "responsible", settings=self._settings)
+                links["responsible"] = {"href": self._resolve_schema_option_href(schema, "responsible", responsible)}
+            if priority is not None:
+                hidden_fields.ensure_field_writable("work_package", "priority", settings=self._settings)
+                links["priority"] = {"href": self._resolve_schema_option_href(schema, "priority", priority)}
+            if category is not None and category is not CLEAR:
+                hidden_fields.ensure_field_writable("work_package", "category", settings=self._settings)
+                links["category"] = {"href": self._resolve_schema_option_href(schema, "category", category)}
+            if project_phase is not None and project_phase is not CLEAR:
+                hidden_fields.ensure_field_writable("work_package", "project_phase", settings=self._settings)
+                links["projectPhase"] = {
+                    "href": self._resolve_schema_option_href(schema, "projectPhase", project_phase)
+                }
+            if custom_fields:
+                self._apply_custom_fields(payload, links, schema, custom_fields)
+
+        if links:
+            payload["_links"] = links
+        return payload
+
+    async def _to_write_result(self, action: str, outcome: _WriteOutcome[Any]) -> WorkPackageWriteResult:
+        detail = None
+        if outcome.detail is not None:
+            # outcome.detail is a WorkPackageRecord (commit_create's/
+            # commit_update's return shape, same lazy-detail shape get()
+            # itself consumes) -- must call .to_detail() before any
+            # dataclasses.replace()-based transform, which requires an actual
+            # WorkPackageDetail instance, not the Record wrapping it.
+            #
+            # A freshly created/updated work package's children/ancestors are
+            # rarely populated (a brand-new work package has none; an update
+            # response echoes the same hierarchy links get() would), but
+            # running the same allowlist filter here keeps the masking-order
+            # contract identical to get()'s, rather than assuming it can
+            # never matter. See get()'s own comment: _filter_hierarchy_allowlist
+            # calls dataclasses.replace() whenever the read scope is
+            # restricted, which would silently drop _stamp_detail's
+            # _hidden_keys tag if stamping ran first -- filter first, stamp
+            # last, matching get()'s established ordering exactly.
+            filtered = await self._filter_hierarchy_allowlist(outcome.detail.to_detail())
+            detail = self._stamp_detail(filtered)
+        return WorkPackageWriteResult(
+            action=action,
+            confirmed=outcome.confirmed,
+            requires_confirmation=outcome.requires_confirmation,
+            ready=outcome.ready,
+            message=outcome.message,
+            payload=outcome.payload,
+            validation_errors=outcome.validation_errors,
+            result=detail,
+            **outcome.identity,
+        )
+
+    async def create(
+        self,
+        *,
+        project: str,
+        type: str,
+        subject: str,
+        description: str | None = None,
+        version: Any = None,
+        project_phase: Any = None,
+        assignee: Any = None,
+        responsible: Any = None,
+        priority: str | None = None,
+        category: Any = None,
+        custom_fields: dict[str, Any] | None = None,
+        parent_work_package_id: int | str | None = None,
+        start_date: str | None = None,
+        due_date: str | None = None,
+        estimated_time: str | None = None,
+        remaining_time: str | None = None,
+        duration: str | None = None,
+        confirm: bool = False,
+        wp_context: WorkPackageResolutionContext | None = None,
+    ) -> WorkPackageWriteResult:
+        access.ensure_read_enabled("work_package", settings=self._settings)
+        # When a caller shares a wp_context across a bulk batch, route this
+        # resolve through its cache too -- items sharing the same project then
+        # only trigger one real project fetch for the whole batch, not one per
+        # item. With no wp_context (the default, single-call case) this is
+        # exactly the raw self._resolve_project_ref(project, write=True) call,
+        # uncached.
+        project_payload = await self._resolve_project_ref(
+            project, write=True, context=wp_context.project_context if wp_context is not None else None
+        )
+        project_id = str(project_payload["id"])
+        # Default: a fresh context per call. A bulk caller (bulk_create)
+        # passes one shared across all its items instead.
+        if wp_context is None:
+            wp_context = self._new_wp_context()
+        # write=True already implies read=True passed (write checks read
+        # first), so both keys are safe to seed from the same payload -- this
+        # is what lets the type/version resolvers below reuse it instead of
+        # re-fetching.
+        wp_context.project_context.seed(project_id, project_payload, write=True)
+        wp_context.project_context.seed(project_id, project_payload, write=False)
+        if parent_work_package_id is not None:
+            # parent goes into a HAL link href, which resolves only by
+            # numeric id. write=True: the new parent must itself be
+            # write-authorized, not just readable -- otherwise a caller could
+            # attach a writable work package under a parent they can only
+            # read.
+            parent_work_package_id = await self._resolve_work_package_id(parent_work_package_id, write=True)
+        payload = await self._build_write_payload(
+            project=project_id,
+            type=type,
+            subject=subject,
+            description=description,
+            version=version,
+            project_phase=project_phase,
+            assignee=assignee,
+            responsible=responsible,
+            priority=priority,
+            category=category,
+            custom_fields=custom_fields,
+            parent_work_package_id=parent_work_package_id,
+            start_date=start_date,
+            due_date=due_date,
+            estimated_time=estimated_time,
+            remaining_time=remaining_time,
+            duration=duration,
+            resolution_context=wp_context,
+        )
+        form = await self._api.validate_create(project_id, payload)
+        parsed = self._api.parse_form(form)
+        outcome = await _finalize_write(
+            confirm=confirm,
+            payload=parsed.payload,
+            validation_errors=parsed.validation_errors,
+            identity={"work_package_id": None, "project": project_payload.get("name")},
+            ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
+            commit=lambda p: self._api.commit_create(p, text_limit=FORMATTABLE_LIMIT),
+            committed_identity=lambda record: {
+                "work_package_id": record.summary.id,
+                "project": record.summary.project,
+            },
+            rejected_message="OpenProject rejected the proposed changes. Fix the validation errors before confirming.",
+            preview_message="OpenProject validated the change. Ask for confirmation, then call again with confirm=true to write it.",
+            success_message="Work package created successfully.",
+        )
+        return await self._to_write_result("create", outcome)
+
+    async def create_subtask(
+        self,
+        *,
+        parent_work_package_id: int | str,
+        type: str,
+        subject: str,
+        description: str | None = None,
+        version: Any = None,
+        project_phase: Any = None,
+        assignee: Any = None,
+        responsible: Any = None,
+        priority: str | None = None,
+        category: Any = None,
+        custom_fields: dict[str, Any] | None = None,
+        start_date: str | None = None,
+        due_date: str | None = None,
+        confirm: bool = False,
+    ) -> WorkPackageWriteResult:
+        access.ensure_read_enabled("work_package", settings=self._settings)
+        parent_record = await self._api.get(work_package_ref(parent_work_package_id))
+        parent_payload = parent_record.payload
+        # The parent link needs the numeric id (HAL hrefs don't resolve
+        # displayId); read it back from the fetched parent rather than
+        # reusing the semantic ref.
+        parent_numeric_id = int(parent_payload["id"])
+        parent_project_link = parent_payload.get("_links", {}).get("project")
+        project_id = _id_from_href(parent_project_link.get("href") if parent_project_link else None)
+        if project_id is None:
+            raise InvalidInputError("OpenProject work package is missing a project link.")
+        ensure_project_write_link_allowed(
+            parent_project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
+        )
+
+        wp_context = self._new_wp_context()
+        payload = await self._build_write_payload(
+            project=str(project_id),
+            type=type,
+            subject=subject,
+            description=description,
+            version=version,
+            project_phase=project_phase,
+            assignee=assignee,
+            responsible=responsible,
+            priority=priority,
+            category=category,
+            custom_fields=custom_fields,
+            parent_work_package_id=parent_numeric_id,
+            start_date=start_date,
+            due_date=due_date,
+            resolution_context=wp_context,
+        )
+        form = await self._api.validate_create(str(project_id), payload)
+        parsed = self._api.parse_form(form)
+        parent_title = _trim_text(parent_project_link.get("title") if parent_project_link else None)
+        outcome = await _finalize_write(
+            confirm=confirm,
+            payload=parsed.payload,
+            validation_errors=parsed.validation_errors,
+            identity={"work_package_id": None, "project": parent_title},
+            ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
+            commit=lambda p: self._api.commit_create(p, text_limit=FORMATTABLE_LIMIT),
+            committed_identity=lambda record: {
+                "work_package_id": record.summary.id,
+                "project": record.summary.project,
+            },
+            rejected_message="OpenProject rejected the proposed changes. Fix the validation errors before confirming.",
+            preview_message="OpenProject validated the subtask. Ask for confirmation, then call again with confirm=true to create it.",
+            success_message="Subtask created successfully.",
+        )
+        return await self._to_write_result("create", outcome)
+
+    async def bulk_create(
+        self, *, items: builtins.list[dict[str, Any]], confirm: bool = False
+    ) -> BulkWorkPackageWriteResult:
+        item_results: builtins.list[BulkWorkPackageItemResult] = []
+        # Shared across every item in this bulk call (see
+        # WorkPackageResolutionContext): items in the same project skip
+        # repeating the same project fetch and type/version name->id lookups.
+        # Discarded once this call returns -- never reused across separate
+        # bulk_create calls.
+        wp_context = self._new_wp_context()
+        try:
+            for i, item in enumerate(items):
+                try:
+                    result = await self.create(
+                        project=item["project"],
+                        type=item["type"],
+                        subject=item["subject"],
+                        description=item.get("description"),
+                        version=item.get("version"),
+                        project_phase=item.get("project_phase"),
+                        assignee=item.get("assignee"),
+                        responsible=item.get("responsible"),
+                        priority=item.get("priority"),
+                        category=item.get("category"),
+                        custom_fields=item.get("custom_fields"),
+                        parent_work_package_id=item.get("parent_work_package_id"),
+                        start_date=item.get("start_date"),
+                        due_date=item.get("due_date"),
+                        estimated_time=item.get("estimated_time"),
+                        remaining_time=item.get("remaining_time"),
+                        duration=item.get("duration"),
+                        confirm=confirm,
+                        wp_context=wp_context,
+                    )
+                    item_results.append(_bulk_item_result(index=i, result=result))
+                except Exception as exc:
+                    item_results.append(BulkWorkPackageItemResult(index=i, success=False, error=str(exc), result=None))
+        except asyncio.CancelledError:
+            _log_bulk_cancellation(
+                "bulk_create_work_packages", confirm=confirm, total=len(items), item_results=item_results
+            )
+            raise
+
+        succeeded = sum(1 for r in item_results if r.success)
+        failed = len(item_results) - succeeded
+        requires_confirmation = not confirm and failed == 0
+        message = _bulk_summary_message(
+            confirm=confirm, succeeded=succeeded, failed=failed, total=len(items), verb="create", past_tense="created"
+        )
+        return BulkWorkPackageWriteResult(
+            action="bulk_create",
+            confirmed=confirm and failed == 0,
+            requires_confirmation=requires_confirmation,
+            total=len(items),
+            succeeded=succeeded,
+            failed=failed,
+            message=message,
+            items=item_results,
         )
