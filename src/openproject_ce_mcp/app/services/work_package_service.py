@@ -1326,3 +1326,286 @@ class WorkPackageService:
             message=message,
             items=item_results,
         )
+
+    async def _auto_derive_progress_on_close(
+        self,
+        *,
+        status: str | None,
+        percentage_done: int | None,
+        remaining_time: Any,
+        payload: dict[str, Any],
+        current: dict[str, Any],
+    ) -> tuple[int | None, Any]:
+        """Returns (auto_percentage, auto_remaining) -- both None if no
+        auto-fill applies. Verbatim port of update_work_package's inline
+        auto-derivation block (client.py:1712-1746).
+
+        Only attempted when `status` is actually changing, to avoid an extra
+        lookup on every plain field update. Resolves the status id already
+        present in `payload["_links"]["status"]["href"]` (set by
+        `_build_write_payload` when `status` was given) and fetches the full
+        status via `self._status_api.get_status(status_id)` -- deliberately
+        NOT `StatusPriorityTypeService`, which enforces
+        `access.ensure_read_enabled("work_package")` and would incorrectly
+        block this purely internal lookup on instances that have
+        work-package writes enabled but reads disabled.
+        """
+        want_auto_percentage = percentage_done is None
+        want_auto_remaining = remaining_time is None
+        auto_percentage: int | None = None
+        auto_remaining: Any = None
+        if status is None or not (want_auto_percentage or want_auto_remaining):
+            return auto_percentage, auto_remaining
+        status_id = _id_from_href(payload.get("_links", {}).get("status", {}).get("href"))
+        status_record = await self._status_api.get_status(int(status_id) if status_id is not None else 0)
+        if status_record.summary.is_closed:
+            auto_percentage = 100 if want_auto_percentage else None
+            if want_auto_remaining:
+                # OpenProject's own validation requires the OPPOSITE target
+                # depending on whether an estimate exists: remainingTime must
+                # be exactly "PT0H" when estimatedTime is set, but must be
+                # null/absent when it isn't -- live-verified against real
+                # OpenProject. "Effective" estimate: this same call's own
+                # estimated_time if it set one, else the work package's
+                # existing value from the pre-write GET.
+                effective_estimated_time = (
+                    payload.get("estimatedTime") if "estimatedTime" in payload else current.get("estimatedTime")
+                )
+                auto_remaining = "PT0H" if effective_estimated_time else CLEAR
+        return auto_percentage, auto_remaining
+
+    async def update(
+        self,
+        *,
+        work_package_id: int | str,
+        subject: str | None = None,
+        description: str | None = None,
+        type: str | None = None,
+        version: Any = None,
+        sprint: Any = None,
+        project_phase: Any = None,
+        status: str | None = None,
+        assignee: Any = None,
+        responsible: Any = None,
+        priority: str | None = None,
+        category: Any = None,
+        custom_fields: dict[str, Any] | None = None,
+        parent_work_package_id: Any = None,
+        start_date: str | None = None,
+        due_date: str | None = None,
+        estimated_time: Any = None,
+        remaining_time: Any = None,
+        duration: Any = None,
+        percentage_done: int | None = None,
+        confirm: bool = False,
+        wp_context: WorkPackageResolutionContext | None = None,
+    ) -> WorkPackageWriteResult:
+        access.ensure_read_enabled("work_package", settings=self._settings)
+        ref = work_package_ref(work_package_id)
+        if parent_work_package_id is not None and parent_work_package_id is not CLEAR_PARENT:
+            # parent goes into a HAL link href, which resolves only by
+            # numeric id. CLEAR_PARENT is a sentinel (un-parent) and must
+            # pass through unresolved. write=True: the new parent must
+            # itself be write-authorized, not just readable -- otherwise a
+            # caller could reparent a writable work package under a parent
+            # they can only read.
+            parent_work_package_id = await self._resolve_work_package_id(
+                _narrow_cleared(parent_work_package_id, sentinel=CLEAR_PARENT), write=True
+            )
+        current_record = await self._api.get(ref)
+        current = current_record.payload
+        project_id = _id_from_href(current.get("_links", {}).get("project", {}).get("href"))
+        if project_id is None:
+            raise InvalidInputError("OpenProject work package is missing a project link.")
+        ensure_project_write_link_allowed(
+            current.get("_links", {}).get("project"),
+            settings=self._settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+        )
+
+        # Default: a fresh context per call. A bulk caller (bulk_update)
+        # passes one shared across all its items instead.
+        if wp_context is None:
+            wp_context = self._new_wp_context()
+        lock_version = current.get("lockVersion")
+        payload = await self._build_write_payload(
+            project=str(project_id),
+            type=type,
+            subject=subject,
+            description=description,
+            version=version,
+            sprint=sprint,
+            project_phase=project_phase,
+            status=status,
+            assignee=assignee,
+            responsible=responsible,
+            priority=priority,
+            category=category,
+            custom_fields=custom_fields,
+            parent_work_package_id=parent_work_package_id,
+            start_date=start_date,
+            due_date=due_date,
+            estimated_time=estimated_time,
+            remaining_time=remaining_time,
+            duration=duration,
+            percentage_done=percentage_done,
+            work_package_id=ref,
+            lock_version=lock_version,
+            resolution_context=wp_context,
+        )
+
+        auto_percentage, auto_remaining = await self._auto_derive_progress_on_close(
+            status=status,
+            percentage_done=percentage_done,
+            remaining_time=remaining_time,
+            payload=payload,
+            current=current,
+        )
+
+        payload["lockVersion"] = lock_version
+        form = await self._api.validate_update(ref, payload)
+
+        if auto_percentage is not None or auto_remaining is not None:
+            parsed_probe = self._api.parse_form(form)
+            schema = parsed_probe.schema
+            changed = False
+            if (
+                auto_percentage is not None
+                and schema.get("percentageDone", {}).get("writable") is True
+                and not hidden_fields.field_hidden("work_package", "percentage_done", settings=self._settings)
+            ):
+                payload["percentageDone"] = auto_percentage
+                changed = True
+            if (
+                auto_remaining is not None
+                and schema.get("remainingTime", {}).get("writable") is True
+                and not hidden_fields.field_hidden("work_package", "remaining_time", settings=self._settings)
+            ):
+                payload["remainingTime"] = None if auto_remaining is CLEAR else auto_remaining
+                changed = True
+            if changed:
+                payload["lockVersion"] = lock_version
+                form = await self._api.validate_update(ref, payload)
+
+        parsed = self._api.parse_form(form)
+        project_name = _trim_text(current.get("_links", {}).get("project", {}).get("title"))
+        outcome = await _finalize_write(
+            confirm=confirm,
+            payload=parsed.payload,
+            validation_errors=parsed.validation_errors,
+            identity={"work_package_id": ref, "project": project_name},
+            ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
+            commit=lambda p: self._api.commit_update(ref, p, text_limit=FORMATTABLE_LIMIT),
+            committed_identity=lambda record: {
+                "work_package_id": record.summary.id,
+                "project": record.summary.project,
+            },
+            rejected_message="OpenProject rejected the proposed changes. Fix the validation errors before confirming.",
+            preview_message="OpenProject validated the change. Ask for confirmation, then call again with confirm=true to write it.",
+            success_message="Work package updated successfully.",
+        )
+        return await self._to_write_result("update", outcome)
+
+    async def bulk_update(
+        self, *, items: builtins.list[dict[str, Any]], confirm: bool = False
+    ) -> BulkWorkPackageWriteResult:
+        item_results: builtins.list[BulkWorkPackageItemResult] = []
+        # Shared across every item in this bulk call (see
+        # WorkPackageResolutionContext): items in the same project skip
+        # repeating the same project fetch and type/version name->id lookups.
+        # Discarded once this call returns -- never reused across separate
+        # bulk_update calls.
+        wp_context = self._new_wp_context()
+        try:
+            for i, item in enumerate(items):
+                try:
+                    result = await self.update(
+                        work_package_id=item["work_package_id"],
+                        subject=item.get("subject"),
+                        description=item.get("description"),
+                        type=item.get("type"),
+                        version=item.get("version"),
+                        sprint=item.get("sprint"),
+                        project_phase=item.get("project_phase"),
+                        status=item.get("status"),
+                        assignee=item.get("assignee"),
+                        responsible=item.get("responsible"),
+                        priority=item.get("priority"),
+                        category=item.get("category"),
+                        custom_fields=item.get("custom_fields"),
+                        parent_work_package_id=item.get("parent_work_package_id"),
+                        start_date=item.get("start_date"),
+                        due_date=item.get("due_date"),
+                        estimated_time=item.get("estimated_time"),
+                        remaining_time=item.get("remaining_time"),
+                        duration=item.get("duration"),
+                        percentage_done=item.get("percentage_done"),
+                        confirm=confirm,
+                        wp_context=wp_context,
+                    )
+                    item_results.append(_bulk_item_result(index=i, result=result))
+                except Exception as exc:
+                    item_results.append(BulkWorkPackageItemResult(index=i, success=False, error=str(exc), result=None))
+        except asyncio.CancelledError:
+            _log_bulk_cancellation(
+                "bulk_update_work_packages", confirm=confirm, total=len(items), item_results=item_results
+            )
+            raise
+
+        succeeded = sum(1 for r in item_results if r.success)
+        failed = len(item_results) - succeeded
+        requires_confirmation = not confirm and failed == 0
+        message = _bulk_summary_message(
+            confirm=confirm, succeeded=succeeded, failed=failed, total=len(items), verb="update", past_tense="updated"
+        )
+        return BulkWorkPackageWriteResult(
+            action="bulk_update",
+            confirmed=confirm and failed == 0,
+            requires_confirmation=requires_confirmation,
+            total=len(items),
+            succeeded=succeeded,
+            failed=failed,
+            message=message,
+            items=item_results,
+        )
+
+    async def delete(self, *, work_package_id: int | str, confirm: bool = False) -> WorkPackageWriteResult:
+        access.ensure_read_enabled("work_package", settings=self._settings)
+        ref = work_package_ref(work_package_id)
+        record = await self._api.get(ref, text_limit=FORMATTABLE_LIMIT)
+        ensure_project_write_link_allowed(
+            record.payload.get("_links", {}).get("project"),
+            settings=self._settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+        )
+        detail = self._stamp_detail(record.to_detail())
+        payload = {"id": detail.id, "subject": detail.subject, "lockVersion": detail.lock_version}
+
+        if not confirm:
+            return WorkPackageWriteResult(
+                action="delete",
+                confirmed=False,
+                requires_confirmation=True,
+                ready=True,
+                message="OpenProject is ready to delete this work package. Ask for confirmation, then call again with confirm=true.",
+                work_package_id=detail.id,
+                project=detail.project,
+                payload=payload,
+                validation_errors={},
+                result=detail,
+            )
+
+        access.ensure_write_enabled("work_package", settings=self._settings)
+        await self._api.delete(ref)
+        return WorkPackageWriteResult(
+            action="delete",
+            confirmed=True,
+            requires_confirmation=False,
+            ready=True,
+            message="Work package deleted successfully.",
+            work_package_id=detail.id,
+            project=detail.project,
+            payload=payload,
+            validation_errors={},
+            result=None,
+        )

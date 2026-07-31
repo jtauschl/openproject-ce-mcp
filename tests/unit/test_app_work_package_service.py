@@ -1038,3 +1038,288 @@ async def test_bulk_create_shares_resolution_context_across_items_in_same_projec
     # Only the FIRST item's create() should trigger a real project resolve --
     # the rest hit the shared WorkPackageResolutionContext's cache.
     assert project_resolve_calls == 1
+
+
+# ----------------------------------------------------------------------
+# update()
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_preview_without_commit_does_not_call_commit_update() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.update(work_package_id=6, subject="Renamed", confirm=False)
+
+    assert result.requires_confirmation is True
+    assert result.confirmed is False
+    assert api.commit_update_calls == []
+    assert len(api.validate_update_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_update_commit_calls_commit_update() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.update(work_package_id=6, subject="Renamed", confirm=True)
+
+    assert result.confirmed is True
+    assert len(api.commit_update_calls) == 1
+    ref, payload = api.commit_update_calls[0]
+    assert ref == "6"
+    assert payload["subject"] == "Renamed"
+
+
+@pytest.mark.asyncio
+async def test_update_denies_write_when_current_project_not_write_allowed() -> None:
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, payload=_payload(6, project_href="/api/v3/projects/20", project_title="Other"))
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("demo",))
+    service, _ = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.update(work_package_id=6, subject="Renamed", confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_update_rejects_write_to_hidden_field() -> None:
+    api = _FakeWorkPackageApi()
+    settings = dataclasses.replace(make_settings(), hidden_fields={"work_package": ("subject",)})
+    service, _ = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden"):
+        await service.update(work_package_id=6, subject="Renamed", confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_update_reports_validation_errors_as_not_ready() -> None:
+    api = _FakeWorkPackageApi()
+    api.validation_errors_queue.append({"subject": "is too long"})
+    service, _ = _service(api)
+
+    result = await service.update(work_package_id=6, subject="Renamed", confirm=False)
+
+    assert result.ready is False
+    assert result.validation_errors == {"subject": "is too long"}
+
+
+@pytest.mark.asyncio
+async def test_update_resolves_parent_with_write_true_and_clear_parent_passes_through() -> None:
+    from openproject_ce_mcp.app.services.work_package_service import CLEAR_PARENT
+
+    api = _FakeWorkPackageApi()
+    seen_write: list[bool] = []
+
+    async def resolve_work_package_id(ref, *, write=False):
+        seen_write.append(write)
+        return int(ref)
+
+    service, _ = _service(api, resolve_work_package_id=resolve_work_package_id)
+
+    await service.update(work_package_id=6, parent_work_package_id=7, confirm=False)
+    assert seen_write == [True]
+
+    # CLEAR_PARENT must pass through unresolved -- no resolver call at all.
+    seen_write.clear()
+    await service.update(work_package_id=6, parent_work_package_id=CLEAR_PARENT, confirm=False)
+    assert seen_write == []
+    _, payload = api.validate_update_calls[-1]
+    assert payload["_links"]["parent"]["href"] is None
+
+
+@pytest.mark.asyncio
+async def test_update_missing_project_link_raises() -> None:
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, payload={"id": 6, "subject": "WP", "_links": {}})
+    service, _ = _service(api)
+
+    with pytest.raises(InvalidInputError, match="missing a project link"):
+        await service.update(work_package_id=6, subject="Renamed", confirm=False)
+
+
+# ----------------------------------------------------------------------
+# update() auto-percentage/auto-remaining-time derivation
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_autofills_percentage_and_remaining_when_closing_without_estimate() -> None:
+    api = _FakeWorkPackageApi()
+    api.next_schema = {
+        "percentageDone": {"writable": True},
+        "remainingTime": {"writable": True},
+    }
+    status_api = _FakeStatusApi(is_closed=True)
+    service, _ = _service(api, status_api=status_api)
+
+    result = await service.update(work_package_id=6, status="Closed", confirm=False)
+
+    assert result.ready is True
+    assert len(api.validate_update_calls) == 2  # first probe + re-validate after auto-fill
+    _, second_payload = api.validate_update_calls[-1]
+    assert second_payload["percentageDone"] == 100
+    assert second_payload["remainingTime"] is None  # CLEAR-derived: no existing estimate
+
+
+@pytest.mark.asyncio
+async def test_update_autofills_remaining_as_pt0h_when_estimate_exists() -> None:
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, payload={**_payload(6), "estimatedTime": "PT8H"})
+    api.next_schema = {
+        "percentageDone": {"writable": True},
+        "remainingTime": {"writable": True},
+    }
+    status_api = _FakeStatusApi(is_closed=True)
+    service, _ = _service(api, status_api=status_api)
+
+    await service.update(work_package_id=6, status="Closed", confirm=False)
+
+    _, second_payload = api.validate_update_calls[-1]
+    assert second_payload["remainingTime"] == "PT0H"
+
+
+@pytest.mark.asyncio
+async def test_update_skips_autofill_when_schema_not_writable() -> None:
+    api = _FakeWorkPackageApi()
+    api.next_schema = {
+        "percentageDone": {"writable": False},
+        "remainingTime": {"writable": False},
+    }
+    status_api = _FakeStatusApi(is_closed=True)
+    service, _ = _service(api, status_api=status_api)
+
+    await service.update(work_package_id=6, status="Closed", confirm=False)
+
+    # No second validate_update call -- nothing actually changed.
+    assert len(api.validate_update_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_update_preserves_explicit_values_on_close() -> None:
+    api = _FakeWorkPackageApi()
+    status_api = _FakeStatusApi(is_closed=True)
+    service, _ = _service(api, status_api=status_api)
+
+    result = await service.update(
+        work_package_id=6, status="Closed", percentage_done=42, remaining_time="PT3H", confirm=False
+    )
+
+    assert result.ready is True
+    # Caller explicitly supplied both -- no auto-derivation lookup needed.
+    assert status_api.get_status_calls == []
+    assert len(api.validate_update_calls) == 1
+    _, payload = api.validate_update_calls[-1]
+    assert payload["percentageDone"] == 42
+    assert payload["remainingTime"] == "PT3H"
+
+
+@pytest.mark.asyncio
+async def test_update_no_autofill_when_status_not_changing() -> None:
+    api = _FakeWorkPackageApi()
+    status_api = _FakeStatusApi(is_closed=True)
+    service, _ = _service(api, status_api=status_api)
+
+    await service.update(work_package_id=6, subject="Renamed", confirm=False)
+
+    assert status_api.get_status_calls == []
+    assert len(api.validate_update_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_update_read_disabled_but_write_enabled_still_autofills() -> None:
+    api = _FakeWorkPackageApi()
+    api.next_schema = {
+        "percentageDone": {"writable": True},
+        "remainingTime": {"writable": True},
+    }
+    status_api = _FakeStatusApi(is_closed=True)
+    settings = dataclasses.replace(make_settings(), enable_work_package_read=False)
+    service, _ = _service(api, settings=settings, status_api=status_api)
+
+    with pytest.raises(PermissionDeniedError):
+        # ensure_read_enabled at the top of update() still gates the whole
+        # call (matches the flat code's own read-gate placement) -- but the
+        # INTERNAL status lookup itself (status_api.get_status) must never be
+        # the thing that raises this, confirmed by it never being reached.
+        await service.update(work_package_id=6, status="Closed", confirm=False)
+    assert status_api.get_status_calls == []
+
+
+# ----------------------------------------------------------------------
+# bulk_update()
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_commit_updates_every_item() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.bulk_update(
+        items=[{"work_package_id": 6, "subject": "Renamed"}],
+        confirm=True,
+    )
+
+    assert result.succeeded == 1
+    assert len(api.commit_update_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_partial_failure_is_isolated_per_item() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.bulk_update(
+        items=[
+            {"work_package_id": 6, "subject": "Good"},
+            {"work_package_id": 999, "subject": "Missing"},
+        ],
+        confirm=False,
+    )
+
+    assert result.total == 2
+    assert result.succeeded == 1
+    assert result.failed == 1
+
+
+# ----------------------------------------------------------------------
+# delete()
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_preview_without_commit_does_not_call_delete() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.delete(work_package_id=6, confirm=False)
+
+    assert result.requires_confirmation is True
+    assert result.confirmed is False
+    assert result.result is not None
+    assert api.delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_commit_calls_delete_and_returns_no_result() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.delete(work_package_id=6, confirm=True)
+
+    assert result.confirmed is True
+    assert result.result is None
+    assert api.delete_calls == ["6"]
+
+
+@pytest.mark.asyncio
+async def test_delete_denies_write_when_project_not_write_allowed() -> None:
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, payload=_payload(6, project_href="/api/v3/projects/20", project_title="Other"))
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("demo",))
+    service, _ = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.delete(work_package_id=6, confirm=False)
