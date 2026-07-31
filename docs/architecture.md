@@ -130,6 +130,15 @@ tools.py (MCP presentation)
     the new adapter instead, rather than importing across the module boundary.
   - A caller-supplied id that can contain URL-path-unsafe characters is percent-encoded
     (`quote(<id>, safe="")`) before being interpolated into a request path.
+  - A domain whose per-item read-allowlist check can fail on a malformed/unexpected raw field may
+    have its `list()` Port method return raw, unnormalized elements (plus any server-reported total)
+    instead of pre-built Records — the Service then filters the raw elements against the allowlist
+    FIRST and normalizes only the survivors, so an out-of-scope item's malformed field can never
+    raise before the allowlist ever gets a chance to drop it, and no normalization work is wasted on
+    items the caller could never see. This is a deliberate divergence from the more common
+    "Adapter always normalizes, Service filters the already-normalized Records" shape — pick the
+    shape that matches whether filtering can safely happen on already-normalized data for that
+    specific domain.
 - **Resolvers** turn a semantic reference (a version name, a project identifier) into a concrete
   id, using only a port — never an Application Service. Project and reference resolution happens
   through a request-scoped resolution context: a single top-level call touching the same project
@@ -176,7 +185,13 @@ tools.py (MCP presentation)
   validate against (`AttachmentApi.get_max_attachment_size()` reads Instance Configuration's
   `maximumAttachmentFileSize` without migrating that domain) — a deliberate, narrow exception to
   "a Port covers its own domain," used specifically to avoid an unrelated domain's full migration
-  becoming a hidden prerequisite for the one actually being migrated.
+  becoming a hidden prerequisite for the one actually being migrated. Hidden-field masking
+  (`hidden_fields.apply_hidden_fields`) tags its result with a dynamic `_hidden_keys` attribute, not
+  a declared dataclass field — `dataclasses.replace(...)` on an already-stamped value builds a
+  brand-new instance carrying only the declared fields, silently dropping that tag. Any Service
+  method that both stamps a result AND transforms it afterward via `dataclasses.replace` (e.g. a
+  post-processing filter step) must stamp AFTER the replace, not before, or the transformed result
+  comes back fully unmasked.
 - `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under `app/` that
   imports `httpx`; `client.py`'s own HTTP calls for still-flat domains, and `retry_transport.py`,
   are unaffected and keep importing it directly. The `Transport` Protocol (`app/transport/protocol.py`)
