@@ -1191,3 +1191,26 @@ def test_time_entry_service_binds_its_dependencies_to_the_right_protocols() -> N
     assert hints["get_current_user"] is CurrentUserLookup, (
         "TimeEntryService.__init__'s get_current_user param must be typed CurrentUserLookup"
     )
+
+
+def test_activity_service_binds_the_api_param_to_activity_api_specifically() -> None:
+    """Activities is the simplest work-package-reference-dependent domain
+    this session: no WorkPackageLookupApi at all, only its own Port plus
+    WorkPackageIdResolver -- the caller-supplied work_package_id is the only
+    input, nothing here derives an id from another resource's own link."""
+    from openproject_ce_mcp.app.adapters.httpx_activity_api import HttpxActivityApi
+    from openproject_ce_mcp.app.ports.activity_api import ActivityApi
+    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageIdResolver
+    from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
+    from openproject_ce_mcp.app.services.activity_service import ActivityService
+
+    hints = typing.get_type_hints(ActivityService.__init__)
+    assert hints["api"] is ActivityApi, "ActivityService.__init__'s api param must be typed ActivityApi"
+    assert hints["api"] is not HttpxActivityApi, "ActivityService.__init__'s api param must not be the concrete adapter"
+
+    assert hints["resolve_work_package_id"] is WorkPackageIdResolver, (
+        "ActivityService.__init__'s resolve_work_package_id param must be typed WorkPackageIdResolver"
+    )
+    assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
+        "ActivityService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
+    )

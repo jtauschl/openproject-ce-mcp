@@ -15,6 +15,7 @@ import httpx
 
 from . import __version__
 from .app.adapters.httpx_action_capability_api import HttpxActionCapabilityApi
+from .app.adapters.httpx_activity_api import HttpxActivityApi
 from .app.adapters.httpx_board_api import HttpxBoardApi
 from .app.adapters.httpx_category_api import HttpxCategoryApi
 from .app.adapters.httpx_document_api import HttpxDocumentApi
@@ -66,6 +67,7 @@ from .app.policies import hidden_fields as _hidden_fields_policy
 from .app.policies import scope as _scope_policy
 from .app.policies import sprint_policy as _sprint_policy
 from .app.ports.action_capability_api import ActionCapabilityApi
+from .app.ports.activity_api import ActivityApi
 from .app.ports.board_api import BoardApi
 from .app.ports.category_api import CategoryApi
 from .app.ports.document_api import DocumentApi
@@ -100,6 +102,7 @@ from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.version_resolver import VersionResolver
 from .app.resolvers.work_package_resolver import WorkPackageResolver
 from .app.services.action_capability_service import ActionCapabilityService
+from .app.services.activity_service import ActivityService
 from .app.services.board_service import BoardService
 from .app.services.category_service import CategoryService
 from .app.services.document_service import DocumentService
@@ -610,6 +613,13 @@ class OpenProjectClient:
             resolve_principal_id=self._resolve_principal_id,
             get_current_user=self.get_current_user,
             api_prefix=self._api_prefix,
+        )
+
+        self._activity_api: ActivityApi = HttpxActivityApi(HttpxTransport(self._http))
+        self._activity_service = ActivityService(
+            api=self._activity_api,
+            settings=settings,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
         )
 
     async def initialize(self) -> None:
@@ -2701,21 +2711,9 @@ class OpenProjectClient:
     async def get_work_package_activities(
         self, work_package_id: int | str, *, limit: int | None = None, text_limit: int | None = None
     ) -> ActivityListResult:
-        self._ensure_read_enabled("work_package")
-        work_package_id = self._work_package_ref(work_package_id)
-        # Existence/access check only — the result is discarded, so cap its text
-        # (do NOT forward text_limit here, which could pull a large description).
-        await self.get_work_package(work_package_id, text_limit=SUBJECT_LIMIT)
-        effective_limit = self._resolve_limit(limit)
-        payload = await self._get(f"work_packages/{work_package_id}/activities")
-        elements = payload.get("_embedded", {}).get("elements", [])
-        # Return most recent first, bounded. Comments come back in full by default
-        # (text_limit=None): the activities of a single work package are one item's
-        # content, not a multi-row list, so there is no context-flood risk — same
-        # rationale as get_work_package. text_limit stays as an opt-in cap.
-        elements = elements[-effective_limit:]
-        results = [self.normalize_activity(item, text_limit=text_limit) for item in reversed(elements)]
-        return ActivityListResult(count=len(results), results=results)
+        return await self._activity_service.list_for_work_package(
+            work_package_id, limit=limit, text_limit=text_limit
+        )
 
     # --- Emoji reactions (on work-package comment activities) ---
 
