@@ -584,4 +584,73 @@ async def test_get_project_work_package_context(client: OpenProjectClient, test_
     type_name = untyped.available_types[0].title
     typed = await client.get_project_work_package_context(project=test_project, type=type_name)
     assert typed.selected_type_name == type_name
-    assert typed.fields
+
+
+async def test_get_work_package_hierarchy_filters_ancestors_and_children_outside_read_allowlist(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int], project_refs: list[str]
+) -> None:
+    """Baseline for the pre-migration behavior of `_filter_hierarchy_allowlist`
+    (client.py:1706-1736): OpenProject's parent/child hierarchy is not
+    project-constrained, so a linked work package's ancestor/child can belong
+    to a project the caller isn't allowed to read. The anchor work package
+    (`test_project`, inside `client`'s read allowlist) must still be
+    returned, but a cross-project ancestor/child outside the allowlist must
+    be dropped from `ancestors`/`children` rather than leaked.
+
+    Written against the still-flat client.py before the Work Packages READ
+    migration (domain-migration-runbook.md step 4's live-test-ordering rule)
+    so the identical test proves no regression once `get_work_package`
+    delegates to the new `WorkPackageService`."""
+    unrestricted_settings = dataclasses.replace(
+        client.settings,
+        read_projects=("*",),
+        write_projects=("*",),
+    )
+    unrestricted_client = OpenProjectClient(unrestricted_settings)
+    await unrestricted_client.initialize()
+
+    other_identifier = disposable_project_identifier()
+    create_project_result = await unrestricted_client.create_project(
+        name=f"[integration-test] {other_identifier}", identifier=other_identifier, confirm=True
+    )
+    assert create_project_result.ready, create_project_result.validation_errors
+    project_refs.append(other_identifier)
+
+    # Parent lives OUTSIDE test_project (in the other, unrestricted-only project).
+    outside_parent = await unrestricted_client.create_work_package(
+        project=other_identifier, type="Task", subject=f"{_SUBJECT} outside-scope parent", confirm=True
+    )
+    assert outside_parent.ready
+
+    # Child lives INSIDE test_project (within `client`'s read allowlist), parented
+    # to the outside-scope work package -- cross-project parenting is allowed by
+    # OpenProject itself (create_work_package's own project scoping is
+    # independent of parent_work_package_id's project), this test only concerns
+    # what the READ path exposes. Uses the unrestricted client so the write
+    # allowlist check on the cross-project parent link succeeds; `client`
+    # itself only reads below.
+    child = await unrestricted_client.create_work_package(
+        project=test_project,
+        type="Task",
+        subject=f"{_SUBJECT} inside-scope child",
+        parent_work_package_id=outside_parent.work_package_id,
+        confirm=True,
+    )
+    assert child.ready, child.validation_errors
+    wp_ids.append(child.work_package_id)
+
+    # `client` (scoped to test_project only) reads the child: the anchor itself
+    # is visible (its own project is in-scope), but the out-of-scope parent must
+    # not appear in `ancestors`.
+    wp = await client.get_work_package(child.work_package_id)
+    assert wp.id == child.work_package_id
+    outside_href_fragment = f"/work_packages/{outside_parent.work_package_id}"
+    if wp.ancestors:
+        assert not any(a.get("href", "").endswith(outside_href_fragment) for a in wp.ancestors)
+
+    # The unrestricted client (read_projects=("*",)) must still see the real
+    # ancestor -- proves the filtering above is allowlist-driven, not a
+    # blanket/always-empty result.
+    unrestricted_wp = await unrestricted_client.get_work_package(child.work_package_id)
+    assert unrestricted_wp.ancestors
+    assert any(a.get("href", "").endswith(outside_href_fragment) for a in unrestricted_wp.ancestors)

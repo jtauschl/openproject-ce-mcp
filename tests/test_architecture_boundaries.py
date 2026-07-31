@@ -1248,3 +1248,29 @@ def test_activity_service_binds_the_api_param_to_activity_api_specifically() -> 
     assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
         "ActivityService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
     )
+
+
+def test_work_package_service_binds_the_api_param_to_work_package_api_specifically() -> None:
+    """Work Packages' own READ-slice Service depends on its own new
+    WorkPackageApi Port (not the pre-existing, deliberately minimal
+    WorkPackageLookupApi that 8 other domains' resolvers use), and on the
+    existing WorkPackageProjectAllowedCheck seam for hierarchy-allowlist
+    filtering -- not the concrete WorkPackageResolver class."""
+    from openproject_ce_mcp.app.adapters.httpx_work_package_api import HttpxWorkPackageApi
+    from openproject_ce_mcp.app.ports.work_package_api import WorkPackageApi
+    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageProjectAllowedCheck
+    from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
+    from openproject_ce_mcp.app.services.work_package_service import WorkPackageService
+
+    hints = typing.get_type_hints(WorkPackageService.__init__)
+    assert hints["api"] is WorkPackageApi, "WorkPackageService.__init__'s api param must be typed WorkPackageApi"
+    assert hints["api"] is not HttpxWorkPackageApi, (
+        "WorkPackageService.__init__'s api param must not be the concrete adapter"
+    )
+
+    assert hints["work_package_project_allowed"] is WorkPackageProjectAllowedCheck, (
+        "WorkPackageService.__init__'s work_package_project_allowed param must be typed WorkPackageProjectAllowedCheck"
+    )
+    assert hints["work_package_project_allowed"] is not WorkPackageResolver, (
+        "WorkPackageService.__init__'s work_package_project_allowed param must not be the concrete resolver class"
+    )

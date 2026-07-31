@@ -42,19 +42,23 @@ from .app.adapters.httpx_version_api import HttpxVersionApi
 from .app.adapters.httpx_view_api import HttpxViewApi
 from .app.adapters.httpx_watcher_api import HttpxWatcherApi
 from .app.adapters.httpx_wiki_page_api import HttpxWikiPageApi
+from .app.adapters.httpx_work_package_api import HttpxWorkPackageApi
 from .app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
 
-# AuthenticationError: no longer referenced directly in this module (its only use was
-# inside _raise_for_status, now delegated to app.transport.errors.raise_for_status),
-# but re-exported deliberately -- existing callers/tests import it from here (e.g.
-# `from openproject_ce_mcp.client import AuthenticationError`) and must keep working.
+# AuthenticationError/PermissionDeniedError: no longer referenced directly in this
+# module (PermissionDeniedError's own last use, list_work_packages' fail-closed
+# empty-project-cache branch, moved into WorkPackageService with the Work
+# Packages READ migration), but re-exported deliberately -- existing callers/tests
+# import them from here (e.g. `from openproject_ce_mcp.client import
+# PermissionDeniedError`, used by tests/integration/test_work_packages.py among
+# others) and must keep working.
 from .app.errors import (
     AuthenticationError,  # noqa: F401
     InvalidInputError,
     NotFoundError,
     OpenProjectError,
     OpenProjectServerError,
-    PermissionDeniedError,
+    PermissionDeniedError,  # noqa: F401
     TransportError,
 )
 from .app.pagination import (
@@ -95,6 +99,7 @@ from .app.ports.version_api import VersionApi
 from .app.ports.view_api import ViewApi
 from .app.ports.watcher_api import WatcherApi
 from .app.ports.wiki_page_api import WikiPageApi
+from .app.ports.work_package_api import WorkPackageApi
 from .app.ports.work_package_lookup_api import WorkPackageLookupApi
 from .app.ports.work_package_ref import work_package_ref as _work_package_ref_encode
 from .app.ports.work_package_resolution import WorkPackageAllowedContext
@@ -131,6 +136,7 @@ from .app.services.version_service import VersionService
 from .app.services.view_service import ViewService
 from .app.services.watcher_service import WatcherService
 from .app.services.wiki_page_service import WikiPageService
+from .app.services.work_package_service import WorkPackageService
 from .app.transport.errors import raise_for_status as _map_status_to_error
 from .app.transport.httpx_transport import HttpxTransport
 from .config import Settings
@@ -143,7 +149,6 @@ from .models import (
     AttachmentListResult,
     AttachmentSummary,
     AttachmentWriteResult,
-    BatchWorkPackageReadItemResult,
     BatchWorkPackageReadResult,
     BoardDetail,
     BoardListResult,
@@ -244,7 +249,6 @@ from .models import (
     WorkPackageDetail,
     WorkPackageFieldSchema,
     WorkPackageListResult,
-    WorkPackageSummary,
     WorkPackageWriteResult,
 )
 
@@ -525,10 +529,10 @@ class OpenProjectClient:
         self._extended_metadata_api: ExtendedMetadataApi = HttpxExtendedMetadataApi(HttpxTransport(self._http))
         self._extended_metadata_service = ExtendedMetadataService(api=self._extended_metadata_api, settings=settings)
 
-        # Infrastructure-only extraction (no WorkPackageService yet --
-        # full Work Packages CRUD is still flat, ~1170 lines, the next big
-        # migration). Only the reference-resolution seam 7 other still-flat
-        # domains depend on is layered here.
+        # Narrow reference-resolution seam (WorkPackageIdResolver/
+        # WorkPackageProjectAllowedCheck) that 8 already-migrated domains
+        # depend on. Kept exactly as-is by the Work Packages READ migration
+        # below -- see that block's own comment for why.
         self._work_package_lookup_api: WorkPackageLookupApi = HttpxWorkPackageLookupApi(
             HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
         )
@@ -536,6 +540,32 @@ class OpenProjectClient:
             api=self._work_package_lookup_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
+        )
+
+        # READ-only slice of the Work Packages domain migration. A separate,
+        # parallel port/adapter from work_package_lookup_api above -- see
+        # app/ports/work_package_api.py's module docstring for why this does
+        # NOT wrap/replace WorkPackageLookupApi, and why WorkPackageResolver
+        # above stays completely unchanged (still bound to
+        # work_package_lookup_api, still the seam the 8 already-migrated
+        # work-package-reference-dependent domains use). Write paths
+        # (create/update/delete/bulk_*/add_comment/create_subtask) remain
+        # flat in this class -- a later, separate migration step.
+        self._work_package_api: WorkPackageApi = HttpxWorkPackageApi(
+            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
+        )
+        self._work_package_service = WorkPackageService(
+            api=self._work_package_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_project_ref=self._get_project_payload,
+            resolve_type_id=self._resolve_type_id,
+            resolve_version_id=self._resolve_version_id,
+            resolve_status_id=self._resolve_status_id,
+            resolve_priority_id=self._resolve_priority_id,
+            resolve_principal_id=self._resolve_principal_id,
+            current_user=self.get_current_user,
+            work_package_project_allowed=self._work_package_resolver.project_link_allowed,
         )
 
         self._file_link_api: FileLinkApi = HttpxFileLinkApi(HttpxTransport(self._http), api_prefix=self._api_prefix)
@@ -1370,54 +1400,24 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> WorkPackageListResult:
-        self._ensure_read_enabled("work_package")
-        effective_limit = self._resolve_limit(limit)
-        if not self.settings.read_projects:
-            return self._empty_work_package_list_result(offset=offset, limit=effective_limit)
-        filters: list[dict[str, Any]] = [{"subject_or_id": {"operator": "**", "values": [search]}}]
-        project_id: int | None = None
-        total_is_scope_safe = _scope_allows_all(self.settings.read_projects)
-        if project is not None:
-            project_payload = await self._get_project_payload(project)
-            project_id = int(project_payload["id"])
-            filters.append({"project_id": {"operator": "=", "values": [str(project_id)]}})
-            total_is_scope_safe = True
-        if status:
-            status_id = await self._resolve_status_id(status)
-            filters.append({"status_id": {"operator": "=", "values": [status_id]}})
-        if open_only:
-            filters.append({"status_id": {"operator": "o", "values": []}})
-        if assignee_me:
-            current_user = await self.get_current_user()
-            filters.append({"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}})
-
-        # Extended filters (same as list_work_packages)
-        if assignee and not assignee_me:
-            assignee_id = await self._resolve_principal_id(assignee)
-            filters.append({"assigned_to_id": {"operator": "=", "values": [assignee_id]}})
-
-        if priority:
-            priority_id = await self._resolve_priority_id(priority)
-            filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
-
-        self._apply_work_package_date_filters(
-            filters,
+        return await self._work_package_service.search(
+            search=search,
+            project=project,
+            status=status,
+            open_only=open_only,
+            assignee_me=assignee_me,
+            assignee=assignee,
+            priority=priority,
             created_on=created_on,
             created_between=created_between,
             updated_on=updated_on,
             updated_between=updated_between,
             due_on=due_on,
             due_between=due_between,
-        )
-
-        return await self._list_work_package_collection(
-            project_id=project_id,
-            filters=filters,
-            offset=offset,
-            limit=effective_limit,
             sort_by=sort_by,
             group_by=group_by,
-            total_is_scope_safe=total_is_scope_safe,
+            offset=offset,
+            limit=limit,
         )
 
     async def list_work_packages(
@@ -1443,297 +1443,30 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> WorkPackageListResult:
-        self._ensure_read_enabled("work_package")
-        effective_limit = self._resolve_limit(limit)
-        if not self.settings.read_projects:
-            return self._empty_work_package_list_result(offset=offset, limit=effective_limit)
-        filters: list[dict[str, Any]] = []
-        project_id: int | None = None
-        # Bounded to this single call: avoids re-fetching/re-checking the same
-        # project when both type and version filters are given alongside project.
-        resolution_context = ProjectResolutionContext(self._resolve_project_ref)
-        total_is_scope_safe = _scope_allows_all(self.settings.read_projects)
-        if project is not None:
-            project_payload = await self._get_project_payload(project, context=resolution_context)
-            project_id = int(project_payload["id"])
-            filters.append({"project_id": {"operator": "=", "values": [str(project_id)]}})
-            total_is_scope_safe = True
-        elif not total_is_scope_safe:
-            # No explicit project given but read scope is restricted — add a server-side
-            # project filter so the API only returns WPs from the allowed projects. This
-            # cache can still be empty (e.g. every allowed project was created after
-            # initialize()'s one-time startup snapshot and no confirmed write has
-            # refreshed it since — see ProjectService._remember_identifier). Sending an
-            # unfiltered query in that case would silently leak an untrustworthy total
-            # instead of failing loudly, so this fails closed with an explicit error
-            # instead — consistent with every other project-link-scoped tool
-            # (get_work_package/update_work_package/etc. all raise the same error for
-            # the identical underlying condition, rather than silently narrowing to
-            # nothing).
-            allowed_ids = [str(pid) for pid in self._project_id_to_identifier]
-            if not allowed_ids:
-                raise PermissionDeniedError(
-                    "OpenProject access to this project is disabled by OPENPROJECT_READ_PROJECTS."
-                )
-            filters.append({"project_id": {"operator": "=", "values": allowed_ids}})
-            total_is_scope_safe = True
-        if open_only:
-            filters.append({"status_id": {"operator": "o", "values": []}})
-        if assignee_me:
-            current_user = await self.get_current_user()
-            filters.append({"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}})
-        if type:
-            type_id = await self._resolve_type_id(type, project=project, context=resolution_context)
-            # Use official filter key per source (type_filter.rb:def self.key → :type_id)
-            # PropertyNameConverter tolerates "type" but may break in future versions
-            filters.append({"type_id": {"operator": "=", "values": [type_id]}})
-        if version:
-            version_id = await self._resolve_version_id(version, project=project, context=resolution_context)
-            # Use official filter key per source (version_filter.rb:def self.key → :version_id)
-            # PropertyNameConverter tolerates "version" but may break in future versions
-            filters.append({"version_id": {"operator": "=", "values": [version_id]}})
-        if version_status:
-            # Filter by the status of a work package's assigned version. The
-            # version filter supports operators o/c/l for open/closed/locked
-            # (custom operators in VersionFilter beyond base :list_optional strategy).
-            status_operator = {"open": "o", "closed": "c", "locked": "l"}[version_status]
-            # Use official filter key per source (version_filter.rb:def self.key → :version_id)
-            filters.append({"version_id": {"operator": status_operator, "values": []}})
-
-        # Extended filters
-        # assignee_me takes precedence for backward compatibility
-        if assignee and not assignee_me:
-            assignee_id = await self._resolve_principal_id(assignee)
-            filters.append({"assigned_to_id": {"operator": "=", "values": [assignee_id]}})
-
-        if status:
-            status_id = await self._resolve_status_id(status)
-            filters.append({"status_id": {"operator": "=", "values": [status_id]}})
-
-        if priority:
-            priority_id = await self._resolve_priority_id(priority)
-            filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
-
-        self._apply_work_package_date_filters(
-            filters,
+        return await self._work_package_service.list(
+            project=project,
+            type=type,
+            version=version,
+            version_status=version_status,
+            open_only=open_only,
+            assignee_me=assignee_me,
+            assignee=assignee,
+            status=status,
+            priority=priority,
             created_on=created_on,
             created_between=created_between,
             updated_on=updated_on,
             updated_between=updated_between,
             due_on=due_on,
             due_between=due_between,
-        )
-
-        return await self._list_work_package_collection(
-            project_id=project_id,
-            filters=filters,
-            offset=offset,
-            limit=effective_limit,
             sort_by=sort_by,
             group_by=group_by,
-            total_is_scope_safe=total_is_scope_safe,
-        )
-
-    def _empty_work_package_list_result(self, *, offset: int, limit: int) -> WorkPackageListResult:
-        return WorkPackageListResult(
             offset=offset,
             limit=limit,
-            total=0,
-            count=0,
-            next_offset=None,
-            truncated=False,
-            results=[],
-        )
-
-    def _work_package_collection_page(
-        self,
-        *,
-        offset: int,
-        limit: int,
-        total_is_scope_safe: bool,
-        server_total: int,
-        raw_elements: list[dict[str, Any]],
-        raw_items: list[dict[str, Any]],
-        results: list[WorkPackageSummary],
-    ) -> tuple[int, int | None, bool]:
-        """Shared total/next_offset/truncated derivation for the two work-package
-        collection endpoints (_list_work_package_collection,
-        list_my_open_work_packages). The server total is only safe to expose
-        when the query itself was provably restricted to the allowed scope
-        server-side (total_is_scope_safe) -- a clean current page is NOT
-        sufficient on its own, since a later page could still contain
-        disallowed-project matches that the total would otherwise leak the
-        existence of. The per-page equality check stays as defense in depth
-        against a scoped query somehow still returning a disallowed item.
-        """
-        total_trustworthy = total_is_scope_safe and len(raw_items) == len(raw_elements)
-        if total_trustworthy:
-            next_offset, truncated = _paginate_server(offset=offset, limit=limit, total=server_total)
-            return server_total, next_offset, truncated
-        # Pagination hints must not be derived from the untrustworthy server
-        # total either -- that would leak the existence of disallowed-project
-        # matches just as much as exposing the total itself. "Is there more to
-        # page through" is instead based purely on whether this raw server
-        # page came back full, which reveals nothing beyond what any paginated
-        # API already implies.
-        total = len(results)
-        next_offset = (offset + 1) if len(raw_elements) == limit else None
-        truncated = len(raw_elements) == limit
-        return total, next_offset, truncated
-
-    def _build_work_package_list_result(
-        self,
-        *,
-        payload: dict[str, Any],
-        offset: int,
-        limit: int,
-        total_is_scope_safe: bool,
-    ) -> WorkPackageListResult:
-        raw_elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
-        raw_items = [item for item in raw_elements if self._work_package_payload_allowed(item)]
-        results = [self.normalize_work_package_summary(item) for item in raw_items]
-        server_total = int(payload.get("total", len(results)))
-        total, next_offset, truncated = self._work_package_collection_page(
-            offset=offset,
-            limit=limit,
-            total_is_scope_safe=total_is_scope_safe,
-            server_total=server_total,
-            raw_elements=raw_elements,
-            raw_items=raw_items,
-            results=results,
-        )
-        return WorkPackageListResult(
-            offset=offset,
-            limit=limit,
-            total=total,
-            count=len(results),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=results,
-        )
-
-    def _apply_work_package_date_filters(
-        self,
-        filters: list[dict[str, Any]],
-        *,
-        created_on: str | None,
-        created_between: list[str] | None,
-        updated_on: str | None,
-        updated_between: list[str] | None,
-        due_on: str | None,
-        due_between: list[str] | None,
-    ) -> None:
-        # Mutual exclusivity: can't use both _on and _between for same field
-        if created_on and created_between:
-            raise InvalidInputError("Cannot specify both created_on and created_between")
-        if updated_on and updated_between:
-            raise InvalidInputError("Cannot specify both updated_on and updated_between")
-        if due_on and due_between:
-            raise InvalidInputError("Cannot specify both due_on and due_between")
-
-        if created_on:
-            validated_date = self._validate_date_format(created_on, "created_on")
-            filters.append({"created_at": {"operator": "=d", "values": [validated_date]}})
-
-        if created_between:
-            validated_range = self._validate_date_range(created_between, "created_between")
-            filters.append({"created_at": {"operator": "<>d", "values": validated_range}})
-
-        if updated_on:
-            validated_date = self._validate_date_format(updated_on, "updated_on")
-            filters.append({"updated_at": {"operator": "=d", "values": [validated_date]}})
-
-        if updated_between:
-            validated_range = self._validate_date_range(updated_between, "updated_between")
-            filters.append({"updated_at": {"operator": "<>d", "values": validated_range}})
-
-        if due_on:
-            validated_date = self._validate_date_format(due_on, "due_on")
-            filters.append({"due_date": {"operator": "=d", "values": [validated_date]}})
-
-        if due_between:
-            validated_range = self._validate_date_range(due_between, "due_between")
-            filters.append({"due_date": {"operator": "<>d", "values": validated_range}})
-
-    async def _list_work_package_collection(
-        self,
-        *,
-        project_id: int | None,
-        filters: list[dict[str, Any]],
-        offset: int,
-        limit: int,
-        sort_by: list[SortCriterion] | None = None,
-        group_by: str | None = None,
-        total_is_scope_safe: bool,
-    ) -> WorkPackageListResult:
-        if not self.settings.read_projects:
-            # Defense-in-depth: both public callers already guard on this before
-            # reaching here, but this must stay correct on its own for any future caller.
-            return self._empty_work_package_list_result(offset=offset, limit=limit)
-        params = {
-            "offset": str(offset),
-            "pageSize": str(limit),
-            "filters": _json_param(filters),
-        }
-
-        # Add sortBy as JSON array if provided
-        # Format: [["field", "direction"], ...] e.g. [["status", "desc"], ["priority", "asc"]]
-        # sort_by is already validated and parsed to SortCriterion by tool layer
-        if sort_by:
-            sort_criteria = [[criterion.field, criterion.direction] for criterion in sort_by]
-            params["sortBy"] = json.dumps(sort_criteria, separators=(",", ":"))
-
-        # Add groupBy as simple field name string if provided
-        # group_by is already validated and normalized by tool layer
-        if group_by:
-            params["groupBy"] = group_by
-
-        payload = await self._get("work_packages", params=params)
-        return self._build_work_package_list_result(
-            payload=payload, offset=offset, limit=limit, total_is_scope_safe=total_is_scope_safe
         )
 
     async def get_work_package(self, work_package_id: int | str, *, text_limit: int | None = None) -> WorkPackageDetail:
-        self._ensure_read_enabled("work_package")
-        work_package_id = self._work_package_ref(work_package_id)
-        payload = await self._get(f"work_packages/{work_package_id}")
-        self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
-        # Default (text_limit=None) returns the full description uncapped: opening
-        # a single work package means you want to read/edit it, so nothing is cut.
-        detail = self.normalize_work_package_detail(payload, text_limit=text_limit)
-        return await self._filter_hierarchy_allowlist(detail)
-
-    async def _filter_hierarchy_allowlist(self, detail: WorkPackageDetail) -> WorkPackageDetail:
-        """Drop children/ancestors entries outside OPENPROJECT_READ_PROJECTS.
-
-        OpenProject's parent/child hierarchy is not project-constrained, so a
-        linked work package's subject/display_id can belong to a project the
-        caller isn't allowed to read. Only the anchor work package's own
-        project is checked by the caller; this filters the raw hierarchy
-        links the same way ``_relation_endpoints_allowed`` already filters
-        relation endpoints.
-        """
-        if _scope_allows_all(self.settings.read_projects):
-            return detail
-        cache = WorkPackageAllowedContext()
-
-        async def keep(entries: list[dict[str, str | None]] | None) -> list[dict[str, str | None]] | None:
-            if not entries:
-                return entries
-            filtered = []
-            for entry in entries:
-                href = entry.get("href")
-                if not href:
-                    continue
-                if await self._work_package_project_allowed(href, context=cache):
-                    filtered.append(entry)
-            return filtered or None
-
-        return replace(
-            detail,
-            children=await keep(detail.children),
-            ancestors=await keep(detail.ancestors),
-        )
+        return await self._work_package_service.get(work_package_id, text_limit=text_limit)
 
     async def get_work_packages(
         self,
@@ -1753,68 +1486,7 @@ class OpenProjectClient:
         Raises:
             ValueError: If ids list is empty or exceeds 100 items
         """
-        # Validation and deduplication is done by tool layer
-        if not ids:
-            raise ValueError("ids list cannot be empty")
-        if len(ids) > BATCH_READ_MAX_IDS:
-            raise ValueError(
-                f"Maximum {BATCH_READ_MAX_IDS} work packages per batch (got {len(ids)}). Split into multiple calls."
-            )
-
-        # Create parallel fetch tasks
-        async def fetch_one(work_package_ref: int | str) -> tuple[int | str, WorkPackageDetail | None, str | None]:
-            try:
-                work_package = await self.get_work_package(work_package_ref, text_limit=text_limit)
-                return (work_package_ref, work_package, None)
-            except (OpenProjectError, InvalidInputError, httpx.HTTPError) as e:
-                # Catch expected API errors, not system exceptions like CancelledError
-                return (work_package_ref, None, str(e))
-
-        # Execute in parallel
-        results = await asyncio.gather(*[fetch_one(work_package_ref) for work_package_ref in ids])
-
-        # Build result items
-        items = []
-        succeeded = 0
-        failed = 0
-        for input_id, work_package, error in results:
-            if work_package is not None:
-                succeeded += 1
-                items.append(
-                    BatchWorkPackageReadItemResult(
-                        id=input_id,
-                        success=True,
-                        work_package=work_package,
-                        error=None,
-                    )
-                )
-            else:
-                failed += 1
-                items.append(
-                    BatchWorkPackageReadItemResult(
-                        id=input_id,
-                        success=False,
-                        work_package=None,
-                        error=error,
-                    )
-                )
-
-        # Build user-facing summary message
-        if failed == 0:
-            message = f"Successfully fetched all {succeeded} work packages."
-        elif succeeded == 0:
-            message = f"Failed to fetch all {failed} work packages."
-        else:
-            message = f"Fetched {succeeded} work packages successfully, {failed} failed."
-
-        return BatchWorkPackageReadResult(
-            action="batch_read",
-            total=len(ids),
-            succeeded=succeeded,
-            failed=failed,
-            message=message,
-            results=items,
-        )
+        return await self._work_package_service.get_batch(ids=ids, text_limit=text_limit)
 
     def _new_wp_context(self) -> WorkPackageResolutionContext:
         """Construct a fresh, per-call WorkPackageResolutionContext (never reused across calls; see ProjectResolutionContext's lifetime rule)."""
@@ -2387,32 +2059,7 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> WorkPackageListResult:
-        self._ensure_read_enabled("work_package")
-        effective_limit = self._resolve_limit(limit)
-        if not self.settings.read_projects:
-            return self._empty_work_package_list_result(offset=offset, limit=effective_limit)
-        current_user = await self.get_current_user()
-        payload = await self._get(
-            "work_packages",
-            params={
-                "offset": str(offset),
-                "pageSize": str(effective_limit),
-                "filters": _json_param(
-                    [
-                        {"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}},
-                        {"status_id": {"operator": "o", "values": []}},
-                    ]
-                ),
-            },
-        )
-        # This query has no server-side project filter at all, so the server total
-        # counts matches across every project regardless of the allowlist — only
-        # trust it when the scope is unrestricted (see _work_package_collection_page
-        # for why a clean current page alone isn't sufficient either).
-        total_is_scope_safe = _scope_allows_all(self.settings.read_projects)
-        return self._build_work_package_list_result(
-            payload=payload, offset=offset, limit=effective_limit, total_is_scope_safe=total_is_scope_safe
-        )
+        return await self._work_package_service.list_my_open(offset=offset, limit=limit)
 
     async def list_versions(
         self,
@@ -3197,62 +2844,6 @@ class OpenProjectClient:
             return milestone_date, milestone_date
         return start_date, due_date
 
-    def normalize_work_package_summary(self, payload: dict[str, Any]) -> WorkPackageSummary:
-        links = payload.get("_links", {})
-        # Summaries stay single-line, capped at settings.text_limit (OPENPROJECT_TEXT_LIMIT,
-        # default 500) — a one-paragraph preview for list context. Not SUBJECT_LIMIT, which
-        # is the subject field limit, and not the full text, which would flood the context
-        # across many rows.
-        description, truncated, length = self._visible_formattable_text_with_meta(
-            payload.get("description"), "work_package", "description", limit=self.settings.text_limit
-        )
-        start_date, due_date = self._work_package_dates(payload)
-        return self._apply_hidden_fields(
-            "work_package",
-            WorkPackageSummary(
-                id=int(payload["id"]),
-                display_id=payload.get("displayId"),
-                subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Work package {payload['id']}",
-                type=_link_title(links.get("type")),
-                status=_link_title(links.get("status")),
-                priority=_link_title(links.get("priority")),
-                project_phase=_link_title(links.get("projectPhase")),
-                assignee=_link_title(links.get("assignee")),
-                responsible=_link_title(links.get("responsible")),
-                project=_link_title(links.get("project")),
-                version=_link_title(links.get("version")),
-                sprint=_link_title(links.get("sprint")),
-                start_date=start_date,
-                due_date=due_date,
-                description=description,
-                has_description=description is not None,
-                url=self._web_url(f"work_packages/{payload['id']}"),
-                description_truncated=truncated,
-                description_length=length,
-                estimated_time=payload.get("estimatedTime"),
-                derived_estimated_time=payload.get("derivedEstimatedTime"),
-                spent_time=payload.get("spentTime"),
-                remaining_time=payload.get("remainingTime"),
-                derived_remaining_time=payload.get("derivedRemainingTime"),
-                duration=payload.get("duration"),
-                parent_id=_id_from_href(links.get("parent", {}).get("href")),
-                # Hierarchy links carry displayId from 17.5 (semantic mode); absent on
-                # older/classic instances, where this stays None.
-                parent_display_id=links.get("parent", {}).get("displayId"),
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-                author=_link_title(links.get("author")),
-                category=_link_title(links.get("category")),
-                schedule_manually=payload.get("scheduleManually"),
-                ignore_non_working_days=payload.get("ignoreNonWorkingDays"),
-                derived_start_date=payload.get("derivedStartDate"),
-                derived_due_date=payload.get("derivedDueDate"),
-                percentage_done=payload.get("percentageDone"),
-                derived_percentage_done=payload.get("derivedPercentageDone"),
-                readonly=payload.get("readonly"),
-            ),
-        )
-
     def normalize_work_package_detail(
         self, payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT
     ) -> WorkPackageDetail:
@@ -3956,11 +3547,6 @@ class OpenProjectClient:
     def _ensure_project_write_link_allowed(self, link: Any) -> None:
         _scope_policy.ensure_project_write_link_allowed(
             link, settings=self.settings, project_id_to_identifier=self._project_id_to_identifier
-        )
-
-    def _work_package_payload_allowed(self, payload: dict[str, Any]) -> bool:
-        return self._payload_allowed(
-            lambda: self._ensure_project_link_allowed(payload.get("_links", {}).get("project"))
         )
 
     def _project_candidates(

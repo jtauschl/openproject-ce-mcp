@@ -11,6 +11,7 @@ from openproject_ce_mcp.app.adapters.httpx_sprint_api import normalize_sprint
 from openproject_ce_mcp.app.adapters.httpx_status_priority_type_api import normalize_status, normalize_type
 from openproject_ce_mcp.app.adapters.httpx_user_api import normalize_user
 from openproject_ce_mcp.app.adapters.httpx_version_api import normalize_version, normalize_version_detail
+from openproject_ce_mcp.app.adapters.httpx_work_package_api import normalize_work_package_summary
 from openproject_ce_mcp.app.origin import origin_from_url as _origin_from_url
 from openproject_ce_mcp.app.policies import hidden_fields
 from openproject_ce_mcp.client import (
@@ -414,7 +415,13 @@ async def test_hidden_work_package_scheduling_fields_are_tagged_and_dropped_from
         "_links": {},
     }
 
-    summary = client.normalize_work_package_summary(payload)
+    summary = hidden_fields.apply_hidden_fields(
+        "work_package",
+        normalize_work_package_summary(
+            payload, base_url=client.settings.base_url, text_limit=client.settings.text_limit
+        ),
+        settings=client.settings,
+    )
     assert summary._hidden_keys == frozenset({"schedule_manually"})
     assert summary.schedule_manually is True  # value preserved on the dataclass
     assert summary.ignore_non_working_days is False

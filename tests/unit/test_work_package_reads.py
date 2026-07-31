@@ -602,24 +602,6 @@ async def test_list_my_open_work_packages_returns_empty_without_request_even_wit
 
 
 @pytest.mark.asyncio
-async def test_list_work_package_collection_defense_in_depth_guard() -> None:
-    # Direct test of the shared helper's own guard, independent of its two
-    # public callers, so a future new caller can't silently bypass it.
-    client = OpenProjectClient(_empty_scope_settings(), transport=httpx.MockTransport(_no_request_handler))
-
-    result = await client._list_work_package_collection(
-        project_id=None, filters=[], offset=1, limit=10, total_is_scope_safe=False
-    )
-
-    assert result.count == 0
-    assert result.results == []
-    assert result.next_offset is None
-    assert result.truncated is False
-
-    await client.aclose()
-
-
-@pytest.mark.asyncio
 async def test_global_list_work_packages_and_versions_respect_allowlist_ids() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages":
