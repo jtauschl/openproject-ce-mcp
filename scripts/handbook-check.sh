@@ -12,6 +12,14 @@ set -euo pipefail
 # script is never the source of truth for what a project's profile axes or baseline fields
 # currently are, only a checker of whether reality matches what's already declared there.
 #
+# When more than one primary code repo shares an umbrella (see
+# ../../02-bootstrap/project-setup.md#multiple-code-repos-under-one-umbrella), each repo's own copy
+# of this script resolves its own namespaced profile/baseline pair
+# (<project>-int/20-requirements/<repo>/00-handbook-profile.md +
+# <project>-int/30-implementation/<repo>/handbook-baseline.yml, where <repo> is this copy's own
+# CODE_REPO_NAME) rather than the single legacy fixed path — see the profile_resolution check and
+# the resolution logic immediately above it for the exact namespaced-vs-legacy precedence.
+#
 # Every check below maps to exactly one handbook rule; several cross-reference
 # ../../03-build/architecture-principles.md#architecture-maturity-tiers (the mobile_only_
 # consistency and infra_governance_vs_profile checks, which flag a profile self-contradiction
@@ -59,7 +67,7 @@ set -euo pipefail
 #   - WARN       — genuinely report-only: the underlying handbook rule doesn't use "must" for this
 #                  particular fact. Printed, but NEVER contributes to the exit code, regardless of
 #                  waiver state (a WARN-kind check has nothing to waive in the first place).
-#   - INDETERMINATE — one of the 5 live/network checks (15-19) could not complete because the
+#   - INDETERMINATE — one of the 5 live/network checks (16-20) could not complete because the
 #                  external API itself was unreachable (a transport/auth failure) — NEVER used by a
 #                  local/offline check for a local parse/read/config problem, which is a FAIL
 #                  instead (see each local check's own logic), and NEVER used for a local
@@ -84,11 +92,12 @@ set -euo pipefail
 #                  OPENPROJECT_API_TOKEN credential in the environment). Printed, never
 #                  contributes to the exit code.
 #
-# --- The 19 checks -------------------------------------------------------------------------------
-# Local/offline (14): tag_pin, int_present (non-waivable), infra_governance_vs_profile,
-# required_root_files, agents_md_symlink, commit_msg_hook (non-waivable), dev_subcommands,
-# handbook_check_wired, gitignore_baseline, baseline_schema_version, stack_folder_shape,
-# mobile_only_consistency, script_self_placement, profile_hash_drift (WARN-only).
+# --- The 21 checks -------------------------------------------------------------------------------
+# Local/offline (16): profile_resolution (non-waivable), tag_pin, int_present (non-waivable),
+# infra_governance_vs_profile, required_root_files, agents_md_symlink, commit_msg_hook
+# (non-waivable), dev_subcommands, handbook_check_wired, gitignore_baseline,
+# baseline_schema_version, stack_folder_shape, mobile_only_consistency, script_self_placement,
+# profile_hash_drift (WARN-only), no_int_content_leak.
 # Live/read-only (5), each independently network-guarded so a failure reaching one API never
 # aborts the whole run or blocks any other check: github_issues_vs_tracker (non-waivable),
 # branch_protection (WARN-only), dependabot_readonly, openproject_project_exists (SKIPPED without
@@ -143,13 +152,13 @@ set -euo pipefail
 # silently "work" — see github-security-settings.sh.example's own header comment for the full
 # reasoning; the short version is that an invalid placeholder makes every resulting doc link 404
 # loudly until it's actually set, instead of silently resolving to the wrong policy version.
-SW_DEV_HANDBOOK_DOC_REF="${SW_DEV_HANDBOOK_DOC_REF:-v0.9.0}"
+SW_DEV_HANDBOOK_DOC_REF="${SW_DEV_HANDBOOK_DOC_REF:-v0.10.4}"
 
 # Fixed, non-configurable: no exceptions[] entry in handbook-baseline.yml may waive any of these
-# three check IDs, no matter what handbook-baseline.yml itself claims. An exceptions[] entry
+# four check IDs, no matter what handbook-baseline.yml itself claims. An exceptions[] entry
 # naming one of these is reported as its own ERROR (see apply_waivers() below), not silently
 # honored or silently skipped.
-NON_WAIVABLE_CHECKS=(int_present commit_msg_hook github_issues_vs_tracker)
+NON_WAIVABLE_CHECKS=(profile_resolution int_present commit_msg_hook github_issues_vs_tracker)
 
 # The 5 live/network check IDs — used only by run_check()'s own unexpected-crash fallback below to
 # decide whether an unhandled non-zero return is reported as INDETERMINATE (appropriate for a live
@@ -277,8 +286,92 @@ else
     PROJECT_NAME="$(basename "$CODE_REPO_DIR")"
 fi
 
-PROFILE_FILE="$INT_DIR/20-requirements/00-handbook-profile.md"
-BASELINE_FILE="$INT_DIR/30-implementation/handbook-baseline.yml"
+# CODE_REPO_NAME: a separate key from PROJECT_NAME, used ONLY to namespace this copy's own
+# profile/baseline pair when more than one primary code repo shares an umbrella (see
+# ../../02-bootstrap/project-setup.md#multiple-code-repos-under-one-umbrella). Deliberately NOT
+# folded into PROJECT_NAME, which stays exactly what it's always been (derived from <project>-int's
+# own name, falling back to the code-repo basename only when no companion repo exists) and keeps
+# being used for project-wide companion names (${PROJECT_NAME}-infrastructure/-governance) —
+# conflating the two would make a single-code-repo project's ${PROJECT_NAME}-infrastructure lookup
+# silently start using the wrong basename the moment CODE_REPO_NAME's own logic changed.
+CODE_REPO_NAME="$(basename "$CODE_REPO_DIR")"
+
+# --- Profile/baseline resolution: namespaced-per-code-repo vs. legacy single-repo layout --------
+# See ../../02-bootstrap/project-setup.md#multiple-code-repos-under-one-umbrella for the full
+# policy. Resolution never runs its own logic when INT_DIR is empty — check_int_present below
+# already exists specifically to report a missing <project>-int as its own, more specific FAIL;
+# this block leaves PROFILE_FILE/BASELINE_FILE pointing at the (nonexistent) legacy path in that
+# case purely so every other check that reads them fails in its own normal way, without this block
+# ever emitting a competing "incomplete pair" diagnosis that would misattribute the real problem.
+#
+# Namespace mode is an UMBRELLA-WIDE decision, not a per-copy one: if ANY namespaced profile or
+# baseline exists anywhere under $INT_DIR/20-requirements/*/ or $INT_DIR/30-implementation/*/,
+# every code repo's own copy — not just the one that happens to have already adopted namespacing —
+# requires its own complete namespaced pair and FAILs if it's missing, rather than silently falling
+# back to a legacy pair that's almost certainly a stale pre-namespacing leftover. Only when NO
+# namespaced files exist anywhere in the umbrella does resolution fall through to the legacy,
+# single fixed path (single-repo project, unchanged from before this feature existed).
+LEGACY_PROFILE_FILE="$INT_DIR/20-requirements/00-handbook-profile.md"
+LEGACY_BASELINE_FILE="$INT_DIR/30-implementation/handbook-baseline.yml"
+NAMESPACED_PROFILE_FILE="$INT_DIR/20-requirements/$CODE_REPO_NAME/00-handbook-profile.md"
+NAMESPACED_BASELINE_FILE="$INT_DIR/30-implementation/$CODE_REPO_NAME/handbook-baseline.yml"
+
+PROFILE_RESOLUTION_MODE=""
+PROFILE_RESOLUTION_ERROR=""
+
+if [ -z "$INT_DIR" ]; then
+    # No <project>-int at all — int_present will FAIL on this specifically. Point at the legacy
+    # path so downstream checks fail in their own normal way rather than this block inventing a
+    # second, competing diagnosis for the same root cause.
+    PROFILE_FILE="$LEGACY_PROFILE_FILE"
+    BASELINE_FILE="$LEGACY_BASELINE_FILE"
+    PROFILE_RESOLUTION_MODE="legacy"
+else
+    umbrella_has_any_namespaced_files=0
+    if find "$INT_DIR/20-requirements" "$INT_DIR/30-implementation" -mindepth 2 -maxdepth 2 \
+        \( -name '00-handbook-profile.md' -o -name 'handbook-baseline.yml' \) 2>/dev/null |
+        grep -q .; then
+        umbrella_has_any_namespaced_files=1
+    fi
+
+    if [ "$umbrella_has_any_namespaced_files" -eq 1 ]; then
+        PROFILE_RESOLUTION_MODE="namespaced"
+        if [ -f "$NAMESPACED_PROFILE_FILE" ] && [ -f "$NAMESPACED_BASELINE_FILE" ]; then
+            PROFILE_FILE="$NAMESPACED_PROFILE_FILE"
+            BASELINE_FILE="$NAMESPACED_BASELINE_FILE"
+        else
+            # Namespaced mode is active umbrella-wide (a sibling has adopted it), but THIS repo's
+            # own complete namespaced pair doesn't exist — never fall back to a legacy pair here,
+            # even if one happens to be fully present as a stray pre-namespacing leftover.
+            PROFILE_FILE="$NAMESPACED_PROFILE_FILE"
+            BASELINE_FILE="$NAMESPACED_BASELINE_FILE"
+            missing=""
+            [ -f "$NAMESPACED_PROFILE_FILE" ] || missing="${missing}profile missing at $NAMESPACED_PROFILE_FILE; "
+            [ -f "$NAMESPACED_BASELINE_FILE" ] || missing="${missing}baseline missing at $NAMESPACED_BASELINE_FILE; "
+            PROFILE_RESOLUTION_ERROR="namespaced mode is active for this umbrella (a sibling code repo has a namespaced profile/baseline), but this repo's ($CODE_REPO_NAME) own namespaced pair is incomplete: ${missing}see ../../02-bootstrap/project-setup.md#multiple-code-repos-under-one-umbrella"
+        fi
+    elif [ -f "$LEGACY_PROFILE_FILE" ] && [ -f "$LEGACY_BASELINE_FILE" ]; then
+        PROFILE_RESOLUTION_MODE="legacy"
+        PROFILE_FILE="$LEGACY_PROFILE_FILE"
+        BASELINE_FILE="$LEGACY_BASELINE_FILE"
+    else
+        # Neither a namespaced pair anywhere in the umbrella nor a complete legacy pair — point at
+        # the legacy path (today's default expectation) and let profile_hash_drift/int_present-
+        # adjacent checks report the specific missing-file FAIL in their own normal way; only
+        # record a resolution error if partial legacy files exist (a genuinely mixed/broken state
+        # worth its own explicit diagnosis rather than a generic missing-file FAIL from each
+        # downstream check separately).
+        PROFILE_RESOLUTION_MODE="legacy"
+        PROFILE_FILE="$LEGACY_PROFILE_FILE"
+        BASELINE_FILE="$LEGACY_BASELINE_FILE"
+        if [ -f "$LEGACY_PROFILE_FILE" ] || [ -f "$LEGACY_BASELINE_FILE" ]; then
+            missing=""
+            [ -f "$LEGACY_PROFILE_FILE" ] || missing="${missing}profile missing at $LEGACY_PROFILE_FILE; "
+            [ -f "$LEGACY_BASELINE_FILE" ] || missing="${missing}baseline missing at $LEGACY_BASELINE_FILE; "
+            PROFILE_RESOLUTION_ERROR="legacy mode is active (no namespaced files found anywhere in this umbrella), but the legacy pair is incomplete: ${missing}see ../../02-bootstrap/project-setup.md#multiple-code-repos-under-one-umbrella"
+        fi
+    fi
+fi
 
 fail=0
 
@@ -334,8 +427,23 @@ get_message() {
 }
 
 # ===================================================================================================
-# Local/offline checks (1-14)
+# Local/offline checks (1-15)
 # ===================================================================================================
+
+# 0. profile_resolution — NON-WAIVABLE. Reports the namespaced-vs-legacy resolution computed above
+# (see ../../02-bootstrap/project-setup.md#multiple-code-repos-under-one-umbrella). FAILs only when
+# PROFILE_RESOLUTION_ERROR was set — a genuinely incomplete pair for the active mode (namespaced
+# mode active but this repo's own namespaced pair is incomplete, or legacy mode active but the
+# legacy pair is incomplete). Deliberately runs first and is non-waivable: every other check below
+# reads PROFILE_FILE/BASELINE_FILE, so a silently-waived resolution error would make every
+# downstream check's outcome meaningless without this one ever having been surfaced.
+check_profile_resolution() {
+    if [ -n "$PROFILE_RESOLUTION_ERROR" ]; then
+        record_outcome profile_resolution FAIL "$PROFILE_RESOLUTION_ERROR"
+        return
+    fi
+    record_outcome profile_resolution PASS "resolved via $PROFILE_RESOLUTION_MODE layout: profile=$PROFILE_FILE baseline=$BASELINE_FILE"
+}
 
 # 1. tag_pin — sw_dev_handbook/README.md#using-this-repo-in-another-project and
 # ../../02-bootstrap/project-setup.md#repo-topology require the umbrella-level sw_dev_handbook
@@ -477,7 +585,10 @@ check_agents_md_symlink() {
 # there's no documented-divergence note. A documented divergence is recorded as a sibling
 # .git/hooks/commit-msg.divergence-reason file (a local, gitignored-by-nature location — .git/ is
 # never tracked — so a project deliberately running a modified hook records why directly next to
-# it, e.g. an extra project-specific check layered on top).
+# it, e.g. an extra project-specific check layered on top). scripts/sync-commit-msg-hook.sh (from
+# ../../templates/scripts/sync-commit-msg-hook.sh.example) installs/refreshes the hook
+# automatically as a ./dev bootstrap step — the FAIL messages below point at running it directly
+# as the one-command fix for whatever this check finds.
 check_commit_msg_hook() {
     local hook_file="$CODE_REPO_DIR/.git/hooks/commit-msg"
     local reference_file="$UMBRELLA_DIR/sw_dev_handbook/templates/hooks/commit-msg"
@@ -486,7 +597,7 @@ check_commit_msg_hook() {
         return
     fi
     if [ ! -f "$hook_file" ]; then
-        record_outcome commit_msg_hook FAIL "no .git/hooks/commit-msg installed in $CODE_REPO_DIR — see ../../01-foundations/git-workflow.md#commits"
+        record_outcome commit_msg_hook FAIL "no .git/hooks/commit-msg installed in $CODE_REPO_DIR — fix: run scripts/sync-commit-msg-hook.sh (see ../../01-foundations/git-workflow.md#commits)"
         return
     fi
     local reference_hash hook_hash
@@ -500,7 +611,7 @@ check_commit_msg_hook() {
         record_outcome commit_msg_hook PASS "installed commit-msg hook diverges from the template but a documented divergence reason exists (${hook_file}.divergence-reason)"
         return
     fi
-    record_outcome commit_msg_hook FAIL "installed .git/hooks/commit-msg does not match templates/hooks/commit-msg's known hash, and no ${hook_file}.divergence-reason note documents why — see ../../01-foundations/git-workflow.md#commits"
+    record_outcome commit_msg_hook FAIL "installed .git/hooks/commit-msg does not match templates/hooks/commit-msg's known hash, and no ${hook_file}.divergence-reason note documents why — fix: run scripts/sync-commit-msg-hook.sh to refresh it (or, if diverging on purpose, document why in that file) — see ../../01-foundations/git-workflow.md#commits"
 }
 
 sha256_of() {
@@ -546,19 +657,46 @@ permissive_subcommand_check() {
     echo "unknown"
 }
 
-# 7. dev_subcommands — ../../02-bootstrap/project-setup.md#build-wrapper--dev's minimum 5
-# subcommands. Permissive pattern matching, WARN (never FAIL) on an unrecognized-but-possibly-
-# valid shape — only FAIL on confirmed absence is not actually reachable with this pattern set
-# (permissive_subcommand_check never returns a hard "no"), so genuine absence of the ./dev script
-# itself is the only true FAIL path; a present ./dev with an unrecognized shape WARNs instead of
-# failing, deliberately erring toward "verify manually" over a false FAIL.
+# 7. dev_subcommands — ../../02-bootstrap/project-setup.md#build-wrapper--dev's minimum
+# subcommands: bootstrap/lint/test/ci always required, build required only for stacks with a
+# genuine, machine-determinable build step (kmp-compose-swift, go) — every other stack value
+# (php, pure-swift, python, other, empty/unrecognized) can't be resolved to "needs build" or
+# "doesn't" from the stack field alone, so this check WARNs for those rather than silently
+# skipping the question or guessing either way. Permissive pattern matching, WARN (never FAIL) on
+# an unrecognized-but-possibly-valid shape — only FAIL on confirmed absence is not actually
+# reachable with this pattern set (permissive_subcommand_check never returns a hard "no"), so
+# genuine absence of the ./dev script itself is the only true FAIL path; a present ./dev with an
+# unrecognized shape WARNs instead of failing, deliberately erring toward "verify manually" over a
+# false FAIL. Same yq_front_matter error-handling shape as check_stack_folder_shape below: a
+# missing/unreadable $PROFILE_FILE makes yq itself fail (exit 1), distinct from a present file with
+# an empty/null .stack field (yq succeeds, exit 0, empty string) — the two get different fallback
+# messages but the same safe behavior (check build too, since nothing is known either way).
 check_dev_subcommands() {
     local dev_script="$CODE_REPO_DIR/dev"
     if [ ! -f "$dev_script" ]; then
         record_outcome dev_subcommands FAIL "no ./dev script found in $CODE_REPO_DIR — see ../../02-bootstrap/project-setup.md#build-wrapper--dev"
         return
     fi
-    local subcommands=(bootstrap lint test build ci)
+    local stack stack_note="" subcommands=(bootstrap lint test ci)
+    if ! stack="$(yq_front_matter "$PROFILE_FILE" '.stack')"; then
+        # PROFILE_FILE itself missing/unreadable — stack is entirely undeterminable, distinct
+        # from a present file with an empty/null .stack field below. Safer default: check all 5.
+        subcommands+=(build)
+        stack_note="could not read stack from $PROFILE_FILE, so falling back to checking all 5 subcommands including build; "
+    else
+        case "$stack" in
+        kmp-compose-swift | go)
+            subcommands+=(build)
+            ;;
+        php | pure-swift | python | other | "")
+            stack_note="stack '$stack' doesn't determine on its own whether ./dev build is needed — verify manually per ../../02-bootstrap/project-setup.md#build-wrapper--dev and either add it or document its absence in the profile's own Rationale section; "
+            ;;
+        *)
+            subcommands+=(build)
+            stack_note="unrecognized stack '$stack', so falling back to checking all 5 subcommands including build; "
+            ;;
+        esac
+    fi
     local unknowns=()
     local sc result
     for sc in "${subcommands[@]}"; do
@@ -567,10 +705,14 @@ check_dev_subcommands() {
             unknowns+=("$sc")
         fi
     done
-    if [ "${#unknowns[@]}" -eq 0 ]; then
-        record_outcome dev_subcommands PASS "all 5 minimum ./dev subcommands positively matched"
+    if [ "${#unknowns[@]}" -eq 0 ] && [ -z "$stack_note" ]; then
+        record_outcome dev_subcommands PASS "all ${#subcommands[@]} required ./dev subcommands for stack '$stack' positively matched (${subcommands[*]})"
     else
-        record_outcome dev_subcommands WARN "could not positively confirm ./dev subcommand(s): ${unknowns[*]} — verify manually; this pattern search doesn't cover every valid ./dev shape (see ../../02-bootstrap/project-setup.md#build-wrapper--dev)"
+        local unknown_note=""
+        if [ "${#unknowns[@]}" -gt 0 ]; then
+            unknown_note="could not positively confirm ./dev subcommand(s): ${unknowns[*]} — verify manually; this pattern search doesn't cover every valid ./dev shape; "
+        fi
+        record_outcome dev_subcommands WARN "${stack_note}${unknown_note}see ../../02-bootstrap/project-setup.md#build-wrapper--dev"
     fi
 }
 
@@ -649,11 +791,16 @@ check_baseline_schema_version() {
     fi
 }
 
-# 11. stack_folder_shape — a loose, best-effort shape check only (never a correctness check) that
-# the profile's declared stack has roughly the expected top-level folder present. See each stack's
-# own standard-folder-structure section in ../../02-bootstrap/project-setup.md for the full shape;
-# this check looks for exactly one representative marker directory per stack, deliberately not a
-# full structural verification.
+# 11. stack_folder_shape — a best-effort SHAPE check only (looks for exactly one representative
+# marker directory per stack, deliberately not a full structural verification of the folder's
+# actual contents) — but it DOES FAIL, and that FAIL counts toward this script's exit code like any
+# other non-exempt check, unless waived. See each stack's own standard-folder-structure section in
+# ../../02-bootstrap/project-setup.md for the full shape. A stack declared as a deliberate FUTURE
+# target ahead of an unstarted migration (documented via the profile's own
+# ## Drift acknowledgments section) is expected to FAIL this check until the migration lands — waive
+# it via handbook-baseline.yml's exceptions[] (waivable_for: stack_folder_shape), the same general
+# mechanism every other documented-and-expected FAIL in this script already uses, rather than
+# treating the FAIL as a checker bug.
 check_stack_folder_shape() {
     local stack marker
     if ! stack="$(yq_front_matter "$PROFILE_FILE" '.stack')"; then
@@ -676,7 +823,7 @@ check_stack_folder_shape() {
     if [ -d "$CODE_REPO_DIR/$marker" ]; then
         record_outcome stack_folder_shape PASS "found expected top-level '$marker/' for stack '$stack'"
     else
-        record_outcome stack_folder_shape FAIL "stack is declared '$stack' but no top-level '$marker/' folder found in $CODE_REPO_DIR — see ../../02-bootstrap/project-setup.md's per-stack folder structure (this is a shape check only, not a correctness check)"
+        record_outcome stack_folder_shape FAIL "stack is declared '$stack' but no top-level '$marker/' folder found in $CODE_REPO_DIR — see ../../02-bootstrap/project-setup.md's per-stack folder structure (this is a shape check only, not a correctness check, but it does FAIL — if '$stack' is a deliberate future target ahead of an unstarted migration and documented in the profile's own Drift acknowledgments section, waive it via handbook-baseline.yml's exceptions[] with waivable_for: stack_folder_shape rather than treating this as a checker bug)"
     fi
 }
 
@@ -743,17 +890,86 @@ check_profile_hash_drift() {
     fi
 }
 
+# 15. no_int_content_leak — the code repo's tracked content must not reference any internal
+# companion repo by name — <project>-int, <project>-governance, <project>-infrastructure, or a
+# stale pre-rename name (<project>-docs, <project>-res, <project>-internal) —
+# (../../02-bootstrap/project-setup.md#documentation-companion-repo). Naming a private companion
+# repo from the code repo reveals its existence/location, which is itself an exposure regardless of
+# whether the code repo happens to be public or private right now, since visibility is a GitHub
+# setting that can change while this classification does not. This is a strong default, not an
+# absolute: FAIL, waivable (not in NON_WAIVABLE_CHECKS) via a documented, reviewed entry in
+# handbook-baseline.yml's exceptions[] — a project with a legitimately different, still-safe
+# reference shape (e.g. a full URL instead of the bare string) can waive with a documented reason.
+# The search runs unconditionally, regardless of whether a given companion repo's sibling directory
+# is actually present locally — a stale or anticipatory reference is exactly as exposing either way,
+# and this check's job is catching an exposure, not validating an expected cross-link (that was the
+# old, now-inverted, rule). This check only catches the single highest-signal leak pattern — a
+# literal reference to a companion repo's own name — appearing anywhere in the code repo's own
+# TRACKED files, including README.md. It does NOT catch a leak that never mentions a companion
+# repo's name (see "Known gaps" below) — narrowed in scope rather than downgraded in severity, same
+# convention as stack_folder_shape's own best-effort framing above. This check prevents new/current
+# exposure going forward — it cannot retroactively erase a reference already present in previously
+# published git history or an existing fork.
+check_no_int_content_leak() {
+    local needles=(
+        "${PROJECT_NAME}-int"
+        "${PROJECT_NAME}-governance"
+        "${PROJECT_NAME}-infrastructure"
+        "${PROJECT_NAME}-docs"
+        "${PROJECT_NAME}-res"
+        "${PROJECT_NAME}-internal"
+    )
+    local grep_args=()
+    local n
+    for n in "${needles[@]}"; do grep_args+=(-e "$n"); done
+    local leaks
+    leaks="$(git -C "$CODE_REPO_DIR" grep -I -l -F "${grep_args[@]}" -- . 2>/dev/null || true)"
+    if [ -n "$leaks" ]; then
+        record_outcome no_int_content_leak FAIL "code repo contains a companion-repo reference (one of: ${needles[*]}) in: $(printf '%s' "$leaks" | tr '\n' ' ') — see ../../02-bootstrap/project-setup.md#documentation-companion-repo (this check only lists the offending file paths, never the matching line content, so it can't itself become a second leak vector)"
+        return
+    fi
+    record_outcome no_int_content_leak PASS "no companion-repo reference (${needles[*]}) found anywhere in the code repo's tracked content"
+}
+
 # ===================================================================================================
-# Live/read-only checks (15-19) — each independently network-guarded: a failure reaching one API
+# Live/read-only checks (16-20) — each independently network-guarded: a failure reaching one API
 # must never abort the whole script or block any other check, local or live.
 # ===================================================================================================
 
+# resolve_repo(): owner/repo is resolved ENTIRELY LOCALLY from git's own remote config — this
+# never touches the network (unlike the old `gh repo view` implementation, which made a real
+# GitHub API call just to compute a string derivable from the local git remote alone, conflating a
+# local git-identity problem with a genuine gh/network failure under one FAIL). Any actual "is this
+# repo real/reachable on GitHub" check happens downstream via gh_api_get in each caller, which
+# already distinguishes FAIL (2xx/404 — API was reached) from INDETERMINATE (transport failure).
+# Only recognizes github.com URLs in the standard git@/https/ssh:// forms — a custom SSH host
+# alias (e.g. `git@github.com-work:org/repo.git`, common for multi-account setups) won't match and
+# falls through to a local FAIL even though the repo is perfectly real; set HANDBOOK_CHECK_REPO
+# explicitly (owner/repo) to bypass resolution entirely for that case.
 resolve_repo() {
     if [ -n "${HANDBOOK_CHECK_REPO:-}" ]; then
         printf '%s' "$HANDBOOK_CHECK_REPO"
         return 0
     fi
-    (cd "$CODE_REPO_DIR" && gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) || true
+    local url
+    url="$(git -C "$CODE_REPO_DIR" remote get-url origin 2>/dev/null)" || return 0
+    case "$url" in
+    git@github.com:*)
+        url="${url#git@github.com:}"
+        printf '%s' "${url%.git}"
+        ;;
+    https://github.com/* | http://github.com/*)
+        url="${url#*github.com/}"
+        printf '%s' "${url%.git}"
+        ;;
+    ssh://git@github.com/*)
+        url="${url#ssh://git@github.com/}"
+        printf '%s' "${url%.git}"
+        ;;
+    *)
+        return 0
+        ;;
+    esac
 }
 
 # gh_api_get <path>: read-only GET wrapper, GET-only by construction (no verb parameter exists to
@@ -776,7 +992,7 @@ gh_api_get() {
     GH_API_BODY="$body"
 }
 
-# 15. github_issues_vs_tracker — NON-WAIVABLE. ../../05-tooling/openproject.md#openproject-as-the-
+# 16. github_issues_vs_tracker — NON-WAIVABLE. ../../05-tooling/openproject.md#openproject-as-the-
 # system-of-record requires OpenProject as the sole tracker; GitHub Issues enabled is only
 # excepted for a project with real external users/contributors (the profile's own axes 3/3b are
 # the "documented exception" this check looks for).
@@ -788,7 +1004,7 @@ check_github_issues_vs_tracker() {
     local repo
     repo="$(resolve_repo)"
     if [ -z "$repo" ]; then
-        record_outcome github_issues_vs_tracker FAIL "could not resolve owner/repo for $CODE_REPO_DIR — cannot check GitHub Issues status (a local git-config/repo-identity problem, not a network failure — see ../../05-tooling/openproject.md#openproject-as-the-system-of-record)"
+        record_outcome github_issues_vs_tracker FAIL "could not resolve owner/repo for $CODE_REPO_DIR (no 'origin' git remote, or it isn't a github.com URL — a local git-config problem, not a network failure; if using a custom SSH host alias, set HANDBOOK_CHECK_REPO explicitly) — cannot check GitHub Issues status — see ../../05-tooling/openproject.md#openproject-as-the-system-of-record"
         return
     fi
     gh_api_get "repos/$repo"
@@ -824,7 +1040,7 @@ check_github_issues_vs_tracker() {
     esac
 }
 
-# 16. branch_protection — WARN-only, purely informational, same raw-inventory-not-confirmation
+# 17. branch_protection — WARN-only, purely informational, same raw-inventory-not-confirmation
 # framing as github-security-settings.sh.example's own Rulesets check.
 check_branch_protection() {
     if ! command -v gh >/dev/null 2>&1; then
@@ -860,7 +1076,7 @@ check_branch_protection() {
     esac
 }
 
-# 17. dependabot_readonly — waivable FAIL if disabled (github.md:71 requires both Dependabot
+# 18. dependabot_readonly — waivable FAIL if disabled (github.md:71 requires both Dependabot
 # alerts and security updates enabled unconditionally). READS ONLY — this check never calls the
 # enabling PUT itself (unlike github-security-settings.sh.example, which is the separate ENFORCER
 # tool this check points at on finding either disabled).
@@ -872,7 +1088,7 @@ check_dependabot_readonly() {
     local repo
     repo="$(resolve_repo)"
     if [ -z "$repo" ]; then
-        record_outcome dependabot_readonly FAIL "could not resolve owner/repo — cannot check Dependabot status (a local git-config/repo-identity problem, not a network failure)"
+        record_outcome dependabot_readonly FAIL "could not resolve owner/repo for $CODE_REPO_DIR (no 'origin' git remote, or it isn't a github.com URL — a local git-config problem, not a network failure; if using a custom SSH host alias, set HANDBOOK_CHECK_REPO explicitly) — cannot check Dependabot status"
         return
     fi
     gh_api_get "repos/$repo/vulnerability-alerts"
@@ -904,7 +1120,7 @@ check_dependabot_readonly() {
     fi
 }
 
-# 18. openproject_project_exists — SKIPPED with no OPENPROJECT_API_TOKEN credential (naming
+# 19. openproject_project_exists — SKIPPED with no OPENPROJECT_API_TOKEN credential (naming
 # convention confirmed against templates/mcp/config.toml.example). FAIL (waivable) if a credential
 # is present, the API reachable, but the declared tracker.project_identifier isn't a real project.
 # INDETERMINATE (distinct from "reachable but not found") if the API itself is unreachable.
@@ -950,7 +1166,7 @@ check_openproject_project_exists() {
     esac
 }
 
-# 19. latest_release_vs_pinned — WARN-only, reports "N releases behind" if applicable, never
+# 20. latest_release_vs_pinned — WARN-only, reports "N releases behind" if applicable, never
 # fails.
 check_latest_release_vs_pinned() {
     if ! command -v gh >/dev/null 2>&1; then
@@ -1013,7 +1229,7 @@ apply_waivers() {
             fi
         done
         if [ "$is_non_waivable" -eq 1 ]; then
-            echo "ERROR: handbook-baseline.yml's exceptions[] names '$id', which is in the fixed NON_WAIVABLE_CHECKS list (int_present, commit_msg_hook, github_issues_vs_tracker) and can never be waived — this exception entry is itself invalid and is ignored" >&2
+            echo "ERROR: handbook-baseline.yml's exceptions[] names '$id', which is in the fixed NON_WAIVABLE_CHECKS list (profile_resolution, int_present, commit_msg_hook, github_issues_vs_tracker) and can never be waived — this exception entry is itself invalid and is ignored" >&2
             fail=1
             continue
         fi
@@ -1025,7 +1241,7 @@ apply_waivers() {
 }
 
 # ===================================================================================================
-# Run every check. Each is already internally network-guarded (live checks 15-19 never let a
+# Run every check. Each is already internally network-guarded (live checks 16-20 never let a
 # transport failure propagate as an unhandled error) — but every check is additionally wrapped
 # here so a genuinely unexpected error inside any single check function can never abort the whole
 # run and silently skip every check after it. The fallback outcome for this rare, defensive
@@ -1060,13 +1276,13 @@ echo "handbook-check: profile=$PROFILE_FILE"
 echo "handbook-check: baseline=$BASELINE_FILE"
 echo
 
-for fn in check_tag_pin check_int_present check_infra_governance_vs_profile \
+for fn in check_profile_resolution check_tag_pin check_int_present check_infra_governance_vs_profile \
     check_required_root_files check_agents_md_symlink check_commit_msg_hook \
     check_dev_subcommands check_handbook_check_wired check_gitignore_baseline \
     check_baseline_schema_version check_stack_folder_shape check_mobile_only_consistency \
-    check_script_self_placement check_profile_hash_drift check_github_issues_vs_tracker \
-    check_branch_protection check_dependabot_readonly check_openproject_project_exists \
-    check_latest_release_vs_pinned; do
+    check_script_self_placement check_profile_hash_drift check_no_int_content_leak \
+    check_github_issues_vs_tracker check_branch_protection check_dependabot_readonly \
+    check_openproject_project_exists check_latest_release_vs_pinned; do
     run_check "$fn"
 done
 
@@ -1075,12 +1291,43 @@ apply_waivers
 print_not_checkable_notice
 
 # --- --migrate: update handbook-baseline.yml in place for self-derivable fields only -------------
+# profile.source is recomputed from the ACTUALLY-RESOLVED PROFILE_FILE every time --migrate runs —
+# for both the legacy layout (.../20-requirements/00-handbook-profile.md, one directory up from
+# BASELINE_FILE's own 30-implementation/) and the namespaced layout (.../20-requirements/<repo>/
+# 00-handbook-profile.md, one directory deeper from BASELINE_FILE's own 30-implementation/<repo>/)
+# — this is the only behavior this checker offers for profile.source; it is never left for a human
+# to hand-edit. See ../../02-bootstrap/project-setup.md#multiple-code-repos-under-one-umbrella:
+# profile_hash_drift only ever reads profile.source_sha256, never profile.source itself, so a wrong
+# profile.source value doesn't fail loudly on its own — recomputing it here on every --migrate is
+# what keeps it honest.
 if [ "$migrate" -eq 1 ]; then
     if [ -f "$PROFILE_FILE" ]; then
         new_hash="$(sha256_of "$PROFILE_FILE")"
-        yq -i ".profile.source_sha256 = \"$new_hash\"" "$BASELINE_FILE"
+        # Relative path from BASELINE_FILE's own directory to PROFILE_FILE, computed portably
+        # (no realpath --relative-to, unavailable by default on macOS's shipped realpath/coreutils)
+        # by walking up from BASELINE_FILE's directory until PROFILE_FILE's directory is a prefix,
+        # then descending back down — both inputs are already-resolved absolute paths from
+        # PROFILE_FILE/BASELINE_FILE above, so this never has to touch a symlink itself.
+        baseline_dir="$(dirname -- "$BASELINE_FILE")"
+        profile_dir="$(dirname -- "$PROFILE_FILE")"
+        profile_basename="$(basename -- "$PROFILE_FILE")"
+        rel_up=""
+        walk_dir="$baseline_dir"
+        while [ "$walk_dir" != "$profile_dir" ] && [ "$walk_dir" != "/" ] &&
+            [ "${profile_dir#"$walk_dir"/}" = "$profile_dir" ]; do
+            rel_up="../$rel_up"
+            walk_dir="$(dirname -- "$walk_dir")"
+        done
+        rel_down="${profile_dir#"$walk_dir"}"
+        rel_down="${rel_down#/}"
+        if [ -n "$rel_down" ]; then
+            new_source="${rel_up}${rel_down}/${profile_basename}"
+        else
+            new_source="${rel_up}${profile_basename}"
+        fi
+        yq -i ".profile.source_sha256 = \"$new_hash\" | .profile.source = \"$new_source\"" "$BASELINE_FILE"
         echo
-        echo "handbook-check: --migrate updated profile.source_sha256 in $BASELINE_FILE"
+        echo "handbook-check: --migrate updated profile.source ($new_source) and profile.source_sha256 in $BASELINE_FILE"
     fi
 fi
 

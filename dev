@@ -11,6 +11,7 @@ usage() {
 
 bootstrap() {
     uv sync --dev
+    ./scripts/sync-commit-msg-hook.sh
 }
 
 shell_scripts=(dev get.sh uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh tools/security-settings/github-security-settings.sh)

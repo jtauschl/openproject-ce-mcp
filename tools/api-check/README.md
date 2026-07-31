@@ -59,9 +59,9 @@ the script reconciles edge cases and the live probe is the tie-breaker. Update
 that table when a resource is reclassified.
 
 `fetch-sources.sh` makes shallow, sparse clones (only the API subtrees) into
-`op-sources/<version>/`, one level above this repo (the umbrella directory
-shared with `openproject-ce-mcp-int` and `sw_dev_handbook`) — not part of this
-repo, so nothing to gitignore here. Two different refresh cases:
+`op-sources/<version>/`, one level above this repo (the shared umbrella
+directory) — not part of this repo, so nothing to gitignore here. Two
+different refresh cases:
 - **Widened `SPARSE_PATHS`** (a new `Assumption` needs a subtree not yet
   fetched): just re-run the script. For a version already cloned, it now runs
   `git sparse-checkout set --no-cone` again with the current `SPARSE_PATHS`,
