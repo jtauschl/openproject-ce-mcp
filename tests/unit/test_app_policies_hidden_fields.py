@@ -62,3 +62,39 @@ def test_apply_hidden_fields_no_stamp_when_nothing_hidden() -> None:
 def test_apply_hidden_fields_passthrough_for_non_dataclass() -> None:
     settings = make_settings()
     assert hidden_fields.apply_hidden_fields("version", "not a dataclass", settings=settings) == "not a dataclass"
+
+
+def test_custom_field_hidden_matches_raw_key_or_resolved_name() -> None:
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("Story points",))
+    assert hidden_fields.custom_field_hidden("Story points", "customField10", settings=settings) is True
+    assert hidden_fields.custom_field_hidden("Platform", "customField11", settings=settings) is False
+
+
+def test_custom_field_hidden_false_when_no_patterns_configured() -> None:
+    settings = make_settings()
+    assert hidden_fields.custom_field_hidden("Story points", "customField10", settings=settings) is False
+
+
+def test_ensure_custom_field_input_writable_raises_when_raw_key_matches() -> None:
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("Story points",))
+    with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_CUSTOM_FIELDS"):
+        hidden_fields.ensure_custom_field_input_writable("Story points", settings=settings)
+
+
+def test_ensure_custom_field_input_writable_noop_when_raw_key_does_not_match() -> None:
+    # The raw schema key "customField10" does not itself match a pattern
+    # configured against the human-readable name -- only the SECOND gate,
+    # ensure_custom_field_writable (post schema-resolution), can catch this.
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("Story points",))
+    hidden_fields.ensure_custom_field_input_writable("customField10", settings=settings)  # must not raise
+
+
+def test_ensure_custom_field_writable_raises_when_resolved_name_matches() -> None:
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("Story points",))
+    with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_CUSTOM_FIELDS"):
+        hidden_fields.ensure_custom_field_writable("Story points", "customField10", settings=settings)
+
+
+def test_ensure_custom_field_writable_noop_for_visible_field() -> None:
+    settings = make_settings()
+    hidden_fields.ensure_custom_field_writable("Story points", "customField10", settings=settings)  # must not raise

@@ -220,3 +220,143 @@ async def test_normalize_detail_ancestors_missing_display_id_on_classic_instance
 
     detail = record.to_detail()
     assert detail.ancestors == [{"href": "/api/v3/work_packages/1", "title": "Parent", "display_id": None}]
+
+
+@pytest.mark.asyncio
+async def test_validate_create_posts_to_project_scoped_form() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/projects/1/work_packages/form"
+        body = json.loads(request.content)
+        assert body == {"subject": "Draft"}
+        return httpx.Response(
+            200, json={"_type": "Form", "_embedded": {"payload": body, "validationErrors": {}}}, request=request
+        )
+
+    async with _client(handler) as http_client:
+        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        form = await api.validate_create("1", {"subject": "Draft"})
+
+    assert form["_embedded"]["payload"] == {"subject": "Draft"}
+
+
+@pytest.mark.asyncio
+async def test_validate_update_posts_to_work_package_scoped_form_and_escapes_ref() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert b"/api/v3/work_packages/PROJ-123/form" in bytes(request.url.raw_path)
+        body = json.loads(request.content)
+        assert body == {"subject": "Updated"}
+        return httpx.Response(
+            200, json={"_type": "Form", "_embedded": {"payload": body, "validationErrors": {}}}, request=request
+        )
+
+    async with _client(handler) as http_client:
+        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        await api.validate_update("PROJ-123", {"subject": "Updated"})
+
+
+@pytest.mark.asyncio
+async def test_validate_update_rejects_path_traversal_ref() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    async with _client(handler) as http_client:
+        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        with pytest.raises(InvalidInputError):
+            await api.validate_update("../job_statuses/77", {})
+
+
+def test_parse_form_extracts_payload_validation_errors_and_schema() -> None:
+    api = HttpxWorkPackageApi(HttpxTransport(httpx.AsyncClient()), base_url=BASE_URL)
+    form = {
+        "_type": "Form",
+        "_embedded": {
+            "payload": {"subject": "Draft"},
+            "validationErrors": {"subject": {"message": "can't be blank"}},
+            "schema": {"priority": {"writable": True}},
+        },
+    }
+
+    result = api.parse_form(form)
+
+    assert result.payload == {"subject": "Draft"}
+    assert result.validation_errors == {"subject": "can't be blank"}
+    assert result.schema == {"priority": {"writable": True}}
+
+
+def test_parse_form_defaults_missing_sections_to_empty() -> None:
+    api = HttpxWorkPackageApi(HttpxTransport(httpx.AsyncClient()), base_url=BASE_URL)
+
+    result = api.parse_form({"_type": "Form", "_embedded": {}})
+
+    assert result.payload == {}
+    assert result.validation_errors == {}
+    assert result.schema == {}
+
+
+@pytest.mark.asyncio
+async def test_commit_create_posts_to_work_packages_and_caps_text_limit() -> None:
+    long_description = {"raw": "x" * 900}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/v3/work_packages"
+        return httpx.Response(200, json=_wp_payload(description=long_description), request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        record = await api.commit_create({"subject": "New"}, text_limit=10)
+
+    assert record.summary.description_truncated is True
+
+
+@pytest.mark.asyncio
+async def test_commit_update_patches_by_ref_and_escapes() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "PATCH"
+        assert b"/api/v3/work_packages/PROJ-123" in bytes(request.url.raw_path)
+        return httpx.Response(200, json=_wp_payload(), request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        record = await api.commit_update("PROJ-123", {"subject": "Updated"}, text_limit=None)
+
+    assert record.summary.id == 6
+
+
+@pytest.mark.asyncio
+async def test_delete_issues_delete_by_ref_and_escapes() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "DELETE"
+        assert b"/api/v3/work_packages/PROJ-123" in bytes(request.url.raw_path)
+        return httpx.Response(204, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        await api.delete("PROJ-123")
+
+
+@pytest.mark.asyncio
+async def test_delete_rejects_path_traversal_ref() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
+
+    async with _client(handler) as http_client:
+        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        with pytest.raises(InvalidInputError):
+            await api.delete("../job_statuses/77")
+
+
+@pytest.mark.asyncio
+async def test_post_comment_builds_params_and_body() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/work_packages/6/activities"
+        assert dict(request.url.params) == {"notify": "true"}
+        body = json.loads(request.content)
+        assert body == {"comment": {"raw": "Hello"}, "internal": True}
+        return httpx.Response(201, json={"id": 99, "_links": {}}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        activity = await api.post_comment("6", comment="Hello", internal=True, notify=True)
+
+    assert activity["id"] == 99

@@ -1,4 +1,13 @@
-"""HTTP-backed WorkPackageApi adapter -- READ-only slice (ADR 0001).
+"""HTTP-backed WorkPackageApi adapter -- covers the full domain (ADR 0001).
+
+Write-path methods (`validate_create`/`validate_update`/`parse_form`/
+`commit_create`/`commit_update`/`delete`/`post_comment`) are thin HTTP
+translations added alongside the READ slice below, once the write-path
+migration landed -- straightforward `Transport.{post_json,patch_json,delete}`
+calls, no domain logic (schema-option resolution, custom-field matching, the
+auto-percentage/auto-remaining-time derivation) lives here; all of that is a
+`WorkPackageService` concern (see `app/ports/work_package_api.py`'s module
+docstring).
 
 No `httpx` import (depends on the `Transport` Protocol only). Owns the pure
 normalize_* HAL->model translation functions, matching the Projects/Versions
@@ -35,7 +44,7 @@ import json
 from typing import Any
 
 from ...models import SortCriterion, WorkPackageDetail, WorkPackageSummary
-from ..ports.work_package_api import WorkPackagePage, WorkPackageRecord
+from ..ports.work_package_api import WorkPackageFormResult, WorkPackagePage, WorkPackageRecord
 from ..ports.work_package_ref import work_package_ref as _work_package_ref_encode
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
@@ -43,6 +52,7 @@ from ._text import delimit_user_content as _delimit_user_content
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import link_to_web_url as _shared_link_to_web_url
+from ._text import normalize_form_validation_errors as _normalize_form_validation_errors
 from ._text import origin_from_url as _origin_from_url
 from ._text import trim_text as _trim_text
 from ._text import web_url as _shared_web_url
@@ -326,3 +336,43 @@ class HttpxWorkPackageApi:
         safe_ref = _work_package_ref_encode(work_package_ref)
         payload = await self._transport.get_json(f"work_packages/{safe_ref}")
         return self.to_record(payload, text_limit=text_limit)
+
+    async def validate_create(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._transport.post_json(f"projects/{project_id}/work_packages/form", json_body=payload)
+
+    async def validate_update(self, work_package_ref: str, payload: dict[str, Any]) -> dict[str, Any]:
+        safe_ref = _work_package_ref_encode(work_package_ref)
+        return await self._transport.post_json(f"work_packages/{safe_ref}/form", json_body=payload)
+
+    def parse_form(self, form: dict[str, Any]) -> WorkPackageFormResult:
+        embedded = form.get("_embedded", {})
+        return WorkPackageFormResult(
+            payload=embedded.get("payload", {}),
+            validation_errors=_normalize_form_validation_errors(embedded.get("validationErrors")),
+            schema=embedded.get("schema", {}),
+        )
+
+    async def commit_create(self, payload: dict[str, Any], *, text_limit: int | None) -> WorkPackageRecord:
+        response = await self._transport.post_json("work_packages", json_body=payload)
+        return self.to_record(response, text_limit=text_limit)
+
+    async def commit_update(
+        self, work_package_ref: str, payload: dict[str, Any], *, text_limit: int | None
+    ) -> WorkPackageRecord:
+        safe_ref = _work_package_ref_encode(work_package_ref)
+        response = await self._transport.patch_json(f"work_packages/{safe_ref}", json_body=payload)
+        return self.to_record(response, text_limit=text_limit)
+
+    async def delete(self, work_package_ref: str) -> None:
+        safe_ref = _work_package_ref_encode(work_package_ref)
+        await self._transport.delete(f"work_packages/{safe_ref}")
+
+    async def post_comment(
+        self, work_package_ref: str, *, comment: str, internal: bool, notify: bool
+    ) -> dict[str, Any]:
+        safe_ref = _work_package_ref_encode(work_package_ref)
+        return await self._transport.post_json(
+            f"work_packages/{safe_ref}/activities",
+            params={"notify": str(notify).lower()},
+            json_body={"comment": {"raw": comment}, "internal": internal},
+        )
