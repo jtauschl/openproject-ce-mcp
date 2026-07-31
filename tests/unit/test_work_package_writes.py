@@ -2778,3 +2778,98 @@ async def test_update_work_package_close_succeeds_with_work_package_read_disable
     await client.aclose()
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hidden_custom_field_is_rejected_after_schema_resolution_by_resolved_name() -> None:
+    # Pre-existing coverage gap (found during the OPM-286 write-migration plan review, 2026-08-01):
+    # test_hidden_custom_field_is_rejected_on_write (test_hidden_fields.py) only exercises the FIRST
+    # gate, _ensure_custom_field_input_writable, which matches the RAW caller-supplied key against
+    # itself. It cannot catch a hide pattern that only matches the field's *resolved schema name* --
+    # e.g. the caller passes the raw schema key "customField10" (which does not match a
+    # hide-pattern configured against the human-readable name "Story points"), but the SECOND gate,
+    # _ensure_custom_field_writable (checked after the /form schema probe resolves "customField10"'s
+    # display name to "Story points"), must still reject the write. Without this test, a bug that
+    # broke ONLY the second gate (e.g. a migration silently calling the field-name check with the raw
+    # key instead of the resolved name) would go undetected.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": "Task"}]}}, request=request)
+        if request.url.path == "/api/v3/projects/1/work_packages/form":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Form",
+                    "_embedded": {
+                        "schema": {
+                            "customField10": {
+                                "name": "Story points",
+                                "type": "Integer",
+                                "required": False,
+                                "writable": True,
+                                "hasDefault": False,
+                            },
+                        }
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(hide_custom_fields=("Story points",), enable_work_package_write=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    # The raw key "customField10" does not itself match the "Story points" hide pattern, so the
+    # first gate (_ensure_custom_field_input_writable) lets it through -- only the second gate,
+    # keyed on the schema-resolved display name, can catch this.
+    with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_CUSTOM_FIELDS"):
+        await client.create_work_package(
+            project="demo",
+            type="Task",
+            subject="Blocked via resolved name",
+            custom_fields={"customField10": 8},
+            confirm=False,
+        )
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_work_package_rejects_assignee_supplied_by_name() -> None:
+    # Pre-existing coverage gap (found during the OPM-286 write-migration plan review, 2026-08-01):
+    # _resolve_assignee_id (client.py) is deliberately narrower than the read-side principal
+    # resolver -- it accepts only "me" or a bare numeric user id, never a name search, unlike
+    # assignee/assignee_me filtering on list_work_packages/search_work_packages. This negative case
+    # protects that boundary: the write-path migration plan explicitly relies on this asymmetry to
+    # justify a separate AssigneeRefResolver seam (distinct from PrincipalRefResolver) rather than
+    # reusing the read-side resolver, so a regression here would silently broaden what create/update
+    # accept for `assignee`.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo", "_links": {}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": "Task"}]}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="assignee must be a positive integer user id or 'me'"):
+        await client.create_work_package(
+            project="demo",
+            type="Task",
+            subject="Blocked assignee by name",
+            assignee="Jane Doe",
+            confirm=False,
+        )
+
+    await client.aclose()
