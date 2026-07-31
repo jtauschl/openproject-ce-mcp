@@ -5050,6 +5050,131 @@ async def test_get_work_package_filters_children_and_ancestors_by_read_allowlist
 
 
 @pytest.mark.asyncio
+async def test_get_work_package_ancestors_truncated_flag_cleared_when_only_out_of_scope_entries_dropped() -> None:
+    """Regression: normalize_work_package_detail computes ancestors_truncated
+    from the RAW, unfiltered element count (server reported more ancestors
+    than WORK_PACKAGE_ANCESTORS_LIMIT), before _filter_hierarchy_allowlist
+    ever runs. If every raw ancestor beyond the limit happens to be
+    out-of-scope, leaving ancestors_truncated True after filtering down to
+    zero visible ancestors would disclose the mere existence of ancestors the
+    caller isn't allowed to see. The flag must only stay True when the
+    allowlist filter removed nothing (every raw entry survived) -- found via
+    an independent Codex CLI review of the equivalent Work Packages READ
+    migration on release/0.4.0; this branch has the identical pre-existing
+    bug in its still-flat client.py, ported here."""
+    ancestors_raw = [{"href": f"/api/v3/work_packages/{100 + i}", "title": f"Ancestor {i}"} for i in range(21)]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/1" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "subject": "Anchor",
+                    "_links": {
+                        "project": {"href": "/api/v3/projects/1", "title": "allowed"},
+                        "ancestors": ancestors_raw,
+                    },
+                },
+                request=request,
+            )
+        match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if match:
+            return httpx.Response(
+                200,
+                json={
+                    "id": int(match.group(1)),
+                    "_links": {"project": {"href": "/api/v3/projects/2", "title": "secret"}},
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("allowed",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    detail = await client.get_work_package(1)
+
+    # Every ancestor belongs to the "secret" project (outside the allowlist):
+    # all are filtered out, so nothing is visible AND the truncated flag must
+    # not disclose that a larger, invisible set once existed.
+    assert detail.ancestors is None
+    assert detail.ancestors_truncated is False
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_work_package_ancestors_truncated_flag_preserved_when_nothing_filtered() -> None:
+    """Counterpart to the regression above: when the allowlist filter removes
+    NOTHING (every raw ancestor survives), the truncated flag must stay
+    exactly as computed -- proving the fix doesn't just always clear the
+    flag, only when filtering actually changed the visible count."""
+    ancestors_raw = [{"href": f"/api/v3/work_packages/{100 + i}", "title": f"Ancestor {i}"} for i in range(21)]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/1" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "subject": "Anchor",
+                    "_links": {
+                        "project": {"href": "/api/v3/projects/1", "title": "allowed"},
+                        "ancestors": ancestors_raw,
+                    },
+                },
+                request=request,
+            )
+        match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if match:
+            return httpx.Response(
+                200,
+                json={
+                    "id": int(match.group(1)),
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "allowed"}},
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("allowed",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    detail = await client.get_work_package(1)
+
+    # All 21 raw ancestors belong to the "allowed" project: none filtered
+    # out, so the pre-computed truncated flag (raw count > the 20-entry
+    # limit) survives unchanged.
+    assert len(detail.ancestors or []) == 20
+    assert detail.ancestors_truncated is True
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_time_entry_crud_and_activity_listing() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/time_entries/activities":

@@ -2559,6 +2559,17 @@ class OpenProjectClient:
         project is checked by the caller; this filters the raw hierarchy
         links the same way ``_relation_endpoints_allowed`` already filters
         relation endpoints.
+
+        Also re-derives ``children_truncated``/``ancestors_truncated``: both
+        are computed by ``normalize_work_package_detail`` from the RAW,
+        unfiltered element count, before this filter ever runs. If the
+        allowlist filter below removes any entry, leaving the flag True no
+        longer describes what the caller can actually see -- and if EVERY
+        entry beyond the limit was itself out-of-scope, leaving it True after
+        filtering down to fewer (or zero) visible entries would disclose the
+        mere existence of hierarchy members the caller isn't allowed to see.
+        The flag is only kept True when the allowlist filter removed
+        NOTHING (every raw entry survived).
         """
         if _scope_allows_all(self.settings.read_projects):
             return detail
@@ -2578,10 +2589,18 @@ class OpenProjectClient:
                     filtered.append(entry)
             return filtered or None
 
+        original_children_count = len(detail.children) if detail.children else 0
+        original_ancestors_count = len(detail.ancestors) if detail.ancestors else 0
+        children = await keep(detail.children)
+        ancestors = await keep(detail.ancestors)
+        children_count = len(children) if children else 0
+        ancestors_count = len(ancestors) if ancestors else 0
         return replace(
             detail,
-            children=await keep(detail.children),
-            ancestors=await keep(detail.ancestors),
+            children=children,
+            ancestors=ancestors,
+            children_truncated=detail.children_truncated and children_count == original_children_count,
+            ancestors_truncated=detail.ancestors_truncated and ancestors_count == original_ancestors_count,
         )
 
     async def get_work_packages(
