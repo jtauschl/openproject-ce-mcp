@@ -150,9 +150,14 @@ async def test_mark_notification_read_confirmed_roundtrip(
     # specifically to make this deterministic against the seeded Docker
     # instance this suite is meant to run against -- an absent notification
     # here means notification generation or listing actually regressed, not
-    # environment flakiness to shrug off.
+    # environment flakiness to shrug off. The wait window is 20s (not 10s):
+    # under load (the full suite running back-to-back), GoodJob's queue can
+    # fall behind enough that 10s occasionally isn't enough even though the
+    # notification always eventually appears -- widened after an observed
+    # spurious failure that a same-config re-run (isolated and full-suite)
+    # could not reproduce.
     notification_id = None
-    for _ in range(10):
+    for _ in range(20):
         listed = await client.list_notifications(unread_only=True)
         match = next((n for n in listed.results if n.work_package_id == wp_id), None)
         if match is not None:
