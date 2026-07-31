@@ -166,13 +166,27 @@ tools.py (MCP presentation)
   `WorkPackageAllowedContext` cache (`app/ports/work_package_resolution.py`) so two records
   sharing the same work package are checked only once — this per-record filtering is Service-level
   logic, not a Policy module, since the check itself does I/O (a conditional work-package fetch)
-  and `app/policies/` is documented as pure, no-I/O.
+  and `app/policies/` is documented as pure, no-I/O. A Service may touch the local filesystem
+  directly (path-traversal containment, a sensitive-filename denylist, reading file bytes) when the
+  domain's write path is a local file upload — this is authorization/security logic, not HAL↔model
+  translation, so it stays in the Service layer rather than the Adapter, matching every other
+  authorization check's home (`AttachmentService`'s `_prepare_attachment_file`/
+  `_is_sensitive_attachment` is the first and, so far, only instance). A Port method may reach into
+  an otherwise entirely unmigrated, different domain for exactly one field a write path needs to
+  validate against (`AttachmentApi.get_max_attachment_size()` reads Instance Configuration's
+  `maximumAttachmentFileSize` without migrating that domain) — a deliberate, narrow exception to
+  "a Port covers its own domain," used specifically to avoid an unrelated domain's full migration
+  becoming a hidden prerequisite for the one actually being migrated.
 - `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under `app/` that
   imports `httpx`; `client.py`'s own HTTP calls for still-flat domains, and `retry_transport.py`,
   are unaffected and keep importing it directly. The `Transport` Protocol (`app/transport/protocol.py`)
   is extended with a new method when a migrating domain needs a request shape none of the existing
   methods cover — e.g. `post_raw_json` for a raw, non-JSON request body (`Content-Type: text/plain`),
-  added when a domain's endpoint posts plain text rather than a JSON payload.
+  added when a domain's endpoint posts plain text rather than a JSON payload; `post_multipart` for a
+  `multipart/form-data` body (a JSON metadata part plus a file part), added for Attachments' file
+  upload — the metadata part is sent as a plain form field with no filename in its
+  Content-Disposition, since a filename would make the server's multipart parser treat it as an
+  uploaded file rather than a JSON string.
 - `OpenProjectClient` remains a 100%-compatible facade: a migrated domain's public method
   signatures stay unchanged unless a deliberate, separately-decided behavior change was bundled
   into that migration — in which case `tools.py`'s matching tool gains the same change, the only
