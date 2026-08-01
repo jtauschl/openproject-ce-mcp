@@ -581,6 +581,25 @@ def test_instance_configuration_service_binds_the_api_param_to_instance_configur
     )
 
 
+def test_current_user_service_binds_the_api_param_to_current_user_api_specifically() -> None:
+    """Non-generalized regression test for the Current User domain's exact
+    guarantee, sibling to the checks above: the api param is CurrentUserApi
+    exactly, not just "some Protocol". No dedicated Resolver exists --
+    get_current_user has no semantic reference to resolve, and no project
+    link/allowlist concept at all. Not to be confused with the pre-existing
+    CurrentUserLookup seam Protocol (app/ports/current_user.py), a different,
+    unrelated bare-callable seam this migration does not touch."""
+    from openproject_ce_mcp.app.adapters.httpx_current_user_api import HttpxCurrentUserApi
+    from openproject_ce_mcp.app.ports.current_user_api import CurrentUserApi
+    from openproject_ce_mcp.app.services.current_user_service import CurrentUserService
+
+    hints = typing.get_type_hints(CurrentUserService.__init__)
+    assert hints["api"] is CurrentUserApi, "CurrentUserService.__init__'s api param must be typed CurrentUserApi"
+    assert hints["api"] is not HttpxCurrentUserApi, (
+        "CurrentUserService.__init__'s api param must not be the concrete adapter"
+    )
+
+
 def test_user_preferences_service_binds_the_api_param_to_user_preferences_api_specifically() -> None:
     """Non-generalized regression test for the User Preferences domain's
     exact guarantee, sibling to the checks above: the api param is

@@ -16,6 +16,7 @@ from .app.adapters.httpx_activity_api import HttpxActivityApi
 from .app.adapters.httpx_attachment_api import HttpxAttachmentApi
 from .app.adapters.httpx_board_api import HttpxBoardApi
 from .app.adapters.httpx_category_api import HttpxCategoryApi
+from .app.adapters.httpx_current_user_api import HttpxCurrentUserApi
 from .app.adapters.httpx_document_api import HttpxDocumentApi
 from .app.adapters.httpx_emoji_reaction_api import HttpxEmojiReactionApi
 from .app.adapters.httpx_extended_metadata_api import HttpxExtendedMetadataApi
@@ -73,6 +74,7 @@ from .app.ports.activity_api import ActivityApi
 from .app.ports.attachment_api import AttachmentApi
 from .app.ports.board_api import BoardApi
 from .app.ports.category_api import CategoryApi
+from .app.ports.current_user_api import CurrentUserApi
 from .app.ports.document_api import DocumentApi
 from .app.ports.emoji_reaction_api import EmojiReactionApi
 from .app.ports.extended_metadata_api import ExtendedMetadataApi
@@ -111,6 +113,7 @@ from .app.services.activity_service import ActivityService
 from .app.services.attachment_service import AttachmentService
 from .app.services.board_service import BoardService
 from .app.services.category_service import CategoryService
+from .app.services.current_user_service import CurrentUserService
 from .app.services.document_service import DocumentService
 from .app.services.emoji_reaction_service import EmojiReactionService
 from .app.services.extended_metadata_service import ExtendedMetadataService
@@ -377,6 +380,11 @@ class OpenProjectClient:
         self._instance_configuration_service = InstanceConfigurationService(
             api=self._instance_configuration_api, settings=settings
         )
+
+        self._current_user_api: CurrentUserApi = HttpxCurrentUserApi(
+            HttpxTransport(self._http), base_url=settings.base_url
+        )
+        self._current_user_service = CurrentUserService(api=self._current_user_api, settings=settings)
 
         self._user_api: UserApi = HttpxUserApi(HttpxTransport(self._http), base_url=settings.base_url)
         self._user_service = UserService(api=self._user_api, settings=settings)
@@ -1928,17 +1936,7 @@ class OpenProjectClient:
         return await self._set_project_favorite(project, favorite=False, confirm=confirm)
 
     async def get_current_user(self) -> CurrentUser:
-        self._ensure_read_enabled("principal")
-        payload = await self._get("users/me")
-        return self._apply_hidden_fields(
-            "current_user",
-            CurrentUser(
-                id=int(payload["id"]),
-                name=payload.get("name"),
-                login=payload.get("login"),
-                url=self._web_url(f"users/{payload['id']}"),
-            ),
-        )
+        return await self._current_user_service.get_current_user()
 
     # --- Statuses ---
 
