@@ -104,7 +104,7 @@ from ...models import (
     WorkPackageWriteResult,
 )
 from ..api_href import api_href as _api_href
-from ..errors import InvalidInputError, OpenProjectError, PermissionDeniedError
+from ..errors import InvalidInputError, OpenProjectError, OpenProjectServerError, PermissionDeniedError
 from ..pagination import effective_limit, paginate_server
 from ..policies import access, hidden_fields
 from ..policies import work_package_policy as _work_package_policy
@@ -1231,7 +1231,12 @@ class WorkPackageService:
         parent_project_link = parent_payload.get("_links", {}).get("project")
         project_id = _id_from_href(parent_project_link.get("href") if parent_project_link else None)
         if project_id is None:
-            raise InvalidInputError("OpenProject work package is missing a project link.")
+            # A server-data anomaly (an unexpected/malformed OpenProject
+            # response), not a caller mistake -- OpenProjectServerError,
+            # matching release/0.3.5's still-flat equivalent, not
+            # InvalidInputError (reconciled 2026-08-01 after a cross-branch
+            # parity audit found the two branches disagreed on this).
+            raise OpenProjectServerError("OpenProject work package is missing a project link.")
         ensure_project_write_link_allowed(
             parent_project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
@@ -1426,7 +1431,12 @@ class WorkPackageService:
         current = current_record.payload
         project_id = _id_from_href(current.get("_links", {}).get("project", {}).get("href"))
         if project_id is None:
-            raise InvalidInputError("OpenProject work package is missing a project link.")
+            # A server-data anomaly (an unexpected/malformed OpenProject
+            # response), not a caller mistake -- OpenProjectServerError,
+            # matching release/0.3.5's still-flat equivalent, not
+            # InvalidInputError (reconciled 2026-08-01 after a cross-branch
+            # parity audit found the two branches disagreed on this).
+            raise OpenProjectServerError("OpenProject work package is missing a project link.")
         ensure_project_write_link_allowed(
             current.get("_links", {}).get("project"),
             settings=self._settings,

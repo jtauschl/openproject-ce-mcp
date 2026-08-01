@@ -5,7 +5,13 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
-from openproject_ce_mcp.app.errors import InvalidInputError, NotFoundError, OpenProjectError, PermissionDeniedError
+from openproject_ce_mcp.app.errors import (
+    InvalidInputError,
+    NotFoundError,
+    OpenProjectError,
+    OpenProjectServerError,
+    PermissionDeniedError,
+)
 from openproject_ce_mcp.app.ports.activity_api import ActivityRecord
 from openproject_ce_mcp.app.ports.status_priority_type_api import StatusRecord
 from openproject_ce_mcp.app.ports.work_package_api import WorkPackageFormResult, WorkPackagePage, WorkPackageRecord
@@ -937,7 +943,7 @@ async def test_create_subtask_missing_project_link_raises() -> None:
     api._records_by_id[6] = _record(6, payload={"id": 6, "subject": "Parent", "_links": {}})
     service, _ = _service(api)
 
-    with pytest.raises(InvalidInputError, match="missing a project link"):
+    with pytest.raises(OpenProjectServerError, match="missing a project link"):
         await service.create_subtask(parent_work_package_id=6, type="Task", subject="Child task", confirm=False)
 
 
@@ -1135,7 +1141,7 @@ async def test_update_missing_project_link_raises() -> None:
     api._records_by_id[6] = _record(6, payload={"id": 6, "subject": "WP", "_links": {}})
     service, _ = _service(api)
 
-    with pytest.raises(InvalidInputError, match="missing a project link"):
+    with pytest.raises(OpenProjectServerError, match="missing a project link"):
         await service.update(work_package_id=6, subject="Renamed", confirm=False)
 
 
