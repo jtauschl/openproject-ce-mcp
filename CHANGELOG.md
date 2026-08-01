@@ -213,6 +213,8 @@ development baseline.
 
 ## 0.3.0 – 2026-07-17
 
+Release-hardening milestone: the full Authorization & Config Model Redesign (fail-closed scopes/allowlists, mandatory write confirmation, hardened setup flow), plus extensive bugfixing and mypy adoption.
+
 ### Added
 
 - **Batch work-package read**: `get_work_packages(ids=[...])` fetches
