@@ -78,14 +78,26 @@ class HttpxReminderApi:
         lib/api/v3/reminders/reminders_api.rb in every vendored OpenProject
         version). The only way to read a reminder's own payload/`remindable`
         link is by paging through the collection and matching on id.
+
+        Stops on a `seen_ids` repeat, not just server-reported `total`/offset
+        arithmetic (same safety net as `fetch_bounded_and_paginate` in
+        app/pagination.py) -- a sub-collection endpoint that silently ignores
+        offset/pageSize would otherwise loop forever re-fetching page 1.
         """
         offset = 1
         page_size = 100
+        seen_ids: set[Any] = set()
+        is_first_page = True
         while True:
             payload = await self._transport.get_json(
                 "reminders", params={"offset": str(offset), "pageSize": str(page_size)}
             )
             elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+            page_ids = {item.get("id") for item in elements}
+            if not is_first_page and page_ids and page_ids <= seen_ids:
+                return None
+            is_first_page = False
+            seen_ids.update(page_ids)
             match = next((item for item in elements if item.get("id") == reminder_id), None)
             if match is not None:
                 return match
