@@ -83,6 +83,12 @@ The layered `app/` architecture migration, now covering every domain.
   Versions domain's own project-scoped resolver, `_resolve_sprint_id`,
   `list_work_package_attachments`, and the shared `paginate_all` helper);
   all now stop on a repeated page.
+- **A missing project link on a work package now raises a server-error
+  category, not a validation error** — matching how every other
+  server-data anomaly is reported.
+- **`update_reminder`/`delete_reminder`'s internal reminder lookup no
+  longer risks looping forever** if the reminders collection endpoint
+  ignores pagination parameters.
 
 ### Docs
 
@@ -117,6 +123,19 @@ The layered `app/` architecture migration, now covering every domain.
   parameter** (OpenProject computes it from `start_time` + `hours` and
   rejects a caller-supplied value). `start_time` is unaffected; `end_time`
   is still returned when reading a time entry.
+- **`get_work_package`/`get_work_packages` no longer return fully unmasked
+  fields under a restricted `OPENPROJECT_READ_PROJECTS` scope** when the
+  work package has children or ancestors to filter.
+- **`get_sprint`/`list_project_sprints` name-based sprint lookup no longer
+  misses sprints beyond the first page.**
+- **`get_project_work_package_context` no longer duplicates the
+  `status`/`priority`/`category`/`project_phase` option lists** in both
+  the hoisted `available_*` fields and the raw field schema.
+- **`get_project_admin_context` now returns only writable schema fields**,
+  instead of every field including non-writable/internal ones.
+- **`get_time_entry`/`list_time_entries` now report `comment_truncated`/
+  `comment_length`** when a comment is cut, matching every other
+  truncation-capable field.
 
 ---
 
