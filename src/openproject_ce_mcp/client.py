@@ -8831,8 +8831,29 @@ class OpenProjectClient:
             self._ensure_sprint_workspace_allowed(payload)
             return sprint_ref
 
-        sprints = await self.list_project_sprints(project, offset=1, limit=self.settings.max_results)
-        matches = [str(item.id) for item in sprints.results if (item.name or "").casefold() == sprint_ref.casefold()]
+        # Walk every server page directly via _fetch_all_pages (the same
+        # helper list_project_sprints itself uses internally) rather than
+        # calling list_project_sprints with a bounded `limit` -- that method
+        # already fetches every page internally, but then RE-SLICES its own
+        # return value down to `limit`/`offset` for its own pagination
+        # contract, so a name lookup calling it with limit=max_results still
+        # only saw the first max_results sprints of the full set, silently
+        # missing any sprint beyond that cap (the exact bug list_project_sprints'
+        # own comment above already documents fixing for its own callers, but
+        # this resolver was never updated to match).
+        project_payload = await self._get_project_payload(project)
+        project_id = int(project_payload["id"])
+        try:
+            elements = await self._fetch_all_pages(f"projects/{project_id}/sprints")
+        except NotFoundError as exc:
+            raise NotFoundError(
+                "OpenProject project sprints require the Backlogs module and OpenProject 17.3 or newer."
+            ) from exc
+        matches = [
+            str(item["id"])
+            for item in elements
+            if self._sprint_payload_allowed(item) and (item.get("name") or "").casefold() == sprint_ref.casefold()
+        ]
         if not matches:
             raise InvalidInputError(f"OpenProject sprint '{sprint_ref}' was not found in project '{project}'.")
         if len(matches) > 1:

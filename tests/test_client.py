@@ -14018,6 +14018,66 @@ async def test_list_sprints_normalizes_backlogs_collection() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolve_sprint_id_by_name_finds_a_sprint_beyond_the_first_server_page() -> None:
+    """Regression guard: _resolve_sprint_id's name-lookup branch used to call
+    list_project_sprints(project, offset=1, limit=max_results) -- a single
+    bounded fetch. list_project_sprints itself already walks every server
+    page internally (via _fetch_all_pages), but then RE-SLICES its own
+    return value down to `limit` for its own pagination contract -- so a
+    sprint sitting beyond the first `limit` sprints in server order was
+    invisible to the name lookup, which then raised "not found" instead of
+    resolving it. Uses a small max_page_size (2) so the target sprint,
+    'Wanted', sits on the SECOND server page -- proving the resolver now
+    walks every page rather than trusting a single bounded response."""
+    settings = dataclasses.replace(make_settings(), max_page_size=2)
+
+    def _sprint(sprint_id: int, name: str) -> dict:
+        return {
+            "_type": "Sprint",
+            "id": sprint_id,
+            "name": name,
+            "_links": {"definingWorkspace": {"href": "/api/v3/projects/7", "title": "Demo"}},
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 7, "identifier": "demo", "name": "Demo", "active": True},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/7/sprints" and request.method == "GET":
+            offset = int(request.url.params["offset"])
+            if offset == 1:
+                elements = [_sprint(1, "Alpha"), _sprint(2, "Bravo")]
+            elif offset == 2:
+                elements = [_sprint(3, "Wanted")]
+            else:
+                raise AssertionError(f"Unexpected offset: {offset}")
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Collection",
+                    "total": 3,
+                    "count": len(elements),
+                    "pageSize": 2,
+                    "offset": offset,
+                    "_embedded": {"elements": elements},
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    resolved_id = await client._resolve_sprint_id("Wanted", project="demo")
+
+    assert resolved_id == "3"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_project_sprints_resolves_project_and_allows_empty_collection() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
