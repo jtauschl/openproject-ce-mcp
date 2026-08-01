@@ -226,7 +226,8 @@ development baseline.
 
 ## 0.3.0 – 2026-07-17
 
-Release-hardening milestone: the full Authorization & Config Model Redesign (fail-closed scopes/allowlists, mandatory write confirmation, hardened setup flow), plus extensive bugfixing and mypy adoption.
+Harden the release: redesign the authorization/config model with fail-closed
+scopes and mandatory write confirmation, and adopt mypy.
 
 ### Added
 
@@ -454,7 +455,9 @@ Release-hardening milestone: the full Authorization & Config Model Redesign (fai
 
 ## 0.2.0 – 2026-07-01
 
-First release published to PyPI. Supersedes the never-released 0.1.1.
+Publish the first PyPI release: rename the package, add an installable
+configure/setup CLI, and automate PyPI distribution via GitHub Actions.
+Supersedes the never-released 0.1.1.
 
 ### Added
 
@@ -485,6 +488,10 @@ First release published to PyPI. Supersedes the never-released 0.1.1.
 ---
 
 ## 0.1.0 – 2026-07-01
+
+Add semantic work-package identifiers and automatic MCP-client setup, and
+harden the API surface (attachment containment, allowlisting, field-hiding)
+ahead of the first public release.
 
 ### Compatibility
 
