@@ -4,7 +4,7 @@ import logging
 from dataclasses import replace
 from fnmatch import fnmatchcase
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
 import httpx
 
@@ -28,6 +28,7 @@ from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_notification_api import HttpxNotificationApi
 from .app.adapters.httpx_principal_api import HttpxPrincipalApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
+from .app.adapters.httpx_project_api import normalize_option_value as _normalize_option_value
 from .app.adapters.httpx_project_api import normalize_project as _normalize_project
 from .app.adapters.httpx_query_metadata_api import HttpxQueryMetadataApi
 from .app.adapters.httpx_relation_api import HttpxRelationApi
@@ -1267,7 +1268,7 @@ class OpenProjectClient:
         project_id = int(project_payload["id"])
         types_payload = await self._get(f"projects/{project_id}/types")
         available_types = [
-            self._normalize_option_value(item) for item in types_payload.get("_embedded", {}).get("elements", [])
+            _normalize_option_value(item) for item in types_payload.get("_embedded", {}).get("elements", [])
         ]
 
         selected_type_id: int | None = None
@@ -1275,15 +1276,15 @@ class OpenProjectClient:
         fields: list[WorkPackageFieldSchema] = []
         custom_fields: list[WorkPackageFieldSchema] = []
         available_statuses: list[OptionValue] = [
-            self._normalize_option_value(item)
+            _normalize_option_value(item)
             for item in (await self._get("statuses")).get("_embedded", {}).get("elements", [])
         ]
         available_priorities: list[OptionValue] = [
-            self._normalize_option_value(item)
+            _normalize_option_value(item)
             for item in (await self._get("priorities")).get("_embedded", {}).get("elements", [])
         ]
         available_categories: list[OptionValue] = [
-            self._normalize_option_value(item)
+            _normalize_option_value(item)
             for item in (await self._get(f"projects/{project_id}/categories")).get("_embedded", {}).get("elements", [])
         ]
         available_project_phases: list[OptionValue] = []
@@ -2281,44 +2282,9 @@ class OpenProjectClient:
             payload = {}
         _map_status_to_error(response.status_code, payload)
 
-    def _web_url(self, relative_path: str) -> str:
-        return urljoin(f"{self.settings.base_url.rstrip('/')}/", relative_path.lstrip("/"))
-
-    def _work_package_dates(self, payload: dict[str, Any]) -> tuple[str | None, str | None]:
-        """(start_date, due_date) for a work package, accounting for milestones.
-
-        OpenProject's work_package_representer.rb omits `startDate`/`dueDate`
-        entirely for milestone-type work packages (`skip_render` when
-        `represented.milestone?`) and instead reports the single day under a
-        separate `date` key, whose own getter reads the underlying `due_date`
-        value. Without this, every milestone work package normalizes to
-        start_date=None, due_date=None even when it has a real date set --
-        confirmed live against a milestone created via this client itself.
-        """
-        start_date = payload.get("startDate")
-        due_date = payload.get("dueDate")
-        if start_date is None and due_date is None and payload.get("date") is not None:
-            milestone_date = payload["date"]
-            return milestone_date, milestone_date
-        return start_date, due_date
-
-    def _normalize_option_value(self, payload: dict[str, Any]) -> OptionValue:
-        href = payload.get("_links", {}).get("self", {}).get("href")
-        title = (
-            _trim_text(payload.get("name"), limit=SUBJECT_LIMIT)
-            or _trim_text(payload.get("title"), limit=SUBJECT_LIMIT)
-            or _trim_text(payload.get("_links", {}).get("self", {}).get("title"), limit=SUBJECT_LIMIT)
-            or "Unnamed"
-        )
-        raw_id = payload.get("id")
-        option_id = int(raw_id) if isinstance(raw_id, int | str) and str(raw_id).isdigit() else _id_from_href(href)
-        return OptionValue(id=option_id, title=title, href=href)
-
     def _normalize_field_schema(self, key: str, payload: dict[str, Any]) -> WorkPackageFieldSchema:
         allowed_values = payload.get("_embedded", {}).get("allowedValues", [])
-        normalized_allowed_values = [
-            self._normalize_option_value(item) for item in allowed_values if isinstance(item, dict)
-        ]
+        normalized_allowed_values = [_normalize_option_value(item) for item in allowed_values if isinstance(item, dict)]
         return WorkPackageFieldSchema(
             key=key,
             name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or key,
@@ -2332,18 +2298,6 @@ class OpenProjectClient:
             location=_trim_text(payload.get("location"), limit=SUBJECT_LIMIT),
             allowed_values=normalized_allowed_values,
         )
-
-    def _link_to_web_url(self, href: str | None) -> str | None:
-        if not href:
-            return None
-        parsed = urlparse(href)
-        if parsed.scheme:
-            if _origin_from_url(href) != self._origin:
-                return None
-            return href
-        if href.startswith("/"):
-            return urljoin(f"{self._origin.rstrip('/')}/", href.lstrip("/"))
-        return urljoin(f"{self.settings.base_url.rstrip('/')}/", href)
 
     async def _get_project_payload(
         self,
@@ -2373,34 +2327,6 @@ class OpenProjectClient:
 
     def _normalize_hide_token(self, value: str) -> str:
         return _hidden_fields_policy.normalize_hide_token(value)
-
-    def _field_hidden(self, entity: str, field_name: str) -> bool:
-        return _hidden_fields_policy.field_hidden(entity, field_name, settings=self.settings)
-
-    def _visible_formattable_text_with_meta(
-        self,
-        value: Any,
-        entity: str,
-        field_name: str,
-        *,
-        limit: int | None = FORMATTABLE_LIMIT,
-        preserve_newlines: bool = False,
-    ) -> tuple[str | None, bool, int | None]:
-        """Hide-aware, delimited formattable text plus ``(text, truncated, full_length)``.
-
-        ``limit=None`` returns the full text uncapped. When the field is hidden,
-        returns ``(None, False, None)`` — a hidden field is not "truncated", it
-        is simply absent. The returned text is always wrapped by
-        ``_delimit_user_content`` — every caller did this immediately after
-        calling this method, so it is folded in here instead of repeated at
-        each of the 3 call sites.
-        """
-        if self._field_hidden(entity, field_name):
-            return None, False, None
-        text, truncated, length = _extract_formattable_text_with_meta(
-            value, limit=limit, preserve_newlines=preserve_newlines
-        )
-        return _delimit_user_content(text), truncated, length
 
     def _custom_field_hidden(self, field_name: str, key: str) -> bool:
         patterns = tuple(self.settings.hide_custom_fields)
@@ -2443,13 +2369,6 @@ class OpenProjectClient:
         return await self._version_resolver.resolve_id(version_ref, project=project, context=context)
 
 
-def _delimit_user_content(text: str | None) -> str | None:
-    """Wrap user-provided text in boundary markers for prompt injection safety."""
-    if text is None or not text.strip():
-        return text
-    return f"<user-content>{text}</user-content>"
-
-
 def _origin_from_url(url: str) -> str:
     parsed = urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}"
@@ -2466,104 +2385,11 @@ def _trim_text(value: Any, *, limit: int) -> str | None:
     return text[: limit - 1].rstrip() + "…"
 
 
-def _normalize_text(value: Any, *, preserve_newlines: bool) -> str:
-    """Normalize whitespace before trimming.
-
-    Default (``preserve_newlines=False``): collapse all whitespace/newlines to
-    single spaces — the historic behavior for single-line fields (subjects,
-    titles, error messages).
-
-    ``preserve_newlines=True``: keep paragraph/list structure. CRLF→LF, collapse
-    inline whitespace per line, strip trailing whitespace per line, strip leading
-    and trailing blank lines, and collapse any run of blank lines to a single
-    blank line (one visible paragraph break, i.e. ``\\n\\n``).
-    """
-    if not preserve_newlines:
-        return " ".join(str(value).split())
-    lines = str(value).replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    normalized: list[str] = []
-    blank_run = 0
-    for line in lines:
-        stripped = " ".join(line.split())
-        if stripped:
-            blank_run = 0
-            normalized.append(stripped)
-        else:
-            blank_run += 1
-            if blank_run <= 1:
-                normalized.append("")
-    # Strip leading/trailing blank lines.
-    while normalized and normalized[0] == "":
-        normalized.pop(0)
-    while normalized and normalized[-1] == "":
-        normalized.pop()
-    return "\n".join(normalized)
-
-
-def _trim_text_with_meta(
-    value: Any, *, limit: int | None, preserve_newlines: bool = False
-) -> tuple[str | None, bool, int | None]:
-    """Trim ``value`` to ``limit`` and report truncation metadata.
-
-    ``limit=None`` means *no cap* — return the full text (never truncated). This
-    is the single-work-package path, where the caller wants everything.
-
-    Returns ``(text, truncated, full_length)`` where ``full_length`` is the
-    character count of the normalized text *before* trimming, so the invariant
-    ``truncated == (limit is not None and full_length > limit)`` holds and
-    callers can tell how much was cut. ``text``/``full_length`` are ``None`` when
-    there is no content.
-    """
-    if value is None:
-        return None, False, None
-    text = _normalize_text(value, preserve_newlines=preserve_newlines)
-    if not text:
-        return None, False, None
-    full_length = len(text)
-    if limit is None or full_length <= limit:
-        return text, False, full_length
-    return text[: limit - 1].rstrip() + "…", True, full_length
-
-
-def _extract_formattable_text(value: Any, *, limit: int = FORMATTABLE_LIMIT) -> str | None:
-    if isinstance(value, dict):
-        return _trim_text(value.get("raw") or value.get("html"), limit=limit)
-    return _trim_text(value, limit=limit)
-
-
-def _extract_formattable_text_with_meta(
-    value: Any, *, limit: int | None = FORMATTABLE_LIMIT, preserve_newlines: bool = False
-) -> tuple[str | None, bool, int | None]:
-    """Like ``_extract_formattable_text`` but reports truncation metadata.
-
-    ``limit=None`` returns the full text uncapped.
-    """
-    raw = value.get("raw") or value.get("html") if isinstance(value, dict) else value
-    return _trim_text_with_meta(raw, limit=limit, preserve_newlines=preserve_newlines)
-
-
 def _parse_response_json(response: httpx.Response) -> dict[str, Any]:
     try:
         return normalize_links(response.json())
     except ValueError as exc:
         raise OpenProjectServerError("OpenProject returned invalid JSON.") from exc
-
-
-def _link_title(link: Any) -> str | None:
-    if not isinstance(link, dict):
-        return None
-    title = link.get("title")
-    return _trim_text(title, limit=SUBJECT_LIMIT)
-
-
-def _id_from_href(href: str | None) -> int | None:
-    if not href:
-        return None
-    parts = href.rstrip("/").split("/")
-    try:
-        return int(parts[-1])
-    except (ValueError, IndexError):
-        return None
 
 
 # _scope_allows_all/_scope_matches_candidates: relocated to app/policies/scope.py
