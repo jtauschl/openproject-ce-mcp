@@ -255,14 +255,14 @@ async def test_admin_scoped_reads_are_denied_before_any_http_call_without_admin_
 @pytest.mark.asyncio
 async def test_internal_principal_resolution_bypasses_admin_read_gate() -> None:
     """create_membership resolves a name-based principal via
-    _resolve_principal_id -> _list_principals_unchecked, which deliberately
-    has no OPENPROJECT_ENABLE_ADMIN_READ gate (see the comment on
-    _list_principals_unchecked in client.py): the caller is already
-    authorized through create_membership's own membership-write scope check,
-    and only a single resolved id is used internally, never the full
-    PrincipalSummary list. This must keep working even with admin_read off —
-    the negative case (the public list_principals tool itself staying
-    gated) is covered by
+    _resolve_principal_id -> PrincipalResolver.resolve_id -> PrincipalApi
+    (bypassing PrincipalService entirely), which deliberately has no
+    OPENPROJECT_ENABLE_ADMIN_READ gate (see PrincipalResolver's module
+    docstring): the caller is already authorized through create_membership's
+    own membership-write scope check, and only a single resolved id is used
+    internally, never the full PrincipalSummary list. This must keep working
+    even with admin_read off — the negative case (the public list_principals
+    tool itself staying gated) is covered by
     test_admin_scoped_reads_are_denied_before_any_http_call_without_admin_read."""
 
     async def handler(request: httpx.Request) -> httpx.Response:

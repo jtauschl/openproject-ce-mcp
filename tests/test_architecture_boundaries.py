@@ -618,6 +618,21 @@ def test_principal_service_binds_the_api_param_to_principal_api_specifically() -
     )
 
 
+def test_principal_resolver_binds_the_api_param_to_principal_api_specifically() -> None:
+    """Sibling check for PrincipalResolver (not a Service, but follows the
+    same Port-binding discipline): the api param is PrincipalApi exactly,
+    not just "some Protocol", and not the concrete adapter."""
+    from openproject_ce_mcp.app.adapters.httpx_principal_api import HttpxPrincipalApi
+    from openproject_ce_mcp.app.ports.principal_api import PrincipalApi
+    from openproject_ce_mcp.app.resolvers.principal_resolver import PrincipalResolver
+
+    hints = typing.get_type_hints(PrincipalResolver.__init__)
+    assert hints["api"] is PrincipalApi, "PrincipalResolver.__init__'s api param must be typed PrincipalApi"
+    assert hints["api"] is not HttpxPrincipalApi, (
+        "PrincipalResolver.__init__'s api param must not be the concrete adapter"
+    )
+
+
 def test_user_preferences_service_binds_the_api_param_to_user_preferences_api_specifically() -> None:
     """Non-generalized regression test for the User Preferences domain's
     exact guarantee, sibling to the checks above: the api param is

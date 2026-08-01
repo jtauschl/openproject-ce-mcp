@@ -34,18 +34,21 @@ def test_normalize_instance_configuration_per_page_options_keeps_only_ints_witho
     assert config.per_page_options == [10, 1, 0, 50]
 
 
-def test_normalize_instance_configuration_feature_flags_are_coerced_deduped_by_sort_and_blank_filtered() -> None:
+def test_normalize_instance_configuration_feature_flags_are_coerced_sorted_and_blank_filtered() -> None:
     """The three feature-flag lists use a DIFFERENT strategy than
     per_page_options: every entry is str()-coerced (so a non-string survives,
     unlike per_page_options), blank/whitespace-only entries are dropped, and
-    the result is sorted alphabetically -- not preserved in payload order."""
+    the result is sorted alphabetically -- not preserved in payload order.
+    NOT deduplicated: a genuine duplicate entry survives as two separate
+    list items, matching the original `sorted(str(item) for item in ...)`
+    generator expression, which has no dedup step."""
     config = normalize_instance_configuration(
         {
-            "activeFeatureFlags": ["zeta", "", "  ", "alpha", 42],
+            "activeFeatureFlags": ["zeta", "", "  ", "alpha", "alpha", 42],
             "availableFeatures": [],
             "triallingFeatures": ["only_one"],
         }
     )
-    assert config.active_feature_flags == ["42", "alpha", "zeta"]
+    assert config.active_feature_flags == ["42", "alpha", "alpha", "zeta"]
     assert config.available_features == []
     assert config.trialling_features == ["only_one"]

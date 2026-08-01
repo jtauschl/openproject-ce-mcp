@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from ...config import Settings
 from ..errors import InvalidInputError
+from ..pagination import effective_limit as _effective_limit
 from ..ports.current_user import CurrentUserLookup
 from ..ports.principal_api import PrincipalApi
 
@@ -37,8 +38,17 @@ class PrincipalResolver:
         if principal_ref.isdigit():
             return principal_ref
 
+        # Capped by both max_page_size and max_results (min of the two, via
+        # effective_limit), not max_results alone -- the original
+        # _resolve_principal_id passed max_results into _list_principals_
+        # unchecked, which then ran it through _resolve_limit's identical
+        # min(...) clamp. Passing max_results directly here would silently
+        # request a larger page than the server-side/config page-size cap
+        # allows.
         records, _total = await self._api.list_principals(
-            search=principal_ref, offset=1, page_size=self._settings.max_results
+            search=principal_ref,
+            offset=1,
+            page_size=_effective_limit(self._settings.max_results, settings=self._settings),
         )
         matches = [
             str(record.summary.id)
