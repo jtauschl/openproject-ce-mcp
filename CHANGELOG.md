@@ -43,6 +43,9 @@ support.
 
 ### Fixed
 
+- **`list_principals`, `get_current_user`, and `get_instance_configuration`
+  are now migrated onto the layered `app/` architecture**, completing the
+  set of domains with no user-facing behavior change.
 - **`get_job_status` now correctly honors `OPENPROJECT_READ_PROJECTS` for a
   job status scoped only via its `sourceProject` link.**
 - **`create_user`/`update_user`/`lock_user`/`unlock_user` now honor
