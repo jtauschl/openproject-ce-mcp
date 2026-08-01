@@ -9,7 +9,10 @@ development baseline.
 
 ## [Unreleased 0.4.0]
 
-The layered `app/` architecture migration, now covering every domain.
+Complete the layered `app/` architecture migration (ADR 0001): decompose the
+client's business logic out of a single flat file into focused Services,
+Ports, and Adapters, one domain at a time, so the codebase scales past what a
+monolithic client.py can support.
 
 ### Added
 
