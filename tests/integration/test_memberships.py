@@ -78,6 +78,10 @@ async def test_create_and_update_membership_in_fresh_project(
     membership_id = created.result.id
     assert role_name in created.result.role_names
 
+    fetched = await unrestricted_client.get_membership(membership_id)
+    assert fetched.id == membership_id
+    assert role_name in fetched.role_names
+
     updated = await unrestricted_client.update_membership(
         membership_id=membership_id, roles=[other_role_name], confirm=True
     )

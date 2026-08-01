@@ -80,6 +80,9 @@ async def test_list_work_package_attachments_and_delete_attachment(
     listed = await client.list_work_package_attachments(result.work_package_id)
     assert any(a.id == attachment_id for a in listed.results)
 
+    fetched = await client.get_attachment(attachment_id)
+    assert fetched.id == attachment_id
+
     preview = await client.delete_attachment(attachment_id=attachment_id)
     assert preview.requires_confirmation
 
