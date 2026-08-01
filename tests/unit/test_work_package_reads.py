@@ -914,10 +914,10 @@ async def test_resolve_work_package_id_fetches_and_validates_both_reference_shap
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    assert await client._resolve_work_package_id(99) == 99
+    assert await client._work_package_resolver.resolve_id(99) == 99
     assert requests == ["/api/v3/work_packages/99"]
 
-    assert await client._resolve_work_package_id("PROJ-7") == 55
+    assert await client._work_package_resolver.resolve_id("PROJ-7") == 55
     assert requests == ["/api/v3/work_packages/99", "/api/v3/work_packages/PROJ-7"]
 
     await client.aclose()

@@ -4,7 +4,7 @@ import httpx
 import pytest
 from _client_test_helpers import _base_settings
 
-from openproject_ce_mcp.app.policies import board_policy, project_policy
+from openproject_ce_mcp.app.policies import board_policy, project_policy, scope
 from openproject_ce_mcp.client import (
     OpenProjectClient,
     PermissionDeniedError,
@@ -247,7 +247,11 @@ async def test_write_scope_is_intersection_of_read_scope() -> None:
             settings=client.settings,
             project_id_to_identifier=client._project_id_to_identifier,
         ),
-        lambda client: client._ensure_project_write_link_allowed({"href": "/api/v3/projects/other"}),
+        lambda client: scope.ensure_project_write_link_allowed(
+            {"href": "/api/v3/projects/other"},
+            settings=client.settings,
+            project_id_to_identifier=client._project_id_to_identifier,
+        ),
         lambda client: board_policy.ensure_board_write_allowed(
             {"href": "/api/v3/projects/other"},
             settings=client.settings,
@@ -421,7 +425,11 @@ async def test_write_link_allowlist_recognizes_identifier_after_initialize_with_
     # Must not raise: the embedded link only carries id + title, exactly like a
     # real work package's "_links.project", and "OPM" (the identifier) is only
     # resolvable via the cache initialize() just populated.
-    client._ensure_project_write_link_allowed({"href": "/api/v3/projects/7", "title": "OPM OpenProject CE MCP"})
+    scope.ensure_project_write_link_allowed(
+        {"href": "/api/v3/projects/7", "title": "OPM OpenProject CE MCP"},
+        settings=client.settings,
+        project_id_to_identifier=client._project_id_to_identifier,
+    )
 
     await client.aclose()
 

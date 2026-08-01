@@ -103,7 +103,6 @@ from .app.ports.watcher_api import WatcherApi
 from .app.ports.wiki_page_api import WikiPageApi
 from .app.ports.work_package_api import WorkPackageApi
 from .app.ports.work_package_lookup_api import WorkPackageLookupApi
-from .app.ports.work_package_resolution import WorkPackageAllowedContext
 from .app.resolvers.principal_resolver import PrincipalResolver
 from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.version_resolver import VersionResolver
@@ -2190,18 +2189,6 @@ class OpenProjectClient:
     ) -> RelationListResult:
         return await self._relation_service.list_all(relation_type=relation_type, offset=offset, limit=limit)
 
-    async def _work_package_project_allowed(
-        self, href: str, *, context: WorkPackageAllowedContext | None = None
-    ) -> bool:
-        """Delegates to the layered WorkPackageResolver
-        (app/resolvers/work_package_resolver.py), a verbatim behavioral port of
-        this method's former inline implementation, plus an optional
-        ``context`` cache parameter the original method never had (every
-        call site now threads a per-top-level-call WorkPackageAllowedContext
-        through instead of building its own bare ``dict[str, bool]``).
-        """
-        return await self._work_package_resolver.project_link_allowed(href, context=context)
-
     async def update_relation(
         self,
         *,
@@ -2495,11 +2482,6 @@ class OpenProjectClient:
     def _ensure_read_enabled(self, scope: str) -> None:
         _access_policy.ensure_read_enabled(scope, settings=self.settings)
 
-    def _ensure_project_write_link_allowed(self, link: Any) -> None:
-        _scope_policy.ensure_project_write_link_allowed(
-            link, settings=self.settings, project_id_to_identifier=self._project_id_to_identifier
-        )
-
     def _normalize_hide_token(self, value: str) -> str:
         return _hidden_fields_policy.normalize_hide_token(value)
 
@@ -2657,31 +2639,6 @@ class OpenProjectClient:
                 f"OpenProject sprint '{sprint_ref}' is ambiguous without a more specific filter. Pass a numeric sprint id."
             )
         return matches[0]
-
-    async def _resolve_work_package_id(self, ref: int | str, *, write: bool = False) -> int:
-        """Resolve a work-package reference to its canonical numeric id.
-
-        Needed where the numeric id itself is required (e.g. a relation filter or a
-        client-side equality check) rather than a request path. A numeric reference
-        does not short-circuit: it always triggers a fetch of the work
-        package too, so its project can be validated against the allowlist before
-        its ``id`` is read back. A project-prefixed identifier is resolved the same
-        way, but additionally only works on OpenProject 17.5+ (and requires the
-        exact, case-sensitive project identifier).
-
-        ``write=True`` checks the WRITE allowlist instead of the read one --
-        needed wherever the resolved work package is a REPARENT/relation
-        TARGET being written into, not just read (e.g. a caller with write
-        access to work package A must not be able to attach it under a work
-        package B they can only read).
-
-        Delegates to the layered WorkPackageResolver
-        (app/resolvers/work_package_resolver.py), a verbatim behavioral port of
-        this method's former inline implementation. Kept as a stable internal
-        facade -- every other domain's client.py code that calls this method
-        directly expects the identical contract; only the body changed.
-        """
-        return await self._work_package_resolver.resolve_id(ref, write=write)
 
     async def _resolve_status_id(self, status_ref: str) -> str:
         if status_ref.isdigit():
