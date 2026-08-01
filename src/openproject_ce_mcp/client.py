@@ -22,6 +22,7 @@ from .app.adapters.httpx_extended_metadata_api import HttpxExtendedMetadataApi
 from .app.adapters.httpx_file_link_api import HttpxFileLinkApi
 from .app.adapters.httpx_grid_api import HttpxGridApi
 from .app.adapters.httpx_group_api import HttpxGroupApi
+from .app.adapters.httpx_instance_configuration_api import HttpxInstanceConfigurationApi
 from .app.adapters.httpx_job_status_api import HttpxJobStatusApi
 from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
@@ -78,6 +79,7 @@ from .app.ports.extended_metadata_api import ExtendedMetadataApi
 from .app.ports.file_link_api import FileLinkApi
 from .app.ports.grid_api import GridApi
 from .app.ports.group_api import GroupApi
+from .app.ports.instance_configuration_api import InstanceConfigurationApi
 from .app.ports.job_status_api import JobStatusApi
 from .app.ports.membership_api import MembershipApi
 from .app.ports.news_api import NewsApi
@@ -115,6 +117,7 @@ from .app.services.extended_metadata_service import ExtendedMetadataService
 from .app.services.file_link_service import FileLinkService
 from .app.services.grid_service import GridService
 from .app.services.group_service import GroupService
+from .app.services.instance_configuration_service import InstanceConfigurationService
 from .app.services.job_status_service import JobStatusService
 from .app.services.membership_service import MembershipService
 from .app.services.news_service import NewsService
@@ -367,6 +370,13 @@ class OpenProjectClient:
 
         self._role_api: RoleApi = HttpxRoleApi(HttpxTransport(self._http), base_url=settings.base_url)
         self._role_service = RoleService(api=self._role_api, settings=settings)
+
+        self._instance_configuration_api: InstanceConfigurationApi = HttpxInstanceConfigurationApi(
+            HttpxTransport(self._http)
+        )
+        self._instance_configuration_service = InstanceConfigurationService(
+            api=self._instance_configuration_api, settings=settings
+        )
 
         self._user_api: UserApi = HttpxUserApi(HttpxTransport(self._http), base_url=settings.base_url)
         self._user_service = UserService(api=self._user_api, settings=settings)
@@ -1038,9 +1048,7 @@ class OpenProjectClient:
         )
 
     async def get_instance_configuration(self) -> InstanceConfiguration:
-        self._ensure_read_enabled("project")
-        payload = await self._get("configuration")
-        return self.normalize_instance_configuration(payload)
+        return await self._instance_configuration_service.get_instance_configuration()
 
     async def list_project_phase_definitions(self) -> ProjectPhaseDefinitionListResult:
         return await self._project_service.list_phase_definitions()
@@ -2538,29 +2546,6 @@ class OpenProjectClient:
                 percentage_done=payload.get("percentageDone"),
                 derived_percentage_done=payload.get("derivedPercentageDone"),
                 readonly=payload.get("readonly"),
-            ),
-        )
-
-    def normalize_instance_configuration(self, payload: dict[str, Any]) -> InstanceConfiguration:
-        return self._apply_hidden_fields(
-            "instance_configuration",
-            InstanceConfiguration(
-                host_name=_trim_text(payload.get("hostName"), limit=SUBJECT_LIMIT),
-                maximum_attachment_file_size=payload.get("maximumAttachmentFileSize"),
-                maximum_api_v3_page_size=payload.get("maximumAPIV3PageSize"),
-                per_page_options=[int(item) for item in payload.get("perPageOptions", []) if isinstance(item, int)],
-                duration_format=_trim_text(payload.get("durationFormat"), limit=SUBJECT_LIMIT),
-                hours_per_day=payload.get("hoursPerDay"),
-                days_per_month=payload.get("daysPerMonth"),
-                active_feature_flags=sorted(
-                    str(item) for item in payload.get("activeFeatureFlags", []) if str(item).strip()
-                ),
-                available_features=sorted(
-                    str(item) for item in payload.get("availableFeatures", []) if str(item).strip()
-                ),
-                trialling_features=sorted(
-                    str(item) for item in payload.get("triallingFeatures", []) if str(item).strip()
-                ),
             ),
         )
 

@@ -562,6 +562,25 @@ def test_role_service_binds_the_api_param_to_role_api_specifically() -> None:
     assert hints["api"] is not HttpxRoleApi, "RoleService.__init__'s api param must not be the concrete adapter"
 
 
+def test_instance_configuration_service_binds_the_api_param_to_instance_configuration_api_specifically() -> None:
+    """Non-generalized regression test for the Instance Configuration domain's
+    exact guarantee, sibling to the checks above: the api param is
+    InstanceConfigurationApi exactly, not just "some Protocol". No dedicated
+    Resolver exists -- get_instance_configuration has no semantic reference
+    to resolve, and no project link/allowlist concept at all."""
+    from openproject_ce_mcp.app.adapters.httpx_instance_configuration_api import HttpxInstanceConfigurationApi
+    from openproject_ce_mcp.app.ports.instance_configuration_api import InstanceConfigurationApi
+    from openproject_ce_mcp.app.services.instance_configuration_service import InstanceConfigurationService
+
+    hints = typing.get_type_hints(InstanceConfigurationService.__init__)
+    assert hints["api"] is InstanceConfigurationApi, (
+        "InstanceConfigurationService.__init__'s api param must be typed InstanceConfigurationApi"
+    )
+    assert hints["api"] is not HttpxInstanceConfigurationApi, (
+        "InstanceConfigurationService.__init__'s api param must not be the concrete adapter"
+    )
+
+
 def test_user_preferences_service_binds_the_api_param_to_user_preferences_api_specifically() -> None:
     """Non-generalized regression test for the User Preferences domain's
     exact guarantee, sibling to the checks above: the api param is
