@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
-from collections.abc import Callable
 from dataclasses import replace
 from fnmatch import fnmatchcase
-from typing import Any, TypeVar
-from urllib.parse import unquote, urljoin, urlparse
+from typing import Any
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -105,7 +103,6 @@ from .app.ports.watcher_api import WatcherApi
 from .app.ports.wiki_page_api import WikiPageApi
 from .app.ports.work_package_api import WorkPackageApi
 from .app.ports.work_package_lookup_api import WorkPackageLookupApi
-from .app.ports.work_package_ref import work_package_ref as _work_package_ref_encode
 from .app.ports.work_package_resolution import WorkPackageAllowedContext
 from .app.resolvers.principal_resolver import PrincipalResolver
 from .app.resolvers.project_resolver import ProjectResolver
@@ -171,7 +168,6 @@ from .models import (
     BatchWorkPackageReadResult,
     BoardDetail,
     BoardListResult,
-    BoardSummary,
     BoardWriteResult,
     BulkWorkPackageWriteResult,
     CapabilityListResult,
@@ -181,7 +177,6 @@ from .models import (
     CustomOptionSummary,
     DocumentDetail,
     DocumentListResult,
-    DocumentSummary,
     DocumentWriteResult,
     EmojiReactionListResult,
     EmojiReactionWriteResult,
@@ -203,7 +198,6 @@ from .models import (
     MembershipWriteResult,
     NewsDetail,
     NewsListResult,
-    NewsSummary,
     NewsWriteResult,
     NonWorkingDayListResult,
     NotificationListResult,
@@ -258,7 +252,6 @@ from .models import (
     VersionWriteResult,
     ViewDetail,
     ViewListResult,
-    ViewSummary,
     WatcherListResult,
     WatcherWriteResult,
     WikiPageDetail,
@@ -288,9 +281,6 @@ WORK_PACKAGE_CHILDREN_LIMIT = 50
 WORK_PACKAGE_ANCESTORS_LIMIT = 20
 ACTIVITY_DETAILS_LIMIT = 20
 BATCH_READ_MAX_IDS = 100
-
-# Type variable for the generic detail-fetch helper (_fetch_and_normalize_detail).
-DetailT = TypeVar("DetailT")
 
 
 class OpenProjectClient:
@@ -2227,29 +2217,6 @@ class OpenProjectClient:
     async def _get(self, path: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
         return await self._request_json("GET", path, params=params)
 
-    async def _fetch_and_normalize_detail(
-        self,
-        *,
-        scope: str,
-        path: str,
-        ensure_fn: Callable[[dict[str, Any]], None],
-        normalize_fn: Callable[[dict[str, Any]], DetailT],
-        not_found_message: str | None = None,
-    ) -> DetailT:
-        """Shared shape behind the simple `get_X_detail` methods: check read access,
-        fetch the payload, enforce the entity's allow-check, then normalize it.
-        """
-        self._ensure_read_enabled(scope)
-        if not_found_message is not None:
-            try:
-                payload = await self._get(path)
-            except NotFoundError as exc:
-                raise NotFoundError(not_found_message) from exc
-        else:
-            payload = await self._get(path)
-        ensure_fn(payload)
-        return normalize_fn(payload)
-
     async def _post(
         self,
         path: str,
@@ -2258,25 +2225,6 @@ class OpenProjectClient:
         json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return await self._request_json("POST", path, params=params, json_body=json_body)
-
-    async def _patch(
-        self,
-        path: str,
-        *,
-        params: dict[str, str] | None = None,
-        json_body: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        return await self._request_json("PATCH", path, params=params, json_body=json_body)
-
-    async def _delete(
-        self,
-        path: str,
-        *,
-        params: dict[str, str] | None = None,
-    ) -> None:
-        response = await self._request("DELETE", path, params=params)
-        if response.status_code not in {200, 202, 204}:
-            raise OpenProjectServerError(f"OpenProject delete request failed with status {response.status_code}.")
 
     async def _request_json(
         self,
@@ -2325,26 +2273,6 @@ class OpenProjectClient:
         except ValueError:
             payload = {}
         _map_status_to_error(response.status_code, payload)
-
-    def _resolve_limit(self, requested_limit: int | None) -> int:
-        limit = requested_limit or self.settings.default_page_size
-        return min(limit, self.settings.max_page_size, self.settings.max_results)
-
-    def _link_to_api_path(self, href: str) -> str:
-        parsed = urlparse(href)
-        if not parsed.scheme:
-            path = parsed.path or href
-        else:
-            if _origin_from_url(href) != self._origin:
-                raise OpenProjectServerError("OpenProject returned an unexpected link host.")
-            path = parsed.path
-        if path.startswith(self._api_prefix):
-            relative_path = path[len(self._api_prefix) :]
-        else:
-            relative_path = path.lstrip("/")
-        if parsed.query:
-            return f"{relative_path}?{parsed.query}"
-        return relative_path
 
     def _web_url(self, relative_path: str) -> str:
         return urljoin(f"{self.settings.base_url.rstrip('/')}/", relative_path.lstrip("/"))
@@ -2564,67 +2492,12 @@ class OpenProjectClient:
         """
         return await self._project_resolver.resolve(project_ref, write=write)
 
-    async def _resolve_project_filter_candidates(self, project: str | None) -> set[str] | None:
-        if project is None:
-            return None
-        project_payload = await self._resolve_project_ref(project, write=False)
-        return {
-            str(project_payload["id"]).casefold(),
-            (_trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
-            (_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or "").casefold(),
-        }
-
-    def _ensure_write_enabled(self, scope: str) -> None:
-        _access_policy.ensure_write_enabled(scope, settings=self.settings)
-
     def _ensure_read_enabled(self, scope: str) -> None:
         _access_policy.ensure_read_enabled(scope, settings=self.settings)
-
-    def _payload_allowed(self, ensure: Callable[[], None]) -> bool:
-        """Run an `_ensure_*_allowed` check, turning PermissionDeniedError into False.
-
-        Shared by every bool-returning `_X_payload_allowed` wrapper in this class.
-        """
-        return _scope_policy.payload_allowed(ensure)
-
-    def _ensure_project_link_allowed(self, link: Any) -> None:
-        _scope_policy.ensure_project_link_allowed(
-            link, settings=self.settings, project_id_to_identifier=self._project_id_to_identifier
-        )
 
     def _ensure_project_write_link_allowed(self, link: Any) -> None:
         _scope_policy.ensure_project_write_link_allowed(
             link, settings=self.settings, project_id_to_identifier=self._project_id_to_identifier
-        )
-
-    def _project_candidates(
-        self,
-        *,
-        project_ref: str | None = None,
-        payload: dict[str, Any] | None = None,
-        link: Any = None,
-        identifier: str | None = None,
-        name: str | None = None,
-    ) -> set[str]:
-        return _scope_policy.project_candidates(
-            project_id_to_identifier=self._project_id_to_identifier,
-            project_ref=project_ref,
-            payload=payload,
-            link=link,
-            identifier=identifier,
-            name=name,
-        )
-
-    def _summary_matches_project_candidates(
-        self,
-        item: BoardSummary | ViewSummary | DocumentSummary | NewsSummary,
-        project_candidates: set[str],
-    ) -> bool:
-        return not project_candidates.isdisjoint(
-            {
-                str(item.project_id).casefold() if item.project_id is not None else "",
-                (item.project or "").casefold(),
-            }
         )
 
     def _normalize_hide_token(self, value: str) -> str:
@@ -2632,9 +2505,6 @@ class OpenProjectClient:
 
     def _field_hidden(self, entity: str, field_name: str) -> bool:
         return _hidden_fields_policy.field_hidden(entity, field_name, settings=self.settings)
-
-    def _ensure_field_writable(self, entity: str, field_name: str) -> None:
-        _hidden_fields_policy.ensure_field_writable(entity, field_name, settings=self.settings)
 
     def _visible_formattable_text_with_meta(
         self,
@@ -2675,20 +2545,6 @@ class OpenProjectClient:
             for candidate in candidates
         )
 
-    def _ensure_custom_field_input_writable(self, raw_key: str) -> None:
-        normalized = self._normalize_hide_token(str(raw_key).strip())
-        if normalized and self._custom_field_hidden(raw_key, raw_key):
-            raise InvalidInputError(
-                f"OpenProject custom field '{raw_key}' is hidden by OPENPROJECT_HIDE_CUSTOM_FIELDS and cannot be written."
-            )
-
-    def _ensure_custom_field_writable(self, field_name: str, key: str) -> None:
-        if not self._custom_field_hidden(field_name, key):
-            return
-        raise InvalidInputError(
-            f"OpenProject custom field '{field_name}' is hidden by OPENPROJECT_HIDE_CUSTOM_FIELDS and cannot be written."
-        )
-
     def _apply_hidden_fields(self, entity: str, value: Any) -> Any:
         """Tag a result dataclass with the field names hidden for its entity.
 
@@ -2700,16 +2556,6 @@ class OpenProjectClient:
         are not frozen.
         """
         return _hidden_fields_policy.apply_hidden_fields(entity, value, settings=self.settings)
-
-    def _replace_and_restamp(self, entity: str, value: Any, **changes: Any) -> Any:
-        """Like ``dataclasses.replace()``, but preserves the ``_hidden_keys`` stamp.
-
-        ``dataclasses.replace()`` rebuilds the instance via the constructor,
-        which drops any ``_hidden_keys`` attribute ``_apply_hidden_fields``
-        previously stamped onto it - re-stamp so a configured hide-fields
-        entry still takes effect on the replaced instance.
-        """
-        return self._apply_hidden_fields(entity, replace(value, **changes))
 
     def _api_href(self, relative_path: str) -> str:
         return f"/{self._api_prefix.lstrip('/')}{relative_path.lstrip('/')}"
@@ -2812,25 +2658,6 @@ class OpenProjectClient:
             )
         return matches[0]
 
-    def _work_package_ref(self, ref: int | str) -> str:
-        """Return a path-safe work-package reference for a ``work_packages/{id}`` path.
-
-        Both a numeric id and a project-prefixed identifier (e.g. ``PROJ-123``,
-        exposed as ``displayId`` in OpenProject 17.5+) are accepted directly by the
-        ``GET/PATCH/DELETE /api/v3/work_packages/{id}`` endpoints: in semantic mode
-        OpenProject resolves the project-based form on the server. The reference is
-        passed through verbatim (URL-encoded) so the behaviour degrades cleanly — on
-        instances without semantic identifiers a project-prefixed reference simply
-        yields a 404 (mapped to ``NotFoundError``), while numeric ids keep working on
-        every supported version.
-
-        Kept as a stable internal facade: the pure encoding logic now
-        lives in ``app/ports/work_package_ref.py`` (importable by future
-        migrations without pulling in the full resolver), but this thin wrapper
-        stays so the ~28 existing internal call sites keep working unchanged.
-        """
-        return _work_package_ref_encode(ref)
-
     async def _resolve_work_package_id(self, ref: int | str, *, write: bool = False) -> int:
         """Resolve a work-package reference to its canonical numeric id.
 
@@ -2882,27 +2709,6 @@ class OpenProjectClient:
             raise InvalidInputError(f"OpenProject priority '{priority_ref}' was not found.")
         return matches[0]
 
-    def _validate_date_format(self, date_str: str, field_name: str) -> str:
-        """Validate ISO 8601 date format (YYYY-MM-DD)."""
-        import datetime
-
-        normalized = date_str.strip()
-        try:
-            datetime.date.fromisoformat(normalized)
-            return normalized
-        except ValueError as exc:
-            raise InvalidInputError(f"{field_name} must be in YYYY-MM-DD format: {exc}") from exc
-
-    def _validate_date_range(self, dates: list[str], field_name: str) -> list[str]:
-        """Validate date range has exactly 2 dates with start <= end."""
-        if len(dates) != 2:
-            raise InvalidInputError(f"{field_name} must contain exactly 2 dates [start, end], got {len(dates)}")
-        start = self._validate_date_format(dates[0], f"{field_name}[0]")
-        end = self._validate_date_format(dates[1], f"{field_name}[1]")
-        if start > end:
-            raise InvalidInputError(f"{field_name}: start date must be <= end date ({start} > {end})")
-        return [start, end]
-
     async def _resolve_assignee_id(self, assignee_ref: str) -> str:
         if assignee_ref.casefold() == "me":
             current_user = await self.get_current_user()
@@ -2910,10 +2716,6 @@ class OpenProjectClient:
         if assignee_ref.isdigit():
             return assignee_ref
         raise InvalidInputError("assignee must be a positive integer user id or 'me'.")
-
-
-def _json_param(value: list[dict[str, Any]]) -> str:
-    return json.dumps(value, separators=(",", ":"))
 
 
 def _delimit_user_content(text: str | None) -> str | None:
@@ -3029,20 +2831,6 @@ def _link_title(link: Any) -> str | None:
     return _trim_text(title, limit=SUBJECT_LIMIT)
 
 
-def _can_update_from_links(links: dict[str, Any]) -> bool:
-    """Shared `update`-or-`updateImmediately` link check repeated across several normalizers."""
-    return bool(links.get("update") or links.get("updateImmediately"))
-
-
-def _is_usable_positive_id(value: Any) -> bool:
-    """True for a positive int; bool is excluded even though it is technically
-    an int subclass. OpenProject's JSON API always emits ids as plain
-    integers, matching how every other id field in this file is handled
-    (e.g. ``int(payload["id"])``), so no string/numeric-string form is
-    accepted here."""
-    return isinstance(value, int) and not isinstance(value, bool) and value > 0
-
-
 def _id_from_href(href: str | None) -> int | None:
     if not href:
         return None
@@ -3050,17 +2838,6 @@ def _id_from_href(href: str | None) -> int | None:
     try:
         return int(parts[-1])
     except (ValueError, IndexError):
-        return None
-
-
-def _slug_from_href(href: str | None) -> str | None:
-    if not href:
-        return None
-    parts = href.rstrip("/").split("/")
-    try:
-        slug = parts[-1]
-        return unquote(slug) or None
-    except IndexError:
         return None
 
 
