@@ -1037,6 +1037,8 @@ class TimeEntrySummary:
     created_at: str | None
     updated_at: str | None
     url: str
+    comment_truncated: bool = False
+    comment_length: int | None = None
 
 
 @dataclass

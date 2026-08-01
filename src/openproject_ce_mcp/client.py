@@ -463,13 +463,16 @@ class OpenProjectClient:
             )
 
         available_parent_projects = [ref for ref in parent_candidates if _parent_ref_allowed(ref)]
+        # Non-writable/internal schema entries (id, timestamps, lockVersion, ...)
+        # aren't useful to an agent discovering what it can set here.
+        writable_fields = [field for field in fields if field.writable]
         return self._apply_hidden_fields(
             "project_admin_context",
             ProjectAdminContext(
                 project=project,
                 available_statuses=available_statuses,
                 available_parent_projects=available_parent_projects,
-                fields=fields,
+                fields=writable_fields,
             ),
         )
 
@@ -2204,6 +2207,14 @@ class OpenProjectClient:
                 available_categories = category_field.allowed_values
             if project_phase_field:
                 available_project_phases = project_phase_field.allowed_values
+            # These four fields' allowed_values were just hoisted into the
+            # available_* lists above -- clear them here so the same option
+            # enumeration isn't serialized twice in one response.
+            hoisted_keys = {"status", "priority", "category", "projectPhase"}
+            fields = [
+                replace(field, allowed_values=[]) if field.key in hoisted_keys and field.allowed_values else field
+                for field in fields
+            ]
 
         return ProjectWorkPackageContext(
             project_id=project_id,
@@ -6862,6 +6873,9 @@ class OpenProjectClient:
         links = payload.get("_links", {})
         project_link = links.get("project")
         entity_link = links.get("entity")
+        comment, comment_truncated, comment_length = self._visible_formattable_text_with_meta(
+            payload.get("comment"), "time_entry", "comment"
+        )
         return self._apply_hidden_fields(
             "time_entry",
             TimeEntrySummary(
@@ -6879,7 +6893,9 @@ class OpenProjectClient:
                 start_time=_trim_text(payload.get("startTime"), limit=SUBJECT_LIMIT),
                 end_time=_trim_text(payload.get("endTime"), limit=SUBJECT_LIMIT),
                 ongoing=bool(payload.get("ongoing")),
-                comment=self._visible_formattable_text(payload.get("comment"), "time_entry", "comment"),
+                comment=comment,
+                comment_truncated=comment_truncated,
+                comment_length=comment_length,
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
                 url=self._web_url(f"time_entries/{payload['id']}"),
