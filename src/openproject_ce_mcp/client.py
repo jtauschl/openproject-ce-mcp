@@ -28,6 +28,7 @@ from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_notification_api import HttpxNotificationApi
 from .app.adapters.httpx_principal_api import HttpxPrincipalApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
+from .app.adapters.httpx_project_api import normalize_project as _normalize_project
 from .app.adapters.httpx_query_metadata_api import HttpxQueryMetadataApi
 from .app.adapters.httpx_relation_api import HttpxRelationApi
 from .app.adapters.httpx_reminder_api import HttpxReminderApi
@@ -219,7 +220,6 @@ from .models import (
     ProjectPhase,
     ProjectPhaseDefinition,
     ProjectPhaseDefinitionListResult,
-    ProjectSummary,
     ProjectWorkPackageContext,
     ProjectWriteResult,
     QueryColumnSummary,
@@ -998,7 +998,11 @@ class OpenProjectClient:
         self._ensure_read_enabled("principal")
         current_user = await self.get_current_user()
         project_payload = await self._resolve_project_ref(project_ref, write=False)
-        project_summary = self.normalize_project(project_payload)
+        project_summary = _hidden_fields_policy.apply_hidden_fields(
+            "project",
+            _normalize_project(project_payload, base_url=self.settings.base_url, text_limit=self.settings.text_limit),
+            settings=self.settings,
+        )
         memberships = await self.list_project_memberships(project_ref)
         my_membership = next((item for item in memberships.results if item.principal_id == current_user.id), None)
         project_links = sorted(project_payload.get("_links", {}).keys())
@@ -2279,47 +2283,6 @@ class OpenProjectClient:
 
     def _web_url(self, relative_path: str) -> str:
         return urljoin(f"{self.settings.base_url.rstrip('/')}/", relative_path.lstrip("/"))
-
-    def normalize_project(self, payload: dict[str, Any]) -> ProjectSummary:
-        links = payload.get("_links", {})
-        identifier = payload.get("identifier")
-        project_path = f"projects/{identifier or payload['id']}"
-        # List-row context: capped at settings.text_limit (default 500), same
-        # convention as WorkPackageSummary.description. Single-item
-        # reads go through normalize_project_detail, which uses a larger/opt-in cap.
-        description, description_truncated, description_length = self._visible_formattable_text_with_meta(
-            payload.get("description"), "project", "description", limit=self.settings.text_limit
-        )
-        status_explanation, status_explanation_truncated, status_explanation_length = (
-            self._visible_formattable_text_with_meta(
-                payload.get("statusExplanation"), "project", "status_explanation", limit=self.settings.text_limit
-            )
-        )
-        return self._apply_hidden_fields(
-            "project",
-            ProjectSummary(
-                id=int(payload["id"]),
-                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Project {payload['id']}",
-                identifier=identifier,
-                active=payload.get("active"),
-                description=description,
-                description_truncated=description_truncated,
-                description_length=description_length,
-                url=self._web_url(project_path),
-                public=payload.get("public"),
-                status=_link_title(links.get("status")),
-                status_explanation=status_explanation,
-                status_explanation_truncated=status_explanation_truncated,
-                status_explanation_length=status_explanation_length,
-                parent_id=_id_from_href(links.get("parent", {}).get("href")),
-                parent_name=_link_title(links.get("parent")),
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-                can_update="update" in links or "updateImmediately" in links,
-                can_delete="delete" in links,
-                favorited=payload.get("favorited"),
-            ),
-        )
 
     def _work_package_dates(self, payload: dict[str, Any]) -> tuple[str | None, str | None]:
         """(start_date, due_date) for a work package, accounting for milestones.

@@ -8,7 +8,11 @@ import pytest
 from _client_test_helpers import _base_settings, _wp_detail_payload, _write_enabled_settings, make_settings
 
 from openproject_ce_mcp.app.adapters.httpx_activity_api import normalize_activity
-from openproject_ce_mcp.app.adapters.httpx_project_api import PROJECT_ANCESTORS_LIMIT, normalize_project_detail
+from openproject_ce_mcp.app.adapters.httpx_project_api import (
+    PROJECT_ANCESTORS_LIMIT,
+    normalize_project,
+    normalize_project_detail,
+)
 from openproject_ce_mcp.app.adapters.httpx_user_api import normalize_user_detail
 from openproject_ce_mcp.app.adapters.httpx_version_api import normalize_version
 from openproject_ce_mcp.app.adapters.httpx_work_package_api import normalize_work_package_summary
@@ -194,9 +198,9 @@ def test_normalize_activity_details_are_delimited_and_drop_duplicate_html() -> N
 
 
 def test_normalize_project_description_and_status_explanation_are_delimited() -> None:
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    settings = make_settings()
 
-    project = client.normalize_project(
+    project = normalize_project(
         {
             "id": 1,
             "name": "Demo",
@@ -204,7 +208,9 @@ def test_normalize_project_description_and_status_explanation_are_delimited() ->
             "description": {"raw": "hello"},
             "statusExplanation": {"raw": "on track"},
             "_links": {},
-        }
+        },
+        base_url=settings.base_url,
+        text_limit=settings.text_limit,
     )
 
     assert project.description == "<user-content>hello</user-content>"
@@ -214,11 +220,13 @@ def test_normalize_project_description_and_status_explanation_are_delimited() ->
 def test_normalize_project_description_is_capped_at_list_context_default() -> None:
     # List rows (normalize_project) cap at settings.text_limit
     # (default 500), like WorkPackageSummary, with truncation metadata.
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    settings = make_settings()
     long_description = "d" * 900
 
-    project = client.normalize_project(
-        {"id": 1, "name": "Demo", "identifier": "demo", "description": {"raw": long_description}, "_links": {}}
+    project = normalize_project(
+        {"id": 1, "name": "Demo", "identifier": "demo", "description": {"raw": long_description}, "_links": {}},
+        base_url=settings.base_url,
+        text_limit=settings.text_limit,
     )
 
     assert project.description is not None

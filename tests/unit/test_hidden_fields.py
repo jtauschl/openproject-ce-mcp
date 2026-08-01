@@ -9,6 +9,7 @@ from _client_test_helpers import _base_settings
 from openproject_ce_mcp.app.adapters.httpx_activity_api import normalize_activity
 from openproject_ce_mcp.app.adapters.httpx_membership_api import normalize_membership
 from openproject_ce_mcp.app.adapters.httpx_principal_api import normalize_principal
+from openproject_ce_mcp.app.adapters.httpx_project_api import normalize_project
 from openproject_ce_mcp.app.adapters.httpx_sprint_api import normalize_sprint
 from openproject_ce_mcp.app.adapters.httpx_status_priority_type_api import normalize_status, normalize_type
 from openproject_ce_mcp.app.adapters.httpx_user_api import normalize_user
@@ -44,14 +45,19 @@ async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
         settings, transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request))
     )
 
-    visible_project = client.normalize_project(
-        {
-            "id": 1,
-            "name": "Demo",
-            "identifier": "demo",
-            "description": {"raw": "secret"},
-            "_links": {},
-        }
+    visible_project = hidden_fields.apply_hidden_fields(
+        "project",
+        normalize_project(
+            {
+                "id": 1,
+                "name": "Demo",
+                "identifier": "demo",
+                "description": {"raw": "secret"},
+                "_links": {},
+            },
+            base_url=settings.base_url,
+        ),
+        settings=settings,
     )
     hidden_description_wp = client.normalize_work_package_detail(
         {
@@ -83,7 +89,15 @@ async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
         settings=settings,
     )
 
-    assert visible_project.description is None
+    # normalize_project (the adapter's pure HAL->model function) is not
+    # hidden-field-aware by design either (same ADR 0001 masking split as
+    # normalize_activity above) -- the value is preserved on the dataclass,
+    # hidden_fields.apply_hidden_fields only tags it for the serialization
+    # seam (tools._to_payload) to drop, mirroring the layered contract this
+    # migration's Commit 7 introduced (OPM-371).
+    assert "description" in visible_project._hidden_keys
+    assert visible_project.description == "<user-content>secret</user-content>"  # preserved on the dataclass
+    assert "description" not in _to_payload(visible_project)
     assert hidden_description_wp.description is None
     assert "comment" in activity._hidden_keys
 
@@ -736,19 +750,25 @@ async def test_hidden_project_favorited_field_is_tagged_and_dropped_from_payload
     # favorited is exposed as a per-token read field on ProjectSummary. Not a
     # write-behavior change — add_project_favorite/remove_project_favorite already
     # own the write side. Respects existing OPENPROJECT_HIDE_PROJECT_FIELDS wiring.
+    settings = _base_settings(hidden_fields={"project": ("favorited",)})
     client = OpenProjectClient(
-        _base_settings(hidden_fields={"project": ("favorited",)}),
+        settings,
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
     )
 
-    project = client.normalize_project(
-        {
-            "id": 1,
-            "name": "Demo",
-            "identifier": "demo",
-            "favorited": True,
-            "_links": {},
-        }
+    project = hidden_fields.apply_hidden_fields(
+        "project",
+        normalize_project(
+            {
+                "id": 1,
+                "name": "Demo",
+                "identifier": "demo",
+                "favorited": True,
+                "_links": {},
+            },
+            base_url=settings.base_url,
+        ),
+        settings=settings,
     )
 
     assert project._hidden_keys == frozenset({"favorited"})
