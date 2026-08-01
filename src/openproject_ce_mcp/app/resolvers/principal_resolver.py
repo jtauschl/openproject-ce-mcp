@@ -1,0 +1,54 @@
+"""Principal-reference resolver (ADR 0001).
+
+Resolves a principal reference ("me", numeric id, or exact case-insensitive
+name) to a concrete numeric-id string. Verbatim behavioral port of the
+pre-existing `_resolve_principal_id`. Depends on `PrincipalApi` (never
+`PrincipalService`) and the pre-existing `CurrentUserLookup` seam -- same
+"depend on Ports, not sibling Services" shape as `VersionResolver`.
+
+Deliberately does NOT call `access.ensure_read_enabled` before searching via
+`PrincipalApi` -- existing quirk, preserved exactly. This resolver is used
+internally by write paths (membership/work-package writes resolving a
+name-based principal reference) that have already been authorized through
+their own operation's scope check; it never surfaces the full principal list
+to the agent, only a single resolved id, so gating it a second time behind
+`OPENPROJECT_ENABLE_ADMIN_READ` would needlessly break every write path that
+accepts a principal name instead of a numeric id.
+"""
+
+from __future__ import annotations
+
+from ...config import Settings
+from ..errors import InvalidInputError
+from ..ports.current_user import CurrentUserLookup
+from ..ports.principal_api import PrincipalApi
+
+
+class PrincipalResolver:
+    def __init__(self, *, api: PrincipalApi, current_user: CurrentUserLookup, settings: Settings) -> None:
+        self._api = api
+        self._current_user = current_user
+        self._settings = settings
+
+    async def resolve_id(self, principal_ref: str) -> str:
+        if principal_ref.casefold() == "me":
+            current_user = await self._current_user()
+            return str(current_user.id)
+        if principal_ref.isdigit():
+            return principal_ref
+
+        records, _total = await self._api.list_principals(
+            search=principal_ref, offset=1, page_size=self._settings.max_results
+        )
+        matches = [
+            str(record.summary.id)
+            for record in records
+            if (record.summary.name or "").casefold() == principal_ref.casefold()
+        ]
+        if not matches:
+            raise InvalidInputError(f"OpenProject principal '{principal_ref}' was not found.")
+        if len(matches) > 1:
+            raise InvalidInputError(
+                f"OpenProject principal '{principal_ref}' is ambiguous. Pass a numeric user or group id."
+            )
+        return matches[0]

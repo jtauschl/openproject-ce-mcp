@@ -8,6 +8,7 @@ from _client_test_helpers import _base_settings
 
 from openproject_ce_mcp.app.adapters.httpx_activity_api import normalize_activity
 from openproject_ce_mcp.app.adapters.httpx_membership_api import normalize_membership
+from openproject_ce_mcp.app.adapters.httpx_principal_api import normalize_principal
 from openproject_ce_mcp.app.adapters.httpx_sprint_api import normalize_sprint
 from openproject_ce_mcp.app.adapters.httpx_status_priority_type_api import normalize_status, normalize_type
 from openproject_ce_mcp.app.adapters.httpx_user_api import normalize_user
@@ -106,8 +107,18 @@ async def test_hidden_fields_support_wildcards_for_principal_reads() -> None:
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
     )
 
-    principal = client.normalize_principal(
-        {"id": 5, "_type": "User", "name": "Alice", "login": "alice", "email": "alice@example.com"}
+    # normalize_principal (the adapter's pure HAL->model function) is not
+    # hidden-field-aware by design (ADR 0001) -- masking is applied via
+    # hidden_fields.apply_hidden_fields, the same call PrincipalService.
+    # list_principals makes, mirroring the pattern already used above for
+    # normalize_activity/normalize_work_package_detail.
+    principal = hidden_fields.apply_hidden_fields(
+        "principal",
+        normalize_principal(
+            {"id": 5, "_type": "User", "name": "Alice", "login": "alice", "email": "alice@example.com"},
+            base_url="https://op.example.com",
+        ),
+        settings=client.settings,
     )
 
     # Hidden fields are tagged (not nulled). The wildcard patterns match

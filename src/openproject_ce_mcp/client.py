@@ -28,6 +28,7 @@ from .app.adapters.httpx_job_status_api import HttpxJobStatusApi
 from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_notification_api import HttpxNotificationApi
+from .app.adapters.httpx_principal_api import HttpxPrincipalApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
 from .app.adapters.httpx_query_metadata_api import HttpxQueryMetadataApi
 from .app.adapters.httpx_relation_api import HttpxRelationApi
@@ -86,6 +87,7 @@ from .app.ports.job_status_api import JobStatusApi
 from .app.ports.membership_api import MembershipApi
 from .app.ports.news_api import NewsApi
 from .app.ports.notification_api import NotificationApi
+from .app.ports.principal_api import PrincipalApi
 from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
 from .app.ports.query_metadata_api import QueryMetadataApi
@@ -105,6 +107,7 @@ from .app.ports.work_package_api import WorkPackageApi
 from .app.ports.work_package_lookup_api import WorkPackageLookupApi
 from .app.ports.work_package_ref import work_package_ref as _work_package_ref_encode
 from .app.ports.work_package_resolution import WorkPackageAllowedContext
+from .app.resolvers.principal_resolver import PrincipalResolver
 from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.version_resolver import VersionResolver
 from .app.resolvers.work_package_resolver import WorkPackageResolver
@@ -125,6 +128,7 @@ from .app.services.job_status_service import JobStatusService
 from .app.services.membership_service import MembershipService
 from .app.services.news_service import NewsService
 from .app.services.notification_service import NotificationService
+from .app.services.principal_service import PrincipalService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
 from .app.services.query_metadata_service import QueryMetadataService
@@ -206,7 +210,6 @@ from .models import (
     NotificationMarkResult,
     OptionValue,
     PrincipalListResult,
-    PrincipalSummary,
     PriorityListResult,
     PrioritySummary,
     ProjectAccessSummary,
@@ -385,6 +388,12 @@ class OpenProjectClient:
             HttpxTransport(self._http), base_url=settings.base_url
         )
         self._current_user_service = CurrentUserService(api=self._current_user_api, settings=settings)
+
+        self._principal_api: PrincipalApi = HttpxPrincipalApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._principal_service = PrincipalService(api=self._principal_api, settings=settings)
+        self._principal_resolver = PrincipalResolver(
+            api=self._principal_api, current_user=self.get_current_user, settings=settings
+        )
 
         self._user_api: UserApi = HttpxUserApi(HttpxTransport(self._http), base_url=settings.base_url)
         self._user_service = UserService(api=self._user_api, settings=settings)
@@ -865,48 +874,7 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
     ) -> PrincipalListResult:
-        self._ensure_read_enabled("admin")
-        return await self._list_principals_unchecked(search=search, offset=offset, limit=limit)
-
-    async def _list_principals_unchecked(
-        self,
-        *,
-        search: str | None = None,
-        offset: int = 1,
-        limit: int | None = None,
-    ) -> PrincipalListResult:
-        # No _ensure_read_enabled("admin") gate here by design: this is also used
-        # internally by _resolve_principal_id to turn a name into an id for
-        # operations the caller has already been authorized for through that
-        # operation's own scope check (e.g. membership/work-package write) — it
-        # never returns instance-wide PII to the agent, only a single resolved
-        # id. Only the public list_principals tool, which does surface the full
-        # PrincipalSummary list (name/login/email/status) to the agent, is
-        # gated behind OPENPROJECT_ENABLE_ADMIN_READ.
-        effective_limit = self._resolve_limit(limit)
-        filters: list[dict[str, Any]] = []
-        if search:
-            filters.append({"name": {"operator": "~", "values": [search]}})
-        payload = await self._get(
-            "principals",
-            params={
-                "offset": str(offset),
-                "pageSize": str(effective_limit),
-                "filters": _json_param(filters),
-            },
-        )
-        results = [self.normalize_principal(item) for item in payload.get("_embedded", {}).get("elements", [])]
-        total = int(payload.get("total", len(results)))
-        next_offset, truncated = _paginate_server(offset=offset, limit=effective_limit, total=total)
-        return PrincipalListResult(
-            offset=offset,
-            limit=effective_limit,
-            total=total,
-            count=len(results),
-            next_offset=next_offset,
-            truncated=truncated,
-            results=results,
-        )
+        return await self._principal_service.list_principals(search=search, offset=offset, limit=limit)
 
     async def list_users(
         self,
@@ -2422,23 +2390,6 @@ class OpenProjectClient:
             ),
         )
 
-    def normalize_principal(self, payload: dict[str, Any]) -> PrincipalSummary:
-        principal_type = _trim_text(payload.get("_type"), limit=SUBJECT_LIMIT)
-        principal_id = int(payload["id"])
-        path_prefix = "groups" if principal_type == "Group" else "users"
-        return self._apply_hidden_fields(
-            "principal",
-            PrincipalSummary(
-                id=principal_id,
-                type=principal_type,
-                name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Principal {principal_id}",
-                login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
-                email=_trim_text(payload.get("email"), limit=SUBJECT_LIMIT),
-                status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
-                url=self._web_url(f"{path_prefix}/{principal_id}"),
-            ),
-        )
-
     def _work_package_dates(self, payload: dict[str, Any]) -> tuple[str | None, str | None]:
         """(start_date, due_date) for a work package, accounting for milestones.
 
@@ -2767,24 +2718,7 @@ class OpenProjectClient:
         return await self._project_resolver.resolve_id(project_ref, write=write)
 
     async def _resolve_principal_id(self, principal_ref: str) -> str:
-        if principal_ref.casefold() == "me":
-            current_user = await self.get_current_user()
-            return str(current_user.id)
-        if principal_ref.isdigit():
-            return principal_ref
-        principals = await self._list_principals_unchecked(
-            search=principal_ref, offset=1, limit=self.settings.max_results
-        )
-        matches = [
-            str(item.id) for item in principals.results if (item.name or "").casefold() == principal_ref.casefold()
-        ]
-        if not matches:
-            raise InvalidInputError(f"OpenProject principal '{principal_ref}' was not found.")
-        if len(matches) > 1:
-            raise InvalidInputError(
-                f"OpenProject principal '{principal_ref}' is ambiguous. Pass a numeric user or group id."
-            )
-        return matches[0]
+        return await self._principal_resolver.resolve_id(principal_ref)
 
     async def _resolve_type_id(
         self, type_ref: str, *, project: str | None, context: ProjectResolutionContext | None = None

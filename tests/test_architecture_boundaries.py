@@ -600,6 +600,24 @@ def test_current_user_service_binds_the_api_param_to_current_user_api_specifical
     )
 
 
+def test_principal_service_binds_the_api_param_to_principal_api_specifically() -> None:
+    """Non-generalized regression test for the Principals domain's exact
+    guarantee, sibling to the checks above: the api param is PrincipalApi
+    exactly, not just "some Protocol". No dedicated Resolver dependency on
+    this Service -- the internal name/id lookup lives on PrincipalResolver
+    instead, tested separately, since PrincipalService itself deliberately
+    has only one public, gated method."""
+    from openproject_ce_mcp.app.adapters.httpx_principal_api import HttpxPrincipalApi
+    from openproject_ce_mcp.app.ports.principal_api import PrincipalApi
+    from openproject_ce_mcp.app.services.principal_service import PrincipalService
+
+    hints = typing.get_type_hints(PrincipalService.__init__)
+    assert hints["api"] is PrincipalApi, "PrincipalService.__init__'s api param must be typed PrincipalApi"
+    assert hints["api"] is not HttpxPrincipalApi, (
+        "PrincipalService.__init__'s api param must not be the concrete adapter"
+    )
+
+
 def test_user_preferences_service_binds_the_api_param_to_user_preferences_api_specifically() -> None:
     """Non-generalized regression test for the User Preferences domain's
     exact guarantee, sibling to the checks above: the api param is
