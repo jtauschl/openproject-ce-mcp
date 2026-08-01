@@ -15,7 +15,10 @@ from openproject_ce_mcp.app.adapters.httpx_project_api import (
 )
 from openproject_ce_mcp.app.adapters.httpx_user_api import normalize_user_detail
 from openproject_ce_mcp.app.adapters.httpx_version_api import normalize_version
-from openproject_ce_mcp.app.adapters.httpx_work_package_api import normalize_work_package_summary
+from openproject_ce_mcp.app.adapters.httpx_work_package_api import (
+    normalize_work_package_detail,
+    normalize_work_package_summary,
+)
 from openproject_ce_mcp.app.origin import origin_from_url as _origin_from_url
 from openproject_ce_mcp.app.services.work_package_service import _narrow_cleared
 from openproject_ce_mcp.client import (
@@ -359,12 +362,10 @@ def test_work_package_summary_description_delimited():
     assert summary.description == "<user-content>User description here</user-content>"
 
 
-@pytest.mark.asyncio
-async def test_work_package_detail_description_delimited():
+def test_work_package_detail_description_delimited():
     settings = _base_settings()
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
 
-    detail = client.normalize_work_package_detail(
+    detail = normalize_work_package_detail(
         {
             "id": 456,
             "subject": "Detailed WP",
@@ -374,12 +375,12 @@ async def test_work_package_detail_description_delimited():
                 "status": {"href": "/api/v3/statuses/1", "title": "New"},
                 "project": {"href": "/api/v3/projects/1", "title": "Demo"},
             },
-        }
+        },
+        base_url=settings.base_url,
+        origin=_origin_from_url(settings.base_url),
     )
 
     assert detail.description == "<user-content>Detailed user content</user-content>"
-
-    await client.aclose()
 
 
 def test_activity_comment_delimited():
@@ -931,7 +932,7 @@ def test_normalize_work_package_summary_uses_date_field_for_milestones() -> None
 
 
 def test_normalize_work_package_detail_uses_date_field_for_milestones() -> None:
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    settings = make_settings()
     payload = {
         "id": 1,
         "subject": "Launch",
@@ -939,7 +940,9 @@ def test_normalize_work_package_detail_uses_date_field_for_milestones() -> None:
         "_links": {"type": {"title": "Milestone"}},
     }
 
-    detail = client.normalize_work_package_detail(payload)
+    detail = normalize_work_package_detail(
+        payload, base_url=settings.base_url, origin=_origin_from_url(settings.base_url)
+    )
     assert detail.start_date == "2026-08-17"
     assert detail.due_date == "2026-08-17"
 

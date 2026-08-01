@@ -14,7 +14,10 @@ from openproject_ce_mcp.app.adapters.httpx_sprint_api import normalize_sprint
 from openproject_ce_mcp.app.adapters.httpx_status_priority_type_api import normalize_status, normalize_type
 from openproject_ce_mcp.app.adapters.httpx_user_api import normalize_user
 from openproject_ce_mcp.app.adapters.httpx_version_api import normalize_version, normalize_version_detail
-from openproject_ce_mcp.app.adapters.httpx_work_package_api import normalize_work_package_summary
+from openproject_ce_mcp.app.adapters.httpx_work_package_api import (
+    normalize_work_package_detail,
+    normalize_work_package_summary,
+)
 from openproject_ce_mcp.app.origin import origin_from_url as _origin_from_url
 from openproject_ce_mcp.app.policies import hidden_fields
 from openproject_ce_mcp.client import (
@@ -59,17 +62,23 @@ async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
         ),
         settings=settings,
     )
-    hidden_description_wp = client.normalize_work_package_detail(
-        {
-            "id": 42,
-            "subject": "Test",
-            "description": {"raw": "hidden"},
-            "_links": {
-                "project": {"href": "/api/v3/projects/1", "title": "Demo"},
-                "activities": {"href": "/api/v3/work_packages/42/activities"},
-                "relations": {"href": "/api/v3/work_packages/42/relations"},
+    hidden_description_wp = hidden_fields.apply_hidden_fields(
+        "work_package",
+        normalize_work_package_detail(
+            {
+                "id": 42,
+                "subject": "Test",
+                "description": {"raw": "hidden"},
+                "_links": {
+                    "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+                    "activities": {"href": "/api/v3/work_packages/42/activities"},
+                    "relations": {"href": "/api/v3/work_packages/42/relations"},
+                },
             },
-        }
+            base_url=settings.base_url,
+            origin=_origin_from_url(settings.base_url),
+        ),
+        settings=settings,
     )
     # normalize_activity (the adapter's pure HAL->model function) is not
     # hidden-field-aware by design (ADR 0001) -- masking is applied via
@@ -98,7 +107,9 @@ async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
     assert "description" in visible_project._hidden_keys
     assert visible_project.description == "<user-content>secret</user-content>"  # preserved on the dataclass
     assert "description" not in _to_payload(visible_project)
-    assert hidden_description_wp.description is None
+    assert "description" in hidden_description_wp._hidden_keys
+    assert hidden_description_wp.description == "<user-content>hidden</user-content>"  # preserved on the dataclass
+    assert "description" not in _to_payload(hidden_description_wp)
     assert "comment" in activity._hidden_keys
 
     await client.aclose()
@@ -432,8 +443,9 @@ async def test_hidden_work_package_scheduling_fields_are_tagged_and_dropped_from
     # Scheduling/derived fields (scheduleManually, ignoreNonWorkingDays,
     # derivedStartDate, derivedDueDate, percentageDone, derivedPercentageDone, readonly)
     # respect OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS like every other work_package field.
+    settings = _base_settings(hidden_fields={"work_package": ("schedule_manually",)})
     client = OpenProjectClient(
-        _base_settings(hidden_fields={"work_package": ("schedule_manually",)}),
+        settings,
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
     )
 
@@ -469,7 +481,13 @@ async def test_hidden_work_package_scheduling_fields_are_tagged_and_dropped_from
     assert "schedule_manually" not in serialized
     assert serialized["derived_due_date"] == "2026-07-15"
 
-    detail = client.normalize_work_package_detail(payload, text_limit=None)
+    detail = hidden_fields.apply_hidden_fields(
+        "work_package",
+        normalize_work_package_detail(
+            payload, base_url=settings.base_url, origin=_origin_from_url(settings.base_url), text_limit=None
+        ),
+        settings=settings,
+    )
     assert detail._hidden_keys == frozenset({"schedule_manually"})
     assert detail.derived_percentage_done == 55
     assert detail.readonly is False
