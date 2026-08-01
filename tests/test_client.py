@@ -5050,6 +5050,63 @@ async def test_get_work_package_filters_children_and_ancestors_by_read_allowlist
 
 
 @pytest.mark.asyncio
+async def test_get_work_package_hidden_fields_survive_hierarchy_allowlist_filtering() -> None:
+    """Regression guard: _filter_hierarchy_allowlist must preserve the
+    _hidden_keys stamp normalize_work_package_detail already applied.
+
+    _filter_hierarchy_allowlist only actually rebuilds `detail` via a
+    replace-style call when OPENPROJECT_READ_PROJECTS is restricted (its own
+    early return skips the rebuild entirely when the scope is wide open) --
+    so this test deliberately uses a restricted read_projects scope, matching
+    the exact condition under which the bug fired: a bare dataclasses.replace()
+    rebuilds the WorkPackageDetail via its constructor, which carries only the
+    declared dataclass fields and silently drops the dynamic, non-field
+    _hidden_keys attribute _apply_hidden_fields had already stamped onto it
+    inside normalize_work_package_detail -- returning a fully unmasked detail
+    regardless of whether the work package even has children/ancestors.
+    """
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/1" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "subject": "Anchor",
+                    "description": {"raw": "hidden"},
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "allowed"}},
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("allowed",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        hide_work_package_fields=("description",),
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    detail = await client.get_work_package(1)
+
+    assert hasattr(detail, "_hidden_keys"), (
+        "_hidden_keys was dropped by _filter_hierarchy_allowlist's rebuild -- "
+        "the hidden-field masking stamp did not survive under a restricted read scope"
+    )
+    assert "description" in detail._hidden_keys
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_get_work_package_ancestors_truncated_flag_cleared_when_only_out_of_scope_entries_dropped() -> None:
     """Regression: normalize_work_package_detail computes ancestors_truncated
     from the RAW, unfiltered element count (server reported more ancestors

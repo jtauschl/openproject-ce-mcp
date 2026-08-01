@@ -2595,7 +2595,18 @@ class OpenProjectClient:
         ancestors = await keep(detail.ancestors)
         children_count = len(children) if children else 0
         ancestors_count = len(ancestors) if ancestors else 0
-        return replace(
+        # _replace_and_restamp, not a bare replace(): normalize_work_package_detail
+        # (the caller, e.g. get_work_package) already stamped _hidden_keys via
+        # _apply_hidden_fields before handing `detail` to this filter. A bare
+        # dataclasses.replace() rebuilds the instance via its constructor,
+        # which carries only the declared dataclass fields -- silently
+        # dropping that dynamic stamp. Under a restricted (non-"*")
+        # read_projects scope, this branch always runs (see the early return
+        # above), so every get_work_package/get_work_packages call would
+        # otherwise return a fully unmasked detail regardless of whether the
+        # work package even has children/ancestors.
+        return self._replace_and_restamp(
+            "work_package",
             detail,
             children=children,
             ancestors=ancestors,
