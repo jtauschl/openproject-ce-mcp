@@ -637,7 +637,7 @@ async def test_resolve_sprint_id_by_name_found_on_real_second_server_page() -> N
     settings = _base_settings(default_page_size=2, max_page_size=2, max_results=10)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    resolved = await client._resolve_sprint_id("Sprint 12", project="demo")
+    resolved = await client._sprint_resolver.resolve_id("Sprint 12", project="demo")
 
     assert resolved == "12"
     await client.aclose()

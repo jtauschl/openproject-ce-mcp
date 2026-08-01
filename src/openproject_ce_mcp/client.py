@@ -53,8 +53,8 @@ from .app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupAp
 # others) and must keep working.
 from .app.errors import (
     AuthenticationError,  # noqa: F401
-    InvalidInputError,
-    NotFoundError,
+    InvalidInputError,  # noqa: F401
+    NotFoundError,  # noqa: F401
     OpenProjectError,
     OpenProjectServerError,
     PermissionDeniedError,  # noqa: F401
@@ -63,11 +63,12 @@ from .app.errors import (
 from .app.pagination import (
     paginate_client as _paginate_client,  # noqa: F401 -- re-exported, test_versions_and_sprints.py imports it directly
 )
-from .app.pagination import paginate_server as _paginate_server
+from .app.pagination import (
+    paginate_server as _paginate_server,  # noqa: F401 -- re-exported, test_versions_and_sprints.py imports it directly
+)
 from .app.policies import access as _access_policy
 from .app.policies import hidden_fields as _hidden_fields_policy
 from .app.policies import scope as _scope_policy
-from .app.policies import sprint_policy as _sprint_policy
 from .app.ports.action_capability_api import ActionCapabilityApi
 from .app.ports.activity_api import ActivityApi
 from .app.ports.attachment_api import AttachmentApi
@@ -106,6 +107,7 @@ from .app.ports.work_package_lookup_api import WorkPackageLookupApi
 from .app.resolvers.assignee_resolver import AssigneeResolver
 from .app.resolvers.principal_resolver import PrincipalResolver
 from .app.resolvers.project_resolver import ProjectResolver
+from .app.resolvers.sprint_resolver import SprintResolver
 from .app.resolvers.status_priority_type_resolver import StatusPriorityTypeResolver
 from .app.resolvers.type_resolver import TypeResolver
 from .app.resolvers.version_resolver import VersionResolver
@@ -456,6 +458,12 @@ class OpenProjectClient:
             project_id_to_identifier=self._project_id_to_identifier,
             resolve_project_ref=self._get_project_payload,
         )
+        self._sprint_resolver = SprintResolver(
+            api=self._sprint_api,
+            resolve_project_ref=self._get_project_payload,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+        )
 
         self._grid_api: GridApi = HttpxGridApi(HttpxTransport(self._http), api_prefix=self._api_prefix)
         self._grid_service = GridService(
@@ -561,7 +569,7 @@ class OpenProjectClient:
             resolve_priority_id=self._status_priority_type_resolver.resolve_priority_id,
             resolve_principal_id=self._resolve_principal_id,
             resolve_assignee_id=self._assignee_resolver.resolve_id,
-            resolve_sprint_id=self._resolve_sprint_id,
+            resolve_sprint_id=self._sprint_resolver.resolve_id,
             resolve_work_package_id=self._work_package_resolver.resolve_id,
             status_api=self._status_priority_type_api,
             activity_api=self._activity_api,
@@ -2560,74 +2568,6 @@ class OpenProjectClient:
         self, version_ref: str, *, project: str | None = None, context: ProjectResolutionContext | None = None
     ) -> str:
         return await self._version_resolver.resolve_id(version_ref, project=project, context=context)
-
-    async def _resolve_sprint_id(
-        self, sprint_ref: str, *, project: str, context: ProjectResolutionContext | None = None
-    ) -> str:
-        if sprint_ref.isdigit():
-            try:
-                record = await self._sprint_api.get(int(sprint_ref))
-            except NotFoundError as exc:
-                raise NotFoundError(
-                    "OpenProject sprint not found, or the Backlogs module / sprint API is unavailable."
-                ) from exc
-            _sprint_policy.ensure_sprint_workspace_allowed(
-                defining_workspace_payload=record.defining_workspace_payload,
-                defining_workspace_link=record.defining_workspace_link,
-                settings=self.settings,
-                project_id_to_identifier=self._project_id_to_identifier,
-            )
-            return sprint_ref
-
-        # Page-walk real server pages via list_for_project directly, trusting
-        # its reported `total` (mirrors VersionResolver.resolve_id's genuine
-        # server-paginated project path).
-        self._ensure_read_enabled("project")
-        project_payload = await self._get_project_payload(project, context=context)
-        project_id = int(project_payload["id"])
-        page_size = self.settings.max_page_size
-        matches: list[str] = []
-        seen_ids: set[int] = set()
-        offset = 1
-        is_first_page = True
-        while True:
-            try:
-                records, total = await self._sprint_api.list_for_project(project_id, offset=offset, page_size=page_size)
-            except NotFoundError as exc:
-                raise NotFoundError(
-                    "OpenProject project sprints require the Backlogs module and OpenProject 17.3 or newer."
-                ) from exc
-            # Some project-scoped sub-collection endpoints (verified live: a
-            # project's versions endpoint) silently ignore offset/page size
-            # and always return every element -- without this check,
-            # `next_offset` never becomes None and this loops forever,
-            # re-fetching the same full page.
-            page_ids = {record.summary.id for record in records}
-            if not is_first_page and page_ids and page_ids <= seen_ids:
-                break
-            is_first_page = False
-            seen_ids.update(page_ids)
-            for record in records:
-                if not _sprint_policy.sprint_payload_allowed(
-                    defining_workspace_payload=record.defining_workspace_payload,
-                    defining_workspace_link=record.defining_workspace_link,
-                    settings=self.settings,
-                    project_id_to_identifier=self._project_id_to_identifier,
-                ):
-                    continue
-                if (record.summary.name or "").casefold() == sprint_ref.casefold():
-                    matches.append(str(record.summary.id))
-            next_offset, _truncated = _paginate_server(offset=offset, limit=page_size, total=total)
-            if next_offset is None:
-                break
-            offset = next_offset
-        if not matches:
-            raise InvalidInputError(f"OpenProject sprint '{sprint_ref}' was not found in project '{project}'.")
-        if len(matches) > 1:
-            raise InvalidInputError(
-                f"OpenProject sprint '{sprint_ref}' is ambiguous without a more specific filter. Pass a numeric sprint id."
-            )
-        return matches[0]
 
 
 def _delimit_user_content(text: str | None) -> str | None:

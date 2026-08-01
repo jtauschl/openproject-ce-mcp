@@ -667,6 +667,19 @@ def test_type_resolver_binds_the_api_param_to_status_priority_type_api_specifica
     )
 
 
+def test_sprint_resolver_binds_the_api_param_to_sprint_api_specifically() -> None:
+    """Sibling check for SprintResolver (OPM-371): the api param is
+    SprintApi exactly, not just "some Protocol", and not the concrete
+    adapter."""
+    from openproject_ce_mcp.app.adapters.httpx_sprint_api import HttpxSprintApi
+    from openproject_ce_mcp.app.ports.sprint_api import SprintApi
+    from openproject_ce_mcp.app.resolvers.sprint_resolver import SprintResolver
+
+    hints = typing.get_type_hints(SprintResolver.__init__)
+    assert hints["api"] is SprintApi, "SprintResolver.__init__'s api param must be typed SprintApi"
+    assert hints["api"] is not HttpxSprintApi, "SprintResolver.__init__'s api param must not be the concrete adapter"
+
+
 def test_user_preferences_service_binds_the_api_param_to_user_preferences_api_specifically() -> None:
     """Non-generalized regression test for the User Preferences domain's
     exact guarantee, sibling to the checks above: the api param is
