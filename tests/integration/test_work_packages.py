@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from openproject_ce_mcp import tools
-from openproject_ce_mcp.client import OpenProjectClient, PermissionDeniedError
+from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient, PermissionDeniedError
 
 from .conftest import disposable_project_identifier
 
@@ -110,6 +110,50 @@ async def test_create_subtask(client: OpenProjectClient, test_project: str, wp_i
 
     wp = await client.get_work_package(child.work_package_id)
     assert wp.subject
+
+
+async def test_create_work_package_rejects_assignee_supplied_by_name(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """Live counterpart to the unit-level gap-fill test added during the
+    OPM-286 write-path migration: assignee resolution on the write path
+    accepts only "me" or a bare numeric user id, never a name search
+    (deliberately narrower than the read-side assignee/assignee_me filters,
+    which do accept names). Confirms the AssigneeRefResolver seam's narrower
+    contract holds end-to-end against a live instance, not just against a
+    mocked resolver."""
+    with pytest.raises(InvalidInputError, match="assignee must be a positive integer user id or 'me'"):
+        await client.create_work_package(
+            project=test_project,
+            type="Task",
+            subject=f"{_SUBJECT} assignee-by-name",
+            assignee="Definitely Not A Numeric Id",
+            confirm=False,
+        )
+
+
+async def test_create_and_update_work_package_accept_assignee_me(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """ "me" must still resolve correctly end-to-end (the one non-numeric value
+    AssigneeRefResolver does accept) -- covers both create() and update()'s
+    identical resolution path against a live instance."""
+    result = await client.create_work_package(
+        project=test_project,
+        type="Task",
+        subject=f"{_SUBJECT} assignee-me",
+        assignee="me",
+        confirm=True,
+    )
+    assert result.ready, result.validation_errors
+    wp_ids.append(result.work_package_id)
+
+    update_result = await client.update_work_package(
+        work_package_id=result.work_package_id,
+        assignee="me",
+        confirm=True,
+    )
+    assert update_result.ready, update_result.validation_errors
 
 
 async def test_get_work_package_ancestors_tolerate_missing_display_id(
