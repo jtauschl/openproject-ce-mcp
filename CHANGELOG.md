@@ -11,8 +11,8 @@ development baseline.
 
 Complete the layered `app/` architecture migration (ADR 0001): decompose the
 client's business logic out of a single flat file into focused Services,
-Ports, and Adapters, one domain at a time, so the codebase scales past what a
-monolithic client.py can support.
+Ports, and Adapters, so the codebase scales past what a monolithic client.py
+can support.
 
 ### Added
 
