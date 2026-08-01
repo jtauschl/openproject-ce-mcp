@@ -9,13 +9,7 @@ development baseline.
 
 ## [Unreleased 0.4.0]
 
-These are fixes and features genuinely exclusive to the `release/0.4.0`
-architecture-migration branch — either only possible because of the layered
-`app/` migration itself, or not yet ported to/from `release/0.3.5`. See
-[Unreleased 0.3.5](#unreleased-035) below for changes shared with (or
-originating on) that branch; once 0.4.0 actually releases, its final
-changelog entry will be assembled from the latest released 0.3.x entry plus
-only this chapter.
+The layered `app/` architecture migration, now covering every domain.
 
 ### Added
 
@@ -102,12 +96,6 @@ only this chapter.
 ---
 
 ## [Unreleased 0.3.5]
-
-Carried over verbatim from `release/0.3.5`'s own `CHANGELOG.md` — these
-changes originate on (or are shared with) that branch, which is expected to
-release first. Do not add new entries here directly; port them from
-`release/0.3.5` instead, keeping this chapter in sync with that branch's own
-Unreleased section.
 
 ### Added
 
@@ -312,6 +300,8 @@ Unreleased section.
 ---
 
 ## 0.3.0 – 2026-07-17
+
+Release-hardening milestone: the full Authorization & Config Model Redesign (fail-closed scopes/allowlists, mandatory write confirmation, hardened setup flow), plus extensive bugfixing and mypy adoption.
 
 ### Added
 
