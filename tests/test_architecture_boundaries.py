@@ -1251,14 +1251,32 @@ def test_activity_service_binds_the_api_param_to_activity_api_specifically() -> 
 
 
 def test_work_package_service_binds_the_api_param_to_work_package_api_specifically() -> None:
-    """Work Packages' own READ-slice Service depends on its own new
+    """Work Packages' Service (now covering both the READ slice and the
+    write-path migration, OPM-286's second sub-step) depends on its own
     WorkPackageApi Port (not the pre-existing, deliberately minimal
-    WorkPackageLookupApi that 8 other domains' resolvers use), and on the
+    WorkPackageLookupApi that 8 other domains' resolvers use), on the
     existing WorkPackageProjectAllowedCheck seam for hierarchy-allowlist
-    filtering -- not the concrete WorkPackageResolver class."""
+    filtering, and -- new for the write path -- WorkPackageIdResolver (parent
+    resolution), AssigneeRefResolver (deliberately narrower than
+    PrincipalRefResolver: "me"/numeric-only), SprintIdResolver
+    (project-required, unlike VersionIdResolver's optional project),
+    StatusPriorityTypeApi (the auto-derivation's is_closed lookup, injected
+    directly rather than via StatusPriorityTypeService since that would
+    incorrectly gate on read-enablement), and ActivityApi (comment
+    normalization, reusing the already-migrated Activities Port instead of
+    duplicating it) -- none of these may bind to their concrete
+    adapter/resolver class instead of the Protocol."""
+    from openproject_ce_mcp.app.adapters.httpx_activity_api import HttpxActivityApi
+    from openproject_ce_mcp.app.adapters.httpx_status_priority_type_api import HttpxStatusPriorityTypeApi
     from openproject_ce_mcp.app.adapters.httpx_work_package_api import HttpxWorkPackageApi
+    from openproject_ce_mcp.app.ports.activity_api import ActivityApi
+    from openproject_ce_mcp.app.ports.assignee_ref import AssigneeRefResolver
+    from openproject_ce_mcp.app.ports.principal_ref import PrincipalRefResolver
+    from openproject_ce_mcp.app.ports.sprint_ref import SprintIdResolver
+    from openproject_ce_mcp.app.ports.status_priority_type_api import StatusPriorityTypeApi
+    from openproject_ce_mcp.app.ports.version_ref import VersionIdResolver
     from openproject_ce_mcp.app.ports.work_package_api import WorkPackageApi
-    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageProjectAllowedCheck
+    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageIdResolver, WorkPackageProjectAllowedCheck
     from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
     from openproject_ce_mcp.app.services.work_package_service import WorkPackageService
 
@@ -1273,4 +1291,42 @@ def test_work_package_service_binds_the_api_param_to_work_package_api_specifical
     )
     assert hints["work_package_project_allowed"] is not WorkPackageResolver, (
         "WorkPackageService.__init__'s work_package_project_allowed param must not be the concrete resolver class"
+    )
+
+    assert hints["resolve_work_package_id"] is WorkPackageIdResolver, (
+        "WorkPackageService.__init__'s resolve_work_package_id param must be typed WorkPackageIdResolver"
+    )
+    assert hints["resolve_work_package_id"] is not WorkPackageResolver, (
+        "WorkPackageService.__init__'s resolve_work_package_id param must not be the concrete resolver class"
+    )
+
+    assert hints["resolve_assignee_id"] is AssigneeRefResolver, (
+        "WorkPackageService.__init__'s resolve_assignee_id param must be typed AssigneeRefResolver"
+    )
+    assert hints["resolve_assignee_id"] is not PrincipalRefResolver, (
+        "WorkPackageService.__init__'s resolve_assignee_id param must not be PrincipalRefResolver -- assignee "
+        "resolution is deliberately narrower (me/numeric-only), reusing PrincipalRefResolver here would silently "
+        "broaden what create/update accept for assignee"
+    )
+
+    assert hints["resolve_sprint_id"] is SprintIdResolver, (
+        "WorkPackageService.__init__'s resolve_sprint_id param must be typed SprintIdResolver"
+    )
+    assert hints["resolve_sprint_id"] is not VersionIdResolver, (
+        "WorkPackageService.__init__'s resolve_sprint_id param must not be VersionIdResolver -- sprint resolution "
+        "requires a project (VersionIdResolver's project param is optional)"
+    )
+
+    assert hints["status_api"] is StatusPriorityTypeApi, (
+        "WorkPackageService.__init__'s status_api param must be typed StatusPriorityTypeApi"
+    )
+    assert hints["status_api"] is not HttpxStatusPriorityTypeApi, (
+        "WorkPackageService.__init__'s status_api param must not be the concrete adapter"
+    )
+
+    assert hints["activity_api"] is ActivityApi, (
+        "WorkPackageService.__init__'s activity_api param must be typed ActivityApi"
+    )
+    assert hints["activity_api"] is not HttpxActivityApi, (
+        "WorkPackageService.__init__'s activity_api param must not be the concrete adapter"
     )

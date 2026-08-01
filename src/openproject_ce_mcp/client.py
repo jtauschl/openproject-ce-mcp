@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import replace
 from fnmatch import fnmatchcase
-from typing import Any, TypeVar, cast
+from typing import Any, TypeVar
 from urllib.parse import unquote, urljoin, urlparse
 
 import httpx
@@ -34,7 +33,6 @@ from .app.adapters.httpx_reminder_api import HttpxReminderApi
 from .app.adapters.httpx_role_api import HttpxRoleApi
 from .app.adapters.httpx_sprint_api import HttpxSprintApi
 from .app.adapters.httpx_status_priority_type_api import HttpxStatusPriorityTypeApi
-from .app.adapters.httpx_status_priority_type_api import normalize_status as _normalize_status
 from .app.adapters.httpx_time_entry_api import HttpxTimeEntryApi
 from .app.adapters.httpx_user_api import HttpxUserApi
 from .app.adapters.httpx_user_preferences_api import HttpxUserPreferencesApi
@@ -136,7 +134,19 @@ from .app.services.version_service import VersionService
 from .app.services.view_service import ViewService
 from .app.services.watcher_service import WatcherService
 from .app.services.wiki_page_service import WikiPageService
-from .app.services.work_package_service import WorkPackageService
+
+# CLEAR/CLEAR_VERSION/CLEAR_PARENT are canonically defined in
+# app/services/work_package_service.py (this domain's write-path migration
+# moved them there) and re-exported here unchanged -- object identity is
+# preserved by Python's normal import semantics, so tools.py's existing
+# `from .client import CLEAR, CLEAR_PARENT, CLEAR_VERSION` keeps working
+# without any change. `CLEAR` is also still used internally below (Projects'
+# write path, a DIFFERENT, unrelated sentinel from the same-named
+# CLEAR_PARENT here -- Projects' own is aliased to _PROJECT_CLEAR_PARENT
+# above, never conflated with this one). `_narrow_cleared` is NOT re-exported
+# -- it was client.py-internal only, never imported by tools.py, and the
+# Service now has its own copy.
+from .app.services.work_package_service import CLEAR, CLEAR_PARENT, CLEAR_VERSION, WorkPackageService  # noqa: F401
 from .app.transport.errors import raise_for_status as _map_status_to_error
 from .app.transport.httpx_transport import HttpxTransport
 from .config import Settings
@@ -144,7 +154,6 @@ from .hal import normalize_links
 from .models import (
     ActionListResult,
     ActivityListResult,
-    ActivitySummary,
     ActivityWriteResult,
     AttachmentListResult,
     AttachmentSummary,
@@ -154,7 +163,6 @@ from .models import (
     BoardListResult,
     BoardSummary,
     BoardWriteResult,
-    BulkWorkPackageItemResult,
     BulkWorkPackageWriteResult,
     CapabilityListResult,
     CategoryListResult,
@@ -272,50 +280,8 @@ WORK_PACKAGE_ANCESTORS_LIMIT = 20
 ACTIVITY_DETAILS_LIMIT = 20
 BATCH_READ_MAX_IDS = 100
 
-# Sentinel for update_work_package: distinguishes "clear the parent" (make the work
-# package top-level via _links.parent = {"href": null}) from "leave unchanged" (None).
-# A dedicated object avoids colliding with numeric ids or the _resolve_work_package_id
-# path, and cannot be confused with any valid parent reference.
-CLEAR_PARENT = object()
-
-# Sentinel for create/update_work_package: distinguishes "clear the version"
-# (unassign via _links.version = {"href": null}) from "leave unchanged" (None). Same
-# rationale as CLEAR_PARENT — it must bypass version-name resolution.
-CLEAR_VERSION = object()
-
-# Generic "clear this field" sentinel, shared by both nullable HAL-link fields
-# (assignee, responsible, category, project_phase on work packages; parent on
-# projects — unassigned via _links.<field> = {"href": null}) and plain scalar
-# fields (estimated_time, remaining_time, duration — cleared via <field>: null
-# directly in the payload). Distinguishes "clear this field" from "leave
-# unchanged" (None). parent/version keep their own sentinels above for
-# historical reasons; every other clearable field shares this one.
-CLEAR = object()
-
-# Type variables for the generic write-finalizer (_finalize_write).
+# Type variable for the generic detail-fetch helper (_fetch_and_normalize_detail).
 DetailT = TypeVar("DetailT")
-ResultT = TypeVar("ResultT")
-
-_NarrowT = TypeVar("_NarrowT")
-_FetchT = TypeVar("_FetchT")
-
-
-def _narrow_cleared(value: _NarrowT | object, *, sentinel: object = None) -> _NarrowT:
-    """Narrow a value after the caller has already ruled out None and a clear sentinel.
-
-    mypy cannot narrow a sentinel `object()` instance (CLEAR/CLEAR_VERSION/
-    CLEAR_PARENT) out of a wider union via `is not sentinel`/`is not None` checks —
-    from its static perspective the value's type is unchanged afterward, forcing a
-    bare `cast()` at each call site. This re-asserts the same invariant at the point
-    of use instead: a no-op if the caller's guard was correct (the common case), but
-    it fails loudly with a clear message if a future refactor ever removes or
-    reorders that guard, instead of silently forwarding the sentinel object into a
-    resolver several calls downstream, where it would surface as a confusing
-    'AttributeError' with no indication of the real cause.
-    """
-    if value is None or value is sentinel:
-        raise AssertionError(f"_narrow_cleared: expected a resolved value, got the clear sentinel or None: {value!r}")
-    return cast(_NarrowT, value)
 
 
 class OpenProjectClient:
@@ -1499,10 +1465,6 @@ class OpenProjectClient:
         """
         return await self._work_package_service.get_batch(ids=ids, text_limit=text_limit)
 
-    def _new_wp_context(self) -> WorkPackageResolutionContext:
-        """Construct a fresh, per-call WorkPackageResolutionContext (never reused across calls; see ProjectResolutionContext's lifetime rule)."""
-        return WorkPackageResolutionContext(ProjectResolutionContext(self._resolve_project_ref))
-
     async def create_work_package(
         self,
         *,
@@ -1526,32 +1488,8 @@ class OpenProjectClient:
         confirm: bool = False,
         wp_context: WorkPackageResolutionContext | None = None,
     ) -> WorkPackageWriteResult:
-        # When a caller shares a wp_context across a bulk batch, route this resolve
-        # through its cache too -- items sharing the same project then only trigger
-        # one real project fetch for the whole batch, not one per item. With no
-        # wp_context (the default, single-call case) this is exactly the raw
-        # self._resolve_project_ref(project, write=True) call, uncached.
-        project_payload = await self._get_project_payload(
-            project, write=True, context=wp_context.project_context if wp_context is not None else None
-        )
-        project_id = str(project_payload["id"])
-        # Default: a fresh context per call. A bulk caller (bulk_create_work_packages)
-        # passes one shared across all its items instead.
-        if wp_context is None:
-            wp_context = self._new_wp_context()
-        # write=True already implies read=True passed (write checks read first),
-        # so both keys are safe to seed from the same payload -- this is what lets
-        # the type/version resolvers below reuse it instead of re-fetching.
-        wp_context.project_context.seed(project_id, project_payload, write=True)
-        wp_context.project_context.seed(project_id, project_payload, write=False)
-        if parent_work_package_id is not None:
-            # parent goes into a HAL link href, which resolves only by numeric id.
-            # write=True: the new parent must itself be write-authorized, not just
-            # readable -- otherwise a caller could attach a writable work package
-            # under a parent they can only read.
-            parent_work_package_id = await self._resolve_work_package_id(parent_work_package_id, write=True)
-        payload = await self._build_write_payload(
-            project=project_id,
+        return await self._work_package_service.create(
+            project=project,
             type=type,
             subject=subject,
             description=description,
@@ -1568,15 +1506,8 @@ class OpenProjectClient:
             estimated_time=estimated_time,
             remaining_time=remaining_time,
             duration=duration,
-            resolution_context=wp_context,
-        )
-        form = await self._post(f"projects/{project_id}/work_packages/form", json_body=payload)
-        return await self._finalize_work_package_write(
-            action="create",
             confirm=confirm,
-            form=form,
-            write_path="work_packages",
-            project_name=project_payload.get("name"),
+            wp_context=wp_context,
         )
 
     async def create_subtask(
@@ -1597,19 +1528,8 @@ class OpenProjectClient:
         due_date: str | None = None,
         confirm: bool = False,
     ) -> WorkPackageWriteResult:
-        parent_ref = self._work_package_ref(parent_work_package_id)
-        parent = await self._get(f"work_packages/{parent_ref}")
-        # The parent link needs the numeric id (HAL hrefs don't resolve displayId);
-        # read it back from the fetched parent rather than reusing the semantic ref.
-        parent_numeric_id = int(parent["id"])
-        project_id = _id_from_href(parent.get("_links", {}).get("project", {}).get("href"))
-        if project_id is None:
-            raise OpenProjectServerError("OpenProject work package is missing a project link.")
-        self._ensure_project_write_link_allowed(parent.get("_links", {}).get("project"))
-
-        wp_context = self._new_wp_context()
-        payload = await self._build_write_payload(
-            project=str(project_id),
+        return await self._work_package_service.create_subtask(
+            parent_work_package_id=parent_work_package_id,
             type=type,
             subject=subject,
             description=description,
@@ -1620,20 +1540,9 @@ class OpenProjectClient:
             priority=priority,
             category=category,
             custom_fields=custom_fields,
-            parent_work_package_id=parent_numeric_id,
             start_date=start_date,
             due_date=due_date,
-            resolution_context=wp_context,
-        )
-        form = await self._post(f"projects/{project_id}/work_packages/form", json_body=payload)
-        return await self._finalize_work_package_write(
-            action="create",
             confirm=confirm,
-            form=form,
-            write_path="work_packages",
-            project_name=_link_title(parent.get("_links", {}).get("project")),
-            preview_message="OpenProject validated the subtask. Ask for confirmation, then call again with confirm=true to create it.",
-            success_message="Subtask created successfully.",
         )
 
     async def update_work_package(
@@ -1662,32 +1571,11 @@ class OpenProjectClient:
         confirm: bool = False,
         wp_context: WorkPackageResolutionContext | None = None,
     ) -> WorkPackageWriteResult:
-        work_package_id = self._work_package_ref(work_package_id)
-        if parent_work_package_id is not None and parent_work_package_id is not CLEAR_PARENT:
-            # parent goes into a HAL link href, which resolves only by numeric id.
-            # CLEAR_PARENT is a sentinel (un-parent) and must pass through unresolved.
-            # write=True: the new parent must itself be write-authorized, not just
-            # readable -- otherwise a caller could reparent a writable work package
-            # under a parent they can only read.
-            parent_work_package_id = await self._resolve_work_package_id(
-                _narrow_cleared(parent_work_package_id, sentinel=CLEAR_PARENT), write=True
-            )
-        current = await self._get(f"work_packages/{work_package_id}")
-        project_id = _id_from_href(current.get("_links", {}).get("project", {}).get("href"))
-        if project_id is None:
-            raise OpenProjectServerError("OpenProject work package is missing a project link.")
-        self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
-
-        # Default: a fresh context per call. A bulk caller (bulk_update_work_packages)
-        # passes one shared across all its items instead.
-        if wp_context is None:
-            wp_context = self._new_wp_context()
-        lock_version = current.get("lockVersion")
-        payload = await self._build_write_payload(
-            project=str(project_id),
-            type=type,
+        return await self._work_package_service.update(
+            work_package_id=work_package_id,
             subject=subject,
             description=description,
+            type=type,
             version=version,
             sprint=sprint,
             project_phase=project_phase,
@@ -1704,79 +1592,8 @@ class OpenProjectClient:
             remaining_time=remaining_time,
             duration=duration,
             percentage_done=percentage_done,
-            work_package_id=work_package_id,
-            lock_version=lock_version,
-            resolution_context=wp_context,
-        )
-
-        # Auto-derive percentageDone/remainingTime when the status is transitioning to a closed
-        # status and the caller didn't already supply them explicitly. Only attempted when status
-        # is actually changing, to avoid an extra lookup on every plain field update.
-        want_auto_percentage = percentage_done is None
-        want_auto_remaining = remaining_time is None
-        auto_percentage: int | None = None
-        auto_remaining: str | object | None = None
-        if status is not None and (want_auto_percentage or want_auto_remaining):
-            # Reuse the status id _build_write_payload already resolved for the status
-            # link (avoids a redundant name->id lookup when status is given by name).
-            status_id = _id_from_href(payload.get("_links", {}).get("status", {}).get("href"))
-            # Deliberately not using get_status() here: it calls
-            # _ensure_read_enabled("work_package"), which would incorrectly block this
-            # purely internal lookup (and thus the whole status-changing write) on
-            # instances that have work-package writes enabled but reads disabled. Calls
-            # the adapter's bare normalize_status directly (not through
-            # StatusPriorityTypeService), bypassing its access.ensure_read_enabled gate
-            # the same way the pre-migration self.normalize_status call did.
-            status_payload = await self._get(f"statuses/{status_id}")
-            target_status = _normalize_status(status_payload, api_prefix=self._api_prefix)
-            if target_status.is_closed:
-                auto_percentage = 100 if want_auto_percentage else None
-                if want_auto_remaining:
-                    # OpenProject's own validation requires the OPPOSITE target
-                    # depending on whether an estimate exists: remainingTime must be
-                    # exactly "PT0H" when estimatedTime is set, but must be null/absent
-                    # when it isn't -- live-verified against real OpenProject (a bare
-                    # "PT0H" gets rejected with "must stay empty" on an estimate-less
-                    # work package). "Effective" estimate: this same call's own
-                    # estimated_time if it set one, else the work package's existing
-                    # value from the pre-write GET.
-                    effective_estimated_time = (
-                        payload.get("estimatedTime") if "estimatedTime" in payload else current.get("estimatedTime")
-                    )
-                    auto_remaining = "PT0H" if effective_estimated_time else CLEAR
-
-        payload["lockVersion"] = lock_version
-        form = await self._post(f"work_packages/{work_package_id}/form", json_body=payload)
-
-        if auto_percentage is not None or auto_remaining is not None:
-            schema = form.get("_embedded", {}).get("schema", {})
-            changed = False
-            if (
-                auto_percentage is not None
-                and schema.get("percentageDone", {}).get("writable") is True
-                and not self._field_hidden("work_package", "percentage_done")
-            ):
-                payload["percentageDone"] = auto_percentage
-                changed = True
-            if (
-                auto_remaining is not None
-                and schema.get("remainingTime", {}).get("writable") is True
-                and not self._field_hidden("work_package", "remaining_time")
-            ):
-                payload["remainingTime"] = None if auto_remaining is CLEAR else auto_remaining
-                changed = True
-            if changed:
-                payload["lockVersion"] = lock_version
-                form = await self._post(f"work_packages/{work_package_id}/form", json_body=payload)
-
-        return await self._finalize_work_package_write(
-            action="update",
             confirm=confirm,
-            form=form,
-            write_path=f"work_packages/{work_package_id}",
-            write_method="PATCH",
-            work_package_id=work_package_id,
-            project_name=_link_title(current.get("_links", {}).get("project")),
+            wp_context=wp_context,
         )
 
     async def bulk_create_work_packages(
@@ -1785,61 +1602,7 @@ class OpenProjectClient:
         items: list[dict[str, Any]],
         confirm: bool = False,
     ) -> BulkWorkPackageWriteResult:
-        item_results: list[BulkWorkPackageItemResult] = []
-        # Shared across every item in this bulk call (see WorkPackageResolutionContext):
-        # items in the same project skip repeating the same project fetch and
-        # type/version name->id lookups. Discarded once this call returns -- never
-        # reused across separate bulk_create_work_packages calls.
-        wp_context = self._new_wp_context()
-        try:
-            for i, item in enumerate(items):
-                try:
-                    result = await self.create_work_package(
-                        project=item["project"],
-                        type=item["type"],
-                        subject=item["subject"],
-                        description=item.get("description"),
-                        version=item.get("version"),
-                        project_phase=item.get("project_phase"),
-                        assignee=item.get("assignee"),
-                        responsible=item.get("responsible"),
-                        priority=item.get("priority"),
-                        category=item.get("category"),
-                        custom_fields=item.get("custom_fields"),
-                        parent_work_package_id=item.get("parent_work_package_id"),
-                        start_date=item.get("start_date"),
-                        due_date=item.get("due_date"),
-                        estimated_time=item.get("estimated_time"),
-                        remaining_time=item.get("remaining_time"),
-                        duration=item.get("duration"),
-                        confirm=confirm,
-                        wp_context=wp_context,
-                    )
-                    item_results.append(_bulk_item_result(index=i, result=result))
-                except Exception as exc:
-                    item_results.append(BulkWorkPackageItemResult(index=i, success=False, error=str(exc), result=None))
-        except asyncio.CancelledError:
-            _log_bulk_cancellation(
-                "bulk_create_work_packages", confirm=confirm, total=len(items), item_results=item_results
-            )
-            raise
-
-        succeeded = sum(1 for r in item_results if r.success)
-        failed = len(item_results) - succeeded
-        requires_confirmation = not confirm and failed == 0
-        message = _bulk_summary_message(
-            confirm=confirm, succeeded=succeeded, failed=failed, total=len(items), verb="create", past_tense="created"
-        )
-        return BulkWorkPackageWriteResult(
-            action="bulk_create",
-            confirmed=confirm and failed == 0,
-            requires_confirmation=requires_confirmation,
-            total=len(items),
-            succeeded=succeeded,
-            failed=failed,
-            message=message,
-            items=item_results,
-        )
+        return await self._work_package_service.bulk_create(items=items, confirm=confirm)
 
     async def bulk_update_work_packages(
         self,
@@ -1847,64 +1610,7 @@ class OpenProjectClient:
         items: list[dict[str, Any]],
         confirm: bool = False,
     ) -> BulkWorkPackageWriteResult:
-        item_results: list[BulkWorkPackageItemResult] = []
-        # Shared across every item in this bulk call (see WorkPackageResolutionContext):
-        # items in the same project skip repeating the same project fetch and
-        # type/version name->id lookups. Discarded once this call returns -- never
-        # reused across separate bulk_update_work_packages calls.
-        wp_context = self._new_wp_context()
-        try:
-            for i, item in enumerate(items):
-                try:
-                    result = await self.update_work_package(
-                        work_package_id=item["work_package_id"],
-                        subject=item.get("subject"),
-                        description=item.get("description"),
-                        type=item.get("type"),
-                        version=item.get("version"),
-                        sprint=item.get("sprint"),
-                        project_phase=item.get("project_phase"),
-                        status=item.get("status"),
-                        assignee=item.get("assignee"),
-                        responsible=item.get("responsible"),
-                        priority=item.get("priority"),
-                        category=item.get("category"),
-                        custom_fields=item.get("custom_fields"),
-                        parent_work_package_id=item.get("parent_work_package_id"),
-                        start_date=item.get("start_date"),
-                        due_date=item.get("due_date"),
-                        estimated_time=item.get("estimated_time"),
-                        remaining_time=item.get("remaining_time"),
-                        duration=item.get("duration"),
-                        percentage_done=item.get("percentage_done"),
-                        confirm=confirm,
-                        wp_context=wp_context,
-                    )
-                    item_results.append(_bulk_item_result(index=i, result=result))
-                except Exception as exc:
-                    item_results.append(BulkWorkPackageItemResult(index=i, success=False, error=str(exc), result=None))
-        except asyncio.CancelledError:
-            _log_bulk_cancellation(
-                "bulk_update_work_packages", confirm=confirm, total=len(items), item_results=item_results
-            )
-            raise
-
-        succeeded = sum(1 for r in item_results if r.success)
-        failed = len(item_results) - succeeded
-        requires_confirmation = not confirm and failed == 0
-        message = _bulk_summary_message(
-            confirm=confirm, succeeded=succeeded, failed=failed, total=len(items), verb="update", past_tense="updated"
-        )
-        return BulkWorkPackageWriteResult(
-            action="bulk_update",
-            confirmed=confirm and failed == 0,
-            requires_confirmation=requires_confirmation,
-            total=len(items),
-            succeeded=succeeded,
-            failed=failed,
-            message=message,
-            items=item_results,
-        )
+        return await self._work_package_service.bulk_update(items=items, confirm=confirm)
 
     async def add_work_package_comment(
         self,
@@ -1915,104 +1621,9 @@ class OpenProjectClient:
         notify: bool = False,
         confirm: bool = False,
     ) -> ActivityWriteResult:
-        if comment is not None:
-            self._ensure_field_writable("activity", "comment")
-        work_package_id = self._work_package_ref(work_package_id)
-        work_package = await self._get(f"work_packages/{work_package_id}")
-        self._ensure_project_write_link_allowed(work_package.get("_links", {}).get("project"))
-        payload = {
-            "comment": {"raw": comment},
-            "internal": internal,
-            "notify": notify,
-        }
-
-        if not confirm:
-            return ActivityWriteResult(
-                action="comment",
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message="OpenProject is ready to add this comment. Ask for confirmation, then call again with confirm=true.",
-                work_package_id=work_package_id,
-                payload=payload,
-                validation_errors={},
-                result=None,
-            )
-
-        self._ensure_write_enabled("work_package")
-        activity = await self._post(
-            f"work_packages/{work_package_id}/activities",
-            params={"notify": str(notify).lower()},
-            json_body={
-                "comment": {"raw": comment},
-                "internal": internal,
-            },
+        return await self._work_package_service.add_comment(
+            work_package_id=work_package_id, comment=comment, internal=internal, notify=notify, confirm=confirm
         )
-        activity = await self._fill_missing_activity_user(activity)
-        # OpenProject can aggregate a new note into an existing, more recent
-        # journal entry (e.g. a prior status change) instead of always creating
-        # a fresh one. When that happens, this endpoint's response carries that
-        # other journal entry's field-change `details` and `createdAt` alongside
-        # the comment. There is no reliable signal to tell an aggregated
-        # response from a fresh one, so both are suppressed unconditionally -
-        # including for an ordinary, non-aggregated comment, which sacrifices
-        # its own correct timestamp too. `comment`/`id` are unaffected by this
-        # and still reflect the activities POST response.
-        normalized_activity = self._replace_and_restamp(
-            "activity",
-            # Capped like every other write-echo (create/update_work_package's
-            # description, etc.) -- the caller already has the comment it just
-            # sent, so echoing it back uncapped costs tokens for no benefit.
-            self.normalize_activity(activity, text_limit=FORMATTABLE_LIMIT),
-            details=None,
-            details_truncated=False,
-            created_at=None,
-        )
-        return ActivityWriteResult(
-            action="comment",
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message="Comment added successfully.",
-            work_package_id=work_package_id,
-            payload=payload,
-            validation_errors={},
-            result=normalized_activity,
-        )
-
-    async def _fill_missing_activity_user(self, activity: dict[str, Any]) -> dict[str, Any]:
-        """Best-effort: fill in a missing `_links.user` on a freshly-posted activity.
-
-        The activities POST response can be leaner than a subsequent GET and
-        omit `_links.user` entirely, even though the activity was persisted
-        correctly. Re-fetches the canonical activity by id and merges in its
-        `_links.user`. A failure here (404, permission, timeout, ...) must
-        never turn an already-successful write into a reported error, so it
-        is swallowed and just logged - the caller then simply keeps user
-        unset. Only attempted when the response carries a usable id (a
-        missing/unusable id is left to normalize_activity()'s existing
-        requirement for one) and when `user` isn't configured hidden for
-        activities anyway, since fetching it would just be discarded.
-        """
-        if self._field_hidden("activity", "user"):
-            return activity
-        activity_links = activity.get("_links", {})
-        activity_id = activity.get("id")
-        if _link_title(activity_links.get("user")) or not _is_usable_positive_id(activity_id):
-            return activity
-        try:
-            fetched_activity = await self._get(f"activities/{activity_id}")
-        except OpenProjectError:
-            LOGGER.warning(
-                "add_work_package_comment: fallback fetch of activity %s for a missing "
-                "user link failed; the comment was still saved, user stays unset.",
-                activity_id,
-            )
-            return activity
-        fetched_user_link = fetched_activity.get("_links", {}).get("user")
-        if not fetched_user_link:
-            return activity
-        return {**activity, "_links": {**activity_links, "user": fetched_user_link}}
 
     async def create_work_package_relation(
         self,
@@ -2039,22 +1650,7 @@ class OpenProjectClient:
         work_package_id: int | str,
         confirm: bool = False,
     ) -> WorkPackageWriteResult:
-        work_package_id = self._work_package_ref(work_package_id)
-        current = await self._get(f"work_packages/{work_package_id}")
-        self._ensure_project_write_link_allowed(current.get("_links", {}).get("project"))
-        detail = self.normalize_work_package_detail(current)
-        payload = {"id": detail.id, "subject": detail.subject, "lockVersion": detail.lock_version}
-        return await self._finalize_delete(
-            result_cls=WorkPackageWriteResult,
-            confirm=confirm,
-            result_kwargs={"work_package_id": detail.id, "project": detail.project, "payload": payload},
-            preview_result=detail,
-            commit_result=None,
-            write_scope="work_package",
-            delete_path=f"work_packages/{work_package_id}",
-            preview_message="OpenProject is ready to delete this work package. Ask for confirmation, then call again with confirm=true.",
-            success_message="Work package deleted successfully.",
-        )
+        return await self._work_package_service.delete(work_package_id=work_package_id, confirm=confirm)
 
     async def delete_relation(
         self,
@@ -2945,48 +2541,6 @@ class OpenProjectClient:
             ),
         )
 
-    def normalize_activity(self, payload: dict[str, Any], *, text_limit: int | None = None) -> ActivitySummary:
-        links = payload.get("_links", {})
-        comment, truncated, length = self._visible_formattable_text_with_meta(
-            payload.get("comment"),
-            "activity",
-            "comment",
-            limit=text_limit,
-            preserve_newlines=True,
-        )
-
-        # Details array with limit. OpenProject sends each entry as both a
-        # plain-text "raw" and a markup "html" rendering of the SAME change
-        # description — keep only "raw" (dropping the duplicate "html"/"format"
-        # keys) and delimit it like every other free-text field here, since
-        # it is equally untrusted user-authored content.
-        details_raw = payload.get("details", [])
-        details = None
-        details_truncated = False
-        if details_raw:
-            details = [
-                {"raw": _delimit_user_content(item.get("raw"))}
-                for item in details_raw[:ACTIVITY_DETAILS_LIMIT]
-                if isinstance(item, dict)
-            ]
-            details_truncated = len(details_raw) > ACTIVITY_DETAILS_LIMIT
-
-        return self._apply_hidden_fields(
-            "activity",
-            ActivitySummary(
-                id=int(payload["id"]),
-                type=payload.get("_type"),
-                version=payload.get("version"),
-                user=_link_title(links.get("user")),
-                comment=comment,
-                created_at=payload.get("createdAt"),
-                comment_truncated=truncated,
-                comment_length=length,
-                details=details,
-                details_truncated=details_truncated,
-            ),
-        )
-
     def normalize_instance_configuration(self, payload: dict[str, Any]) -> InstanceConfiguration:
         return self._apply_hidden_fields(
             "instance_configuration",
@@ -3052,457 +2606,6 @@ class OpenProjectClient:
         if href.startswith("/"):
             return urljoin(f"{self._origin.rstrip('/')}/", href.lstrip("/"))
         return urljoin(f"{self.settings.base_url.rstrip('/')}/", href)
-
-    async def _build_write_payload(
-        self,
-        *,
-        project: str,
-        type: str | None = None,
-        subject: str | None = None,
-        description: str | None = None,
-        version: str | object | None = None,
-        sprint: str | object | None = None,
-        project_phase: str | object | None = None,
-        status: str | None = None,
-        assignee: str | object | None = None,
-        responsible: str | object | None = None,
-        priority: str | None = None,
-        category: str | object | None = None,
-        custom_fields: dict[str, Any] | None = None,
-        parent_work_package_id: int | object | None = None,
-        start_date: str | None = None,
-        due_date: str | None = None,
-        estimated_time: str | object | None = None,
-        remaining_time: str | object | None = None,
-        duration: str | object | None = None,
-        percentage_done: int | None = None,
-        work_package_id: int | str | None = None,
-        lock_version: int | None = None,
-        resolution_context: WorkPackageResolutionContext | None = None,
-    ) -> dict[str, Any]:
-        project_context = resolution_context.project_context if resolution_context is not None else None
-        payload: dict[str, Any] = {}
-        links: dict[str, dict[str, str | None]] = {}
-
-        if custom_fields:
-            for raw_key in custom_fields:
-                self._ensure_custom_field_input_writable(raw_key)
-
-        if subject is not None:
-            self._ensure_field_writable("work_package", "subject")
-            payload["subject"] = subject
-        if description is not None:
-            self._ensure_field_writable("work_package", "description")
-            payload["description"] = {"format": "markdown", "raw": description}
-        if start_date is not None:
-            self._ensure_field_writable("work_package", "start_date")
-            payload["startDate"] = start_date
-        if due_date is not None:
-            self._ensure_field_writable("work_package", "due_date")
-            payload["dueDate"] = due_date
-        if estimated_time is CLEAR:
-            self._ensure_field_writable("work_package", "estimated_time")
-            payload["estimatedTime"] = None
-        elif estimated_time is not None:
-            self._ensure_field_writable("work_package", "estimated_time")
-            payload["estimatedTime"] = estimated_time
-        if remaining_time is CLEAR:
-            self._ensure_field_writable("work_package", "remaining_time")
-            payload["remainingTime"] = None
-        elif remaining_time is not None:
-            self._ensure_field_writable("work_package", "remaining_time")
-            payload["remainingTime"] = remaining_time
-        if percentage_done is not None:
-            self._ensure_field_writable("work_package", "percentage_done")
-            payload["percentageDone"] = percentage_done
-        if duration is CLEAR:
-            self._ensure_field_writable("work_package", "duration")
-            payload["duration"] = None
-        elif duration is not None:
-            self._ensure_field_writable("work_package", "duration")
-            payload["duration"] = duration
-        if type is not None:
-            self._ensure_field_writable("work_package", "type")
-            type_id = await self._resolve_wp_ref_id(
-                "type",
-                type,
-                project=project,
-                cache=resolution_context,
-                resolve=lambda: self._resolve_type_id(type, project=project, context=project_context),
-            )
-            links["type"] = {"href": self._api_href(f"types/{type_id}")}
-        if version is CLEAR_VERSION:
-            self._ensure_field_writable("work_package", "version")
-            links["version"] = {"href": None}
-        elif version is not None:
-            self._ensure_field_writable("work_package", "version")
-            version_ref: str = _narrow_cleared(version, sentinel=CLEAR_VERSION)
-            version_id = await self._resolve_wp_ref_id(
-                "version",
-                version_ref,
-                project=project,
-                cache=resolution_context,
-                resolve=lambda: self._resolve_version_id(version_ref, project=project, context=project_context),
-            )
-            links["version"] = {"href": self._api_href(f"versions/{version_id}")}
-        if sprint is CLEAR:
-            self._ensure_field_writable("work_package", "sprint")
-            links["sprint"] = {"href": None}
-        elif sprint is not None:
-            self._ensure_field_writable("work_package", "sprint")
-            sprint_ref: str = _narrow_cleared(sprint, sentinel=CLEAR)
-            sprint_id = await self._resolve_wp_ref_id(
-                "sprint",
-                sprint_ref,
-                project=project,
-                cache=resolution_context,
-                resolve=lambda: self._resolve_sprint_id(sprint_ref, project=project, context=project_context),
-            )
-            links["sprint"] = {"href": self._api_href(f"sprints/{sprint_id}")}
-        if status is not None:
-            self._ensure_field_writable("work_package", "status")
-            status_id = await self._resolve_status_id(status)
-            links["status"] = {"href": self._api_href(f"statuses/{status_id}")}
-        if assignee is CLEAR:
-            self._ensure_field_writable("work_package", "assignee")
-            links["assignee"] = {"href": None}
-        elif assignee is not None:
-            self._ensure_field_writable("work_package", "assignee")
-            assignee_id = await self._resolve_assignee_id(_narrow_cleared(assignee, sentinel=CLEAR))
-            links["assignee"] = {"href": self._api_href(f"users/{assignee_id}")}
-        if parent_work_package_id is CLEAR_PARENT:
-            self._ensure_field_writable("work_package", "parent")
-            links["parent"] = {"href": None}
-        elif parent_work_package_id is not None:
-            self._ensure_field_writable("work_package", "parent")
-            links["parent"] = {"href": self._api_href(f"work_packages/{parent_work_package_id}")}
-
-        # Clear (CLEAR sentinel) the schema-backed fields directly — a null href needs
-        # no schema-option resolution, and must not trigger the schema probe below.
-        if responsible is CLEAR:
-            self._ensure_field_writable("work_package", "responsible")
-            links["responsible"] = {"href": None}
-        if category is CLEAR:
-            self._ensure_field_writable("work_package", "category")
-            links["category"] = {"href": None}
-        if project_phase is CLEAR:
-            self._ensure_field_writable("work_package", "project_phase")
-            links["projectPhase"] = {"href": None}
-
-        schema_needs = any(
-            value is not None and value is not CLEAR
-            for value in (
-                responsible,
-                priority,
-                category,
-                project_phase,
-                custom_fields,
-            )
-        )
-        if schema_needs:
-            if links:
-                payload["_links"] = links
-            schema = await self._get_write_schema(
-                project=project,
-                type=type,
-                work_package_id=work_package_id,
-                draft_payload=payload,
-                lock_version=lock_version,
-                project_context=project_context,
-            )
-            if responsible is not None and responsible is not CLEAR:
-                self._ensure_field_writable("work_package", "responsible")
-                links["responsible"] = {"href": self._resolve_schema_option_href(schema, "responsible", responsible)}
-            if priority is not None:
-                self._ensure_field_writable("work_package", "priority")
-                links["priority"] = {"href": self._resolve_schema_option_href(schema, "priority", priority)}
-            if category is not None and category is not CLEAR:
-                self._ensure_field_writable("work_package", "category")
-                links["category"] = {"href": self._resolve_schema_option_href(schema, "category", category)}
-            if project_phase is not None and project_phase is not CLEAR:
-                self._ensure_field_writable("work_package", "project_phase")
-                links["projectPhase"] = {
-                    "href": self._resolve_schema_option_href(schema, "projectPhase", project_phase)
-                }
-            if custom_fields:
-                self._apply_custom_fields(payload, links, schema, custom_fields)
-        if links:
-            payload["_links"] = links
-        return payload
-
-    async def _get_write_schema(
-        self,
-        *,
-        project: str,
-        type: str | None,
-        work_package_id: int | str | None,
-        draft_payload: dict[str, Any],
-        lock_version: int | None = None,
-        project_context: ProjectResolutionContext | None = None,
-    ) -> dict[str, Any]:
-        if work_package_id is not None:
-            # OpenProject 17.x rejects the work-package form endpoint with a
-            # "could not be updated due to conflicting modifications" (409) error
-            # unless the current lockVersion is included, even for a schema-only
-            # probe. Inject it so the schema fetch on update succeeds.
-            schema_body = dict(draft_payload)
-            if lock_version is not None:
-                schema_body["lockVersion"] = lock_version
-            form = await self._post(f"work_packages/{work_package_id}/form", json_body=schema_body)
-            return form.get("_embedded", {}).get("schema", {})
-
-        schema_payload = dict(draft_payload)
-        schema_links = dict(schema_payload.get("_links", {}))
-        if type is not None and "type" not in schema_links:
-            # Latent/unreachable in current call patterns: _build_write_payload
-            # already puts "type" in schema_links whenever `type` is given, so this
-            # branch only fires for a hypothetical future caller that doesn't. Still
-            # threaded through for consistency with every other resolver call in
-            # this flow.
-            type_id = await self._resolve_type_id(type, project=project, context=project_context)
-            schema_links["type"] = {"href": self._api_href(f"types/{type_id}")}
-        if schema_links:
-            schema_payload["_links"] = schema_links
-        form = await self._post(f"projects/{project}/work_packages/form", json_body=schema_payload)
-        return form.get("_embedded", {}).get("schema", {})
-
-    def _resolve_schema_option_href(self, schema: dict[str, Any], key: str, raw_value: Any) -> str:
-        field = schema.get(key)
-        if not isinstance(field, dict):
-            raise InvalidInputError(f"OpenProject schema does not expose field '{key}' for this work package.")
-        allowed_values = field.get("_embedded", {}).get("allowedValues", [])
-        if not isinstance(allowed_values, list):
-            raise InvalidInputError(f"OpenProject schema does not expose allowed values for field '{key}'.")
-
-        normalized = str(raw_value).strip()
-        if not normalized:
-            raise InvalidInputError(f"{key} must not be empty.")
-
-        for item in allowed_values:
-            href = item.get("_links", {}).get("self", {}).get("href")
-            if not href:
-                continue
-            item_id = _id_from_href(href)
-            title = _trim_text(
-                item.get("name") or item.get("_links", {}).get("self", {}).get("title"), limit=SUBJECT_LIMIT
-            )
-            if normalized.isdigit() and item_id is not None and int(normalized) == item_id:
-                return href
-            if title and title.casefold() == normalized.casefold():
-                return href
-        raise InvalidInputError(f"OpenProject value '{raw_value}' is not allowed for field '{key}'.")
-
-    def _apply_custom_fields(
-        self,
-        payload: dict[str, Any],
-        links: dict[str, Any],
-        schema: dict[str, Any],
-        custom_fields: dict[str, Any],
-    ) -> None:
-        for raw_key, raw_value in custom_fields.items():
-            self._ensure_custom_field_input_writable(raw_key)
-            schema_key = self._resolve_custom_field_key(schema, raw_key)
-            field = schema[schema_key]
-            self._ensure_custom_field_writable(
-                _trim_text(field.get("name"), limit=SUBJECT_LIMIT) or schema_key,
-                schema_key,
-            )
-            location = field.get("location")
-            if location == "_links":
-                hrefs = self._resolve_custom_field_links(field, raw_value, schema_key)
-                if len(hrefs) == 1:
-                    links[schema_key] = {"href": hrefs[0]}
-                else:
-                    links[schema_key] = [{"href": href} for href in hrefs]
-            else:
-                payload[schema_key] = raw_value
-
-    def _resolve_custom_field_key(self, schema: dict[str, Any], raw_key: str) -> str:
-        normalized = str(raw_key).strip()
-        if not normalized:
-            raise InvalidInputError("custom field keys must not be empty.")
-        if normalized in schema:
-            return normalized
-        if normalized.casefold().startswith("customfield") and normalized[11:].isdigit():
-            candidate = f"customField{normalized[11:]}"
-            if candidate in schema:
-                return candidate
-        for key, field in schema.items():
-            if not key.startswith("customField") or not isinstance(field, dict):
-                continue
-            name = _trim_text(field.get("name"), limit=SUBJECT_LIMIT)
-            if name and name.casefold() == normalized.casefold():
-                return key
-        raise InvalidInputError(f"OpenProject custom field '{raw_key}' is not available for this work package.")
-
-    def _resolve_custom_field_links(self, field: dict[str, Any], raw_value: Any, key: str) -> list[str]:
-        values = raw_value if isinstance(raw_value, list) else [raw_value]
-        hrefs = [self._resolve_schema_option_href({key: field}, key, value) for value in values]
-        if not hrefs:
-            raise InvalidInputError(f"OpenProject custom field '{key}' requires at least one value.")
-        return hrefs
-
-    async def _finalize_write(
-        self,
-        *,
-        result_cls: type[ResultT],
-        action: str,
-        confirm: bool,
-        form: dict[str, Any],
-        write_path: str,
-        write_method: str = "POST",
-        write_scope: str,
-        identity_kwargs: Callable[[dict[str, Any]], dict[str, Any]],
-        normalize: Callable[[dict[str, Any]], DetailT],
-        committed_kwargs: Callable[[DetailT], dict[str, Any]],
-        rejected_message: str,
-        preview_message: str,
-        success_message: str,
-    ) -> ResultT:
-        """Shared rejected/preview/committed state machine for the 7 form-based
-        write finalizers. Each entity differs in its identity
-        field(s), write scope, and normalizer — those are parameterized here,
-        not the messages, which callers supply verbatim so no wording changes.
-
-        identity_kwargs receives the extracted payload (not just static caller
-        args) because at least one entity (grid) derives part of its identity
-        (`scope`) from the payload itself, not from a value the caller passed in.
-        """
-        embedded = form.get("_embedded", {})
-        payload = embedded.get("payload", {})
-        validation_errors = _normalize_validation_errors(embedded.get("validationErrors"))
-        ready = not validation_errors
-        identity = identity_kwargs(payload)
-
-        if not ready:
-            # ResultT is an unbound TypeVar (each of the 7 write finalizers binds it to
-            # a different dataclass with different fields), so mypy can't verify these
-            # kwargs against result_cls's actual __init__ — identity_kwargs/
-            # committed_kwargs are written per call site to match result_cls exactly.
-            return result_cls(  # type: ignore[call-arg]
-                action=action,
-                confirmed=False,
-                requires_confirmation=not confirm,
-                ready=False,
-                message=rejected_message,
-                payload=payload,
-                validation_errors=validation_errors,
-                result=None,
-                **identity,
-            )
-
-        if not confirm:
-            return result_cls(  # type: ignore[call-arg]
-                action=action,
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message=preview_message,
-                payload=payload,
-                validation_errors={},
-                result=None,
-                **identity,
-            )
-
-        self._ensure_write_enabled(write_scope)
-        if write_method == "PATCH":
-            response = await self._patch(write_path, json_body=payload)
-        else:
-            response = await self._post(write_path, json_body=payload)
-        detail = normalize(response)
-        return result_cls(  # type: ignore[call-arg]
-            action=action,
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message=success_message,
-            payload=payload,
-            validation_errors={},
-            result=detail,
-            **committed_kwargs(detail),
-        )
-
-    async def _finalize_delete(
-        self,
-        *,
-        result_cls: type[ResultT],
-        action: str = "delete",
-        confirm: bool,
-        result_kwargs: dict[str, Any],
-        preview_result: Any,
-        commit_result: Any,
-        write_scope: str,
-        delete_path: str,
-        preview_message: str,
-        success_message: str,
-    ) -> ResultT:
-        """Shared preview/committed state machine for the 13 GET-then-delete
-        finalizers. Each entity's pre-delete setup (GET, allowlist check,
-        normalization) is genuinely heterogeneous -- e.g. delete_attachment
-        needs the return value of its allow-check for the result identity,
-        delete_user/delete_group do no GET at all -- so that setup stays at
-        each call site unchanged. Only the identical "preview or commit"
-        branching is shared here. result_kwargs carries whatever extra fields
-        that entity's Result dataclass actually declares (identity fields,
-        and payload where the class has one -- not every Result class has a
-        payload field, e.g. FileLinkWriteResult does not).
-        """
-        if not confirm:
-            # ResultT is an unbound TypeVar (each of the 13 delete methods binds it to
-            # a different dataclass with different fields, assembled per call site in
-            # result_kwargs) -- mypy can't verify this statically, same as _finalize_write.
-            return result_cls(  # type: ignore[call-arg]
-                action=action,
-                confirmed=False,
-                requires_confirmation=True,
-                ready=True,
-                message=preview_message,
-                validation_errors={},
-                result=preview_result,
-                **result_kwargs,
-            )
-        self._ensure_write_enabled(write_scope)
-        await self._delete(delete_path)
-        return result_cls(  # type: ignore[call-arg]
-            action=action,
-            confirmed=True,
-            requires_confirmation=False,
-            ready=True,
-            message=success_message,
-            validation_errors={},
-            result=commit_result,
-            **result_kwargs,
-        )
-
-    async def _finalize_work_package_write(
-        self,
-        *,
-        action: str,
-        confirm: bool,
-        form: dict[str, Any],
-        write_path: str,
-        write_method: str = "POST",
-        work_package_id: int | str | None = None,
-        project_name: str | None = None,
-        preview_message: str | None = None,
-        success_message: str | None = None,
-    ) -> WorkPackageWriteResult:
-        return await self._finalize_write(
-            result_cls=WorkPackageWriteResult,
-            action=action,
-            confirm=confirm,
-            form=form,
-            write_path=write_path,
-            write_method=write_method,
-            write_scope="work_package",
-            identity_kwargs=lambda _payload: {"work_package_id": work_package_id, "project": project_name},
-            normalize=self.normalize_work_package_detail,
-            committed_kwargs=lambda d: {"work_package_id": d.id, "project": d.project},
-            rejected_message="OpenProject rejected the proposed changes. Fix the validation errors before confirming.",
-            preview_message=preview_message
-            or "OpenProject validated the change. Ask for confirmation, then call again with confirm=true to write it.",
-            success_message=success_message or f"Work package {action}d successfully.",
-        )
 
     async def _get_project_payload(
         self,
@@ -3699,31 +2802,6 @@ class OpenProjectClient:
                 f"OpenProject principal '{principal_ref}' is ambiguous. Pass a numeric user or group id."
             )
         return matches[0]
-
-    async def _resolve_wp_ref_id(
-        self,
-        kind: str,
-        ref: str,
-        *,
-        project: str,
-        cache: WorkPackageResolutionContext | None,
-        resolve: Callable[[], Awaitable[str]],
-    ) -> str:
-        """Cache-then-resolve wrapper around _resolve_type_id/_resolve_version_id/
-        _resolve_sprint_id. When `cache` is shared across a bulk call's items (see
-        WorkPackageResolutionContext), a repeated name->id lookup for the same
-        (project, kind, ref) is skipped instead of re-querying OpenProject once per
-        item. The resolvers themselves are unchanged -- this is purely a wrapping
-        layer around them.
-        """
-        if cache is not None:
-            cached = cache.get_id(kind, project, ref)
-            if cached is not None:
-                return cached
-        resolved = await resolve()
-        if cache is not None:
-            cache.store_id(kind, project, ref, resolved)
-        return resolved
 
     async def _resolve_type_id(
         self, type_ref: str, *, project: str | None, context: ProjectResolutionContext | None = None
@@ -3931,88 +3009,6 @@ def _delimit_user_content(text: str | None) -> str | None:
 def _origin_from_url(url: str) -> str:
     parsed = urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}"
-
-
-def _bulk_item_result(*, index: int, result: WorkPackageWriteResult) -> BulkWorkPackageItemResult:
-    if not result.ready:
-        return BulkWorkPackageItemResult(index=index, success=False, error=result.message, result=result)
-    return BulkWorkPackageItemResult(index=index, success=True, error=None, result=result)
-
-
-def _bulk_summary_message(*, confirm: bool, succeeded: int, failed: int, total: int, verb: str, past_tense: str) -> str:
-    if confirm:
-        return (
-            f"{succeeded} of {total} work packages {past_tense} successfully."
-            if failed == 0
-            else f"{succeeded} {past_tense}, {failed} failed."
-        )
-    return (
-        f"Validated {succeeded} of {total} work packages. Call again with confirm=true to {verb} them."
-        if failed == 0
-        else f"{succeeded} validated, {failed} failed validation."
-    )
-
-
-def _log_bulk_cancellation(
-    operation: str,
-    *,
-    confirm: bool,
-    total: int,
-    item_results: list[BulkWorkPackageItemResult],
-) -> None:
-    """Log what is actually known about a bulk create/update call cancelled mid-loop.
-
-    This is diagnostic logging only, for operators/support - it does not close
-    the gap that the MCP caller receives no result on cancellation (a raised
-    CancelledError and a normal return value are mutually exclusive). It must
-    not overclaim: whether the in-flight request at the time of cancellation
-    reached OpenProject is unknown, so that item is reported as "unknown
-    outcome", never as succeeded/written.
-    """
-    completed = len(item_results)
-    completed_range = f"0-{completed - 1}" if completed else "none"
-    if completed < total:
-        if confirm:
-            in_flight_desc = (
-                f"item at index {completed} has an unknown outcome (may have been in flight when "
-                "cancelled; not necessarily written to OpenProject)"
-            )
-        else:
-            in_flight_desc = (
-                f"item at index {completed} has an unknown validation outcome (was in flight when "
-                "cancelled); confirm=false means no item in this call could have been written to "
-                "OpenProject regardless"
-            )
-        not_started = max(0, total - completed - 1)
-    else:
-        in_flight_desc = "no item was in flight (all items already had a known outcome)"
-        not_started = 0
-    LOGGER.warning(
-        "%s cancelled (confirm=%s): %d/%d item(s) completed before cancellation (indices %s); "
-        "%s; %d item(s) were not yet attempted.",
-        operation,
-        confirm,
-        completed,
-        total,
-        completed_range,
-        in_flight_desc,
-        not_started,
-    )
-
-
-def _normalize_validation_errors(value: Any) -> dict[str, str]:
-    if not isinstance(value, dict):
-        return {}
-    normalized: dict[str, str] = {}
-    for key, entry in value.items():
-        message = _extract_formattable_text(entry, limit=SUBJECT_LIMIT)
-        if message is None and isinstance(entry, dict):
-            message = _trim_text(entry.get("message"), limit=SUBJECT_LIMIT)
-        if message is None:
-            message = _trim_text(entry, limit=SUBJECT_LIMIT)
-        if message:
-            normalized[str(key)] = message
-    return normalized
 
 
 def _trim_text(value: Any, *, limit: int) -> str | None:

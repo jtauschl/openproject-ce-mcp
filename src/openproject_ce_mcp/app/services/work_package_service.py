@@ -56,11 +56,18 @@ BEFORE normalization, the opposite order from Projects/Versions, because this
 domain filters a heterogeneous per-item project link rather than a
 single already-known scope.
 
-Every public method calls `access.ensure_read_enabled("work_package", ...)`
-as its FIRST action, before any `resolve_*` seam call -- verbatim behavioral
-port of client.py's `search_work_packages`/`list_work_packages`/
-`list_my_open_work_packages`/`get_work_package`, each of which gates before
-doing any resolution or HTTP work.
+Every READ method (`search`/`list`/`list_my_open`/`get`/`get_batch`) calls
+`access.ensure_read_enabled("work_package", ...)` as its FIRST action, before
+any `resolve_*` seam call -- verbatim behavioral port of client.py's
+`search_work_packages`/`list_work_packages`/`list_my_open_work_packages`/
+`get_work_package`, each of which gates before doing any resolution or HTTP
+work. **The WRITE methods (`create`/`create_subtask`/`update`/`delete`/
+`bulk_create`/`bulk_update`/`add_comment`) deliberately do NOT** -- verified
+against client.py's flat originals, none of which ever called
+`_ensure_read_enabled`. This is intentional: an instance can have
+work-package writes enabled with reads entirely disabled, and every write
+method must keep working in that configuration (the same reasoning already
+documented for the auto-derivation's `status_api` bypass below).
 
 `_stamp`/`_stamp_detail` zero `description_truncated`/`description_length`
 (plus, for `WorkPackageSummary` only, `has_description`) when the
@@ -85,6 +92,7 @@ from typing import Any
 
 from ...config import Settings
 from ...models import (
+    ActivityWriteResult,
     BatchWorkPackageReadItemResult,
     BatchWorkPackageReadResult,
     BulkWorkPackageItemResult,
@@ -1129,7 +1137,10 @@ class WorkPackageService:
         confirm: bool = False,
         wp_context: WorkPackageResolutionContext | None = None,
     ) -> WorkPackageWriteResult:
-        access.ensure_read_enabled("work_package", settings=self._settings)
+        # Deliberately NO access.ensure_read_enabled gate here -- the flat
+        # create_work_package never gated on read-enablement either (verified
+        # against client.py's original), so an instance can have work-package
+        # writes enabled with reads entirely disabled and this must still work.
         # When a caller shares a wp_context across a bulk batch, route this
         # resolve through its cache too -- items sharing the same project then
         # only trigger one real project fetch for the whole batch, not one per
@@ -1214,7 +1225,8 @@ class WorkPackageService:
         due_date: str | None = None,
         confirm: bool = False,
     ) -> WorkPackageWriteResult:
-        access.ensure_read_enabled("work_package", settings=self._settings)
+        # Deliberately NO access.ensure_read_enabled gate -- see create()'s
+        # identical comment.
         parent_record = await self._api.get(work_package_ref(parent_work_package_id))
         parent_payload = parent_record.payload
         # The parent link needs the numeric id (HAL hrefs don't resolve
@@ -1400,7 +1412,10 @@ class WorkPackageService:
         confirm: bool = False,
         wp_context: WorkPackageResolutionContext | None = None,
     ) -> WorkPackageWriteResult:
-        access.ensure_read_enabled("work_package", settings=self._settings)
+        # Deliberately NO access.ensure_read_enabled gate -- see create()'s
+        # identical comment; this is also why the auto-derivation below reads
+        # status via self._status_api directly rather than
+        # StatusPriorityTypeService, which WOULD gate on read-enablement.
         ref = work_package_ref(work_package_id)
         if parent_work_package_id is not None and parent_work_package_id is not CLEAR_PARENT:
             # parent goes into a HAL link href, which resolves only by
@@ -1570,7 +1585,8 @@ class WorkPackageService:
         )
 
     async def delete(self, *, work_package_id: int | str, confirm: bool = False) -> WorkPackageWriteResult:
-        access.ensure_read_enabled("work_package", settings=self._settings)
+        # Deliberately NO access.ensure_read_enabled gate -- see create()'s
+        # identical comment.
         ref = work_package_ref(work_package_id)
         record = await self._api.get(ref, text_limit=FORMATTABLE_LIMIT)
         ensure_project_write_link_allowed(
@@ -1608,4 +1624,103 @@ class WorkPackageService:
             payload=payload,
             validation_errors={},
             result=None,
+        )
+
+    async def _fill_missing_activity_user(self, activity: dict[str, Any]) -> dict[str, Any]:
+        """Best-effort: fill in a missing `_links.user` on a freshly-posted activity.
+
+        The activities POST response can be leaner than a subsequent GET and
+        omit `_links.user` entirely, even though the activity was persisted
+        correctly. Re-fetches the canonical activity by id (via the injected
+        `ActivityApi`, not a duplicated Adapter method -- see
+        `app/ports/activity_api.py`'s module docstring) and merges in its
+        `_links.user`. A failure here (404, permission, timeout, ...) must
+        never turn an already-successful write into a reported error, so it
+        is swallowed and just logged -- the caller then simply keeps user
+        unset. Only attempted when the response carries a usable id and when
+        `user` isn't configured hidden for activities anyway, since fetching
+        it would just be discarded. Verbatim port of client.py's own
+        `_fill_missing_activity_user`.
+        """
+        if hidden_fields.field_hidden("activity", "user", settings=self._settings):
+            return activity
+        activity_links = activity.get("_links", {})
+        activity_id = activity.get("id")
+        existing_user_title = _trim_text((activity_links.get("user") or {}).get("title"))
+        if existing_user_title or not (isinstance(activity_id, int) and activity_id > 0):
+            return activity
+        try:
+            fetched_activity = await self._activity_api.get_raw(activity_id)
+        except OpenProjectError:
+            LOGGER.warning(
+                "add_comment: fallback fetch of activity %s for a missing user link failed; "
+                "the comment was still saved, user stays unset.",
+                activity_id,
+            )
+            return activity
+        fetched_user_link = fetched_activity.get("_links", {}).get("user")
+        if not fetched_user_link:
+            return activity
+        return {**activity, "_links": {**activity_links, "user": fetched_user_link}}
+
+    async def add_comment(
+        self,
+        *,
+        work_package_id: int | str,
+        comment: str,
+        internal: bool = False,
+        notify: bool = False,
+        confirm: bool = False,
+    ) -> ActivityWriteResult:
+        if comment is not None:
+            hidden_fields.ensure_field_writable("activity", "comment", settings=self._settings)
+        ref = work_package_ref(work_package_id)
+        record = await self._api.get(ref)
+        ensure_project_write_link_allowed(
+            record.payload.get("_links", {}).get("project"),
+            settings=self._settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+        )
+        payload = {"comment": {"raw": comment}, "internal": internal, "notify": notify}
+
+        if not confirm:
+            return ActivityWriteResult(
+                action="comment",
+                confirmed=False,
+                requires_confirmation=True,
+                ready=True,
+                message="OpenProject is ready to add this comment. Ask for confirmation, then call again with confirm=true.",
+                work_package_id=ref,
+                payload=payload,
+                validation_errors={},
+                result=None,
+            )
+
+        access.ensure_write_enabled("work_package", settings=self._settings)
+        activity = await self._api.post_comment(ref, comment=comment, internal=internal, notify=notify)
+        activity = await self._fill_missing_activity_user(activity)
+        # OpenProject can aggregate a new note into an existing, more recent
+        # journal entry (e.g. a prior status change) instead of always
+        # creating a fresh one. When that happens, this endpoint's response
+        # carries that other journal entry's field-change `details` and
+        # `createdAt` alongside the comment. There is no reliable signal to
+        # tell an aggregated response from a fresh one, so both are
+        # suppressed unconditionally -- including for an ordinary,
+        # non-aggregated comment, which sacrifices its own correct timestamp
+        # too. `comment`/`id` are unaffected by this and still reflect the
+        # activities POST response.
+        raw_summary = self._activity_api.to_record(activity).to_summary(FORMATTABLE_LIMIT)
+        normalized_activity = self._replace_and_restamp(
+            "activity", raw_summary, details=None, details_truncated=False, created_at=None
+        )
+        return ActivityWriteResult(
+            action="comment",
+            confirmed=True,
+            requires_confirmation=False,
+            ready=True,
+            message="Comment added successfully.",
+            work_package_id=ref,
+            payload=payload,
+            validation_errors={},
+            result=normalized_activity,
         )

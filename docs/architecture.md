@@ -191,7 +191,16 @@ tools.py (MCP presentation)
   brand-new instance carrying only the declared fields, silently dropping that tag. Any Service
   method that both stamps a result AND transforms it afterward via `dataclasses.replace` (e.g. a
   post-processing filter step) must stamp AFTER the replace, not before, or the transformed result
-  comes back fully unmasked.
+  comes back fully unmasked. A domain's WRITE methods do not necessarily share the same
+  read-enablement gate as its READ methods — verify each write method's flat-code original
+  individually rather than assuming a domain-wide convention: Work Packages' `create`/
+  `create_subtask`/`update`/`delete`/`bulk_create`/`bulk_update`/`add_comment` deliberately never
+  call `access.ensure_read_enabled`, unlike that same domain's `search`/`list`/`list_my_open`/`get`,
+  which all gate on it as their first action — an instance can have work-package writes enabled
+  with reads entirely disabled, and every write path (including an internal, write-adjacent lookup
+  like the auto-percentage/auto-remaining-time derivation's status-detail fetch, which is why that
+  lookup goes through `StatusPriorityTypeApi` directly rather than `StatusPriorityTypeService`) must
+  keep working in that configuration.
 - `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under `app/` that
   imports `httpx`; `client.py`'s own HTTP calls for still-flat domains, and `retry_transport.py`,
   are unaffected and keep importing it directly. The `Transport` Protocol (`app/transport/protocol.py`)

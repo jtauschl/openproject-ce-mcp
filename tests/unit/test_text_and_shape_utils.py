@@ -7,11 +7,13 @@ import httpx
 import pytest
 from _client_test_helpers import _base_settings, _wp_detail_payload, _write_enabled_settings, make_settings
 
+from openproject_ce_mcp.app.adapters.httpx_activity_api import normalize_activity
 from openproject_ce_mcp.app.adapters.httpx_project_api import PROJECT_ANCESTORS_LIMIT, normalize_project_detail
 from openproject_ce_mcp.app.adapters.httpx_user_api import normalize_user_detail
 from openproject_ce_mcp.app.adapters.httpx_version_api import normalize_version
 from openproject_ce_mcp.app.adapters.httpx_work_package_api import normalize_work_package_summary
 from openproject_ce_mcp.app.origin import origin_from_url as _origin_from_url
+from openproject_ce_mcp.app.services.work_package_service import _narrow_cleared
 from openproject_ce_mcp.client import (
     CLEAR,
     CLEAR_PARENT,
@@ -19,7 +21,6 @@ from openproject_ce_mcp.client import (
     OpenProjectClient,
     _extract_formattable_text,
     _extract_formattable_text_with_meta,
-    _narrow_cleared,
     _normalize_text,
     _trim_text,
     _trim_text_with_meta,
@@ -161,10 +162,9 @@ def test_trim_text_still_collapses_newlines_for_single_line_fields() -> None:
 def test_normalize_activity_returns_full_comment_by_default() -> None:
     # Activities of a single WP are one item's content, not a multi-row list, so
     # comments come back in full by default (no cap) — like get_work_package.
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
     long_comment = "c" * 3000
 
-    activity = client.normalize_activity(
+    activity = normalize_activity(
         {"id": 7, "_type": "Activity", "comment": {"raw": long_comment}, "_links": {"user": {"title": "Bot"}}}
     )
 
@@ -181,9 +181,7 @@ def test_normalize_activity_returns_full_comment_by_default() -> None:
 def test_normalize_activity_details_are_delimited_and_drop_duplicate_html() -> None:
     # details[] must be delimited, and must not carry both "raw" and "html"
     # copies of the same change description.
-    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200)))
-
-    activity = client.normalize_activity(
+    activity = normalize_activity(
         {
             "id": 7,
             "_type": "Activity",
@@ -376,12 +374,8 @@ async def test_work_package_detail_description_delimited():
     await client.aclose()
 
 
-@pytest.mark.asyncio
-async def test_activity_comment_delimited():
-    settings = _base_settings()
-    client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
-
-    activity = client.normalize_activity(
+def test_activity_comment_delimited():
+    activity = normalize_activity(
         {
             "id": 789,
             "_type": "Activity::Comment",
@@ -391,8 +385,6 @@ async def test_activity_comment_delimited():
     )
 
     assert activity.comment == "<user-content>User comment text</user-content>"
-
-    await client.aclose()
 
 
 def test_time_entry_comment_hidden_by_time_entry_scope_not_activity_scope():

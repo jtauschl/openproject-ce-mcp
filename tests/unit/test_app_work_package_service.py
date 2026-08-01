@@ -5,7 +5,7 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
-from openproject_ce_mcp.app.errors import InvalidInputError, NotFoundError, PermissionDeniedError
+from openproject_ce_mcp.app.errors import InvalidInputError, NotFoundError, OpenProjectError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.activity_api import ActivityRecord
 from openproject_ce_mcp.app.ports.status_priority_type_api import StatusRecord
 from openproject_ce_mcp.app.ports.work_package_api import WorkPackageFormResult, WorkPackagePage, WorkPackageRecord
@@ -1229,6 +1229,12 @@ async def test_update_no_autofill_when_status_not_changing() -> None:
 
 @pytest.mark.asyncio
 async def test_update_read_disabled_but_write_enabled_still_autofills() -> None:
+    # update() deliberately has NO access.ensure_read_enabled gate at all
+    # (verified against client.py's flat update_work_package, which never
+    # called it either) -- an instance can have work-package writes enabled
+    # with reads entirely disabled, and this must keep working, INCLUDING the
+    # internal auto-derivation status lookup (which also must not go through
+    # StatusPriorityTypeService, since that WOULD gate on read-enablement).
     api = _FakeWorkPackageApi()
     api.next_schema = {
         "percentageDone": {"writable": True},
@@ -1238,13 +1244,10 @@ async def test_update_read_disabled_but_write_enabled_still_autofills() -> None:
     settings = dataclasses.replace(make_settings(), enable_work_package_read=False)
     service, _ = _service(api, settings=settings, status_api=status_api)
 
-    with pytest.raises(PermissionDeniedError):
-        # ensure_read_enabled at the top of update() still gates the whole
-        # call (matches the flat code's own read-gate placement) -- but the
-        # INTERNAL status lookup itself (status_api.get_status) must never be
-        # the thing that raises this, confirmed by it never being reached.
-        await service.update(work_package_id=6, status="Closed", confirm=False)
-    assert status_api.get_status_calls == []
+    result = await service.update(work_package_id=6, status="Closed", confirm=False)
+
+    assert result.ready is True
+    assert status_api.get_status_calls == [5]
 
 
 # ----------------------------------------------------------------------
@@ -1323,3 +1326,206 @@ async def test_delete_denies_write_when_project_not_write_allowed() -> None:
 
     with pytest.raises(PermissionDeniedError):
         await service.delete(work_package_id=6, confirm=False)
+
+
+# ----------------------------------------------------------------------
+# add_comment()
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_add_comment_preview_without_commit_does_not_post() -> None:
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.add_comment(work_package_id=6, comment="Hello", confirm=False)
+
+    assert result.requires_confirmation is True
+    assert result.confirmed is False
+    assert api.post_comment_calls == []
+
+
+@pytest.mark.asyncio
+async def test_add_comment_commit_posts_and_returns_normalized_result() -> None:
+    activity_api = _FakeActivityApi()
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api, activity_api=activity_api)
+
+    result = await service.add_comment(work_package_id=6, comment="Hello", internal=True, notify=True, confirm=True)
+
+    assert result.confirmed is True
+    assert len(api.post_comment_calls) == 1
+    call = api.post_comment_calls[0]
+    assert call == {"work_package_ref": "6", "comment": "Hello", "internal": True, "notify": True}
+    assert result.result is not None
+    assert result.result.comment == "Hello"
+    # Aggregated-journal suppression: details/details_truncated/created_at
+    # always cleared on the echoed result.
+    assert result.result.details is None
+    assert result.result.details_truncated is False
+    assert result.result.created_at is None
+
+
+@pytest.mark.asyncio
+async def test_add_comment_rejects_write_to_hidden_comment_field() -> None:
+    api = _FakeWorkPackageApi()
+    settings = dataclasses.replace(make_settings(), hidden_fields={"activity": ("comment",)})
+    service, _ = _service(api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden"):
+        await service.add_comment(work_package_id=6, comment="Hello", confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_add_comment_denies_write_when_project_not_write_allowed() -> None:
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, payload=_payload(6, project_href="/api/v3/projects/20", project_title="Other"))
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("demo",))
+    service, _ = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.add_comment(work_package_id=6, comment="Hello", confirm=False)
+
+
+@pytest.mark.asyncio
+async def test_add_comment_result_masked_when_comment_hidden_in_output() -> None:
+    activity_api = _FakeActivityApi()
+    api = _FakeWorkPackageApi()
+    settings = dataclasses.replace(make_settings(), hidden_fields={"activity": ("user",)})
+    service, _ = _service(api, activity_api=activity_api, settings=settings)
+
+    result = await service.add_comment(work_package_id=6, comment="Hello", confirm=True)
+
+    assert result.result is not None
+    assert result.result._hidden_keys == frozenset({"user"})
+
+
+# ----------------------------------------------------------------------
+# _fill_missing_activity_user
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fill_missing_activity_user_success_merges_fetched_user_link() -> None:
+    activity_api = _FakeActivityApi()
+    activity_api.next_get_raw = {"id": 55, "_links": {"user": {"title": "Jane"}}}
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api, activity_api=activity_api)
+
+    result = await service._fill_missing_activity_user({"id": 55, "_links": {}})
+
+    assert result["_links"]["user"]["title"] == "Jane"
+    assert activity_api.get_raw_calls == [55]
+
+
+@pytest.mark.asyncio
+async def test_fill_missing_activity_user_skipped_when_already_present() -> None:
+    activity_api = _FakeActivityApi()
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api, activity_api=activity_api)
+
+    activity = {"id": 55, "_links": {"user": {"title": "Existing"}}}
+    result = await service._fill_missing_activity_user(activity)
+
+    assert result is activity
+    assert activity_api.get_raw_calls == []
+
+
+@pytest.mark.asyncio
+async def test_fill_missing_activity_user_skipped_when_hidden() -> None:
+    activity_api = _FakeActivityApi()
+    settings = dataclasses.replace(make_settings(), hidden_fields={"activity": ("user",)})
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api, activity_api=activity_api, settings=settings)
+
+    activity = {"id": 55, "_links": {}}
+    result = await service._fill_missing_activity_user(activity)
+
+    assert result is activity
+    assert activity_api.get_raw_calls == []
+
+
+@pytest.mark.asyncio
+async def test_fill_missing_activity_user_skipped_when_no_usable_id() -> None:
+    activity_api = _FakeActivityApi()
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api, activity_api=activity_api)
+
+    activity = {"id": None, "_links": {}}
+    result = await service._fill_missing_activity_user(activity)
+
+    assert result is activity
+    assert activity_api.get_raw_calls == []
+
+
+@pytest.mark.asyncio
+async def test_fill_missing_activity_user_swallows_fetch_failure() -> None:
+    class _FailingActivityApi(_FakeActivityApi):
+        async def get_raw(self, activity_id: int) -> dict:
+            self.get_raw_calls.append(activity_id)
+            raise OpenProjectError("boom")
+
+    activity_api = _FailingActivityApi()
+    api = _FakeWorkPackageApi()
+    service, _ = _service(api, activity_api=activity_api)
+
+    activity = {"id": 55, "_links": {}}
+    result = await service._fill_missing_activity_user(activity)
+
+    assert result is activity
+    assert activity_api.get_raw_calls == [55]
+
+
+# ----------------------------------------------------------------------
+# No read-enablement gate on any write method (cross-cutting regression
+# guard, found during the OPM-286 wiring pass: none of the 5 flat write
+# methods (create/create_subtask/update/delete/add_comment) ever called
+# _ensure_read_enabled, verified against client.py's originals -- a Service
+# method that added one would be a real behavioral regression, since an
+# instance can have work-package writes enabled with reads entirely
+# disabled).
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_works_with_read_disabled() -> None:
+    api = _FakeWorkPackageApi()
+    settings = dataclasses.replace(make_settings(), enable_work_package_read=False)
+    service, _ = _service(api, settings=settings)
+
+    result = await service.create(project="demo", type="Task", subject="New WP", confirm=False)
+
+    assert result.ready is True
+
+
+@pytest.mark.asyncio
+async def test_create_subtask_works_with_read_disabled() -> None:
+    api = _FakeWorkPackageApi()
+    settings = dataclasses.replace(make_settings(), enable_work_package_read=False)
+    service, _ = _service(api, settings=settings)
+
+    result = await service.create_subtask(parent_work_package_id=6, type="Task", subject="Child", confirm=False)
+
+    assert result.ready is True
+
+
+@pytest.mark.asyncio
+async def test_delete_works_with_read_disabled() -> None:
+    api = _FakeWorkPackageApi()
+    settings = dataclasses.replace(make_settings(), enable_work_package_read=False)
+    service, _ = _service(api, settings=settings)
+
+    result = await service.delete(work_package_id=6, confirm=False)
+
+    assert result.requires_confirmation is True
+
+
+@pytest.mark.asyncio
+async def test_add_comment_works_with_read_disabled() -> None:
+    api = _FakeWorkPackageApi()
+    settings = dataclasses.replace(make_settings(), enable_work_package_read=False)
+    service, _ = _service(api, settings=settings)
+
+    result = await service.add_comment(work_package_id=6, comment="Hello", confirm=False)
+
+    assert result.requires_confirmation is True

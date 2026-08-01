@@ -6,6 +6,7 @@ import httpx
 import pytest
 from _client_test_helpers import _base_settings
 
+from openproject_ce_mcp.app.adapters.httpx_activity_api import normalize_activity
 from openproject_ce_mcp.app.adapters.httpx_membership_api import normalize_membership
 from openproject_ce_mcp.app.adapters.httpx_sprint_api import normalize_sprint
 from openproject_ce_mcp.app.adapters.httpx_status_priority_type_api import normalize_status, normalize_type
@@ -63,18 +64,27 @@ async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
             },
         }
     )
-    activity = client.normalize_activity(
-        {
-            "id": 7,
-            "_type": "Activity",
-            "comment": {"raw": "hidden"},
-            "_links": {"user": {"title": "Bot"}},
-        }
+    # normalize_activity (the adapter's pure HAL->model function) is not
+    # hidden-field-aware by design (ADR 0001) -- masking is applied via
+    # hidden_fields.apply_hidden_fields, the same call WorkPackageService's
+    # add_comment()/_stamp_activity make, mirroring the pattern already used
+    # by test_hidden_membership_fields_are_tagged_and_dropped_from_payload.
+    activity = hidden_fields.apply_hidden_fields(
+        "activity",
+        normalize_activity(
+            {
+                "id": 7,
+                "_type": "Activity",
+                "comment": {"raw": "hidden"},
+                "_links": {"user": {"title": "Bot"}},
+            }
+        ),
+        settings=settings,
     )
 
     assert visible_project.description is None
     assert hidden_description_wp.description is None
-    assert activity.comment is None
+    assert "comment" in activity._hidden_keys
 
     await client.aclose()
 
