@@ -156,6 +156,60 @@ async def test_create_and_update_work_package_accept_assignee_me(
     assert update_result.ready, update_result.validation_errors
 
 
+async def test_create_and_update_work_package_accept_status_and_priority_by_name(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """OPM-371 gap-fill (written before the flat _resolve_status_id/
+    _resolve_priority_id are relocated into a StatusPriorityTypeResolver):
+    name-based status/priority resolution on the work-package write path had
+    no live coverage at all, only assignee-by-name did. Sources real
+    status/priority names from list_statuses/list_priorities rather than
+    hardcoding one, so this stays valid regardless of instance-specific
+    workflow configuration. Run unchanged before and after the resolver
+    relocation to prove no regression.
+
+    create_work_package has no status= parameter (OpenProject assigns the
+    workflow default status on create; status is settable on update_work_package
+    only) -- priority-by-name is exercised on create, status-by-name on update,
+    covering _resolve_priority_id and _resolve_status_id respectively."""
+    priorities = await client.list_priorities()
+    assert priorities.count > 0
+    priority_name = priorities.results[0].name
+
+    result = await client.create_work_package(
+        project=test_project,
+        type="Task",
+        subject=f"{_SUBJECT} status-priority-by-name",
+        priority=priority_name,
+        confirm=True,
+    )
+    assert result.ready, result.validation_errors
+    wp_ids.append(result.work_package_id)
+
+    wp = await client.get_work_package(result.work_package_id)
+    assert wp.priority == priority_name
+
+    other_priority_name = next(
+        (p.name for p in priorities.results if p.name != priority_name),
+        priority_name,
+    )
+    statuses = await client.list_statuses()
+    assert statuses.count > 0
+    status_name = statuses.results[0].name
+
+    update_result = await client.update_work_package(
+        work_package_id=result.work_package_id,
+        status=status_name,
+        priority=other_priority_name,
+        confirm=True,
+    )
+    assert update_result.ready, update_result.validation_errors
+
+    updated = await client.get_work_package(result.work_package_id)
+    assert updated.status == status_name
+    assert updated.priority == other_priority_name
+
+
 async def test_get_work_package_ancestors_tolerate_missing_display_id(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
