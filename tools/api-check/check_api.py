@@ -399,6 +399,17 @@ def run_constants(verbose: bool = False) -> int:
 # --- Full auto-extracted coverage (every resource + filter the client uses) ---
 
 CLIENT = ROOT / "src" / "openproject_ce_mcp" / "client.py"
+# The layered app/ architecture migration (ADR 0001) moved almost every
+# domain's real HTTP calls out of client.py into app/adapters/httpx_*_api.py
+# (self._transport.get_json/post_json/patch_json/delete/delete_json, the
+# direct analog of client.py's own self._get/_post/_patch/_delete), and moved
+# filter-dict construction into app/services/*.py as well as some adapters.
+# Scanning CLIENT alone after the migration completed (2026-08-01, all
+# domains migrated) finds almost nothing -- extended to scan both app/
+# subtrees too, so this tool's --all coverage doesn't silently go blind as a
+# side effect of an otherwise behavior-preserving refactor.
+APP_ADAPTERS = ROOT / "src" / "openproject_ce_mcp" / "app" / "adapters"
+APP_SERVICES = ROOT / "src" / "openproject_ce_mcp" / "app" / "services"
 
 # Resources whose v3 API lives in a separate module engine (modules/<x>/).
 # fetch-sources.sh does fetch each module's lib/api/v3 subtree, but this tool
@@ -432,21 +443,49 @@ FILTER_ALIASES = {
 FILTER_SKIP = {"date", "scope", "context"}  # query params / matchers, not filter files
 
 
+def _all_source_texts() -> list[str]:
+    """client.py, plus every app/adapters and app/services module -- see the
+    module-level comment above APP_ADAPTERS for why both app/ subtrees are
+    included, not just client.py."""
+    texts = [CLIENT.read_text()]
+    for subtree in (APP_ADAPTERS, APP_SERVICES):
+        if subtree.exists():
+            texts.extend(p.read_text() for p in subtree.glob("*.py"))
+    return texts
+
+
 def _extract_client_resources() -> set[str]:
-    text = CLIENT.read_text()
     used: set[str] = set()
-    for m in re.findall(r'self\._(?:get|post|patch|delete)\(\s*f?"([^"]+)"', text):
-        seg = re.sub(r"\{[^}]*\}", "", m.lstrip("/")).split("/")[0]
-        if re.fullmatch(r"[a-z_]+", seg) and seg not in RESOURCE_SKIP:
-            used.add(seg)
-    for m in re.findall(r'_api_href\(f?"([a-z_]+)', text):
-        used.add(m)
+    for text in _all_source_texts():
+        # client.py's own self._get/_post/_patch/_delete AND app/adapters'
+        # self._transport.get_json/post_json/patch_json/delete/delete_json --
+        # same f-string-first-path-segment shape in both.
+        for m in re.findall(
+            r'self\._(?:get|post|patch|delete)\(\s*f?"([^"]+)"'
+            r'|self\._transport\.(?:get_json|post_json|patch_json|delete_json|delete)\(\s*f?"([^"]+)"'
+            # Generic-verb request shapes -- client.py's self._request("METHOD", ...)
+            # and app/'s self._transport.request_raw("METHOD", ...) both take the
+            # HTTP verb as a separate first argument, so the path is the SECOND
+            # string literal, not the first (found via the workspaces/favorite
+            # endpoint, which uses exactly this shape on both branches and was
+            # otherwise invisible to this extractor).
+            r'|self\._request\(\s*"[A-Z]+",\s*f?"([^"]+)"'
+            r'|self\._transport\.request_raw\(\s*"[A-Z]+",\s*f?"([^"]+)"',
+            text,
+        ):
+            path = next(g for g in m if g)
+            seg = re.sub(r"\{[^}]*\}", "", path.lstrip("/")).split("/")[0]
+            if re.fullmatch(r"[a-z_]+", seg) and seg not in RESOURCE_SKIP:
+                used.add(seg)
+        for m in re.findall(r'_api_href\(f?"([a-z_]+)', text):
+            used.add(m)
     return used
 
 
 def _extract_client_filters() -> set[str]:
-    text = CLIENT.read_text()
-    keys = set(re.findall(r'\{"([a-z_]+)":\s*\{"operator"', text))
+    keys: set[str] = set()
+    for text in _all_source_texts():
+        keys.update(re.findall(r'\{"([a-z_]+)":\s*\{"operator"', text))
     return keys - FILTER_SKIP
 
 
