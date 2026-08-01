@@ -109,6 +109,7 @@ from ..pagination import effective_limit, paginate_server
 from ..policies import access, hidden_fields
 from ..policies import work_package_policy as _work_package_policy
 from ..policies.scope import ensure_project_link_allowed, ensure_project_write_link_allowed, scope_allows_all
+from ..policies.scope import id_from_href as _id_from_href
 from ..ports.activity_api import ActivityApi
 from ..ports.assignee_ref import AssigneeRefResolver
 from ..ports.current_user import CurrentUserLookup
@@ -191,15 +192,9 @@ def _trim_text(value: Any, *, limit: int = SUBJECT_LIMIT) -> str | None:
     return text[: limit - 1].rstrip() + "…"
 
 
-def _id_from_href(href: str | None) -> int | None:
-    """Local, deliberately duplicated (Services cannot import from Adapters)."""
-    if not href:
-        return None
-    parts = href.rstrip("/").split("/")
-    try:
-        return int(parts[-1])
-    except (ValueError, IndexError):
-        return None
+# id_from_href is NOT duplicated here -- it lives in app/policies/scope.py
+# (imported below as _id_from_href), unified there once a 3rd identical copy
+# appeared (see project_service.py's own equivalent comment).
 
 
 def _bulk_item_result(*, index: int, result: WorkPackageWriteResult) -> BulkWorkPackageItemResult:
@@ -1043,7 +1038,7 @@ class WorkPackageService:
             links["category"] = {"href": None}
         if project_phase is CLEAR:
             hidden_fields.ensure_field_writable("work_package", "project_phase", settings=self._settings)
-            links["project_phase"] = {"href": None}
+            links["projectPhase"] = {"href": None}
 
         schema_needs = any(
             value is not None and value is not CLEAR

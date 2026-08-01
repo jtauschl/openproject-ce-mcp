@@ -949,6 +949,72 @@ async def test_update_work_package_clears_category_with_null_href() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_work_package_clears_project_phase_with_null_href() -> None:
+    # Regression guard (found by an independent Codex CLI review during the
+    # OPM-286 write-migration's step 6.5, 2026-08-01): the CLEAR branch must
+    # send _links.projectPhase (camelCase, the real HAL key) = {"href": None},
+    # matching the non-CLEAR schema-backed branch a few lines below it -- an
+    # earlier draft used the snake_case "project_phase" key instead, which
+    # OpenProject would silently ignore or reject.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 2,
+                    "_links": {
+                        "project": {"title": "Demo", "href": "/api/v3/projects/1"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "projectPhase": {"href": "/api/v3/project_phases/5", "title": "Executing"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            assert body["_links"]["projectPhase"]["href"] is None
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"schema": {}, "payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body["_links"]["projectPhase"]["href"] is None
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 3,
+                    "_links": {
+                        "project": {"title": "Demo"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "projectPhase": {"href": None},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _write_enabled_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.update_work_package(work_package_id=42, project_phase=CLEAR, confirm=True)
+
+    assert result.confirmed is True
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_delete_work_package_requires_confirmation_preview() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":

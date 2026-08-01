@@ -1375,6 +1375,28 @@ async def test_add_comment_rejects_write_to_hidden_comment_field() -> None:
     with pytest.raises(InvalidInputError, match="hidden"):
         await service.add_comment(work_package_id=6, comment="Hello", confirm=False)
 
+    # The hidden-field check must run BEFORE any network call -- not just
+    # before the write itself.
+    assert api.get_calls == []
+    assert api.post_comment_calls == []
+
+
+@pytest.mark.asyncio
+async def test_add_comment_masking_is_activity_scoped_not_work_package_scoped() -> None:
+    # Entity-scope regression guard: hiding a "work_package"-scope field must
+    # NOT affect add_comment()'s "activity"-scope masking, and vice versa --
+    # each hidden_fields call passes an explicit entity string, this proves
+    # there's no accidental cross-entity leakage.
+    activity_api = _FakeActivityApi()
+    api = _FakeWorkPackageApi()
+    settings = dataclasses.replace(make_settings(), hidden_fields={"work_package": ("description",)})
+    service, _ = _service(api, activity_api=activity_api, settings=settings)
+
+    # Hiding "work_package.description" must not block writing the comment
+    # itself (a different entity/field).
+    result = await service.add_comment(work_package_id=6, comment="Hello", confirm=False)
+    assert result.requires_confirmation is True
+
 
 @pytest.mark.asyncio
 async def test_add_comment_denies_write_when_project_not_write_allowed() -> None:
