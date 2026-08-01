@@ -106,6 +106,7 @@ from .app.ports.work_package_lookup_api import WorkPackageLookupApi
 from .app.resolvers.assignee_resolver import AssigneeResolver
 from .app.resolvers.principal_resolver import PrincipalResolver
 from .app.resolvers.project_resolver import ProjectResolver
+from .app.resolvers.status_priority_type_resolver import StatusPriorityTypeResolver
 from .app.resolvers.version_resolver import VersionResolver
 from .app.resolvers.work_package_resolver import WorkPackageResolver
 from .app.services.action_capability_service import ActionCapabilityService
@@ -490,6 +491,7 @@ class OpenProjectClient:
             settings=settings,
             resolve_project_ref=self._get_project_payload,
         )
+        self._status_priority_type_resolver = StatusPriorityTypeResolver(api=self._status_priority_type_api)
 
         self._query_metadata_api: QueryMetadataApi = HttpxQueryMetadataApi(
             HttpxTransport(self._http), base_url=settings.base_url, origin=self._origin
@@ -551,8 +553,8 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
             resolve_type_id=self._resolve_type_id,
             resolve_version_id=self._resolve_version_id,
-            resolve_status_id=self._resolve_status_id,
-            resolve_priority_id=self._resolve_priority_id,
+            resolve_status_id=self._status_priority_type_resolver.resolve_status_id,
+            resolve_priority_id=self._status_priority_type_resolver.resolve_priority_id,
             resolve_principal_id=self._resolve_principal_id,
             resolve_assignee_id=self._assignee_resolver.resolve_id,
             resolve_sprint_id=self._resolve_sprint_id,
@@ -2640,32 +2642,6 @@ class OpenProjectClient:
             raise InvalidInputError(
                 f"OpenProject sprint '{sprint_ref}' is ambiguous without a more specific filter. Pass a numeric sprint id."
             )
-        return matches[0]
-
-    async def _resolve_status_id(self, status_ref: str) -> str:
-        if status_ref.isdigit():
-            return status_ref
-        payload = await self._get("statuses")
-        matches = [
-            str(item["id"])
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if str(item.get("name", "")).casefold() == status_ref.casefold()
-        ]
-        if not matches:
-            raise InvalidInputError(f"OpenProject status '{status_ref}' was not found.")
-        return matches[0]
-
-    async def _resolve_priority_id(self, priority_ref: str) -> str:
-        if priority_ref.isdigit():
-            return priority_ref
-        payload = await self._get("priorities")
-        matches = [
-            str(item["id"])
-            for item in payload.get("_embedded", {}).get("elements", [])
-            if str(item.get("name", "")).casefold() == priority_ref.casefold()
-        ]
-        if not matches:
-            raise InvalidInputError(f"OpenProject priority '{priority_ref}' was not found.")
         return matches[0]
 
 

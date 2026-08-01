@@ -633,6 +633,23 @@ def test_principal_resolver_binds_the_api_param_to_principal_api_specifically() 
     )
 
 
+def test_status_priority_type_resolver_binds_the_api_param_to_status_priority_type_api_specifically() -> None:
+    """Sibling check for StatusPriorityTypeResolver (OPM-371): the api param
+    is StatusPriorityTypeApi exactly, not just "some Protocol", and not the
+    concrete adapter."""
+    from openproject_ce_mcp.app.adapters.httpx_status_priority_type_api import HttpxStatusPriorityTypeApi
+    from openproject_ce_mcp.app.ports.status_priority_type_api import StatusPriorityTypeApi
+    from openproject_ce_mcp.app.resolvers.status_priority_type_resolver import StatusPriorityTypeResolver
+
+    hints = typing.get_type_hints(StatusPriorityTypeResolver.__init__)
+    assert hints["api"] is StatusPriorityTypeApi, (
+        "StatusPriorityTypeResolver.__init__'s api param must be typed StatusPriorityTypeApi"
+    )
+    assert hints["api"] is not HttpxStatusPriorityTypeApi, (
+        "StatusPriorityTypeResolver.__init__'s api param must not be the concrete adapter"
+    )
+
+
 def test_user_preferences_service_binds_the_api_param_to_user_preferences_api_specifically() -> None:
     """Non-generalized regression test for the User Preferences domain's
     exact guarantee, sibling to the checks above: the api param is
