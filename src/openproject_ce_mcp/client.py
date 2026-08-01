@@ -107,6 +107,7 @@ from .app.resolvers.assignee_resolver import AssigneeResolver
 from .app.resolvers.principal_resolver import PrincipalResolver
 from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.status_priority_type_resolver import StatusPriorityTypeResolver
+from .app.resolvers.type_resolver import TypeResolver
 from .app.resolvers.version_resolver import VersionResolver
 from .app.resolvers.work_package_resolver import WorkPackageResolver
 from .app.services.action_capability_service import ActionCapabilityService
@@ -492,6 +493,9 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
         self._status_priority_type_resolver = StatusPriorityTypeResolver(api=self._status_priority_type_api)
+        self._type_resolver = TypeResolver(
+            api=self._status_priority_type_api, resolve_project_ref=self._get_project_payload
+        )
 
         self._query_metadata_api: QueryMetadataApi = HttpxQueryMetadataApi(
             HttpxTransport(self._http), base_url=settings.base_url, origin=self._origin
@@ -551,7 +555,7 @@ class OpenProjectClient:
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
             resolve_project_ref=self._get_project_payload,
-            resolve_type_id=self._resolve_type_id,
+            resolve_type_id=self._type_resolver.resolve_id,
             resolve_version_id=self._resolve_version_id,
             resolve_status_id=self._status_priority_type_resolver.resolve_status_id,
             resolve_priority_id=self._status_priority_type_resolver.resolve_priority_id,
@@ -1274,7 +1278,7 @@ class OpenProjectClient:
         versions = await self.list_versions(project=str(project_id), offset=1, limit=self.settings.max_results)
 
         if type is not None:
-            selected_type_id = int(await self._resolve_type_id(type, project=str(project_id)))
+            selected_type_id = int(await self._type_resolver.resolve_id(type, project=str(project_id)))
             selected_type_name = next((item.title for item in available_types if item.id == selected_type_id), type)
             form = await self._post(
                 f"projects/{project_id}/work_packages/form",
@@ -2551,25 +2555,6 @@ class OpenProjectClient:
 
     async def _resolve_principal_id(self, principal_ref: str) -> str:
         return await self._principal_resolver.resolve_id(principal_ref)
-
-    async def _resolve_type_id(
-        self, type_ref: str, *, project: str | None, context: ProjectResolutionContext | None = None
-    ) -> str:
-        if type_ref.isdigit():
-            return type_ref
-        if not project:
-            raise InvalidInputError("type names require a project filter. Pass a numeric type id or set project.")
-
-        project_payload = await self._get_project_payload(project, context=context)
-        project_id = str(project_payload["id"])
-        payload = await self._get(f"projects/{project_id}/types")
-        elements = payload.get("_embedded", {}).get("elements", [])
-        matches = [str(item["id"]) for item in elements if str(item.get("name", "")).casefold() == type_ref.casefold()]
-        if not matches:
-            raise InvalidInputError(f"OpenProject type '{type_ref}' was not found in project '{project}'.")
-        if len(matches) > 1:
-            raise InvalidInputError(f"OpenProject type '{type_ref}' is ambiguous. Pass a numeric type id.")
-        return matches[0]
 
     async def _resolve_version_id(
         self, version_ref: str, *, project: str | None = None, context: ProjectResolutionContext | None = None

@@ -529,7 +529,7 @@ async def test_resolve_type_id_denies_disallowed_project(project_ref: str) -> No
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
-        await client._resolve_type_id("Bug", project=project_ref)
+        await client._type_resolver.resolve_id("Bug", project=project_ref)
     await client.aclose()
 
 
@@ -565,7 +565,7 @@ async def test_resolve_type_id_rejects_ambiguous_name() -> None:
     client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
 
     with pytest.raises(InvalidInputError, match="ambiguous"):
-        await client._resolve_type_id("Bug", project="demo")
+        await client._type_resolver.resolve_id("Bug", project="demo")
     await client.aclose()
 
 
