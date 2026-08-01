@@ -103,6 +103,7 @@ from .app.ports.watcher_api import WatcherApi
 from .app.ports.wiki_page_api import WikiPageApi
 from .app.ports.work_package_api import WorkPackageApi
 from .app.ports.work_package_lookup_api import WorkPackageLookupApi
+from .app.resolvers.assignee_resolver import AssigneeResolver
 from .app.resolvers.principal_resolver import PrincipalResolver
 from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.version_resolver import VersionResolver
@@ -383,6 +384,7 @@ class OpenProjectClient:
         self._principal_resolver = PrincipalResolver(
             api=self._principal_api, current_user=self.get_current_user, settings=settings
         )
+        self._assignee_resolver = AssigneeResolver(current_user=self.get_current_user)
 
         self._user_api: UserApi = HttpxUserApi(HttpxTransport(self._http), base_url=settings.base_url)
         self._user_service = UserService(api=self._user_api, settings=settings)
@@ -552,7 +554,7 @@ class OpenProjectClient:
             resolve_status_id=self._resolve_status_id,
             resolve_priority_id=self._resolve_priority_id,
             resolve_principal_id=self._resolve_principal_id,
-            resolve_assignee_id=self._resolve_assignee_id,
+            resolve_assignee_id=self._assignee_resolver.resolve_id,
             resolve_sprint_id=self._resolve_sprint_id,
             resolve_work_package_id=self._work_package_resolver.resolve_id,
             status_api=self._status_priority_type_api,
@@ -2665,14 +2667,6 @@ class OpenProjectClient:
         if not matches:
             raise InvalidInputError(f"OpenProject priority '{priority_ref}' was not found.")
         return matches[0]
-
-    async def _resolve_assignee_id(self, assignee_ref: str) -> str:
-        if assignee_ref.casefold() == "me":
-            current_user = await self.get_current_user()
-            return str(current_user.id)
-        if assignee_ref.isdigit():
-            return assignee_ref
-        raise InvalidInputError("assignee must be a positive integer user id or 'me'.")
 
 
 def _delimit_user_content(text: str | None) -> str | None:
