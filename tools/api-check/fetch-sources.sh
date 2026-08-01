@@ -46,7 +46,7 @@ SPARSE_PATHS=(
 )
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-DEST_BASE="$ROOT/.op-sources"
+DEST_BASE="$(dirname "$ROOT")/op-sources"
 mkdir -p "$DEST_BASE"
 
 for entry in "${VERSIONS[@]}"; do

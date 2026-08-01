@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCES = ROOT / ".op-sources"
+SOURCES = ROOT.parent / "op-sources"
 
 
 def _version_key(v: str) -> tuple[int, ...]:
@@ -329,8 +329,19 @@ FILTER_SKIP = {"date", "scope", "context"}  # query params / matchers, not filte
 def _extract_client_resources() -> set[str]:
     text = CLIENT.read_text()
     used: set[str] = set()
-    for m in re.findall(r'self\._(?:get|post|patch|delete)\(\s*f?"([^"]+)"', text):
-        seg = re.sub(r"\{[^}]*\}", "", m.lstrip("/")).split("/")[0]
+    for m in re.findall(
+        r'self\._(?:get|post|patch|delete)\(\s*f?"([^"]+)"'
+        # self._request("METHOD", ...) takes the HTTP verb as a separate first
+        # argument, so the path is the SECOND string literal, not the first --
+        # found via the workspaces/favorite endpoint, which uses exactly this
+        # shape (both a POST and a DELETE call) and was only incidentally
+        # caught before via its DELETE branch coincidentally also matching
+        # self._delete(...) a few lines away in the same method.
+        r'|self\._request\(\s*"[A-Z]+",\s*f?"([^"]+)"',
+        text,
+    ):
+        path = m[0] or m[1]
+        seg = re.sub(r"\{[^}]*\}", "", path.lstrip("/")).split("/")[0]
         if re.fullmatch(r"[a-z_]+", seg) and seg not in RESOURCE_SKIP:
             used.add(seg)
     for m in re.findall(r'_api_href\(f?"([a-z_]+)', text):
