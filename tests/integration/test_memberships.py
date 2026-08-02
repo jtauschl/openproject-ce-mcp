@@ -20,9 +20,11 @@ async def _other_principal_id(client: OpenProjectClient) -> str:
     principal="me", ...) on a freshly created project always fails with
     "user already assigned" (a real, pre-existing OpenProject constraint, not
     a client bug). Picks any other active user already on the instance
-    rather than creating a new one: create_user's password field is not
-    writable on every instance (e.g. an external-auth-only setup), and that
-    path is already covered, Docker-instance-gated, by
+    rather than creating a new one: not every token has the instance-admin
+    rights create_user's password field needs (confirmed via the Docker test
+    instance, where an admin token creates a user with a password fine, vs.
+    a non-admin-rights TST token that gets "password can't be written"); that
+    happy path is already covered, Docker-instance-gated, by
     test_users.py::test_user_lifecycle_roundtrip -- this fixture only needs
     *a* second principal to assign, not to prove create_user works too."""
     me = await client.get_current_user()
