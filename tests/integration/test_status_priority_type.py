@@ -1,5 +1,5 @@
 """Integration tests for Statuses/Priorities/Types reads (16th migrated
-domain, OPM-1627).
+domain).
 
 All three are admin-UI-only resources -- GET list + GET single-item, no
 create/update/delete endpoint in the OpenProject v3 API. Moved out of

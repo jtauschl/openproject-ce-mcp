@@ -4253,7 +4253,7 @@ async def test_job_status_documents_news_and_wiki() -> None:
                 request=request,
             )
         if request.url.path == "/api/v3/projects/88":
-            # OPM-316: get_job_status resolves the createdProject link's real
+            # get_job_status resolves the createdProject link's real
             # identifier for the shared allowlist cache.
             return httpx.Response(
                 200,
@@ -4615,7 +4615,7 @@ async def test_get_job_status_allows_source_project_link_when_allowlisted() -> N
 
 @pytest.mark.asyncio
 async def test_get_job_status_remembers_copied_projects_real_identifier_in_the_shared_cache() -> None:
-    """Regression test (OPM-316): a project created via copy_project was
+    """Regression test: a project created via copy_project was
     invisible to every link-shaped allowlist check until the process
     restarted, because _project_id_to_identifier was never written through
     on the async copy-job-completion path (unlike create_project/
@@ -9782,7 +9782,7 @@ async def test_bulk_create_work_packages_preview_mode() -> None:
 
 @pytest.mark.asyncio
 async def test_bulk_create_work_packages_preview_forwards_duration_fields() -> None:
-    # OPM-215: bulk_create_work_packages used to silently drop estimated_time/
+    # bulk_create_work_packages used to silently drop estimated_time/
     # remaining_time/duration instead of forwarding them to create_work_package.
     posted_bodies: list[dict] = []
 
@@ -9823,7 +9823,7 @@ async def test_bulk_create_work_packages_preview_forwards_duration_fields() -> N
 
 @pytest.mark.asyncio
 async def test_bulk_create_work_packages_confirm_forwards_duration_fields() -> None:
-    # OPM-215 follow-up: the preview test above only exercises confirm=False (the
+    # Follow-up: the preview test above only exercises confirm=False (the
     # form-probe POST). Assert the same fields also reach the actual mutating
     # create POST when confirm=True, and that the committed result reflects them
     # (not just the outgoing request).

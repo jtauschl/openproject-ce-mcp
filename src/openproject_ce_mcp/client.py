@@ -1010,8 +1010,8 @@ class OpenProjectClient:
         else:
             # p{id} is the context-filter form accepted on every supported
             # version (16.0-17.6); w{id} (workspace) is only accepted from
-            # 17.0 onward and is rejected as malformed on 16.x (OPM-325,
-            # verified against op-sources across all 14 pinned versions).
+            # 17.0 onward and is rejected as malformed on 16.x (verified
+            # against op-sources across all 14 pinned versions).
             # See the allowlist-gap comment below for why the per-record
             # check still runs even though this filter already narrows the
             # query server-side.
@@ -1072,7 +1072,7 @@ class OpenProjectClient:
         self._ensure_read_enabled("board")
         # OpenProject's sort_bys route is queries/sort_bys/:id-:direction
         # (hyphen-joined), not a bare id segment like filters/columns/operators
-        # (OPM-322, verified live against 16.6.10/17.4.1/17.5.1). Translate the
+        # (verified live against 16.6.10/17.4.1/17.5.1). Translate the
         # caller's colon-separated id ("subject:asc") to the hyphen form for the
         # request, but keep the original id as the public contract.
         column, _, direction = sort_by_id.partition(":")

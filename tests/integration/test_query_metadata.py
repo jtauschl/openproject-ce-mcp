@@ -36,7 +36,7 @@ async def test_get_query_operator(client: OpenProjectClient) -> None:
 
 
 async def test_get_query_sort_by_resolves_colon_form_id(client: OpenProjectClient) -> None:
-    """Regression (OPM-322): OpenProject's sort_bys route is
+    """Regression: OpenProject's sort_bys route is
     queries/sort_bys/:id-:direction (hyphen-joined), not a bare id segment.
     A request built from the caller-facing colon-separated id
     ("subject:asc") used to hit a 404 on every version -- confirm it now

@@ -1894,7 +1894,7 @@ async def test_bulk_create_work_packages_tool_passes_validated_items() -> None:
 
 @pytest.mark.asyncio
 async def test_bulk_create_work_packages_tool_rejects_unknown_item_field() -> None:
-    # OPM-215: an unsupported item key must fail loudly (indexed error), not be
+    # An unsupported item key must fail loudly (indexed error), not be
     # silently dropped.
     class StubClient:
         async def bulk_create_work_packages(self, **kwargs):
@@ -1909,7 +1909,7 @@ async def test_bulk_create_work_packages_tool_rejects_unknown_item_field() -> No
 
 @pytest.mark.asyncio
 async def test_bulk_create_work_packages_tool_passes_duration_fields() -> None:
-    # OPM-215: estimated_time/remaining_time/duration must survive validation and
+    # estimated_time/remaining_time/duration must survive validation and
     # reach the client, matching create_work_package's existing behavior.
     received: list = []
 
@@ -1977,8 +1977,9 @@ async def test_bulk_update_work_packages_tool_validates_required_fields() -> Non
 
 @pytest.mark.asyncio
 async def test_bulk_update_work_packages_tool_rejects_unknown_item_field() -> None:
-    # OPM-216 (same bug class as OPM-215, but for bulk_update): an unsupported
-    # item key must fail loudly (indexed error), not be silently dropped.
+    # Same bug class as the create-side bulk validation, but for bulk_update:
+    # an unsupported item key must fail loudly (indexed error), not be
+    # silently dropped.
     class StubClient:
         async def bulk_update_work_packages(self, **kwargs):
             raise AssertionError("must not reach the client when an item has an unknown field")

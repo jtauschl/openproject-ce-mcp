@@ -360,7 +360,7 @@ async def test_bulk_create_work_packages(client: OpenProjectClient, test_project
 async def test_bulk_create_work_packages_applies_duration_fields(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    # OPM-215: estimated_time/remaining_time/duration used to be silently dropped
+    # estimated_time/remaining_time/duration used to be silently dropped
     # by bulk_create_work_packages instead of applied.
     items = [
         {
