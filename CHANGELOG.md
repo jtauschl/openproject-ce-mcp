@@ -107,7 +107,7 @@ support.
 
 ---
 
-## [Unreleased 0.3.5]
+## 0.3.5 – 2026-08-02
 
 ### Added
 
@@ -142,6 +142,19 @@ support.
 - **`get_time_entry`/`list_time_entries` now report `comment_truncated`/
   `comment_length`** when a comment is cut, matching every other
   truncation-capable field.
+- **A malformed or invisible project link on a work package, membership,
+  view, job status, or board is now consistently denied instead of
+  silently allowed** under a wide-open `OPENPROJECT_READ_PROJECTS`/
+  `WRITE_PROJECTS="*"` scope, closing a fail-open gap that treated a
+  missing/malformed link as implicitly in-scope before checking it.
+  `get_job_status` and `list_notifications` had two related gaps of their
+  own (a falsy-but-present project link silently replaced by a fallback
+  link; a malformed link that wasn't a plain object skipping the check
+  entirely) fixed the same way.
+- **Attachment container authorization no longer accepts an unrelated
+  resource whose path merely contains `work_packages/`** (e.g.
+  `/api/v3/not_work_packages/9`) as if it were a real work-package
+  container — an exact path-segment match is now required.
 
 ---
 
