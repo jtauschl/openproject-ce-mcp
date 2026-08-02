@@ -76,6 +76,31 @@ def normalize_type(payload: dict[str, Any], *, base_url: str) -> TypeSummary:
     )
 
 
+def _lookup_name(payload: dict[str, Any]) -> str:
+    """The raw, never-synthesized name used for exact-name resolution.
+
+    Deliberately NOT `_trim_text(...) or f"X {id}"` -- that fallback is
+    display-only behavior (see module docstring). A blank/missing raw name
+    must never accidentally match a caller's literal-string search.
+    """
+    return str(payload.get("name", ""))
+
+
+def _has_usable_id(item: Any) -> bool:
+    """True for a dict element whose `id` can become a valid Record id.
+
+    List endpoints skip an element failing this check rather than raising --
+    an unrelated malformed row must not break resolution/listing of every
+    other, well-formed row. Single-item `get_*` calls stay strict: a
+    malformed response to a request for one specific id is a real error,
+    not a row to silently skip.
+    """
+    if not isinstance(item, dict):
+        return False
+    raw_id = item.get("id")
+    return isinstance(raw_id, int | str) and str(raw_id).isdigit()
+
+
 class HttpxStatusPriorityTypeApi:
     def __init__(self, transport: Transport, *, base_url: str, api_prefix: str) -> None:
         self._transport = transport
@@ -86,34 +111,40 @@ class HttpxStatusPriorityTypeApi:
         payload = await self._transport.get_json("statuses")
         elements = payload.get("_embedded", {}).get("elements", [])
         return [
-            StatusRecord(summary=normalize_status(item, api_prefix=self._api_prefix))
+            StatusRecord(summary=normalize_status(item, api_prefix=self._api_prefix), lookup_name=_lookup_name(item))
             for item in elements
-            if isinstance(item, dict)
+            if _has_usable_id(item)
         ]
 
     async def get_status(self, status_id: int) -> StatusRecord:
         payload = await self._transport.get_json(f"statuses/{status_id}")
-        return StatusRecord(summary=normalize_status(payload, api_prefix=self._api_prefix))
+        return StatusRecord(
+            summary=normalize_status(payload, api_prefix=self._api_prefix), lookup_name=_lookup_name(payload)
+        )
 
     async def list_priorities(self) -> list[PriorityRecord]:
         payload = await self._transport.get_json("priorities")
         elements = payload.get("_embedded", {}).get("elements", [])
-        return [PriorityRecord(summary=normalize_priority(item)) for item in elements if isinstance(item, dict)]
+        return [
+            PriorityRecord(summary=normalize_priority(item), lookup_name=_lookup_name(item))
+            for item in elements
+            if _has_usable_id(item)
+        ]
 
     async def get_priority(self, priority_id: int) -> PriorityRecord:
         payload = await self._transport.get_json(f"priorities/{priority_id}")
-        return PriorityRecord(summary=normalize_priority(payload))
+        return PriorityRecord(summary=normalize_priority(payload), lookup_name=_lookup_name(payload))
 
     async def list_types(self, *, project_id: int | None) -> list[TypeRecord]:
         path = f"projects/{project_id}/types" if project_id is not None else "types"
         payload = await self._transport.get_json(path)
         elements = payload.get("_embedded", {}).get("elements", [])
         return [
-            TypeRecord(summary=normalize_type(item, base_url=self._base_url))
+            TypeRecord(summary=normalize_type(item, base_url=self._base_url), lookup_name=_lookup_name(item))
             for item in elements
-            if isinstance(item, dict)
+            if _has_usable_id(item)
         ]
 
     async def get_type(self, type_id: int) -> TypeRecord:
         payload = await self._transport.get_json(f"types/{type_id}")
-        return TypeRecord(summary=normalize_type(payload, base_url=self._base_url))
+        return TypeRecord(summary=normalize_type(payload, base_url=self._base_url), lookup_name=_lookup_name(payload))

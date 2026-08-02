@@ -181,3 +181,69 @@ async def test_get_type_requests_single_item_endpoint() -> None:
         record = await api.get_type(4)
 
     assert record.summary.id == 4
+
+
+@pytest.mark.asyncio
+async def test_list_statuses_lookup_name_is_the_raw_name_not_the_display_fallback() -> None:
+    """Codex-review regression test: lookup_name must be the raw payload
+    name, never the synthetic display fallback normalize_status uses for
+    summary.name -- see the port module's docstring for why the two must
+    differ."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": ""}]}}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client), base_url=BASE_URL, api_prefix="/api/v3/")
+        records = await api.list_statuses()
+
+    assert len(records) == 1
+    assert records[0].summary.name == "Status 7"
+    assert records[0].lookup_name == ""
+
+
+@pytest.mark.asyncio
+async def test_list_statuses_skips_an_element_with_a_missing_id() -> None:
+    """Regression test: list_* must not raise on one malformed element among
+    otherwise well-formed ones -- skip it, don't fail every other status."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"_embedded": {"elements": [{"name": "No id here"}, _status_payload(2)]}},
+            request=request,
+        )
+
+    async with _client(handler) as http_client:
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client), base_url=BASE_URL, api_prefix="/api/v3/")
+        records = await api.list_statuses()
+
+    assert [record.summary.id for record in records] == [2]
+
+
+@pytest.mark.asyncio
+async def test_list_priorities_skips_an_element_with_a_non_numeric_id() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"_embedded": {"elements": [{"id": "not-a-number", "name": "Bad"}, _priority_payload(2)]}},
+            request=request,
+        )
+
+    async with _client(handler) as http_client:
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client), base_url=BASE_URL, api_prefix="/api/v3/")
+        records = await api.list_priorities()
+
+    assert [record.summary.id for record in records] == [2]
+
+
+@pytest.mark.asyncio
+async def test_list_types_skips_a_non_dict_element() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"_embedded": {"elements": ["not-a-dict", _type_payload(2)]}}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client), base_url=BASE_URL, api_prefix="/api/v3/")
+        records = await api.list_types(project_id=None)
+
+    assert [record.summary.id for record in records] == [2]

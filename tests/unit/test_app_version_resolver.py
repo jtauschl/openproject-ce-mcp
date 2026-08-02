@@ -23,6 +23,16 @@ def _summary(version_id: int, name: str) -> VersionSummary:
     )
 
 
+def _record(
+    version_id: int, name: str, *, defining_project_link: dict | None = None, lookup_name: str | None = None
+) -> VersionRecord:
+    return VersionRecord(
+        summary=_summary(version_id, name),
+        defining_project_link=defining_project_link,
+        lookup_name=name if lookup_name is None else lookup_name,
+    )
+
+
 class _FakeVersionApi:
     def __init__(self, records: list[VersionRecord]) -> None:
         self._records = records
@@ -63,7 +73,7 @@ def _resolver(records: list[VersionRecord]) -> VersionResolver:
 
 @pytest.mark.asyncio
 async def test_resolve_by_numeric_id_within_project() -> None:
-    records = [VersionRecord(summary=_summary(8, "v1.0"), defining_project_link=None)]
+    records = [_record(8, "v1.0")]
     resolver = _resolver(records)
 
     result = await resolver.resolve_id("8", project="demo")
@@ -73,7 +83,7 @@ async def test_resolve_by_numeric_id_within_project() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_by_name_within_project() -> None:
-    records = [VersionRecord(summary=_summary(8, "v1.0"), defining_project_link=None)]
+    records = [_record(8, "v1.0")]
     resolver = _resolver(records)
 
     result = await resolver.resolve_id("v1.0", project="demo")
@@ -83,7 +93,7 @@ async def test_resolve_by_name_within_project() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_numeric_id_not_available_in_project_raises() -> None:
-    records = [VersionRecord(summary=_summary(8, "v1.0"), defining_project_link=None)]
+    records = [_record(8, "v1.0")]
     resolver = _resolver(records)
 
     with pytest.raises(InvalidInputError, match="is not available in project"):
@@ -92,10 +102,7 @@ async def test_resolve_numeric_id_not_available_in_project_raises() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_ambiguous_name_within_project_raises() -> None:
-    records = [
-        VersionRecord(summary=_summary(1, "v1.0"), defining_project_link=None),
-        VersionRecord(summary=_summary(2, "v1.0"), defining_project_link=None),
-    ]
+    records = [_record(1, "v1.0"), _record(2, "v1.0")]
     resolver = _resolver(records)
 
     with pytest.raises(InvalidInputError, match="ambiguous"):
@@ -105,7 +112,7 @@ async def test_resolve_ambiguous_name_within_project_raises() -> None:
 @pytest.mark.asyncio
 async def test_resolve_numeric_id_without_project_checks_allowlist() -> None:
     link = {"href": "/api/v3/projects/6", "title": "Demo"}
-    records = [VersionRecord(summary=_summary(8, "v1.0"), defining_project_link=link)]
+    records = [_record(8, "v1.0", defining_project_link=link)]
     resolver = _resolver(records)
 
     result = await resolver.resolve_id("8", project=None)
@@ -116,7 +123,7 @@ async def test_resolve_numeric_id_without_project_checks_allowlist() -> None:
 @pytest.mark.asyncio
 async def test_resolve_by_name_without_project_uses_search() -> None:
     link = {"href": "/api/v3/projects/6", "title": "Demo"}
-    records = [VersionRecord(summary=_summary(8, "v1.0"), defining_project_link=link)]
+    records = [_record(8, "v1.0", defining_project_link=link)]
     resolver = _resolver(records)
 
     result = await resolver.resolve_id("v1.0", project=None)
@@ -130,3 +137,16 @@ async def test_resolve_by_name_without_project_not_found_raises() -> None:
 
     with pytest.raises(InvalidInputError, match="was not found"):
         await resolver.resolve_id("nope", project=None)
+
+
+@pytest.mark.asyncio
+async def test_resolve_does_not_match_a_blank_name_against_the_synthetic_display_fallback() -> None:
+    """Matching uses VersionRecord.lookup_name (the raw, never-synthesized
+    name), not summary.name, which falls back to a synthetic display name
+    ("Version 9") when the raw name is blank -- see app/ports/version_api.py's
+    VersionRecord docstring."""
+    records = [_record(9, "Version 9", lookup_name="")]
+    resolver = _resolver(records)
+
+    with pytest.raises(InvalidInputError, match="was not found in project"):
+        await resolver.resolve_id("Version 9", project="demo")

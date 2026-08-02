@@ -99,11 +99,11 @@ async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
     )
 
     # normalize_project (the adapter's pure HAL->model function) is not
-    # hidden-field-aware by design either (same ADR 0001 masking split as
+    # hidden-field-aware by design either (same masking split as
     # normalize_activity above) -- the value is preserved on the dataclass,
     # hidden_fields.apply_hidden_fields only tags it for the serialization
-    # seam (tools._to_payload) to drop, mirroring the layered contract this
-    # migration's Commit 7 introduced (OPM-371).
+    # seam (tools._to_payload) to drop, mirroring this project's layered
+    # masking contract.
     assert "description" in visible_project._hidden_keys
     assert visible_project.description == "<user-content>secret</user-content>"  # preserved on the dataclass
     assert "description" not in _to_payload(visible_project)

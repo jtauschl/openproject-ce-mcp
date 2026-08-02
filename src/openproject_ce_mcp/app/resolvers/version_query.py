@@ -59,20 +59,22 @@ async def _fetch_all_pages(
     return records
 
 
-async def fetch_version_page(
+async def fetch_visible_version_records(
     *,
     api: VersionApi,
     resolve_project_ref: ProjectRefResolver,
     settings: Settings,
     project_id_to_identifier: dict[int, str],
     project: str | None,
-    search: str | None,
-    offset: int,
-    limit: int,
     context: ProjectResolutionContext | None,
     text_limit: int | None = FORMATTABLE_LIMIT,
-) -> tuple[list[VersionSummary], int, int | None, bool]:
-    """Raw, unmasked version-summary page: (page_results, total, next_offset, truncated).
+) -> list[VersionRecord]:
+    """Every visible VersionRecord (access-gated, project-resolved,
+    allowlist-filtered), no search filter, no pagination slicing -- the
+    record-preserving core `fetch_version_page` (below, the public
+    summary-projection API `VersionService.list()` depends on) and
+    `VersionResolver` (which needs `VersionRecord.lookup_name`, not just
+    `.summary`, for exact-name matching) both build on.
 
     access.ensure_read_enabled is called HERE (not by callers) so every caller gets
     the identical, redundant-per-page check the original _resolve_version_id already
@@ -80,7 +82,6 @@ async def fetch_version_page(
     a redundancy to "fix" away.
     """
     access.ensure_read_enabled("version", settings=settings)
-    effective_limit = min(limit, settings.max_page_size, settings.max_results)
 
     if project:
         # GET /api/v3/versions has no project filter; use the project-scoped endpoint.
@@ -99,31 +100,62 @@ async def fetch_version_page(
         # this endpoint either).
         project_payload = await resolve_project_ref(project, write=False, context=context)
         project_id = int(project_payload["id"])
-        records = await _fetch_all_pages(
+        return await _fetch_all_pages(
             lambda offset: api.list_for_project(
                 project_id, offset=offset, page_size=settings.max_page_size, text_limit=text_limit
             ),
             page_size=settings.max_page_size,
         )
-        results = [r.summary for r in records]
-    else:
-        # The global endpoint has no project filter, so results are filtered
-        # client-side against OPENPROJECT_READ_PROJECTS -- a full walk of every
-        # server page is required, or any version beyond a single bounded
-        # fetch's cap would be silently hidden.
-        records = await _fetch_all_pages(
-            lambda offset: api.list_global(offset=offset, page_size=settings.max_page_size, text_limit=text_limit),
-            page_size=settings.max_page_size,
+
+    # The global endpoint has no project filter, so results are filtered
+    # client-side against OPENPROJECT_READ_PROJECTS -- a full walk of every
+    # server page is required, or any version beyond a single bounded
+    # fetch's cap would be silently hidden.
+    records = await _fetch_all_pages(
+        lambda offset: api.list_global(offset=offset, page_size=settings.max_page_size, text_limit=text_limit),
+        page_size=settings.max_page_size,
+    )
+    return [
+        r
+        for r in records
+        if version_payload_allowed(
+            {"_links": {"definingProject": r.defining_project_link}},
+            settings=settings,
+            project_id_to_identifier=project_id_to_identifier,
         )
-        results = [
-            r.summary
-            for r in records
-            if version_payload_allowed(
-                {"_links": {"definingProject": r.defining_project_link}},
-                settings=settings,
-                project_id_to_identifier=project_id_to_identifier,
-            )
-        ]
+    ]
+
+
+async def fetch_version_page(
+    *,
+    api: VersionApi,
+    resolve_project_ref: ProjectRefResolver,
+    settings: Settings,
+    project_id_to_identifier: dict[int, str],
+    project: str | None,
+    search: str | None,
+    offset: int,
+    limit: int,
+    context: ProjectResolutionContext | None,
+    text_limit: int | None = FORMATTABLE_LIMIT,
+) -> tuple[list[VersionSummary], int, int | None, bool]:
+    """Raw, unmasked version-summary page: (page_results, total, next_offset, truncated).
+
+    A summary-projecting wrapper around `fetch_visible_version_records` --
+    `VersionService.list()` (the only caller) needs `VersionSummary` rows to
+    build `VersionListResult`, not the underlying `VersionRecord`s.
+    """
+    effective_limit = min(limit, settings.max_page_size, settings.max_results)
+    records = await fetch_visible_version_records(
+        api=api,
+        resolve_project_ref=resolve_project_ref,
+        settings=settings,
+        project_id_to_identifier=project_id_to_identifier,
+        project=project,
+        context=context,
+        text_limit=text_limit,
+    )
+    results = [r.summary for r in records]
 
     if search:
         search_key = search.casefold()

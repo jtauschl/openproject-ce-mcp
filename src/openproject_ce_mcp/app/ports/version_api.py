@@ -39,10 +39,19 @@ class VersionRecord:
     never carries the defining project's identifier, only its display title. The
     allowlist Policy check needs the raw link (href/id), so it cannot be done from
     the normalized model alone.
+
+    `lookup_name` carries the raw payload's `name` field, independent of
+    `summary.name`. `normalize_version` falls back to a synthetic display name
+    (`f"Version {id}"`) when the raw name is blank/missing -- correct DISPLAY
+    behavior, but wrong for exact-name RESOLUTION (`VersionResolver` must not
+    let a caller's literal search for "Version 7" accidentally match a version
+    whose real name was blank). `lookup_name` is never synthesized, so
+    `VersionResolver` compares against it instead of `summary.name`.
     """
 
     summary: VersionSummary
     defining_project_link: dict[str, Any] | None
+    lookup_name: str
 
     def to_detail(self) -> VersionDetail:
         return summary_to_detail(self.summary)

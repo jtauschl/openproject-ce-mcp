@@ -1,4 +1,4 @@
-"""Sprint-reference resolver (ADR 0001, OPM-371).
+"""Sprint-reference resolver.
 
 Verbatim behavioral port of the flat `_resolve_sprint_id` -- the most
 behaviorally sensitive of the five work-package field resolvers (a
@@ -16,6 +16,13 @@ sub-collection endpoints (verified live) silently ignore offset/page-size and
 always return every element -- without this check, `next_offset` never
 becomes `None` and the loop never terminates. Ported byte-for-byte, not
 "cleaned up."
+
+Name comparison uses `SprintRecord.lookup_name` (the raw, never-synthesized
+name), not `summary.name`: `normalize_sprint` falls back to a synthetic
+display name (`f"Sprint {id}"`) when the raw name is blank/missing, which
+could otherwise make a caller's literal search for "Sprint 7" accidentally
+match a sprint whose real name was blank. See `app/ports/sprint_api.py`'s
+`SprintRecord` docstring for the full rationale.
 """
 
 from __future__ import annotations
@@ -97,7 +104,7 @@ class SprintResolver:
                     project_id_to_identifier=self._project_id_to_identifier,
                 ):
                     continue
-                if (record.summary.name or "").casefold() == sprint_ref.casefold():
+                if record.lookup_name.casefold() == sprint_ref.casefold():
                     matches.append(str(record.summary.id))
             next_offset, _truncated = paginate_server(offset=offset, limit=page_size, total=total)
             if next_offset is None:

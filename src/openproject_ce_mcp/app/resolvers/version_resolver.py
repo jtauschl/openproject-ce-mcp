@@ -2,20 +2,32 @@
 
 Resolves a version reference (numeric id, or exact case-insensitive name) to a
 concrete numeric-id string. Verbatim behavioral port of the pre-existing
-`_resolve_version_id`. Depends on `VersionApi` + `fetch_version_page` (both at or
-below its own layer) -- never on `VersionService`.
+`_resolve_version_id`. Depends on `VersionApi` + `fetch_visible_version_records`
+(both at or below its own layer) -- never on `VersionService`.
+
+Name comparison uses `VersionRecord.lookup_name` (the raw, never-synthesized
+name), not `summary.name`: `normalize_version` falls back to a synthetic
+display name (`f"Version {id}"`) when the raw name is blank/missing, which
+could otherwise make a caller's literal search for "Version 7" accidentally
+match a version whose real name was blank. See `app/ports/version_api.py`'s
+`VersionRecord` docstring for the full rationale. This resolver depends on
+`fetch_visible_version_records` (not the summary-projecting `fetch_version_page`
+`VersionService.list()` uses) specifically because it needs each record's
+`lookup_name`, which a `VersionSummary` doesn't carry -- and, as a side
+effect, scans the full visible-record list once per resolve_id call instead
+of re-fetching the same server pages once per client-side page the way the
+previous `fetch_version_page`-based implementation did.
 """
 
 from __future__ import annotations
 
 from ...config import Settings
-from ...models import VersionSummary
 from ..errors import InvalidInputError
 from ..policies import scope as scope_policy
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.project_resolution import ProjectResolutionContext
-from ..ports.version_api import VersionApi
-from .version_query import fetch_version_page
+from ..ports.version_api import VersionApi, VersionRecord
+from .version_query import fetch_visible_version_records
 
 
 class VersionResolver:
@@ -48,50 +60,30 @@ class VersionResolver:
                 project_ref = project_payload.get("identifier") or project_ref
 
             wanted_id = int(version_ref) if version_ref.isdigit() else None
-            name_matches: list[VersionSummary] = []
-            seen_ids: set[int] = set()
-            offset = 1
-            is_first_page = True
-            while True:
-                page_results, _total, next_offset, _truncated = await fetch_version_page(
-                    api=self._api,
-                    resolve_project_ref=self._resolve_project_ref,
-                    settings=self._settings,
-                    project_id_to_identifier=self._project_id_to_identifier,
-                    project=project_ref,
-                    search=None,
-                    offset=offset,
-                    limit=self._settings.max_page_size,
-                    context=context,
-                )
-                # Some project-scoped sub-collection endpoints (verified live:
-                # a project's versions endpoint) silently ignore offset/page
-                # size and always return every element -- without this check,
-                # `next_offset` never becomes None and this loops forever,
-                # re-fetching the same full page.
-                page_ids = {v.id for v in page_results}
-                if not is_first_page and page_ids and page_ids <= seen_ids:
-                    break
-                is_first_page = False
-                seen_ids.update(page_ids)
-                if wanted_id is not None:
-                    if any(v.id == wanted_id for v in page_results):
-                        return version_ref
-                else:
-                    name_matches.extend(v for v in page_results if (v.name or "").casefold() == version_ref.casefold())
-                if next_offset is None:
-                    break
-                offset = next_offset
+            records = await fetch_visible_version_records(
+                api=self._api,
+                resolve_project_ref=self._resolve_project_ref,
+                settings=self._settings,
+                project_id_to_identifier=self._project_id_to_identifier,
+                project=project_ref,
+                context=context,
+            )
 
             if wanted_id is not None:
+                if any(r.summary.id == wanted_id for r in records):
+                    return version_ref
                 raise InvalidInputError(f"OpenProject version '{version_ref}' is not available in project '{project}'.")
+
+            name_matches: list[VersionRecord] = [
+                r for r in records if r.lookup_name.casefold() == version_ref.casefold()
+            ]
             if not name_matches:
                 raise InvalidInputError(f"OpenProject version '{version_ref}' was not found in project '{project}'.")
             if len(name_matches) > 1:
                 raise InvalidInputError(
                     f"OpenProject version '{version_ref}' is ambiguous without a more specific filter. Pass a numeric version id."
                 )
-            return str(name_matches[0].id)
+            return str(name_matches[0].summary.id)
 
         if version_ref.isdigit():
             # No target project to check availability against — reached via a global,
@@ -103,9 +95,10 @@ class VersionResolver:
             # accepted fail-closed trade-off for the project-less path, not a bug.
             #
             # Deliberately does NOT call ensure_read_enabled (existing quirk, preserved
-            # exactly) -- calling the port directly here (bypassing fetch_version_page,
-            # which is the only place that check lives) naturally reproduces that
-            # asymmetry rather than requiring a special case.
+            # exactly) -- calling the port directly here (bypassing
+            # fetch_visible_version_records, which is the only place that check
+            # lives) naturally reproduces that asymmetry rather than requiring a
+            # special case.
             record = await self._api.get(int(version_ref))
             scope_policy.ensure_project_link_allowed(
                 record.defining_project_link,
@@ -114,26 +107,16 @@ class VersionResolver:
             )
             return version_ref
 
-        # No project + name ref: pass search=version_ref rather than relying on our
-        # own post-hoc filtering, AND page-walk the search-filtered results.
-        name_matches = []
-        offset = 1
-        while True:
-            page_results, _total, next_offset, _truncated = await fetch_version_page(
-                api=self._api,
-                resolve_project_ref=self._resolve_project_ref,
-                settings=self._settings,
-                project_id_to_identifier=self._project_id_to_identifier,
-                project=None,
-                search=version_ref,
-                offset=offset,
-                limit=self._settings.max_page_size,
-                context=None,
-            )
-            name_matches.extend(v for v in page_results if (v.name or "").casefold() == version_ref.casefold())
-            if next_offset is None:
-                break
-            offset = next_offset
+        # No project + name ref: scan every visible record's raw lookup_name.
+        records = await fetch_visible_version_records(
+            api=self._api,
+            resolve_project_ref=self._resolve_project_ref,
+            settings=self._settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            project=None,
+            context=None,
+        )
+        name_matches = [r for r in records if r.lookup_name.casefold() == version_ref.casefold()]
 
         if not name_matches:
             raise InvalidInputError(f"OpenProject version '{version_ref}' was not found.")
@@ -141,4 +124,4 @@ class VersionResolver:
             raise InvalidInputError(
                 f"OpenProject version '{version_ref}' is ambiguous without a more specific filter. Pass a numeric version id."
             )
-        return str(name_matches[0].id)
+        return str(name_matches[0].summary.id)

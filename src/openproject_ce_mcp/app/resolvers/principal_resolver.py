@@ -14,6 +14,13 @@ their own operation's scope check; it never surfaces the full principal list
 to the agent, only a single resolved id, so gating it a second time behind
 `OPENPROJECT_ENABLE_ADMIN_READ` would needlessly break every write path that
 accepts a principal name instead of a numeric id.
+
+Name comparison uses `PrincipalRecord.lookup_name` (the raw, never-synthesized
+name), not `summary.name`: `normalize_principal` falls back to a synthetic
+display name (`f"Principal {id}"`) when the raw name is blank/missing, which
+could otherwise make a caller's literal search for "Principal 7" accidentally
+match a principal whose real name was blank. See `app/ports/principal_api.py`'s
+module docstring for the full rationale.
 """
 
 from __future__ import annotations
@@ -51,9 +58,7 @@ class PrincipalResolver:
             page_size=_effective_limit(self._settings.max_results, settings=self._settings),
         )
         matches = [
-            str(record.summary.id)
-            for record in records
-            if (record.summary.name or "").casefold() == principal_ref.casefold()
+            str(record.summary.id) for record in records if record.lookup_name.casefold() == principal_ref.casefold()
         ]
         if not matches:
             raise InvalidInputError(f"OpenProject principal '{principal_ref}' was not found.")

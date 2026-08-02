@@ -72,6 +72,7 @@ def _record(
         detail=detail,
         defining_workspace_link=defining_workspace_link,
         defining_workspace_payload=defining_workspace_payload,
+        lookup_name=summary.name,
     )
 
 

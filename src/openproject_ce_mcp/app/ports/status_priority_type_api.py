@@ -14,6 +14,16 @@ No `to_detail` split on any of the three Records: `get_status`/`get_priority`/
 `get_type` are plain single-item fetches through the same normalizer as list
 rows, with no separate detail-only fields to compute lazily (unlike Users/
 Documents/Versions).
+
+Each Record also carries `lookup_name`: the raw payload's `name` field
+(`str(payload.get("name", ""))`), independent of `summary.name`. The two
+differ deliberately: `summary.name` falls back to a synthetic display name
+(`f"Status {id}"`) when the raw name is blank/missing, so list/get MCP tool
+output never shows an empty display name -- correct DISPLAY behavior, but
+wrong for exact-name RESOLUTION (a caller searching for the literal string
+"Status 7" should not accidentally match a status whose real name was blank,
+the way matching against `summary.name` would allow). `lookup_name` is
+never synthesized, so resolvers compare against it, not `summary.name`.
 """
 
 from __future__ import annotations
@@ -27,16 +37,19 @@ from ...models import PrioritySummary, StatusSummary, TypeSummary
 @dataclass(frozen=True)
 class StatusRecord:
     summary: StatusSummary
+    lookup_name: str
 
 
 @dataclass(frozen=True)
 class PriorityRecord:
     summary: PrioritySummary
+    lookup_name: str
 
 
 @dataclass(frozen=True)
 class TypeRecord:
     summary: TypeSummary
+    lookup_name: str
 
 
 class StatusPriorityTypeApi(Protocol):

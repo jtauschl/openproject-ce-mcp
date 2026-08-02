@@ -54,8 +54,8 @@ async def test_get_sprint(client: OpenProjectClient) -> None:
 async def test_update_work_package_accepts_sprint_by_name(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    """OPM-371 gap-fill (written before the flat _resolve_sprint_id is
-    relocated into a SprintResolver): name-based sprint resolution on the
+    """Gap-fill test, written before the flat _resolve_sprint_id is
+    relocated into a SprintResolver: name-based sprint resolution on the
     work-package write path had no live coverage at all. Skips cleanly if
     the test project has no existing sprint to reference -- there is no
     create_sprint API to seed one (same constraint as test_get_sprint

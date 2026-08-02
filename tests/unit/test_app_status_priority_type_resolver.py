@@ -13,7 +13,7 @@ from openproject_ce_mcp.models import PrioritySummary, StatusSummary
 BASE_URL = "https://op.example.com"
 
 
-def _status(status_id: int, name: str) -> StatusRecord:
+def _status(status_id: int, name: str, *, lookup_name: str | None = None) -> StatusRecord:
     return StatusRecord(
         summary=StatusSummary(
             id=status_id,
@@ -26,13 +26,15 @@ def _status(status_id: int, name: str) -> StatusRecord:
             is_readonly=False,
             default_done_ratio=None,
             excluded_from_totals=False,
-        )
+        ),
+        lookup_name=name if lookup_name is None else lookup_name,
     )
 
 
-def _priority(priority_id: int, name: str) -> PriorityRecord:
+def _priority(priority_id: int, name: str, *, lookup_name: str | None = None) -> PriorityRecord:
     return PriorityRecord(
-        summary=PrioritySummary(id=priority_id, name=name, is_default=False, is_active=True, color=None, position=1)
+        summary=PrioritySummary(id=priority_id, name=name, is_default=False, is_active=True, color=None, position=1),
+        lookup_name=name if lookup_name is None else lookup_name,
     )
 
 
@@ -65,10 +67,9 @@ async def test_resolve_status_id_matches_by_case_insensitive_name() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_status_id_returns_first_match_on_duplicate_names() -> None:
-    """OPM-371 Finding 1a: the flat original silently returns the first
-    match on an ambiguous name -- no ambiguity error, unlike
-    TypeResolver/SprintResolver. This asymmetry is pre-existing and must be
-    preserved exactly."""
+    """The flat original silently returns the first match on an ambiguous
+    name -- no ambiguity error, unlike TypeResolver/SprintResolver. This
+    asymmetry is pre-existing and must be preserved exactly."""
     api = _FakeApi(statuses=[_status(1, "New"), _status(2, "New")])
     resolver = StatusPriorityTypeResolver(api=api)
     assert await resolver.resolve_status_id("New") == "1"
@@ -109,17 +110,17 @@ async def test_resolve_priority_id_raises_when_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_resolve_status_id_matches_a_name_with_irregular_whitespace_via_real_port_normalization() -> None:
-    """OPM-371 Finding 1b regression test, against the REAL adapter (not the
-    fake used elsewhere in this file): unlike the flat original's raw,
-    untrimmed comparison, this resolver goes through StatusPriorityTypeApi,
-    whose normalize_status collapses whitespace (app/adapters/_text.py's
-    trim_text) before this resolver ever sees the name. The server here
-    returns a name with irregular internal whitespace; by the time the
-    resolver compares it, it has already been collapsed to single spaces --
-    a caller-supplied ref written the "normal" way now matches, a narrow,
-    deliberate behavior change from the flat original's raw comparison, not
-    an oversight."""
+async def test_resolve_status_id_matches_the_raw_name_exactly_via_real_port() -> None:
+    """Against the REAL adapter (not the fake used elsewhere in this file):
+    resolution compares StatusRecord.lookup_name, the RAW (never trimmed,
+    never synthesized) name -- byte-for-byte identical matching semantics to
+    the flat original's `str(item.get("name","")).casefold()`. A name with
+    irregular internal whitespace, as actually returned by the server, must
+    be matched with that same irregular whitespace, not a normalized form
+    (an earlier draft of this resolver compared against the DISPLAY name,
+    `summary.name`, which trims/collapses whitespace -- fixed during this
+    migration's own Codex review, see status_priority_type_api.py's port
+    module docstring for the full rationale)."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/statuses"
@@ -133,5 +134,29 @@ async def test_resolve_status_id_matches_a_name_with_irregular_whitespace_via_re
     api = HttpxStatusPriorityTypeApi(HttpxTransport(http), base_url=BASE_URL, api_prefix="/api/v3/")
     resolver = StatusPriorityTypeResolver(api=api)
 
-    assert await resolver.resolve_status_id("In Progress") == "1"
+    assert await resolver.resolve_status_id("In   Progress\t") == "1"
+    with pytest.raises(InvalidInputError, match="was not found"):
+        await resolver.resolve_status_id("In Progress")
+    await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resolve_status_id_does_not_match_a_blank_name_against_the_synthetic_display_fallback() -> None:
+    """Codex-review regression test (this migration's own step-6.5 pass):
+    normalize_status falls back to a synthetic display name ("Status 7")
+    when the raw name is blank -- correct DISPLAY behavior, but resolution
+    must use lookup_name (the raw, un-synthesized name, "" here) so a
+    caller's literal search for "Status 7" never accidentally matches a
+    status whose real name was blank, matching the flat original's raw
+    comparison against "" exactly."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": ""}]}}, request=request)
+
+    http = httpx.AsyncClient(base_url=f"{BASE_URL}/api/v3/", transport=httpx.MockTransport(handler))
+    api = HttpxStatusPriorityTypeApi(HttpxTransport(http), base_url=BASE_URL, api_prefix="/api/v3/")
+    resolver = StatusPriorityTypeResolver(api=api)
+
+    with pytest.raises(InvalidInputError, match="was not found"):
+        await resolver.resolve_status_id("Status 7")
     await http.aclose()

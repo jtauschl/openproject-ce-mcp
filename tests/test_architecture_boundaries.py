@@ -634,7 +634,7 @@ def test_principal_resolver_binds_the_api_param_to_principal_api_specifically() 
 
 
 def test_status_priority_type_resolver_binds_the_api_param_to_status_priority_type_api_specifically() -> None:
-    """Sibling check for StatusPriorityTypeResolver (OPM-371): the api param
+    """Sibling check for StatusPriorityTypeResolver: the api param
     is StatusPriorityTypeApi exactly, not just "some Protocol", and not the
     concrete adapter."""
     from openproject_ce_mcp.app.adapters.httpx_status_priority_type_api import HttpxStatusPriorityTypeApi
@@ -651,7 +651,7 @@ def test_status_priority_type_resolver_binds_the_api_param_to_status_priority_ty
 
 
 def test_type_resolver_binds_the_api_param_to_status_priority_type_api_specifically() -> None:
-    """Sibling check for TypeResolver (OPM-371): the api param is
+    """Sibling check for TypeResolver: the api param is
     StatusPriorityTypeApi exactly, not just "some Protocol", and not the
     concrete adapter."""
     from openproject_ce_mcp.app.adapters.httpx_status_priority_type_api import HttpxStatusPriorityTypeApi
@@ -668,7 +668,7 @@ def test_type_resolver_binds_the_api_param_to_status_priority_type_api_specifica
 
 
 def test_sprint_resolver_binds_the_api_param_to_sprint_api_specifically() -> None:
-    """Sibling check for SprintResolver (OPM-371): the api param is
+    """Sibling check for SprintResolver: the api param is
     SprintApi exactly, not just "some Protocol", and not the concrete
     adapter."""
     from openproject_ce_mcp.app.adapters.httpx_sprint_api import HttpxSprintApi

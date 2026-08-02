@@ -189,16 +189,18 @@ class _FakeStatusApi:
 
     async def get_status(self, status_id: int) -> StatusRecord:
         self.get_status_calls.append(status_id)
+        name = "Closed" if self.is_closed else "New"
         return StatusRecord(
             summary=StatusSummary(
                 id=status_id,
-                name="Closed" if self.is_closed else "New",
+                name=name,
                 is_default=False,
                 is_closed=self.is_closed,
                 color=None,
                 position=1,
                 url="https://op.example.com/statuses/1",
-            )
+            ),
+            lookup_name=name,
         )
 
     async def list_statuses(self):

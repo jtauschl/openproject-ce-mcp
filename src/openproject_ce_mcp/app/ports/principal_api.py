@@ -10,6 +10,15 @@ taken by the pre-existing `PrincipalRefResolver` seam Protocol
 Services depend on (satisfied structurally by the bound method
 `self._resolve_principal_id`, unrelated to this migration and left
 untouched).
+
+`lookup_name`: the raw payload's `name`
+field, independent of `summary.name`. `normalize_principal` falls back to a
+synthetic display name (`f"Principal {id}"`) when the raw name is
+blank/missing -- correct DISPLAY behavior for list/get MCP tool output, but
+wrong for exact-name RESOLUTION (`PrincipalResolver` must not let a
+caller's literal search for "Principal 7" accidentally match a principal
+whose real name was blank). `lookup_name` is never synthesized, so
+`PrincipalResolver` compares against it instead of `summary.name`.
 """
 
 from __future__ import annotations
@@ -23,6 +32,7 @@ from ...models import PrincipalSummary
 @dataclass(frozen=True)
 class PrincipalRecord:
     summary: PrincipalSummary
+    lookup_name: str
 
 
 class PrincipalApi(Protocol):

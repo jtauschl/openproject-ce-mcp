@@ -60,9 +60,17 @@ class _FakeStatusPriorityTypeApi:
         priorities: list[PriorityRecord] | None = None,
         types: list[TypeRecord] | None = None,
     ) -> None:
-        self._statuses = {r.summary.id: r for r in (statuses or [StatusRecord(summary=_status_summary())])}
-        self._priorities = {r.summary.id: r for r in (priorities or [PriorityRecord(summary=_priority_summary())])}
-        self._types = {r.summary.id: r for r in (types or [TypeRecord(summary=_type_summary())])}
+        self._statuses = {
+            r.summary.id: r
+            for r in (statuses or [StatusRecord(summary=_status_summary(), lookup_name=_status_summary().name)])
+        }
+        self._priorities = {
+            r.summary.id: r
+            for r in (priorities or [PriorityRecord(summary=_priority_summary(), lookup_name=_priority_summary().name)])
+        }
+        self._types = {
+            r.summary.id: r for r in (types or [TypeRecord(summary=_type_summary(), lookup_name=_type_summary().name)])
+        }
         self.list_types_calls: list[int | None] = []
 
     async def list_statuses(self) -> list[StatusRecord]:
@@ -125,7 +133,7 @@ async def test_list_statuses_returns_summaries() -> None:
 
 @pytest.mark.asyncio
 async def test_get_status_returns_summary() -> None:
-    api = _FakeStatusPriorityTypeApi(statuses=[StatusRecord(summary=_status_summary(7))])
+    api = _FakeStatusPriorityTypeApi(statuses=[StatusRecord(summary=_status_summary(7), lookup_name="In progress")])
     service = _service(api)
 
     status = await service.get_status(7)
@@ -171,7 +179,7 @@ async def test_list_priorities_returns_summaries() -> None:
 
 @pytest.mark.asyncio
 async def test_get_priority_returns_summary() -> None:
-    api = _FakeStatusPriorityTypeApi(priorities=[PriorityRecord(summary=_priority_summary(3))])
+    api = _FakeStatusPriorityTypeApi(priorities=[PriorityRecord(summary=_priority_summary(3), lookup_name="High")])
     service = _service(api)
 
     priority = await service.get_priority(3)
@@ -275,7 +283,7 @@ async def test_list_types_denies_when_project_ref_resolution_denies() -> None:
 
 @pytest.mark.asyncio
 async def test_get_type_returns_summary() -> None:
-    api = _FakeStatusPriorityTypeApi(types=[TypeRecord(summary=_type_summary(4))])
+    api = _FakeStatusPriorityTypeApi(types=[TypeRecord(summary=_type_summary(4), lookup_name="Task")])
     service = _service(api)
 
     work_package_type = await service.get_type(4)

@@ -1,4 +1,4 @@
-"""Assignee-reference resolver (ADR 0001, OPM-371).
+"""Assignee-reference resolver.
 
 Verbatim behavioral port of the pre-existing `_resolve_assignee_id`.
 Deliberately narrower than `PrincipalResolver`: accepts only `"me"` or a bare

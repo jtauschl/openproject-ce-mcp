@@ -99,6 +99,16 @@ def summary_to_detail(summary: SprintSummary) -> SprintDetail:
     )
 
 
+def _has_usable_id(item: Any) -> bool:
+    """True for a dict element whose `id` can become a valid Record id --
+    a malformed element among otherwise well-formed ones is skipped, not
+    fatal to the whole page."""
+    if not isinstance(item, dict):
+        return False
+    raw_id = item.get("id")
+    return isinstance(raw_id, int | str) and str(raw_id).isdigit()
+
+
 class HttpxSprintApi:
     def __init__(self, transport: Transport, *, base_url: str) -> None:
         self._transport = transport
@@ -112,12 +122,13 @@ class HttpxSprintApi:
             detail=summary_to_detail(summary),
             defining_workspace_link=_defining_workspace_link(payload),
             defining_workspace_payload=embedded if isinstance(embedded, dict) else None,
+            lookup_name=str(payload.get("name", "")),
         )
 
     async def list_all(self, *, offset: int, page_size: int) -> tuple[list[SprintRecord], int]:
         payload = await self._transport.get_json("sprints", params={"offset": str(offset), "pageSize": str(page_size)})
         elements = payload.get("_embedded", {}).get("elements", [])
-        records = [self._record(item) for item in elements if isinstance(item, dict)]
+        records = [self._record(item) for item in elements if _has_usable_id(item)]
         total = int(payload.get("total", len(records)))
         return records, total
 
@@ -126,7 +137,7 @@ class HttpxSprintApi:
             f"projects/{project_id}/sprints", params={"offset": str(offset), "pageSize": str(page_size)}
         )
         elements = payload.get("_embedded", {}).get("elements", [])
-        records = [self._record(item) for item in elements if isinstance(item, dict)]
+        records = [self._record(item) for item in elements if _has_usable_id(item)]
         total = int(payload.get("total", len(records)))
         return records, total
 

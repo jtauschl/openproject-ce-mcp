@@ -110,6 +110,16 @@ def normalize_version_detail(
     return summary_to_detail(normalize_version(payload, base_url=base_url, text_limit=text_limit))
 
 
+def _has_usable_id(item: Any) -> bool:
+    """True for a dict element whose `id` can become a valid Record id --
+    a malformed element among otherwise well-formed ones is skipped, not
+    fatal to the whole page."""
+    if not isinstance(item, dict):
+        return False
+    raw_id = item.get("id")
+    return isinstance(raw_id, int | str) and str(raw_id).isdigit()
+
+
 class HttpxVersionApi:
     def __init__(self, transport: Transport, *, base_url: str) -> None:
         self._transport = transport
@@ -119,6 +129,7 @@ class HttpxVersionApi:
         return VersionRecord(
             summary=normalize_version(payload, base_url=self._base_url, text_limit=text_limit),
             defining_project_link=payload.get("_links", {}).get("definingProject"),
+            lookup_name=str(payload.get("name", "")),
         )
 
     async def list_for_project(
@@ -130,7 +141,7 @@ class HttpxVersionApi:
         records = [
             self._record(item, text_limit=text_limit)
             for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
+            if _has_usable_id(item)
         ]
         return VersionPage(records=records, server_total=int(payload.get("total", len(records))))
 
@@ -141,7 +152,7 @@ class HttpxVersionApi:
         records = [
             self._record(item, text_limit=text_limit)
             for item in payload.get("_embedded", {}).get("elements", [])
-            if isinstance(item, dict)
+            if _has_usable_id(item)
         ]
         return VersionPage(records=records, server_total=None)
 

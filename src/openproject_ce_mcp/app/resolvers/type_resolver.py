@@ -1,4 +1,4 @@
-"""Work-package-type-reference resolver (ADR 0001, OPM-371).
+"""Work-package-type-reference resolver.
 
 Verbatim behavioral port of the flat `_resolve_type_id`, preserving its
 ambiguity check exactly (raises `InvalidInputError` on more than one
@@ -11,7 +11,9 @@ read-gate-bypass reasoning as `StatusPriorityTypeResolver`, reusing
 fixing the same duplication `StatusPriorityTypeResolver` fixed for
 statuses/priorities) plus the pre-existing `ProjectRefResolver` seam
 (bound to `self._get_project_payload`) for resolving `project` to a numeric
-id first.
+id first. Name comparison uses `TypeRecord.lookup_name` (the raw,
+never-synthesized name), not `summary.name` -- see
+`app/ports/status_priority_type_api.py`'s module docstring for why.
 """
 
 from __future__ import annotations
@@ -38,9 +40,7 @@ class TypeResolver:
         project_payload = await self._resolve_project_ref(project, context=context)
         project_id = int(project_payload["id"])
         records = await self._api.list_types(project_id=project_id)
-        matches = [
-            str(record.summary.id) for record in records if record.summary.name.casefold() == type_ref.casefold()
-        ]
+        matches = [str(record.summary.id) for record in records if record.lookup_name.casefold() == type_ref.casefold()]
         if not matches:
             raise InvalidInputError(f"OpenProject type '{type_ref}' was not found in project '{project}'.")
         if len(matches) > 1:

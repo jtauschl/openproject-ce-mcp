@@ -36,12 +36,21 @@ class SprintRecord:
     when present (None otherwise) -- the Policy layer's embedded-object allowlist
     branch needs this full payload (it can carry an `identifier` the synthesized
     link never has), not just the link. See `sprint_policy.ensure_sprint_workspace_allowed`.
+
+    `lookup_name` carries the raw payload's `name` field, independent of
+    `summary.name`. `normalize_sprint` falls back to a synthetic display name
+    (`f"Sprint {id}"`) when the raw name is blank/missing -- correct DISPLAY
+    behavior, but wrong for exact-name RESOLUTION (`SprintResolver` must not
+    let a caller's literal search for "Sprint 7" accidentally match a sprint
+    whose real name was blank). `lookup_name` is never synthesized, so
+    `SprintResolver` compares against it instead of `summary.name`.
     """
 
     summary: SprintSummary
     detail: SprintDetail
     defining_workspace_link: dict[str, Any] | None
     defining_workspace_payload: dict[str, Any] | None
+    lookup_name: str
 
 
 class SprintApi(Protocol):

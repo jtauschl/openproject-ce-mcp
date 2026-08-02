@@ -26,7 +26,9 @@ def _summary(sprint_id: int, name: str, *, defining_workspace_id: int | None = 1
     )
 
 
-def _record(sprint_id: int, name: str, *, defining_workspace_id: int | None = 1) -> SprintRecord:
+def _record(
+    sprint_id: int, name: str, *, defining_workspace_id: int | None = 1, lookup_name: str | None = None
+) -> SprintRecord:
     summary = _summary(sprint_id, name, defining_workspace_id=defining_workspace_id)
     detail = SprintDetail(**summary.__dict__)
     link = (
@@ -34,7 +36,13 @@ def _record(sprint_id: int, name: str, *, defining_workspace_id: int | None = 1)
         if defining_workspace_id is not None
         else None
     )
-    return SprintRecord(summary=summary, detail=detail, defining_workspace_link=link, defining_workspace_payload=None)
+    return SprintRecord(
+        summary=summary,
+        detail=detail,
+        defining_workspace_link=link,
+        defining_workspace_payload=None,
+        lookup_name=name if lookup_name is None else lookup_name,
+    )
 
 
 async def _resolve_project_ref(project_ref: str, *, write: bool = False, context=None) -> dict:
@@ -101,6 +109,20 @@ async def test_resolve_id_raises_when_ambiguous() -> None:
     )
     with pytest.raises(InvalidInputError, match="ambiguous"):
         await resolver.resolve_id("Sprint 1", project="demo")
+
+
+@pytest.mark.asyncio
+async def test_resolve_id_does_not_match_a_blank_name_against_the_synthetic_display_fallback() -> None:
+    """Matching uses SprintRecord.lookup_name (the raw, never-synthesized
+    name), not summary.name, which falls back to a synthetic display name
+    ("Sprint 9") when the raw name is blank -- see app/ports/sprint_api.py's
+    SprintRecord docstring."""
+    api = _FakeSprintApi(pages=[([_record(9, "Sprint 9", lookup_name="")], 1)])
+    resolver = SprintResolver(
+        api=api, resolve_project_ref=_resolve_project_ref, settings=make_settings(), project_id_to_identifier={}
+    )
+    with pytest.raises(InvalidInputError, match="was not found in project"):
+        await resolver.resolve_id("Sprint 9", project="demo")
 
 
 @pytest.mark.asyncio

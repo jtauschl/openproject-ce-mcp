@@ -38,6 +38,16 @@ def normalize_principal(payload: dict[str, Any], *, base_url: str) -> PrincipalS
     )
 
 
+def _has_usable_id(item: Any) -> bool:
+    """True for a dict element whose `id` can become a valid Record id --
+    a malformed element among otherwise well-formed ones is skipped, not
+    fatal to the whole page."""
+    if not isinstance(item, dict):
+        return False
+    raw_id = item.get("id")
+    return isinstance(raw_id, int | str) and str(raw_id).isdigit()
+
+
 class HttpxPrincipalApi:
     def __init__(self, transport: Transport, *, base_url: str) -> None:
         self._transport = transport
@@ -59,9 +69,12 @@ class HttpxPrincipalApi:
         )
         elements = payload.get("_embedded", {}).get("elements", [])
         records = [
-            PrincipalRecord(summary=normalize_principal(item, base_url=self._base_url))
+            PrincipalRecord(
+                summary=normalize_principal(item, base_url=self._base_url),
+                lookup_name=str(item.get("name", "")),
+            )
             for item in elements
-            if isinstance(item, dict)
+            if _has_usable_id(item)
         ]
         total = int(payload.get("total", len(records)))
         return records, total

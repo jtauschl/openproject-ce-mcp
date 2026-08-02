@@ -159,8 +159,8 @@ async def test_create_and_update_work_package_accept_assignee_me(
 async def test_create_and_update_work_package_accept_status_and_priority_by_name(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    """OPM-371 gap-fill (written before the flat _resolve_status_id/
-    _resolve_priority_id are relocated into a StatusPriorityTypeResolver):
+    """Gap-fill test, written before the flat _resolve_status_id/
+    _resolve_priority_id are relocated into a StatusPriorityTypeResolver:
     name-based status/priority resolution on the work-package write path had
     no live coverage at all, only assignee-by-name did. Sources real
     status/priority names from list_statuses/list_priorities rather than

@@ -11,7 +11,7 @@ from openproject_ce_mcp.app.resolvers.principal_resolver import PrincipalResolve
 from openproject_ce_mcp.models import CurrentUser, PrincipalSummary
 
 
-def _principal(principal_id: int, name: str) -> PrincipalRecord:
+def _principal(principal_id: int, name: str, *, lookup_name: str | None = None) -> PrincipalRecord:
     return PrincipalRecord(
         summary=PrincipalSummary(
             id=principal_id,
@@ -21,7 +21,8 @@ def _principal(principal_id: int, name: str) -> PrincipalRecord:
             email=None,
             status=None,
             url=f"https://op.example.com/users/{principal_id}",
-        )
+        ),
+        lookup_name=name if lookup_name is None else lookup_name,
     )
 
 

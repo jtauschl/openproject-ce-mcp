@@ -8,7 +8,7 @@ from openproject_ce_mcp.app.resolvers.type_resolver import TypeResolver
 from openproject_ce_mcp.models import TypeSummary
 
 
-def _type(type_id: int, name: str) -> TypeRecord:
+def _type(type_id: int, name: str, *, lookup_name: str | None = None) -> TypeRecord:
     return TypeRecord(
         summary=TypeSummary(
             id=type_id,
@@ -20,7 +20,8 @@ def _type(type_id: int, name: str) -> TypeRecord:
             url=f"https://op.example.com/types/{type_id}",
             created_at=None,
             updated_at=None,
-        )
+        ),
+        lookup_name=name if lookup_name is None else lookup_name,
     )
 
 
@@ -79,3 +80,15 @@ async def test_resolve_id_raises_when_ambiguous() -> None:
     resolver = TypeResolver(api=api, resolve_project_ref=_resolve_project_ref)
     with pytest.raises(InvalidInputError, match="ambiguous"):
         await resolver.resolve_id("Task", project="5")
+
+
+@pytest.mark.asyncio
+async def test_resolve_id_does_not_match_a_blank_name_against_the_synthetic_display_fallback() -> None:
+    """Codex-review regression test: matching uses TypeRecord.lookup_name
+    (the raw, never-synthesized name), not summary.name, which falls back
+    to a synthetic display name ("Type 9") when the raw name is blank --
+    see app/ports/status_priority_type_api.py's module docstring."""
+    api = _FakeApi(types=[_type(9, "Type 9", lookup_name="")])
+    resolver = TypeResolver(api=api, resolve_project_ref=_resolve_project_ref)
+    with pytest.raises(InvalidInputError, match="was not found in project"):
+        await resolver.resolve_id("Type 9", project="5")
