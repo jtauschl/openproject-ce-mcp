@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import json
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ from openproject_ce_mcp.tools import (
     DATETIME_RE,
     ISO8601_DURATION_RE,
     _duration_between,
+    _pad_fractional_seconds,
     _validate_optional_duration,
     _validate_optional_non_negative_int,
     _validate_optional_percentage_done,
@@ -2341,6 +2343,44 @@ class TestDurationBetween:
         for start, end in cases:
             result = _duration_between(start, end)
             assert bool(ISO8601_DURATION_RE.fullmatch(result)), f"{result!r} (from {start} -> {end}) failed the regex"
+
+
+class TestPadFractionalSeconds:
+    """Regression: Python's datetime.fromisoformat only accepts 0, 3, or 6
+    fractional-second digits before 3.11 -- this project supports 3.10+, and
+    DATETIME_RE (which _duration_between's inputs already passed) allows any
+    count from 1 to 6. A non-3/6-digit fraction like "07.5Z" or "00.00001Z"
+    parsed fine locally (3.11+) but raised ValueError on 3.10 in CI, caught
+    only there since it's the one supported version with the stricter
+    parser."""
+
+    def test_pads_single_digit(self) -> None:
+        assert _pad_fractional_seconds("2026-01-01T09:00:07.5Z") == "2026-01-01T09:00:07.500000Z"
+
+    def test_pads_two_digits(self) -> None:
+        assert _pad_fractional_seconds("2026-01-01T09:00:00.25Z") == "2026-01-01T09:00:00.250000Z"
+
+    def test_pads_five_digits(self) -> None:
+        assert _pad_fractional_seconds("2026-01-01T00:00:00.00001Z") == "2026-01-01T00:00:00.000010Z"
+
+    def test_leaves_six_digits_unchanged(self) -> None:
+        assert _pad_fractional_seconds("2026-01-01T00:00:00.000001Z") == "2026-01-01T00:00:00.000001Z"
+
+    def test_leaves_no_fraction_unchanged(self) -> None:
+        assert _pad_fractional_seconds("2026-01-01T09:00:00Z") == "2026-01-01T09:00:00Z"
+
+    def test_pads_with_explicit_offset_not_just_z(self) -> None:
+        assert _pad_fractional_seconds("2026-01-01T09:00:00.5+02:00") == "2026-01-01T09:00:00.500000+02:00"
+
+    def test_padded_result_always_parses_on_fromisoformat(self) -> None:
+        for value in (
+            "2026-01-01T09:00:07.5Z",
+            "2026-01-01T09:00:00.25Z",
+            "2026-01-01T00:00:00.00001Z",
+            "2026-01-01T00:00:00.000001Z",
+            "2026-01-01T09:00:00Z",
+        ):
+            datetime.datetime.fromisoformat(_pad_fractional_seconds(value).replace("Z", "+00:00"))
 
     def test_different_utc_offsets_including_dst_style_shift(self) -> None:
         # Different UTC offsets on start/end (e.g. a DST transition between

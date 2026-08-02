@@ -4088,6 +4088,18 @@ def _validate_required_duration(value: str, *, field_name: str) -> str:
     return normalized
 
 
+def _pad_fractional_seconds(value: str) -> str:
+    """Pad a `.d{1,6}` fractional-seconds fragment to exactly 6 digits.
+
+    Python's `datetime.fromisoformat` only accepts 0, 3, or 6 fractional
+    digits before 3.11 (this project supports 3.10+); DATETIME_RE already
+    allows any count from 1 to 6 (matching what OpenProject itself accepts),
+    so a value like "09:00:07.5Z" must be normalized to "09:00:07.500000Z"
+    before parsing, not just have "Z" swapped for "+00:00".
+    """
+    return re.sub(r"\.(\d{1,6})(?=Z|[+-]\d{2}:\d{2}$)", lambda m: f".{m.group(1):0<6}", value)
+
+
 def _duration_between(start_time: str, end_time: str) -> str:
     """Compute an ISO 8601 duration string for end_time - start_time.
 
@@ -4098,8 +4110,8 @@ def _duration_between(start_time: str, end_time: str) -> str:
     microseconds), never total_seconds() -- a float -- for the whole-unit
     breakdown, so the hours/minutes/seconds split is exact by construction.
     """
-    start = datetime.datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-    end = datetime.datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+    start = datetime.datetime.fromisoformat(_pad_fractional_seconds(start_time).replace("Z", "+00:00"))
+    end = datetime.datetime.fromisoformat(_pad_fractional_seconds(end_time).replace("Z", "+00:00"))
     delta = end - start
     if delta <= datetime.timedelta(0):
         raise ValueError("end_time must be after start_time.")
