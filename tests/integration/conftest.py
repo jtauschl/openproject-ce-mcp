@@ -93,20 +93,28 @@ def _resolve_test_project() -> str:
 def disposable_project_identifier() -> str:
     """A fresh, valid project identifier for a test's own throwaway project.
 
-    Lowercase, <=10 chars, starts with a letter. Project#identifier's format
-    validator requires lowercase on `POST /api/v3/projects` regardless of
-    the instance's semantic/classic work-package-identifier display setting
-    -- verified independently against a live classic-mode Docker instance
-    (an uppercase identifier is rejected with "Identifier is invalid.").
-    Semantic mode's own TST project is the one exception (uppercased via a
-    direct `update_column` in docker/test/seed.rb, which bypasses this same
-    validator -- see that file's comment), not a signal that project
-    creation through the API accepts uppercase too. A prior version of this
-    helper generated an uppercase identifier on the mistaken belief that
-    format was accepted by both grammars; it was only ever exercised against
+    <=10 chars, starts with a letter. Project#identifier's format validator
+    requires lowercase on classic-mode instances and uppercase on
+    semantic-mode ones -- there is no single format both grammars accept
+    (verified independently against live Docker instances of each: an
+    uppercase identifier is rejected on classic mode with "Identifier is
+    invalid.", a lowercase one is rejected on semantic mode with "Multiple
+    field constraints have been violated."). Casing is derived from
+    OPENPROJECT_TEST_PROJECT's own casing, which docker/test/up.sh already
+    prints correctly per instance (lowercase "tst" for classic, uppercase
+    "TST" for semantic -- see docker/test/README.md) -- an all-lowercase
+    OPENPROJECT_TEST_PROJECT is treated as classic, anything containing an
+    uppercase letter as semantic. This mirrors the same signal
+    seed_wiki_page_id (below) already relies on. A prior version of this
+    helper generated a single uppercase-only format on the mistaken belief
+    it was accepted by both grammars; it was only ever exercised against
     semantic-mode instances, where it happened to pass.
     """
-    return f"it{uuid.uuid4().hex[:8]}"
+    test_project = os.environ.get("OPENPROJECT_TEST_PROJECT", "mcp-test").strip()
+    suffix = uuid.uuid4().hex[:8]
+    if test_project != test_project.lower():
+        return f"IT{suffix.upper()}"
+    return f"it{suffix}"
 
 
 def _integration_settings() -> Settings | None:
