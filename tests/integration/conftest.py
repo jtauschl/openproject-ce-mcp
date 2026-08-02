@@ -93,17 +93,20 @@ def _resolve_test_project() -> str:
 def disposable_project_identifier() -> str:
     """A fresh, valid project identifier for a test's own throwaway project.
 
-    Must satisfy BOTH identifier grammars this suite can run against: classic
-    mode's lowercase/hyphen-friendly rules, and semantic mode's much stricter
-    ones (uppercase letters/digits/underscore only, must start with a letter,
-    max 10 characters -- verified live against a Docker instance with
-    SEED_SEMANTIC=1, e.g. Project#identifier's format/length validators
-    reject "integration-test-<8 hex chars>", the pattern every call site here
-    used before this helper existed). An uppercase, <=10-char identifier is
-    accepted by both grammars, so this format works unconditionally rather
-    than needing to branch on which mode the instance is running in.
+    Lowercase, <=10 chars, starts with a letter. Project#identifier's format
+    validator requires lowercase on `POST /api/v3/projects` regardless of
+    the instance's semantic/classic work-package-identifier display setting
+    -- verified independently against a live classic-mode Docker instance
+    (an uppercase identifier is rejected with "Identifier is invalid.").
+    Semantic mode's own TST project is the one exception (uppercased via a
+    direct `update_column` in docker/test/seed.rb, which bypasses this same
+    validator -- see that file's comment), not a signal that project
+    creation through the API accepts uppercase too. A prior version of this
+    helper generated an uppercase identifier on the mistaken belief that
+    format was accepted by both grammars; it was only ever exercised against
+    semantic-mode instances, where it happened to pass.
     """
-    return f"IT{uuid.uuid4().hex[:8].upper()}"
+    return f"it{uuid.uuid4().hex[:8]}"
 
 
 def _integration_settings() -> Settings | None:
