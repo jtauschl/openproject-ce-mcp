@@ -1,4 +1,4 @@
-"""Application Service for the Current User domain (ADR 0001).
+"""Application Service for the Current User domain.
 
 Depends on the CurrentUserApi Protocol, never HttpxCurrentUserApi concretely
 (enforced by the architecture-boundary test). No Resolver, no Policy module:

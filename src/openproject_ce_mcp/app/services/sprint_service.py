@@ -1,4 +1,4 @@
-"""Application Service for the Sprints (Backlogs) domain (ADR 0001).
+"""Application Service for the Sprints (Backlogs) domain.
 
 Depends on the SprintApi Protocol, never HttpxSprintApi concretely (enforced
 by the architecture-boundary test). No dedicated SprintResolver: a

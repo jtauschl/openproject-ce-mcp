@@ -81,7 +81,7 @@ async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
         settings=settings,
     )
     # normalize_activity (the adapter's pure HAL->model function) is not
-    # hidden-field-aware by design (ADR 0001) -- masking is applied via
+    # hidden-field-aware by design -- masking is applied via
     # hidden_fields.apply_hidden_fields, the same call WorkPackageService's
     # add_comment()/_stamp_activity make, mirroring the pattern already used
     # by test_hidden_membership_fields_are_tagged_and_dropped_from_payload.
@@ -133,7 +133,7 @@ async def test_hidden_fields_support_wildcards_for_principal_reads() -> None:
     )
 
     # normalize_principal (the adapter's pure HAL->model function) is not
-    # hidden-field-aware by design (ADR 0001) -- masking is applied via
+    # hidden-field-aware by design -- masking is applied via
     # hidden_fields.apply_hidden_fields, the same call PrincipalService.
     # list_principals makes, mirroring the pattern already used above for
     # normalize_activity/normalize_work_package_detail.
@@ -403,7 +403,7 @@ async def test_hidden_custom_field_is_rejected_on_write() -> None:
 def test_hidden_sprint_fields_are_tagged_and_dropped_from_payload() -> None:
     # Sprints support OPENPROJECT_HIDE_SPRINT_FIELDS like every other entity.
     # normalize_sprint (the adapter's pure HAL->model function) no longer
-    # applies masking itself (ADR 0001 -- masking moved to SprintService);
+    # applies masking itself (masking moved to SprintService);
     # this test applies it via the same hidden_fields.apply_hidden_fields the
     # Service calls, mirroring test_hidden_membership_fields_are_tagged_and_dropped_from_payload.
     settings = _base_settings(hidden_fields={"sprint": ("defining_workspace",)})
@@ -564,7 +564,7 @@ def test_hidden_version_fields_are_tagged_and_dropped_from_payload() -> None:
     # createdAt/updatedAt on VersionSummary/Detail respect the existing
     # OPENPROJECT_HIDE_VERSION_FIELDS wiring. normalize_version/_detail (the
     # adapter's pure HAL->model functions) no longer apply masking themselves
-    # (ADR 0001 -- masking moved to VersionService); this test applies it via
+    # (masking moved to VersionService); this test applies it via
     # the same hidden_fields.apply_hidden_fields the Service calls, mirroring
     # test_hidden_membership_fields_are_tagged_and_dropped_from_payload.
     settings = _base_settings(hidden_fields={"version": ("updated_at",)})
@@ -601,7 +601,7 @@ async def test_hidden_version_description_also_suppresses_truncation_metadata() 
     # -- otherwise the real length of hidden content would still leak through those
     # two sibling fields even though "description" itself is dropped.
     # The adapter computes them before hidden-field masking exists (masking is a
-    # VersionService concern, per ADR 0001), so this can only be caught end-to-end
+    # VersionService concern), so this can only be caught end-to-end
     # through get_version/list_versions, not via a direct normalize_version() call.
     long_description = "d" * 900
 
@@ -665,7 +665,7 @@ def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() -> None:
     # createdAt/updatedAt on MembershipSummary respect the existing
     # OPENPROJECT_HIDE_MEMBERSHIP_FIELDS wiring. normalize_membership (the
     # adapter's pure HAL->model function) no longer applies masking itself
-    # (ADR 0001 -- masking moved to MembershipService); this test applies it
+    # (masking moved to MembershipService); this test applies it
     # via the same hidden_fields.apply_hidden_fields the Service calls.
     settings = _base_settings(hidden_fields={"membership": ("created_at",)})
 
@@ -733,7 +733,7 @@ def test_hidden_user_fields_are_tagged_and_dropped_from_payload() -> None:
     # firstName/lastName are exposed as read fields, echoing what create_user/
     # update_user already write. Respects existing OPENPROJECT_HIDE_USER_FIELDS
     # wiring. normalize_user (the adapter's pure HAL->model function) no
-    # longer applies masking itself (ADR 0001 -- masking moved to
+    # longer applies masking itself (masking moved to
     # UserService); this test applies it via the same
     # hidden_fields.apply_hidden_fields the Service calls, mirroring
     # test_hidden_membership_fields_are_tagged_and_dropped_from_payload.

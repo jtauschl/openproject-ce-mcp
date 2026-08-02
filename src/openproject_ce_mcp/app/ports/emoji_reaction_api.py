@@ -1,4 +1,4 @@
-"""Emoji Reactions Domain API port (ADR 0001).
+"""Emoji Reactions Domain API port.
 
 Narrow: list (scoped to one work package) + get_activity (used only by
 toggle()'s activity->work_package link resolution) + toggle (PATCH, returns

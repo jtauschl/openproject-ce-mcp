@@ -1,4 +1,4 @@
-"""Application Service for the Watchers domain (ADR 0001).
+"""Application Service for the Watchers domain.
 
 Depends on the `WatcherApi` Protocol (never `HttpxWatcherApi` concretely --
 enforced by the architecture-boundary test) and on `WorkPackageIdResolver`.

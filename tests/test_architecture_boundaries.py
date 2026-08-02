@@ -1,4 +1,4 @@
-"""Static architecture-boundary checks for the app/ layered tree (ADR 0001).
+"""Static architecture-boundary checks for the app/ layered tree.
 
 First static-boundary test in this repo -- no existing pattern to copy (confirmed by
 searching the whole tree for `ast.parse`/"boundary"/"layering" before writing this).
@@ -32,12 +32,12 @@ SRC = Path(__file__).resolve().parent.parent / "src" / "openproject_ce_mcp"
 APP = SRC / "app"
 
 # Pre-existing httpx importers not migrated to the layered app/ tree: client.py still does raw HTTP
-# for ~50 unmigrated domains; retry_transport.py is wrapped-not-replaced per the ADR;
-# doctor.py/setup_cli.py are the ADR's own named, pre-existing exceptions.
+# for ~50 unmigrated domains; retry_transport.py is wrapped-not-replaced by design;
+# doctor.py/setup_cli.py are named, pre-existing exceptions.
 _PRE_EXISTING_HTTPX_IMPORTERS = {"client.py", "retry_transport.py", "doctor.py", "setup_cli.py"}
 _HTTPX_TRANSPORT_FILE = Path("transport") / "httpx_transport.py"
 
-# Layer dependency rules (ADR 0001): which app/<layer> dirs a given layer may import
+# Layer dependency rules: which app/<layer> dirs a given layer may import
 # from, besides itself and the shared kernel (app/errors.py, app/pagination.py,
 # app/api_href.py, app/form_result.py, config.py, models.py -- always allowed,
 # excluded from this check entirely).
@@ -1370,7 +1370,7 @@ def test_activity_service_binds_the_api_param_to_activity_api_specifically() -> 
 
 def test_work_package_service_binds_the_api_param_to_work_package_api_specifically() -> None:
     """Work Packages' Service (now covering both the READ slice and the
-    write-path migration, OPM-286's second sub-step) depends on its own
+    write-path migration's second sub-step) depends on its own
     WorkPackageApi Port (not the pre-existing, deliberately minimal
     WorkPackageLookupApi that 8 other domains' resolvers use), on the
     existing WorkPackageProjectAllowedCheck seam for hierarchy-allowlist

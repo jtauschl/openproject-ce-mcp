@@ -1,4 +1,4 @@
-"""Application Service for the Boards domain (ADR 0001).
+"""Application Service for the Boards domain.
 
 Depends on the BoardApi Protocol, never HttpxBoardApi concretely (enforced by
 the architecture-boundary test). No dedicated BoardResolver: a `board_id` is

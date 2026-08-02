@@ -1,4 +1,4 @@
-"""HTTP-backed AttachmentApi adapter (ADR 0001).
+"""HTTP-backed AttachmentApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`id_from_href`/`link_title`/`delimit_user_content`/

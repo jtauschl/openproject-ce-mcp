@@ -1,4 +1,4 @@
-"""Application Service for the Versions domain (ADR 0001 pilot).
+"""Application Service for the Versions domain.
 
 Depends on the VersionApi Protocol, never HttpxVersionApi concretely (enforced by
 the architecture-boundary test). `_WriteOutcome`/`_finalize_write` are shared via

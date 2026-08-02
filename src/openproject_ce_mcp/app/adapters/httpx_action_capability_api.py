@@ -1,4 +1,4 @@
-"""HTTP-backed ActionCapabilityApi adapter (ADR 0001).
+"""HTTP-backed ActionCapabilityApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `id_from_href`/
 `slug_from_href`/`link_title`/`link_to_web_url`/`origin_from_url` are shared

@@ -116,7 +116,7 @@ async def test_create_work_package_rejects_assignee_supplied_by_name(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
     """Live counterpart to the unit-level gap-fill test added during the
-    OPM-286 write-path migration: assignee resolution on the write path
+    write-path migration: assignee resolution on the write path
     accepts only "me" or a bare numeric user id, never a name search
     (deliberately narrower than the read-side assignee/assignee_me filters,
     which do accept names). Confirms the AssigneeRefResolver seam's narrower

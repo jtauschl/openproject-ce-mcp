@@ -1,4 +1,4 @@
-"""Actions & Capabilities Domain API port (ADR 0001) -- narrow, no universal gateway.
+"""Actions & Capabilities Domain API port -- narrow, no universal gateway.
 
 Two unrelated-but-bundled read-only lookups (grouped as one
 migration, matching client.py's own adjacent placement), each with its

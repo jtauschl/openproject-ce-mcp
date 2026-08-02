@@ -4,7 +4,7 @@
   <img src="../img/architecture.jpg" alt="Five modular server layers connected by a guarded bidirectional request flow." width="960">
 </p>
 
-OpenProject CE MCP is organized into a small number of narrow layers with a strict, one-directional dependency order (ADR 0001): MCP presentation, Application Services, Policies/Resolvers, domain API Ports/Adapters, and a single Transport. Each domain (projects, work packages, versions, …) follows this same shape — a narrow port, an adapter, resolver(s) where needed, policies, an Application Service, and a thin `client.py` facade delegation — so a new domain's design decisions are largely settled by the existing pattern rather than invented from scratch. `client.py` itself stays a thin, auth/transport/error-mapping facade; the domain logic and policy checks live one layer down instead of accumulating in that one file.
+OpenProject CE MCP is organized into a small number of narrow layers with a strict, one-directional dependency order: MCP presentation, Application Services, Policies/Resolvers, domain API Ports/Adapters, and a single Transport. Each domain (projects, work packages, versions, …) follows this same shape — a narrow port, an adapter, resolver(s) where needed, policies, an Application Service, and a thin `client.py` facade delegation — so a new domain's design decisions are largely settled by the existing pattern rather than invented from scratch. `client.py` itself stays a thin, auth/transport/error-mapping facade; the domain logic and policy checks live one layer down instead of accumulating in that one file.
 
 ## Layout
 

@@ -1,4 +1,4 @@
-"""Application Service for the Attachments domain (ADR 0001).
+"""Application Service for the Attachments domain.
 
 Depends on the `AttachmentApi` Protocol (never `HttpxAttachmentApi`
 concretely -- enforced by the architecture-boundary test), on

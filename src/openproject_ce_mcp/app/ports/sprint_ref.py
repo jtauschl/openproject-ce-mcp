@@ -1,4 +1,4 @@
-"""Sprint-reference resolution port (ADR 0001).
+"""Sprint-reference resolution port.
 
 Narrow seam onto client.py's `_resolve_sprint_id` -- unlike `VersionIdResolver`
 (whose `project` parameter is optional, defaulting to None for a

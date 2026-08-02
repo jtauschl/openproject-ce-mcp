@@ -1,4 +1,4 @@
-"""HTTP-backed NewsApi adapter (ADR 0001).
+"""HTTP-backed NewsApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only), no
 `api_prefix` parameter (unlike HttpxMembershipApi/HttpxProjectApi): News

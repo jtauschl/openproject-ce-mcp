@@ -1,4 +1,4 @@
-"""HTTP-backed BoardApi adapter (ADR 0001).
+"""HTTP-backed BoardApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). Boards are
 backed by OpenProject's `queries` resource (`_type: "Query"`), not a

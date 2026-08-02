@@ -1,4 +1,4 @@
-"""Shared Projects list/filter/paginate query (ADR 0001).
+"""Shared Projects list/filter/paginate query.
 
 Lives in the Resolvers layer (not Services) so both `ProjectService` (Service ->
 Resolver is the sanctioned direction) and `ProjectResolver` (same layer, sibling

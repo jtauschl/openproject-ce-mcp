@@ -951,7 +951,7 @@ async def test_update_work_package_clears_category_with_null_href() -> None:
 @pytest.mark.asyncio
 async def test_update_work_package_clears_project_phase_with_null_href() -> None:
     # Regression guard (found by an independent Codex CLI review during the
-    # OPM-286 write-migration's step 6.5, 2026-08-01): the CLEAR branch must
+    # write-migration's step 6.5, 2026-08-01): the CLEAR branch must
     # send _links.projectPhase (camelCase, the real HAL key) = {"href": None},
     # matching the non-CLEAR schema-backed branch a few lines below it -- an
     # earlier draft used the snake_case "project_phase" key instead, which
@@ -2848,7 +2848,7 @@ async def test_update_work_package_close_succeeds_with_work_package_read_disable
 
 @pytest.mark.asyncio
 async def test_hidden_custom_field_is_rejected_after_schema_resolution_by_resolved_name() -> None:
-    # Pre-existing coverage gap (found during the OPM-286 write-migration plan review, 2026-08-01):
+    # Pre-existing coverage gap (found during the write-migration plan review, 2026-08-01):
     # test_hidden_custom_field_is_rejected_on_write (test_hidden_fields.py) only exercises the FIRST
     # gate, _ensure_custom_field_input_writable, which matches the RAW caller-supplied key against
     # itself. It cannot catch a hide pattern that only matches the field's *resolved schema name* --
@@ -2908,7 +2908,7 @@ async def test_hidden_custom_field_is_rejected_after_schema_resolution_by_resolv
 
 @pytest.mark.asyncio
 async def test_create_work_package_rejects_assignee_supplied_by_name() -> None:
-    # Pre-existing coverage gap (found during the OPM-286 write-migration plan review, 2026-08-01):
+    # Pre-existing coverage gap (found during the write-migration plan review, 2026-08-01):
     # _resolve_assignee_id (client.py) is deliberately narrower than the read-side principal
     # resolver -- it accepts only "me" or a bare numeric user id, never a name search, unlike
     # assignee/assignee_me filtering on list_work_packages/search_work_packages. This negative case

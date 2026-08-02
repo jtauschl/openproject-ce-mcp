@@ -1,4 +1,4 @@
-"""Application Service for the Memberships domain (ADR 0001).
+"""Application Service for the Memberships domain.
 
 Depends on the MembershipApi Protocol, never HttpxMembershipApi concretely
 (enforced by the architecture-boundary test). No dedicated

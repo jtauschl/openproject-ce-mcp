@@ -1,4 +1,4 @@
-"""HTTP-backed WatcherApi adapter (ADR 0001).
+"""HTTP-backed WatcherApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`SUBJECT_LIMIT`/`web_url` come from

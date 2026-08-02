@@ -1,4 +1,4 @@
-"""Boards Domain API port (ADR 0001) -- narrow, no universal gateway."""
+"""Boards Domain API port -- narrow, no universal gateway."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Projects-only policy (ADR 0001). Pure, no I/O.
+"""Projects-only policy. Pure, no I/O.
 
 Verbatim port of client.py's _ensure_project_allowed/_ensure_project_write_allowed/
 _ensure_project_write_candidate_allowed (client.py:7384-7420), built on the

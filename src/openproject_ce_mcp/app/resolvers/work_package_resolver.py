@@ -1,4 +1,4 @@
-"""Work-package-reference resolver (ADR 0001).
+"""Work-package-reference resolver.
 
 Mirrors `ProjectResolver`'s shape (`app/resolvers/project_resolver.py`):
 constructor takes `api` + `settings`, depends only on the `WorkPackageLookupApi`

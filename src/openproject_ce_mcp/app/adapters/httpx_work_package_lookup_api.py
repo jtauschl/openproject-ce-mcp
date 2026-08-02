@@ -1,4 +1,4 @@
-"""HTTP-backed WorkPackageLookupApi adapter (ADR 0001).
+"""HTTP-backed WorkPackageLookupApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter's convention). Two endpoints, raw HAL payload returned

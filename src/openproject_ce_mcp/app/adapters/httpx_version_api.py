@@ -1,4 +1,4 @@
-"""HTTP-backed VersionApi adapter (ADR 0001).
+"""HTTP-backed VersionApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
 `_link_title`/`_delimit_user_content`/`SUBJECT_LIMIT` are shared via

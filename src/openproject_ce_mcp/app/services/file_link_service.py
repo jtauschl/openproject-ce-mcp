@@ -1,4 +1,4 @@
-"""Application Service for the File Links domain (ADR 0001).
+"""Application Service for the File Links domain.
 
 Depends on the `FileLinkApi` Protocol (never `HttpxFileLinkApi` concretely --
 enforced by the architecture-boundary test), on `WorkPackageLookupApi`

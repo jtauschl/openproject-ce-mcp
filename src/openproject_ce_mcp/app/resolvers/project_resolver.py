@@ -1,4 +1,4 @@
-"""Project-reference resolver (ADR 0001).
+"""Project-reference resolver.
 
 Resolves a project reference (numeric id, exact identifier, or -- as a fallback --
 display name) to a resolved raw HAL payload. Verbatim behavioral port of the

@@ -1,4 +1,4 @@
-"""Boards read/write allowlist policy (ADR 0001). Pure, no I/O.
+"""Boards read/write allowlist policy. Pure, no I/O.
 
 A thin delegation to `scope.py`'s shared primitives, mirroring News'/
 Documents'/Versions' `<domain>_payload_allowed` pattern -- Boards has no

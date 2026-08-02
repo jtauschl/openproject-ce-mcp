@@ -1,4 +1,4 @@
-"""HTTP-backed CategoryApi adapter (ADR 0001).
+"""HTTP-backed CategoryApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
 `id_from_href`/`link_title` are shared via `app/adapters/_text.py` (verified

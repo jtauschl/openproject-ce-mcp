@@ -1,4 +1,4 @@
-"""HTTP-backed RelationApi adapter (ADR 0001).
+"""HTTP-backed RelationApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`link_title`/`id_from_href`/`delimit_user_content`/

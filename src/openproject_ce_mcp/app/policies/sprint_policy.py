@@ -1,4 +1,4 @@
-"""Sprint (Backlogs) allowlist policy (ADR 0001). Pure, no I/O.
+"""Sprint (Backlogs) allowlist policy. Pure, no I/O.
 
 Unlike Views/Documents/News, Sprints genuinely needs a dedicated policy file:
 `_ensure_sprint_workspace_allowed` (client.py) has TWO branches, not one.

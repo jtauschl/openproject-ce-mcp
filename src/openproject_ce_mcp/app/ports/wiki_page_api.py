@@ -1,4 +1,4 @@
-"""Wiki Pages Domain API port (ADR 0001) -- narrow, no universal gateway.
+"""Wiki Pages Domain API port -- narrow, no universal gateway.
 
 Wiki pages have no collection endpoint in OpenProject v3
 (/api/v3/wiki_pages/{id} exists; no /api/v3/wiki_pages or

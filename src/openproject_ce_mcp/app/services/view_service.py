@@ -1,4 +1,4 @@
-"""Application Service for the Views domain (ADR 0001).
+"""Application Service for the Views domain.
 
 Depends on the ViewApi Protocol, never HttpxViewApi concretely (enforced by
 the architecture-boundary test). No dedicated ViewResolver: a `view_id` is

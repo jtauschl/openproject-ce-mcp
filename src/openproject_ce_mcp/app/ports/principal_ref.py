@@ -1,4 +1,4 @@
-"""Principal-reference resolution port (ADR 0001).
+"""Principal-reference resolution port.
 
 Narrow seam onto the still-flat Admin/Principal domain's existing resolution
 machinery (_resolve_principal_id -- explicitly out of scope for the

@@ -1,4 +1,4 @@
-"""Attachments Domain API port (ADR 0001).
+"""Attachments Domain API port.
 
 Full CRUD minus update (OpenProject's v3 API has no `PATCH /attachments/{id}`
 endpoint -- verbatim of client.py's original shape, which never exposed an

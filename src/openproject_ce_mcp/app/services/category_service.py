@@ -1,4 +1,4 @@
-"""Application Service for the Categories domain (ADR 0001).
+"""Application Service for the Categories domain.
 
 Depends on the CategoryApi Protocol, never HttpxCategoryApi concretely
 (enforced by the architecture-boundary test). No dedicated CategoryResolver:

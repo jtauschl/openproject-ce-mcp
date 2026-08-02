@@ -1,4 +1,4 @@
-"""httpx-backed Transport port implementation (ADR 0001).
+"""httpx-backed Transport port implementation.
 
 The only module under app/ allowed to `import httpx` (enforced by the
 architecture-boundary test, Slice 6).
@@ -19,7 +19,7 @@ from .protocol import TransportResponse
 
 class HttpxTransport:
     """Wraps the SAME httpx.AsyncClient instance OpenProjectClient.__init__ already
-    constructs (ADR 0001, "httpx confinement") -- one connection pool, not two.
+    constructs ("httpx confinement") -- one connection pool, not two.
     Verbatim behavioral port of client.py's
     _request/_request_json/_get/_post/_patch/_delete/_raise_for_status.
     """

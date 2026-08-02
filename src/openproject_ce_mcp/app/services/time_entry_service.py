@@ -1,4 +1,4 @@
-"""Application Service for the Time Entries domain (ADR 0001).
+"""Application Service for the Time Entries domain.
 
 Depends on `TimeEntryApi`, `ProjectApi` (for the activity-fallback project
 walk AND for `list_time_entries`'s numeric-user-id lookup, via `UserApi`),

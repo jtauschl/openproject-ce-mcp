@@ -1,4 +1,4 @@
-"""HTTP-backed ReminderApi adapter (ADR 0001).
+"""HTTP-backed ReminderApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`id_from_href`/`link_to_web_url`/`SUBJECT_LIMIT`

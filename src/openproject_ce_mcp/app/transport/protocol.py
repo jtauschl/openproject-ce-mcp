@@ -1,4 +1,4 @@
-"""Narrow transport port (ADR 0001).
+"""Narrow transport port.
 
 HttpxTransport is the only implementation for 0.4.0; the point is that VersionApi
 adapters depend on this Protocol, not on HttpxTransport concretely, mirroring the
@@ -14,7 +14,7 @@ from typing import Any, Protocol
 
 @dataclass(frozen=True)
 class TransportResponse:
-    """Raw response envelope for request_raw (ADR 0001).
+    """Raw response envelope for request_raw.
 
     Used only where a JSON-parsed body isn't the right contract: a 204 response
     with no body (post_json would fail parsing it), or a redirect whose

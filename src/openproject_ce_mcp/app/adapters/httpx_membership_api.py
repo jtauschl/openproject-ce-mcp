@@ -1,4 +1,4 @@
-"""HTTP-backed MembershipApi adapter (ADR 0001).
+"""HTTP-backed MembershipApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
 `_link_title`/`_id_from_href`/`_origin_from_url`/`SUBJECT_LIMIT` are shared

@@ -399,7 +399,7 @@ def run_constants(verbose: bool = False) -> int:
 # --- Full auto-extracted coverage (every resource + filter the client uses) ---
 
 CLIENT = ROOT / "src" / "openproject_ce_mcp" / "client.py"
-# The layered app/ architecture migration (ADR 0001) moved almost every
+# The layered app/ architecture migration moved almost every
 # domain's real HTTP calls out of client.py into app/adapters/httpx_*_api.py
 # (self._transport.get_json/post_json/patch_json/delete/delete_json, the
 # direct analog of client.py's own self._get/_post/_patch/_delete), and moved

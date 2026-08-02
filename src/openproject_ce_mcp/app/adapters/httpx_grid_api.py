@@ -1,4 +1,4 @@
-"""HTTP-backed GridApi adapter (ADR 0001).
+"""HTTP-backed GridApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only).
 

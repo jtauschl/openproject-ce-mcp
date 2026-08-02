@@ -1,4 +1,4 @@
-"""Instance Configuration Domain API port (ADR 0001).
+"""Instance Configuration Domain API port.
 
 Single global GET, no project link, no list/create/update/delete --
 OpenProject exposes one read-only `configuration` resource for the whole

@@ -1,4 +1,4 @@
-"""HTTP-backed WorkPackageApi adapter -- covers the full domain (ADR 0001).
+"""HTTP-backed WorkPackageApi adapter -- covers the full domain.
 
 Write-path methods (`validate_create`/`validate_update`/`parse_form`/
 `commit_create`/`commit_update`/`delete`/`post_comment`) are thin HTTP

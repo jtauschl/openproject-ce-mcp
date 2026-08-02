@@ -1,4 +1,4 @@
-"""Application Service for the Wiki Pages domain (ADR 0001).
+"""Application Service for the Wiki Pages domain.
 
 Depends on the WikiPageApi Protocol, never HttpxWikiPageApi concretely
 (enforced by the architecture-boundary test). No dedicated WikiPageResolver:

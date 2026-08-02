@@ -1,4 +1,4 @@
-"""Principals Domain API port (ADR 0001).
+"""Principals Domain API port.
 
 Read-only list only -- OpenProject exposes no single-item GET for a
 principal (users/groups have their own domain single-item GETs; `principals`

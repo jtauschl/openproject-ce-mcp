@@ -1,4 +1,4 @@
-"""Work-package-type-reference resolution port (ADR 0001).
+"""Work-package-type-reference resolution port.
 
 Narrow seam onto client.py's still-flat `_resolve_type_id`, reused as-is --
 type names are resolved per-project (`projects/{id}/types`), so no

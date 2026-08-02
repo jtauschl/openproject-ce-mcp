@@ -1,4 +1,4 @@
-"""Version-reference resolution port (ADR 0001).
+"""Version-reference resolution port.
 
 Narrow seam onto `VersionResolver.resolve_id` -- Versions is already fully
 migrated, and client.py's own `_resolve_version_id` already delegates

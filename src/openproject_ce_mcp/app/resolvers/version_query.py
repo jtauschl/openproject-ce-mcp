@@ -1,4 +1,4 @@
-"""Shared Versions list/filter/paginate query (ADR 0001).
+"""Shared Versions list/filter/paginate query.
 
 Lives in the Resolvers layer (not Services) so both `VersionService` (Service ->
 Resolver is the sanctioned direction) and `VersionResolver` (same layer, sibling

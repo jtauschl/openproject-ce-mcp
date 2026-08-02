@@ -1,4 +1,4 @@
-"""Grids-only policy (ADR 0001). Pure, no I/O.
+"""Grids-only policy. Pure, no I/O.
 
 Unlike Categories/Views/Wiki Pages, Grids needs a dedicated policy file: the
 "/my/page" personal-grid carve-out (a grid scoped to the current user's own

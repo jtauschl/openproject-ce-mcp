@@ -1,4 +1,4 @@
-"""Versions-only policy (ADR 0001). Pure, no I/O."""
+"""Versions-only policy. Pure, no I/O."""
 
 from __future__ import annotations
 

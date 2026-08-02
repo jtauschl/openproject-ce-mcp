@@ -1,4 +1,4 @@
-"""Projects Domain API port (ADR 0001) -- narrow, no universal gateway.
+"""Projects Domain API port -- narrow, no universal gateway.
 
 Holds only the ProjectApi Protocol and its Result dataclasses (ProjectRecord,
 ProjectPage, ProjectFormResult, ProjectSchemaResult, ProjectCopyFormResult,
@@ -27,8 +27,8 @@ from ...models import (
 )
 from ..form_result import FormResult
 
-# Duplicated from httpx_version_api.py's constant of the same name (ADR 0001
-# deliberate duplication) -- needed here as the Protocol's default text_limit value.
+# Duplicated from httpx_version_api.py's constant of the same name (a deliberate
+# duplication) -- needed here as the Protocol's default text_limit value.
 FORMATTABLE_LIMIT = 1_200
 
 

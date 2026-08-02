@@ -1,4 +1,4 @@
-"""Assignee-reference resolution port (ADR 0001).
+"""Assignee-reference resolution port.
 
 Narrow seam onto client.py's `_resolve_assignee_id` -- deliberately NOT
 `PrincipalRefResolver` (the seam the READ-side `WorkPackageService` already

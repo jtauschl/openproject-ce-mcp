@@ -1,4 +1,4 @@
-"""Principal-reference resolver (ADR 0001).
+"""Principal-reference resolver.
 
 Resolves a principal reference ("me", numeric id, or exact case-insensitive
 name) to a concrete numeric-id string. Verbatim behavioral port of the

@@ -1,4 +1,4 @@
-"""Project-reference resolution port (ADR 0001)."""
+"""Project-reference resolution port."""
 
 from __future__ import annotations
 

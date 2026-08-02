@@ -1,4 +1,4 @@
-"""Current User Domain API port (ADR 0001).
+"""Current User Domain API port.
 
 Single global GET, no project link, no list/create/update/delete -- returns
 the token owner's own user record via `/api/v3/users/me`.

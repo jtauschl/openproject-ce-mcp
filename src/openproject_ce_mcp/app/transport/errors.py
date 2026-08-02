@@ -1,4 +1,4 @@
-"""HTTP-status/HAL-error-payload -> typed exception mapping (ADR 0001, tier 2).
+"""HTTP-status/HAL-error-payload -> typed exception mapping (tier 2).
 
 Imports exception types from the package-root shared kernel (app/errors.py), not
 defined here -- keeps this module httpx-free (only app/transport/httpx_transport.py
@@ -23,7 +23,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def raise_for_status(status_code: int, payload: dict[str, Any] | None) -> None:
-    """Tier-2 mapper (ADR 0001): HTTP status + HAL error payload -> typed exception.
+    """Tier-2 mapper: HTTP status + HAL error payload -> typed exception.
 
     Verbatim port of client.py's `_raise_for_status` body, reshaped to take
     (status_code, payload) instead of an httpx.Response so this module stays

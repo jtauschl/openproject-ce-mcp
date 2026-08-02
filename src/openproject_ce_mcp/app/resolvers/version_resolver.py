@@ -1,4 +1,4 @@
-"""Version-reference resolver (ADR 0001).
+"""Version-reference resolver.
 
 Resolves a version reference (numeric id, or exact case-insensitive name) to a
 concrete numeric-id string. Verbatim behavioral port of the pre-existing

@@ -1,4 +1,4 @@
-"""Project-scope / allowlist policy (ADR 0001). Pure, no I/O.
+"""Project-scope / allowlist policy. Pure, no I/O.
 
 Contains small, deliberately duplicated private copies of `_trim_text`/
 `_slug_from_href` (+ `SUBJECT_LIMIT`) -- duplicated rather than

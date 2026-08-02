@@ -1,4 +1,4 @@
-"""Application Service for the Work Package Activities domain (ADR 0001).
+"""Application Service for the Work Package Activities domain.
 
 Depends on the `ActivityApi` Protocol (never `HttpxActivityApi` concretely --
 enforced by the architecture-boundary test) and `WorkPackageIdResolver` only

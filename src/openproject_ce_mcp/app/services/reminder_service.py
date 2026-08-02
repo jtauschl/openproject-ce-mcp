@@ -1,4 +1,4 @@
-"""Application Service for the Reminders domain (ADR 0001).
+"""Application Service for the Reminders domain.
 
 Depends on the `ReminderApi` Protocol (never `HttpxReminderApi` concretely --
 enforced by the architecture-boundary test), on `WorkPackageLookupApi`

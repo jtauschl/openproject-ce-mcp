@@ -1,4 +1,4 @@
-"""Work Package Activities Domain API port (ADR 0001).
+"""Work Package Activities Domain API port.
 
 Get-only, single-anchor domain (a work package's own activity feed), no list
 endpoint of its own to diverge from and no separate Detail model -- the
@@ -20,7 +20,7 @@ normalize itself -- is how the HAL->model translation stays entirely inside
 the Adapter while still letting the Service control WHEN it runs; the same
 shape `ReminderRecord.summary` already established.
 
-Extended additively (Work Packages write-path migration, OPM-286) with
+Extended additively (Work Packages write-path migration) with
 `to_record`/`get_raw`: `add_work_package_comment` needed to normalize a
 just-posted comment's raw activity payload and to fetch a fallback single
 activity by id (the `_fill_missing_activity_user` best-effort pattern) --

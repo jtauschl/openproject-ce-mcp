@@ -1,4 +1,4 @@
-"""Shared same-origin-check helper (ADR 0001).
+"""Shared same-origin-check helper.
 
 Package-root shared kernel: pure, dependency-free URL parsing used by both
 Adapters (via `app/adapters/_text.py`, which re-exports it for backward

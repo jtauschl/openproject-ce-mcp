@@ -1508,7 +1508,7 @@ async def test_fill_missing_activity_user_swallows_fetch_failure() -> None:
 
 # ----------------------------------------------------------------------
 # No read-enablement gate on any write method (cross-cutting regression
-# guard, found during the OPM-286 wiring pass: none of the 5 flat write
+# guard, found during the write-path wiring pass: none of the 5 flat write
 # methods (create/create_subtask/update/delete/add_comment) ever called
 # _ensure_read_enabled, verified against client.py's originals -- a Service
 # method that added one would be a real behavioral regression, since an

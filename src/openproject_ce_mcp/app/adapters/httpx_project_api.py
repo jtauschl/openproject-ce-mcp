@@ -1,4 +1,4 @@
-"""HTTP-backed ProjectApi adapter (ADR 0001).
+"""HTTP-backed ProjectApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). Owns the pure
 normalize_* HAL->model translation functions (matching the Versions domain's

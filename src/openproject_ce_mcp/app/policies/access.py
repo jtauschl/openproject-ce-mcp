@@ -1,4 +1,4 @@
-"""Read/write scope-gate policy (ADR 0001). Pure, no I/O."""
+"""Read/write scope-gate policy. Pure, no I/O."""
 
 from __future__ import annotations
 

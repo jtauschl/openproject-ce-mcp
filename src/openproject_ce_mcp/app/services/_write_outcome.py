@@ -1,4 +1,4 @@
-"""Shared preview/confirm write state machine for Application Services (ADR 0001).
+"""Shared preview/confirm write state machine for Application Services.
 
 Extracted from three byte-identical per-Service copies (Versions, Projects,
 Memberships) once a third domain needed it -- this project's own standing

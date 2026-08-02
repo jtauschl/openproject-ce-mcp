@@ -1,4 +1,4 @@
-"""Application Services for the Projects domain (ADR 0001).
+"""Application Services for the Projects domain.
 
 Depends on the ProjectApi Protocol, never HttpxProjectApi concretely (enforced by
 the architecture-boundary test). Two classes in one file (ProjectService and
@@ -50,7 +50,7 @@ from ._write_outcome import _finalize_write, _WriteOutcome
 SUBJECT_LIMIT = 255
 
 
-# Duplicated from httpx_project_api.py's helpers of the same name (ADR 0001
+# Duplicated from httpx_project_api.py's helpers of the same name (a
 # deliberate duplication) -- Services must not import Adapters. These are
 # generic string/href utilities, not HAL->model mapping (which stays adapter-
 # only), needed here for job-status-URL parsing (copy()), status-href
@@ -94,7 +94,7 @@ CLEAR_PARENT = object()
 def _stamp_project(value: Any, *, settings: Settings) -> Any:
     # The adapter computes description_truncated/description_length AND
     # status_explanation_truncated/status_explanation_length before hidden-field
-    # masking exists (masking is a Service concern, per ADR 0001) --
+    # masking exists (masking is a Service concern) --
     # apply_hidden_fields only drops the field key itself, so without this, a
     # hidden field's length/truncation state would still leak through its
     # sibling metadata fields. Zero both pairs out here, mirroring

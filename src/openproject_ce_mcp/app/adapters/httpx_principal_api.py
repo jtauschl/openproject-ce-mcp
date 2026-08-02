@@ -1,4 +1,4 @@
-"""HTTP-backed PrincipalApi adapter (ADR 0001).
+"""HTTP-backed PrincipalApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only).
 """

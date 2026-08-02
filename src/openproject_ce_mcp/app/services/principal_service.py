@@ -1,4 +1,4 @@
-"""Application Service for the Principals domain (ADR 0001).
+"""Application Service for the Principals domain.
 
 Depends on the PrincipalApi Protocol, never HttpxPrincipalApi concretely
 (enforced by the architecture-boundary test). No Resolver dependency, no

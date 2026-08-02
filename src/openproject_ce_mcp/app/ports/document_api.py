@@ -1,4 +1,4 @@
-"""Documents Domain API port (ADR 0001) -- narrow, no universal gateway."""
+"""Documents Domain API port -- narrow, no universal gateway."""
 
 from __future__ import annotations
 

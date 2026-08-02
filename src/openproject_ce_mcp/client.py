@@ -325,7 +325,7 @@ class OpenProjectClient:
             transport=transport,
         )
 
-        # ADR 0001: HttpxTransport wraps the SAME httpx.AsyncClient
+        # HttpxTransport wraps the SAME httpx.AsyncClient
         # constructed above (one connection pool, not two).
         self._project_api: ProjectApi = HttpxProjectApi(
             HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
@@ -544,7 +544,7 @@ class OpenProjectClient:
         # Domain API port/adapter for the Work Packages migration -- covers
         # both the READ slice (list/search/get/batch/list_my_open) and the
         # write slice (create/update/delete/bulk_*/add_comment/create_subtask,
-        # OPM-286's second sub-step). A separate, parallel port/adapter from
+        # the write-path migration's second sub-step). A separate, parallel port/adapter from
         # work_package_lookup_api above -- see app/ports/work_package_api.py's
         # module docstring for why this does NOT wrap/replace
         # WorkPackageLookupApi, and why WorkPackageResolver above stays
@@ -2392,8 +2392,8 @@ def _parse_response_json(response: httpx.Response) -> dict[str, Any]:
         raise OpenProjectServerError("OpenProject returned invalid JSON.") from exc
 
 
-# _scope_allows_all/_scope_matches_candidates: relocated to app/policies/scope.py
-# (ADR 0001). Rebound here rather than rewritten as wrapper
+# _scope_allows_all/_scope_matches_candidates: relocated to app/policies/scope.py.
+# Rebound here rather than rewritten as wrapper
 # functions since both are pure module-level functions with no `self` — a direct
 # name rebind is behaviorally identical and requires zero changes at any of the
 # ~30 existing call sites across every domain.

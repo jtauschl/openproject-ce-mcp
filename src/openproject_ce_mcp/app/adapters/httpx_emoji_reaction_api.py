@@ -1,4 +1,4 @@
-"""HTTP-backed EmojiReactionApi adapter (ADR 0001).
+"""HTTP-backed EmojiReactionApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`SUBJECT_LIMIT` come from `app/adapters/_text.py`

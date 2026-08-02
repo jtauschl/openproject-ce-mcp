@@ -1,4 +1,4 @@
-"""Application Service for the Documents domain (ADR 0001).
+"""Application Service for the Documents domain.
 
 Depends on the DocumentApi Protocol, never HttpxDocumentApi concretely
 (enforced by the architecture-boundary test). No dedicated DocumentResolver:

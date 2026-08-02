@@ -1,9 +1,9 @@
-"""Application Service for the Work Packages domain (ADR 0001).
+"""Application Service for the Work Packages domain.
 
 Covers the full domain: list/search/list_my_open/get/get_batch (the original
 READ-only slice) plus create/create_subtask/update/delete/bulk_create/
-bulk_update/add_comment (the write-path migration, OPM-286's second
-sub-step). Both slices live on this one class, not two -- ADR 0001 and the
+bulk_update/add_comment (the write-path migration's second sub-step). Both
+slices live on this one class, not two -- the layered architecture and the
 "one Service per domain" convention every other full-CRUD sibling (Time
 Entries, Versions, Memberships, Projects) already follows.
 
@@ -13,7 +13,7 @@ enforced by `tests/test_architecture_boundaries.py`), `ProjectRefResolver`,
 `PriorityRefResolver`, `PrincipalRefResolver`, `AssigneeRefResolver`,
 `SprintIdResolver`, `WorkPackageIdResolver`, `StatusPriorityTypeApi`,
 `ActivityApi`, `CurrentUserLookup`, and `WorkPackageProjectAllowedCheck` (the
-existing OPM-318 seam bound to `self._work_package_resolver.project_link_allowed`
+existing project-scope-check seam bound to `self._work_package_resolver.project_link_allowed`
 -- `WorkPackageResolver` itself is untouched by this migration; this Service
 becomes its ninth consumer, alongside the eight already-migrated domains that
 depend on the same resolver via `app/ports/work_package_ref.py`'s seams).
@@ -180,8 +180,8 @@ def _empty_list_result(*, offset: int, limit: int) -> WorkPackageListResult:
 
 
 def _trim_text(value: Any, *, limit: int = SUBJECT_LIMIT) -> str | None:
-    """Local, deliberately duplicated (Services cannot import from Adapters,
-    per ADR 0001 -- matches `app/services/project_service.py`'s own local copy)."""
+    """Local, deliberately duplicated (Services cannot import from Adapters
+    -- matches `app/services/project_service.py`'s own local copy)."""
     if value is None:
         return None
     text = " ".join(str(value).split())
@@ -644,7 +644,7 @@ class WorkPackageService:
         NOTHING (every raw entry survived), i.e. the flag still means exactly
         what the caller would derive by counting the visible list alone --
         no Service-layer knowledge of the Adapter's specific limit constant
-        needed (Services must not import Adapters, per ADR 0001).
+        needed (Services must not import Adapters).
         """
         if scope_allows_all(self._settings.read_projects):
             return detail
@@ -720,7 +720,7 @@ class WorkPackageService:
                 # OpenProjectError subclass) by HttpxTransport before it could
                 # ever reach this Service -- a raw httpx.HTTPError was dead
                 # code in the original, and importing httpx here would violate
-                # ADR 0001's httpx-confinement rule (only the Transport module
+                # the httpx-confinement rule (only the Transport module
                 # may import httpx directly).
                 return (work_package_ref, None, str(e))
 
@@ -756,7 +756,7 @@ class WorkPackageService:
         )
 
     # ------------------------------------------------------------------
-    # Write paths (OPM-286 write-path migration).
+    # Write paths (write-path migration).
     # ------------------------------------------------------------------
 
     async def _resolve_wp_ref_id(

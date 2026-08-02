@@ -1,4 +1,4 @@
-"""Request-scoped project resolution cache (ADR 0001).
+"""Request-scoped project resolution cache.
 
 Lives in the Ports layer (not Resolvers) because `app/ports/project_ref.py` needs the
 type for a Protocol signature, and Ports must not import from Resolvers.
@@ -70,9 +70,9 @@ class ProjectResolutionContext:
 
 class WorkPackageResolutionContext:
     """Adds an id-level cache for resolved type/version/sprint references on top
-    of a ProjectResolutionContext (composition, not inheritance -- ADR 0001
-    left that choice open, and composition keeps this cache layer decoupled
-    from ProjectResolutionContext's own implementation).
+    of a ProjectResolutionContext (composition, not inheritance -- composition
+    keeps this cache layer decoupled from ProjectResolutionContext's own
+    implementation).
 
     Same lifetime rule as ProjectResolutionContext: bounded to a single
     top-level call by default (create_work_package/update_work_package each

@@ -1,4 +1,4 @@
-"""HTTP-backed FileLinkApi adapter (ADR 0001).
+"""HTTP-backed FileLinkApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`id_from_href`/`link_title`/`SUBJECT_LIMIT` come

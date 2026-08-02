@@ -1,4 +1,4 @@
-"""Request-scoped work-package-project-allowed cache (ADR 0001).
+"""Request-scoped work-package-project-allowed cache.
 
 Lives in the Ports layer (not Resolvers) because `app/ports/work_package_ref.py`
 needs the type for a Protocol signature, and Ports must not import from

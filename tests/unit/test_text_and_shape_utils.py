@@ -972,7 +972,7 @@ def test_normalize_work_package_prefers_start_date_due_date_over_milestone_date_
 def test_normalize_project_detail_builds_ancestors_from_links() -> None:
     """get_project's ancestors, mirroring WorkPackageDetail.ancestors
     (same shape, same truncation pattern). Re-anchored on the adapter's
-    module-level normalize_project_detail (ADR 0001 -- client.py's own copy
+    module-level normalize_project_detail (client.py's own copy
     was a dead leftover, deleted after the Projects domain migration)."""
     payload = {
         "id": 9,

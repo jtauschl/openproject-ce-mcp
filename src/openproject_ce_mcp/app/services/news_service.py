@@ -1,4 +1,4 @@
-"""Application Service for the News domain (ADR 0001).
+"""Application Service for the News domain.
 
 Depends on the NewsApi Protocol, never HttpxNewsApi concretely (enforced by
 the architecture-boundary test). No dedicated NewsResolver: like Memberships,
@@ -20,7 +20,7 @@ trimmed, News-local counterpart to membership_service.py's
 _finalize_write/_WriteOutcome) have no validation_errors branch -- kept
 separate rather than shared/generalized since that branch genuinely doesn't
 apply here, and every migrated domain's write-state-machine helper is
-intentionally private/domain-local per ADR 0001, unified only once every
+intentionally private/domain-local, unified only once every
 domain has migrated.
 """
 

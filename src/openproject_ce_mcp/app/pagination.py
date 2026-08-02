@@ -1,4 +1,4 @@
-"""Shared pagination-envelope helpers (ADR 0001).
+"""Shared pagination-envelope helpers.
 
 Package-root shared kernel: pure, dependency-free pagination math used by the
 Versions domain (and available to any future migrated domain) without creating a
@@ -94,7 +94,7 @@ async def fetch_bounded_and_paginate(
     paginate the survivors in memory via paginate_client.
 
     Verbatim extraction of client.py's private `_fetch_bounded_and_paginate`
-    (ADR 0001, first extracted for the Relations migration) -- the shape is
+    (first extracted for the Relations migration) -- the shape is
     unchanged, only the raw-payload-fetching part is now injected via
     `fetch_page(server_offset, server_page_size) -> raw HAL page dict` instead
     of being hardwired to `self._get(path, params=...)`, so this is reusable

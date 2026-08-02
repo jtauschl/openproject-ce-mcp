@@ -1,4 +1,4 @@
-"""Work-Packages-only policy (ADR 0001). Pure, no I/O.
+"""Work-Packages-only policy. Pure, no I/O.
 
 Direct replacement for client.py's `_work_package_payload_allowed`. A work
 package's `_links.project` is a REQUIRED link (OpenProject's representer

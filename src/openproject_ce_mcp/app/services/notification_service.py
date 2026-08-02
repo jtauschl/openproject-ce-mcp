@@ -1,4 +1,4 @@
-"""Application Service for the Notifications domain (ADR 0001).
+"""Application Service for the Notifications domain.
 
 Depends on the `NotificationApi` Protocol (never `HttpxNotificationApi`
 concretely -- enforced by the architecture-boundary test) and on

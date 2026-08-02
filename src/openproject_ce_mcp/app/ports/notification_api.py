@@ -1,4 +1,4 @@
-"""Notifications Domain API port (ADR 0001).
+"""Notifications Domain API port.
 
 List-only for reads (no single-item GET exists in client.py's original --
 `normalize_notification` is only ever called from `list_notifications`), plus

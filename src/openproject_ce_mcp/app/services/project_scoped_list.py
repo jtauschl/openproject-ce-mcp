@@ -1,4 +1,4 @@
-"""Shared "list all, then filter by resolved project ref" logic (ADR 0001).
+"""Shared "list all, then filter by resolved project ref" logic.
 
 Extracted after `DocumentService` (the fifth migrated domain) was found to
 have verbatim-copied `_trim_text`/`_resolve_project_filter_candidates`/

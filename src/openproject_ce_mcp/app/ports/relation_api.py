@@ -1,4 +1,4 @@
-"""Relations Domain API port (ADR 0001).
+"""Relations Domain API port.
 
 Full surface: fetch_page (raw HAL page, walked by
 app.pagination.fetch_bounded_and_paginate for both list_relations and

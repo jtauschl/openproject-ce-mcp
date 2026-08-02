@@ -1,6 +1,6 @@
 """Shared presentation-layer validation helpers for tools.py (MCP tool handlers).
 
-Per ADR 0001, tools.py stays presentation-only and never imports from `app/` —
+tools.py stays presentation-only and never imports from `app/` —
 this module is a plain sibling, imported only by tools.py, never the reverse.
 """
 

@@ -1,4 +1,4 @@
-"""Shared exception vocabulary (ADR 0001).
+"""Shared exception vocabulary.
 
 Package-root shared kernel: importable from every layer (policies, transport, ports,
 adapters, resolvers, services) without creating a layering violation, since it sits

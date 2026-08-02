@@ -1,4 +1,4 @@
-"""HTTP-backed ActivityApi adapter (ADR 0001).
+"""HTTP-backed ActivityApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `link_title`/`delimit_user_content` come from

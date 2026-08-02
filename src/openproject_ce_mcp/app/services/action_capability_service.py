@@ -1,4 +1,4 @@
-"""Application Service for the Actions & Capabilities domain (ADR 0001).
+"""Application Service for the Actions & Capabilities domain.
 
 Depends on the ActionCapabilityApi Protocol, never HttpxActionCapabilityApi
 concretely (enforced by the architecture-boundary test). No dedicated

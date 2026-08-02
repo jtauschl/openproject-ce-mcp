@@ -1,4 +1,4 @@
-"""Shared form-validation result shape (ADR 0001).
+"""Shared form-validation result shape.
 
 Package-root shared kernel: a frozen dataclass with exactly `payload` and
 `validation_errors` fields, importable from any port module without creating a

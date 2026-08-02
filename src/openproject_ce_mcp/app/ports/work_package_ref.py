@@ -1,4 +1,4 @@
-"""Work-package-reference resolution ports (ADR 0001).
+"""Work-package-reference resolution ports.
 
 Two narrow seams onto Work Packages' reference-resolution machinery, analogous
 to how `project_ref.py`'s `ProjectRefResolver` is the seam ~10 existing

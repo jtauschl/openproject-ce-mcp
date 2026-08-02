@@ -1,4 +1,4 @@
-"""Shared HAL-normalization text/link helpers for the httpx_*_api adapters (ADR 0001).
+"""Shared HAL-normalization text/link helpers for the httpx_*_api adapters.
 
 Extracted from six byte-identical per-adapter copies once the sixth domain
 (Wiki Pages) migrated -- every adapter's own module docstring had documented

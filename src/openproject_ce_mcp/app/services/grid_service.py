@@ -1,4 +1,4 @@
-"""Application Service for the Grids domain (ADR 0001).
+"""Application Service for the Grids domain.
 
 Depends on the GridApi Protocol, never HttpxGridApi concretely (enforced by
 the architecture-boundary test). No dedicated GridResolver: a `grid_id` is

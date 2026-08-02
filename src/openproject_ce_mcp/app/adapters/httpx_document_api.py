@@ -1,4 +1,4 @@
-"""HTTP-backed DocumentApi adapter (ADR 0001).
+"""HTTP-backed DocumentApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
 `_id_from_href`/`_link_title`/`_delimit_user_content`/`_link_to_web_url`/

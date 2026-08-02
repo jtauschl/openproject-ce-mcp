@@ -1,4 +1,4 @@
-"""File Links Domain API port (ADR 0001).
+"""File Links Domain API port.
 
 Narrow: list (scoped to one work package) + get (single file link, used only
 by delete()'s preview/allowlist step) + delete. No create/update TOOL is

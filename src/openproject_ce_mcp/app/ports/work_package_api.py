@@ -1,10 +1,10 @@
-"""Work Packages Domain API port -- covers the full domain (ADR 0001).
+"""Work Packages Domain API port -- covers the full domain.
 
 Originally read-only (list, search, get, batch-get, list-my-open); this
 Protocol was extended additively with the write-path methods (validate_create,
 validate_update, parse_form, commit_create, commit_update, delete,
-post_comment) once the write-path migration (OPM-286's second sub-step)
-landed, per the original module docstring's own stated plan.
+post_comment) once the write-path migration's second sub-step landed, per
+the original module docstring's own stated plan.
 
 The two form-validation endpoints mirror the flat code's two distinct probe
 sites exactly: `validate_create` POSTs `projects/{project_id}/work_packages/form`
@@ -50,7 +50,7 @@ eight already-migrated domains via the `WorkPackageIdResolver`/
 Those contracts must not change. `HttpxWorkPackageApi` (the adapter for this
 port) does not delegate to `HttpxWorkPackageLookupApi` internally -- both are
 independent, thin HTTP translators over the same `work_packages/{id}`
-endpoint, deliberately duplicated per ADR 0001's "a small amount of
+endpoint, deliberately duplicated per the architecture's "a small amount of
 deliberate duplication... rather than an import from the new layer back"
 principle (here applied between two same-domain adapters rather than between
 an adapter and client.py, but for the identical reason: neither should wrap
@@ -70,8 +70,8 @@ that survive that filter -- normalizing every raw element unconditionally
 items the caller can never see, and (b) let a malformed/unexpected field on
 an out-of-scope work package raise during normalization before the allowlist
 filter ever gets a chance to drop it. Allowlist filtering is a Service/Policy
-concern (per ADR 0001, the Adapter stays a dumb HTTP translator with no
-authorization logic of its own); the Service normalizes only the elements
+concern (the Adapter stays a dumb HTTP translator with no authorization
+logic of its own); the Service normalizes only the elements
 that pass `work_package_payload_allowed`.
 """
 

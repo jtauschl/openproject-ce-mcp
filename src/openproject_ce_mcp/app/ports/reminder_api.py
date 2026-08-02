@@ -1,4 +1,4 @@
-"""Reminders Domain API port (ADR 0001).
+"""Reminders Domain API port.
 
 Full CRUD: list (global, not work-package-scoped -- filtered client-side by
 project allowlist in the Service) + get (used only when the full normalized

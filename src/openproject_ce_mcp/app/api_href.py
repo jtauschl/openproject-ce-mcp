@@ -1,4 +1,4 @@
-"""Shared API-href construction helper (ADR 0001).
+"""Shared API-href construction helper.
 
 Package-root shared kernel: pure, dependency-free string formatting used by any
 Service/Adapter that needs to build a relative API href for an outgoing HAL

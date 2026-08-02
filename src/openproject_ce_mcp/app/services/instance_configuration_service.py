@@ -1,4 +1,4 @@
-"""Application Service for the Instance Configuration domain (ADR 0001).
+"""Application Service for the Instance Configuration domain.
 
 Depends on the InstanceConfigurationApi Protocol, never HttpxInstanceConfigurationApi
 concretely (enforced by the architecture-boundary test). No Resolver, no

@@ -1,4 +1,4 @@
-"""Grids Domain API port (ADR 0001) -- narrow, no universal gateway.
+"""Grids Domain API port -- narrow, no universal gateway.
 
 `list_all`'s `page_size` param is a pagination bugfix found during the
 Statuses/Priorities/Types migration's broader "N individual exceptions"

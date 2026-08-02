@@ -1,4 +1,4 @@
-"""News-only policy (ADR 0001). Pure, no I/O."""
+"""News-only policy. Pure, no I/O."""
 
 from __future__ import annotations
 

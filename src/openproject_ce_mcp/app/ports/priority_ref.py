@@ -1,4 +1,4 @@
-"""Priority-reference resolution port (ADR 0001).
+"""Priority-reference resolution port.
 
 Narrow seam onto the still-flat Statuses/Priorities/Types domain's existing
 name->id resolution machinery (client.py's `_resolve_priority_id`), reused

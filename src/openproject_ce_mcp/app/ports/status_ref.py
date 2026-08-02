@@ -1,4 +1,4 @@
-"""Status-reference resolution port (ADR 0001).
+"""Status-reference resolution port.
 
 Narrow seam onto the still-flat Statuses/Priorities/Types domain's existing
 name->id resolution machinery (client.py's `_resolve_status_id`), reused as-is

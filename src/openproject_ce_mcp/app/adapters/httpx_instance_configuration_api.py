@@ -1,4 +1,4 @@
-"""HTTP-backed InstanceConfigurationApi adapter (ADR 0001).
+"""HTTP-backed InstanceConfigurationApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only).
 """

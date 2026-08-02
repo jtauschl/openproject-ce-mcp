@@ -1,4 +1,4 @@
-"""Current-user lookup port (ADR 0001).
+"""Current-user lookup port.
 
 Narrow seam onto `self.get_current_user` (client.py), added for the Time
 Entries migration -- `list_time_entries`'s `user="me"` filter resolves the

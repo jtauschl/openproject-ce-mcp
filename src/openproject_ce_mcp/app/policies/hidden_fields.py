@@ -1,4 +1,4 @@
-"""Hidden-field masking policy (ADR 0001). Pure, no I/O."""
+"""Hidden-field masking policy. Pure, no I/O."""
 
 from __future__ import annotations
 
@@ -54,8 +54,8 @@ def ensure_field_writable(entity: str, field_name: str, *, settings: Settings) -
 
 def custom_field_hidden(field_name: str, key: str, *, settings: Settings) -> bool:
     """Ported from client.py's `_custom_field_hidden` (kept there too, still used
-    by the still-flat `get_project_work_package_context` -- a deliberate,
-    ADR-0001-sanctioned duplication, not a delete-and-redirect).
+    by the still-flat `get_project_work_package_context` -- a deliberate
+    duplication, not a delete-and-redirect).
 
     Matches BOTH the resolved schema field name and the raw input key against
     `settings.hide_custom_fields` glob patterns -- a caller might supply either
