@@ -93,17 +93,28 @@ def _resolve_test_project() -> str:
 def disposable_project_identifier() -> str:
     """A fresh, valid project identifier for a test's own throwaway project.
 
-    Must satisfy BOTH identifier grammars this suite can run against: classic
-    mode's lowercase/hyphen-friendly rules, and semantic mode's much stricter
-    ones (uppercase letters/digits/underscore only, must start with a letter,
-    max 10 characters -- verified live against a Docker instance with
-    SEED_SEMANTIC=1, e.g. Project#identifier's format/length validators
-    reject "integration-test-<8 hex chars>", the pattern every call site here
-    used before this helper existed). An uppercase, <=10-char identifier is
-    accepted by both grammars, so this format works unconditionally rather
-    than needing to branch on which mode the instance is running in.
+    <=10 chars, starts with a letter. Project#identifier's format validator
+    requires lowercase on classic-mode instances and uppercase on
+    semantic-mode ones -- there is no single format both grammars accept
+    (verified independently against live Docker instances of each: an
+    uppercase identifier is rejected on classic mode with "Identifier is
+    invalid.", a lowercase one is rejected on semantic mode with "Multiple
+    field constraints have been violated."). Casing is derived from
+    OPENPROJECT_TEST_PROJECT's own casing, which docker/test/up.sh already
+    prints correctly per instance (lowercase "tst" for classic, uppercase
+    "TST" for semantic -- see docker/test/README.md) -- an all-lowercase
+    OPENPROJECT_TEST_PROJECT is treated as classic, anything containing an
+    uppercase letter as semantic. This mirrors the same signal
+    seed_wiki_page_id (below) already relies on. A prior version of this
+    helper generated a single uppercase-only format on the mistaken belief
+    it was accepted by both grammars; it was only ever exercised against
+    semantic-mode instances, where it happened to pass.
     """
-    return f"IT{uuid.uuid4().hex[:8].upper()}"
+    test_project = os.environ.get("OPENPROJECT_TEST_PROJECT", "mcp-test").strip()
+    suffix = uuid.uuid4().hex[:8]
+    if test_project != test_project.lower():
+        return f"IT{suffix.upper()}"
+    return f"it{suffix}"
 
 
 def _integration_settings() -> Settings | None:
