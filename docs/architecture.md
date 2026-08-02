@@ -4,7 +4,7 @@
   <img src="../img/architecture.jpg" alt="Five modular server layers connected by a guarded bidirectional request flow." width="960">
 </p>
 
-OpenProject CE MCP is intentionally small and flat. The codebase keeps transport, validation, policy checks, OpenProject API access, and MCP exposure in a few narrow layers instead of spreading them across many abstractions.
+OpenProject CE MCP is organized into a small number of narrow layers with a strict, one-directional dependency order (ADR 0001): MCP presentation, Application Services, Policies/Resolvers, domain API Ports/Adapters, and a single Transport. Each domain (projects, work packages, versions, …) follows this same shape — a narrow port, an adapter, resolver(s) where needed, policies, an Application Service, and a thin `client.py` facade delegation — so a new domain's design decisions are largely settled by the existing pattern rather than invented from scratch. `client.py` itself stays a thin, auth/transport/error-mapping facade; the domain logic and policy checks live one layer down instead of accumulating in that one file.
 
 ## Layout
 
@@ -353,14 +353,24 @@ API stubs with no POST/DELETE endpoint in CE (read/update only, matching OpenPro
 
 ## Design tradeoffs
 
-Reasons this project stays flat:
+Reasons for the layered structure over one large flat file:
 
-- easier review of security-relevant behavior
-- fewer indirection layers when mapping OpenProject endpoints
-- simpler debugging during live MCP sessions
-- low ceremony for adding new endpoints
+- security-relevant checks (read/write gates, project scope, hidden-field masking) live in one
+  pure, dependency-free, directly-unit-testable module (`app/policies/`) shared by every domain,
+  instead of being reimplemented or copy-pasted per domain
+- a narrow port `Protocol` is trivial to fake in a unit test; a monolithic client with many
+  concrete responsibilities is not
+- a smaller, single-purpose module (one domain's Service/Adapter/Resolver) is easier to review
+  correctly than a change buried inside a much larger file
+- `HttpxTransport` is the only module that imports `httpx`, enforced by a static test — every other
+  layer depends on the `Transport` Protocol, never the concrete HTTP client library
+- each domain follows the same shape (port, adapter, resolver(s), policies, Application Service,
+  thin `client.py` delegation), so a new domain's design decisions are largely settled by the
+  existing pattern
 
-The tradeoff is a layered structure (Services/Policies/Resolvers/Ports/Adapters under `app/`) rather than one large file — sensitive logic is centralized per-concern (all policy checks in `app/policies/`, all HTTP access behind `HttpxTransport`) instead of interleaved with each domain's business logic.
+The tradeoff is more files and more indirection to trace a single request through than a flat
+design would have — mitigated by every domain following the identical shape, so once one domain is
+understood, the rest read the same way.
 
 ## See also
 
