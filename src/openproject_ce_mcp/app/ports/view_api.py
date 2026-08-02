@@ -22,18 +22,16 @@ class ViewRecord:
     nothing is computed that `list()`'s own callers never read. Provided
     `detail` is built from `summary`, not by re-running `normalize_view` on
     the raw payload a second time (an earlier version of the adapter did
-    that; fixed during the Sprints migration's step-6 efficiency audit,
-    which found the same bug in this file too), the marginal per-row cost of
-    eager computation here really is close to free -- unlike BoardRecord's
-    otherwise-identical-looking eager `detail` (group_by/columns/sort_by/
-    highlighted_attributes/filters each parse their own HAL link), where an
-    independent Codex review correctly distinguished "safe" from "free."
+    that), the marginal per-row cost of eager computation here really is
+    close to free -- unlike BoardRecord's otherwise-identical-looking eager
+    `detail` (group_by/columns/sort_by/highlighted_attributes/filters each
+    parse their own HAL link), where "safe" is distinct from "free."
 
     `project_link` must be carried separately (mirrors DocumentRecord/
     MembershipRecord) because the allowlist Policy check needs the raw link
     (href/id), which neither normalized model carries. It may be None -- an
-    individual view's project link is optional, unlike every other migrated
-    domain's project-scoped record so far.
+    individual view's project link is optional, unlike other project-scoped
+    record shapes in this codebase.
     """
 
     summary: ViewSummary

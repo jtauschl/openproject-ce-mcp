@@ -244,8 +244,8 @@ async def test_list_capabilities_filters_by_project_context_using_project_syntax
     # "p{id}", not "w{id}" -- the context filter's workspace prefix only
     # exists from OpenProject 17.0 onward; "p" is the only prefix accepted
     # across the whole supported version matrix (16.0-17.6, verified against
-    # op-sources). See the module docstring for the live-run regression this
-    # test now guards against.
+    # OpenProject's own API implementation). See the module docstring for
+    # the live-run regression this test now guards against.
     api = _FakeActionCapabilityApi()
     service = _service(api)
 

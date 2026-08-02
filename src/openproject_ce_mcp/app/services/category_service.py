@@ -11,8 +11,7 @@ there is no dedicated OPENPROJECT_ENABLE_CATEGORY_* flag, so
 access.ensure_read_enabled here uses scope="project" (verbatim behavior of
 client.py's original _ensure_read_enabled("project") call).
 
-get() uses OpenProject's real single-category GET (verified against
-op-sources/17.2/lib/api/v3/categories/categories_api.rb). `project_ref` is
+get() uses OpenProject's real single-category GET. `project_ref` is
 OPTIONAL: the category's own real `project_link` (returned by the GET) is
 what's actually checked against the read allowlist via
 `ensure_project_link_allowed`, matching Documents'/Memberships' per-record

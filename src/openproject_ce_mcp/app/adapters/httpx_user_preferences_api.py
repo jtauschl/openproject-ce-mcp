@@ -1,4 +1,4 @@
-"""HTTP-backed UserPreferencesApi adapter (18th migrated domain).
+"""HTTP-backed UserPreferencesApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). No `_text.py`
 imports: verified against client.py:4482-4492's normalize_user_preferences --

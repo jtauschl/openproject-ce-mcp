@@ -76,8 +76,8 @@ class ReminderService:
         if not self._settings.read_projects:
             return ReminderListResult(count=0, results=[])  # deny-all: skip the network call entirely
         # Reminders is really offset-paginated server-side (verified against
-        # op-sources' ReminderCollectionRepresenter < OffsetPaginatedCollection,
-        # found via an independent Codex review) -- a single unparameterized
+        # OpenProject's own API implementation: ReminderCollectionRepresenter
+        # subclasses OffsetPaginatedCollection) -- a single unparameterized
         # GET silently returned only the server's default page. Page-walk the
         # complete set, the same max_page_size-per-round-trip pattern already
         # used for Roles/Memberships (see app/pagination.paginate_all).

@@ -194,7 +194,7 @@ async def test_list_passes_write_false_to_resolve_project_ref() -> None:
 #
 # OpenProject's v3 API has a real single-category GET, and an individual
 # category payload carries its own project link (verified against
-# op-sources/17.2/lib/api/v3/categories/categories_api.rb). get() calls
+# OpenProject's own API implementation). get() calls
 # CategoryApi.get() directly and checks the read allowlist against the
 # category's REAL project_link, with project_ref as an optional additional
 # cross-check rather than the sole source of authorization.

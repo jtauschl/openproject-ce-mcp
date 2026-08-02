@@ -87,9 +87,9 @@ async def test_list_groups_search_walks_a_single_short_page_to_completion() -> N
 
 @pytest.mark.asyncio
 async def test_list_groups_search_walks_every_server_page() -> None:
-    """Regression (found via a full-diff Codex review on release/0.3.4, ported
-    here): Groups is genuinely OffsetPaginatedCollection server-side (verified
-    against op-sources) -- a single bounded fetch capped at page_size (this
+    """Regression: Groups is genuinely OffsetPaginatedCollection server-side
+    (verified against OpenProject's own API implementation) -- a single
+    bounded fetch capped at page_size (this
     method's prior behavior) silently hid any match beyond that cap once the
     real group count exceeded it. Two full pages (page_size=2) followed by a
     short (empty) 3rd page prove the walk continues past the first page."""

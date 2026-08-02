@@ -19,12 +19,9 @@ This is not a first-of-its-kind pattern: `app/ports/emoji_reaction_api.py`'s
 without normalizing the whole activity). A Port offering a raw-`dict`
 method alongside its normalized Record methods, specifically to avoid
 forcing full normalization the original code never needed, is a sanctioned,
-recurring shape (see `docs/architecture.md`) -- reuse it in future
-migrations (Time Entries/Attachments/Relations/Notifications) rather than
-treating it as novel each time.
+recurring shape (see `docs/architecture.md`).
 
-`ReminderRecord.summary` is a LAZY callable, not an eager field -- found and
-fixed during this migration's step-6.5 Codex review. client.py's original
+`ReminderRecord.summary` is a LAZY callable, not an eager field. client.py's original
 `list_reminders` filters the RAW elements by project allowlist first and
 normalizes only the survivors (`elements = filtered` happens before
 `self.normalize_reminder(item)` is ever called); an eager `summary` field
@@ -70,13 +67,11 @@ class ReminderApi(Protocol):
     this Protocol, never on HttpxReminderApi concretely (enforced by the
     architecture-boundary test).
 
-    `list_all(offset, page_size)` takes real pagination parameters -- found
-    via an independent Codex review (verified against
-    op-sources/17.2/lib/api/v3/reminders/reminder_collection_representer.rb:
-    `ReminderCollectionRepresenter < OffsetPaginatedCollection`, the same
-    real server-side pagination Roles/Memberships already page-walk) that
-    an earlier version of this method issued a single unparameterized GET,
-    silently returning only the server's default page instead of every
+    `list_all(offset, page_size)` takes real pagination parameters -- the
+    collection is genuinely `OffsetPaginatedCollection` server-side (the same
+    real server-side pagination Roles/Memberships already page-walk), so an
+    earlier version of this method that issued a single unparameterized GET
+    was silently returning only the server's default page instead of every
     reminder.
     """
 

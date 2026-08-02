@@ -1,4 +1,4 @@
-"""Application Service for the Users domain (14th migrated domain).
+"""Application Service for the Users domain.
 
 Depends on the UserApi Protocol, never HttpxUserApi concretely (enforced by
 the architecture-boundary test). No `ProjectRefResolver`: Users have no
@@ -39,10 +39,9 @@ Membership/Project/Version). This is a DELIBERATE HARDENING beyond
 client.py's original `create_user`/`update_user`/`lock_user`/`unlock_user`,
 which never called the equivalent `_ensure_field_writable` at all -- a
 genuine pre-existing gap (verified: `OPENPROJECT_HIDE_USER_FIELDS` masked
-reads but never blocked writes) found by a step-6.5 Codex review of this
-migration, fixed here rather than faithfully ported, since every sibling
-domain already has this protection and there is no reason to preserve an
-inconsistency once found.
+reads but never blocked writes), fixed here rather than faithfully ported,
+since every sibling domain already has this protection and there is no
+reason to preserve an inconsistency once found.
 """
 
 from __future__ import annotations

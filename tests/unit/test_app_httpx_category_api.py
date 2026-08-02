@@ -108,9 +108,8 @@ async def test_list_for_project_handles_missing_default_assignee() -> None:
 
 @pytest.mark.asyncio
 async def test_get_requests_the_real_single_category_endpoint() -> None:
-    """Regression coverage for a Codex-review finding: OpenProject's v3 API
-    DOES have GET /api/v3/categories/{id} (verified against
-    op-sources/17.2/lib/api/v3/categories/categories_api.rb), and its
+    """Regression: OpenProject's v3 API DOES have GET /api/v3/categories/{id}
+    (verified against OpenProject's own API implementation), and its
     CategoryRepresenter DOES embed _links.project -- an earlier version of
     this adapter/port incorrectly claimed neither existed."""
 

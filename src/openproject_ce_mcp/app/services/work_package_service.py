@@ -14,9 +14,9 @@ enforced by `tests/test_architecture_boundaries.py`), `ProjectRefResolver`,
 `SprintIdResolver`, `WorkPackageIdResolver`, `StatusPriorityTypeApi`,
 `ActivityApi`, `CurrentUserLookup`, and `WorkPackageProjectAllowedCheck` (the
 existing project-scope-check seam bound to `self._work_package_resolver.project_link_allowed`
--- `WorkPackageResolver` itself is untouched by this migration; this Service
-becomes its ninth consumer, alongside the eight already-migrated domains that
-depend on the same resolver via `app/ports/work_package_ref.py`'s seams).
+-- `WorkPackageResolver` itself is unchanged here; this Service is one of
+several consumers that depend on the same resolver via
+`app/ports/work_package_ref.py`'s seams).
 
 `AssigneeRefResolver` is deliberately NOT `PrincipalRefResolver`: the write
 path's assignee resolution accepts only "me" or a bare numeric id, never a
@@ -625,8 +625,8 @@ class WorkPackageService:
         Verbatim behavioral port of client.py's `_filter_hierarchy_allowlist`,
         using the existing `WorkPackageProjectAllowedCheck` seam (bound to
         `self._work_package_resolver.project_link_allowed`, unchanged) rather
-        than a new resolver -- this Service becomes a ninth consumer of the
-        SAME resolver the eight already-migrated domains already share.
+        than a new resolver -- this Service is one of several consumers of
+        the SAME resolver other app/ domains already share.
 
         Also re-derives `children_truncated`/`ancestors_truncated` (a
         pre-existing bug ported from client.py's original, fixed here): the
@@ -638,8 +638,8 @@ class WorkPackageService:
         limit was itself out-of-scope, leaving the flag True after filtering
         down to fewer (or zero) visible entries would disclose the mere
         existence of hierarchy members the caller isn't allowed to see (the
-        same class of leak Codex found in the Attachments migration's
-        container-check bug, just for a boolean flag instead of an id).
+        same class of leak as the Attachments container-check bug, just for
+        a boolean flag instead of an id).
         `truncated` is only kept True when the allowlist filter removed
         NOTHING (every raw entry survived), i.e. the flag still means exactly
         what the caller would derive by counting the visible list alone --

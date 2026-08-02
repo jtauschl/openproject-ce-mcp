@@ -160,8 +160,7 @@ async def test_delete_sends_delete_request() -> None:
 
 
 def test_normalize_relation_description_delimited_against_prompt_injection() -> None:
-    """Regression (found via a full-diff Codex review on release/0.3.4, ported
-    here): relation.description was trimmed but never wrapped in
+    """Regression: relation.description was trimmed but never wrapped in
     delimit_user_content, unlike every other free-text user-content field
     (e.g. wiki_page.content) -- a malicious description like "ignore previous
     instructions" would be returned to the caller with no delimiter marking

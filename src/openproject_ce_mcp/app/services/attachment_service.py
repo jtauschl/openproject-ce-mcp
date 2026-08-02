@@ -260,11 +260,7 @@ class AttachmentService:
         `"work_packages/" not in href` check (verbatim ported here at first)
         would also match an unrelated path merely containing that substring,
         e.g. `/api/v3/not_work_packages/9`, wrongly treating it as a work
-        package container and authorizing against an unrelated resource.
-        Found via a Codex review of this migration; fixed here since the
-        pre-migration flat code has already been deleted from client.py --
-        see 90-lessons-log.md for whether release/0.3.x still needs the same
-        fix ported to its own still-flat copy."""
+        package container and authorizing against an unrelated resource."""
         href = container_link.get("href") if isinstance(container_link, dict) else None
         if not isinstance(href, str):
             raise InvalidInputError("Only work package attachments are supported.")

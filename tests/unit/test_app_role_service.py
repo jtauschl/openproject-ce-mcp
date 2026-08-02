@@ -96,9 +96,10 @@ async def test_list_roles_paginates_client_side_when_server_ignores_pagination()
     """Regression found via a live Docker integration run against
     real OpenProject 16.6.10/17.4.1/17.5.1: /api/v3/roles ignores offset/pageSize
     server-side and always returns the full collection (verified against
-    op-sources/17.6 -- RoleCollectionRepresenter subclasses UnpaginatedCollection,
-    not OffsetPaginatedCollection). This fake models exactly that: it always
-    returns every configured record regardless of what offset/page_size it's
+    OpenProject's own API implementation -- RoleCollectionRepresenter subclasses
+    UnpaginatedCollection, not OffsetPaginatedCollection). This fake models
+    exactly that: it always returns every configured record regardless of
+    what offset/page_size it's
     called with, and its own `total` matches the full record count (never a
     larger, server-claimed total the client can't actually retrieve) -- the bug
     was trusting a `total` figure disconnected from what was actually fetched.

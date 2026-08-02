@@ -1,11 +1,10 @@
 """Shared "list all, then filter by resolved project ref" logic.
 
-Extracted after `DocumentService` (the fifth migrated domain) was found to
-have verbatim-copied `_trim_text`/`_resolve_project_filter_candidates`/
+Extracted after `DocumentService` was found to have verbatim-copied
+`_trim_text`/`_resolve_project_filter_candidates`/
 `_summary_matches_project_candidates` from `NewsService` byte-for-byte
 (differing only in the `NewsSummary`/`DocumentSummary` type annotation) --
-new-domain-copies-newest-sibling duplication, found during the Documents
-migration's post-implementation review, not the documented/sanctioned
+new-domain-copies-newest-sibling duplication, not the documented/sanctioned
 client.py-transition duplication every adapter's module docstring already
 covers. Both domains share the exact "fetch the full collection client-side,
 then filter rows against a resolved project id/identifier/name candidate

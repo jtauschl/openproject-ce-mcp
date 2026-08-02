@@ -106,7 +106,7 @@ async def test_create_get_update_time_entry_until(
     create_time_entry/update_time_entry `end_time` removal). Uses whole
     seconds throughout: OpenProject's own hours-to-ISO8601-duration API
     serialization truncates (not rounds) a fractional-second remainder --
-    verified against a live instance and against op-sources: `hours` itself
+    verified against a live instance: `hours` itself
     is stored with full float precision (confirmed via a direct DB read),
     but the response serializer builds `Duration.new(seconds: hours * 3600)`
     (the `ruby-duration` gem's own `Duration` class, not `ActiveSupport::

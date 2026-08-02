@@ -1,4 +1,4 @@
-"""Extended Metadata Domain API port (19th migrated domain).
+"""Extended Metadata Domain API port.
 
 Bundles 5 unrelated-but-adjacent, purely-global, read-only lookups under one
 ticket/Service, following the same rationale as Actions & Capabilities and

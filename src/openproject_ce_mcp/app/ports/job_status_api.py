@@ -1,4 +1,4 @@
-"""Job Status Domain API port (20th migrated domain).
+"""Job Status Domain API port.
 
 A single get-only method, no list/create/update/delete counterpart -- job
 statuses are ephemeral background-job progress records (e.g. surfaced by

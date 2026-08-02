@@ -6,8 +6,8 @@ two parameterless write actions with no request body: `mark_read` (one
 notification) and `mark_all_read` (every currently-unread notification).
 
 `NotificationRecord.summary` is a LAZY callable, not an eager field --
-mirroring `ReminderRecord`'s precedent and the same Codex-found bug class it
-exists to avoid: client.py's original `list_notifications` filters the RAW
+mirroring `ReminderRecord`'s precedent and the same bug class it exists to
+avoid: client.py's original `list_notifications` filters the RAW
 elements by project/work-package allowlist first and normalizes only the
 survivors (`elements = filtered` happens before `self.normalize_notification`
 is ever called). An eager `summary` field would normalize every record up
@@ -61,9 +61,9 @@ class NotificationPage:
     same shape as `ProjectPage.exhausted` (app/ports/project_api.py), needed
     because a server page's allowed-subset can run out before the caller's
     own requested page size does, without the server collection itself
-    being exhausted (found via an independent Codex review: a filtered-empty
-    server page does not prove no further allowed notifications exist on
-    later pages, so the Service must keep fetching rather than stopping).
+    being exhausted: a filtered-empty server page does not prove no further
+    allowed notifications exist on later pages, so the Service must keep
+    fetching rather than stopping.
     """
 
     records: list[NotificationRecord]

@@ -55,9 +55,9 @@ async def test_list_all_walks_a_single_short_page_and_builds_records() -> None:
 
 @pytest.mark.asyncio
 async def test_list_all_walks_every_server_page() -> None:
-    """Regression (found via a full-diff Codex review on release/0.3.4, ported
-    here): News is genuinely OffsetPaginatedCollection server-side (verified
-    against op-sources) and results are filtered client-side against the read
+    """Regression: News is genuinely OffsetPaginatedCollection server-side
+    (verified against OpenProject's own API implementation) and results are
+    filtered client-side against the read
     allowlist -- a single bounded fetch capped at page_size (this method's
     prior behavior) silently hid any news item beyond that cap once the real
     news count exceeded it. Two full pages (page_size=2) followed by a short

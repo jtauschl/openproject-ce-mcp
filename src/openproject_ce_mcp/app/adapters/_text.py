@@ -52,9 +52,8 @@ SUBJECT_LIMIT = 255
 def reject_path_traversal_segments(value: str, *, field_name: str) -> str:
     """Reject a raw id/slug containing a `.`/`..` path segment.
 
-    Found via a self-review of release/0.3.4 (this exact helper was added
-    there first, then ported here): `urllib.parse.quote()` never escapes `.`
-    (an "unreserved" RFC 3986 character even with `safe=""`), so an id like
+    `urllib.parse.quote()` never escapes `.` (an "unreserved" RFC 3986
+    character even with `safe=""`), so an id like
     `"../users/7"` passes through quoting completely unchanged. httpx then
     normalizes that segment away when building the request URL (confirmed:
     `httpx.Request("GET", ".../job_statuses/../projects/42").url` resolves to

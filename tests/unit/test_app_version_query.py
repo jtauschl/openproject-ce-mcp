@@ -59,8 +59,9 @@ async def _resolve_project_ref(project_ref: str, *, write: bool = False, context
 @pytest.mark.asyncio
 async def test_project_scoped_without_search_walks_and_slices_client_side() -> None:
     """`projects/{id}/versions` is genuinely UnpaginatedCollection
-    server-side (verified against op-sources' VersionCollectionRepresenter <
-    UnpaginatedCollection, via VersionsByProjectAPI) -- offset/pageSize params
+    server-side (verified against OpenProject's own API implementation --
+    VersionCollectionRepresenter subclasses UnpaginatedCollection, via
+    VersionsByProjectAPI) -- offset/pageSize params
     are silently ignored and every element is always returned regardless.
     Trusting the server's own total/pagination for this endpoint (as if it
     were genuinely paginated) would either under- or over-report

@@ -185,7 +185,7 @@ async def test_get_type_requests_single_item_endpoint() -> None:
 
 @pytest.mark.asyncio
 async def test_list_statuses_lookup_name_is_the_raw_name_not_the_display_fallback() -> None:
-    """Codex-review regression test: lookup_name must be the raw payload
+    """Regression test: lookup_name must be the raw payload
     name, never the synthetic display fallback normalize_status uses for
     summary.name -- see the port module's docstring for why the two must
     differ."""

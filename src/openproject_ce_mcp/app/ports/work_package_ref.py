@@ -45,9 +45,9 @@ def work_package_ref(ref: int | str) -> str:
     yields a 404 (mapped to ``NotFoundError``), while numeric ids keep working on
     every supported version.
 
-    A literal ``.``/``..`` path segment is rejected first (ported from
-    release/0.3.4's generalized path-traversal guard, `app/adapters/_text.py`'s
-    ``reject_path_traversal_segments`` there is the adapters-layer twin of this
+    A literal ``.``/``..`` path segment is rejected first by the generalized
+    path-traversal guard (`app/adapters/_text.py`'s
+    ``reject_path_traversal_segments`` is the adapters-layer twin of this
     check) -- `quote()` never escapes ``.``, so such a value would otherwise pass
     through unchanged and httpx would silently normalize it away when building
     the request, redirecting to an unrelated endpoint. Duplicated here rather

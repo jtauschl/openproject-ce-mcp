@@ -1,4 +1,4 @@
-"""HTTP-backed GroupApi adapter (15th migrated domain).
+"""HTTP-backed GroupApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). No
 `create_form`/`update_form`: verified against `client.py`'s `create_group`/
@@ -142,11 +142,10 @@ class HttpxGroupApi:
     async def list_groups_search(self, *, page_size: int) -> list[GroupRecord]:
         # Walk every server page for the caller to filter in-memory -- no
         # server-side name filter exists to delegate to. Groups is genuinely
-        # OffsetPaginatedCollection server-side (verified against op-sources),
-        # so a single bounded fetch capped at page_size (this method's prior
-        # behavior) would silently hide any match beyond that cap once the
-        # real group count exceeded it (found via a full-diff Codex review on
-        # release/0.3.4, ported here).
+        # OffsetPaginatedCollection server-side (verified against OpenProject's
+        # own API implementation), so a single bounded fetch capped at page_size
+        # (this method's prior behavior) would silently hide any match beyond
+        # that cap once the real group count exceeded it.
         return await paginate_all(
             lambda offset, size: self.list_groups(offset=offset, page_size=size),
             page_size=page_size,

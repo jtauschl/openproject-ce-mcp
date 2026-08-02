@@ -223,8 +223,8 @@ async def test_get_remembers_copied_projects_real_identifier_in_the_shared_cache
     own display title) and writes it through.
 
     Uses `created_project_id` (the presence of the `createdProject` link
-    key), NOT `summary.created_resource_type` -- a Codex review caught that
-    OpenProject's real `createdProject` payload shape carries no `type`
+    key), NOT `summary.created_resource_type` -- OpenProject's real
+    `createdProject` payload shape carries no `type`
     field (only `href`/`title`), so a `created_resource_type == "Project"`
     check silently never fires. See `job_status_api.py`'s
     `created_project_id` docstring."""

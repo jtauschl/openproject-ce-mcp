@@ -1,12 +1,12 @@
-"""Roles Domain API port (13th migrated domain).
+"""Roles Domain API port.
 
 Read-only list only -- OpenProject's API exposes no single-item GET, no
 create/update/delete for roles (admin-UI-only resource). `RoleRecord` carries
 no link: roles have no project concept at all, same shape as `ActionRecord`.
 
 The `offset`/`page_size` params are accepted for interface symmetry with
-other Domain API ports but are NOT honored server-side (verified
-against `op-sources/17.6`): `/api/v3/roles`'s collection representer
+other Domain API ports but are NOT honored server-side (verified against
+OpenProject's own API implementation): `/api/v3/roles`'s collection representer
 subclasses `UnpaginatedCollection`, not `OffsetPaginatedCollection`, so the
 server always returns every role regardless of what's requested here.
 `RoleService.list_roles` slices the full result client-side instead of

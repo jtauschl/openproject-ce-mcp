@@ -1,4 +1,4 @@
-"""Integration tests for the Extended Metadata domain (19th migrated domain):
+"""Integration tests for the Extended Metadata domain:
 render_text, Help Texts, Working Days, Non-Working Days, Custom Options.
 
 render_text and list_working_days are also covered in test_meta.py, which
@@ -10,10 +10,9 @@ get_custom_option has no list/collection endpoint in the OpenProject v3 API
 to source a live id from -- unlike Query Metadata's get-only methods (which
 use well-known, stable constant ids like "assignee"/"subject"), a custom
 option's id is instance-specific and depends on which custom fields exist.
-No stable, universally-present custom option id could be identified, so this
-migration's live coverage for get_custom_option is explicitly skipped rather
-than silently omitted (matching the runbook's carve-out for a domain with
-neither a create nor a list endpoint).
+No stable, universally-present custom option id could be identified, so live
+coverage for get_custom_option is explicitly skipped rather than silently
+omitted.
 """
 
 from __future__ import annotations

@@ -334,9 +334,9 @@ async def test_initialize_populates_identifier_cache_for_restricted_write_scope_
 
 @pytest.mark.asyncio
 async def test_initialize_walks_every_server_page_of_projects() -> None:
-    """Regression (found via a full-diff Codex review on release/0.3.4, ported
-    here): Projects is genuinely OffsetPaginatedCollection server-side
-    (verified against op-sources) -- a single bounded fetch capped at 500
+    """Regression: Projects is genuinely OffsetPaginatedCollection server-side
+    (verified against OpenProject's own API implementation) -- a single
+    bounded fetch capped at 500
     (this method's prior behavior) silently skipped caching the identifier of
     any project beyond that cap, breaking link-based allowlist matching for
     that project. Two full pages (page_size=max_page_size) followed by a

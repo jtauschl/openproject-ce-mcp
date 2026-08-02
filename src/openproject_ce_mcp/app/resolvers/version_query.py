@@ -89,10 +89,11 @@ async def fetch_visible_version_records(
         # allowlist checks are redundant and would fail because the definingProject
         # link only carries the title (display name), not the identifier. This
         # endpoint's collection is genuinely unpaginated server-side (verified
-        # against op-sources' VersionCollectionRepresenter < UnpaginatedCollection,
-        # via VersionsByProjectAPI) -- offset/pageSize params are silently ignored
-        # and every element is always returned regardless, so a single bounded
-        # fetch would over-fetch (return every version, not just the requested
+        # against OpenProject's own API implementation -- VersionCollectionRepresenter
+        # subclasses UnpaginatedCollection, via VersionsByProjectAPI) --
+        # offset/pageSize params are silently ignored and every element is
+        # always returned regardless, so a single bounded fetch would
+        # over-fetch (return every version, not just the requested
         # page) while reporting misleading pagination metadata. Walk (a no-op
         # single request, since the server already returns everything) and slice
         # client-side, same as the search/global branches below (this also

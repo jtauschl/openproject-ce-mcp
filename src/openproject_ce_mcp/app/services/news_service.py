@@ -19,9 +19,8 @@ private _WriteOutcome/_preview/_committed/_to_write_result helpers below (a
 trimmed, News-local counterpart to membership_service.py's
 _finalize_write/_WriteOutcome) have no validation_errors branch -- kept
 separate rather than shared/generalized since that branch genuinely doesn't
-apply here, and every migrated domain's write-state-machine helper is
-intentionally private/domain-local, unified only once every
-domain has migrated.
+apply here, and each domain's write-state-machine helper is intentionally
+private/domain-local, unified only where the shapes genuinely match.
 """
 
 from __future__ import annotations

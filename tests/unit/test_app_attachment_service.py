@@ -216,7 +216,7 @@ async def test_get_rejects_a_container_that_is_not_a_work_package() -> None:
 
 @pytest.mark.asyncio
 async def test_get_rejects_a_container_href_only_substring_matching_work_packages() -> None:
-    """Codex-found: the original `"work_packages/" in href` substring check
+    """Regression: the original `"work_packages/" in href` substring check
     would wrongly accept a foreign resource whose path merely CONTAINS that
     substring, e.g. `/api/v3/not_work_packages/9` -- authorizing against an
     unrelated work package's project rather than failing closed. The fixed
@@ -324,7 +324,7 @@ async def test_create_rejects_hidden_description_field_only_when_description_giv
 
 @pytest.mark.asyncio
 async def test_create_rejects_oversized_file_before_reading_bytes(tmp_path) -> None:
-    """Codex-found, real pre-existing risk: the size check must run BEFORE
+    """Regression, real pre-existing risk: the size check must run BEFORE
     file bytes are read into memory, not after -- an oversized file must
     never be fully buffered just to then be rejected."""
     report = tmp_path / "report.pdf"
@@ -341,7 +341,7 @@ async def test_create_rejects_oversized_file_before_reading_bytes(tmp_path) -> N
 
 @pytest.mark.asyncio
 async def test_create_rejects_a_file_that_grows_between_the_stat_and_the_read(tmp_path) -> None:
-    """Codex-found TOCTOU: the size is checked once against a stat (no
+    """Regression, a TOCTOU risk: the size is checked once against a stat (no
     bytes read), then the file is read a second time for the actual
     upload -- a file that grows in that window must still be rejected,
     not silently uploaded past the configured maximum on the strength of

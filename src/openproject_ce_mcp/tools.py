@@ -2943,9 +2943,8 @@ async def create_time_entry(
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     hours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours, 'P1D' for 1 day).
     start_time is an ISO 8601 date-time and requires the instance setting "allow
-    tracking of start and end times"; ignored otherwise. There is no end_time
-    parameter -- OpenProject's own API schema marks that field as read-only
-    (computed from start_time + hours), so writing it is never supported. Use
+    tracking of start and end times"; ignored otherwise. No end_time parameter --
+    OpenProject derives it read-only from start_time + hours. Use
     create_time_entry_until to specify an end time instead of hours directly.
     """
     client = _client_from_context(ctx)
@@ -2990,10 +2989,9 @@ async def update_time_entry(
     """Prepare or update a time entry.
 
     hours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours, 'P1D' for 1 day).
-    start_time is an ISO 8601 date-time. There is no end_time parameter --
-    OpenProject's own API schema marks that field as read-only (computed from
-    start_time + hours), so writing it is never supported. Use
-    update_time_entry_until to specify an end time instead of hours directly.
+    start_time is an ISO 8601 date-time. No end_time parameter -- OpenProject
+    derives it read-only from start_time + hours. Use update_time_entry_until
+    to specify an end time instead of hours directly.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(time_entry_id, field_name="time_entry_id")
@@ -4467,12 +4465,12 @@ def _validate_optional_string_list(
 
 # Verified live against a real OpenProject 17.5 instance (curl against
 # GET /work_packages?sortBy=.../groupBy=...) and cross-checked against
-# app/models/queries/work_packages/selects/{property,project_phase}_select.rb
-# in op-sources -- these are the standard (non-custom-field) attributes
-# OpenProject actually accepts, not a guess at plausible names. assignee/
-# assignedTo/percentage_done etc. are accepted aliases alongside the
-# canonical Rails attribute name; both are included here rather than
-# normalized, since the client sends the field straight through unchanged.
+# OpenProject's own query property/project-phase select definitions -- these
+# are the standard (non-custom-field) attributes OpenProject actually
+# accepts, not a guess at plausible names. assignee/assignedTo/
+# percentage_done etc. are accepted aliases alongside the canonical Rails
+# attribute name; both are included here rather than normalized, since the
+# client sends the field straight through unchanged.
 _SORTABLE_WORK_PACKAGE_FIELDS = frozenset(
     {
         "id",

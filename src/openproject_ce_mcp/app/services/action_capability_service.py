@@ -7,7 +7,7 @@ not a semantic reference needing lookup.
 
 `list_actions` is a purely project-independent Service method: Actions has no
 project concept at all in the OpenProject API, so it takes no
-`ProjectRefResolver` dependency, unlike most other migrated domains.
+`ProjectRefResolver` dependency, unlike most other project-scoped domains.
 
 `list_capabilities`, by contrast, IS project-scoped when a `project` ref is
 given (its `context` filter targets a specific project) -- so it depends on
@@ -26,34 +26,31 @@ client.py only ever allowlist-checked the caller-supplied `project`
 parameter itself (by resolving it through `ProjectRefResolver` before
 building the server-side `context` filter) -- a `capability_id`-only call
 skipped that check entirely, since `project` was never given to resolve.
-Found during this domain's own step-6.5 Codex review: capability records
-carry a genuine `context.href` (a real `/api/v3/projects/{id}` link per the
-OpenProject API docs), not just a display title, so a restrictive
-`OPENPROJECT_READ_PROJECTS` scope was leaking capability records (including
-project names/principals) for `capability_id`-only calls. The server-side
-`context` filter remains a narrowing optimization when `project` is given,
-not the security boundary -- the per-record check runs regardless.
+Capability records carry a genuine `context.href` (a real
+`/api/v3/projects/{id}` link per the OpenProject API docs), not just a
+display title, so a restrictive `OPENPROJECT_READ_PROJECTS` scope was
+leaking capability records (including project names/principals) for
+`capability_id`-only calls. The server-side `context` filter remains a
+narrowing optimization when `project` is given, not the security boundary --
+the per-record check runs regardless.
 
 `capability_id` is filtered via the server-side single-item `GET
 /capabilities/{id}` endpoint, not a collection `id` filter -- OpenProject's
 capabilities collection endpoint accepts only `action`/`principal`/`context`
-filters (also found during the step-6.5 review; the pre-migration client.py
-sent an undocumented `{"id": ...}` collection filter that this migration
-initially ported verbatim without re-verifying against current API docs).
+filters; an earlier version of this code sent an undocumented `{"id": ...}`
+collection filter that had never been re-verified against current API docs.
 
 The `context` filter's project-scoping value is `p{id}` (project), NOT
-`w{id}` (workspace) -- this migration originally switched from the
-pre-migration `p{id}` form to `w{id}` on the assumption that workspace
-syntax was the more current/recommended form, which broke `list_capabilities`
-against OpenProject 16.x (found via a live docker/test/ integration run):
-`Queries::Capabilities::Filters::ContextFilter#split_values` only
-matches "[gp] followed by digits" on 16.0-16.6 (`w` isn't introduced until 17.0,
-where the regex becomes `[gwp]` -- verified against
-`op-sources/<version>/app/models/queries/capabilities/filters/context_filter.rb`
-across all 14 pinned versions). `p` remains accepted on every version
-16.0-17.6 despite a `@deprecated ... for 17.2` comment in the 17.x source that
-was apparently never acted on -- it is the only prefix that works across the
-whole supported version matrix, so this Service reverted to it.
+`w{id}` (workspace) -- an earlier version of this code switched from the
+`p{id}` form to `w{id}` on the assumption that workspace syntax was the more
+current/recommended form, which broke `list_capabilities` against
+OpenProject 16.x: `Queries::Capabilities::Filters::ContextFilter#split_values`
+only matches "[gp] followed by digits" on 16.0-16.6 (`w` isn't introduced
+until 17.0, where the regex becomes `[gwp]`, verified across all supported
+versions). `p` remains accepted on every version 16.0-17.6 despite a
+`@deprecated ... for 17.2` comment in the 17.x source that was apparently
+never acted on -- it is the only prefix that works across the whole
+supported version matrix, so this Service reverted to it.
 """
 
 from __future__ import annotations

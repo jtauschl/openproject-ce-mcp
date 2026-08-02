@@ -331,7 +331,7 @@ async def test_hidden_time_entry_field_is_rejected_on_write() -> None:
 
 @pytest.mark.asyncio
 async def test_hidden_time_entry_start_time_is_rejected_on_write() -> None:
-    """Regression test (found via Codex review): start_time was omitting the
+    """Regression test: start_time was omitting the
     _ensure_field_writable check every sibling field (hours, spent_on,
     comment, ongoing) already has -- a hidden-by-config field could still be
     written despite being masked on read, the same bug class already fixed
@@ -498,8 +498,8 @@ async def test_hidden_work_package_scheduling_fields_are_tagged_and_dropped_from
 @pytest.mark.asyncio
 async def test_hidden_status_fields_are_tagged_and_dropped_from_payload() -> None:
     # Status supports OPENPROJECT_HIDE_STATUS_FIELDS, like every other entity.
-    # normalize_status now lives in app/adapters/httpx_status_priority_type_api.py
-    # (16th migrated domain) and no longer applies hidden-field masking itself --
+    # normalize_status lives in app/adapters/httpx_status_priority_type_api.py
+    # and no longer applies hidden-field masking itself --
     # that moved to the Service layer, so this test calls the adapter's pure
     # normalizer, then applies masking explicitly via hidden_fields.apply_hidden_fields,
     # mirroring test_hidden_membership_fields_are_tagged_and_dropped_from_payload.
@@ -533,8 +533,8 @@ async def test_hidden_status_fields_are_tagged_and_dropped_from_payload() -> Non
 @pytest.mark.asyncio
 async def test_hidden_type_fields_are_tagged_and_dropped_from_payload() -> None:
     # Type supports OPENPROJECT_HIDE_TYPE_FIELDS, like every other entity.
-    # normalize_type now lives in app/adapters/httpx_status_priority_type_api.py
-    # (16th migrated domain) -- see test_hidden_status_fields_... above.
+    # normalize_type lives in app/adapters/httpx_status_priority_type_api.py
+    # -- see test_hidden_status_fields_... above.
     settings = _base_settings(hidden_fields={"type": ("updated_at",)})
 
     work_package_type = normalize_type(
@@ -925,7 +925,7 @@ async def test_hidden_reminder_field_is_rejected_on_update() -> None:
 
 @pytest.mark.asyncio
 async def test_hidden_relation_type_field_is_rejected_on_create() -> None:
-    """Regression test (found via Codex review): create_work_package_relation's
+    """Regression test: create_work_package_relation's
     relation_type is a mandatory field written unconditionally, unlike
     description -- it needs its own guard, not just description's."""
 
@@ -990,7 +990,7 @@ async def test_hidden_relation_type_field_is_rejected_on_update() -> None:
 
 @pytest.mark.asyncio
 async def test_hidden_attachment_file_name_field_is_rejected_on_write() -> None:
-    """Regression test (found via Codex review): create_work_package_attachment
+    """Regression test: create_work_package_attachment
     always writes file_name (a mandatory field), unlike description -- it
     needs its own guard, not just description's."""
 

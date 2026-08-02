@@ -289,7 +289,7 @@ class GroupListResult(PageResult):
 @dataclass
 class ActionSummary:
     """id/url only -- OpenProject's actions API never populates name/description/
-    modules on the wire (verified against op-sources across 16.0-17.6: the
+    modules on the wire (verified across all supported versions: the
     representer's `self` link title is always `-> {}`, and no other properties
     are declared). Those three fields were removed as 100% dead weight.
     """
@@ -306,9 +306,10 @@ class ActionListResult(PageResult):
 @dataclass
 class CapabilitySummary:
     """name/action_name dropped -- OpenProject's capabilities API never
-    populates them on the wire (verified against op-sources: the representer's
-    `self`/`action` link titles are always `-> {}`, unlike `context`'s title,
-    which is a genuine populated SQL expression). Removed as dead weight.
+    populates them on the wire (verified against OpenProject's own API
+    implementation: the representer's `self`/`action` link titles are always
+    `-> {}`, unlike `context`'s title, which is a genuine populated SQL
+    expression). Removed as dead weight.
     """
 
     id: str

@@ -112,8 +112,7 @@ async def test_get_capability_requests_single_item_endpoint() -> None:
 
 @pytest.mark.asyncio
 async def test_get_capability_rejects_path_traversal_id() -> None:
-    """Regression (found via self-review on release/0.3.4, ported here):
-    capability_id is quoted with safe='/' (real capability ids are
+    """Regression: capability_id is quoted with safe='/' (real capability ids are
     themselves multi-segment paths), but quote() never escapes "." either
     way -- a value like "../users/7" quotes to itself unchanged, and httpx
     then normalizes ".." away when building the request, redirecting it to

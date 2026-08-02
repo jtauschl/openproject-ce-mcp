@@ -1,4 +1,4 @@
-"""HTTP-backed ExtendedMetadataApi adapter (19th migrated domain).
+"""HTTP-backed ExtendedMetadataApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `FORMATTABLE_LIMIT`
 is a local duplicate of client.py's module-level constant (client.py:235,

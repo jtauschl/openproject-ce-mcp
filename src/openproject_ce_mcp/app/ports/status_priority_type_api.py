@@ -1,4 +1,4 @@
-"""Statuses/Priorities/Types Domain API port (16th migrated domain).
+"""Statuses/Priorities/Types Domain API port.
 
 Three unrelated-but-bundled read-only lookups (client.py places them
 adjacently, grouped as one migration -- same

@@ -118,9 +118,9 @@ async def test_resolve_status_id_matches_the_raw_name_exactly_via_real_port() ->
     irregular internal whitespace, as actually returned by the server, must
     be matched with that same irregular whitespace, not a normalized form
     (an earlier draft of this resolver compared against the DISPLAY name,
-    `summary.name`, which trims/collapses whitespace -- fixed during this
-    migration's own Codex review, see status_priority_type_api.py's port
-    module docstring for the full rationale)."""
+    `summary.name`, which trims/collapses whitespace -- see
+    status_priority_type_api.py's port module docstring for the full
+    rationale)."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/statuses"
@@ -142,7 +142,7 @@ async def test_resolve_status_id_matches_the_raw_name_exactly_via_real_port() ->
 
 @pytest.mark.asyncio
 async def test_resolve_status_id_does_not_match_a_blank_name_against_the_synthetic_display_fallback() -> None:
-    """Codex-review regression test (this migration's own step-6.5 pass):
+    """Regression test:
     normalize_status falls back to a synthetic display name ("Status 7")
     when the raw name is blank -- correct DISPLAY behavior, but resolution
     must use lookup_name (the raw, un-synthesized name, "" here) so a

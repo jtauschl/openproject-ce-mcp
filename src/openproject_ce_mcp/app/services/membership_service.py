@@ -11,16 +11,14 @@ domain to warrant a Resolver in the ADR sense.
 (unified once a 3rd domain needed the identical state machine).
 
 `_resolve_role_hrefs` depends on `RoleApi` directly instead of an injected
-parameterless `list_roles` callable, as it did before the Roles domain
-migration. That callable pointed at `client.py`'s then-unpaginated
-`list_roles`, which always returned the complete role collection in one
+parameterless `list_roles` callable. `client.py`'s original unpaginated
+`list_roles` always returned the complete role collection in one
 call -- safe for this method's "resolve a role name against ALL roles" need.
 
 A single direct `RoleApi.list_roles` call, NOT a `paginate_all` page-walk
-(an earlier version of this method used one, found and corrected via an
-independent Codex review): `/api/v3/roles`' `RoleCollectionRepresenter` is a
-real `UnpaginatedCollection` (verified against
-`op-sources/17.6/lib/api/v3/roles/role_collection_representer.rb`), so the
+(an earlier version of this method used one, which was incorrect):
+`/api/v3/roles`' `RoleCollectionRepresenter` is a real `UnpaginatedCollection`
+(verified against OpenProject's own API implementation), so the
 server ignores `offset`/`pageSize` entirely and always returns the complete
 collection, `total` included, in a single response. `paginate_all` assumes
 a genuinely server-paginated fetcher -- feeding it this always-complete
@@ -253,10 +251,9 @@ class MembershipService:
         # its result at all.
         available_roles: list[RoleRecord] = []
         if any(not ref.isdigit() for ref in normalized_refs):
-            # A single direct call, NOT paginate_all (found via an independent
-            # Codex review): /api/v3/roles' RoleCollectionRepresenter is a real
-            # UnpaginatedCollection (verified against
-            # op-sources/17.6/lib/api/v3/roles/role_collection_representer.rb),
+            # A single direct call, NOT paginate_all: /api/v3/roles'
+            # RoleCollectionRepresenter is a real UnpaginatedCollection
+            # (verified against OpenProject's own API implementation),
             # so the server ignores offset/pageSize and always returns the
             # complete collection in one response, `total` included. Feeding
             # that into paginate_all (which assumes a genuinely server-paginated

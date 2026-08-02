@@ -1,4 +1,4 @@
-"""Application Service for the Extended Metadata domain (19th migrated domain).
+"""Application Service for the Extended Metadata domain.
 
 Depends on the ExtendedMetadataApi Protocol, never HttpxExtendedMetadataApi
 concretely (enforced by the architecture-boundary test). No Resolver, no

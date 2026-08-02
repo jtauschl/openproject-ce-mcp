@@ -839,8 +839,9 @@ async def test_get_version_returns_full_description_by_default() -> None:
 @pytest.mark.asyncio
 async def test_list_versions_project_scoped_walks_and_slices_client_side() -> None:
     # `projects/{id}/versions` is genuinely UnpaginatedCollection
-    # server-side (verified against op-sources' VersionCollectionRepresenter <
-    # UnpaginatedCollection, via VersionsByProjectAPI) -- offset/pageSize params
+    # server-side (verified against OpenProject's own API implementation --
+    # VersionCollectionRepresenter subclasses UnpaginatedCollection, via
+    # VersionsByProjectAPI) -- offset/pageSize params
     # are silently ignored and every element is always returned regardless.
     # Trusting the server's own total/pagination for this endpoint as if it
     # were genuinely paginated would misreport truncation, so this branch

@@ -1,11 +1,7 @@
-"""Integration tests for Statuses/Priorities/Types reads (16th migrated
-domain).
+"""Integration tests for Statuses/Priorities/Types reads.
 
 All three are admin-UI-only resources -- GET list + GET single-item, no
-create/update/delete endpoint in the OpenProject v3 API. Moved out of
-test_meta.py's generic still-flat-metadata bucket now that this domain has
-migrated to app/ (test_meta.py's own test_list_statuses/test_list_priorities/
-test_list_types removed in the same commit as this file's addition).
+create/update/delete endpoint in the OpenProject v3 API.
 """
 
 from __future__ import annotations

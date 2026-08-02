@@ -76,7 +76,7 @@ async def test_resolve_id_name_search_bypasses_admin_read_gate() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_id_name_search_page_size_is_capped_by_max_page_size() -> None:
-    """Regression test (Codex review finding): the original
+    """Regression test: the original
     _resolve_principal_id passed max_results through _resolve_limit, which
     clamps by min(max_page_size, max_results) -- passing max_results
     unclamped would silently request a larger page than the configured

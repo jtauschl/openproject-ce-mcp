@@ -1,4 +1,4 @@
-"""HTTP-backed StatusPriorityTypeApi adapter (16th migrated domain).
+"""HTTP-backed StatusPriorityTypeApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `trim_text` is
 shared via `app/adapters/_text.py` (verified against client.py's real

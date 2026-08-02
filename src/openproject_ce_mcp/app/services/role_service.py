@@ -1,4 +1,4 @@
-"""Application Service for the Roles domain (13th migrated domain).
+"""Application Service for the Roles domain.
 
 Depends on the RoleApi Protocol, never HttpxRoleApi concretely (enforced by
 the architecture-boundary test). No Resolver: `list_roles` has no semantic
@@ -9,12 +9,11 @@ Capabilities (`list_actions`) -- no `ProjectRefResolver` dependency at all,
 following that domain's template exactly (see its module docstring).
 
 `list_roles` paginates client-side via `paginate_client`, not server-side
-(found via a live Docker integration run against real OpenProject
+(verified via a live integration run against real OpenProject
 16.6.10/17.4.1/17.5.1): `/api/v3/roles`' `RoleCollectionRepresenter` subclasses
 `UnpaginatedCollection`, not `OffsetPaginatedCollection` (verified against
-`op-sources/17.6/lib/api/v3/roles/role_collection_representer.rb` and
-`lib/api/v3/utilities/endpoints/index.rb`'s `paginated_representer?` check) --
-the server ignores `offset`/`pageSize` entirely and always returns the full
+OpenProject's own API implementation, including its `paginated_representer?`
+check) -- the server ignores `offset`/`pageSize` entirely and always returns the full
 collection, `total` included. Trusting that `total`-echo with `paginate_server`
 would only truncate the caller-visible `count` implicitly through pass-through,
 so `limit=1` would still return every role. `_api.list_roles` is always called

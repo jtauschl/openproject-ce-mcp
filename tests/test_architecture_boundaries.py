@@ -996,8 +996,8 @@ def test_work_package_resolver_methods_structurally_satisfy_the_seam_protocols()
         # ProjectResolver.resolve_id/ProjectRefResolver.__call__, both named
         # `project_ref`): a resolver method's param name matches its seam
         # Protocol's exactly, so a keyword call works identically through
-        # either the bound method or the Protocol-typed seam -- a real bug a
-        # Codex review caught in an earlier version of WorkPackageResolver
+        # either the bound method or the Protocol-typed seam -- a real bug in
+        # an earlier version of WorkPackageResolver
         # (its `resolve_id` param was named `ref`, not `work_package_ref` as
         # in `WorkPackageIdResolver`, silently breaking a hypothetical keyword
         # call). Comparing the name here, not just kind/default, enforces the

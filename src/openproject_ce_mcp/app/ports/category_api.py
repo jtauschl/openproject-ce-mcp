@@ -18,10 +18,9 @@ class CategoryRecord:
     the project is implicit in the request path, so `normalize_category`
     receives `project_id`/`project_name` as parameters instead), and a real
     raw dict for a record built via `get` (`GET /categories/{id}` DOES embed
-    `_links.project` per OpenProject's own CategoryRepresenter -- verified
-    against op-sources/17.2/lib/api/v3/categories/category_representer.rb;
-    an earlier version of this port incorrectly claimed no single-category
-    GET exists at all, and no per-record project link either). The Service
+    `_links.project` per OpenProject's own CategoryRepresenter; an earlier
+    version of this port incorrectly claimed no single-category GET exists
+    at all, and no per-record project link either). The Service
     uses `project_link` to cross-verify a caller-supplied `project_ref`
     against the category's REAL project, not just trust the caller's claim.
 

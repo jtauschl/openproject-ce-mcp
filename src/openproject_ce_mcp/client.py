@@ -529,9 +529,9 @@ class OpenProjectClient:
         self._extended_metadata_service = ExtendedMetadataService(api=self._extended_metadata_api, settings=settings)
 
         # Narrow reference-resolution seam (WorkPackageIdResolver/
-        # WorkPackageProjectAllowedCheck) that 8 already-migrated domains
-        # depend on. Kept exactly as-is by the Work Packages READ migration
-        # below -- see that block's own comment for why.
+        # WorkPackageProjectAllowedCheck) that several other app/ domains
+        # depend on. Kept exactly as-is below -- see that block's own
+        # comment for why.
         self._work_package_lookup_api: WorkPackageLookupApi = HttpxWorkPackageLookupApi(
             HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
         )
@@ -689,12 +689,12 @@ class OpenProjectClient:
             return
         try:
             # Projects is genuinely OffsetPaginatedCollection server-side (verified
-            # against op-sources). A single bounded fetch would silently skip
-            # caching the identifier of any project beyond that cap, which would
-            # then fail link-based allowlist matching for that project. Walk every
-            # server page instead, terminating on a short page (fewer records than
-            # requested page size) rather than trusting a possibly-absent/
-            # inconsistent `total` field.
+            # against OpenProject's own API implementation). A single bounded fetch
+            # would silently skip caching the identifier of any project beyond
+            # that cap, which would then fail link-based allowlist matching for
+            # that project. Walk every server page instead, terminating on a
+            # short page (fewer records than requested page size) rather than
+            # trusting a possibly-absent/inconsistent `total` field.
             server_page_size = self.settings.max_page_size
             server_offset = 1
             seen_ids: set[int] = set()

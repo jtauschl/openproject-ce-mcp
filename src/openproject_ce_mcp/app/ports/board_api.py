@@ -25,10 +25,9 @@ class BoardRecord:
     be for a domain whose list() filters records pre-normalization, e.g.
     Reminders/Notifications), mirroring ViewRecord's identical shape/
     rationale. "Wastes nothing" here means specifically that: no divergent
-    truncation limit and no correctness risk -- NOT that it's free. An
-    independent Codex review correctly noted `list()`'s own call path never
-    reads `.detail` at all, so every list row still pays for parsing
-    group_by/columns/sort_by/highlighted_attributes/filters (each its own
+    truncation limit and no correctness risk -- NOT that it's free. `list()`'s
+    own call path never reads `.detail` at all, so every list row still pays
+    for parsing group_by/columns/sort_by/highlighted_attributes/filters (each its own
     HAL-link extraction) that's thrown away unless that row is later
     `get()`'d individually. Left as eager anyway: Boards/Views/Sprints are
     typically small per-project collections, and a lazy `Callable[[],

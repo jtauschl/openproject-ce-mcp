@@ -1,7 +1,7 @@
 """Shared pagination-envelope helpers.
 
 Package-root shared kernel: pure, dependency-free pagination math used by the
-Versions domain (and available to any future migrated domain) without creating a
+Versions domain (and available to any other app/ domain) without creating a
 layering violation.
 """
 

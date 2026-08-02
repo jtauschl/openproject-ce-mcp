@@ -129,9 +129,8 @@ class HttpxNewsApi:
         # (this method's prior behavior) would silently hide any news item
         # beyond that cap once the real news count exceeded it. News is
         # genuinely OffsetPaginatedCollection server-side (verified against
-        # op-sources), same bug class as list_users/list_groups' search
-        # branches (found via a full-diff Codex review on release/0.3.4,
-        # ported here).
+        # OpenProject's own API implementation), same bug class as
+        # list_users/list_groups' search branches.
         return await paginate_all(self._list_page, page_size=page_size, key=lambda r: r.summary.id)
 
     async def get(self, news_id: int) -> NewsRecord:

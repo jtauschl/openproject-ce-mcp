@@ -226,8 +226,7 @@ async def test_list_all_uses_server_reported_total_under_wide_open_scope() -> No
 
 @pytest.mark.asyncio
 async def test_list_all_reports_truncated_and_next_offset_under_wide_open_scope() -> None:
-    """Regression (found via a full-diff Codex review on release/0.3.4, ported
-    here): NotificationListResult only ever had count/total -- total was
+    """Regression: NotificationListResult only ever had count/total -- total was
     always just len(results) (never a real "there are more" signal), so a
     caller had no way to detect if more notifications existed beyond the
     returned page. total=50 with a single-record, limit=1 page must report
@@ -254,8 +253,7 @@ async def test_list_all_reports_truncated_under_restrictive_scope_when_limit_hit
     """Same regression as above, for the restrictive-scope re-scan branch:
     hitting the caller's limit mid-page means at least one more allowed
     notification is waiting on a later server page, so truncated must be
-    True -- verbatim scenario of release/0.3.4's
-    test_list_notifications_reports_truncated_under_restrictive_scope_when_limit_hit_mid_page."""
+    True."""
     allowed_1 = _record(1, project_link={"href": "/api/v3/projects/1", "title": "Demo"})
     allowed_2 = _record(2, project_link={"href": "/api/v3/projects/1", "title": "Demo"})
     api = _FakePaginatedNotificationApi(pages=[[allowed_1, allowed_2]])
@@ -310,7 +308,7 @@ class _FakePaginatedNotificationApi:
 
 @pytest.mark.asyncio
 async def test_list_all_rescans_past_a_page_whose_allowed_subset_runs_dry() -> None:
-    """Regression test (found via Codex review): a filtered-empty server page
+    """Regression test: a filtered-empty server page
     does not prove no further allowed notifications exist on later pages --
     the Service must keep fetching subsequent server pages under a
     restrictive scope, not stop at the first page's filtered result."""

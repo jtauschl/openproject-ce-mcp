@@ -15,7 +15,7 @@ def test_work_package_ref_quotes_a_project_prefixed_identifier() -> None:
 
 
 def test_work_package_ref_rejects_path_traversal_segment() -> None:
-    """Regression, ported from release/0.3.4: this shared encoder had no
+    """Regression: this shared encoder had no
     traversal check -- a value like "../projects/42" quotes to itself
     unchanged (quote() never escapes ".") and httpx then normalizes ".."
     away when building the request, redirecting to an unrelated endpoint

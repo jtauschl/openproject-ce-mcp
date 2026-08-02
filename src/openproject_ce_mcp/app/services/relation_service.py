@@ -169,7 +169,7 @@ class RelationService:
     ) -> RelationListResult:
         # Gate before resolving the anchor -- resolving it already issues a
         # work-package GET, and the original get_work_package_relations checks
-        # this before that fetch, not after (Codex-found migration drift).
+        # this before that fetch, not after.
         access.ensure_read_enabled("work_package", settings=self._settings)
         resolved_limit = effective_limit(limit, settings=self._settings)
         resolved_id = await self._resolve_work_package_id(work_package_id)

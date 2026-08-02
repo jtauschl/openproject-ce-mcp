@@ -1,8 +1,7 @@
 """Integration tests for wiki page reads.
 
 Wiki Pages has no create/update/delete/list endpoint in the OpenProject v3
-API (GET /api/v3/wiki_pages/{id} is the only route -- confirmed against
-op-sources/lib/api/v3/wiki_pages/wiki_pages_api.rb). get_wiki_page is
+API (GET /api/v3/wiki_pages/{id} is the only route). get_wiki_page is
 exercised against a page docker/test/seed.rb creates ahead of time, whose id
 is resolved via the seed_wiki_page_id fixture (a Rails-runner side channel,
 since there's no list endpoint to discover it through the API itself).

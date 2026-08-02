@@ -14,8 +14,7 @@ a bare `categories/{id}` web path (verbatim port of client.py's
 `self._web_url(f"api/v3/categories/{category_id}")`).
 
 `get(category_id)` uses OpenProject's real `GET /api/v3/categories/{id}`
-endpoint (verified against
-op-sources/17.2/lib/api/v3/categories/categories_api.rb).
+endpoint (verified against OpenProject's own API implementation).
 """
 
 from __future__ import annotations

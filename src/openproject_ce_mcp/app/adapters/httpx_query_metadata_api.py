@@ -1,4 +1,4 @@
-"""HTTP-backed QueryMetadataApi adapter (17th migrated domain).
+"""HTTP-backed QueryMetadataApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
 `link_title`/`link_to_web_url`/`slug_from_href` are shared via
@@ -16,10 +16,9 @@ passed through unescaped. `filters`/`columns`/`operators`/
 
 `sort_bys` is the one exception, not just an encoding detail: the
 route is `queries/sort_bys/:id-:direction` (hyphen-joined, verified against
-`op-sources/17.6/lib/api/v3/queries/sort_bys/query_sort_bys_api.rb:58` and
-`path_helper.rb:448-449`), not a bare id segment like the other four
-resources. `get_sort_by` therefore transforms the caller's colon-separated id
-(`"subject:asc"`) into the hyphen-joined path (`"subject-asc"`) before
+OpenProject's own API implementation), not a bare id segment like the other
+four resources. `get_sort_by` therefore transforms the caller's
+colon-separated id (`"subject:asc"`) into the hyphen-joined path (`"subject-asc"`) before
 quoting, and passes the original colon-form id through to
 `normalize_query_sort_by` as `requested_id` so the public `id` field stays
 stable regardless of the server's own hyphen-form self-link.

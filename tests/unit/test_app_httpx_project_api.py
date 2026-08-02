@@ -91,8 +91,7 @@ async def test_get_url_escapes_the_project_ref() -> None:
 
 @pytest.mark.asyncio
 async def test_get_rejects_path_traversal_ref() -> None:
-    """Regression (found via a full-diff Codex review on release/0.3.4, ported
-    here): project_ref was interpolated into the URL path with no validation --
+    """Regression: project_ref was interpolated into the URL path with no validation --
     a value like "../job_statuses/77" quotes to itself unchanged (quote() never
     escapes ".") and httpx then normalizes ".." away when building the request,
     redirecting it to an entirely different endpoint and bypassing this

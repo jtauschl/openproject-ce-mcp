@@ -1,4 +1,4 @@
-"""Application Service for the Job Status domain (20th migrated domain).
+"""Application Service for the Job Status domain.
 
 Depends on the JobStatusApi Protocol, never HttpxJobStatusApi concretely
 (enforced by the architecture-boundary test). No dedicated policy file: like

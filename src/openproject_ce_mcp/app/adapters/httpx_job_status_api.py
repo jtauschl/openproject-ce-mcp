@@ -1,4 +1,4 @@
-"""HTTP-backed JobStatusApi adapter (20th migrated domain).
+"""HTTP-backed JobStatusApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
 `id_from_href`/`link_title`/`link_to_web_url` are shared via

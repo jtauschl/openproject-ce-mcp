@@ -84,7 +84,7 @@ async def test_resolve_id_raises_when_ambiguous() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_id_does_not_match_a_blank_name_against_the_synthetic_display_fallback() -> None:
-    """Codex-review regression test: matching uses TypeRecord.lookup_name
+    """Regression test: matching uses TypeRecord.lookup_name
     (the raw, never-synthesized name), not summary.name, which falls back
     to a synthetic display name ("Type 9") when the raw name is blank --
     see app/ports/status_priority_type_api.py's module docstring."""

@@ -1,4 +1,4 @@
-"""Application Service for the User Preferences domain (18th migrated domain).
+"""Application Service for the User Preferences domain.
 
 Depends on the UserPreferencesApi Protocol, never HttpxUserPreferencesApi
 concretely (enforced by the architecture-boundary test). No Resolver, no

@@ -1,4 +1,4 @@
-"""Query Metadata Domain API port (17th migrated domain).
+"""Query Metadata Domain API port.
 
 Five unrelated-but-bundled read-only lookups (client.py places them
 adjacently, grouped as one migration -- same

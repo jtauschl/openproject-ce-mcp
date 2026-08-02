@@ -19,8 +19,7 @@ container work package's own project link.
 
 No create/update TOOL is exposed here, but this is a deliberate product
 scoping decision, not an absence-of-endpoint fact (see `FileLinkApi`'s own
-docstring for the full rationale, corrected there via an independent Codex
-review after this file's own comment went stale): OpenProject's v3 API DOES
+docstring for the full rationale): OpenProject's v3 API DOES
 have a real `POST /api/v3/work_packages/{id}/file_links`; create is left
 unimplemented because it needs storage-specific origin/location data
 (Nextcloud/OneDrive file identifiers) this server has no mechanism to
@@ -74,8 +73,8 @@ class FileLinkService:
         # fetched (verbatim behavior of client.py's original comment/order).
         resolved_id = await self._resolve_work_package_id(work_package_id, write=False)
         # File Links is really offset-paginated server-side (verified against
-        # op-sources' FileLinkCollectionRepresenter < OffsetPaginatedCollection,
-        # found via an independent Codex review) -- a single unparameterized
+        # OpenProject's own API implementation: FileLinkCollectionRepresenter
+        # subclasses OffsetPaginatedCollection) -- a single unparameterized
         # GET silently returned only the server's default page. Page-walk the
         # complete set for this one work package, the same max_page_size-per-
         # round-trip pattern already used for Roles/Memberships/Reminders.

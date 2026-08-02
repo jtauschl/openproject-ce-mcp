@@ -950,8 +950,7 @@ async def test_update_work_package_clears_category_with_null_href() -> None:
 
 @pytest.mark.asyncio
 async def test_update_work_package_clears_project_phase_with_null_href() -> None:
-    # Regression guard (found by an independent Codex CLI review during the
-    # write-migration's step 6.5, 2026-08-01): the CLEAR branch must
+    # Regression guard: the CLEAR branch must
     # send _links.projectPhase (camelCase, the real HAL key) = {"href": None},
     # matching the non-CLEAR schema-backed branch a few lines below it -- an
     # earlier draft used the snake_case "project_phase" key instead, which

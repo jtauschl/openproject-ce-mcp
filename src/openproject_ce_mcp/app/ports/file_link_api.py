@@ -4,20 +4,17 @@ Narrow: list (scoped to one work package) + get (single file link, used only
 by delete()'s preview/allowlist step) + delete. No create/update TOOL is
 exposed here, but this is a deliberate product scoping decision, not an
 absence-of-endpoint fact: OpenProject's v3 API DOES have a real
-`POST /api/v3/work_packages/{id}/file_links` (found via an independent Codex
-review, verified against
-op-sources/17.2/modules/storages/lib/api/v3/file_links/work_packages_file_links_api.rb --
-`post &WorkPackagesFileLinksCreateEndpoint`), and `PATCH` genuinely does not
-exist. Create is left unimplemented because it requires storage-specific
-origin/location data this server has no mechanism to source (Nextcloud/
-OneDrive file identifiers), not because no endpoint exists to call.
+`POST /api/v3/work_packages/{id}/file_links` (verified against OpenProject's
+own API implementation: `post &WorkPackagesFileLinksCreateEndpoint`), and
+`PATCH` genuinely does not exist. Create is left unimplemented because it
+requires storage-specific origin/location data this server has no mechanism
+to source (Nextcloud/OneDrive file identifiers), not because no endpoint
+exists to call.
 
-`list_for_work_package` takes real pagination parameters -- found via the
-same review (verified against
-op-sources/17.2/modules/storages/lib/api/v3/file_links/file_link_collection_representer.rb:
-`FileLinkCollectionRepresenter < OffsetPaginatedCollection`) that an earlier
-version of this method issued a single unparameterized GET, silently
-returning only the server's default page instead of every file link.
+`list_for_work_package` takes real pagination parameters -- the collection is
+genuinely `OffsetPaginatedCollection` server-side, so an earlier version of
+this method that issued a single unparameterized GET was silently returning
+only the server's default page instead of every file link.
 
 No `to_detail`: `FileLinkSummary` IS the only normalized shape this domain
 has (no separate Detail model exists in models.py), so `FileLinkRecord`

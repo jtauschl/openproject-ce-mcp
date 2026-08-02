@@ -120,8 +120,7 @@ async def test_get_requests_job_status_by_id() -> None:
 
 @pytest.mark.asyncio
 async def test_get_rejects_path_traversal_id() -> None:
-    """Regression (found via self-review on release/0.3.4, ported here):
-    job_status_id was interpolated into the URL path with no validation --
+    """Regression: job_status_id was interpolated into the URL path with no validation --
     a value like "../projects/42" quotes to itself unchanged (quote()
     never escapes ".") and httpx then normalizes ".." away when building
     the request, redirecting it to an entirely different endpoint and
@@ -224,8 +223,7 @@ async def test_get_record_created_project_id_extracted_from_created_project_link
     """OpenProject's real createdProject link carries only href/title, no
     type field -- created_project_id is derived from the LINK KEY's presence,
     not from summary.created_resource_type (which stays None for this
-    payload shape, a bug a Codex review caught in an earlier version of this
-    fix)."""
+    payload shape)."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(

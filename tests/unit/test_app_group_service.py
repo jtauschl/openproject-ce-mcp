@@ -156,11 +156,8 @@ async def test_list_groups_applies_hidden_field_masking() -> None:
 @pytest.mark.asyncio
 async def test_list_groups_hidden_by_group_scope_not_membership_or_user_scope() -> None:
     """Regression test for the entity="group" vs a same-named neighbor
-    hide-field bug class (this project's lessons log records this recurring
-    across Role/Document/News/Actions & Capabilities' pre-migration or
-    pre-audit code) -- found missing for Group specifically during the 18th
-    domain's (User Preferences) step-6 self-audit, which widened scope to
-    every already-migrated domain rather than just the newest.
+    hide-field bug class, a pattern that has recurred across
+    Role/Document/News/Actions & Capabilities.
     """
     settings_membership_hidden = _admin_settings(hidden_fields={"membership": ("name",)})
     result_membership_hidden = await _service(settings=settings_membership_hidden).list_groups()

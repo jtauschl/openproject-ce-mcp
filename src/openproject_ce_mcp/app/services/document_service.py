@@ -15,10 +15,9 @@ _ensure_write_enabled("project") calls).
 PATCH-only, no dedicated create/delete: the OpenProject v3 API exposes no
 create/delete endpoint for documents. update() is therefore a single flat
 preview/commit method with no shared private _WriteOutcome/_finalize_write
-state machine -- unlike every full-CRUD domain migrated so far (Versions,
-Projects, Memberships, News), a shared state-machine type would have exactly
-one call site here and add indirection with no reuse benefit. This is the
-first migrated domain with this (simpler) shape.
+state machine -- unlike every full-CRUD domain in app/ (Versions, Projects,
+Memberships, News), a shared state-machine type would have exactly one call
+site here and add indirection with no reuse benefit.
 
 update() does NOT call resolve_project_ref (unlike News' create/update):
 it takes no `project` parameter at all -- the project scope is derived

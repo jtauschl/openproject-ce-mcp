@@ -1,4 +1,4 @@
-"""User Preferences Domain API port (18th migrated domain).
+"""User Preferences Domain API port.
 
 Self-scoped, not project-scoped: the `my_preferences` endpoint is a singleton
 keyed to the token owner, with no `_links` block and no project concept at

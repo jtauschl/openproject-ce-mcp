@@ -687,8 +687,7 @@ async def test_list_collection_defense_in_depth_guard_on_empty_read_scope() -> N
 
 @pytest.mark.asyncio
 async def test_get_stays_masked_under_restricted_scope_even_with_hierarchy_present() -> None:
-    """Regression (found by an independent Codex review of this migration,
-    not the self-audit): apply_hidden_fields stamps `_hidden_keys` as a
+    """Regression: apply_hidden_fields stamps `_hidden_keys` as a
     dynamic (non-dataclass-field) attribute. dataclasses.replace() -- which
     _filter_hierarchy_allowlist calls whenever read_projects is restricted
     (not "*") -- builds a brand-new instance carrying only the declared
@@ -720,7 +719,7 @@ async def test_get_stays_masked_under_restricted_scope_even_with_hierarchy_prese
 
 @pytest.mark.asyncio
 async def test_get_hierarchy_truncated_flag_cleared_when_all_visible_entries_filtered_out() -> None:
-    """Regression (independent Codex review): the Adapter computes
+    """Regression: the Adapter computes
     children_truncated/ancestors_truncated from the RAW, pre-allowlist-filter
     element count. If every entry beyond the raw limit is itself
     out-of-scope, leaving *_truncated True after filtering down to zero

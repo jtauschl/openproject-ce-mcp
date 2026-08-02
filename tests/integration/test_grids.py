@@ -57,7 +57,7 @@ async def test_create_get_update_delete_grid(client: OpenProjectClient, grid_ids
     assert updated.row_count == 5
 
     # Delete -- OpenProject rejects deletion of /my/page grids for every user,
-    # including admin (verified against op-sources/17.6:
+    # including admin (verified against OpenProject's own API implementation:
     # Grids::Grid#user_deletable? is hardcoded false, Grids::MyPage never
     # overrides it, and Grids::DeleteContract's delete_permission requires
     # model.user_deletable? -- only Boards::Grid overrides it to true). There

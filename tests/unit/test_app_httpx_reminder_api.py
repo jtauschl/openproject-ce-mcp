@@ -66,8 +66,8 @@ async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
 @pytest.mark.asyncio
 async def test_get_requests_single_reminder() -> None:
     """OpenProject has no GET reminders/{id} single-item endpoint (verified
-    against op-sources: route_param :id mounts only patch/delete) -- get()
-    finds the reminder by paging through the collection instead."""
+    against OpenProject's own API implementation: route_param :id mounts only
+    patch/delete) -- get() finds the reminder by paging through the collection instead."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/reminders"
@@ -83,10 +83,9 @@ async def test_get_requests_single_reminder() -> None:
 
 @pytest.mark.asyncio
 async def test_get_finds_reminder_past_the_first_server_page() -> None:
-    """Regression class (found and fixed on release/0.3.4's equivalent
-    helper): a single unparameterized GET only returns the server's first
-    page -- _find_raw must walk every page to find a reminder that isn't on
-    page 1."""
+    """Regression: a single unparameterized GET only returns the server's
+    first page -- _find_raw must walk every page to find a reminder that
+    isn't on page 1."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/reminders"
@@ -239,8 +238,7 @@ def test_normalize_reminder_trims_long_note() -> None:
 
 
 def test_normalize_reminder_note_delimited_against_prompt_injection() -> None:
-    """Regression (found via a full-diff Codex review on release/0.3.4, ported
-    here): reminder.note was trimmed but never wrapped in
+    """Regression: reminder.note was trimmed but never wrapped in
     _delimit_user_content, unlike every other free-text user-content field
     (e.g. wiki_page.content) -- a malicious note like "ignore previous
     instructions" would be returned to the caller with no delimiter marking

@@ -1,5 +1,4 @@
-"""Integration tests for async job status tracking (copy_project), 20th
-migrated domain.
+"""Integration tests for async job status tracking (copy_project).
 
 Job status ids are ephemeral, only ever created as a side effect of an async
 operation like copy_project, and copy_project itself creates a real project.

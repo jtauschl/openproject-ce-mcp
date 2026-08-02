@@ -156,7 +156,7 @@ async def test_list_for_work_package_uses_default_page_size_when_limit_none() ->
 
 @pytest.mark.asyncio
 async def test_list_for_work_package_masks_hidden_comment() -> None:
-    """Codex-found regression: the migrated Service dropped
+    """Regression: the app/ Service dropped
     client.py's original `self._apply_hidden_fields("activity", ...)` stamp
     that `normalize_activity` used to apply -- OPENPROJECT_HIDE_ACTIVITY_FIELDS
     would have silently stopped masking anything."""

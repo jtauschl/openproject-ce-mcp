@@ -1,4 +1,4 @@
-"""HTTP-backed RoleApi adapter (13th migrated domain).
+"""HTTP-backed RoleApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only).
 """
@@ -38,8 +38,8 @@ class HttpxRoleApi:
     async def list_roles(self, *, offset: int, page_size: int) -> tuple[list[RoleRecord], int]:
         # NB: OpenProject's RolesAPI mounts Endpoints::Index with
         # RoleCollectionRepresenter, which subclasses UnpaginatedCollection (not
-        # OffsetPaginatedCollection) -- verified against op-sources/17.6. The
-        # server ignores offset/pageSize entirely and always returns every role,
+        # OffsetPaginatedCollection) -- verified against OpenProject's own API
+        # implementation. The server ignores offset/pageSize entirely and always returns every role,
         # `total` included. Sent here for interface symmetry / forward-compat
         # only; do not assume this call has already sliced the result. See
         # RoleService.list_roles for the client-side slicing this requires.

@@ -266,10 +266,10 @@ async def test_list_all_checks_both_hrefs_and_reuses_one_cache() -> None:
 
 @pytest.mark.asyncio
 async def test_list_all_walks_every_server_page_and_paginates_survivors() -> None:
-    """Regression (Codex-found gap): the pre-migration equivalent test
+    """Regression: the pre-migration equivalent test
     (test_list_relations_walks_every_server_page_and_paginates_survivors,
-    against real HTTP via httpx.MockTransport) was removed during the
-    migration with no Service-level replacement proving the same thing --
+    against real HTTP via httpx.MockTransport) had no Service-level
+    replacement proving the same thing --
     that fetch_bounded_and_paginate's page-walking loop is actually exercised
     with more than one server page, not just a single bounded fetch. 5 raw
     items across 3 server pages (max_page_size=2: [1,2], [3,4], [5])."""
@@ -295,7 +295,7 @@ async def test_list_all_walks_every_server_page_and_paginates_survivors() -> Non
 async def test_list_all_hides_wp_subject_when_wp_subject_hidden() -> None:
     """from_subject/to_subject honor the work_package subject hide list, and
     stamping order must not lose relation-level hidden fields (verified
-    together, per the Codex-found dataclasses.replace-vs-apply_hidden_fields
+    together, per the dataclasses.replace-vs-apply_hidden_fields
     ordering risk)."""
     record = _record(5, summary=_summary(5, description="secret note", from_subject="Secret A", to_subject="Secret B"))
     api = _FakeRelationApi(records=[record])
@@ -316,7 +316,7 @@ async def test_list_all_hides_wp_subject_when_wp_subject_hidden() -> None:
 
 @pytest.mark.asyncio
 async def test_create_and_update_stamp_hidden_fields_on_their_committed_result() -> None:
-    """Regression (Codex-found gap): only list_all()'s stamping was tested --
+    """Regression: only list_all()'s stamping was tested --
     create()/update() build their committed `.result` via the same _stamp()
     call (relation_service.py:230/280), but nothing proved a hidden `relation`
     field is actually masked there too."""
@@ -394,7 +394,7 @@ async def test_create_denies_write_outside_source_project_allowlist_even_without
 
 @pytest.mark.asyncio
 async def test_create_validates_source_reference_before_resolving_target() -> None:
-    """Regression (Codex-found): the source reference must be validated
+    """Regression: the source reference must be validated
     (traversal-segment rejection) BEFORE the target is resolved -- otherwise
     an invalid source reference could trigger unnecessary I/O against the
     target before the error is raised."""

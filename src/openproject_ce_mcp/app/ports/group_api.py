@@ -1,4 +1,4 @@
-"""Groups Domain API port (15th migrated domain).
+"""Groups Domain API port.
 
 `GroupRecord` carries no link: Groups have no project concept at all, the
 same shape as `RoleRecord`/`UserRecord`. `to_detail` is a LAZY

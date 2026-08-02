@@ -1,4 +1,4 @@
-"""Application Service for the Query Metadata domain (17th migrated domain).
+"""Application Service for the Query Metadata domain.
 
 Depends on the QueryMetadataApi Protocol, never HttpxQueryMetadataApi
 concretely (enforced by the architecture-boundary test). No dedicated

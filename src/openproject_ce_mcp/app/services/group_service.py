@@ -1,4 +1,4 @@
-"""Application Service for the Groups domain (15th migrated domain).
+"""Application Service for the Groups domain.
 
 Depends on the GroupApi Protocol, never HttpxGroupApi concretely (enforced
 by the architecture-boundary test). No `ProjectRefResolver`: Groups have no
@@ -45,10 +45,9 @@ adopting News' more-permissive-preview pattern.
 DELIBERATE HARDENING beyond client.py's original `create_group`/
 `update_group`, which never called the equivalent `_ensure_field_writable`
 at all -- a genuine pre-existing gap (verified: `OPENPROJECT_HIDE_GROUP_FIELDS`
-masked reads but never blocked writes), the same class of gap the Users
-migration's step-6.5 review found and fixed. Fixed here as part of the
-initial implementation rather than ported faithfully, since every other
-full-CRUD sibling already has this protection.
+masked reads but never blocked writes), the same class of gap Users had.
+Fixed here as part of the initial implementation rather than ported
+faithfully, since every other full-CRUD sibling already has this protection.
 """
 
 from __future__ import annotations

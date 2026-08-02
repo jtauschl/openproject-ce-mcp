@@ -86,7 +86,7 @@ async def test_update_work_package_denies_disallowed_parent_project() -> None:
 
 @pytest.mark.asyncio
 async def test_create_work_package_denies_reparent_into_a_readable_but_write_restricted_project() -> None:
-    """Regression test (found via Codex review): reparenting must be
+    """Regression test: reparenting must be
     write-authorized on the NEW parent too, not just on the project the new
     work package is created in. Previously the parent was only
     read-checked, so a caller with write access to "demo" could attach a
@@ -121,7 +121,7 @@ async def test_create_work_package_denies_reparent_into_a_readable_but_write_res
 
 @pytest.mark.asyncio
 async def test_update_work_package_denies_reparent_into_a_readable_but_write_restricted_project() -> None:
-    """Regression test (found via Codex review): same gap as the create_work_package
+    """Regression test: same gap as the create_work_package
     counterpart above, for update_work_package's reparent path."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -170,7 +170,7 @@ async def test_create_work_package_relation_denies_disallowed_target_project() -
 
 @pytest.mark.asyncio
 async def test_create_work_package_relation_denies_readable_but_write_restricted_target() -> None:
-    """Regression test (found via Codex review): the target's numeric id was
+    """Regression test: the target's numeric id was
     resolved with write=False (a plain reference lookup), so only the SOURCE
     work package's project was ever checked against WRITE_PROJECTS -- a
     caller with write on one project could link it to a work package in any

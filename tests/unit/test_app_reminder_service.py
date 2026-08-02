@@ -188,7 +188,7 @@ async def test_list_all_filters_by_read_projects_via_work_package() -> None:
 
 @pytest.mark.asyncio
 async def test_list_all_never_normalizes_a_record_filtered_out_by_the_allowlist() -> None:
-    """Found via this migration's step-6.5 Codex review: client.py's
+    """Regression: client.py's
     original filters RAW elements by allowlist first, normalizing only the
     survivors -- an eager `summary` field would normalize every record up
     front (including denied ones), which would also crash on a denied

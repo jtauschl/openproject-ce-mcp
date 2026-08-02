@@ -1,4 +1,4 @@
-"""HTTP-backed UserApi adapter (14th migrated domain).
+"""HTTP-backed UserApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
 `SUBJECT_LIMIT`/`link_to_web_url`/`web_url` are shared via
@@ -143,10 +143,9 @@ class HttpxUserApi:
         # Walk every server page for the caller to filter in-memory -- no
         # server-side name/login/email filter exists to delegate to. Users is
         # genuinely OffsetPaginatedCollection server-side (verified against
-        # op-sources), so a single bounded fetch capped at page_size (this
-        # method's prior behavior) would silently hide any match beyond that
-        # cap once the real user count exceeded it (found via a full-diff
-        # Codex review on release/0.3.4, ported here).
+        # OpenProject's own API implementation), so a single bounded fetch
+        # capped at page_size (this method's prior behavior) would silently
+        # hide any match beyond that cap once the real user count exceeded it.
         return await paginate_all(
             lambda offset, size: self.list_users(offset=offset, page_size=size),
             page_size=page_size,
@@ -157,9 +156,8 @@ class HttpxUserApi:
         # Verbatim port of client.py's `quote(user_ref, safe="")` -- user_ref
         # can be a login (e.g. containing "@"/".") or the literal "me", not
         # just a numeric id. A literal "."/".." path segment is still
-        # rejected (ported from release/0.3.4's generalized path-traversal
-        # guard) -- a real login containing a dot never forms a bare "."
-        # segment on its own.
+        # rejected by the generalized path-traversal guard -- a real login
+        # containing a dot never forms a bare "." segment on its own.
         safe_ref = _reject_path_traversal_segments(user_ref, field_name="user_ref")
         return self._record(await self._transport.get_json(f"users/{quote(safe_ref, safe='')}"))
 
@@ -191,8 +189,8 @@ class HttpxUserApi:
     async def commit_unlock(self, user_id: int) -> UserDetail:
         # DELETE .../lock already returns the full updated user representation
         # (OpenProject's user_transition helper responds with UserRepresenter
-        # for both the POST and DELETE lock transitions, verified against
-        # op-sources) -- no follow-up GET needed, mirroring commit_lock.
+        # for both the POST and DELETE lock transitions) -- no follow-up GET
+        # needed, mirroring commit_lock.
         response = await self._transport.delete_json(f"users/{user_id}/lock")
         return normalize_user_detail(response, base_url=self._base_url, origin=self._origin)
 

@@ -417,7 +417,7 @@ async def test_create_role_ambiguous_raises() -> None:
 
 @pytest.mark.asyncio
 async def test_create_role_lookup_calls_role_api_once_not_page_walking() -> None:
-    """Regression test (found via an independent Codex review): _resolve_role_hrefs
+    """Regression test: _resolve_role_hrefs
     must call RoleApi.list_roles ONCE, not page-walk via app.pagination.paginate_all
     -- /api/v3/roles' RoleCollectionRepresenter is a real UnpaginatedCollection,
     so the server ignores offset/pageSize and always returns the

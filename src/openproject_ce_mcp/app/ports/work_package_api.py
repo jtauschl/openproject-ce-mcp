@@ -45,7 +45,7 @@ Separate, parallel port from `app/ports/work_package_lookup_api.py`
 (`WorkPackageLookupApi`) -- NOT an extension of it. `WorkPackageLookupApi` is
 documented as deliberately minimal (two raw, unnormalized GET methods only),
 built for `WorkPackageResolver`'s reference-resolution needs and consumed by
-eight already-migrated domains via the `WorkPackageIdResolver`/
+several other app/ domains via the `WorkPackageIdResolver`/
 `WorkPackageProjectAllowedCheck` seams in `app/ports/work_package_ref.py`.
 Those contracts must not change. `HttpxWorkPackageApi` (the adapter for this
 port) does not delegate to `HttpxWorkPackageLookupApi` internally -- both are

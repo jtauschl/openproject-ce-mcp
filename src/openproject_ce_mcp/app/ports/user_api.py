@@ -1,4 +1,4 @@
-"""Users Domain API port (14th migrated domain).
+"""Users Domain API port.
 
 `UserRecord` carries no link: Users have no project concept at all, the
 same shape as `RoleRecord`/`ActionRecord`. `to_detail` is a LAZY
@@ -11,8 +11,7 @@ same rationale as `DocumentRecord`/`NewsRecord`'s lazy thunk, not
 `SprintRecord`'s/`BoardRecord`'s eager `summary_to_detail` (an earlier
 version of this file wrongly reasoned eager was correct here since the
 summary/detail truncation limits match; that only justifies a cheap
-field-copy, not unconditional computation -- found and fixed via a step-6.5
-Codex review).
+field-copy, not unconditional computation.
 
 `commit_lock`/`commit_unlock` are the first Domain API methods for a
 non-CRUD write action (see `ProjectApi.set_favorite` for the closest
