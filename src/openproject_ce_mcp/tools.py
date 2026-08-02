@@ -2684,9 +2684,8 @@ async def create_time_entry(
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
     hours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours, 'P1D' for 1 day).
     start_time is an ISO 8601 date-time and requires the instance setting "allow
-    tracking of start and end times"; ignored otherwise. There is no end_time
-    parameter -- OpenProject's own API schema marks that field as read-only
-    (computed from start_time + hours), so writing it is never supported.
+    tracking of start and end times"; ignored otherwise. No end_time parameter --
+    OpenProject derives it read-only from start_time + hours.
     """
     client = _client_from_context(ctx)
     safe_activity = _validate_required_query(activity, field_name="activity", max_length=100)
@@ -2730,9 +2729,8 @@ async def update_time_entry(
     """Prepare or update a time entry.
 
     hours accepts an ISO8601 duration string (e.g., 'PT8H' for 8 hours, 'P1D' for 1 day).
-    start_time is an ISO 8601 date-time. There is no end_time parameter --
-    OpenProject's own API schema marks that field as read-only (computed from
-    start_time + hours), so writing it is never supported.
+    start_time is an ISO 8601 date-time. No end_time parameter -- OpenProject
+    derives it read-only from start_time + hours.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(time_entry_id, field_name="time_entry_id")

@@ -92,9 +92,10 @@ development baseline.
 - **`list_project_memberships` no longer returns memberships from every
   visible project instead of just the requested one.**
 - **An id passed into a handful of API paths (`get_job_status`,
-  `list_capabilities`'s `capability_id`, and others) could contain `.`/`..`
-  path segments that bypassed the allowlist check meant to guard it** — such
-  ids are now rejected before the request is made.
+  `list_capabilities`'s `capability_id`, and others) is now rejected before
+  the request is made if it contains `.`/`..` path segments**, closing a gap
+  that previously let such ids bypass the allowlist check meant to guard
+  them.
 - **`create_grid`/`update_grid`/`delete_grid` no longer skip their
   write-allowlist check for a grid whose scope isn't a recognized project or
   personal-page URL.**

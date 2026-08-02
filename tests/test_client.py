@@ -1265,7 +1265,7 @@ async def test_hidden_time_entry_field_is_rejected_on_write() -> None:
 
 @pytest.mark.asyncio
 async def test_hidden_time_entry_start_time_is_rejected_on_write() -> None:
-    """Regression test (found via Codex review): start_time was omitting the
+    """Regression test: start_time was omitting the
     _ensure_field_writable check every sibling field (hours, spent_on,
     comment, ongoing) already has -- a hidden-by-config field could still be
     written despite being masked on read, the same bug class already fixed
@@ -5115,10 +5115,7 @@ async def test_get_work_package_ancestors_truncated_flag_cleared_when_only_out_o
     out-of-scope, leaving ancestors_truncated True after filtering down to
     zero visible ancestors would disclose the mere existence of ancestors the
     caller isn't allowed to see. The flag must only stay True when the
-    allowlist filter removed nothing (every raw entry survived) -- found via
-    an independent Codex CLI review of the equivalent Work Packages READ
-    migration on release/0.4.0; this branch has the identical pre-existing
-    bug in its still-flat client.py, ported here."""
+    allowlist filter removed nothing (every raw entry survived)."""
     ancestors_raw = [{"href": f"/api/v3/work_packages/{100 + i}", "title": f"Ancestor {i}"} for i in range(21)]
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -12966,9 +12963,7 @@ async def test_attachment_description_delimited():
 
 @pytest.mark.asyncio
 async def test_get_attachment_rejects_a_container_href_only_substring_matching_work_packages() -> None:
-    """Codex-found (during the 0.4.0 migration, ported back here since this
-    branch's own client.py still has the identical flat pre-migration bug):
-    `_ensure_attachment_container_allowed`'s old `"work_packages/" not in
+    """`_ensure_attachment_container_allowed`'s old `"work_packages/" not in
     href` substring check would wrongly accept a foreign resource whose path
     merely CONTAINS that substring, e.g. `/api/v3/not_work_packages/9` --
     authorizing against an unrelated work package's project rather than

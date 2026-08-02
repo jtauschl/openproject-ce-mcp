@@ -1011,7 +1011,8 @@ class OpenProjectClient:
             # p{id} is the context-filter form accepted on every supported
             # version (16.0-17.6); w{id} (workspace) is only accepted from
             # 17.0 onward and is rejected as malformed on 16.x (verified
-            # against op-sources across all 14 pinned versions).
+            # against OpenProject's own API implementation across all
+            # supported versions).
             # See the allowlist-gap comment below for why the per-record
             # check still runs even though this filter already narrows the
             # query server-side.
