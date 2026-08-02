@@ -7494,9 +7494,9 @@ async def test_admin_scoped_reads_are_denied_before_any_http_call_without_admin_
 @pytest.mark.asyncio
 async def test_internal_principal_resolution_bypasses_admin_read_gate() -> None:
     """create_membership resolves a name-based principal via
-    _resolve_principal_id -> _list_principals_unchecked, which deliberately
-    has no OPENPROJECT_ENABLE_ADMIN_READ gate (see the comment on
-    _list_principals_unchecked in client.py): the caller is already
+    _resolve_principal_id, which deliberately has no
+    OPENPROJECT_ENABLE_ADMIN_READ gate (see the comment on
+    _resolve_principal_id in client.py): the caller is already
     authorized through create_membership's own membership-write scope check,
     and only a single resolved id is used internally, never the full
     PrincipalSummary list. This must keep working even with admin_read off —
@@ -7545,6 +7545,31 @@ async def test_internal_principal_resolution_bypasses_admin_read_gate() -> None:
     result = await client.create_membership(project="demo-id", principal="Alice", roles=["Member"], confirm=False)
 
     assert result.ready is True
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resolve_principal_id_does_not_match_a_blank_name_against_the_synthetic_display_fallback() -> None:
+    """Bug fix regression test: normalize_principal falls back to a
+    synthetic display name (f"Principal {id}") when the raw payload name is
+    blank -- matching against that normalized name (as a prior
+    implementation did, via _list_principals_unchecked) could make a
+    caller's literal search for "Principal 7" accidentally match a
+    principal whose real name was blank. _resolve_principal_id must match
+    against the raw payload's own `name` field directly instead."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/principals" and request.method == "GET":
+            return httpx.Response(
+                200, json={"_embedded": {"elements": [{"id": 7, "name": "", "_type": "User"}]}}, request=request
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="was not found"):
+        await client._resolve_principal_id("Principal 7")
 
     await client.aclose()
 
@@ -11164,6 +11189,30 @@ async def test_resolve_version_id_project_less_name_match_beyond_first_filtered_
 
     matched = await client._resolve_version_id("Release", project=None)
     assert matched == "999"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resolve_version_id_does_not_match_a_blank_name_against_the_synthetic_display_fallback() -> None:
+    """Bug fix regression test: normalize_version falls back to a synthetic
+    display name (f"Version {id}") when the raw payload name is blank --
+    matching against that normalized name (as a prior implementation did)
+    could make a caller's literal search for "Version 9" accidentally match
+    a version whose real name was blank. _resolve_version_id must match
+    against each raw element's own `name` field directly instead."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/versions" and request.method == "GET":
+            return httpx.Response(
+                200, json={"_embedded": {"elements": [{"id": 9, "name": "", "_links": {}}]}}, request=request
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(InvalidInputError, match="was not found"):
+        await client._resolve_version_id("Version 9", project=None)
 
     await client.aclose()
 

@@ -8689,11 +8689,28 @@ class OpenProjectClient:
             return str(current_user.id)
         if principal_ref.isdigit():
             return principal_ref
-        principals = await self._list_principals_unchecked(
-            search=principal_ref, offset=1, limit=self.settings.max_results
+        # Bug fix: matching against normalize_principal's already-normalized
+        # PrincipalSummary.name (via _list_principals_unchecked) is wrong for
+        # exact-name resolution -- normalize_principal falls back to a
+        # synthetic display name (f"Principal {id}") when the raw name is
+        # blank/missing, which could otherwise make a caller's literal
+        # search for "Principal 7" accidentally match a principal whose real
+        # name was blank. Fetch and match against the RAW payload's name
+        # field directly instead (mirrors _resolve_status_id/
+        # _resolve_priority_id's existing raw-payload-matching pattern).
+        effective_limit = self._resolve_limit(self.settings.max_results)
+        payload = await self._get(
+            "principals",
+            params={
+                "offset": "1",
+                "pageSize": str(effective_limit),
+                "filters": _json_param([{"name": {"operator": "~", "values": [principal_ref]}}]),
+            },
         )
         matches = [
-            str(item.id) for item in principals.results if (item.name or "").casefold() == principal_ref.casefold()
+            str(item["id"])
+            for item in payload.get("_embedded", {}).get("elements", [])
+            if str(item.get("name", "")).casefold() == principal_ref.casefold()
         ]
         if not matches:
             raise InvalidInputError(f"OpenProject principal '{principal_ref}' was not found.")
@@ -8750,6 +8767,16 @@ class OpenProjectClient:
         return matches[0]
 
     async def _resolve_version_id(self, version_ref: str, *, project: str | None) -> str:
+        # Bug fix, all three branches below: matching against
+        # normalize_version's already-normalized VersionSummary.name (as the
+        # previous implementation did, via self.list_versions) is wrong for
+        # exact-name resolution -- normalize_version falls back to a
+        # synthetic display name (f"Version {id}") when the raw name is
+        # blank/missing, which could otherwise make a caller's literal
+        # search for "Version 7" accidentally match a version whose real
+        # name was blank. Match against each RAW payload element's `name`
+        # field directly instead (mirrors _resolve_status_id/
+        # _resolve_priority_id's existing raw-payload-matching pattern).
         if project is not None:
             project_ref = project
             if project_ref.isdigit():
@@ -8762,41 +8789,26 @@ class OpenProjectClient:
                 project_payload = await self._get_project_payload(project_ref)
                 project_ref = project_payload.get("identifier") or project_ref
 
+            project_id_payload = await self._get_project_payload(project_ref)
+            project_id = int(project_id_payload["id"])
             wanted_id = int(version_ref) if version_ref.isdigit() else None
-            name_matches: list[VersionSummary] = []
-            seen_ids: set[int] = set()
-            offset = 1
-            is_first_page = True
-            while True:
-                page = await self.list_versions(project=project_ref, offset=offset, limit=self.settings.max_page_size)
-                # Some project-scoped sub-collection endpoints (verified live:
-                # a project's versions endpoint) silently ignore offset/page
-                # size and always return every element -- without this
-                # check, `page.next_offset` never becomes None and this
-                # loops forever, re-fetching the same full page.
-                page_ids = {v.id for v in page.results}
-                if not is_first_page and page_ids and page_ids <= seen_ids:
-                    break
-                is_first_page = False
-                seen_ids.update(page_ids)
-                if wanted_id is not None:
-                    if any(v.id == wanted_id for v in page.results):
-                        return version_ref
-                else:
-                    name_matches.extend(v for v in page.results if (v.name or "").casefold() == version_ref.casefold())
-                if page.next_offset is None:
-                    break
-                offset = page.next_offset
+            elements = await self._fetch_all_pages(f"projects/{project_id}/versions")
 
             if wanted_id is not None:
+                if any(int(item["id"]) == wanted_id for item in elements):
+                    return version_ref
                 raise InvalidInputError(f"OpenProject version '{version_ref}' is not available in project '{project}'.")
+
+            name_matches = [
+                str(item["id"]) for item in elements if str(item.get("name", "")).casefold() == version_ref.casefold()
+            ]
             if not name_matches:
                 raise InvalidInputError(f"OpenProject version '{version_ref}' was not found in project '{project}'.")
             if len(name_matches) > 1:
                 raise InvalidInputError(
                     f"OpenProject version '{version_ref}' is ambiguous without a more specific filter. Pass a numeric version id."
                 )
-            return str(name_matches[0].id)
+            return name_matches[0]
 
         if version_ref.isdigit():
             # No target project to check availability against — reached via a global,
@@ -8810,23 +8822,14 @@ class OpenProjectClient:
             self._ensure_project_link_allowed(payload.get("_links", {}).get("definingProject"))
             return version_ref
 
-        # No project + name ref: pass search=version_ref rather than relying on our
-        # own post-hoc filtering, AND page-walk the search-filtered results. The
-        # global branch fetches up to max_results raw items, filters by `search`
-        # BEFORE slicing, but still slices the *filtered* result down to
-        # effective_limit (clamped to max_page_size) for the page it returns — a
-        # single call at offset=1 would still miss an exact match beyond the first
-        # max_page_size substring-matching candidates.
-        name_matches = []
-        offset = 1
-        while True:
-            page = await self.list_versions(
-                project=None, search=version_ref, offset=offset, limit=self.settings.max_page_size
-            )
-            name_matches.extend(v for v in page.results if (v.name or "").casefold() == version_ref.casefold())
-            if page.next_offset is None:
-                break
-            offset = page.next_offset
+        # No project + name ref: fetch every visible raw element and match
+        # against each one's raw name directly.
+        elements = await self._fetch_all_pages("versions")
+        name_matches = [
+            str(item["id"])
+            for item in elements
+            if self._version_payload_allowed(item) and str(item.get("name", "")).casefold() == version_ref.casefold()
+        ]
 
         if not name_matches:
             raise InvalidInputError(f"OpenProject version '{version_ref}' was not found.")
@@ -8834,7 +8837,7 @@ class OpenProjectClient:
             raise InvalidInputError(
                 f"OpenProject version '{version_ref}' is ambiguous without a more specific filter. Pass a numeric version id."
             )
-        return str(name_matches[0].id)
+        return name_matches[0]
 
     async def _resolve_sprint_id(self, sprint_ref: str, *, project: str) -> str:
         if sprint_ref.isdigit():
