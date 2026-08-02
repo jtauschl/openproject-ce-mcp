@@ -11,9 +11,12 @@ OpenProject CE MCP is intentionally small and flat. The codebase keeps transport
 ```text
 src/openproject_ce_mcp/
 ├── config.py             environment loading, validation, and safe defaults
-├── client.py             OpenProject API client facade: auth, timeouts, most domains'
-│                         pagination/normalization/error mapping, plus one-line
-│                         delegations to app/ for migrated domains (see below)
+├── client.py             OpenProject API client facade: auth, transport, error
+│                         mapping, the project-identifier cache, and one-line
+│                         delegations to app/ for every domain (see below) --
+│                         normalization/business logic now lives entirely under
+│                         app/, except two deliberate cross-service-orchestration
+│                         methods (a Service must not depend on another Service)
 ├── retry_transport.py    HTTP retry with backoff for transient failures
 ├── models.py             compact dataclasses returned to MCP clients
 ├── tools.py              validated MCP tool handlers
@@ -45,17 +48,11 @@ src/openproject_ce_mcp/
 
 ### `client.py`
 
-- Owns all OpenProject HTTP access.
-- Maps HTTP and transport failures into project-specific exceptions.
-- Normalizes HAL/JSON payloads into compact dataclasses from `models.py`.
-- Implements write previews, form validation, and final confirmed writes.
-- Enforces the runtime policy model:
-  - read gate
-  - scoped write gates
-  - read/write project scoping
-  - hidden field masking and write rejection
+- Owns all OpenProject HTTP transport (auth, timeouts, error mapping) and the shared project-identifier cache.
+- Every domain's public method is a one-line delegation into `app/` (see "Layered architecture" below) — normalization, write previews/confirmation, and the runtime policy model (read gates, scoped write gates, project scoping, hidden-field masking) live in `app/policies/`, `app/services/`, and `app/adapters/` instead.
+- Two deliberate exceptions stay as `client.py`-level orchestration rather than a Service (`get_project_work_package_context`, `get_my_project_access`): each combines more than one domain in a single call, and a Service must not depend on another Service.
 
-This is the main policy boundary of the project.
+`app/policies/` is the main policy boundary of the project.
 
 ### `models.py`
 
@@ -77,9 +74,8 @@ This is the main policy boundary of the project.
 
 ## Layered architecture
 
-`client.py` stays the small, flat facade described above for domains not yet migrated. A migrated
-domain's public methods on `OpenProjectClient` become one-line delegations to a layered
-implementation under `app/`:
+`client.py` is the thin facade described above. Every domain's public methods on `OpenProjectClient`
+are one-line delegations to a layered implementation under `app/`:
 
 ```text
 tools.py (MCP presentation)
@@ -91,10 +87,8 @@ tools.py (MCP presentation)
 ```
 
 - **Policies** are pure functions (scope/allowlist matching, hidden-field masking, read/write
-  gates) with no I/O — every `OpenProjectClient` method that used to implement this logic directly
-  is now a one-line delegating wrapper, so **every** domain benefits from a single,
-  dependency-free, directly-unit-testable source of truth for this security-relevant logic — not
-  just the migrated domains.
+  gates) with no I/O — every domain shares a single, dependency-free, directly-unit-testable
+  source of truth for this security-relevant logic.
 - **Ports** are narrow, per-domain Protocols — no universal gateway. A port holds only contracts
   and port-owned data types (the Protocol itself, its Result dataclasses, and small port-level
   constants/conversions) — never HAL→model mapping. **Adapters** are the concrete HTTP
@@ -202,40 +196,40 @@ tools.py (MCP presentation)
   lookup goes through `StatusPriorityTypeApi` directly rather than `StatusPriorityTypeService`) must
   keep working in that configuration.
 - `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under `app/` that
-  imports `httpx`; `client.py`'s own HTTP calls for still-flat domains, and `retry_transport.py`,
-  are unaffected and keep importing it directly. The `Transport` Protocol (`app/transport/protocol.py`)
-  is extended with a new method when a migrating domain needs a request shape none of the existing
-  methods cover — e.g. `post_raw_json` for a raw, non-JSON request body (`Content-Type: text/plain`),
-  added when a domain's endpoint posts plain text rather than a JSON payload; `post_multipart` for a
-  `multipart/form-data` body (a JSON metadata part plus a file part), added for Attachments' file
-  upload — the metadata part is sent as a plain form field with no filename in its
-  Content-Disposition, since a filename would make the server's multipart parser treat it as an
-  uploaded file rather than a JSON string.
-- `OpenProjectClient` remains a 100%-compatible facade: a migrated domain's public method
-  signatures stay unchanged unless a deliberate, separately-decided behavior change was bundled
-  into that migration — in which case `tools.py`'s matching tool gains the same change, the only
-  kind of `tools.py` edit a domain migration itself ever requires. A handful of `client.py`-level
-  methods that combine multiple domains (e.g. a project-scoped context also touching Memberships,
-  or a still-flat schema domain) stay as client.py-level orchestration rather than moving into a
-  single Service, since a Service must not depend on another Service.
+  imports `httpx`; `client.py`'s own HTTP calls (used only by the two cross-service-orchestration
+  methods described above) and `retry_transport.py` are unaffected and keep importing it directly.
+  The `Transport` Protocol (`app/transport/protocol.py`) is extended with a new method when a
+  domain needs a request shape none of the existing methods cover — e.g. `post_raw_json` for a raw,
+  non-JSON request body (`Content-Type: text/plain`), added when a domain's endpoint posts plain
+  text rather than a JSON payload; `post_multipart` for a `multipart/form-data` body (a JSON
+  metadata part plus a file part), added for Attachments' file upload — the metadata part is sent
+  as a plain form field with no filename in its Content-Disposition, since a filename would make
+  the server's multipart parser treat it as an uploaded file rather than a JSON string.
+- `OpenProjectClient` remains a 100%-compatible facade: each domain's public method signatures stay
+  unchanged unless a deliberate, separately-decided behavior change was bundled into a past
+  migration — in which case `tools.py`'s matching tool gained the same change, the only kind of
+  `tools.py` edit a domain migration itself ever requires. The two `client.py`-level orchestration
+  methods that combine multiple domains (`get_project_work_package_context`, `get_my_project_access`)
+  stay as `client.py`-level orchestration rather than moving into a single Service, since a Service
+  must not depend on another Service.
 
 An `ast`-based test (`tests/test_architecture_boundaries.py`) enforces the layer directions above,
 confines `httpx` to `HttpxTransport`, forbids importing `fastmcp` or reading environment variables
 directly anywhere under `app/`, and checks that every `app/services/`/`app/resolvers/` class
 depends on a port `Protocol`, never a concrete adapter. These checks are directory-driven, not
-domain-specific, so a further domain's migration needs no test changes to stay covered — only a
-small, deliberately non-generalized regression test per migrated domain
-(`test_<domain>_service_binds_the_api_param_to_<domain>_api_specifically`) pins that domain's exact
+domain-specific. Each domain also has a small, deliberately non-generalized regression test
+(`test_<domain>_service_binds_the_api_param_to_<domain>_api_specifically`) that pins its exact
 port type, kept alongside the generic check rather than folded into it. Complementary
 behavioral-contract tests (`tests/unit/test_write_confirm_contracts.py`,
 `tests/unit/test_write_payload_equivalence.py`) prove, for every registered write/delete MCP tool,
 that writes stay preview-only until confirmed, that no mutating call happens before confirmation or
 without the required write scope, and that the previewed and actually-sent payloads match.
 
-Migrating further domains through these same `app/` layers, one at a time, is deliberately
-ongoing — see this project's internal engineering-docs companion repository for the step-by-step
-migration process and per-migration history; it is intentionally not duplicated here, since this
-file describes only the current architecture.
+Every domain has been migrated through these same `app/` layers — `client.py` is now the thin
+facade described above, plus the two deliberate cross-service-orchestration exceptions. See this
+project's internal engineering-docs companion repository for the step-by-step migration process
+this used and its per-migration history; it is intentionally not duplicated here, since this file
+describes only the current architecture.
 
 ## Naming conventions
 
@@ -266,8 +260,8 @@ Typical read flow:
 
 1. MCP client calls a tool in `tools.py`
 2. tool input is validated and normalized
-3. `client.py` checks read gating and project scope
-4. OpenProject API is called
+3. the domain's Application Service (`app/services/`) checks read gating and project scope via `app/policies/`
+4. the domain's Adapter (`app/adapters/`) calls the OpenProject API through `HttpxTransport`
 5. raw payloads are normalized into dataclasses
 6. the MCP tool returns compact JSON
 
@@ -275,7 +269,7 @@ Typical write flow:
 
 1. MCP client calls a mutating tool in `tools.py`
 2. tool input is validated
-3. `client.py` checks project scope and write enablement
+3. the domain's Application Service checks project scope and write enablement via `app/policies/`
 4. write payload is prepared, often through OpenProject form endpoints
 5. validation preview is returned unless `confirm=true`
 6. confirmed write executes and the response is normalized
@@ -288,7 +282,7 @@ OpenProject exposes many writable schemas and allowed values through form endpoi
 - resolve allowed values for fields such as status, type, priority, activity, and custom fields
 - provide safer previews instead of blindly sending writes
 
-That is why a large part of the write path lives in `client.py` helpers instead of direct `POST` or `PATCH` calls.
+That is why a large part of the write path lives in each domain's Application Service instead of direct `POST` or `PATCH` calls.
 
 ## Safety model
 
@@ -366,7 +360,7 @@ Reasons this project stays flat:
 - simpler debugging during live MCP sessions
 - low ceremony for adding new endpoints
 
-The tradeoff is that `client.py` is large and policy-heavy. That is intentional for now: the sensitive logic stays centralized instead of being split across many files.
+The tradeoff is a layered structure (Services/Policies/Resolvers/Ports/Adapters under `app/`) rather than one large file — sensitive logic is centralized per-concern (all policy checks in `app/policies/`, all HTTP access behind `HttpxTransport`) instead of interleaved with each domain's business logic.
 
 ## See also
 
