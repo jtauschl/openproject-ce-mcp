@@ -7,7 +7,9 @@ development baseline.
 
 ---
 
-## [Unreleased 0.3.5]
+## [Unreleased]
+
+## 0.3.5 – 2026-08-02
 
 ### Added
 
