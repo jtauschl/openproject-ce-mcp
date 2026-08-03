@@ -680,7 +680,7 @@ def test_remove_client_config_backs_up_and_removes(monkeypatch, tmp_path) -> Non
     client = c.Client(
         "claude-code", "Claude Code", target, "json", lambda: True, "docs/claude.md", root_key="mcpServers"
     )
-    assert c._remove_client_config(client) is True
+    assert c._remove_client_config(client) is c._RemoveOutcome.REMOVED
     assert (tmp_path / ".claude.json.bak.fixed").exists()
     result = json.loads(target.read_text())
     assert "openproject" not in result["mcpServers"]
@@ -693,7 +693,53 @@ def test_remove_client_config_noop_when_no_entry(tmp_path) -> None:
     client = c.Client(
         "claude-code", "Claude Code", target, "json", lambda: True, "docs/claude.md", root_key="mcpServers"
     )
-    assert c._remove_client_config(client) is False
+    assert c._remove_client_config(client) is c._RemoveOutcome.UNCHANGED
+
+
+def test_remove_client_config_read_error_is_failed_not_crash(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".claude.json"
+    target.write_text(json.dumps({"mcpServers": {"openproject": {"command": "/x"}}}))
+    client = c.Client(
+        "claude-code", "Claude Code", target, "json", lambda: True, "docs/claude.md", root_key="mcpServers"
+    )
+
+    def _raise(*args, **kwargs):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "read_text", _raise)
+    assert c._remove_client_config(client) is c._RemoveOutcome.FAILED
+
+
+def test_remove_client_config_write_error_is_failed_not_crash(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".claude.json"
+    target.write_text(json.dumps({"mcpServers": {"openproject": {"command": "/x"}}}))
+    client = c.Client(
+        "claude-code", "Claude Code", target, "json", lambda: True, "docs/claude.md", root_key="mcpServers"
+    )
+    monkeypatch.setattr(c, "_backup", lambda p: None)
+
+    def _raise(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_text", _raise)
+    assert c._remove_client_config(client) is c._RemoveOutcome.FAILED
+
+
+def test_run_uninstall_reports_failure_and_exits_nonzero(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / ".claude.json"
+    target.write_text(json.dumps({"mcpServers": {"openproject": {"command": "/x"}}}))
+    client = c.Client(
+        "claude-code", "Claude Code", target, "json", lambda: True, "docs/claude.md", root_key="mcpServers"
+    )
+    monkeypatch.setattr(c, "_clients", lambda: [client])
+
+    def _raise(*args, **kwargs):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "read_text", _raise)
+    with pytest.raises(SystemExit) as exc:
+        c._run_uninstall()
+    assert exc.value.code == 1
 
 
 # ── run mode / command / config-path resolution (installed vs. clone) ───────────
@@ -750,7 +796,7 @@ def test_server_command_installed_last_resort_bare_name(monkeypatch, tmp_path: P
 def test_resolve_mcp_json_clone_uses_launch_directory(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PWD", str(tmp_path))
-    assert c._resolve_mcp_json(None, installed=False) == tmp_path / ".mcp.json"
+    assert c._resolve_mcp_json(None, installed=False) == tmp_path / c._GENERIC_EXAMPLE_FILENAME
 
 
 def test_project_cwd_prefers_pwd_for_uv_directory(monkeypatch, tmp_path: Path) -> None:
@@ -761,14 +807,14 @@ def test_project_cwd_prefers_pwd_for_uv_directory(monkeypatch, tmp_path: Path) -
     monkeypatch.chdir(repo_dir)
     monkeypatch.setenv("PWD", str(launch_dir))
     assert c._project_cwd() == launch_dir
-    assert c._resolve_mcp_json("local", installed=False) == launch_dir / ".mcp.json"
+    assert c._resolve_mcp_json("local", installed=False) == launch_dir / c._GENERIC_EXAMPLE_FILENAME
 
 
 def test_resolve_mcp_json_installed_project_dir_uses_cwd(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PWD", str(tmp_path))
     (tmp_path / ".git").mkdir()
-    assert c._resolve_mcp_json(None, installed=True) == tmp_path / ".mcp.json"
+    assert c._resolve_mcp_json(None, installed=True) == tmp_path / c._GENERIC_EXAMPLE_FILENAME
 
 
 def test_resolve_mcp_json_installed_bare_dir_is_global(monkeypatch, tmp_path: Path) -> None:
@@ -780,7 +826,7 @@ def test_resolve_mcp_json_installed_bare_dir_is_global(monkeypatch, tmp_path: Pa
 def test_resolve_mcp_json_local_forces_cwd(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PWD", str(tmp_path))
-    assert c._resolve_mcp_json("local", installed=True) == tmp_path / ".mcp.json"
+    assert c._resolve_mcp_json("local", installed=True) == tmp_path / c._GENERIC_EXAMPLE_FILENAME
 
 
 def test_resolve_mcp_json_global_is_none() -> None:
@@ -1120,7 +1166,7 @@ def test_uninstall_removes_openproject_from_project_keeps_github(tmp_path: Path)
         )
     )
     client = _json_client(tmp_path / ".claude.json", project_target=target)
-    assert c._remove_client_config(client, target=target) is True
+    assert c._remove_client_config(client, target=target) is c._RemoveOutcome.REMOVED
     data = json.loads(target.read_text())
     assert "openproject" not in data["mcpServers"]
     assert "github" in data["mcpServers"]
@@ -1413,7 +1459,8 @@ def test_main_project_prefill_does_not_use_global_values(monkeypatch, tmp_path: 
 
 
 def test_main_project_non_claude_writes_generic_mcp_json(monkeypatch, tmp_path: Path) -> None:
-    # Project scope with ONLY a non-Claude client (codex) → generic .mcp.json IS written.
+    # Project scope with ONLY a non-Claude client (codex) → generic example
+    # copy-source IS written, and Claude Code's own .mcp.json is never touched.
     codex = _codex_client(tmp_path / "g.toml", project_target=tmp_path / ".codex" / "config.toml")
     answers = {
         "Configure globally": "n",
@@ -1425,7 +1472,11 @@ def test_main_project_non_claude_writes_generic_mcp_json(monkeypatch, tmp_path: 
     }
     _run_main(monkeypatch, tmp_path, [codex], answers)
     assert (tmp_path / ".codex" / "config.toml").exists()
-    assert (tmp_path / ".mcp.json").exists(), "generic .mcp.json written when no Claude Code project"
+    example = tmp_path / c._GENERIC_EXAMPLE_FILENAME
+    assert example.exists(), "generic example copy-source written when no Claude Code project"
+    assert not (tmp_path / ".mcp.json").exists(), "must never write Claude Code's own file for a non-Claude selection"
+    example_env = json.loads(example.read_text())["mcpServers"]["openproject"]["env"]
+    assert example_env["OPENPROJECT_API_TOKEN"] == c._EXAMPLE_TOKEN_PLACEHOLDER
 
 
 def test_main_project_claude_no_duplicate_mcp_json(monkeypatch, tmp_path: Path) -> None:

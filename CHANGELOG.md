@@ -7,7 +7,19 @@ development baseline.
 
 ---
 
-## [Unreleased]
+## [Unreleased 0.3.6]
+
+### Fixed
+
+- **`configure`'s generic copy-source for MCP clients without native
+  support no longer writes to `.mcp.json`** — it now writes to a dedicated
+  `openproject-mcp.example.json` with a placeholder token, so a real API
+  token can no longer end up in a file meant only as a copy-source
+  reference.
+- **`configure`/`--uninstall` no longer crash with an unhandled traceback
+  on a filesystem error while writing or removing a client config.** A
+  failure on one target no longer aborts the remaining ones, and the
+  process exits non-zero with a summary of every failed target.
 
 ## 0.3.5 – 2026-08-02
 

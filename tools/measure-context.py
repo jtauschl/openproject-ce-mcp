@@ -47,6 +47,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from openproject_ce_mcp.client import OpenProjectClient  # noqa: E402
 from openproject_ce_mcp.config import Settings  # noqa: E402
+from openproject_ce_mcp.models import SortCriterion  # noqa: E402
 from openproject_ce_mcp.server import create_app  # noqa: E402
 from openproject_ce_mcp.tools import _to_payload  # noqa: E402
 
@@ -177,7 +178,11 @@ async def measure_response_sizes() -> None:
 
     raw_bytes = len(json.dumps(raw_collection))
 
-    result = await client.list_work_packages(project=project, limit=50)
+    # Sort by id desc so the work packages just created above are always
+    # within the first `limit` rows, regardless of how many other work
+    # packages already exist in this (disposable, never-cleaned) test
+    # project from earlier runs.
+    result = await client.list_work_packages(project=project, limit=50, sort_by=[SortCriterion("id", "desc")])
     rows = [r for r in result.results if r.id in created_ids]
     if len(rows) != len(created_ids):
         print(f"Warning: expected {len(created_ids)} rows, found {len(rows)} — numbers below are partial.\n")
