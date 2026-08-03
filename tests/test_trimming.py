@@ -2,9 +2,15 @@
 
 The seam (``_to_payload`` + the trimming ``tool()`` wrapper) turns a result
 dataclass into a trimmed plain dict: it drops ``payload`` on confirmed writes,
-``count``/``truncated`` on list results, keys tagged ``_hidden_keys``, and applies
-``select`` to result rows. Tools that return such results are registered with
-``structured_output=False`` so the trimmed dict is emitted verbatim.
+``count``/``truncated`` on list results, keys tagged ``_hidden_keys``, and
+applies ``select`` to result rows. ``next_offset`` is never dropped. Whether
+``None``-valued fields are elided (empty lists/dicts always survive) depends
+on ``elide_none``, derived by the ``tool()`` wrapper from whether the tool's
+own signature accepts ``select`` -- select-capable tools keep eliding None
+when a field isn't requested, select-incapable tools keep None explicit as
+``null`` since there's no way to ask for it back. Tools that return such
+results are registered with ``structured_output=False`` so the trimmed dict
+is emitted verbatim.
 """
 
 from __future__ import annotations
@@ -130,7 +136,9 @@ def _wp_write(*, confirmed: bool) -> m.WorkPackageWriteResult:
         project="OPM",
         payload={"subject": "x", "description": {"format": "markdown", "raw": "long text"}},
         validation_errors={},
-        result=None,
+        # A confirmed write's committed detail is non-None in practice (the
+        # server just returned it); preview writes have no detail yet.
+        result=_wp_detail(id=9, display_id="OPM-9") if confirmed else None,
     )
 
 
@@ -154,9 +162,66 @@ def test_returns_trimmable_false_for_single_entity_reads() -> None:
 
 def test_list_result_drops_count_and_truncated() -> None:
     out = _to_payload(_wp_list())
-    assert set(out) == {"offset", "limit", "total", "next_offset", "results"}
+    # next_offset is a pagination control field and is never elided, even when
+    # None (no next page) -- callers page until it comes back null, not until
+    # it's absent.
+    assert set(out) == {"offset", "limit", "total", "results", "next_offset"}
     assert "count" not in out
     assert "truncated" not in out
+    assert out["next_offset"] is None
+
+
+# ── None-valued fields elided, empty collections kept (Phase 1) ────────────────
+
+
+def test_none_valued_field_is_elided_when_elide_none_true() -> None:
+    detail = _wp_detail(priority=None, category=None, children=[])
+    out = _to_payload(detail)  # default elide_none=True
+    assert "priority" not in out
+    assert "category" not in out
+    # Empty list/dict fields are semantically "present but empty", distinct
+    # from None ("not applicable") — they must survive regardless.
+    assert out["children"] == []
+
+    write_result = _wp_write(confirmed=True)  # validation_errors={} on success
+    write_out = _to_payload(write_result)
+    assert write_out["validation_errors"] == {}
+
+
+def test_none_valued_field_kept_explicit_when_not_elide_none() -> None:
+    # Tools with no `select` parameter (single-entity reads, most write
+    # results) are registered with elide_none=False, since there is no way
+    # for a caller to ask for an elided field back. Simulate that policy
+    # directly on a select-incapable type (WorkPackageDetail has neither
+    # results/items/payload).
+    detail = _wp_detail(priority=None, category=None, children=[])
+    out = _to_payload(detail, elide_none=False)
+    assert out["priority"] is None
+    assert out["category"] is None
+    assert out["children"] == []
+
+
+def test_select_field_with_none_value_stays_explicit_null() -> None:
+    # Requesting a field via select guarantees its presence, even when its
+    # value is None -- this is how a caller distinguishes "unset" from "not
+    # requested". select only trims the top-level row list (see
+    # _to_payload's docstring), so this goes through a list result to
+    # actually exercise _select_fields.
+    row = _wp_summary(priority=None)
+    out = _to_payload(_wp_list(results=[row]), select=frozenset({"id", "priority"}))
+    selected_row = out["results"][0]
+    assert selected_row["priority"] is None
+    assert selected_row["id"] == row.id
+
+
+def test_unselected_none_field_still_absent_alongside_selected_null() -> None:
+    # Contrast case in the same row: a requested None field is explicit null,
+    # an unrequested None field remains fully absent.
+    row = _wp_summary(priority=None, assignee=None)
+    out = _to_payload(_wp_list(results=[row]), select=frozenset({"id", "priority"}))
+    selected_row = out["results"][0]
+    assert selected_row["priority"] is None
+    assert "assignee" not in selected_row
 
 
 # ── payload dropped only on confirmed writes ──────────────────────────────────
@@ -227,8 +292,9 @@ def test_batch_read_select_trims_nested_work_package_fields() -> None:
     out = _to_payload(_batch_read(), select=frozenset({"id", "subject"}))
     row = out["results"][0]
     assert sorted(row["work_package"]) == ["id", "subject"]
-    # wrapper fields always survive, regardless of select
-    assert sorted(row) == ["error", "id", "success", "work_package"]
+    # wrapper fields always survive regardless of select, but None-valued ones
+    # (error=None on this successful item) are still elided (Phase 1).
+    assert sorted(row) == ["id", "success", "work_package"]
 
 
 def test_batch_read_select_none_returns_full_detail() -> None:
@@ -284,9 +350,14 @@ def test_bulk_select_none_keeps_full_preview_payload() -> None:
 def test_bulk_select_trims_nested_result_fields() -> None:
     out = _to_payload(_bulk_write(), select=frozenset({"ready", "work_package_id"}))
     row = out["items"][0]
+    # work_package_id is None on this preview-write fixture, but selecting it
+    # now guarantees its presence as an explicit null.
     assert sorted(row["result"]) == ["ready", "work_package_id"]
-    # wrapper fields always survive, regardless of select
-    assert sorted(row) == ["error", "index", "result", "success"]
+    assert row["result"]["work_package_id"] is None
+    # wrapper fields always survive regardless of select, but None-valued ones
+    # (error=None on this successful item) are still elided -- wrapper fields
+    # are never select-targetable.
+    assert sorted(row) == ["index", "result", "success"]
 
 
 def test_bulk_select_skips_failed_items_without_crash() -> None:
@@ -450,11 +521,147 @@ async def test_bulk_create_work_packages_select_is_threaded_through_the_register
 
     assert isinstance(result, dict)  # proves _to_payload ran, not a raw dataclass
     row = result["items"][0]
+    # This is a confirm=False preview, so work_package_id is None (not yet
+    # created), but selecting it now guarantees its presence as an explicit
+    # null.
     assert sorted(row["result"]) == ["ready", "work_package_id"]
-    # wrapper fields always survive, regardless of select
-    assert sorted(k for k in row if k != "result") == ["error", "index", "success"]
+    assert row["result"]["work_package_id"] is None
+    # wrapper fields always survive regardless of select, but None-valued ones
+    # (error=None on this successful item) are still elided -- wrapper fields
+    # are never select-targetable.
+    assert sorted(k for k in row if k != "result") == ["index", "success"]
 
     await client.aclose()
+
+
+# ── elide_none is derived from the tool's own signature, not its return type ─
+#
+# 14 list tools (e.g. list_statuses) return a `results`-bearing dataclass but
+# have no `select` parameter at all -- a caller has no way to ask for an
+# elided field back. If elide_none were derived from the return type's shape
+# (row_field_name is not None) rather than the tool's real signature, these
+# would be wrongly treated as select-driven and their None fields would be
+# permanently unrecoverable. This must be proven end-to-end through the
+# registered wrapper, not just by calling _to_payload with a manually-set
+# flag, since only the wrapper actually inspects the tool's signature.
+
+
+@pytest.mark.asyncio
+async def test_select_less_list_tool_keeps_null_fields_through_registered_wrapper() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/statuses":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 1,
+                                "name": "New",
+                                "isDefault": True,
+                                "isClosed": False,
+                                # color omitted -> normalizes to None; there is
+                                # no `select` param on list_statuses, so this
+                                # None field must stay explicit, not elided.
+                                "position": 1,
+                            }
+                        ]
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _make_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    fn = _tools(create_app(settings))["list_statuses"].fn
+
+    result = await fn(_FakeContext(client))
+
+    assert isinstance(result, dict)  # proves _to_payload ran (has a results field)
+    assert "select" not in json.dumps(_tools(create_app(settings))["list_statuses"].parameters)
+    assert result["results"][0]["color"] is None
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_select_capable_list_tool_still_elides_none_without_select_through_registered_wrapper() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v3/work_packages":
+            return httpx.Response(
+                200,
+                json={
+                    "total": 1,
+                    "count": 1,
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 5,
+                                "subject": "Subject",
+                                # priority omitted -> normalizes to None; list_work_packages
+                                # has a `select` param, so without `select` this must still
+                                # be elided (unlike the select-less list_statuses above).
+                                "_links": {
+                                    "self": {"href": "/api/v3/work_packages/5", "title": "OPM-5"},
+                                    "type": {"title": "Task"},
+                                    "status": {"title": "New"},
+                                    "project": {"href": "/api/v3/projects/1", "title": "OPM"},
+                                },
+                            }
+                        ]
+                    },
+                    "_links": {},
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _make_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    fn = _tools(create_app(settings))["list_work_packages"].fn
+
+    result = await fn(_FakeContext(client))
+
+    assert isinstance(result, dict)
+    # Contrast: list_work_packages DOES expose select, so its baseline
+    # (no select passed) elide_none policy is True -- next_offset is still
+    # always present regardless.
+    assert "next_offset" in result
+    assert "priority" not in result["results"][0]
+    await client.aclose()
+    assert result["next_offset"] is None
+
+
+# ── elide_none is threaded unchanged through recursion, not re-derived ───────
+
+
+def test_select_capable_tool_without_select_still_elides_nested_row_none_fields() -> None:
+    # list_work_packages is select-capable; called without select, its nested
+    # WorkPackageSummary rows must keep eliding None fields (unchanged Rule 2
+    # behavior) -- elide_none is not re-evaluated per recursion level based on
+    # whether the nested type itself has a results/items field.
+    row = _wp_summary(priority=None)
+    out = _to_payload(_wp_list(results=[row]), elide_none=True)
+    assert "priority" not in out["results"][0]
+
+
+# ── next_offset survives on a type that does not inherit PageResult ──────────
+
+
+def test_notification_list_keeps_null_next_offset() -> None:
+    result = m.NotificationListResult(count=0, total=0, truncated=False, next_offset=None, results=[])
+    assert _to_payload(result)["next_offset"] is None
+
+
+# ── hidden fields take precedence over select ─────────────────────────────────
+
+
+def test_hidden_field_stays_absent_even_when_selected() -> None:
+    row = _wp_summary()
+    object.__setattr__(row, "_hidden_keys", frozenset({"priority"}))
+    out = _to_payload(_wp_list(results=[row]), select=frozenset({"id", "priority"}))
+    assert "priority" not in out["results"][0]
+    assert "id" in out["results"][0]
 
 
 # ── single-entity reads are trimmed only when hide-fields are active ─────────
@@ -469,3 +676,16 @@ def test_single_entity_read_trimmed_when_hide_config_active() -> None:
     tools = _tools(create_app(_make_settings(hidden_fields={"work_package": ("percentage_done",)})))
     # With hiding on, get_* results must be trimmable (dict output) to drop keys.
     assert tools["get_work_package"].output_schema is None
+
+
+def test_single_entity_read_keeps_other_null_fields_when_hide_config_active() -> None:
+    # get_work_package has no `select` parameter, so under hide_active it is
+    # routed through _to_payload with elide_none=False (Rule 1 applies) purely
+    # to drop the hidden key -- its other None fields must stay explicit, not
+    # newly start being elided as a side effect of field-hiding being on.
+    detail = _wp_detail(priority=None, category=None)
+    object.__setattr__(detail, "_hidden_keys", frozenset({"lock_version"}))
+    out = _to_payload(detail, elide_none=False)
+    assert "lock_version" not in out
+    assert out["priority"] is None
+    assert out["category"] is None

@@ -67,10 +67,31 @@ the authority** — if a tool exists it is allowed; if it does not, it is not.
 
 List and write results are trimmed for context economy: list results omit the
 derivable `count`/`truncated` fields, and a confirmed write omits the echoed
-request `payload` (its normalized `result` carries the same information). To read
-only the fields you need, pass `select` (a list of field names) to
-`list_work_packages` / `search_work_packages` / `list_projects` / `list_users`;
-an invalid name returns the allowed set.
+request `payload` (its normalized `result` carries the same information). Where
+a tool exposes `select` in its input schema, pass it (a list of field names) to
+read only the fields you need; an invalid name returns the allowed set.
+
+Trimmed list, write, batch, and bulk results from tools that expose `select`
+normally omit fields whose value is `null` when `select` is not given; empty
+lists and objects remain. Where a tool exposes `select`, request a field
+explicitly to keep it present even when its value is `null` — this is how to
+distinguish an unset value from a value that was never requested. An
+unrequested or server-hidden field is omitted entirely. Tools without a
+`select` parameter retain `null`-valued dataclass fields as explicit `null`;
+the other documented trimming rules still apply (e.g. `count`/`truncated` are
+still dropped from list results, a confirmed write's `payload` is still
+dropped, and server-hidden keys are still removed).
+
+For a paginated tool (its result carries a `next_offset` field at all — not
+every list tool does; a few return their full unpaginated collection instead),
+`next_offset` is always present in the response as an integer or `null`,
+regardless of `select` or the tool's trimming behavior — page until it is
+`null`, not until it is absent.
+
+With `select`, a failed batch-read or bulk-write item retains its nested
+`work_package` / `result` as an explicit `null` (inspect the sibling `error`
+field to see why); without `select`, that same nested field would be omitted
+like any other `null` value.
 
 ## Clearing an assigned field
 

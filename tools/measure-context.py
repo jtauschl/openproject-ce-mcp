@@ -2,7 +2,7 @@
 """Measure the context/token cost this MCP actually produces, right now.
 
 Backs the numbers in docs/context-efficiency.md (and the short summary table
-in README.md's "How it works" section). Two parts:
+in README.md's "How it works" section). Three parts:
 
 1. **Tool catalog size** (`tools/list`) — pure code, no live instance needed.
    Builds the app with every write scope enabled (the worst case) and, for
@@ -21,8 +21,8 @@ in README.md's "How it works" section). Two parts:
     OPENPROJECT_TEST_PROJECT=TST \\
     python tools/measure-context.py
 
-   If those env vars are unset, part 2 is skipped with a message — part 1
-   still runs, since it needs no live data.
+   If those env vars are unset, parts 2 and 3 are skipped with a message —
+   part 1 still runs, since it needs no live data.
 
    Part 2 creates three representative work packages in the target project
    (realistic subjects/descriptions, not empty seed data) for the list/read/
@@ -30,9 +30,21 @@ in README.md's "How it works" section). Two parts:
    measurements. It does not delete any of them afterward — the Docker test
    project is disposable by convention; don't point this at a real instance.
 
-Token counts throughout are the same bytes/4 approximation used elsewhere in
-this project's docs — a rough but consistent proxy, not an exact tokenizer
-count.
+3. **Cost of null-vs-absent distinguishability** (OPM-373 trade-off) — reuses
+   the live rows from part 2 (real, uneven None-field population, not an
+   invented distribution) to measure the token cost of keeping `None` fields
+   explicit instead of eliding them: `elide_none`, derived per-tool from
+   whether it accepts `select`, plus `next_offset` always being present, make
+   some responses slightly *larger* than pure elision would, in exchange for
+   callers being able to tell "unset" apart from "not returned". This is a
+   deliberate, measured trade-off, not a regression — see part 2's savings
+   numbers for what it sits alongside.
+
+Token counts use tiktoken's `cl100k_base` encoding (the GPT-4-family
+tokenizer) as a real-tokenizer stand-in — no public tokenizer for Claude
+models exists, so this is a consistent, reproducible approximation, not an
+exact Claude token count. Requires the `measure` extra (`uv sync --extra
+measure`, or `pip install openproject-ce-mcp[measure]`).
 """
 
 from __future__ import annotations
@@ -42,13 +54,24 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import tiktoken  # noqa: E402
+
 from openproject_ce_mcp.client import OpenProjectClient  # noqa: E402
 from openproject_ce_mcp.config import Settings  # noqa: E402
+from openproject_ce_mcp.models import SortCriterion  # noqa: E402
 from openproject_ce_mcp.presentation import _to_payload  # noqa: E402
 from openproject_ce_mcp.server import CE_INSTRUCTIONS, create_app  # noqa: E402
+
+_ENCODING = tiktoken.get_encoding("cl100k_base")
+
+
+def _tokens(raw: str) -> int:
+    return len(_ENCODING.encode(raw))
+
 
 # A substring of CE_INSTRUCTIONS distinctive enough that a false-positive match
 # elsewhere is implausible -- used by measure_tools_list's duplication check below.
@@ -121,7 +144,7 @@ async def measure_tools_list() -> None:
         tools = await app.list_tools()
         payload = [t.model_dump(exclude_none=True, mode="json") for t in tools]
         raw = json.dumps({"tools": payload})
-        print(f"{label}: {len(tools)} tools, {len(raw)} bytes, ~{len(raw) // 4} tokens")
+        print(f"{label}: {len(tools)} tools, {len(raw)} bytes, ~{_tokens(raw)} tokens")
     print()
 
     # Live Codex tool discovery reportedly saw the server-level CE
@@ -139,25 +162,27 @@ async def measure_tools_list() -> None:
     server_instructions = app._mcp_server.instructions  # type: ignore[attr-defined]
     duplicated_into = [t["name"] for t in payload if _CE_INSTRUCTIONS_NEEDLE in (t.get("description") or "")]
     raw = json.dumps({"tools": payload})
-    hypothetical = len(raw) + len(tools) * len(CE_INSTRUCTIONS)
+    raw_tokens = _tokens(raw)
+    hypothetical_tokens = raw_tokens + len(tools) * _tokens(CE_INSTRUCTIONS)
     print(f"server.instructions is CE_INSTRUCTIONS: {server_instructions == CE_INSTRUCTIONS}")
     print(f"tools whose description duplicates it: {duplicated_into or 'none'}")
     print(
-        f"tools/list as sent by this server: {len(raw)} bytes, ~{len(raw) // 4} tokens "
+        f"tools/list as sent by this server: {len(raw)} bytes, ~{raw_tokens} tokens "
         f"(if a client duplicated instructions into every one of {len(tools)} tool descriptions "
-        f"instead, that would be ~{hypothetical // 4} tokens, {round(hypothetical / len(raw), 1)}x)"
+        f"instead, that would be ~{hypothetical_tokens} tokens, {round(hypothetical_tokens / raw_tokens, 1)}x)"
     )
     print()
 
 
-def _report(label: str, raw_bytes: int, mcp_bytes: int) -> None:
-    pct = round((1 - mcp_bytes / raw_bytes) * 100) if raw_bytes else 0
+def _report(label: str, raw_json: str, mcp_json: str) -> None:
+    raw_tokens, mcp_tokens = _tokens(raw_json), _tokens(mcp_json)
+    pct = round((1 - mcp_tokens / raw_tokens) * 100) if raw_tokens else 0
     print(f"{label}:")
-    print(f"  Raw: {raw_bytes} bytes, ~{raw_bytes // 4} tokens")
-    print(f"  MCP: {mcp_bytes} bytes, ~{mcp_bytes // 4} tokens (-{pct}% vs. raw)\n")
+    print(f"  Raw: {len(raw_json)} bytes, ~{raw_tokens} tokens")
+    print(f"  MCP: {len(mcp_json)} bytes, ~{mcp_tokens} tokens (-{pct}% vs. raw)\n")
 
 
-async def measure_response_sizes() -> None:
+async def measure_response_sizes() -> list | None:
     base_url = os.environ.get("OPENPROJECT_BASE_URL")
     token = os.environ.get("OPENPROJECT_API_TOKEN")
     project = os.environ.get("OPENPROJECT_TEST_PROJECT", "TST")
@@ -168,7 +193,7 @@ async def measure_response_sizes() -> None:
             "Skipped: set OPENPROJECT_BASE_URL / OPENPROJECT_API_TOKEN "
             "(docker/test/up.sh 17, never production) to run this part.\n"
         )
-        return
+        return None
 
     import httpx
 
@@ -204,27 +229,38 @@ async def measure_response_sizes() -> None:
         resp.raise_for_status()
         raw_collection = resp.json()
 
-    raw_bytes = len(json.dumps(raw_collection))
+    raw_json = json.dumps(raw_collection)
+    raw_tokens = _tokens(raw_json)
 
-    result = await client.list_work_packages(project=project, limit=50)
+    # Sort by id desc so the work packages just created above are always
+    # within the first `limit` rows, regardless of how many other work
+    # packages already exist in this (disposable, never-cleaned) test
+    # project from earlier runs.
+    result = await client.list_work_packages(project=project, limit=50, sort_by=[SortCriterion("id", "desc")])
     rows = [r for r in result.results if r.id in created_ids]
     if len(rows) != len(created_ids):
         print(f"Warning: expected {len(created_ids)} rows, found {len(rows)} — numbers below are partial.\n")
 
-    full_bytes = len(json.dumps({"results": [_to_payload(r) for r in rows]}))
-    select_fields = ["id", "display_id", "subject", "status", "assignee"]
-    select_bytes = len(
-        json.dumps({"results": [{k: v for k, v in _to_payload(r).items() if k in select_fields} for r in rows]})
-    )
+    full_json = json.dumps({"results": [_to_payload(r) for r in rows]})
+    full_tokens = _tokens(full_json)
+    # Use the real _select_fields() path (same as a caller passing `select`
+    # would exercise via the registered wrapper) rather than filtering an
+    # already-fully-serialized row after the fact -- filtering post-hoc would
+    # silently miss any None-valued field among select_fields, since it's
+    # already gone from _to_payload(r)'s default (elide_none=True) output
+    # before the filter ever runs.
+    select_fields = frozenset({"id", "display_id", "subject", "status", "assignee"})
+    select_json = json.dumps({"results": [_select_row(r, select_fields) for r in rows]})
+    select_tokens = _tokens(select_json)
 
-    print(f"Raw OpenProject REST API v3 (HAL), {len(rows)} rows: {raw_bytes} bytes, ~{raw_bytes // 4} tokens")
+    print(f"Raw OpenProject REST API v3 (HAL), {len(rows)} rows: {len(raw_json)} bytes, ~{raw_tokens} tokens")
     print(
-        f"list_work_packages (MCP), {len(rows)} rows: {full_bytes} bytes, ~{full_bytes // 4} tokens "
-        f"(-{round((1 - full_bytes / raw_bytes) * 100)}% vs. raw)"
+        f"list_work_packages (MCP), {len(rows)} rows: {len(full_json)} bytes, ~{full_tokens} tokens "
+        f"(-{round((1 - full_tokens / raw_tokens) * 100)}% vs. raw)"
     )
     print(
-        f"list_work_packages with select (5 fields): {select_bytes} bytes, ~{select_bytes // 4} tokens "
-        f"(-{round((1 - select_bytes / raw_bytes) * 100)}% vs. raw)"
+        f"list_work_packages with select (5 fields): {len(select_json)} bytes, ~{select_tokens} tokens "
+        f"(-{round((1 - select_tokens / raw_tokens) * 100)}% vs. raw)"
     )
     print(
         f"\nCreated work packages {created_ids} in project '{project}' for this measurement; "
@@ -237,14 +273,14 @@ async def measure_response_sizes() -> None:
         single_id = created_ids[0]
         resp = await http.get(f"/api/v3/work_packages/{single_id}")
         resp.raise_for_status()
-        raw_single_bytes = len(json.dumps(resp.json()))
+        raw_single_json = json.dumps(resp.json())
         lock_version = resp.json()["lockVersion"]
 
         detail = await client.get_work_package(single_id)
         _report(
             "get_work_package (single read)",
-            raw_single_bytes,
-            len(json.dumps(_to_payload(detail))),
+            raw_single_json,
+            json.dumps(_to_payload(detail, elide_none=False)),
         )
 
         # --- Search: search_work_packages vs. GET /work_packages?filters=subject_or_id ---
@@ -258,13 +294,13 @@ async def measure_response_sizes() -> None:
         )
         resp = await http.get("/api/v3/work_packages", params={"filters": raw_filters})
         resp.raise_for_status()
-        raw_search_bytes = len(json.dumps(resp.json()))
+        raw_search_json = json.dumps(resp.json())
 
         search_result = await client.search_work_packages(search=query, project=project)
         _report(
             f"search_work_packages ({len(search_result.results)} rows)",
-            raw_search_bytes,
-            len(json.dumps({"results": [_to_payload(r) for r in search_result.results]})),
+            raw_search_json,
+            json.dumps({"results": [_to_payload(r) for r in search_result.results]}),
         )
 
         # --- Confirmed single update: update_work_package vs. PATCH /work_packages/{id} ---
@@ -273,13 +309,15 @@ async def measure_response_sizes() -> None:
             json={"lockVersion": lock_version, "percentageDone": 40},
         )
         resp.raise_for_status()
-        raw_update_bytes = len(json.dumps(resp.json()))
+        raw_update_json = json.dumps(resp.json())
 
         update_result = await client.update_work_package(work_package_id=single_id, percentage_done=60, confirm=True)
         _report(
             "update_work_package (confirmed write)",
-            raw_update_bytes,
-            len(json.dumps(_to_payload(update_result))),
+            raw_update_json,
+            # update_work_package has no `select` param, so its real registered
+            # wrapper uses elide_none=False -- match that here.
+            json.dumps(_to_payload(update_result, elide_none=False)),
         )
 
         # --- Bulk create ×5: bulk_create_work_packages vs. 5x POST /work_packages ---
@@ -287,14 +325,14 @@ async def measure_response_sizes() -> None:
         # (same type as SAMPLE_WORK_PACKAGES) — avoids a name/id mismatch between the
         # raw and MCP creation paths.
         bulk_items = [{"project": project, "type": "7", "subject": f"Bulk-created sample {i}"} for i in range(1, 6)]
-        raw_bulk_create_bytes = 0
+        raw_bulk_create_parts = []
         for item in bulk_items:
             resp = await http.post(
                 f"/api/v3/projects/{project}/work_packages",
                 json={"subject": item["subject"], "_links": {"type": {"href": "/api/v3/types/7"}}},
             )
             resp.raise_for_status()
-            raw_bulk_create_bytes += len(json.dumps(resp.json()))
+            raw_bulk_create_parts.append(resp.json())
 
         bulk_create_result = await client.bulk_create_work_packages(items=bulk_items, confirm=True)
         created_ids.extend(
@@ -304,13 +342,13 @@ async def measure_response_sizes() -> None:
         )
         _report(
             f"bulk_create_work_packages (x{len(bulk_items)}, vs. {len(bulk_items)} individual raw POSTs)",
-            raw_bulk_create_bytes,
-            len(json.dumps(_to_payload(bulk_create_result))),
+            json.dumps(raw_bulk_create_parts),
+            json.dumps(_to_payload(bulk_create_result)),
         )
 
         # --- Bulk update ×5: bulk_update_work_packages vs. 5x PATCH /work_packages/{id} ---
         bulk_target_ids = created_ids[-len(bulk_items) :]
-        raw_bulk_update_bytes = 0
+        raw_bulk_update_parts = []
         for wp_id in bulk_target_ids:
             resp = await http.get(f"/api/v3/work_packages/{wp_id}")
             resp.raise_for_status()
@@ -319,22 +357,110 @@ async def measure_response_sizes() -> None:
                 f"/api/v3/work_packages/{wp_id}", json={"lockVersion": wp_lock_version, "percentageDone": 20}
             )
             resp.raise_for_status()
-            raw_bulk_update_bytes += len(json.dumps(resp.json()))
+            raw_bulk_update_parts.append(resp.json())
 
         bulk_update_items = [{"work_package_id": wp_id, "percentage_done": 30} for wp_id in bulk_target_ids]
         bulk_update_result = await client.bulk_update_work_packages(items=bulk_update_items, confirm=True)
         _report(
             f"bulk_update_work_packages (x{len(bulk_target_ids)}, vs. {len(bulk_target_ids)} individual raw PATCHes)",
-            raw_bulk_update_bytes,
-            len(json.dumps(_to_payload(bulk_update_result))),
+            json.dumps(raw_bulk_update_parts),
+            json.dumps(_to_payload(bulk_update_result)),
         )
 
+    # First page (up to OPENPROJECT_MAX_PAGE_SIZE, 50 by default -- `limit`
+    # above is requested but capped server-side) of the project's work
+    # packages (seeded + created above), for Part 3 -- a much richer, real
+    # None-field distribution than just the handful of rows created earlier
+    # in this function. Not the complete project (that would need to page
+    # until next_offset is None), but plenty for a representative sample.
+    page_result = await client.list_work_packages(project=project, limit=200)
+
     await client.aclose()
+    return list(page_result.results)
+
+
+# ── Part 3: cost of null-vs-absent distinguishability (OPM-373) ──────────────
+#
+# elide_none (derived per-tool from whether it accepts `select`) and the
+# always-present next_offset are a deliberate trade-off, not a saving: some
+# responses get slightly larger so a caller can tell "field is unset" apart
+# from "field was never returned". This section measures that cost against
+# the first page of real seeded rows fetched by measure_response_sizes (its
+# `rows` return value -- NOT the same 3 rows shown in that function's own
+# printed table, which only covers the handful of work packages it created;
+# see that function's docstring comment for the exact fetch), rather than
+# synthetic fixtures with an invented None distribution -- a made-up 50/50
+# split would not tell you anything about the actual cost on real data, since
+# real field-population patterns are uneven (e.g. `responsible` is unset on
+# nearly every seeded work package here, `priority` on very few). Requires
+# the same live instance as measure_response_sizes.
+#
+# Two angles, BOTH counterfactual comparisons against a hypothetical
+# always-elide policy that never actually shipped as this diff's behavior
+# (not a real before/after of a released version -- see
+# docs/context-efficiency.md's framing of these numbers): (a) what
+# elide_none=True (maximal elision) would produce vs. elide_none=False (the
+# real registered policy for any tool with no `select` parameter, e.g.
+# list_statuses -- simulated here on work-package rows since they have a much
+# richer None distribution than this instance's 14 fully-populated statuses);
+# (b) a `select` that includes a field which is None on some real rows, with
+# that field dropped (maximal elision, again hypothetical) vs. kept as
+# explicit null (the real, registered `_select_fields` behavior).
+
+
+def measure_null_distinguishability_cost(rows: list) -> None:
+    print("=== Cost of null-vs-absent distinguishability (OPM-373 trade-off) ===\n")
+    print(f"Measured on {len(rows)} real seeded work packages (first page, see script docstring).\n")
+
+    # (a) elide_none=True (hypothetical maximal-elision policy) vs. False (the
+    # real registered policy for a select-less tool) on the SAME rows, full
+    # field set.
+    elided_json = json.dumps({"results": [_to_payload(r, elide_none=True) for r in rows]})
+    explicit_json = json.dumps({"results": [_to_payload(r, elide_none=False) for r in rows]})
+    elided_tokens, explicit_tokens = _tokens(elided_json), _tokens(explicit_json)
+    delta_pct = round((explicit_tokens / elided_tokens - 1) * 100) if elided_tokens else 0
+    print(f"Full rows, simulating a select-less tool (e.g. list_statuses's Rule 1, {len(rows)} rows):")
+    print(f"  Maximal elision (hypothetical, not this tool's real policy): ~{elided_tokens} tokens")
+    print(f"  Explicit null (real registered behavior, elide_none=False): ~{explicit_tokens} tokens (+{delta_pct}%)\n")
+
+    # (b) select-capable tool, `select` includes a field that's None on some
+    # real rows (responsible is unset on most seeded work packages here).
+    select_fields = frozenset({"id", "subject", "responsible"})
+    selected = [_select_row(r, select_fields) for r in rows]
+    dropped_json = json.dumps({"results": [{k: v for k, v in row.items() if v is not None} for row in selected]})
+    kept_json = json.dumps({"results": selected})
+    dropped_tokens, kept_tokens = _tokens(dropped_json), _tokens(kept_json)
+    delta_pct = round((kept_tokens / dropped_tokens - 1) * 100) if dropped_tokens else 0
+    none_count = sum(1 for row in selected if row.get("responsible") is None)
+    print(
+        f"list_work_packages with select=[id,subject,responsible] ({len(rows)} rows, {none_count} with responsible=None):"
+    )
+    print(f"  Selected None dropped (hypothetical maximal elision): ~{dropped_tokens} tokens")
+    print(f"  Selected None kept as explicit null (real registered behavior): ~{kept_tokens} tokens (+{delta_pct}%)\n")
+
+    print(
+        "Both deltas are the accepted cost of a caller being able to tell "
+        "'unset' apart from 'not returned' -- see docs/context-efficiency.md "
+        "for the accompanying savings this trade-off sits alongside.\n"
+    )
+
+
+def _select_row(row: Any, select_fields: frozenset[str]) -> dict:
+    from openproject_ce_mcp.presentation import _select_fields
+
+    # elide_none=True: matches list_work_packages's real registered policy
+    # (it has a `select` param, so elide_none is derived as True).
+    return _select_fields(row, select_fields, elide_none=True)
 
 
 async def main() -> None:
     await measure_tools_list()
-    await measure_response_sizes()
+    rows = await measure_response_sizes()
+    if rows is not None:
+        measure_null_distinguishability_cost(rows)
+    else:
+        print("=== Cost of null-vs-absent distinguishability (OPM-373 trade-off) ===\n")
+        print("Skipped: needs the same live instance as the response-size table above.\n")
 
 
 if __name__ == "__main__":

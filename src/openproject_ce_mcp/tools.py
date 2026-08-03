@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import functools
+import inspect
 import re
 from collections.abc import Callable
 from dataclasses import fields as dataclass_fields
@@ -572,11 +573,18 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
             return mcp.tool()(_categorize_tool_errors(fn))
 
         wrapped = _categorize_tool_errors(fn)
+        # Whether this tool's own signature accepts `select` -- NOT whether its
+        # return model happens to carry a `results`/`items` field. Some list
+        # tools (e.g. list_statuses) return a `results`-bearing model but have
+        # no `select` parameter at all, so relying on the return type alone
+        # would wrongly treat them as select-driven and keep eliding their
+        # None fields with no way for a caller to ask for them back.
+        elide_none = "select" in inspect.signature(fn).parameters
 
         @functools.wraps(wrapped)
         async def trimming(*args, **kwargs):
             select = _normalize_select(kwargs.get("select"))
-            return _to_payload(await wrapped(*args, **kwargs), select=select)
+            return _to_payload(await wrapped(*args, **kwargs), select=select, elide_none=elide_none)
 
         return mcp.tool(structured_output=False)(trimming)
 
