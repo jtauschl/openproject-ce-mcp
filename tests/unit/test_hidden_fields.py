@@ -651,7 +651,9 @@ async def test_hidden_version_description_also_suppresses_truncation_metadata() 
     serialized_detail = _to_payload(detail)
     assert "description" not in serialized_detail  # dropped by name, like updated_at above
     assert serialized_detail["description_truncated"] is False
-    assert serialized_detail["description_length"] is None
+    # description_length is None on the object (asserted above) and therefore
+    # elided from the payload entirely (Phase 1 None-elision), not emitted as null.
+    assert "description_length" not in serialized_detail
 
     page = await client.list_versions()
     summary = page.results[0]

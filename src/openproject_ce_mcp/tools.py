@@ -377,6 +377,76 @@ WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
 # (its own bespoke AND-gate below, independent of project scope).
 _PROJECT_SCOPED_WRITE_SCOPES: frozenset[str] = frozenset({"project", "work_package", "membership", "version", "board"})
 
+# Read-side counterpart, but at TOOL granularity rather than scope granularity:
+# unlike the write side, a read scope's tools are not uniformly project-scoped —
+# e.g. "project" mixes list_projects/get_project (project-scoped) with
+# get_instance_configuration (instance-wide, no project dependency at all).
+# Each name below was verified against its Service implementation (an
+# ensure_*_read_allowed/ensure_project_link_allowed call, a required `project`
+# parameter, or an early-empty-return guard on settings.read_projects) — not
+# inferred from its home scope. Notable non-obvious cases: get_job_status IS
+# project-scoped (a projectless job is denied under a restrictive allowlist,
+# app/policies/scope.py's ensure_project_link_allowed_if_present);
+# list_capabilities IS project-scoped despite sharing a service with the
+# global list_actions (every record is filtered by its context link,
+# app/services/action_capability_service.py); list_relations IS project-scoped
+# despite an "instance-wide" sounding docstring (endpoints filtered against
+# read_projects, app/services/relation_service.py). Gates registration only —
+# write_projects plays no role here, and the runtime access check in the
+# Service/Policy layer (fail-closed on an empty allowlist) is unaffected by
+# this constant; it only prevents registering a tool that could never return
+# anything useful, saving tool-definition context.
+_PROJECT_SCOPED_READ_TOOLS: frozenset[str] = frozenset(
+    {
+        "list_projects",
+        "get_project",
+        "get_project_admin_context",
+        "get_project_configuration",
+        "list_sprints",
+        "list_project_sprints",
+        "get_sprint",
+        "list_documents",
+        "get_document",
+        "list_news",
+        "get_news",
+        "get_wiki_page",
+        "list_views",
+        "get_view",
+        "list_grids",
+        "get_grid",
+        "list_categories",
+        "get_category",
+        "get_project_phase",
+        "get_my_project_access",
+        "get_project_work_package_context",
+        "get_job_status",
+        "list_work_packages",
+        "search_work_packages",
+        "get_work_package",
+        "get_work_packages",
+        "list_my_open_work_packages",
+        "get_work_package_activities",
+        "list_work_package_reactions",
+        "list_reminders",
+        "get_work_package_relations",
+        "list_work_package_attachments",
+        "get_attachment",
+        "list_work_package_file_links",
+        "list_work_package_watchers",
+        "list_time_entry_activities",
+        "list_time_entries",
+        "get_time_entry",
+        "list_relations",
+        "list_project_memberships",
+        "get_membership",
+        "list_capabilities",
+        "list_versions",
+        "get_version",
+        "list_boards",
+        "get_board",
+    }
+)
+
 # create_work_package_attachment is NOT in WRITE_TOOLS_BY_SCOPE["work_package"]
 # above: it needs work_package write AND a configured OPENPROJECT_ATTACHMENT_ROOT
 # — an empty root disables local uploads entirely (client.py's
@@ -418,6 +488,11 @@ def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
     NOT use this function as their expected value — they compute expectations
     independently from the classification constants above, so a bug in the
     selection logic here cannot silently pass by comparing itself to itself.
+
+    Read-side registration additionally requires a non-empty read_projects
+    allowlist for tools in _PROJECT_SCOPED_READ_TOOLS (write_projects is
+    irrelevant to reads); the write side has its own, independent
+    project_scope_usable gate further below.
     """
     enabled: list[str] = []
     seen: set[str] = set()
@@ -431,9 +506,24 @@ def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
     def additional_scopes_ok(name: str) -> bool:
         return all(settings.read_enabled(scope) for scope in ADDITIONAL_READ_SCOPES_BY_TOOL.get(name, ()))
 
+    # A project-scoped read tool (_PROJECT_SCOPED_READ_TOOLS) is only worth
+    # registering when read_projects is non-empty — with an empty allowlist it
+    # can only ever return an empty result or a PermissionDeniedError. This is
+    # deliberately gated on read_projects alone, never write_projects: reading
+    # is independent of write authorization in both directions (an empty write
+    # allowlist must not hide readable projects; a non-empty write allowlist
+    # must not substitute for missing read authorization).
+    read_project_scope_usable = bool(settings.read_projects)
     for scope, names in READ_TOOLS_BY_SCOPE.items():
         if settings.read_enabled(scope):
-            include(tuple(name for name in names if additional_scopes_ok(name)))
+            include(
+                tuple(
+                    name
+                    for name in names
+                    if additional_scopes_ok(name)
+                    and (name not in _PROJECT_SCOPED_READ_TOOLS or read_project_scope_usable)
+                )
+            )
 
     project_scope_usable = bool(settings.read_projects) and bool(settings.write_projects)
     for scope, names in WRITE_TOOLS_BY_SCOPE.items():

@@ -95,13 +95,18 @@ support.
 - **`update_reminder`/`delete_reminder`'s internal reminder lookup no
   longer risks looping forever** if the reminders collection endpoint
   ignores pagination parameters.
+- **A project-scoped read tool (e.g. `list_work_packages`, `get_project`)
+  is no longer registered when `OPENPROJECT_READ_PROJECTS` is empty.**
+  Previously it stayed in the tool catalog even though it could only ever
+  return an empty result or a permission error with no project allowlist
+  granted; write tools already worked this way.
 
 ### Docs
 
 - Added the missing "Notes" section to the Cursor client guide.
-- Documented the monorepo/umbrella-directory case where `configure` writes
-  to the wrong place relative to where an AI client actually opens its
-  workspace.
+- Documented that `configure` must be run from the same directory your AI
+  client opens as its workspace, so a project-scoped config actually lands
+  where the client looks for it.
 - Clarified that the VS Code/Copilot guide is about VS Code's own MCP host,
   not a standalone "GitHub MCP server".
 

@@ -198,8 +198,14 @@ def test_membership_read_false_removes_home_group_plus_dependent_tools() -> None
     home group is elsewhere but that additionally require membership read
     (e.g. get_my_project_access, home: project) disappear too, while tools
     with no such dependency stay untouched."""
-    default = set(tools.enabled_tool_names(make_settings()))
-    without_membership = set(tools.enabled_tool_names(make_settings(enable_membership_read=False)))
+    # read_projects=("*",) so project-scoped tools (list_projects etc.) are
+    # actually registered in both settings below — otherwise this test would
+    # pass for the wrong reason (the empty-allowlist gate hiding them, not the
+    # membership-read flag this test is actually about).
+    default = set(tools.enabled_tool_names(make_settings(read_projects=("*",))))
+    without_membership = set(
+        tools.enabled_tool_names(make_settings(enable_membership_read=False, read_projects=("*",)))
+    )
     removed = default - without_membership
 
     assert set(tools.READ_TOOLS_BY_SCOPE["membership"]) <= removed
@@ -223,6 +229,7 @@ def test_single_read_group_active_still_hides_compound_scope_tools() -> None:
                 enable_membership_read=False,
                 enable_version_read=False,
                 enable_board_read=False,
+                read_projects=("*",),  # list_projects is project-scoped, needs a non-empty allowlist
             )
         )
     )
@@ -394,6 +401,93 @@ def test_project_scoped_write_tools_need_both_allowlists_non_empty(scope: str) -
     assert scoped_tools.isdisjoint(only_read)
     assert scoped_tools.isdisjoint(only_write)
     assert scoped_tools <= set(both)
+
+
+# ── project-scope read-visibility gate — a project-scoped read tool
+# (_PROJECT_SCOPED_READ_TOOLS) is registered only when OPENPROJECT_READ_PROJECTS
+# is non-empty; unlike the write side this is gated on read_projects alone,
+# never write_projects (reading is independent of write authorization).
+
+_FIVE_PROJECT_SCOPE_NAMES = ("project", "work_package", "membership", "version", "board")
+
+# Independently hardcoded, NOT derived from tools._PROJECT_SCOPED_READ_TOOLS —
+# per this module's own convention (see module docstring), so a project-scoped
+# tool accidentally left out of that constant is caught by drift here, rather
+# than the test silently agreeing with a wrong implementation.
+_EXPECTED_GLOBAL_READ_TOOLS = frozenset(
+    {
+        "list_project_phase_definitions",
+        "get_project_phase_definition",
+        "get_instance_configuration",
+        "list_statuses",
+        "get_status",
+        "list_priorities",
+        "get_priority",
+        "list_types",
+        "get_type",
+        "list_roles",
+        "get_current_user",
+        "list_actions",
+    }
+)
+
+
+def _all_five_scope_tools() -> set[str]:
+    return {name for scope in _FIVE_PROJECT_SCOPE_NAMES for name in tools.READ_TOOLS_BY_SCOPE[scope]}
+
+
+def test_project_scoped_and_global_read_tools_partition_the_five_scopes() -> None:
+    all_five_scope_tools = _all_five_scope_tools()
+    assert len(all_five_scope_tools) == 58  # no name overlap between the 5 scopes
+    assert _EXPECTED_GLOBAL_READ_TOOLS <= all_five_scope_tools
+    assert tools._PROJECT_SCOPED_READ_TOOLS == all_five_scope_tools - _EXPECTED_GLOBAL_READ_TOOLS
+    assert tools._PROJECT_SCOPED_READ_TOOLS.isdisjoint(_EXPECTED_GLOBAL_READ_TOOLS)
+    assert len(tools._PROJECT_SCOPED_READ_TOOLS) == 46
+
+
+def test_project_scoped_read_tools_absent_when_read_projects_empty() -> None:
+    registered = tools.enabled_tool_names(make_settings(**ALL_READ_ON, read_projects=(), write_projects=()))
+    registered_from_five_scopes = _all_five_scope_tools() & set(registered)
+    assert registered_from_five_scopes == _EXPECTED_GLOBAL_READ_TOOLS
+
+
+@pytest.mark.parametrize(
+    ("read_projects", "write_projects", "project_scoped_tools_expected"),
+    [
+        ((), ("*",), False),  # empty read, full write allowlist -> still hidden
+        (("*",), (), True),  # full read, empty write allowlist -> still visible
+    ],
+)
+def test_read_registration_ignores_write_projects(
+    read_projects: tuple[str, ...], write_projects: tuple[str, ...], project_scoped_tools_expected: bool
+) -> None:
+    registered = set(
+        tools.enabled_tool_names(
+            make_settings(**ALL_READ_ON, read_projects=read_projects, write_projects=write_projects)
+        )
+    )
+    # Asserted against the full independently-derived project-scoped set, not
+    # a sample, so this actually proves write_projects-independence for all
+    # 46 tools, not just three of them.
+    all_project_scoped = _all_five_scope_tools() - _EXPECTED_GLOBAL_READ_TOOLS
+    if project_scoped_tools_expected:
+        assert all_project_scoped <= registered
+    else:
+        assert all_project_scoped.isdisjoint(registered)
+
+
+def test_full_allowlist_registers_all_58_and_other_scopes_unaffected() -> None:
+    empty = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON, read_projects=(), write_projects=())))
+    full = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON, read_projects=("*",), write_projects=("*",))))
+
+    assert _all_five_scope_tools() <= full
+
+    other_scope_tools = {
+        name for scope in ("personal", "admin", "extended") for name in tools.READ_TOOLS_BY_SCOPE[scope]
+    }
+    # personal/admin/extended registration depends only on their own enable
+    # flags, not on read_projects — this new gate must not affect them.
+    assert (other_scope_tools & empty) == (other_scope_tools & full)
 
 
 def test_read_enabled_unknown_scope_raises_not_silently_allows() -> None:

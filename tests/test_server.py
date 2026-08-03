@@ -55,7 +55,11 @@ def test_ce_instructions_are_not_duplicated_into_any_tool_description() -> None:
 
 
 def test_defaults_contain_read_tools() -> None:
-    mcp = create_app(make_settings())
+    # read_projects=("*",): these are all project-scoped read tools, only
+    # registered when the read allowlist is non-empty (see
+    # tools._PROJECT_SCOPED_READ_TOOLS) — this test is about the read-enable
+    # flags being on by default, not about the allowlist gate.
+    mcp = create_app(make_settings(read_projects=("*",)))
     names = _tool_names(mcp)
     assert "list_projects" in names
     assert "list_work_packages" in names
@@ -127,7 +131,10 @@ def test_personal_write_alone_exposes_nothing() -> None:
 
 
 def test_enable_project_read_false_removes_project_tools() -> None:
-    mcp = create_app(make_settings(enable_project_read=False))
+    # read_projects=("*",) so the "other scopes remain active" assertions
+    # below are actually exercising the project-read flag, not incidentally
+    # passing because of the empty-allowlist gate too.
+    mcp = create_app(make_settings(enable_project_read=False, read_projects=("*",)))
     names = _tool_names(mcp)
     assert "list_projects" not in names
     assert "get_project" not in names
@@ -140,7 +147,8 @@ def test_enable_project_read_false_removes_project_tools() -> None:
 
 
 def test_enable_work_package_read_false_removes_wp_tools() -> None:
-    mcp = create_app(make_settings(enable_work_package_read=False))
+    # read_projects=("*",): see test_enable_project_read_false_removes_project_tools.
+    mcp = create_app(make_settings(enable_work_package_read=False, read_projects=("*",)))
     names = _tool_names(mcp)
     assert "list_work_packages" not in names
     assert "get_work_package" not in names
@@ -179,7 +187,9 @@ def test_enable_membership_read_false_removes_previously_ungated_tools() -> None
     but fail on every call. get_my_project_access (home: project) also
     disappears, because its client method additionally requires membership
     read."""
-    mcp = create_app(make_settings(enable_membership_read=False))
+    # read_projects=("*",) so "list_projects" being present actually verifies
+    # the project-read flag/scope, not the (separately tested) allowlist gate.
+    mcp = create_app(make_settings(enable_membership_read=False, read_projects=("*",)))
     names = _tool_names(mcp)
     assert "get_current_user" not in names
     assert "list_actions" not in names

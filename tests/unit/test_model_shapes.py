@@ -13,6 +13,7 @@ schema, then showing our actual non-generic bases do not.
 from __future__ import annotations
 
 import dataclasses
+import types
 import typing
 from dataclasses import fields as dataclass_fields
 from typing import Any
@@ -88,7 +89,10 @@ def test_list_result_field_order_unchanged(name: str) -> None:
 
 def _dummy_for_type(tp: Any) -> Any:  # noqa: ANN401
     origin = typing.get_origin(tp)
-    if origin is typing.Union:
+    # `X | None` (PEP 604) has origin types.UnionType, not typing.Union --
+    # both must be checked, or an `int | None`-annotated field silently falls
+    # through to the final `return None` below instead of getting a dummy int.
+    if origin is typing.Union or origin is types.UnionType:
         args = [a for a in typing.get_args(tp) if a is not type(None)]
         return _dummy_for_type(args[0]) if args else None
     if origin in (list, tuple, set, frozenset):
