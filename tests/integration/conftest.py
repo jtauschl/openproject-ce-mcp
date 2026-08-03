@@ -435,5 +435,14 @@ async def project_refs(client: OpenProjectClient):
     for project_ref in created:
         try:
             await unrestricted_client.delete_project(project_ref=project_ref, confirm=True)
+            continue
+        except Exception:
+            pass
+        # delete_project requires instance-admin rights in OpenProject, which
+        # the test token may not have (unlike creating/updating a project) --
+        # archiving is the next best cleanup so a failed/denied delete doesn't
+        # leave an active throwaway project behind indefinitely.
+        try:
+            await unrestricted_client.update_project(project_ref=project_ref, active=False, confirm=True)
         except Exception:
             pass
