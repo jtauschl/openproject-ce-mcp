@@ -31,7 +31,7 @@ from typing import Any
 
 from ...config import Settings
 from ...models import DocumentDetail, DocumentListResult, DocumentWriteResult
-from ..pagination import clamp_limit, paginate_all, paginate_client
+from ..pagination import clamp_limit, scan_records_and_paginate
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..policies.document_policy import document_payload_allowed
@@ -75,39 +75,44 @@ class DocumentService:
         project_candidates = await resolve_project_filter_candidates(
             project, resolve_project_ref=self._resolve_project_ref
         )
+        search_key = search.casefold() if search is not None else None
 
-        # A single fetch capped at settings.max_results silently hid any
-        # document beyond that cap once the endpoint's real result count
-        # exceeded it -- walk every server page instead.
-        records = await paginate_all(
-            lambda offset, page_size: self._api.list_all(offset=offset, page_size=page_size),
-            page_size=self._settings.max_page_size,
-            key=lambda r: r.summary.id,
-        )
-        results = [
-            self._stamp(record.summary)
-            for record in records
-            if document_payload_allowed(
+        def _record_allowed(record: Any) -> bool:
+            if not document_payload_allowed(
                 {"_links": {"project": record.project_link}},
                 settings=self._settings,
                 project_id_to_identifier=self._project_id_to_identifier,
-            )
-        ]
-        if project_candidates is not None:
-            results = [item for item in results if summary_matches_project_candidates(item, project_candidates)]
-        if search is not None:
-            search_key = search.casefold()
-            results = [item for item in results if search_key in (item.title or "").casefold()]
+            ):
+                return False
+            if project_candidates is not None and not summary_matches_project_candidates(
+                record.summary, project_candidates
+            ):
+                return False
+            if search_key is not None:
+                return search_key in (record.summary.title or "").casefold()
+            return True
 
-        page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=results)
+        # A single fetch capped at settings.max_results silently hid any
+        # document beyond that cap once the endpoint's real result count
+        # exceeded it -- scan server pages instead (OPM-373 Phase 5).
+        raw_items, truncated = await scan_records_and_paginate(
+            lambda o, ps: self._api.list_all(offset=o, page_size=ps),
+            item_allowed=_record_allowed,
+            server_page_size=self._settings.max_page_size,
+            offset=offset,
+            limit=effective_limit,
+            key=lambda r: r.summary.id,
+        )
+        results = [self._stamp(record.summary) for record in raw_items]
+        total = len(results)
         return DocumentListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=len(page),
-            next_offset=next_offset,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
             truncated=truncated,
-            results=page,
+            results=results,
         )
 
     async def get(self, document_id: int) -> DocumentDetail:
