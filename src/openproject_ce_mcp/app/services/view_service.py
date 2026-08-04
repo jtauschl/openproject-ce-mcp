@@ -28,7 +28,7 @@ from typing import Any
 
 from ...config import Settings
 from ...models import ViewDetail, ViewListResult
-from ..pagination import clamp_limit, paginate_all, paginate_client
+from ..pagination import clamp_limit, scan_records_and_paginate
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.project_ref import ProjectRefResolver
@@ -79,33 +79,40 @@ class ViewService:
         project_candidates = await resolve_project_filter_candidates(
             project, resolve_project_ref=self._resolve_project_ref
         )
+        search_key = search.casefold() if search is not None else None
+
+        def _record_allowed(record: Any) -> bool:
+            if not self._allowed(record.project_link):
+                return False
+            if project_candidates is not None and not summary_matches_project_candidates(
+                record.summary, project_candidates
+            ):
+                return False
+            if view_type is not None and (record.summary.type or "").casefold() != view_type.casefold():
+                return False
+            return search_key is None or search_key in (record.summary.name or "").casefold()
 
         # A single fetch capped at settings.max_results silently hid any view
         # beyond that cap once the endpoint's real result count exceeded it --
-        # walk every server page instead.
-        records = await paginate_all(
-            lambda offset, page_size: self._api.list_all(offset=offset, page_size=page_size),
-            page_size=self._settings.max_page_size,
+        # scan server pages instead (OPM-373 Phase 5).
+        raw_items, truncated = await scan_records_and_paginate(
+            lambda o, ps: self._api.list_all(offset=o, page_size=ps),
+            item_allowed=_record_allowed,
+            server_page_size=self._settings.max_page_size,
+            offset=offset,
+            limit=effective_limit,
             key=lambda r: r.summary.id,
         )
-        results = [self._stamp(record.summary) for record in records if self._allowed(record.project_link)]
-        if project_candidates is not None:
-            results = [item for item in results if summary_matches_project_candidates(item, project_candidates)]
-        if view_type is not None:
-            results = [item for item in results if (item.type or "").casefold() == view_type.casefold()]
-        if search is not None:
-            search_key = search.casefold()
-            results = [item for item in results if search_key in (item.name or "").casefold()]
-
-        page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=results)
+        results = [self._stamp(record.summary) for record in raw_items]
+        total = len(results)
         return ViewListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=len(page),
-            next_offset=next_offset,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
             truncated=truncated,
-            results=page,
+            results=results,
         )
 
     async def get(self, view_id: int) -> ViewDetail:

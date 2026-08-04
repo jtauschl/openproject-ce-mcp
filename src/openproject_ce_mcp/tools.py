@@ -1273,7 +1273,10 @@ async def list_views(
     an invalid name returns the allowed set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap.
+    next_offset as the next call's offset to page past the cap. total is only
+    the count of allowed views returned on THIS page, not a full count of all
+    matches — the search stops as soon as it has enough, so an exact total
+    would need an extra full walk. Page until next_offset is null.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)

@@ -220,6 +220,39 @@ async def test_list_checks_read_enabled() -> None:
     assert api.list_all_calls == []
 
 
+class _PagedFakeViewApi:
+    """Unlike _FakeViewApi (single-page, offset-blind), this simulates a
+    real multi-page server for exact-limit/truncation regression tests."""
+
+    def __init__(self, pages: dict[int, list[ViewRecord]]) -> None:
+        self._pages = pages
+        self.offsets_requested: list[int] = []
+
+    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[ViewRecord], int]:
+        self.offsets_requested.append(offset)
+        records = self._pages.get(offset, [])
+        return records, len(records)
+
+    async def get(self, view_id: int) -> ViewRecord:
+        raise NotImplementedError
+
+
+@pytest.mark.asyncio
+async def test_list_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
+    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    truncated=True as soon as `limit` allowed items are collected, without
+    checking whether a matching view actually exists beyond that window."""
+    api = _PagedFakeViewApi({1: [_record(view_id=1)]})
+    service = _service(api)
+
+    result = await service.list(limit=1)
+
+    assert api.offsets_requested == [1], f"expected only one (short) page, got {api.offsets_requested}"
+    assert [v.id for v in result.results] == [1]
+    assert result.truncated is False
+    assert result.next_offset is None
+
+
 @pytest.mark.asyncio
 async def test_get_applies_hidden_field_masking() -> None:
     settings = dataclasses.replace(make_settings(), hidden_fields={"view": ("query",)})
