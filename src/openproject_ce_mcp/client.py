@@ -831,26 +831,29 @@ class OpenProjectClient:
         effective_limit = self._resolve_limit(limit)
 
         if search is not None:
-            # Same walk-every-page-then-filter-then-paginate pattern as list_users
-            # above -- Groups is genuinely OffsetPaginatedCollection server-side
-            # (verified against op-sources), so a single bounded fetch capped at
-            # max_results would silently hide any match beyond that cap.
-            elements = await self._fetch_all_pages("groups")
-            results = [self.normalize_group(item) for item in elements]
             search_key = search.casefold()
-            results = [item for item in results if search_key in (item.name or "").casefold()]
+
+            async def _group_item_allowed(item: dict[str, Any]) -> bool:
+                normalized = self.normalize_group(item)
+                return search_key in (normalized.name or "").casefold()
+
+            # Same scan-every-page-then-filter pattern as list_users above --
+            # Groups is genuinely OffsetPaginatedCollection server-side (verified
+            # against op-sources), so a single bounded fetch capped at
+            # max_results would silently hide any match beyond that cap.
+            raw_items, truncated = await self._scan_and_paginate(
+                "groups", item_allowed=_group_item_allowed, offset=offset, limit=effective_limit
+            )
+            results = [self.normalize_group(item) for item in raw_items]
             total = len(results)
-            start = (offset - 1) * effective_limit
-            end = start + effective_limit
-            page = results[start:end]
             return GroupListResult(
                 offset=offset,
                 limit=effective_limit,
                 total=total,
-                count=len(page),
-                next_offset=offset + 1 if end < total else None,
-                truncated=end < total,
-                results=page,
+                count=total,
+                next_offset=offset + 1 if truncated else None,
+                truncated=truncated,
+                results=results,
             )
 
         payload = await self._get(
