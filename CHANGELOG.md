@@ -37,6 +37,19 @@ development baseline.
   server), and explicitly setting `percentage_done` together with a
   closing `status` is hard-rejected on instances using status-based
   progress calculation instead of being silently ignored.
+- **`list_projects`/`list_sprints`/`list_project_sprints`/`list_grids`/
+  `list_versions` (without `project`)/`list_documents`/`list_views`/
+  `list_news`/`list_time_entries`/`list_users` and `list_groups` (both with
+  `search`) now actually reduce server load and response size when paging**
+  — `offset`/`limit` previously had no effect on how much data these tools
+  fetched from OpenProject: each call loaded the entire matching collection
+  into memory before slicing out the requested page, regardless of `limit`.
+  A related bug in the fix's first draft (`list_relations`/
+  `list_notifications`, already fixed) could also report `truncated: true`
+  on the last page when the number of matches landed exactly on `limit` —
+  the same fix applies here. `total` on these tools is now a lower bound
+  (the count returned on this page) rather than an exact count of the full
+  matching collection; page with `next_offset` until it is `null`.
 
 ## 0.3.5 – 2026-08-02
 
