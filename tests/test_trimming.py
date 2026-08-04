@@ -37,6 +37,8 @@ from openproject_ce_mcp.tools import (
     get_status,
     get_work_package,
     get_work_packages,
+    list_actions,
+    list_capabilities,
     list_work_packages,
     update_relation,
 )
@@ -149,7 +151,9 @@ def test_returns_trimmable_detects_list_write_bulk() -> None:
 
 
 def test_returns_trimmable_false_for_single_entity_reads() -> None:
-    assert _returns_trimmable(get_work_package) is False
+    # get_work_package is NOT here (OPM-373 Phase 4): it now has `select`,
+    # so _returns_trimmable is True for it -- see
+    # test_returns_trimmable_true_for_select_capable_single_entity_and_list_tools.
     assert _returns_trimmable(get_status) is False
 
 
@@ -185,11 +189,13 @@ def test_none_valued_field_is_elided_when_elide_none_true() -> None:
 
 
 def test_none_valued_field_kept_explicit_when_not_elide_none() -> None:
-    # Tools with no `select` parameter (single-entity reads, most write
+    # Tools with no `select` parameter (most single-entity reads, most write
     # results) are registered with elide_none=False, since there is no way
     # for a caller to ask for an elided field back. Simulate that policy
-    # directly on a select-incapable type (WorkPackageDetail has neither
-    # results/items/payload).
+    # directly by passing elide_none=False explicitly -- WorkPackageDetail
+    # itself is select-capable now (via get_work_package, OPM-373 Phase 4),
+    # but this test exercises the _to_payload mechanism in isolation, not
+    # get_work_package's actual registered elide_none policy.
     detail = _wp_detail(priority=None, category=None, children=[])
     out = _to_payload(detail, elide_none=False)
     assert out["priority"] is None
@@ -200,9 +206,11 @@ def test_none_valued_field_kept_explicit_when_not_elide_none() -> None:
 def test_select_field_with_none_value_stays_explicit_null() -> None:
     # Requesting a field via select guarantees its presence, even when its
     # value is None -- this is how a caller distinguishes "unset" from "not
-    # requested". select only trims the top-level row list (see
-    # _to_payload's docstring), so this goes through a list result to
-    # actually exercise _select_fields.
+    # requested". select trims either the top-level row list, or (since
+    # OPM-373 Phase 4) a bare top-level entity directly -- see
+    # _to_payload's docstring. This test exercises the row-list case; a
+    # list result is used to actually exercise _select_fields via the
+    # per-row branch.
     row = _wp_summary(priority=None)
     out = _to_payload(_wp_list(results=[row]), select=frozenset({"id", "priority"}))
     selected_row = out["results"][0]
@@ -441,13 +449,19 @@ def test_trimmed_tools_have_no_output_schema() -> None:
         "bulk_create_work_packages",
         "update_relation",
         "get_work_packages",
+        # OPM-373 Phase 4: now select-capable, hence trimmed.
+        "get_work_package",
+        "list_actions",
+        "list_capabilities",
     ]:
         assert tools[name].output_schema is None, name
 
 
 def test_untrimmed_tools_keep_output_schema() -> None:
     tools = _tools(create_app(_make_settings()))
-    for name in ["get_work_package", "get_status", "get_project"]:
+    # get_work_package moved to test_trimmed_tools_have_no_output_schema above
+    # (OPM-373 Phase 4: it now has `select`, so it's trimmed unconditionally).
+    for name in ["get_status", "get_project"]:
         assert tools[name].output_schema is not None, name
 
 
@@ -461,6 +475,10 @@ def test_list_tools_expose_select_param() -> None:
         "get_work_packages",
         "bulk_create_work_packages",
         "bulk_update_work_packages",
+        # OPM-373 Phase 4.
+        "get_work_package",
+        "list_actions",
+        "list_capabilities",
     ]:
         assert "select" in json.dumps(tools[name].parameters), name
 
@@ -667,25 +685,108 @@ def test_hidden_field_stays_absent_even_when_selected() -> None:
     assert "id" in out["results"][0]
 
 
+# ── select on a bare top-level entity (OPM-373 Phase 4) ───────────────────────
+
+
+def test_top_level_select_trims_bare_dataclass_fields() -> None:
+    # WorkPackageDetail has no results/items field -- this exercises the new
+    # row_field_name-is-None branch in _to_payload directly, independent of
+    # whether get_work_package itself is wired up (see the registered-wrapper
+    # test below for that).
+    detail = _wp_detail(priority=None)
+    out = _to_payload(detail, select=frozenset({"id", "subject", "priority"}))
+    assert sorted(out) == ["id", "priority", "subject"]
+    assert out["priority"] is None  # selected None field stays an explicit null
+    assert "description" not in out  # unselected field fully absent
+
+
+def test_top_level_select_respects_hidden_keys() -> None:
+    detail = _wp_detail()
+    object.__setattr__(detail, "_hidden_keys", frozenset({"subject"}))
+    out = _to_payload(detail, select=frozenset({"id", "subject"}))
+    assert "subject" not in out
+    assert "id" in out
+
+
+def test_validate_select_rejects_unknown_field_for_action_summary() -> None:
+    with pytest.raises(ValueError, match="not a valid ActionSummary field"):
+        _validate_select(["bogus"], row_type=m.ActionSummary)
+
+
+def test_validate_select_rejects_unknown_field_for_capability_summary() -> None:
+    with pytest.raises(ValueError, match="not a valid CapabilitySummary field"):
+        _validate_select(["bogus"], row_type=m.CapabilitySummary)
+
+
+def test_returns_trimmable_true_for_select_capable_single_entity_and_list_tools() -> None:
+    assert _returns_trimmable(get_work_package) is True  # select in signature, no results/items/payload
+    assert _returns_trimmable(list_actions) is True
+    assert _returns_trimmable(list_capabilities) is True
+
+
+@pytest.mark.asyncio
+async def test_get_work_package_select_is_threaded_through_the_registered_wrapper() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v3/work_packages/5":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 5,
+                    "_type": "WorkPackage",
+                    "subject": "Subject",
+                    "lockVersion": 1,
+                    "description": {"raw": "desc"},
+                    "createdAt": "2026-01-01T00:00:00Z",
+                    "updatedAt": "2026-01-02T00:00:00Z",
+                    "_links": {
+                        "type": {"title": "Task"},
+                        "status": {"title": "New"},
+                        "project": {"href": "/api/v3/projects/1", "title": "Demo Project"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _make_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    fn = _tools(create_app(settings))["get_work_package"].fn
+
+    result = await fn(_FakeContext(client), work_package_id=5, select=["id", "subject"])
+
+    assert isinstance(result, dict)  # proves _to_payload ran, not a raw dataclass
+    assert sorted(result) == ["id", "subject"]
+
+    await client.aclose()
+
+
 # ── single-entity reads are trimmed only when hide-fields are active ─────────
 
 
 def test_single_entity_read_keeps_schema_without_hide_config() -> None:
+    # get_work_package is no longer a valid example here (OPM-373 Phase 4:
+    # it's now select-capable, hence trimmed unconditionally) -- get_status
+    # remains genuinely select-less and untrimmed absent hide-config.
     tools = _tools(create_app(_make_settings()))
-    assert tools["get_work_package"].output_schema is not None
+    assert tools["get_status"].output_schema is not None
 
 
 def test_single_entity_read_trimmed_when_hide_config_active() -> None:
-    tools = _tools(create_app(_make_settings(hidden_fields={"work_package": ("percentage_done",)})))
+    tools = _tools(create_app(_make_settings(hidden_fields={"status": ("name",)})))
     # With hiding on, get_* results must be trimmable (dict output) to drop keys.
-    assert tools["get_work_package"].output_schema is None
+    assert tools["get_status"].output_schema is None
 
 
 def test_single_entity_read_keeps_other_null_fields_when_hide_config_active() -> None:
-    # get_work_package has no `select` parameter, so under hide_active it is
-    # routed through _to_payload with elide_none=False (Rule 1 applies) purely
-    # to drop the hidden key -- its other None fields must stay explicit, not
-    # newly start being elided as a side effect of field-hiding being on.
+    # A select-less single-entity read (e.g. get_status) is registered with
+    # elide_none=False, so under hide_active it is routed through
+    # _to_payload with elide_none=False (Rule 1 applies) purely to drop the
+    # hidden key -- its other None fields must stay explicit, not newly
+    # start being elided as a side effect of field-hiding being on.
+    # WorkPackageDetail is just this test's fixture type here -- it exercises
+    # _to_payload directly, independent of get_work_package's own
+    # registration (which is now select-capable, elide_none=True, since
+    # OPM-373 Phase 4; unrelated to what this test verifies).
     detail = _wp_detail(priority=None, category=None)
     object.__setattr__(detail, "_hidden_keys", frozenset({"lock_version"}))
     out = _to_payload(detail, elide_none=False)

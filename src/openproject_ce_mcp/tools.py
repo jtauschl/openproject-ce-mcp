@@ -28,6 +28,7 @@ from .client import (
 from .config import TEXT_LIMIT_MAX, Settings
 from .models import (
     ActionListResult,
+    ActionSummary,
     ActivityListResult,
     ActivitySummary,
     ActivityWriteResult,
@@ -41,6 +42,7 @@ from .models import (
     BoardWriteResult,
     BulkWorkPackageWriteResult,
     CapabilityListResult,
+    CapabilitySummary,
     CategoryListResult,
     CategorySummary,
     CurrentUser,
@@ -1004,8 +1006,12 @@ async def list_actions(
     ctx: Context,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> ActionListResult:
     """List API actions exposed by OpenProject.
+
+    select restricts each result row to the given fields (e.g. ["id", "url"]);
+    an invalid name returns the allowed set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -1013,6 +1019,7 @@ async def list_actions(
     client = _client_from_context(ctx)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=ActionSummary)
     return await _run_tool(client.list_actions(offset=safe_offset, limit=safe_limit))
 
 
@@ -1022,8 +1029,12 @@ async def list_capabilities(
     capability_id: str | None = None,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> CapabilityListResult:
     """List API capabilities exposed by OpenProject.
+
+    select restricts each result row to the given fields (e.g. ["id",
+    "action_id", "context"]); an invalid name returns the allowed set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -1033,6 +1044,7 @@ async def list_capabilities(
     safe_capability_id = _validate_optional_query(capability_id, field_name="capability_id", max_length=100)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=CapabilitySummary)
     return await _run_tool(
         client.list_capabilities(
             project=safe_project,
@@ -1739,6 +1751,7 @@ async def get_work_package(
     ctx: Context,
     work_package_id: int | str,
     text_limit: int | None = None,
+    select: list[str] | None = None,
 ) -> WorkPackageDetail:
     """Get a work package by id, including its full description.
 
@@ -1749,10 +1762,14 @@ async def get_work_package(
     truncated). Pass ``text_limit`` to cap it at that many characters; when the
     text is cut, ``description_truncated`` is true and ``description_length``
     reports the real length.
+
+    select restricts the response to the given fields (e.g. ["id", "subject",
+    "status"]); an invalid name returns the allowed set.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
     safe_text_limit = _validate_optional_text_limit(text_limit)
+    _validate_select(select, row_type=WorkPackageDetail)
     return await _run_tool(client.get_work_package(safe_id, text_limit=safe_text_limit))
 
 
@@ -4084,7 +4101,17 @@ def _returns_trimmable(fn: Any) -> bool:
     per-item write results carry their own payload to drop). Detection inspects the
     model's fields, so it cannot drift from suffix conventions (e.g.
     RelationUpdateResult, ProjectCopyResult carry payload but are not *WriteResult).
+
+    Also trimmable when the tool's own signature accepts ``select`` directly,
+    even if its return model has none of those three fields -- this is the
+    bare single-entity case (e.g. get_work_package → WorkPackageDetail): the
+    model itself has no results/items for select to act on, but
+    _to_payload's top-level-select branch (see presentation.py) still needs
+    the trimming wrapper to run at all in order to reach select in the first
+    place.
     """
+    if "select" in inspect.signature(fn).parameters:
+        return True
     model = _return_model(fn)
     if model is None:
         return False

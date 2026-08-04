@@ -23,6 +23,8 @@ support.
   accept `parent`** as well as `parent_work_package_id`.
 - **`bulk_create_work_packages`/`bulk_update_work_packages` gain a `select`
   parameter** to shrink an unconfirmed preview's echoed payload.
+- **`get_work_package`, `list_actions`, and `list_capabilities` gain a
+  `select` parameter** to restrict the response to specific fields.
 - **`get_project` now returns the project's ancestor chain (`ancestors`).**
 
 ### Changed

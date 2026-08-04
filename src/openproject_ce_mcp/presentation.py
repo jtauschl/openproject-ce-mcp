@@ -62,17 +62,44 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None, elide_none:
     item that wraps a single work package, or a bulk item that wraps a single
     write result, rather than being the entity itself), ``select`` instead trims
     that nested entity — the row's own wrapper fields (id/success/error, or
-    index/success/error) are kept regardless of ``select``.
+    index/success/error) are kept regardless of ``select``. When the top-level
+    value itself has neither ``results``/``items`` NOR ``payload``/``next_offset``
+    (a genuinely bare single-entity result, e.g. ``WorkPackageDetail`` —
+    excluding ``payload``/``next_offset`` deliberately keeps a bare
+    ``*WriteResult`` like ``WorkPackageWriteResult`` on the normal per-field
+    path even though it also lacks ``results``/``items``, so its
+    confirmed-payload-drop and next_offset handling stay intact if such a
+    type ever gains ``select``), ``select`` instead trims the top-level
+    object directly, via the same ``_select_fields`` used for rows — this is
+    what lets a single-entity ``get_*`` tool support field selection despite
+    not being a list/bulk result.
 
     Non-dataclass values pass through unchanged, so tools (and test stubs) that
     already return plain dicts are untouched.
     """
     if is_dataclass(value) and not isinstance(value, type):
-        drop_payload = getattr(value, "state", None) == "confirmed" and _has_field(value, "payload")
         # "results" (list reads) and "items" (bulk writes) are the two row-list
         # field names the seam knows about. count/truncated are results-only —
         # BulkWorkPackageWriteResult carries total/succeeded/failed instead.
         row_field_name = "results" if _has_field(value, "results") else "items" if _has_field(value, "items") else None
+        # A bare single-entity result -- no results/items for the
+        # row_field_name branch below to act on, AND no payload/next_offset
+        # of its own -- has nothing the per-field loop's special-cased
+        # fields (drop_payload, next_offset) need to apply to. Hand the
+        # whole object to _select_fields instead, so single-entity get_*
+        # tools can support select too. The payload/next_offset exclusion is
+        # deliberate, not incidental: a bare *WriteResult (e.g.
+        # WorkPackageWriteResult) also has no results/items but DOES carry
+        # payload/state, and bypassing drop_payload for it would leak a
+        # confirmed write's payload back into the response if such a tool
+        # ever gains select -- none does today, but the condition must not
+        # rely on that being permanent.
+        is_bare_entity = (
+            row_field_name is None and not _has_field(value, "payload") and not _has_field(value, "next_offset")
+        )
+        if select is not None and is_bare_entity:
+            return _select_fields(value, select, elide_none=elide_none)
+        drop_payload = getattr(value, "state", None) == "confirmed" and _has_field(value, "payload")
         is_list_result = row_field_name == "results"
         hidden = getattr(value, "_hidden_keys", ())
         out: dict[str, Any] = {}
