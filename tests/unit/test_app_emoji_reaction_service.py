@@ -156,8 +156,7 @@ async def test_toggle_preview_without_confirm_does_not_call_api_toggle() -> None
 
     result = await service.toggle(1988, "thumbs_up", confirm=False)
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.activity_id == 1988
     assert result.reaction == "thumbs_up"
     assert result.result is None
@@ -174,8 +173,7 @@ async def test_toggle_commit_with_confirm_calls_api_toggle() -> None:
 
     result = await service.toggle(1988, "thumbs_up", confirm=True)
 
-    assert result.confirmed is True
-    assert result.requires_confirmation is False
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.count == 1
     assert result.result.results[0].reaction == "thumbs_up"

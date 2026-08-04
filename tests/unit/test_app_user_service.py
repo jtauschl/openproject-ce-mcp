@@ -274,8 +274,7 @@ async def test_create_returns_preview_without_committing() -> None:
 
     result = await service.create(login="ada", email="ada@example.com", firstname="Ada", lastname="Lovelace")
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.result is None
     assert api.commit_create_calls == []
 
@@ -302,7 +301,7 @@ async def test_create_commits_when_confirmed_and_admin_write_enabled() -> None:
         login="ada", email="ada@example.com", firstname="Ada", lastname="Lovelace", confirm=True
     )
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.user_id == 42
     assert api.commit_create_calls == [
         {
@@ -338,7 +337,7 @@ async def test_create_restores_password_into_the_commit_payload() -> None:
         confirm=True,
     )
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert api.commit_create_calls == [
         {
             "login": "ada",
@@ -400,7 +399,7 @@ async def test_update_commits_when_confirmed() -> None:
 
     result = await service.update(user_id=5, login="ada2", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.user_id == 5
     assert api.commit_update_calls == [(5, {"login": "ada2"})]
 
@@ -439,7 +438,7 @@ async def test_update_does_not_check_fields_the_caller_did_not_set() -> None:
 
     result = await service.update(user_id=5, login="ada2", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert api.commit_update_calls == [(5, {"login": "ada2"})]
 
 
@@ -464,8 +463,7 @@ async def test_delete_preview_does_not_call_commit() -> None:
 
     result = await service.delete(5, confirm=False)
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert api.commit_delete_calls == []
 
 
@@ -476,7 +474,7 @@ async def test_delete_commits_when_confirmed() -> None:
 
     result = await service.delete(5, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.user_id == 5
     assert api.commit_delete_calls == [5]
 
@@ -503,7 +501,7 @@ async def test_lock_preview_does_not_call_commit() -> None:
     result = await service.lock(5, confirm=False)
 
     assert result.action == "lock"
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert result.result is None
     assert api.commit_lock_calls == []
 
@@ -515,7 +513,7 @@ async def test_lock_commits_when_confirmed() -> None:
 
     result = await service.lock(5, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert api.commit_lock_calls == [5]
 
@@ -563,5 +561,5 @@ async def test_unlock_commits_when_confirmed() -> None:
     result = await service.unlock(5, confirm=True)
 
     assert result.action == "unlock"
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert api.commit_unlock_calls == [5]

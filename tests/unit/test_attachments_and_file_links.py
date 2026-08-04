@@ -144,7 +144,7 @@ async def test_delete_file_link_allows_write_project() -> None:
     result = await client.delete_file_link(5, confirm=True)
 
     assert deleted.get("done") is True
-    assert result.confirmed is True
+    assert result.state == "confirmed"
 
     await client.aclose()
 

@@ -634,7 +634,7 @@ async def test_file_link_delete_uses_container_work_package_link_shape() -> None
     result = await client.delete_file_link(5, confirm=True)
 
     assert result.work_package_id == 9
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert requests == [
         ("GET", "/api/v3/file_links/5"),
         ("GET", "/api/v3/work_packages/9"),
@@ -1117,7 +1117,7 @@ async def test_explicit_null_links_survives_attachment_multipart_upload(tmp_path
 
     result = await client.create_work_package_attachment(work_package_id=42, file_path=str(file_path), confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.download_url is None
 

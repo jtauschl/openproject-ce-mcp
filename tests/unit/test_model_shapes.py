@@ -157,8 +157,7 @@ def _all_write_result_classes() -> dict[str, type]:
 EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     "ActivityWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "work_package_id",
@@ -168,8 +167,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "AttachmentWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "attachment_id",
@@ -180,8 +178,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "BoardWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "board_id",
@@ -202,8 +199,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "DocumentWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "document_id",
@@ -214,8 +210,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "EmojiReactionWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "activity_id",
@@ -224,8 +219,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "FavoriteWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "project_id",
@@ -233,8 +227,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "FileLinkWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "file_link_id",
@@ -244,8 +237,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "GridWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "grid_id",
@@ -256,8 +248,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "GroupWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "group_id",
@@ -267,8 +258,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "MembershipWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "membership_id",
@@ -279,8 +269,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "NewsWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "news_id",
@@ -291,16 +280,14 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "NotificationMarkResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "notification_id",
     ],
     "ProjectCopyResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "source_project_id",
@@ -311,8 +298,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "ProjectWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "project_id",
@@ -323,8 +309,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "RelationUpdateResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "relation_id",
@@ -333,8 +318,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "RelationWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "relation_id",
@@ -345,8 +329,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "ReminderWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "reminder_id",
@@ -356,8 +339,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "TimeEntryWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "time_entry_id",
@@ -368,8 +350,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "UserPreferencesWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "payload",
@@ -377,8 +358,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "UserWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "user_id",
@@ -388,8 +368,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "VersionWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "version_id",
@@ -400,8 +379,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "WatcherWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "work_package_id",
@@ -411,8 +389,7 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
     ],
     "WorkPackageWriteResult": [
         "action",
-        "confirmed",
-        "requires_confirmation",
+        "state",
         "ready",
         "message",
         "work_package_id",

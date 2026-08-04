@@ -74,8 +74,7 @@ class WatcherService:
             watcher = self._stamp(await self._api.get_user(user_id))
             return WatcherWriteResult(
                 action="add",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to add the watcher. Ask for confirmation, then call again with confirm=true.",
                 work_package_id=resolved_id,
@@ -87,8 +86,7 @@ class WatcherService:
         watcher = self._stamp(await self._api.add(resolved_id, user_id))
         return WatcherWriteResult(
             action="add",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Watcher added successfully.",
             work_package_id=resolved_id,
@@ -102,8 +100,7 @@ class WatcherService:
         if not confirm:
             return WatcherWriteResult(
                 action="remove",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to remove the watcher. Ask for confirmation, then call again with confirm=true.",
                 work_package_id=resolved_id,
@@ -115,8 +112,7 @@ class WatcherService:
         await self._api.remove(resolved_id, user_id)
         return WatcherWriteResult(
             action="remove",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Watcher removed successfully.",
             work_package_id=resolved_id,

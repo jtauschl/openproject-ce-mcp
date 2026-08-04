@@ -118,8 +118,7 @@ class EmojiReactionService:
             # nature instead.
             return EmojiReactionWriteResult(
                 action="toggle_reaction",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message=(
                     f"Toggles the '{reaction}' reaction on activity {activity_id} — adds it if not "
@@ -135,8 +134,7 @@ class EmojiReactionService:
         results = [self._stamp(summary) for summary in summaries]
         return EmojiReactionWriteResult(
             action="toggle_reaction",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message=f"Toggled '{reaction}' reaction on activity {activity_id}.",
             activity_id=activity_id,

@@ -24,14 +24,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
+from ...models import WriteResultState
+
 _DetailT = TypeVar("_DetailT")
 
 
 @dataclass(frozen=True)
 class _WriteOutcome(Generic[_DetailT]):
     ready: bool
-    confirmed: bool
-    requires_confirmation: bool
+    state: WriteResultState
     message: str
     payload: dict[str, Any]
     validation_errors: dict[str, str]
@@ -57,8 +58,7 @@ async def _finalize_write(
     if validation_errors:
         return _WriteOutcome(
             ready=False,
-            confirmed=False,
-            requires_confirmation=not confirm,
+            state="invalid" if confirm else "rejected",
             message=rejected_message,
             payload=payload,
             validation_errors=validation_errors,
@@ -68,8 +68,7 @@ async def _finalize_write(
     if not confirm:
         return _WriteOutcome(
             ready=True,
-            confirmed=False,
-            requires_confirmation=True,
+            state="preview",
             message=preview_message,
             payload=payload,
             validation_errors={},
@@ -80,8 +79,7 @@ async def _finalize_write(
     detail = await commit(payload)
     return _WriteOutcome(
         ready=True,
-        confirmed=True,
-        requires_confirmation=False,
+        state="confirmed",
         message=success_message,
         payload=payload,
         validation_errors={},

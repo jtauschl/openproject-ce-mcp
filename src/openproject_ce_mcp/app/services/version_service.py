@@ -216,8 +216,7 @@ class VersionService:
         if not confirm:
             return VersionWriteResult(
                 action="delete",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject found the version. Ask for confirmation, then call again with confirm=true to delete it.",
                 version_id=detail.id,
@@ -231,8 +230,7 @@ class VersionService:
         await self._api.delete(version_id)
         return VersionWriteResult(
             action="delete",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Version deleted successfully.",
             version_id=detail.id,
@@ -284,8 +282,7 @@ class VersionService:
     def _to_write_result(self, action: str, outcome: _WriteOutcome[VersionDetail]) -> VersionWriteResult:
         return VersionWriteResult(
             action=action,
-            confirmed=outcome.confirmed,
-            requires_confirmation=outcome.requires_confirmation,
+            state=outcome.state,
             ready=outcome.ready,
             message=outcome.message,
             payload=outcome.payload,

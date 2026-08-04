@@ -63,16 +63,14 @@ async def test_mark_notification_read_preview_does_not_write(client: OpenProject
     requires_confirmation, without ever calling confirm=true against a real
     notification id."""
     preview = await client.mark_notification_read(999999999, confirm=False)
-    assert preview.requires_confirmation
-    assert not preview.confirmed
+    assert preview.state == "preview"
 
 
 async def test_mark_all_notifications_read_preview_does_not_write(client: OpenProjectClient) -> None:
     """Deliberately never confirmed -- see module docstring. Only the
     preview/dry-run path is safe to exercise against a real account."""
     preview = await client.mark_all_notifications_read(confirm=False)
-    assert preview.requires_confirmation
-    assert not preview.confirmed
+    assert preview.state == "preview"
 
 
 async def test_mark_notification_read_denied_when_personal_write_disabled(client: OpenProjectClient) -> None:
@@ -126,7 +124,7 @@ async def test_mark_notification_read_confirmed_roundtrip(
     wp_ids.append(wp_id)
 
     watch_result = await client.add_work_package_watcher(wp_id, me.id, confirm=True)
-    assert watch_result.confirmed
+    assert watch_result.state == "confirmed"
 
     # The comment must come from a DIFFERENT user (second_client) -- OpenProject
     # never notifies a user about their own change (see module docstring).
@@ -168,7 +166,7 @@ async def test_mark_notification_read_confirmed_roundtrip(
         pytest.fail("no notification appeared for the watched work package within the wait window")
 
     marked = await client.mark_notification_read(notification_id, confirm=True)
-    assert marked.confirmed
+    assert marked.state == "confirmed"
     assert marked.notification_id == notification_id
 
     # Confirm the read actually took effect server-side, not just that the

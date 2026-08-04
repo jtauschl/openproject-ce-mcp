@@ -253,7 +253,7 @@ async def test_version_crud_uses_form_endpoints_and_commit_paths() -> None:
         confirm=False,
     )
     assert created_preview.ready is True
-    assert created_preview.requires_confirmation is True
+    assert created_preview.state == "preview"
 
     created = await client.create_version(
         project="demo",
@@ -275,10 +275,10 @@ async def test_version_crud_uses_form_endpoints_and_commit_paths() -> None:
 
     deleted_preview = await client.delete_version(version_id=8, confirm=False)
     assert deleted_preview.ready is True
-    assert deleted_preview.requires_confirmation is True
+    assert deleted_preview.state == "preview"
 
     deleted = await client.delete_version(version_id=8, confirm=True)
-    assert deleted.confirmed is True
+    assert deleted.state == "confirmed"
     assert deleted.version_id == 8
 
     await client.aclose()
@@ -323,8 +323,7 @@ async def test_create_version_returns_preview_when_not_confirmed() -> None:
 
     result = await client.create_version(project="myproject", name="v2.0", confirm=False)
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.ready is True
     assert result.validation_errors == {}
 
@@ -371,7 +370,7 @@ async def test_create_version_rejects_validation_error() -> None:
     result = await client.create_version(project="myproject", name="v2.0", confirm=True)
 
     assert result.ready is False
-    assert result.confirmed is False
+    assert result.state == "invalid"
     assert "name" in result.validation_errors
 
     await client.aclose()

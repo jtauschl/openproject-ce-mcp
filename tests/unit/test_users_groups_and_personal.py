@@ -47,8 +47,7 @@ async def test_update_membership_returns_preview_when_not_confirmed() -> None:
 
     result = await client.update_membership(membership_id=3, roles=["2"], confirm=False)
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.ready is True
     assert result.membership_id == 3
     assert result.project == "Demo"
@@ -100,8 +99,7 @@ async def test_update_membership_writes_after_confirmation_when_enabled() -> Non
 
     result = await client.update_membership(membership_id=3, roles=["2"], confirm=True)
 
-    assert result.confirmed is True
-    assert result.requires_confirmation is False
+    assert result.state == "confirmed"
     assert result.membership_id == 3
     assert result.project == "Demo"
     assert result.result is not None
@@ -458,8 +456,7 @@ async def test_create_user_returns_preview_when_not_confirmed() -> None:
     )
 
     assert calls == [("POST", "/api/v3/users/form")]
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.ready is True
     assert result.validation_errors == {}
     assert result.user_id is None
@@ -493,7 +490,7 @@ async def test_create_user_rejects_validation_error() -> None:
     )
 
     assert result.ready is False
-    assert result.confirmed is False
+    assert result.state == "invalid"
     assert "login" in result.validation_errors
     # A rejected form must short-circuit before ever reaching the write endpoint.
 
@@ -560,8 +557,7 @@ async def test_create_user_commits_using_form_payload_after_validation() -> None
     )
 
     assert calls == [("POST", "/api/v3/users/form"), ("POST", "/api/v3/users")]
-    assert result.confirmed is True
-    assert result.requires_confirmation is False
+    assert result.state == "confirmed"
     assert result.ready is True
     assert result.user_id == 9  # from the normalized write response, not the input
 
@@ -585,8 +581,7 @@ async def test_update_user_preview_echoes_caller_supplied_user_id() -> None:
     result = await client.update_user(9, email="new@example.com", confirm=False)
 
     assert result.user_id == 9
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
 
     await client.aclose()
 
@@ -642,8 +637,7 @@ async def test_update_user_commits_using_form_payload_after_validation() -> None
     result = await client.update_user(9, email="new@example.com", confirm=True)
 
     assert calls == [("POST", "/api/v3/users/9/form"), ("PATCH", "/api/v3/users/9")]
-    assert result.confirmed is True
-    assert result.requires_confirmation is False
+    assert result.state == "confirmed"
     assert result.user_id == 9  # from the normalized write response
 
     await client.aclose()
@@ -700,7 +694,7 @@ async def test_user_preferences_get_and_update() -> None:
     assert prefs.comment_sort_descending is False
 
     preview = await client.update_my_preferences(time_zone="America/New_York", confirm=False)
-    assert preview.requires_confirmation is True
+    assert preview.state == "preview"
 
     updated = await client.update_my_preferences(time_zone="America/New_York", confirm=True)
     assert updated.result is not None
@@ -745,7 +739,7 @@ async def test_update_my_preferences_succeeds_with_personal_write_enabled() -> N
 
     client = OpenProjectClient(_personal_write_enabled_settings(), transport=httpx.MockTransport(handler))
     result = await client.update_my_preferences(time_zone="UTC", confirm=True)
-    assert result.confirmed
+    assert result.state == "confirmed"
     await client.aclose()
 
 

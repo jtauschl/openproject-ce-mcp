@@ -232,8 +232,7 @@ async def test_create_returns_preview_without_committing_or_calling_api() -> Non
 
     result = await service.create(project="demo", title="New feature", confirm=False)
 
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert result.result is None
     assert api.commit_create_calls == []
 
@@ -246,7 +245,7 @@ async def test_create_commits_and_stamps_hidden_fields_when_confirmed() -> None:
 
     result = await service.create(project="demo", title="New feature", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert len(api.commit_create_calls) == 1
     assert result.result is not None
     assert getattr(result.result, "_hidden_keys", frozenset()) == {"author"}
@@ -297,7 +296,7 @@ async def test_update_commits_and_stamps_when_confirmed() -> None:
 
     result = await service.update(news_id=1, title="Updated", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert api.commit_update_calls == [(1, {"title": "Updated"})]
     assert getattr(result.result, "_hidden_keys", frozenset()) == {"author"}
 
@@ -326,8 +325,7 @@ async def test_delete_preview_carries_stamped_detail_not_none() -> None:
 
     preview = await service.delete(news_id=1, confirm=False)
 
-    assert preview.confirmed is False
-    assert preview.requires_confirmation is True
+    assert preview.state == "preview"
     assert preview.result is not None
     assert preview.result.id == 1
     assert api.delete_calls == []
@@ -341,7 +339,7 @@ async def test_delete_commits_and_stamps_result_when_confirmed() -> None:
 
     committed = await service.delete(news_id=1, confirm=True)
 
-    assert committed.confirmed is True
+    assert committed.state == "confirmed"
     assert api.delete_calls == [1]
     assert committed.result is not None
     assert getattr(committed.result, "_hidden_keys", frozenset()) == {"author"}

@@ -110,5 +110,5 @@ async def test_create_get_update_delete_version(
 
     # Delete
     delete_result = await client.delete_version(version_id=version_id, confirm=True)
-    assert delete_result.ready and delete_result.confirmed
+    assert delete_result.ready and delete_result.state == "confirmed"
     version_ids.remove(version_id)

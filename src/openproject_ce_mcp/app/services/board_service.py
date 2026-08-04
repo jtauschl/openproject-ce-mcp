@@ -332,8 +332,7 @@ class BoardService:
         if not confirm:
             return BoardWriteResult(
                 action="delete",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject found the board. Ask for confirmation, then call again with confirm=true to delete it.",
                 board_id=board.id,
@@ -347,8 +346,7 @@ class BoardService:
         await self._api.delete(board_id)
         return BoardWriteResult(
             action="delete",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Board deleted successfully.",
             board_id=board.id,
@@ -434,8 +432,7 @@ class BoardService:
     def _to_write_result(self, action: str, outcome: _WriteOutcome[BoardDetail]) -> BoardWriteResult:
         return BoardWriteResult(
             action=action,
-            confirmed=outcome.confirmed,
-            requires_confirmation=outcome.requires_confirmation,
+            state=outcome.state,
             ready=outcome.ready,
             message=outcome.message,
             payload=outcome.payload,

@@ -55,7 +55,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...config import Settings
-from ...models import GroupDetail, GroupListResult, GroupSummary, GroupWriteResult
+from ...models import GroupDetail, GroupListResult, GroupSummary, GroupWriteResult, WriteResultState
 from ..api_href import api_href
 from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_client, paginate_server
@@ -132,8 +132,7 @@ class GroupService:
         if not confirm:
             return self._write_result(
                 action="create",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to create the group. Ask for confirmation, then call again with confirm=true.",
                 group_id=None,
@@ -144,8 +143,7 @@ class GroupService:
         result = self._stamp(await self._api.commit_create(body))
         return self._write_result(
             action="create",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Group created successfully.",
             group_id=result.id,
@@ -197,8 +195,7 @@ class GroupService:
         if not confirm:
             return self._write_result(
                 action="update",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to update the group. Ask for confirmation, then call again with confirm=true.",
                 group_id=group_id,
@@ -209,8 +206,7 @@ class GroupService:
         result = self._stamp(await self._api.commit_update(group_id, body))
         return self._write_result(
             action="update",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Group updated successfully.",
             group_id=result.id,
@@ -229,8 +225,7 @@ class GroupService:
         if not confirm:
             return self._write_result(
                 action="delete",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to delete the group. Ask for confirmation, then call again with confirm=true.",
                 group_id=group_id,
@@ -241,8 +236,7 @@ class GroupService:
         await self._api.commit_delete(group_id)
         return self._write_result(
             action="delete",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Group deleted successfully.",
             group_id=group_id,
@@ -255,8 +249,7 @@ class GroupService:
         self,
         *,
         action: str,
-        confirmed: bool,
-        requires_confirmation: bool,
+        state: WriteResultState,
         ready: bool,
         message: str,
         group_id: int | None,
@@ -266,8 +259,7 @@ class GroupService:
     ) -> GroupWriteResult:
         return GroupWriteResult(
             action=action,
-            confirmed=confirmed,
-            requires_confirmation=requires_confirmation,
+            state=state,
             ready=ready,
             message=message,
             group_id=group_id,

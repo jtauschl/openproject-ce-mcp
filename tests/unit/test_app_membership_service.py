@@ -276,8 +276,7 @@ async def test_create_returns_preview_without_committing() -> None:
 
     result = await service.create(project="demo", principal="me", roles=["Member"], confirm=False)
 
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert api.commit_create_calls == []
 
 
@@ -360,7 +359,7 @@ async def test_create_commits_and_stamps_hidden_fields_when_confirmed() -> None:
 
     result = await service.create(project="demo", principal="me", roles=["Member"], confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert len(api.commit_create_calls) == 1
     assert result.result is not None
     assert getattr(result.result, "_hidden_keys", frozenset()) == {"created_at"}
@@ -440,7 +439,7 @@ async def test_create_role_lookup_calls_role_api_once_not_page_walking() -> None
 
     result = await service.create(project="demo", principal="me", roles=["Member"], confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert len(role_api.list_calls) == 1
 
 
@@ -475,7 +474,7 @@ async def test_create_with_numeric_role_id_skips_the_role_list_fetch() -> None:
 
     result = await service.create(project="demo", principal="me", roles=["8"], confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert role_api.list_calls == []
 
 
@@ -489,7 +488,7 @@ async def test_create_with_mixed_numeric_and_named_roles_still_fetches_once() ->
 
     result = await service.create(project="demo", principal="me", roles=["8", "Member"], confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert len(role_api.list_calls) == 1
 
 
@@ -531,7 +530,7 @@ async def test_update_commits_and_stamps_when_confirmed() -> None:
 
     result = await service.update(membership_id=1, roles=["Member"], confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert api.commit_update_calls == [(1, {"_links": {"roles": [{"href": "/api/v3/roles/1"}]}})]
     assert getattr(result.result, "_hidden_keys", frozenset()) == {"created_at"}
 
@@ -567,8 +566,7 @@ async def test_delete_preview_returns_result_none_and_does_not_call_delete() -> 
 
     preview = await service.delete(membership_id=1, confirm=False)
 
-    assert preview.confirmed is False
-    assert preview.requires_confirmation is True
+    assert preview.state == "preview"
     assert preview.result is None
     assert api.delete_calls == []
 
@@ -581,7 +579,7 @@ async def test_delete_commits_and_stamps_result_when_confirmed() -> None:
 
     committed = await service.delete(membership_id=1, confirm=True)
 
-    assert committed.confirmed is True
+    assert committed.state == "confirmed"
     assert api.delete_calls == [1]
     assert committed.result is not None
     assert getattr(committed.result, "_hidden_keys", frozenset()) == {"principal_name"}

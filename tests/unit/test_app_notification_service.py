@@ -336,8 +336,7 @@ async def test_mark_read_previews_without_confirm() -> None:
 
     result = await service.mark_read(10)
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.notification_id == 10
     assert api.mark_read_calls == []
 
@@ -359,7 +358,7 @@ async def test_mark_read_calls_api_after_confirmation() -> None:
 
     result = await service.mark_read(10, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.notification_id == 10
     assert api.mark_read_calls == [10]
 
@@ -381,7 +380,7 @@ async def test_mark_all_read_previews_without_confirm() -> None:
 
     result = await service.mark_all_read()
 
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert result.notification_id is None
     assert api.mark_all_read_calls == 0
 
@@ -394,7 +393,7 @@ async def test_mark_all_read_calls_api_after_confirmation() -> None:
 
     result = await service.mark_all_read(confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.notification_id is None
     assert api.mark_all_read_calls == 1
 

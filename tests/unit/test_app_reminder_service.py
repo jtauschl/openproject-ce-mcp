@@ -255,8 +255,7 @@ async def test_create_preview_without_confirm_does_not_call_api_create() -> None
 
     result = await service.create(work_package_id=42, remind_at="2026-12-01T09:00:00Z", confirm=False)
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.reminder_id is None
     assert result.result is None
     assert api.create_calls == []
@@ -270,7 +269,7 @@ async def test_create_commit_with_confirm_calls_api_create() -> None:
 
     result = await service.create(work_package_id=42, remind_at="2026-12-01T09:00:00Z", note="n", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.reminder_id == 7
     assert result.result is not None
     assert api.create_calls == [(42, {"remindAt": "2026-12-01T09:00:00Z", "note": "n"})]
@@ -318,8 +317,7 @@ async def test_update_preview_without_confirm_does_not_call_api_update() -> None
 
     result = await service.update(reminder_id=7, note="updated", confirm=False)
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert api.update_calls == []
     assert api.get_remindable_link_calls == [7]
     # The href passed to get_by_href must be the one derived from THIS
@@ -337,7 +335,7 @@ async def test_update_commit_with_confirm_calls_api_update() -> None:
 
     result = await service.update(reminder_id=7, note="updated", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert api.update_calls == [(7, {"note": "updated"})]
 
@@ -416,8 +414,7 @@ async def test_delete_preview_without_confirm_does_not_call_api_delete() -> None
 
     result = await service.delete(reminder_id=7, confirm=False)
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert api.delete_calls == []
 
 
@@ -428,7 +425,7 @@ async def test_delete_commit_with_confirm_calls_api_delete() -> None:
 
     result = await service.delete(reminder_id=7, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is None
     assert api.delete_calls == [7]
 

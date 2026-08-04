@@ -219,8 +219,7 @@ class RelationService:
         if not confirm:
             return RelationWriteResult(
                 action="create",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to create this relation. Ask for confirmation, then call again with confirm=true.",
                 relation_id=None,
@@ -234,8 +233,7 @@ class RelationService:
         result = self._stamp(record.summary())
         return RelationWriteResult(
             action="create",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Relation created successfully.",
             relation_id=result.id,
@@ -271,8 +269,7 @@ class RelationService:
         if not confirm:
             return RelationUpdateResult(
                 action="update",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message=f"Ready to update relation {relation_id}. Call again with confirm=true.",
                 relation_id=relation_id,
@@ -284,8 +281,7 @@ class RelationService:
         detail = self._stamp(record.summary())
         return RelationUpdateResult(
             action="update",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Relation updated successfully.",
             relation_id=relation_id,
@@ -311,8 +307,7 @@ class RelationService:
         if not confirm:
             return RelationWriteResult(
                 action="delete",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to delete this relation. Ask for confirmation, then call again with confirm=true.",
                 relation_id=normalized.id,
@@ -325,8 +320,7 @@ class RelationService:
         await self._api.delete(relation_id)
         return RelationWriteResult(
             action="delete",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Relation deleted successfully.",
             relation_id=normalized.id,

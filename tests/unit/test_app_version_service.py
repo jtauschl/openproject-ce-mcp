@@ -163,8 +163,7 @@ async def test_create_returns_preview_without_committing() -> None:
     result = await service.create(project="demo", name="Release 1", confirm=False)
 
     assert result.ready is True
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert api.commit_calls == []
 
 
@@ -202,7 +201,7 @@ async def test_create_commits_when_confirmed() -> None:
 
     result = await service.create(project="demo", name="Release 1", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.name == "Release 1"
     assert len(api.commit_calls) == 1
@@ -217,7 +216,7 @@ async def test_create_rejects_when_validation_errors_present() -> None:
     result = await service.create(project="demo", name="x", confirm=True)
 
     assert result.ready is False
-    assert result.confirmed is False
+    assert result.state == "invalid"
     assert result.validation_errors == {"name": "too short"}
     assert api.commit_calls == []
 
@@ -337,7 +336,7 @@ async def test_update_commits_when_confirmed() -> None:
 
     result = await service.update(version_id=8, name="Release 1.1", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.name == "Release 1.1"
 
@@ -361,11 +360,10 @@ async def test_delete_returns_preview_then_commits() -> None:
 
     preview = await service.delete(version_id=8, confirm=False)
     assert preview.ready is True
-    assert preview.requires_confirmation is True
-    assert preview.confirmed is False
+    assert preview.state == "preview"
 
     committed = await service.delete(version_id=8, confirm=True)
-    assert committed.confirmed is True
+    assert committed.state == "confirmed"
     assert committed.result is not None
     assert committed.result.id == 8
 

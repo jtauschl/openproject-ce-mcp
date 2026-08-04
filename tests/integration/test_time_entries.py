@@ -93,7 +93,7 @@ async def test_create_get_update_delete_time_entry(
 
     # Delete
     delete_result = await client.delete_time_entry(time_entry_id=te_id, confirm=True)
-    assert delete_result.ready and delete_result.confirmed
+    assert delete_result.ready and delete_result.state == "confirmed"
     time_entry_ids.remove(te_id)
 
 
@@ -171,7 +171,7 @@ async def test_create_get_update_time_entry_until(
     assert update_result.result.ongoing is False
 
     delete_result = await client.delete_time_entry(time_entry_id=te_id, confirm=True)
-    assert delete_result.ready and delete_result.confirmed
+    assert delete_result.ready and delete_result.state == "confirmed"
     time_entry_ids.remove(te_id)
 
 

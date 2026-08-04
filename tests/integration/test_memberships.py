@@ -94,12 +94,12 @@ async def test_create_and_update_membership_in_fresh_project(
     preview = await unrestricted_client.create_membership(
         project=new_identifier, principal=principal_id, roles=[role_name]
     )
-    assert preview.requires_confirmation
+    assert preview.state == "preview"
 
     created = await unrestricted_client.create_membership(
         project=new_identifier, principal=principal_id, roles=[role_name], confirm=True
     )
-    assert created.confirmed
+    assert created.state == "confirmed"
     assert created.result is not None
     membership_id = created.result.id
     assert role_name in created.result.role_names
@@ -111,7 +111,7 @@ async def test_create_and_update_membership_in_fresh_project(
     updated = await unrestricted_client.update_membership(
         membership_id=membership_id, roles=[other_role_name], confirm=True
     )
-    assert updated.confirmed
+    assert updated.state == "confirmed"
     assert updated.result is not None
     assert other_role_name in updated.result.role_names
 
@@ -141,12 +141,12 @@ async def test_delete_membership_in_fresh_project(client: OpenProjectClient, pro
     created = await unrestricted_client.create_membership(
         project=new_identifier, principal=principal_id, roles=[role_name], confirm=True
     )
-    assert created.confirmed
+    assert created.state == "confirmed"
     assert created.result is not None
     membership_id = created.result.id
 
     deleted = await unrestricted_client.delete_membership(membership_id=membership_id, confirm=True)
-    assert deleted.confirmed
+    assert deleted.state == "confirmed"
 
     remaining = await unrestricted_client.list_project_memberships(new_identifier)
     assert all(m.id != membership_id for m in remaining.results)
@@ -179,7 +179,7 @@ async def test_update_membership_denied_outside_write_allowlist(
     created = await unrestricted_client.create_membership(
         project=other_identifier, principal=principal_id, roles=[role_name], confirm=True
     )
-    assert created.confirmed
+    assert created.state == "confirmed"
 
     # denied_client can read test_project but not write it or other_identifier.
     with pytest.raises(PermissionDeniedError):

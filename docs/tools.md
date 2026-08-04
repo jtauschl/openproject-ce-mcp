@@ -324,8 +324,8 @@ type instead of parsing free text. The categories are:
 | `[openproject_error]` | Any other OpenProject-side failure |
 
 Successful write previews are not errors — they return a structured result with
-`ready`, `requires_confirmation`, `validation_errors`, and a human-readable
-`message`.
+`ready`, `state` (`"rejected"` | `"invalid"` | `"preview"` | `"confirmed"`),
+`validation_errors`, and a human-readable `message`.
 
 ## See also
 

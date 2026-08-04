@@ -148,12 +148,12 @@ async def test_update_relation_changes_description_and_type(
         preview = await client.update_relation(
             relation_id=relation_id, description="Integration test description", confirm=False
         )
-        assert preview.requires_confirmation
+        assert preview.state == "preview"
 
         updated = await client.update_relation(
             relation_id=relation_id, description="Integration test description", relation_type="blocks", confirm=True
         )
-        assert updated.confirmed
+        assert updated.state == "confirmed"
         assert updated.result is not None
         # description is wrapped in <user-content> delimiters (prompt-injection
         # boundary marker for user-supplied text), same as every other
@@ -189,10 +189,10 @@ async def test_delete_relation_removes_it(client: OpenProjectClient, test_projec
     relation_id = created.result.id
 
     preview = await client.delete_relation(relation_id=relation_id)
-    assert preview.requires_confirmation
+    assert preview.state == "preview"
 
     deleted = await client.delete_relation(relation_id=relation_id, confirm=True)
-    assert deleted.confirmed
+    assert deleted.state == "confirmed"
 
     result = await client.list_relations(relation_type="relates")
     assert not any(r.id == relation_id for r in result.results)

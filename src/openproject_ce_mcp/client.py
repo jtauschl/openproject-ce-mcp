@@ -735,7 +735,7 @@ class OpenProjectClient:
         version/etc. write and read that scopes by an embedded project link,
         which carries no identifier field) until the process restarted.
         """
-        if not result.confirmed or result.result is None:
+        if result.state != "confirmed" or result.result is None:
             return
         identifier = result.result.identifier
         if identifier:

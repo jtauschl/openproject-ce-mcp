@@ -217,8 +217,7 @@ async def test_create_returns_preview_without_committing_when_not_confirmed() ->
 
     result = await service.create(name="My Grid", scope="/projects/6", confirm=False)
 
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert result.result is None
     assert api.commit_create_calls == []
 
@@ -231,7 +230,7 @@ async def test_create_commits_and_stamps_hidden_fields_when_confirmed() -> None:
 
     result = await service.create(name="My Grid", scope="/projects/6", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert len(api.commit_create_calls) == 1
     assert result.result is not None
     assert getattr(result.result, "_hidden_keys", frozenset()) == {"row_count"}
@@ -257,7 +256,7 @@ async def test_create_always_allows_my_page_scope_even_under_fully_restrictive_w
 
     result = await service.create(name="My Grid", scope="/my/page", confirm=False)
 
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
 
 
 @pytest.mark.asyncio
@@ -267,7 +266,7 @@ async def test_create_allows_missing_scope_when_both_read_and_write_wide_open() 
 
     result = await service.create(name="My Grid", scope="", confirm=False)
 
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
 
 
 @pytest.mark.asyncio
@@ -327,7 +326,7 @@ async def test_create_does_not_check_row_count_or_column_count_when_not_provided
 
     result = await service.create(name="My Grid", scope="/projects/6", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert len(api.commit_create_calls) == 1
 
 
@@ -378,7 +377,7 @@ async def test_update_does_not_check_fields_the_caller_did_not_set() -> None:
 
     result = await service.update(grid_id=1, name="Renamed", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert len(api.commit_update_calls) == 1
 
 
@@ -389,8 +388,7 @@ async def test_update_returns_preview_without_committing_when_not_confirmed() ->
 
     result = await service.update(grid_id=1, name="Renamed", confirm=False)
 
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert api.commit_update_calls == []
 
 
@@ -401,7 +399,7 @@ async def test_update_commits_when_confirmed() -> None:
 
     result = await service.update(grid_id=1, name="Renamed", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     # commit_update is called with the FORM RESPONSE's payload (which the
     # fake echoes back with _links.scope merged in, simulating OpenProject's
     # /form endpoint returning the full resulting resource representation),
@@ -433,7 +431,7 @@ async def test_update_allows_my_page_grid_under_fully_restrictive_write_projects
 
     result = await service.update(grid_id=1, name="Renamed", confirm=False)
 
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
 
 
 @pytest.mark.asyncio
@@ -443,8 +441,7 @@ async def test_delete_returns_preview_without_committing_when_not_confirmed() ->
 
     result = await service.delete(grid_id=1, confirm=False)
 
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert api.delete_calls == []
 
 
@@ -455,7 +452,7 @@ async def test_delete_commits_when_confirmed() -> None:
 
     result = await service.delete(grid_id=1, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert api.delete_calls == [1]
     assert result.result is not None
 
@@ -480,4 +477,4 @@ async def test_delete_allows_my_page_grid_under_fully_restrictive_write_projects
 
     result = await service.delete(grid_id=1, confirm=False)
 
-    assert result.requires_confirmation is True
+    assert result.state == "preview"

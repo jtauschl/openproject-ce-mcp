@@ -310,8 +310,7 @@ async def test_mark_notification_read_previews_without_confirm() -> None:
 
     result = await client.mark_notification_read(10)
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.notification_id == 10
 
     await client.aclose()
@@ -331,7 +330,7 @@ async def test_mark_notification_read_posts_after_confirmation() -> None:
 
     result = await client.mark_notification_read(10, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.notification_id == 10
     assert requests == [("POST", "/api/v3/notifications/10/read_ian")]
 
@@ -347,8 +346,7 @@ async def test_mark_all_notifications_read_previews_without_confirm() -> None:
 
     result = await client.mark_all_notifications_read()
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.notification_id is None
 
     await client.aclose()
@@ -368,7 +366,7 @@ async def test_mark_all_notifications_read_posts_after_confirmation() -> None:
 
     result = await client.mark_all_notifications_read(confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.notification_id is None
     assert requests == [("POST", "/api/v3/notifications/read_ian")]
 
@@ -409,7 +407,7 @@ async def test_create_work_package_reminder_posts_and_normalizes() -> None:
         work_package_id=42, remind_at="2026-12-01T09:00:00Z", note="n", confirm=True
     )
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.reminder_id == 7
     assert result.result is not None
     assert result.result.work_package_id == 42

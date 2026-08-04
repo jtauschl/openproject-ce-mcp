@@ -587,10 +587,10 @@ async def test_get_project_configuration_and_copy_project() -> None:
     assert configuration.project_name == "Demo"
     assert configuration.enabled_internal_comments is True
     assert preview.ready is True
-    assert preview.requires_confirmation is True
+    assert preview.state == "preview"
     assert preview.job_status_id is None
     assert not hasattr(preview, "job_status_url")
-    assert copied.confirmed is True
+    assert copied.state == "confirmed"
     assert copied.job_status_id == "32ac4e5e-1e49-4cbd-b70e-bc1c781d8af2"
     assert not hasattr(copied, "job_status_url")
 
@@ -856,17 +856,17 @@ async def test_job_status_documents_news_and_wiki() -> None:
     assert job.created_resource_id == 88
     assert documents.count == 1
     assert document.attachment_count == 2
-    assert document_preview.requires_confirmation is True
+    assert document_preview.state == "preview"
     assert document_updated.result is not None
     assert document_updated.result.title == "Architecture Updated"
     assert news_list.count == 1
     assert news_detail.author == "Jürgen Tauschl"
-    assert news_preview.requires_confirmation is True
+    assert news_preview.state == "preview"
     assert news_created.result is not None
     assert news_created.result.id == 8
     assert news_updated.result is not None
     assert news_updated.result.summary == "Sprint 8.1 is out"
-    assert news_deleted.confirmed is True
+    assert news_deleted.state == "confirmed"
     assert wiki_page.title == "Runbook"
 
     await client.aclose()
@@ -1514,8 +1514,7 @@ async def test_create_project_returns_preview_when_not_confirmed() -> None:
 
     result = await client.create_project(name="Alpha", identifier="alpha", confirm=False)
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.ready is True
     assert result.validation_errors == {}
 
@@ -1557,7 +1556,7 @@ async def test_create_project_rejects_validation_error() -> None:
     result = await client.create_project(name="Alpha", identifier="alpha", confirm=True)
 
     assert result.ready is False
-    assert result.confirmed is False
+    assert result.state == "invalid"
     assert "identifier" in result.validation_errors
 
     await client.aclose()
@@ -1598,12 +1597,11 @@ async def test_delete_project_returns_preview_and_executes_when_confirmed() -> N
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     preview = await client.delete_project(project_ref="old-project", confirm=False)
-    assert preview.confirmed is False
-    assert preview.requires_confirmation is True
+    assert preview.state == "preview"
     assert preview.ready is True
 
     confirmed = await client.delete_project(project_ref="old-project", confirm=True)
-    assert confirmed.confirmed is True
+    assert confirmed.state == "confirmed"
     assert confirmed.result is not None
     assert confirmed.result.name == "Old Project"
 
@@ -1631,7 +1629,7 @@ async def test_add_project_favorite_uses_workspaces_path_and_empty_body() -> Non
 
     result = await client.add_project_favorite(project="demo", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.action == "favorite"
     assert result.project_id == 6
     assert result.project == "Demo"

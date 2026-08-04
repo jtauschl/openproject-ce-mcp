@@ -773,8 +773,7 @@ async def test_create_preview_without_commit_does_not_call_commit_create() -> No
 
     result = await service.create(project="demo", type="Task", subject="New WP", confirm=False)
 
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert result.ready is True
     assert api.commit_create_calls == []
     assert len(api.validate_create_calls) == 1
@@ -788,7 +787,7 @@ async def test_create_commit_calls_commit_create_and_masks_result() -> None:
 
     result = await service.create(project="demo", type="Task", subject="New WP", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.ready is True
     assert len(api.commit_create_calls) == 1
     assert result.result is not None
@@ -1054,8 +1053,7 @@ async def test_update_preview_without_commit_does_not_call_commit_update() -> No
 
     result = await service.update(work_package_id=6, subject="Renamed", confirm=False)
 
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert api.commit_update_calls == []
     assert len(api.validate_update_calls) == 1
 
@@ -1067,7 +1065,7 @@ async def test_update_commit_calls_commit_update() -> None:
 
     result = await service.update(work_package_id=6, subject="Renamed", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert len(api.commit_update_calls) == 1
     ref, payload = api.commit_update_calls[0]
     assert ref == "6"
@@ -1301,8 +1299,7 @@ async def test_delete_preview_without_commit_does_not_call_delete() -> None:
 
     result = await service.delete(work_package_id=6, confirm=False)
 
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert result.result is not None
     assert api.delete_calls == []
 
@@ -1314,7 +1311,7 @@ async def test_delete_commit_calls_delete_and_returns_no_result() -> None:
 
     result = await service.delete(work_package_id=6, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is None
     assert api.delete_calls == ["6"]
 
@@ -1342,8 +1339,7 @@ async def test_add_comment_preview_without_commit_does_not_post() -> None:
 
     result = await service.add_comment(work_package_id=6, comment="Hello", confirm=False)
 
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert api.post_comment_calls == []
 
 
@@ -1355,7 +1351,7 @@ async def test_add_comment_commit_posts_and_returns_normalized_result() -> None:
 
     result = await service.add_comment(work_package_id=6, comment="Hello", internal=True, notify=True, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert len(api.post_comment_calls) == 1
     call = api.post_comment_calls[0]
     assert call == {"work_package_ref": "6", "comment": "Hello", "internal": True, "notify": True}
@@ -1397,7 +1393,7 @@ async def test_add_comment_masking_is_activity_scoped_not_work_package_scoped() 
     # Hiding "work_package.description" must not block writing the comment
     # itself (a different entity/field).
     result = await service.add_comment(work_package_id=6, comment="Hello", confirm=False)
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
 
 
 @pytest.mark.asyncio
@@ -1541,7 +1537,7 @@ async def test_delete_works_with_read_disabled() -> None:
 
     result = await service.delete(work_package_id=6, confirm=False)
 
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
 
 
 @pytest.mark.asyncio
@@ -1552,4 +1548,4 @@ async def test_add_comment_works_with_read_disabled() -> None:
 
     result = await service.add_comment(work_package_id=6, comment="Hello", confirm=False)
 
-    assert result.requires_confirmation is True
+    assert result.state == "preview"

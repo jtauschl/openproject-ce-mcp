@@ -468,8 +468,7 @@ class TimeEntryService:
     def _to_write_result(self, action: str, outcome: Any) -> TimeEntryWriteResult:
         return TimeEntryWriteResult(
             action=action,
-            confirmed=outcome.confirmed,
-            requires_confirmation=outcome.requires_confirmation,
+            state=outcome.state,
             ready=outcome.ready,
             message=outcome.message,
             payload=outcome.payload,
@@ -489,8 +488,7 @@ class TimeEntryService:
         if not confirm:
             return TimeEntryWriteResult(
                 action="delete",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject found the time entry. Ask for confirmation, then call again with confirm=true to delete it.",
                 time_entry_id=detail.id,
@@ -503,8 +501,7 @@ class TimeEntryService:
         await self._api.delete(time_entry_id)
         return TimeEntryWriteResult(
             action="delete",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Time entry deleted successfully.",
             time_entry_id=detail.id,

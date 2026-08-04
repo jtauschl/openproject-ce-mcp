@@ -350,8 +350,7 @@ async def test_create_previews_without_confirm() -> None:
         work_package_id=42, related_to_work_package_id=55, relation_type="blocks", confirm=False
     )
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert api.create_calls == []
     assert resolve.calls == [(55, True)]
 
@@ -371,7 +370,7 @@ async def test_create_commits_when_confirmed() -> None:
         confirm=True,
     )
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.to_id == 55
     work_package_ref, payload = api.create_calls[0]
@@ -428,7 +427,7 @@ async def test_update_previews_without_confirm() -> None:
 
     result = await service.update(relation_id=7, description="updated", confirm=False)
 
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert api.update_calls == []
 
 
@@ -515,7 +514,7 @@ async def test_delete_previews_without_confirm() -> None:
 
     result = await service.delete(relation_id=7, confirm=False)
 
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.result is not None
     assert api.delete_calls == []
 
@@ -527,7 +526,7 @@ async def test_delete_commits_when_confirmed() -> None:
 
     result = await service.delete(relation_id=7, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is None
     assert api.delete_calls == [7]
 

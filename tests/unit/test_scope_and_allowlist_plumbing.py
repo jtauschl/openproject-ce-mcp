@@ -585,7 +585,7 @@ async def test_delete_membership_allows_identifier_write_scope() -> None:
     deleted = await client.delete_membership(membership_id=3, confirm=True)
 
     assert deleted.membership_id == 3
-    assert deleted.confirmed is True
+    assert deleted.state == "confirmed"
 
     await client.aclose()
 
@@ -629,7 +629,7 @@ async def test_delete_news_allows_identifier_write_scope() -> None:
     deleted = await client.delete_news(news_id=7, confirm=True)
 
     assert deleted.news_id == 7
-    assert deleted.confirmed is True
+    assert deleted.state == "confirmed"
 
     await client.aclose()
 
@@ -675,7 +675,7 @@ async def test_delete_time_entry_allows_identifier_write_scope() -> None:
     deleted = await client.delete_time_entry(time_entry_id=10, confirm=True)
 
     assert deleted.time_entry_id == 10
-    assert deleted.confirmed is True
+    assert deleted.state == "confirmed"
 
     await client.aclose()
 
@@ -719,7 +719,7 @@ async def test_delete_version_allows_identifier_write_scope() -> None:
     deleted = await client.delete_version(version_id=8, confirm=True)
 
     assert deleted.version_id == 8
-    assert deleted.confirmed is True
+    assert deleted.state == "confirmed"
 
     await client.aclose()
 
@@ -764,7 +764,7 @@ async def test_delete_board_allows_identifier_write_scope() -> None:
     deleted = await client.delete_board(board_id=12, confirm=True)
 
     assert deleted.board_id == 12
-    assert deleted.confirmed is True
+    assert deleted.state == "confirmed"
 
     await client.aclose()
 

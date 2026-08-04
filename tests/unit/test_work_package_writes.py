@@ -93,8 +93,7 @@ async def test_create_work_package_returns_confirmation_preview_before_writing()
     )
 
     assert result.ready is True
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert result.result is None
 
     await client.aclose()
@@ -183,7 +182,7 @@ async def test_update_work_package_writes_after_confirmation_when_enabled() -> N
         confirm=True,
     )
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.subject == "New title"
     assert result.result.status == "In progress"
@@ -304,7 +303,7 @@ async def test_update_work_package_schema_probe_includes_lock_version() -> None:
 
     # The schema probe POST and the update-form POST both hit the form endpoint.
     assert form_calls >= 2
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.priority == "High"
 
@@ -392,7 +391,7 @@ async def test_update_work_package_reparents_via_parent_link() -> None:
         confirm=True,
     )
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.parent_id == 7
 
@@ -509,7 +508,7 @@ async def test_update_work_package_unparents_with_null_href_through_schema_probe
     )
 
     assert form_calls >= 2
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.parent_id is None
 
@@ -592,7 +591,7 @@ async def test_update_work_package_clears_version_with_null_href() -> None:
         confirm=True,
     )
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.version is None
 
@@ -676,7 +675,7 @@ async def test_update_work_package_clears_sprint_with_null_href() -> None:
         confirm=True,
     )
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.sprint is None
 
@@ -788,7 +787,7 @@ async def test_update_work_package_resolves_sprint_by_name() -> None:
         confirm=True,
     )
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.sprint == "Cleanup"
 
@@ -866,7 +865,7 @@ async def test_update_work_package_clears_assignee_with_null_href() -> None:
 
     result = await client.update_work_package(work_package_id=42, assignee=CLEAR, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.assignee is None
 
@@ -944,7 +943,7 @@ async def test_update_work_package_clears_category_with_null_href() -> None:
 
     result = await client.update_work_package(work_package_id=42, category=CLEAR, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     await client.aclose()
 
 
@@ -1009,7 +1008,7 @@ async def test_update_work_package_clears_project_phase_with_null_href() -> None
 
     result = await client.update_work_package(work_package_id=42, project_phase=CLEAR, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     await client.aclose()
 
 
@@ -1052,8 +1051,7 @@ async def test_delete_work_package_requires_confirmation_preview() -> None:
     result = await client.delete_work_package(work_package_id=42, confirm=False)
 
     assert result.ready is True
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert result.result is not None
     assert result.result.subject == "Delete me"
 
@@ -1102,7 +1100,7 @@ async def test_delete_work_package_deletes_when_enabled_and_confirmed() -> None:
 
     result = await client.delete_work_package(work_package_id=42, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is None
     assert result.message == "Work package deleted successfully."
 
@@ -1207,7 +1205,7 @@ async def test_add_work_package_comment_writes_after_confirmation_when_enabled()
         confirm=True,
     )
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.comment == "<user-content>Please verify on staging.</user-content>"
     # created_at is suppressed unconditionally, even for this ordinary,
@@ -1362,7 +1360,7 @@ async def test_add_work_package_comment_fetches_missing_user_via_fallback() -> N
         confirm=True,
     )
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.user == "Jane Reviewer"
 
@@ -1392,7 +1390,7 @@ async def test_add_work_package_comment_fallback_get_also_missing_user_stays_non
 
     result = await client.add_work_package_comment(work_package_id=42, comment="Ok.", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.user is None
 
@@ -1426,7 +1424,7 @@ async def test_add_work_package_comment_fallback_get_failure_does_not_fail_comme
     with caplog.at_level(logging.WARNING, logger="openproject_ce_mcp.client"):
         result = await client.add_work_package_comment(work_package_id=42, comment="Ok.", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.user is None
     assert any("fallback fetch of activity 81" in r.message for r in caplog.records)
@@ -1499,7 +1497,7 @@ async def test_add_work_package_comment_skips_fallback_fetch_when_user_hidden() 
 
     result = await client.add_work_package_comment(work_package_id=42, comment="Ok.", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     payload = _to_payload(result)
     assert "user" not in payload["result"]
     assert fallback_get_calls["count"] == 0
@@ -1541,7 +1539,7 @@ async def test_add_work_package_comment_hides_other_configured_activity_fields()
 
     result = await client.add_work_package_comment(work_package_id=42, comment="Secret note.", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     payload = _to_payload(result)
     assert "version" not in payload["result"]
     assert payload["result"]["user"] == "Jane Reviewer"
@@ -1620,7 +1618,7 @@ async def test_create_subtask_uses_parent_link_in_form_payload() -> None:
     )
 
     assert result.ready is True
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.payload["_links"]["parent"]["href"] == "/api/v3/work_packages/42"
 
     await client.aclose()
@@ -1756,7 +1754,7 @@ async def test_create_work_package_resolves_schema_backed_fields_and_custom_fiel
     )
 
     assert result.ready is True
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.payload["_links"]["projectPhase"]["href"] == "/api/v3/project_phases/5"
     assert result.payload["customField10"] == 8
     assert result.payload["_links"]["customField11"]["href"] == "/api/v3/custom_options/20"
@@ -2381,7 +2379,7 @@ async def test_toggle_activity_emoji_reaction_patches_and_normalizes() -> None:
 
     result = await client.toggle_activity_emoji_reaction(1988, "heart", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.count == 1
     assert result.result.results[0].reaction == "heart"
@@ -2417,8 +2415,7 @@ async def test_toggle_activity_emoji_reaction_previews_without_confirm() -> None
 
     result = await client.toggle_activity_emoji_reaction(1988, "heart")
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.ready is True
     assert result.result is None
 
@@ -2455,8 +2452,7 @@ async def test_toggle_activity_emoji_reaction_previews_when_write_disabled() -> 
 
     result = await client.toggle_activity_emoji_reaction(1988, "heart")
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.ready is True
     assert result.result is None
 

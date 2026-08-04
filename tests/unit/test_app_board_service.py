@@ -308,8 +308,7 @@ async def test_create_returns_preview_without_committing_when_not_confirmed() ->
 
     result = await service.create(name="My Board", project="demo", confirm=False)
 
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert result.result is None
     assert api.commit_create_calls == []
 
@@ -322,7 +321,7 @@ async def test_create_commits_and_stamps_hidden_fields_when_confirmed() -> None:
 
     result = await service.create(name="My Board", project="demo", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert len(api.commit_create_calls) == 1
     assert result.result is not None
     assert getattr(result.result, "_hidden_keys", frozenset()) == {"public"}
@@ -406,7 +405,7 @@ async def test_create_global_board_allowed_when_both_scopes_fully_open() -> None
 
     result = await service.create(name="Global Board", project=None, confirm=False)
 
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
 
 
 @pytest.mark.asyncio
@@ -417,7 +416,7 @@ async def test_create_project_bound_board_unaffected_by_global_board_rule() -> N
 
     result = await service.create(name="My Board", project="demo", confirm=False)
 
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
 
 
 @pytest.mark.asyncio
@@ -636,8 +635,7 @@ async def test_update_returns_preview_without_committing_when_not_confirmed() ->
 
     result = await service.update(board_id=1, name="Renamed", confirm=False)
 
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert api.commit_update_calls == []
 
 
@@ -671,7 +669,7 @@ async def test_update_commits_when_confirmed() -> None:
 
     result = await service.update(board_id=1, name="Renamed", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert len(api.commit_update_calls) == 1
     committed_board_id, committed_payload = api.commit_update_calls[0]
     assert committed_board_id == 1
@@ -772,8 +770,7 @@ async def test_delete_returns_preview_without_committing_when_not_confirmed() ->
 
     result = await service.delete(board_id=1, confirm=False)
 
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert api.delete_calls == []
 
 
@@ -784,7 +781,7 @@ async def test_delete_commits_when_confirmed() -> None:
 
     result = await service.delete(board_id=1, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert api.delete_calls == [1]
     assert result.result is not None
 

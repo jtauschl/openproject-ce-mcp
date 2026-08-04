@@ -94,8 +94,7 @@ class UserPreferencesService:
         if not confirm:
             return UserPreferencesWriteResult(
                 action="update",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to update your preferences. Call again with confirm=true to write.",
                 payload=payload,
@@ -105,8 +104,7 @@ class UserPreferencesService:
         result = self._stamp(await self._api.commit_update(payload))
         return UserPreferencesWriteResult(
             action="update",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Preferences updated successfully.",
             payload=payload,

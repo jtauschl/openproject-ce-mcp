@@ -49,7 +49,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...config import Settings
-from ...models import UserDetail, UserListResult, UserWriteResult
+from ...models import UserDetail, UserListResult, UserWriteResult, WriteResultState
 from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_client, paginate_server
 from ..policies import access, hidden_fields
@@ -148,8 +148,7 @@ class UserService:
         if form.validation_errors:
             return self._write_result(
                 action="create",
-                confirmed=False,
-                requires_confirmation=not confirm,
+                state="invalid" if confirm else "rejected",
                 ready=False,
                 message="OpenProject rejected the proposed user changes. Fix the validation errors before confirming.",
                 user_id=None,
@@ -160,8 +159,7 @@ class UserService:
         if not confirm:
             return self._write_result(
                 action="create",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject validated the user. Ask for confirmation, then call again with confirm=true to create it.",
                 user_id=None,
@@ -180,8 +178,7 @@ class UserService:
         detail = await self._api.commit_create(commit_payload)
         return self._write_result(
             action="create",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="User created successfully.",
             user_id=detail.id,
@@ -225,8 +222,7 @@ class UserService:
         if form.validation_errors:
             return self._write_result(
                 action="update",
-                confirmed=False,
-                requires_confirmation=not confirm,
+                state="invalid" if confirm else "rejected",
                 ready=False,
                 message="OpenProject rejected the proposed user changes. Fix the validation errors before confirming.",
                 user_id=user_id,
@@ -237,8 +233,7 @@ class UserService:
         if not confirm:
             return self._write_result(
                 action="update",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject validated the user change. Ask for confirmation, then call again with confirm=true to write it.",
                 user_id=user_id,
@@ -250,8 +245,7 @@ class UserService:
         detail = await self._api.commit_update(user_id, form.payload)
         return self._write_result(
             action="update",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="User updated successfully.",
             user_id=detail.id,
@@ -269,8 +263,7 @@ class UserService:
         if not confirm:
             return self._write_result(
                 action="delete",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to delete the user. Ask for confirmation, then call again with confirm=true.",
                 user_id=user_id,
@@ -281,8 +274,7 @@ class UserService:
         await self._api.commit_delete(user_id)
         return self._write_result(
             action="delete",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="User deleted successfully.",
             user_id=user_id,
@@ -333,8 +325,7 @@ class UserService:
         if not confirm:
             return self._write_result(
                 action=action,
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message=preview_message,
                 user_id=user_id,
@@ -345,8 +336,7 @@ class UserService:
         detail = await commit(user_id)
         return self._write_result(
             action=action,
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message=success_message,
             user_id=detail.id,
@@ -359,8 +349,7 @@ class UserService:
         self,
         *,
         action: str,
-        confirmed: bool,
-        requires_confirmation: bool,
+        state: WriteResultState,
         ready: bool,
         message: str,
         user_id: int | None,
@@ -370,8 +359,7 @@ class UserService:
     ) -> UserWriteResult:
         return UserWriteResult(
             action=action,
-            confirmed=confirmed,
-            requires_confirmation=requires_confirmation,
+            state=state,
             ready=ready,
             message=message,
             user_id=user_id,

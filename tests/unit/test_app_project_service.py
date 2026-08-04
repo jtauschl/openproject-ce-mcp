@@ -419,8 +419,7 @@ async def test_create_returns_preview_without_committing() -> None:
     result = await service.create(name="New Project", identifier="new-project", confirm=False)
 
     assert result.ready is True
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert api.commit_create_calls == []
 
 
@@ -432,7 +431,7 @@ async def test_create_commits_when_confirmed() -> None:
 
     result = await service.create(name="New Project", identifier="new-project", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert len(api.commit_create_calls) == 1
 
@@ -446,7 +445,7 @@ async def test_create_rejects_when_validation_errors_present() -> None:
     result = await service.create(name="x", identifier="x", confirm=True)
 
     assert result.ready is False
-    assert result.confirmed is False
+    assert result.state == "invalid"
     assert result.validation_errors == {"name": "too short"}
     assert api.commit_create_calls == []
 
@@ -576,7 +575,7 @@ async def test_update_commits_when_confirmed() -> None:
 
     result = await service.update(project_ref="demo", name="Renamed", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert len(api.commit_update_calls) == 1
     assert api.commit_update_calls[0][0] == 6
@@ -714,12 +713,11 @@ async def test_delete_returns_preview_then_commits() -> None:
 
     preview = await service.delete(project_ref="demo", confirm=False)
     assert preview.ready is True
-    assert preview.requires_confirmation is True
-    assert preview.confirmed is False
+    assert preview.state == "preview"
     assert api.delete_calls == []
 
     committed = await service.delete(project_ref="demo", confirm=True)
-    assert committed.confirmed is True
+    assert committed.state == "confirmed"
     assert committed.result is not None
     assert api.delete_calls == [6]
 
@@ -743,11 +741,11 @@ async def test_set_favorite_returns_preview_then_commits() -> None:
     service = _service(api, settings=settings)
 
     preview = await service.set_favorite("demo", favorite=True, confirm=False)
-    assert preview.requires_confirmation is True
+    assert preview.state == "preview"
     assert api.favorite_calls == []
 
     committed = await service.set_favorite("demo", favorite=True, confirm=True)
-    assert committed.confirmed is True
+    assert committed.state == "confirmed"
     assert api.favorite_calls == [(6, True)]
 
 
@@ -770,8 +768,7 @@ async def test_copy_returns_preview_without_committing() -> None:
 
     result = await service.copy(source_project="demo", name="Copy", identifier="copy-project", confirm=False)
 
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert api.commit_copy_calls == []
 
 
@@ -783,7 +780,7 @@ async def test_copy_commits_and_derives_job_status_id_without_exposing_the_url()
 
     result = await service.copy(source_project="demo", name="Copy", identifier="copy-project", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     # job_status_id is derived from the job_status_url internally (get_job_status
     # is the intended follow-up call), but the redundant url itself is no
     # longer part of the response -- OPM-373 token-reduction bugfix.

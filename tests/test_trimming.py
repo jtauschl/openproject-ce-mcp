@@ -121,11 +121,11 @@ def _batch_read(items=None) -> m.BatchWorkPackageReadResult:
     )
 
 
-def _wp_write(*, confirmed: bool) -> m.WorkPackageWriteResult:
+def _wp_write(*, state: m.WriteResultState) -> m.WorkPackageWriteResult:
+    confirmed = state == "confirmed"
     return m.WorkPackageWriteResult(
         action="create",
-        confirmed=confirmed,
-        requires_confirmation=not confirmed,
+        state=state,
         ready=True,
         message="ok" if confirmed else "preview",
         work_package_id=9 if confirmed else None,
@@ -179,7 +179,7 @@ def test_none_valued_field_is_elided_when_elide_none_true() -> None:
     # from None ("not applicable") — they must survive regardless.
     assert out["children"] == []
 
-    write_result = _wp_write(confirmed=True)  # validation_errors={} on success
+    write_result = _wp_write(state="confirmed")  # validation_errors={} on success
     write_out = _to_payload(write_result)
     assert write_out["validation_errors"] == {}
 
@@ -224,18 +224,26 @@ def test_unselected_none_field_still_absent_alongside_selected_null() -> None:
 
 
 def test_confirmed_write_drops_payload_keeps_result() -> None:
-    out = _to_payload(_wp_write(confirmed=True))
+    out = _to_payload(_wp_write(state="confirmed"))
     assert "payload" not in out
     assert "result" in out
 
 
 def test_preview_write_keeps_payload() -> None:
-    out = _to_payload(_wp_write(confirmed=False))
+    out = _to_payload(_wp_write(state="preview"))
     assert "payload" in out
 
 
+def test_rejected_and_invalid_writes_keep_payload() -> None:
+    # Only "confirmed" drops payload -- the other two non-preview states
+    # ("rejected"/"invalid", both validation-error outcomes) must keep it too,
+    # same as "preview" above.
+    assert "payload" in _to_payload(_wp_write(state="rejected"))
+    assert "payload" in _to_payload(_wp_write(state="invalid"))
+
+
 def test_bulk_drops_nested_item_payload_on_confirm() -> None:
-    inner = _wp_write(confirmed=True)
+    inner = _wp_write(state="confirmed")
     bulk = m.BulkWorkPackageWriteResult(
         action="bulk_create",
         confirmed=True,
@@ -248,7 +256,7 @@ def test_bulk_drops_nested_item_payload_on_confirm() -> None:
     )
     out = _to_payload(bulk)
     assert "payload" not in out["items"][0]["result"]
-    assert out["items"][0]["result"]["confirmed"] is True
+    assert out["items"][0]["result"]["state"] == "confirmed"
 
 
 # ── select trims result rows ──────────────────────────────────────────────────
@@ -324,7 +332,7 @@ def _bulk_write(*, items=None) -> m.BulkWorkPackageWriteResult:
     items = (
         items
         if items is not None
-        else [m.BulkWorkPackageItemResult(index=0, success=True, error=None, result=_wp_write(confirmed=False))]
+        else [m.BulkWorkPackageItemResult(index=0, success=True, error=None, result=_wp_write(state="preview"))]
     )
     return m.BulkWorkPackageWriteResult(
         action="bulk_create",
@@ -358,7 +366,7 @@ def test_bulk_select_trims_nested_result_fields() -> None:
 
 def test_bulk_select_skips_failed_items_without_crash() -> None:
     items = [
-        m.BulkWorkPackageItemResult(index=0, success=True, error=None, result=_wp_write(confirmed=False)),
+        m.BulkWorkPackageItemResult(index=0, success=True, error=None, result=_wp_write(state="preview")),
         m.BulkWorkPackageItemResult(index=1, success=False, error="boom", result=None),
     ]
     out = _to_payload(_bulk_write(items=items), select=frozenset({"ready", "work_package_id"}))

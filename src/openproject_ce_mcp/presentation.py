@@ -23,7 +23,7 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None, elide_none:
     Recursively turns dataclass instances into dicts while applying structural
     omissions that would otherwise cost fixed context on every call:
 
-    - **payload**: dropped from a write result once ``confirmed`` is true
+    - **payload**: dropped from a write result once ``state`` is ``"confirmed"``
       (the success case), since the normalized ``result`` already carries the same
       information. It stays on preview/validation-error results, where the agent
       still needs it. Applied recursively, so nested bulk items are trimmed too.
@@ -68,7 +68,7 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None, elide_none:
     already return plain dicts are untouched.
     """
     if is_dataclass(value) and not isinstance(value, type):
-        drop_payload = getattr(value, "confirmed", None) is True and _has_field(value, "payload")
+        drop_payload = getattr(value, "state", None) == "confirmed" and _has_field(value, "payload")
         # "results" (list reads) and "items" (bulk writes) are the two row-list
         # field names the seam knows about. count/truncated are results-only —
         # BulkWorkPackageWriteResult carries total/succeeded/failed instead.

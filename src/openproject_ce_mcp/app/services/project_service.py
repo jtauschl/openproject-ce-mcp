@@ -142,7 +142,7 @@ class ProjectService:
         domain that scopes by a work-package-style `_links.project` link,
         which carries no identifier field) until the process restarted.
         """
-        if not outcome.confirmed or outcome.detail is None:
+        if outcome.state != "confirmed" or outcome.detail is None:
             return
         identifier = outcome.detail.identifier
         if identifier:
@@ -316,8 +316,7 @@ class ProjectService:
         if not confirm:
             return ProjectWriteResult(
                 action="delete",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject found the project. Ask for confirmation, then call again with confirm=true to delete it.",
                 project_id=project.id,
@@ -331,8 +330,7 @@ class ProjectService:
         await self._api.delete(project.id)
         return ProjectWriteResult(
             action="delete",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Project deleted successfully.",
             project_id=project.id,
@@ -382,8 +380,7 @@ class ProjectService:
         if not confirm:
             return ProjectCopyResult(
                 action="copy",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview" if ready else "rejected",
                 ready=ready,
                 message=(
                     "OpenProject validated the project copy. Ask for confirmation, then call again with confirm=true to start the copy job."
@@ -399,8 +396,7 @@ class ProjectService:
         if form.validation_errors:
             return ProjectCopyResult(
                 action="copy",
-                confirmed=False,
-                requires_confirmation=False,
+                state="invalid",
                 ready=False,
                 message="OpenProject rejected the project copy payload. Fix the validation errors and try again.",
                 source_project_id=project.id,
@@ -413,8 +409,7 @@ class ProjectService:
         job_status_url = await self._api.commit_copy(project.id, form.payload)
         return ProjectCopyResult(
             action="copy",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Project copy job started successfully.",
             source_project_id=project.id,
@@ -442,8 +437,7 @@ class ProjectService:
             verb = "mark as favorite" if favorite else "remove from favorites"
             return FavoriteWriteResult(
                 action=action,
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message=f"OpenProject is ready to {verb}. Ask for confirmation, then call again with confirm=true.",
                 project_id=project_id,
@@ -461,8 +455,7 @@ class ProjectService:
             ) from exc
         return FavoriteWriteResult(
             action=action,
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message=f"Project {'added to' if favorite else 'removed from'} favorites.",
             project_id=project_id,
@@ -545,8 +538,7 @@ class ProjectService:
     def _to_write_result(self, action: str, outcome: _WriteOutcome[ProjectDetail]) -> ProjectWriteResult:
         return ProjectWriteResult(
             action=action,
-            confirmed=outcome.confirmed,
-            requires_confirmation=outcome.requires_confirmation,
+            state=outcome.state,
             ready=outcome.ready,
             message=outcome.message,
             payload=outcome.payload,

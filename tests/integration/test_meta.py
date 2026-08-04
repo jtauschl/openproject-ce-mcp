@@ -64,7 +64,7 @@ async def test_update_my_preferences_roundtrip(client: OpenProjectClient) -> Non
     try:
         new_time_zone = "America/New_York" if original_time_zone != "America/New_York" else "Europe/Berlin"
         updated = await client.update_my_preferences(time_zone=new_time_zone, confirm=True)
-        assert updated.confirmed
+        assert updated.state == "confirmed"
         assert updated.result is not None
         assert updated.result.time_zone == new_time_zone
 

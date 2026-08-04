@@ -88,8 +88,14 @@ async def test_write_tool_returns_preview_and_issues_no_mutating_call_when_uncon
     )
     try:
         result = await fn(FakeContext(client), **materialized.kwargs, confirm=False)
-        assert result.requires_confirmation is True, case.tool
-        assert result.confirmed is False, case.tool
+        if case.denial_mode == "bulk_result":
+            # The two bulk work-package tools return BulkWorkPackageWriteResult,
+            # deliberately excluded from the ConfirmationHeader/state migration
+            # (batch-shaped, keeps its own confirmed/requires_confirmation pair).
+            assert result.requires_confirmation is True, case.tool
+            assert result.confirmed is False, case.tool
+        else:
+            assert result.state == "preview", case.tool
     finally:
         await client.aclose()
 
@@ -102,7 +108,10 @@ async def test_write_tool_commits_when_confirmed(case: WriteToolCase, tmp_path) 
     client = OpenProjectClient(materialized.settings, transport=httpx.MockTransport(case.handler))
     try:
         result = await fn(FakeContext(client), **materialized.kwargs, confirm=True)
-        assert result.confirmed is True, case.tool
+        if case.denial_mode == "bulk_result":
+            assert result.confirmed is True, case.tool
+        else:
+            assert result.state == "confirmed", case.tool
     finally:
         await client.aclose()
 

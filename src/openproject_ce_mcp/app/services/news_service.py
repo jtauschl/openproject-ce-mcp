@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ...config import Settings
-from ...models import NewsDetail, NewsListResult, NewsWriteResult
+from ...models import NewsDetail, NewsListResult, NewsWriteResult, WriteResultState
 from ..pagination import clamp_limit, paginate_client
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
@@ -43,8 +43,7 @@ from .project_scoped_list import trim_text as _trim_text
 @dataclass(frozen=True)
 class _WriteOutcome:
     action: str
-    confirmed: bool
-    requires_confirmation: bool
+    state: WriteResultState
     news_id: int | None
     project: str | None
     payload: dict[str, Any]
@@ -54,8 +53,7 @@ class _WriteOutcome:
 def _preview(*, action: str, news_id: int | None, project: str | None, payload: dict[str, Any]) -> _WriteOutcome:
     return _WriteOutcome(
         action=action,
-        confirmed=False,
-        requires_confirmation=True,
+        state="preview",
         news_id=news_id,
         project=project,
         payload=payload,
@@ -66,8 +64,7 @@ def _preview(*, action: str, news_id: int | None, project: str | None, payload: 
 def _committed(*, action: str, payload: dict[str, Any], result: NewsDetail) -> _WriteOutcome:
     return _WriteOutcome(
         action=action,
-        confirmed=True,
-        requires_confirmation=False,
+        state="confirmed",
         news_id=result.id,
         project=result.project,
         payload=payload,
@@ -75,7 +72,7 @@ def _committed(*, action: str, payload: dict[str, Any], result: NewsDetail) -> _
     )
 
 
-def _delete_outcome(*, confirmed: bool, payload: dict[str, Any], detail: NewsDetail) -> _WriteOutcome:
+def _delete_outcome(*, state: WriteResultState, payload: dict[str, Any], detail: NewsDetail) -> _WriteOutcome:
     """delete()'s preview AND commit both carry the SAME (already-fetched,
     already-stamped) `detail` as `result` -- unlike create()/update(), whose
     preview has no committed value yet. Verified against the original
@@ -83,8 +80,7 @@ def _delete_outcome(*, confirmed: bool, payload: dict[str, Any], detail: NewsDet
     preview_result=detail (not None, unlike delete_membership's None)."""
     return _WriteOutcome(
         action="delete",
-        confirmed=confirmed,
-        requires_confirmation=not confirmed,
+        state=state,
         news_id=detail.id,
         project=detail.project,
         payload=payload,
@@ -112,10 +108,9 @@ def _to_write_result(outcome: _WriteOutcome) -> NewsWriteResult:
     preview_message, success_message = _MESSAGES[outcome.action]
     return NewsWriteResult(
         action=outcome.action,
-        confirmed=outcome.confirmed,
-        requires_confirmation=outcome.requires_confirmation,
+        state=outcome.state,
         ready=True,
-        message=success_message if outcome.confirmed else preview_message,
+        message=success_message if outcome.state == "confirmed" else preview_message,
         news_id=outcome.news_id,
         project=outcome.project,
         payload=outcome.payload,
@@ -279,8 +274,8 @@ class NewsService:
         payload = {"id": detail.id, "title": detail.title}
 
         if not confirm:
-            return _to_write_result(_delete_outcome(confirmed=False, payload=payload, detail=detail))
+            return _to_write_result(_delete_outcome(state="preview", payload=payload, detail=detail))
 
         access.ensure_write_enabled("project", settings=self._settings)
         await self._api.delete(news_id)
-        return _to_write_result(_delete_outcome(confirmed=True, payload=payload, detail=detail))
+        return _to_write_result(_delete_outcome(state="confirmed", payload=payload, detail=detail))

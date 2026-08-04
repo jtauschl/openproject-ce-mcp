@@ -109,8 +109,7 @@ class FileLinkService:
         if not confirm:
             return FileLinkWriteResult(
                 action="delete",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject found the file link. Ask for confirmation, then call again with confirm=true to delete it.",
                 file_link_id=file_link.id,
@@ -123,8 +122,7 @@ class FileLinkService:
         await self._api.delete(file_link_id)
         return FileLinkWriteResult(
             action="delete",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="File link deleted successfully.",
             file_link_id=file_link.id,

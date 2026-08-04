@@ -67,7 +67,7 @@ async def test_finalize_write_sends_the_same_payload_it_previewed() -> None:
     assert preview.payload == {"name": "Demo", "identifier": "demo", "active": True}
 
     committed = await client.create_project(name="Demo", identifier="demo", active=True, confirm=True)
-    assert committed.confirmed is True
+    assert committed.state == "confirmed"
     assert sent_body == preview.payload
 
     await client.aclose()
@@ -120,7 +120,7 @@ async def test_version_service_finalize_write_sends_the_same_payload_it_previewe
     assert preview.payload == {"name": "v2.0", "_links": {"definingProject": {"href": "/api/v3/projects/5"}}}
 
     committed = await client.create_version(project="myproject", name="v2.0", confirm=True)
-    assert committed.confirmed is True
+    assert committed.state == "confirmed"
     assert sent_body == preview.payload
 
     await client.aclose()
@@ -178,7 +178,7 @@ async def test_create_work_package_relation_preview_payload_matches_sent_body_mo
     committed = await client.create_work_package_relation(
         work_package_id=10, related_to_work_package_id=20, relation_type="follows", confirm=True
     )
-    assert committed.confirmed is True
+    assert committed.state == "confirmed"
     assert sent_body is not None
     assert "to_work_package_id" not in sent_body, "the echo key must never be sent over the wire"
 

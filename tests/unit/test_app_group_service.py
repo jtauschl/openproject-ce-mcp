@@ -240,8 +240,7 @@ async def test_create_returns_preview_without_committing() -> None:
 
     result = await service.create(name="Backend")
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.result is None
     assert api.commit_create_calls == []
 
@@ -253,7 +252,7 @@ async def test_create_commits_when_confirmed_and_admin_write_enabled() -> None:
 
     result = await service.create(name="Backend", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.group_id == 42
     assert api.commit_create_calls == [{"name": "Backend"}]
     assert result.payload == {"name": "Backend", "user_ids": []}
@@ -266,7 +265,7 @@ async def test_create_builds_member_links_when_user_ids_given() -> None:
 
     result = await service.create(name="Backend", user_ids=[5, 6], confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert api.commit_create_calls == [
         {"name": "Backend", "_links": {"members": [{"href": "/api/v3/users/5"}, {"href": "/api/v3/users/6"}]}}
     ]
@@ -329,7 +328,7 @@ async def test_create_does_not_check_members_hidden_when_no_user_ids_given() -> 
 
     result = await service.create(name="Backend", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
 
 
 # --- update ------------------------------------------------------------------
@@ -342,7 +341,7 @@ async def test_update_commits_when_confirmed() -> None:
 
     result = await service.update(3, name="Backend Team", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.group_id == 3
     assert api.commit_update_calls == [(3, {"name": "Backend Team"})]
     assert api.get_member_ids_calls == []
@@ -381,7 +380,7 @@ async def test_update_member_diff_adds_and_removes_against_current_members() -> 
 
     result = await service.update(3, add_user_ids=[4], remove_user_ids=[2], confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert api.get_member_ids_calls == [3]
     assert api.commit_update_calls == [
         (
@@ -410,7 +409,7 @@ async def test_update_member_diff_preview_reflects_current_members_without_commi
 
     result = await service.update(3, add_user_ids=[9], confirm=False)
 
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert api.get_member_ids_calls == [3]
     assert api.commit_update_calls == []
 
@@ -449,7 +448,7 @@ async def test_update_does_not_check_fields_the_caller_did_not_set() -> None:
 
     result = await service.update(3, name="Backend Team", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert api.commit_update_calls == [(3, {"name": "Backend Team"})]
 
 
@@ -474,8 +473,7 @@ async def test_delete_preview_does_not_call_commit() -> None:
 
     result = await service.delete(3, confirm=False)
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.result is None
     assert api.commit_delete_calls == []
 
@@ -487,7 +485,7 @@ async def test_delete_commits_when_confirmed_with_no_result() -> None:
 
     result = await service.delete(3, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.group_id == 3
     assert result.result is None
     assert api.commit_delete_calls == [3]

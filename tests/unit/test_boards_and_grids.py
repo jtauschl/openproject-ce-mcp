@@ -420,8 +420,7 @@ async def test_create_board_returns_preview_when_not_confirmed() -> None:
 
     result = await client.create_board(name="My Board", confirm=False)
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.ready is True
     assert result.validation_errors == {}
 
@@ -462,7 +461,7 @@ async def test_create_board_rejects_validation_error() -> None:
     result = await client.create_board(name="", confirm=True)
 
     assert result.ready is False
-    assert result.confirmed is False
+    assert result.state == "invalid"
     assert "name" in result.validation_errors
 
     await client.aclose()
@@ -612,8 +611,7 @@ async def test_update_grid_preview_mode() -> None:
     result = await client.update_grid(grid_id=55, name="Renamed Grid", confirm=False)
 
     assert result.action == "update"
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.grid_id == 55
     await client.aclose()
 
@@ -648,7 +646,7 @@ async def test_update_grid_executes_with_confirm() -> None:
     client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
     result = await client.update_grid(grid_id=55, name="Renamed Grid", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.grid_id == 55
     assert result.result is not None
     await client.aclose()
@@ -671,8 +669,7 @@ async def test_delete_grid_preview_mode() -> None:
     result = await client.delete_grid(grid_id=55, confirm=False)
 
     assert result.action == "delete"
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.grid_id == 55
     await client.aclose()
 
@@ -698,7 +695,7 @@ async def test_delete_grid_executes_with_confirm() -> None:
     client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
     result = await client.delete_grid(grid_id=55, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.grid_id == 55
     assert deleted["called"] is True
     await client.aclose()

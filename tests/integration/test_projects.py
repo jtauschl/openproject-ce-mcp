@@ -107,7 +107,7 @@ async def test_add_and_remove_project_favorite(client: OpenProjectClient, test_p
     pre-test favorite state (unfavorited) regardless of outcome so this test
     leaves no persistent side effect on the disposable test project."""
     add_preview = await client.add_project_favorite(project=test_project)
-    assert add_preview.requires_confirmation
+    assert add_preview.state == "preview"
 
     try:
         try:
@@ -120,14 +120,14 @@ async def test_add_and_remove_project_favorite(client: OpenProjectClient, test_p
             if "requires OpenProject" in str(exc):
                 pytest.skip(str(exc))
             raise
-        assert added.confirmed
+        assert added.state == "confirmed"
         assert added.action == "favorite"
 
         remove_preview = await client.remove_project_favorite(project=test_project)
-        assert remove_preview.requires_confirmation
+        assert remove_preview.state == "preview"
 
         removed = await client.remove_project_favorite(project=test_project, confirm=True)
-        assert removed.confirmed
+        assert removed.state == "confirmed"
         assert removed.action == "unfavorite"
     finally:
         # Best-effort restore to unfavorited in case an assertion above failed

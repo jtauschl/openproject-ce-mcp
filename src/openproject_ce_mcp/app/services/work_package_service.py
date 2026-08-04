@@ -200,8 +200,9 @@ def _trim_text(value: Any, *, limit: int = SUBJECT_LIMIT) -> str | None:
 def _bulk_item_result(*, index: int, result: WorkPackageWriteResult) -> BulkWorkPackageItemResult:
     """Verbatim port of client.py's own `_bulk_item_result`. "success" is
     defined purely by `result.ready` (i.e. no OpenProject validation errors),
-    not by `result.confirmed` -- a `confirm=False` preview call that
-    validates cleanly is intentionally reported as `success=True`."""
+    not by whether the result was already confirmed -- a `confirm=False`
+    preview call that validates cleanly is intentionally reported as
+    `success=True`."""
     if not result.ready:
         return BulkWorkPackageItemResult(index=index, success=False, error=result.message, result=result)
     return BulkWorkPackageItemResult(index=index, success=True, error=None, result=result)
@@ -1099,8 +1100,7 @@ class WorkPackageService:
             detail = self._stamp_detail(filtered)
         return WorkPackageWriteResult(
             action=action,
-            confirmed=outcome.confirmed,
-            requires_confirmation=outcome.requires_confirmation,
+            state=outcome.state,
             ready=outcome.ready,
             message=outcome.message,
             payload=outcome.payload,
@@ -1605,8 +1605,7 @@ class WorkPackageService:
         if not confirm:
             return WorkPackageWriteResult(
                 action="delete",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to delete this work package. Ask for confirmation, then call again with confirm=true.",
                 work_package_id=detail.id,
@@ -1620,8 +1619,7 @@ class WorkPackageService:
         await self._api.delete(ref)
         return WorkPackageWriteResult(
             action="delete",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Work package deleted successfully.",
             work_package_id=detail.id,
@@ -1691,8 +1689,7 @@ class WorkPackageService:
         if not confirm:
             return ActivityWriteResult(
                 action="comment",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to add this comment. Ask for confirmation, then call again with confirm=true.",
                 work_package_id=ref,
@@ -1720,8 +1717,7 @@ class WorkPackageService:
         )
         return ActivityWriteResult(
             action="comment",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Comment added successfully.",
             work_package_id=ref,

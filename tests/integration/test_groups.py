@@ -72,13 +72,13 @@ async def test_update_group_renames_and_manages_members(client: OpenProjectClien
 
     new_name = f"{name}-renamed"
     updated = await client.update_group(group_id, name=new_name, remove_user_ids=[me.id], confirm=True)
-    assert updated.confirmed
+    assert updated.state == "confirmed"
     assert updated.result is not None
     assert updated.result.name == new_name
     assert updated.result.member_count == 0
 
     added_back = await client.update_group(group_id, add_user_ids=[me.id], confirm=True)
-    assert added_back.confirmed
+    assert added_back.state == "confirmed"
     assert added_back.result is not None
     assert added_back.result.member_count == 1
 

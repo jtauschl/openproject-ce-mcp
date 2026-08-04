@@ -473,7 +473,7 @@ async def test_update_project_clears_description_and_status_explanation() -> Non
         confirm=True,
     )
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     await client.aclose()
 
 
@@ -509,7 +509,7 @@ async def test_update_project_none_description_leaves_field_untouched() -> None:
 
     result = await client.update_project(project_ref="demo", name="New Name", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     await client.aclose()
 
 

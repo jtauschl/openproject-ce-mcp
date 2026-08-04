@@ -83,7 +83,7 @@ async def test_create_get_update_delete_work_package(
 
     # Delete (cleanup fixture also deletes, but we verify delete works)
     delete_result = await client.delete_work_package(work_package_id=wp_id, confirm=True)
-    assert delete_result.ready and delete_result.confirmed
+    assert delete_result.ready and delete_result.state == "confirmed"
     wp_ids.remove(wp_id)  # already deleted, don't try again in fixture
 
 
@@ -540,17 +540,17 @@ async def test_add_and_remove_work_package_watcher(
     me = await client.get_current_user()
 
     preview = await client.add_work_package_watcher(result.work_package_id, me.id)
-    assert preview.requires_confirmation
+    assert preview.state == "preview"
 
     added = await client.add_work_package_watcher(result.work_package_id, me.id, confirm=True)
-    assert added.confirmed
+    assert added.state == "confirmed"
     assert added.watcher_user_id == me.id
 
     watchers_after_add = await client.list_work_package_watchers(result.work_package_id)
     assert any(w.id == me.id for w in watchers_after_add.results)
 
     removed = await client.remove_work_package_watcher(result.work_package_id, me.id, confirm=True)
-    assert removed.confirmed
+    assert removed.state == "confirmed"
 
     watchers_after_remove = await client.list_work_package_watchers(result.work_package_id)
     assert not any(w.id == me.id for w in watchers_after_remove.results)

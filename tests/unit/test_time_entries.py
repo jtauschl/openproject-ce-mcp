@@ -280,7 +280,7 @@ async def test_update_time_entry_clears_comment_in_http_payload() -> None:
 
     result = await client.update_time_entry(time_entry_id=10, comment="", confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     await client.aclose()
 
 
@@ -582,7 +582,7 @@ async def test_create_time_entry_resolves_activity_from_project_form_context() -
         confirm=True,
     )
 
-    assert created.confirmed is True
+    assert created.state == "confirmed"
     assert created.result is not None
     assert created.result.activity == "Development"
 
@@ -822,7 +822,7 @@ async def test_create_time_entry_preview_reflects_openproject_validation_errors(
     )
 
     assert result.ready is False
-    assert result.confirmed is False
+    assert result.state == "rejected"
     assert result.validation_errors == {"hours": "must be greater than 0"}
 
     await client.aclose()
@@ -859,7 +859,7 @@ async def test_update_time_entry_preview_reflects_openproject_validation_errors(
     result = await client.update_time_entry(time_entry_id=8, hours="PT0H", confirm=False)
 
     assert result.ready is False
-    assert result.confirmed is False
+    assert result.state == "rejected"
     assert result.validation_errors == {"hours": "must be greater than 0"}
 
     await client.aclose()

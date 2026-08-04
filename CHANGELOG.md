@@ -34,6 +34,12 @@ support.
   from the server, and some never resolved to a real page. `download_url`,
   `avatar_url`, and `identity_url` are unaffected, as are the handful of
   `url` fields that resolve a link OpenProject actually sends.
+- **Breaking: every non-bulk write/delete result based on
+  `ConfirmationHeader`'s `confirmed`/`requires_confirmation` boolean pair is
+  replaced by a single `state` field**
+  (`"rejected"` | `"invalid"` | `"preview"` | `"confirmed"`). `ready` is
+  unchanged. `BulkWorkPackageWriteResult` (the two bulk work-package tools)
+  is unaffected and still returns `confirmed`/`requires_confirmation`.
 - **Breaking: `search_work_packages`'s `query` parameter is renamed to
   `search`**, matching every other search-capable tool.
 - **Breaking: `list_roles` now returns a paginated result** instead of the

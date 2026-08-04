@@ -122,8 +122,7 @@ async def test_add_preview_without_confirm_does_not_call_api_add() -> None:
 
     result = await service.add(9, 5, confirm=False)
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.work_package_id == 9
     assert result.result is not None
     assert result.result.id == 5
@@ -142,8 +141,7 @@ async def test_add_commit_with_confirm_calls_api_add() -> None:
 
     result = await service.add(9, 5, confirm=True)
 
-    assert result.confirmed is True
-    assert result.requires_confirmation is False
+    assert result.state == "confirmed"
     assert result.work_package_id == 9
     assert result.result is not None
     assert result.result.id == 5
@@ -205,8 +203,7 @@ async def test_remove_preview_without_confirm_does_not_call_api_remove() -> None
 
     result = await service.remove(9, 5, confirm=False)
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.work_package_id == 9
     assert result.result is None
     assert api.remove_calls == []
@@ -220,8 +217,7 @@ async def test_remove_commit_with_confirm_calls_api_remove() -> None:
 
     result = await service.remove(9, 5, confirm=True)
 
-    assert result.confirmed is True
-    assert result.requires_confirmation is False
+    assert result.state == "confirmed"
     assert result.work_package_id == 9
     assert result.result is None
     assert api.remove_calls == [(9, 5)]

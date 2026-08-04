@@ -124,8 +124,7 @@ class ReminderService:
         if not confirm:
             return ReminderWriteResult(
                 action="create",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to create this reminder. Ask for confirmation, then call again with confirm=true.",
                 reminder_id=None,
@@ -141,8 +140,7 @@ class ReminderService:
         result = self._stamp(record.summary())
         return ReminderWriteResult(
             action="create",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Reminder created successfully.",
             reminder_id=result.id,
@@ -196,8 +194,7 @@ class ReminderService:
         if not confirm:
             return ReminderWriteResult(
                 action="update",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to update this reminder. Ask for confirmation, then call again with confirm=true.",
                 reminder_id=reminder_id,
@@ -210,8 +207,7 @@ class ReminderService:
         result = self._stamp(record.summary())
         return ReminderWriteResult(
             action="update",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Reminder updated successfully.",
             reminder_id=result.id,
@@ -226,8 +222,7 @@ class ReminderService:
         if not confirm:
             return ReminderWriteResult(
                 action="delete",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to delete this reminder. Ask for confirmation, then call again with confirm=true.",
                 reminder_id=reminder_id,
@@ -239,8 +234,7 @@ class ReminderService:
         await self._api.delete(reminder_id)
         return ReminderWriteResult(
             action="delete",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Reminder deleted successfully.",
             reminder_id=reminder_id,

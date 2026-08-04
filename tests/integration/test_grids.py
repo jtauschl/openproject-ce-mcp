@@ -102,7 +102,7 @@ async def test_update_grid_changes_dimensions(client: OpenProjectClient, project
     assert grid_id is not None
 
     updated = await unrestricted_client.update_grid(grid_id=grid_id, row_count=5, column_count=4, confirm=True)
-    assert updated.confirmed
+    assert updated.state == "confirmed"
     assert updated.result is not None
     assert updated.result.row_count == 5
     assert updated.result.column_count == 4

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 
 class SortCriterion(NamedTuple):
@@ -42,10 +42,23 @@ class CollectionResult:
     count: int
 
 
+WriteResultState = Literal["rejected", "invalid", "preview", "confirmed"]
+"""Confirm-gated write/delete outcome (OPM-373 Phase 3, replaces the former
+confirmed/requires_confirmation boolean pair):
+- "rejected": confirm=False, payload invalid. No mutation was committed.
+  Fix the payload, then retry with confirm=true.
+- "invalid": confirm=True, payload invalid. No mutation was committed.
+  Retrying confirm alone will not help -- the payload itself must change.
+- "preview": confirm=False, payload valid. No mutation was committed.
+  Ask the user, then commit with confirm=true.
+- "confirmed": confirm=True, payload valid, committed.
+"""
+
+
 @dataclass
 class ConfirmationHeader:
     """Shared confirm-gated write/delete header. Deliberately just
-    these 5 fields -- the ones genuinely common to all matching write
+    these 4 fields -- the ones genuinely common to all matching write
     results. payload/validation_errors/result are NOT here: identity fields
     vary in name/count/type and always sit between the header and payload,
     and result's type differs per subclass, so a wider shared base would
@@ -53,12 +66,21 @@ class ConfirmationHeader:
     reintroduce the Generic[T] schema-degradation problem already
     rejected for `results` (see PageResult). BulkWorkPackageWriteResult is
     deliberately excluded from this hierarchy -- it lacks `ready` and is
-    batch-shaped, not a single confirm-gated action.
+    batch-shaped, not a single confirm-gated action, and keeps its own
+    confirmed/requires_confirmation pair unchanged.
+
+    `state` replaces the former confirmed/requires_confirmation pair (OPM-373
+    Phase 3) -- see WriteResultState. `ready` is fully derivable from `state`
+    (`state in ("preview", "confirmed")`) but is kept as its own field: it is
+    read directly by callers (e.g. work_package_service.py's
+    `_bulk_item_result`) and lets a consumer check "did this succeed
+    structurally" with a single boolean instead of a string comparison. This
+    is a deliberate, acknowledged redundancy for ergonomics, not independent
+    information.
     """
 
     action: str
-    confirmed: bool
-    requires_confirmation: bool
+    state: WriteResultState
     ready: bool
     message: str
 

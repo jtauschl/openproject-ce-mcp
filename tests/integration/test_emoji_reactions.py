@@ -60,7 +60,7 @@ async def test_toggle_activity_emoji_reaction_adds_then_removes(
     _wp_id, activity_id = await _create_wp_and_comment_activity_id(client, test_project, wp_ids)
 
     added = await client.toggle_activity_emoji_reaction(activity_id, "thumbs_up", confirm=True)
-    assert added.confirmed
+    assert added.state == "confirmed"
     assert added.result is not None
     matches = [r for r in added.result.results if r.reaction == "thumbs_up"]
     assert len(matches) == 1
@@ -68,7 +68,7 @@ async def test_toggle_activity_emoji_reaction_adds_then_removes(
 
     # Toggling the same reaction again removes it.
     removed = await client.toggle_activity_emoji_reaction(activity_id, "thumbs_up", confirm=True)
-    assert removed.confirmed
+    assert removed.state == "confirmed"
     assert removed.result is not None
     remaining = [r for r in removed.result.results if r.reaction == "thumbs_up"]
     assert remaining == []
@@ -80,8 +80,7 @@ async def test_toggle_activity_emoji_reaction_preview_does_not_write(
     wp_id, activity_id = await _create_wp_and_comment_activity_id(client, test_project, wp_ids)
 
     preview = await client.toggle_activity_emoji_reaction(activity_id, "heart", confirm=False)
-    assert not preview.confirmed
-    assert preview.requires_confirmation
+    assert preview.state == "preview"
 
     listed = await client.list_work_package_reactions(wp_id)
     assert all(r.reaction != "heart" for r in listed.results)

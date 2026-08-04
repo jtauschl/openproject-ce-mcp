@@ -115,8 +115,7 @@ async def test_update_returns_preview_without_committing_when_not_confirmed() ->
 
     result = await service.update(time_zone="UTC", confirm=False)
 
-    assert result.requires_confirmation is True
-    assert result.confirmed is False
+    assert result.state == "preview"
     assert result.result is None
     assert result.payload == {"timeZone": "UTC"}
     assert api.commit_update_calls == []
@@ -130,7 +129,7 @@ async def test_update_commits_and_stamps_hidden_fields_when_confirmed() -> None:
 
     result = await service.update(comment_sort_descending=True, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert api.commit_update_calls == [{"commentSortDescending": True}]
     assert result.result is not None
     assert getattr(result.result, "_hidden_keys", frozenset()) == {"time_zone"}

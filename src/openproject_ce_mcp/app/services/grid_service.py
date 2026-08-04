@@ -202,8 +202,7 @@ class GridService:
         if not confirm:
             return GridWriteResult(
                 action="delete",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject found the grid. Ask for confirmation, then call again with confirm=true to delete it.",
                 grid_id=grid.id,
@@ -217,8 +216,7 @@ class GridService:
         await self._api.delete(grid_id)
         return GridWriteResult(
             action="delete",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Grid deleted successfully.",
             grid_id=grid.id,
@@ -231,8 +229,7 @@ class GridService:
     def _to_write_result(self, action: str, outcome: _WriteOutcome[GridSummary]) -> GridWriteResult:
         return GridWriteResult(
             action=action,
-            confirmed=outcome.confirmed,
-            requires_confirmation=outcome.requires_confirmation,
+            state=outcome.state,
             ready=outcome.ready,
             message=outcome.message,
             payload=outcome.payload,

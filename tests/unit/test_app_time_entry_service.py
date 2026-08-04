@@ -459,8 +459,7 @@ async def test_create_previews_without_confirm() -> None:
         work_package_id=42, activity="Development", hours="PT1H", spent_on="2026-03-20", confirm=False
     )
 
-    assert result.confirmed is False
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert api.create_calls == []
 
 
@@ -473,7 +472,7 @@ async def test_create_commits_when_confirmed() -> None:
         work_package_id=42, activity="Development", hours="PT1H", spent_on="2026-03-20", confirm=True
     )
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is not None
     assert result.result.id == 650
     assert len(api.create_calls) == 1
@@ -591,7 +590,7 @@ async def test_update_previews_without_confirm() -> None:
 
     result = await service.update(time_entry_id=7, hours="PT2H", confirm=False)
 
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert api.update_calls == []
 
 
@@ -627,7 +626,7 @@ async def test_delete_previews_without_confirm() -> None:
 
     result = await service.delete(time_entry_id=7, confirm=False)
 
-    assert result.requires_confirmation is True
+    assert result.state == "preview"
     assert result.result is not None
     assert api.delete_calls == []
 
@@ -639,7 +638,7 @@ async def test_delete_commits_when_confirmed() -> None:
 
     result = await service.delete(time_entry_id=7, confirm=True)
 
-    assert result.confirmed is True
+    assert result.state == "confirmed"
     assert result.result is None
     assert api.delete_calls == [7]
 

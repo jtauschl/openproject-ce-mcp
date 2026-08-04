@@ -142,8 +142,7 @@ class DocumentService:
         if not confirm:
             return DocumentWriteResult(
                 action="update",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to update this document. Ask for confirmation, then call again with confirm=true.",
                 document_id=detail.id,
@@ -157,8 +156,7 @@ class DocumentService:
         result = self._stamp(await self._api.commit_update(document_id, payload))
         return DocumentWriteResult(
             action="update",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Document updated successfully.",
             document_id=result.id,

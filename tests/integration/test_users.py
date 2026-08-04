@@ -83,7 +83,7 @@ async def test_user_lifecycle_roundtrip(client: OpenProjectClient, user_ids: lis
         confirm=True,
     )
     assert created.ready, created.validation_errors
-    assert created.confirmed
+    assert created.state == "confirmed"
     user_id = created.user_id
     assert user_id is not None
     user_ids.append(user_id)
@@ -95,22 +95,22 @@ async def test_user_lifecycle_roundtrip(client: OpenProjectClient, user_ids: lis
     assert fetched.login == login
 
     updated = await client.update_user(user_id, lastname=f"Test {suffix} Renamed", confirm=True)
-    assert updated.confirmed
+    assert updated.state == "confirmed"
     assert updated.result is not None
     assert updated.result.lastname == f"Test {suffix} Renamed"
 
     locked = await client.lock_user(user_id, confirm=True)
-    assert locked.confirmed
+    assert locked.state == "confirmed"
     assert locked.result is not None
     assert locked.result.status == "locked"
 
     unlocked = await client.unlock_user(user_id, confirm=True)
-    assert unlocked.confirmed
+    assert unlocked.state == "confirmed"
     assert unlocked.result is not None
     assert unlocked.result.status != "locked"
 
     deleted = await client.delete_user(user_id, confirm=True)
-    assert deleted.confirmed
+    assert deleted.state == "confirmed"
     user_ids.remove(user_id)
 
     with pytest.raises(NotFoundError):
@@ -137,7 +137,7 @@ async def test_second_user_membership_interaction(
         project=test_project, principal=str(second_user_id), roles=[role_name], confirm=True
     )
     assert membership.ready, membership.validation_errors
-    assert membership.confirmed
+    assert membership.state == "confirmed"
 
     # The second user's OWN client/token now sees itself as a member.
     access = await second_client.get_my_project_access(test_project)

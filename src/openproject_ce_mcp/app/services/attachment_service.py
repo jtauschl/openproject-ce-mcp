@@ -158,8 +158,7 @@ class AttachmentService:
         if not confirm:
             return AttachmentWriteResult(
                 action="create",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject is ready to upload this attachment. Ask for confirmation, then call again with confirm=true.",
                 attachment_id=None,
@@ -194,8 +193,7 @@ class AttachmentService:
         result = self._stamp(record.summary)
         return AttachmentWriteResult(
             action="create",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Attachment uploaded successfully.",
             attachment_id=result.id,
@@ -223,8 +221,7 @@ class AttachmentService:
         if not confirm:
             return AttachmentWriteResult(
                 action="delete",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject found the attachment. Ask for confirmation, then call again with confirm=true to delete it.",
                 attachment_id=attachment.id,
@@ -238,8 +235,7 @@ class AttachmentService:
         await self._api.delete(attachment_id)
         return AttachmentWriteResult(
             action="delete",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Attachment deleted successfully.",
             attachment_id=attachment.id,

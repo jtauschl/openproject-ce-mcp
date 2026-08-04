@@ -210,8 +210,7 @@ class MembershipService:
         if not confirm:
             return MembershipWriteResult(
                 action="delete",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message="OpenProject found the membership. Ask for confirmation, then call again with confirm=true to delete it.",
                 membership_id=membership.id,
@@ -225,8 +224,7 @@ class MembershipService:
         await self._api.delete(membership_id)
         return MembershipWriteResult(
             action="delete",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="Membership deleted successfully.",
             membership_id=membership.id,
@@ -286,8 +284,7 @@ class MembershipService:
     def _to_write_result(self, action: str, outcome: _WriteOutcome[MembershipSummary]) -> MembershipWriteResult:
         return MembershipWriteResult(
             action=action,
-            confirmed=outcome.confirmed,
-            requires_confirmation=outcome.requires_confirmation,
+            state=outcome.state,
             ready=outcome.ready,
             message=outcome.message,
             payload=outcome.payload,

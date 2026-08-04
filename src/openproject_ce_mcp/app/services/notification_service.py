@@ -194,8 +194,7 @@ class NotificationService:
             # already validated it.
             return NotificationMarkResult(
                 action="mark_read",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message=(
                     f"Ask for confirmation, then call again with confirm=true to mark "
@@ -206,8 +205,7 @@ class NotificationService:
         await self._api.mark_read(notification_id)
         return NotificationMarkResult(
             action="mark_read",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message=f"Notification {notification_id} marked read.",
             notification_id=notification_id,
@@ -218,8 +216,7 @@ class NotificationService:
         if not confirm:
             return NotificationMarkResult(
                 action="mark_all_read",
-                confirmed=False,
-                requires_confirmation=True,
+                state="preview",
                 ready=True,
                 message=(
                     "Marks all currently unread notifications read. Ask for confirmation, "
@@ -230,8 +227,7 @@ class NotificationService:
         await self._api.mark_all_read()
         return NotificationMarkResult(
             action="mark_all_read",
-            confirmed=True,
-            requires_confirmation=False,
+            state="confirmed",
             ready=True,
             message="All unread notifications marked read.",
             notification_id=None,

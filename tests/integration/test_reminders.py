@@ -56,7 +56,7 @@ async def test_list_reminders_finds_created_reminder(
     created = await client.create_work_package_reminder(
         work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True
     )
-    assert created.confirmed
+    assert created.state == "confirmed"
     reminder_ids.append(created.reminder_id)
 
     result = await client.list_reminders()
@@ -82,7 +82,7 @@ async def test_update_reminder_denied_outside_write_allowlist(
     created = await client.create_work_package_reminder(
         work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True
     )
-    assert created.confirmed
+    assert created.state == "confirmed"
     reminder_ids.append(created.reminder_id)
 
     with pytest.raises(PermissionDeniedError):
@@ -101,16 +101,16 @@ async def test_update_reminder_changes_note(
     created = await client.create_work_package_reminder(
         work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True
     )
-    assert created.confirmed
+    assert created.state == "confirmed"
     reminder_ids.append(created.reminder_id)
 
     preview = await client.update_reminder(reminder_id=created.reminder_id, note="updated by integration test")
-    assert preview.requires_confirmation
+    assert preview.state == "preview"
 
     updated = await client.update_reminder(
         reminder_id=created.reminder_id, note="updated by integration test", confirm=True
     )
-    assert updated.confirmed
+    assert updated.state == "confirmed"
     # note is wrapped in <user-content> delimiters (prompt-injection boundary
     # marker for user-supplied text), same as every other free-text field
     # this server normalizes.
@@ -134,7 +134,7 @@ async def test_delete_reminder_denied_outside_write_allowlist(
     created = await client.create_work_package_reminder(
         work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True
     )
-    assert created.confirmed
+    assert created.state == "confirmed"
 
     with pytest.raises(PermissionDeniedError):
         await denied_client.delete_reminder(reminder_id=created.reminder_id, confirm=True)
@@ -153,10 +153,10 @@ async def test_delete_reminder_removes_it(client: OpenProjectClient, test_projec
     created = await client.create_work_package_reminder(
         work_package_id=wp.work_package_id, remind_at="2027-01-01T09:00:00Z", confirm=True
     )
-    assert created.confirmed
+    assert created.state == "confirmed"
 
     deleted = await client.delete_reminder(reminder_id=created.reminder_id, confirm=True)
-    assert deleted.confirmed
+    assert deleted.state == "confirmed"
 
     result = await client.list_reminders()
     assert not any(r.id == created.reminder_id for r in result.results)

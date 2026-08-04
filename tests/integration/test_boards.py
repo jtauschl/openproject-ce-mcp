@@ -62,7 +62,7 @@ async def test_create_get_update_delete_board(
 
     # Delete
     delete_result = await client.delete_board(board_id=board_id, confirm=True)
-    assert delete_result.ready and delete_result.confirmed
+    assert delete_result.ready and delete_result.state == "confirmed"
     board_ids.remove(board_id)
 
 
