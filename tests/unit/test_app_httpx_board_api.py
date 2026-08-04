@@ -45,7 +45,7 @@ def _board_payload(board_id: int = 1, *, long_name: bool = False) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_list_all_requests_a_bounded_page_and_builds_records() -> None:
+async def test_list_page_at_offset_one_requests_a_bounded_page_and_builds_records() -> None:
     # Regression: the original client.py's _fetch_bounded_and_paginate always
     # sent offset=1&pageSize=settings.max_results for its bounded fetch --
     # an earlier version of this adapter omitted both params entirely,
@@ -55,12 +55,13 @@ async def test_list_all_requests_a_bounded_page_and_builds_records() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/queries"
         assert dict(request.url.params) == {"offset": "1", "pageSize": "100"}
-        return httpx.Response(200, json={"_embedded": {"elements": [_board_payload()]}}, request=request)
+        return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [_board_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
         api = HttpxBoardApi(HttpxTransport(http_client))
-        records = await api.list_all(page_size=100)
+        records, total = await api.list_page(offset=1, limit=100)
 
+    assert total == 1
     assert len(records) == 1
     summary = records[0].summary
     assert summary.id == 1

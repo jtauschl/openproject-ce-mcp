@@ -59,14 +59,16 @@ class BoardApi(Protocol):
     architecture-boundary test).
 
     Full CRUD via OpenProject's `queries` resource (Boards have no dedicated
-    `boards` endpoint -- `_type: "Query"`). `list_all`/`list_page` are two
-    distinct methods, not one method with a filter flag, mirroring the two
-    genuinely distinct HTTP shapes client.py's original `list_boards` used:
-    a bounded-fetch-then-client-side-filter path, and a directly-paginated
-    server-side path reachable only when no filtering is needed at all.
+    `boards` endpoint -- `_type: "Query"`). `list_page` is the single list
+    method for both of `BoardService.list()`'s branches: the
+    directly-paginated server-side path (reachable only when no filtering
+    is needed at all) calls it once per requested page; the client-side
+    filtering path (OPM-373 Phase 5) scans it via `scan_records_and_paginate`
+    instead of the earlier `list_all(page_size)` single-shot fetch, which
+    never reduced server load for `offset`/`limit` beyond the first
+    `page_size`-capped page.
     """
 
-    async def list_all(self, *, page_size: int) -> list[BoardRecord]: ...
     async def list_page(self, *, offset: int, limit: int) -> tuple[list[BoardRecord], int]: ...
     async def get(self, board_id: int) -> BoardRecord: ...
     async def create_form(self, payload: dict[str, Any]) -> BoardFormResult: ...

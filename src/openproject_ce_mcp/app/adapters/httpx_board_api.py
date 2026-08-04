@@ -169,11 +169,6 @@ class HttpxBoardApi:
             project_link=payload.get("_links", {}).get("project"),
         )
 
-    async def list_all(self, *, page_size: int) -> list[BoardRecord]:
-        payload = await self._transport.get_json("queries", params={"offset": "1", "pageSize": str(page_size)})
-        elements = payload.get("_embedded", {}).get("elements", [])
-        return [self._record(item) for item in elements if isinstance(item, dict)]
-
     async def list_page(self, *, offset: int, limit: int) -> tuple[list[BoardRecord], int]:
         payload = await self._transport.get_json("queries", params={"offset": str(offset), "pageSize": str(limit)})
         elements = payload.get("_embedded", {}).get("elements", [])
