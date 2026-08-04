@@ -789,7 +789,11 @@ async def list_users(
     login, email, status, admin, created_at, updated_at.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap.
+    next_offset as the next call's offset to page past the cap. With search,
+    total reflects only the matching users already scanned to fill this page,
+    not a full count of all matches — the search stops as soon as it has
+    enough, so an exact total would need an extra full walk. Page until
+    next_offset is null.
     """
     client = _client_from_context(ctx)
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)

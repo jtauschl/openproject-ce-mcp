@@ -15197,7 +15197,8 @@ async def test_list_users_search_walks_every_server_page_then_filters_and_pagina
     """Regression: Users is genuinely OffsetPaginatedCollection server-side
     (verified against op-sources) -- a single bounded fetch capped at
     max_results used to silently hide any search match beyond that cap. Now
-    walks every server page via _fetch_all_pages before filtering."""
+    scans server pages via _scan_and_paginate before filtering (OPM-373
+    Phase 5)."""
     requested_offsets: list[str] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -15248,9 +15249,51 @@ async def test_list_users_search_walks_every_server_page_then_filters_and_pagina
     # survivor (id=4), not slice the raw page first.
     second_page = await client.list_users(search="ali", limit=1, offset=2)
     assert [u.id for u in second_page.results] == [4]
-    assert second_page.total == 2
+    # total is a lower bound (len(results) on this page), not an exact count of
+    # the full search-filtered collection -- OPM-373 Phase 5's total-contract
+    # change, same convention as list_relations/list_projects/etc.
+    assert second_page.total == 1
     assert second_page.truncated is False
     assert second_page.next_offset is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_users_search_not_truncated_when_exactly_limit_matches_exist() -> None:
+    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    truncated=True as soon as `limit` matches are collected, without checking
+    whether a matching user actually exists beyond that window."""
+    settings = dataclasses.replace(make_settings(), enable_admin_read=True)
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/users" and request.method == "GET":
+            offset = request.url.params["offset"]
+            requested_offsets.append(offset)
+            if offset == "1":
+                return httpx.Response(
+                    200,
+                    json={
+                        "total": 1,
+                        "_embedded": {
+                            "elements": [
+                                {"id": 1, "name": "Alice Smith", "login": "alice", "email": "alice@example.com"}
+                            ]
+                        },
+                    },
+                    request=request,
+                )
+            raise AssertionError(f"Unexpected offset: {offset}")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.list_users(search="ali", limit=1)
+
+    assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
+    assert [u.id for u in result.results] == [1]
+    assert result.truncated is False
+    assert result.next_offset is None
 
     await client.aclose()
 

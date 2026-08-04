@@ -760,35 +760,35 @@ class OpenProjectClient:
         effective_limit = self._resolve_limit(limit)
 
         if search is not None:
-            # No server-side name/login/email filter exists for /users, so walk
+            search_key = search.casefold()
+
+            async def _user_item_allowed(item: dict[str, Any]) -> bool:
+                normalized = self.normalize_user(item)
+                return (
+                    search_key in (normalized.name or "").casefold()
+                    or search_key in (normalized.login or "").casefold()
+                    or search_key in (normalized.email or "").casefold()
+                )
+
+            # No server-side name/login/email filter exists for /users, so scan
             # every server page (Users is genuinely OffsetPaginatedCollection --
             # verified against op-sources -- a single bounded fetch capped at
-            # max_results would silently hide any match beyond that cap) and
-            # paginate the filtered survivors in memory instead of trusting the
-            # server's pre-filter total (same pattern as list_versions' global
-            # branch).
-            elements = await self._fetch_all_pages("users")
-            results = [self.normalize_user(item) for item in elements]
-            search_key = search.casefold()
-            results = [
-                item
-                for item in results
-                if search_key in (item.name or "").casefold()
-                or search_key in (item.login or "").casefold()
-                or search_key in (item.email or "").casefold()
-            ]
+            # max_results would silently hide any match beyond that cap) instead
+            # of trusting the server's pre-filter total (same pattern as
+            # list_versions' global branch).
+            raw_items, truncated = await self._scan_and_paginate(
+                "users", item_allowed=_user_item_allowed, offset=offset, limit=effective_limit
+            )
+            results = [self.normalize_user(item) for item in raw_items]
             total = len(results)
-            start = (offset - 1) * effective_limit
-            end = start + effective_limit
-            page = results[start:end]
             return UserListResult(
                 offset=offset,
                 limit=effective_limit,
                 total=total,
-                count=len(page),
-                next_offset=offset + 1 if end < total else None,
-                truncated=end < total,
-                results=page,
+                count=total,
+                next_offset=offset + 1 if truncated else None,
+                truncated=truncated,
+                results=results,
             )
 
         payload = await self._get(
