@@ -43,7 +43,7 @@ from typing import Any
 from ...config import Settings
 from ...models import SprintDetail, SprintListResult
 from ..errors import NotFoundError
-from ..pagination import clamp_limit, paginate_all, paginate_client
+from ..pagination import clamp_limit, scan_records_and_paginate
 from ..policies import access, hidden_fields
 from ..policies.sprint_policy import ensure_sprint_workspace_allowed, sprint_payload_allowed
 from ..ports.project_ref import ProjectRefResolver
@@ -76,22 +76,26 @@ class SprintService:
             project_id_to_identifier=self._project_id_to_identifier,
         )
 
-    def _paginate(
-        self, records: list[SprintRecord], *, search: str | None, offset: int, limit: int
+    def _item_allowed(self, record: SprintRecord, *, search: str | None) -> bool:
+        if not self._allowed(record):
+            return False
+        if search is None:
+            return True
+        return search.casefold() in (record.summary.name or "").casefold()
+
+    def _to_result(
+        self, raw_items: list[SprintRecord], *, truncated: bool, offset: int, limit: int
     ) -> SprintListResult:
-        results = [self._stamp(record.summary) for record in records if self._allowed(record)]
-        if search is not None:
-            search_key = search.casefold()
-            results = [item for item in results if search_key in (item.name or "").casefold()]
-        page, total, next_offset, truncated = paginate_client(offset=offset, limit=limit, results=results)
+        results = [self._stamp(record.summary) for record in raw_items]
+        total = len(results)
         return SprintListResult(
             offset=offset,
             limit=limit,
             total=total,
-            count=len(page),
-            next_offset=next_offset,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
             truncated=truncated,
-            results=page,
+            results=results,
         )
 
     async def list(
@@ -111,17 +115,20 @@ class SprintService:
         try:
             # A single fetch capped at settings.max_results silently hid any
             # sprint beyond that cap once the endpoint's real result count
-            # exceeded it -- walk every server page instead.
-            records = await paginate_all(
-                lambda offset, page_size: self._api.list_all(offset=offset, page_size=page_size),
-                page_size=self._settings.max_page_size,
+            # exceeded it -- scan server pages instead (OPM-373 Phase 5).
+            raw_items, truncated = await scan_records_and_paginate(
+                lambda o, ps: self._api.list_all(offset=o, page_size=ps),
+                item_allowed=lambda record: self._item_allowed(record, search=search),
+                server_page_size=self._settings.max_page_size,
+                offset=offset,
+                limit=effective_limit,
                 key=lambda r: r.summary.id,
             )
         except NotFoundError as exc:
             raise NotFoundError(
                 "OpenProject sprints require the Backlogs module and OpenProject 17.3 or newer."
             ) from exc
-        return self._paginate(records, search=search, offset=offset, limit=effective_limit)
+        return self._to_result(raw_items, truncated=truncated, offset=offset, limit=effective_limit)
 
     async def list_for_project(
         self,
@@ -144,19 +151,22 @@ class SprintService:
         try:
             # Even though this is project-scoped, results are still filtered
             # client-side (a sprint shared into this project can be *defined*
-            # by a different, possibly disallowed project), so a full walk of
-            # every server page is required -- a single bounded fetch would
+            # by a different, possibly disallowed project), so a full scan of
+            # server pages is required -- a single bounded fetch would
             # silently hide any sprint beyond that cap.
-            records = await paginate_all(
-                lambda offset, page_size: self._api.list_for_project(project_id, offset=offset, page_size=page_size),
-                page_size=self._settings.max_page_size,
+            raw_items, truncated = await scan_records_and_paginate(
+                lambda o, ps: self._api.list_for_project(project_id, offset=o, page_size=ps),
+                item_allowed=lambda record: self._item_allowed(record, search=search),
+                server_page_size=self._settings.max_page_size,
+                offset=offset,
+                limit=effective_limit,
                 key=lambda r: r.summary.id,
             )
         except NotFoundError as exc:
             raise NotFoundError(
                 "OpenProject project sprints require the Backlogs module and OpenProject 17.3 or newer."
             ) from exc
-        return self._paginate(records, search=search, offset=offset, limit=effective_limit)
+        return self._to_result(raw_items, truncated=truncated, offset=offset, limit=effective_limit)
 
     async def get(self, sprint_id: int) -> SprintDetail:
         access.ensure_read_enabled("project", settings=self._settings)
