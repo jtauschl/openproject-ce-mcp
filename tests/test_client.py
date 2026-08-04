@@ -11667,7 +11667,10 @@ async def test_list_notifications_rescans_past_a_filtered_empty_first_page() -> 
     by the allowlist does NOT prove no further allowed notifications exist
     on later server pages. The first server page here is entirely
     disallowed (a different project); the second has one allowed
-    notification -- it must still be returned, not silently dropped."""
+    notification -- it must still be returned, not silently dropped.
+    A third (empty) page is requested too: _scan_and_paginate collects one
+    extra (limit + 1) match before deciding `truncated`, so confirming
+    "nothing more exists" costs one extra page fetch (OPM-373 Phase 5)."""
     requested_offsets: list[str] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -11701,6 +11704,8 @@ async def test_list_notifications_rescans_past_a_filtered_empty_first_page() -> 
                     },
                     request=request,
                 )
+            if offset == "3":
+                return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 1}, request=request)
             raise AssertionError(f"Unexpected offset: {offset}")
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
@@ -11720,9 +11725,11 @@ async def test_list_notifications_rescans_past_a_filtered_empty_first_page() -> 
 
     result = await client.list_notifications(limit=1)
 
-    assert requested_offsets == ["1", "2"], f"expected to re-scan past page 1, got {requested_offsets}"
+    assert requested_offsets == ["1", "2", "3"], f"expected to re-scan past page 1, got {requested_offsets}"
     assert [n.id for n in result.results] == [2]
     assert result.count == 1
+    assert result.truncated is False
+    assert result.next_offset is None
 
     await client.aclose()
 
@@ -11789,6 +11796,53 @@ async def test_list_notifications_reports_truncated_under_restrictive_scope_when
     assert [n.id for n in result.results] == [1]
     assert result.truncated is True
     assert result.next_offset == 2
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_notifications_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
+    """Regression (OPM-373 Phase 5): the old _rescan_notifications set
+    truncated=True as soon as `limit` allowed items were collected, without
+    checking whether a matching item actually exists beyond that window.
+    Here exactly 1 allowed notification exists (limit=1) and nothing follows
+    it -- truncated must be False, not True. Page 1 itself is short (1 raw
+    element < max_page_size=2), which _scan_and_paginate already recognizes
+    as the last page without needing a second (lookahead) fetch -- unlike
+    the exact-page-boundary variant covered by
+    test_list_relations_not_truncated_when_exactly_limit_allowed_matches_exist,
+    which does need the extra fetch."""
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/notifications":
+            offset = request.url.params["offset"]
+            requested_offsets.append(offset)
+            if offset == "1":
+                return httpx.Response(
+                    200,
+                    json={
+                        "_embedded": {
+                            "elements": [
+                                _notification_payload(1, project_href="/api/v3/projects/1", project_title="Demo")
+                            ]
+                        },
+                        "total": 1,
+                    },
+                    request=request,
+                )
+            raise AssertionError(f"Unexpected offset: {offset}")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = dataclasses.replace(make_settings(), enable_personal_read=True, read_projects=("demo",), max_page_size=2)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_notifications(limit=1)
+
+    assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
+    assert [n.id for n in result.results] == [1]
+    assert result.truncated is False
+    assert result.next_offset is None
 
     await client.aclose()
 

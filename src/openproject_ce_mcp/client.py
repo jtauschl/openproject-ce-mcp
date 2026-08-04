@@ -4025,12 +4025,12 @@ class OpenProjectClient:
 
         Extracted to unify three independent hand-rolled scan-and-skip loops
         found in this file with the same shape (list_projects, the former
-        _paginate_relations, list_notifications' _rescan_notifications) --
-        this project's own "3+ identical copies" unification threshold.
-        _paginate_relations is migrated to delegate here in the same change
-        that introduces this helper; list_projects and _rescan_notifications
-        are migrated in follow-up commits (still hand-rolled as of this
-        commit). All three shared the same real bug this version fixes: they
+        _paginate_relations, the former list_notifications' _rescan_notifications)
+        -- this project's own "3+ identical copies" unification threshold.
+        _paginate_relations and list_notifications are migrated to delegate
+        here; list_projects still has its own hand-rolled copy pending
+        migration in a follow-up commit. All three shared the same real bug
+        this version fixes: they
         stopped scanning and set `truncated=True` as soon as `limit` allowed
         items were collected, without checking whether a matching item
         actually exists beyond that window. When the item that reached
@@ -4678,10 +4678,27 @@ class OpenProjectClient:
             # server pages. Re-scan from the start every call, skipping
             # already-seen allowed matches, until `limit` allowed records are
             # collected or the server collection is genuinely exhausted.
-            filtered, total, truncated = await self._rescan_notifications(
-                unread_only=unread_only, offset=offset, limit=effective_limit
+            wp_cache: dict[str, bool] = {}
+            notification_filters: dict[str, str] = {}
+            if unread_only:
+                notification_filters["filters"] = _json_param([{"readIAN": {"operator": "=", "values": ["f"]}}])
+            filtered, truncated = await self._scan_and_paginate(
+                "notifications",
+                item_allowed=lambda item: self._notification_payload_allowed(item, wp_cache),
+                offset=offset,
+                limit=effective_limit,
+                params_extra=notification_filters,
             )
+            # `total` is len(results), the same convention every other
+            # _scan_and_paginate caller uses (e.g. list_relations) -- a
+            # lower bound on this PAGE, not an exact count of the full
+            # (ACL-filtered) collection or an estimate that tries to factor
+            # in skipped-but-unverified earlier items. Adding
+            # `(offset - 1) * effective_limit` here would overstate `total`
+            # whenever `offset` lands past the real end of the allowed
+            # collection (OPM-373 Phase 5, caught by Codex review).
             results = [self.normalize_notification(item) for item in filtered]
+            total = len(results)
         return NotificationListResult(
             count=len(results),
             total=total,
@@ -4695,53 +4712,6 @@ class OpenProjectClient:
         if unread_only:
             params["filters"] = _json_param([{"readIAN": {"operator": "=", "values": ["f"]}}])
         return params
-
-    async def _rescan_notifications(
-        self, *, unread_only: bool, offset: int, limit: int
-    ) -> tuple[list[dict[str, Any]], int, bool]:
-        skip_count = (offset - 1) * limit
-        skipped = 0
-        results: list[dict[str, Any]] = []
-        wp_cache: dict[str, bool] = {}
-        server_offset = 1
-        server_page_size = self.settings.max_page_size
-        truncated = False
-
-        while len(results) < limit:
-            payload = await self._get(
-                "notifications",
-                params=self._notification_params(unread_only=unread_only, offset=server_offset, limit=server_page_size),
-            )
-            elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
-            if not elements:
-                break
-
-            allowed = [item for item in elements if await self._notification_payload_allowed(item, wp_cache)]
-
-            hit_limit_mid_page = False
-            for item in allowed:
-                if skipped < skip_count:
-                    skipped += 1
-                    continue
-                results.append(item)
-                if len(results) >= limit:
-                    hit_limit_mid_page = True
-                    break
-
-            if hit_limit_mid_page:
-                # This page had more allowed matches than needed -- stop without
-                # checking server exhaustion: there's at least one more allowed
-                # notification waiting, so treating this as "exhausted" would
-                # wrongly hide it from a follow-up call. Report truncated=True so
-                # the caller knows to request the next offset instead of assuming
-                # this page is everything.
-                truncated = True
-                break
-            if len(elements) < server_page_size:
-                break
-            server_offset += 1
-
-        return results, len(results), truncated
 
     async def _notification_payload_allowed(self, payload: dict[str, Any], wp_cache: dict[str, bool]) -> bool:
         links = payload.get("_links", {})
