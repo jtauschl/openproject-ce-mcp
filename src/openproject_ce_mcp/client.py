@@ -1894,44 +1894,47 @@ class OpenProjectClient:
                 user_name = user
 
         effective_limit = self._resolve_limit(limit)
+
+        async def _time_entry_item_allowed(item: dict[str, Any]) -> bool:
+            if not self._time_entry_payload_allowed(item):
+                return False
+            if project_candidates and not self._link_matches_project_refs(
+                item.get("_links", {}).get("project"), project_candidates
+            ):
+                return False
+            # The remaining filters (work_package_id/user/spent_on) run against
+            # already-normalized fields, matching the pre-migration behavior
+            # exactly -- see the plan's Regel 2 (filters on normalized fields
+            # must not be rebuilt from raw payload).
+            normalized = self.normalize_time_entry(item)
+            if work_package_id is not None and not (
+                normalized.entity_type == "WorkPackage" and normalized.entity_id == work_package_id
+            ):
+                return False
+            if user_name is not None and (normalized.user or "").casefold() != (user_name or "").casefold():
+                return False
+            if spent_on_from is not None and (normalized.spent_on is None or normalized.spent_on < spent_on_from):
+                return False
+            return not (spent_on_to is not None and (normalized.spent_on is None or normalized.spent_on > spent_on_to))
+
         # Regression found via a bidirectional bugfix audit against
         # release/0.4.0: a single bounded fetch capped at max_results
-        # silently hid any time entry beyond that server-side cap -- walk
-        # every server page instead, then filter/paginate the complete
-        # result in memory (this method has its own caller-facing
+        # silently hid any time entry beyond that server-side cap -- scan
+        # server pages instead (this method has its own caller-facing
         # offset/limit semantics independent of server pagination).
-        elements = await self._fetch_all_pages("time_entries")
-        raw_entries = [item for item in elements if self._time_entry_payload_allowed(item)]
-        if project_candidates:
-            raw_entries = [
-                item
-                for item in raw_entries
-                if self._link_matches_project_refs(item.get("_links", {}).get("project"), project_candidates)
-            ]
-        results = [self.normalize_time_entry(item) for item in raw_entries]
-        if work_package_id is not None:
-            results = [
-                item for item in results if item.entity_type == "WorkPackage" and item.entity_id == work_package_id
-            ]
-        if user_name is not None:
-            results = [item for item in results if (item.user or "").casefold() == (user_name or "").casefold()]
-        if spent_on_from is not None:
-            results = [item for item in results if item.spent_on is not None and item.spent_on >= spent_on_from]
-        if spent_on_to is not None:
-            results = [item for item in results if item.spent_on is not None and item.spent_on <= spent_on_to]
-
+        raw_items, truncated = await self._scan_and_paginate(
+            "time_entries", item_allowed=_time_entry_item_allowed, offset=offset, limit=effective_limit
+        )
+        results = [self.normalize_time_entry(item) for item in raw_items]
         total = len(results)
-        start = (offset - 1) * effective_limit
-        end = start + effective_limit
-        page = results[start:end]
         return TimeEntryListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=len(page),
-            next_offset=offset + 1 if end < total else None,
-            truncated=end < total,
-            results=page,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
+            results=results,
         )
 
     async def get_time_entry(self, time_entry_id: int) -> TimeEntrySummary:

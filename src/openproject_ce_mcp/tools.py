@@ -2677,7 +2677,11 @@ async def list_time_entries(
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap.
+    next_offset as the next call's offset to page past the cap. total reflects
+    only the allowed time entries already scanned to fill this page, not a
+    full count of all matches — the search stops as soon as it has enough,
+    so an exact total would need an extra full walk. Page until next_offset
+    is null.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)

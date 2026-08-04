@@ -5447,6 +5447,144 @@ async def test_time_entry_crud_and_activity_listing() -> None:
     await client.aclose()
 
 
+def _time_entry_item(item_id: int, *, project_href: str, project_title: str, spent_on: str = "2026-01-01") -> dict:
+    return {
+        "id": item_id,
+        "hours": "PT1H",
+        "spentOn": spent_on,
+        "entityType": "WorkPackage",
+        "_links": {
+            "project": {"href": project_href, "title": project_title},
+            "entity": {"href": "/api/v3/work_packages/55", "title": "Task"},
+            "user": {"href": "/api/v3/users/1", "title": "Alice"},
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_list_time_entries_walks_multiple_server_pages_when_allowlist_thins_first_page() -> None:
+    """OPM-373 Phase 5: list_time_entries must scan multiple server pages until
+    it collects `limit` allowed entries, not stop after a single bounded
+    fetch."""
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",), max_page_size=2)
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/time_entries" and request.method == "GET":
+            offset = request.url.params["offset"]
+            requested_offsets.append(offset)
+            assert request.url.params["pageSize"] == "2"
+            if offset == "1":
+                return httpx.Response(
+                    200,
+                    json={
+                        "_embedded": {
+                            "elements": [
+                                _time_entry_item(1, project_href="/api/v3/projects/99", project_title="Secret"),
+                                _time_entry_item(2, project_href="/api/v3/projects/99", project_title="Secret"),
+                            ]
+                        }
+                    },
+                    request=request,
+                )
+            if offset == "2":
+                return httpx.Response(
+                    200,
+                    json={
+                        "_embedded": {
+                            "elements": [_time_entry_item(3, project_href="/api/v3/projects/6", project_title="Demo")]
+                        }
+                    },
+                    request=request,
+                )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.list_time_entries(limit=1)
+
+    assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
+    assert [t.id for t in result.results] == [3]
+    assert result.truncated is False
+    assert result.next_offset is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_time_entries_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
+    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    truncated=True as soon as `limit` allowed items are collected, without
+    checking whether a matching time entry actually exists beyond that
+    window."""
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/time_entries" and request.method == "GET":
+            offset = request.url.params["offset"]
+            requested_offsets.append(offset)
+            if offset == "1":
+                return httpx.Response(
+                    200,
+                    json={
+                        "_embedded": {
+                            "elements": [_time_entry_item(1, project_href="/api/v3/projects/6", project_title="Demo")]
+                        }
+                    },
+                    request=request,
+                )
+            raise AssertionError(f"Unexpected offset: {offset}")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.list_time_entries(limit=1)
+
+    assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
+    assert [t.id for t in result.results] == [1]
+    assert result.truncated is False
+    assert result.next_offset is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_time_entries_spent_on_filters_match_normalized_fields() -> None:
+    """The spent_on_from/spent_on_to filters must match against the
+    NORMALIZED spent_on field (not raw payload), preserving pre-migration
+    behavior exactly -- each excludes a different item independently."""
+    settings = make_settings()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/time_entries" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            _time_entry_item(
+                                1, project_href="/api/v3/projects/6", project_title="Demo", spent_on="2026-01-15"
+                            ),
+                            _time_entry_item(
+                                2, project_href="/api/v3/projects/6", project_title="Demo", spent_on="2026-01-01"
+                            ),
+                            _time_entry_item(
+                                3, project_href="/api/v3/projects/6", project_title="Demo", spent_on="2026-01-31"
+                            ),
+                        ]
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.list_time_entries(spent_on_from="2026-01-10", spent_on_to="2026-01-20")
+
+    assert [t.id for t in result.results] == [1]
+
+    await client.aclose()
+
+
 @pytest.mark.asyncio
 async def test_update_time_entry_clears_comment_in_http_payload() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
