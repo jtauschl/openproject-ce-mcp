@@ -6681,6 +6681,177 @@ async def test_views_categories_and_attachments() -> None:
     await client.aclose()
 
 
+def _view_item(item_id: int, *, allowed: bool, view_type: str = "Views::Work") -> dict:
+    project_id = 6 if allowed else 99
+    title = "Demo" if allowed else "Secret Project"
+    return {
+        "_type": view_type,
+        "id": item_id,
+        "name": f"View {item_id}",
+        "public": True,
+        "starred": False,
+        "_links": {"project": {"href": f"/api/v3/projects/{project_id}", "title": title}},
+    }
+
+
+@pytest.mark.asyncio
+async def test_list_views_walks_multiple_server_pages_when_allowlist_thins_first_page() -> None:
+    """OPM-373 Phase 5: list_views must scan multiple server pages until it
+    collects `limit` allowed views, not stop after a single bounded fetch."""
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",), max_page_size=2)
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/views" and request.method == "GET":
+            offset = request.url.params["offset"]
+            requested_offsets.append(offset)
+            assert request.url.params["pageSize"] == "2"
+            if offset == "1":
+                return httpx.Response(
+                    200,
+                    json={"_embedded": {"elements": [_view_item(1, allowed=False), _view_item(2, allowed=False)]}},
+                    request=request,
+                )
+            if offset == "2":
+                return httpx.Response(
+                    200, json={"_embedded": {"elements": [_view_item(3, allowed=True)]}}, request=request
+                )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.list_views(limit=1)
+
+    assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
+    assert [v.id for v in result.results] == [3]
+    assert result.truncated is False
+    assert result.next_offset is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_views_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
+    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    truncated=True as soon as `limit` allowed items are collected, without
+    checking whether a matching view actually exists beyond that window."""
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/views" and request.method == "GET":
+            offset = request.url.params["offset"]
+            requested_offsets.append(offset)
+            if offset == "1":
+                return httpx.Response(
+                    200, json={"_embedded": {"elements": [_view_item(1, allowed=True)]}}, request=request
+                )
+            raise AssertionError(f"Unexpected offset: {offset}")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.list_views(limit=1)
+
+    assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
+    assert [v.id for v in result.results] == [1]
+    assert result.truncated is False
+    assert result.next_offset is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_views_project_and_type_filters_match_normalized_fields() -> None:
+    """The allowlist, project=, and view_type= filters must each independently
+    exclude a non-matching item, matching against the NORMALIZED
+    project_id/project/type fields (not raw payload) -- preserving
+    pre-migration behavior exactly. Split into two calls against the SAME raw
+    element set: one without project= isolates the allowlist check alone
+    (id=4 is rejected purely by read_projects, regardless of which project it
+    claims -- it is never given a chance to also fail a project= comparison,
+    unlike an item that fails both allowlist AND project simultaneously,
+    which wouldn't prove the allowlist branch alone works); the other with
+    project=demo isolates the project/type checks against already-allowed
+    items only."""
+    settings = dataclasses.replace(make_settings(), read_projects=("demo", "other"))
+
+    def _view_in_project(item_id: int, *, project_href: str, project_title: str, view_type: str) -> dict:
+        return {
+            "_type": view_type,
+            "id": item_id,
+            "name": f"View {item_id}",
+            "public": True,
+            "starred": False,
+            "_links": {"project": {"href": project_href, "title": project_title}},
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 6, "identifier": "demo", "name": "Demo", "active": True},
+                request=request,
+            )
+        if request.url.path == "/api/v3/views" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            # id=1: demo project, matching type -- matches all filters.
+                            _view_in_project(
+                                1, project_href="/api/v3/projects/6", project_title="Demo", view_type="Views::Work"
+                            ),
+                            # id=2: demo project, wrong type -- excluded by view_type
+                            # (allowlist and project both pass for this item).
+                            _view_in_project(
+                                2,
+                                project_href="/api/v3/projects/6",
+                                project_title="Demo",
+                                view_type="Views::TeamPlanner",
+                            ),
+                            # id=3: allowed by the allowlist (project "other" is in
+                            # read_projects), matching type, but a DIFFERENT project
+                            # than project="demo" -- excluded by the project filter
+                            # alone (allowlist passes for this item).
+                            _view_in_project(
+                                3, project_href="/api/v3/projects/7", project_title="Other", view_type="Views::Work"
+                            ),
+                            # id=4: NOT in read_projects at all -- excluded by the
+                            # allowlist check alone. Only reachable when project= is
+                            # omitted (see below), since with project="demo" this
+                            # item would ALSO fail the project comparison, which
+                            # wouldn't isolate the allowlist branch.
+                            _view_in_project(
+                                4,
+                                project_href="/api/v3/projects/99",
+                                project_title="Secret Project",
+                                view_type="Views::Work",
+                            ),
+                        ]
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    # No project= filter: isolates the allowlist check. id=4 must be excluded
+    # purely because it's outside read_projects, not because of a project
+    # mismatch that doesn't even apply here.
+    unfiltered = await client.list_views(view_type="Views::Work")
+    assert [v.id for v in unfiltered.results] == [1, 3]
+
+    # project="demo": isolates the project/type checks among already-allowed
+    # items (id=3 and id=4 are excluded here, but for DIFFERENT reasons than
+    # in the unfiltered call above -- id=3 by project mismatch, id=4 by
+    # allowlist, both still correctly excluded either way).
+    filtered = await client.list_views(project="demo", view_type="Views::Work")
+    assert [v.id for v in filtered.results] == [1]
+
+    await client.aclose()
+
+
 @pytest.mark.asyncio
 async def test_get_category_uses_real_single_item_endpoint() -> None:
     """get_category must call OpenProject's real GET /api/v3/categories/{id}
