@@ -51,7 +51,7 @@ from typing import Any
 
 from ...config import Settings
 from ...models import GridListResult, GridSummary, GridWriteResult
-from ..pagination import clamp_limit, paginate_client
+from ..pagination import clamp_limit, scan_records_and_paginate
 from ..policies import access, hidden_fields
 from ..policies.grid_policy import (
     ensure_grid_read_allowed,
@@ -86,23 +86,33 @@ class GridService:
             max_page_size=self._settings.max_page_size,
             max_results=self._settings.max_results,
         )
-        records = await self._api.list_all(scope_filter=scope, page_size=self._settings.max_results)
-        results = [
-            self._stamp(record.summary)
-            for record in records
-            if grid_read_allowed(
+
+        def _record_allowed(record: Any) -> bool:
+            return grid_read_allowed(
                 record.scope_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
             )
-        ]
-        page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=results)
+
+        # A single fetch capped at settings.max_results silently hid any grid
+        # beyond that server-side cap -- scan server pages instead (OPM-373
+        # Phase 5).
+        raw_items, truncated = await scan_records_and_paginate(
+            lambda o, ps: self._api.list_page(offset=o, page_size=ps, scope_filter=scope),
+            item_allowed=_record_allowed,
+            server_page_size=self._settings.max_page_size,
+            offset=offset,
+            limit=effective_limit,
+            key=lambda r: r.summary.id,
+        )
+        results = [self._stamp(record.summary) for record in raw_items]
+        total = len(results)
         return GridListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=len(page),
-            next_offset=next_offset,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
             truncated=truncated,
-            results=page,
+            results=results,
         )
 
     async def get(self, grid_id: int) -> GridSummary:

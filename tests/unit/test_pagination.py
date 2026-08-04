@@ -2,7 +2,117 @@ from __future__ import annotations
 
 import pytest
 
-from openproject_ce_mcp.app.pagination import paginate_all
+from openproject_ce_mcp.app.pagination import paginate_all, scan_and_paginate, scan_records_and_paginate
+
+
+@pytest.mark.asyncio
+async def test_scan_and_paginate_stops_after_limit_plus_one_allowed_matches() -> None:
+    """OPM-373 Phase 5: unlike paginate_all/fetch_bounded_and_paginate, this
+    must NOT walk the entire collection -- only enough pages to confirm
+    limit+1 allowed matches (or genuine exhaustion)."""
+    calls: list[int] = []
+
+    async def fetch_page(offset: int, page_size: int) -> dict:
+        calls.append(offset)
+        pages = {
+            1: [{"id": 1}, {"id": 2}],
+            2: [{"id": 3}, {"id": 4}],
+            3: [{"id": 5}, {"id": 6}],
+        }
+        elements = pages.get(offset, [])
+        return {"_embedded": {"elements": elements}}
+
+    async def item_allowed(item: dict) -> bool:
+        return True
+
+    results, truncated = await scan_and_paginate(
+        fetch_page=fetch_page, item_allowed=item_allowed, server_page_size=2, offset=1, limit=2
+    )
+
+    assert [r["id"] for r in results] == [1, 2]
+    assert truncated is True
+    # limit=2 needs limit+1=3 confirmed matches before it can stop -- page 1
+    # gives 2, page 2's first item is the 3rd -- must not walk page 3.
+    assert calls == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_scan_and_paginate_not_truncated_when_exactly_limit_matches_exist() -> None:
+    async def fetch_page(offset: int, page_size: int) -> dict:
+        if offset == 1:
+            return {"_embedded": {"elements": [{"id": 1}]}}
+        raise AssertionError(f"unexpected offset {offset}")
+
+    async def item_allowed(item: dict) -> bool:
+        return True
+
+    results, truncated = await scan_and_paginate(
+        fetch_page=fetch_page, item_allowed=item_allowed, server_page_size=2, offset=1, limit=1
+    )
+
+    assert [r["id"] for r in results] == [1]
+    assert truncated is False
+
+
+@pytest.mark.asyncio
+async def test_scan_records_and_paginate_stops_after_limit_plus_one_allowed_matches() -> None:
+    calls: list[int] = []
+
+    async def fetch_page(offset: int, page_size: int) -> tuple[list[int], int]:
+        calls.append(offset)
+        pages = {1: [1, 2], 2: [3, 4], 3: [5, 6]}
+        return pages.get(offset, []), 999
+
+    results, truncated = await scan_records_and_paginate(
+        fetch_page, item_allowed=lambda item: True, server_page_size=2, offset=1, limit=2, key=lambda item: item
+    )
+
+    assert results == [1, 2]
+    assert truncated is True
+    assert calls == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_scan_records_and_paginate_not_truncated_when_exactly_limit_matches_exist() -> None:
+    async def fetch_page(offset: int, page_size: int) -> tuple[list[int], int]:
+        if offset == 1:
+            return [1], 1
+        raise AssertionError(f"unexpected offset {offset}")
+
+    results, truncated = await scan_records_and_paginate(
+        fetch_page, item_allowed=lambda item: True, server_page_size=2, offset=1, limit=1, key=lambda item: item
+    )
+
+    assert results == [1]
+    assert truncated is False
+
+
+@pytest.mark.asyncio
+async def test_scan_records_and_paginate_ignores_reported_total_for_exhaustion() -> None:
+    """Regression: an earlier draft used server_offset * server_page_size >=
+    total as an additional exhaustion signal, which is unsafe when an
+    adapter falls back to total = len(records) for a response with no
+    server-reported total (verified against httpx_sprint_api.py) -- that
+    would make a full first page look exhausted even when a genuine second
+    page of matches exists. Exhaustion must be judged purely by a short
+    page, never by a caller-supplied total value."""
+
+    async def fetch_page(offset: int, page_size: int) -> tuple[list[int], int]:
+        if offset == 1:
+            # total == len(page) here, exactly the "adapter fell back"
+            # shape -- server_offset(1) * server_page_size(2) = 2 >= total(2)
+            # would have looked exhausted under the removed check.
+            return [1, 2], 2
+        if offset == 2:
+            return [3], 3
+        raise AssertionError(f"unexpected offset {offset}")
+
+    results, truncated = await scan_records_and_paginate(
+        fetch_page, item_allowed=lambda item: True, server_page_size=2, offset=1, limit=10, key=lambda item: item
+    )
+
+    assert results == [1, 2, 3], "page 2's real match must not be hidden by a misleading reported total"
+    assert truncated is False
 
 
 @pytest.mark.asyncio

@@ -29,19 +29,20 @@ def _grid_payload(grid_id: int = 1, *, scope_href: str = "/projects/6") -> dict:
 
 
 @pytest.mark.asyncio
-async def test_list_all_requests_grids_without_filter_by_default() -> None:
+async def test_list_page_requests_grids_without_filter_by_default() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/grids"
         params = dict(request.url.params)
         assert "filters" not in params
         assert params["offset"] == "1"
         assert params["pageSize"] == "200"
-        return httpx.Response(200, json={"_embedded": {"elements": [_grid_payload()]}}, request=request)
+        return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [_grid_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
         api = HttpxGridApi(HttpxTransport(http_client))
-        records = await api.list_all(scope_filter=None, page_size=200)
+        records, total = await api.list_page(offset=1, page_size=200, scope_filter=None)
 
+    assert total == 1
     assert len(records) == 1
     summary = records[0].summary
     assert summary.id == 1
@@ -52,29 +53,47 @@ async def test_list_all_requests_grids_without_filter_by_default() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_all_sends_scope_filter_when_given() -> None:
+async def test_list_page_sends_scope_filter_when_given() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         params = dict(request.url.params)
         assert params["filters"] == '[{"scope":{"operator":"=","values":["/my/page"]}}]'
-        return httpx.Response(200, json={"_embedded": {"elements": []}}, request=request)
+        return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
 
     async with _client(handler) as http_client:
         api = HttpxGridApi(HttpxTransport(http_client))
-        records = await api.list_all(scope_filter="/my/page", page_size=200)
+        records, total = await api.list_page(offset=1, page_size=200, scope_filter="/my/page")
 
     assert records == []
+    assert total == 0
 
 
 @pytest.mark.asyncio
-async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
+async def test_list_page_missing_embedded_elements_returns_empty_list() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
         api = HttpxGridApi(HttpxTransport(http_client))
-        records = await api.list_all(scope_filter=None, page_size=200)
+        records, total = await api.list_page(offset=1, page_size=200, scope_filter=None)
 
     assert records == []
+    assert total == 0
+
+
+@pytest.mark.asyncio
+async def test_list_page_requests_the_given_offset() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["offset"] == "2"
+        return httpx.Response(
+            200, json={"total": 3, "_embedded": {"elements": [_grid_payload(grid_id=3)]}}, request=request
+        )
+
+    async with _client(handler) as http_client:
+        api = HttpxGridApi(HttpxTransport(http_client))
+        records, total = await api.list_page(offset=2, page_size=200, scope_filter=None)
+
+    assert [r.summary.id for r in records] == [3]
+    assert total == 3
 
 
 @pytest.mark.asyncio

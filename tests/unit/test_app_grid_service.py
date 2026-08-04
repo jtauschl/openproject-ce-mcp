@@ -41,7 +41,7 @@ def _record(*, scope_link: dict | None = None, **kwargs: object) -> GridRecord:
 class _FakeGridApi:
     def __init__(self, records: list[GridRecord] | None = None) -> None:
         self._records = {r.summary.id: r for r in (records or [_record()])}
-        self.list_all_calls: list[str | None] = []
+        self.list_page_calls: list[str | None] = []
         self.get_calls: list[int] = []
         self.create_form_calls: list[dict] = []
         self.update_form_calls: list[tuple[int, dict]] = []
@@ -51,9 +51,15 @@ class _FakeGridApi:
         self.validation_errors: dict[str, str] = {}
         self.commit_result_scope: str | None = "/projects/6"
 
-    async def list_all(self, *, scope_filter: str | None, page_size: int) -> list[GridRecord]:
-        self.list_all_calls.append(scope_filter)
-        return list(self._records.values())
+    async def list_page(self, *, offset: int, page_size: int, scope_filter: str | None) -> tuple[list[GridRecord], int]:
+        self.list_page_calls.append(scope_filter)
+        # A single-page fake is sufficient for these Service-level tests --
+        # scan_records_and_paginate's own multi-page scanning behavior is
+        # covered by test_app_pagination.py, not re-tested per Service.
+        if offset > 1:
+            return [], len(self._records)
+        records = list(self._records.values())
+        return records, len(records)
 
     async def get(self, grid_id: int) -> GridRecord:
         self.get_calls.append(grid_id)
@@ -96,7 +102,7 @@ async def test_list_returns_stamped_summaries() -> None:
 
     assert result.count == 1
     assert result.results[0].id == 1
-    assert api.list_all_calls == [None]
+    assert api.list_page_calls == [None]
 
 
 @pytest.mark.asyncio
@@ -106,7 +112,7 @@ async def test_list_passes_scope_filter_through_to_the_api() -> None:
 
     await service.list(scope="/my/page")
 
-    assert api.list_all_calls == ["/my/page"]
+    assert api.list_page_calls == ["/my/page"]
 
 
 @pytest.mark.asyncio
@@ -140,7 +146,7 @@ async def test_list_checks_read_enabled() -> None:
     with pytest.raises(PermissionDeniedError):
         await service.list()
 
-    assert api.list_all_calls == []
+    assert api.list_page_calls == []
 
 
 @pytest.mark.asyncio

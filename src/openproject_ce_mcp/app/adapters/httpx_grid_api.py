@@ -60,15 +60,17 @@ class HttpxGridApi:
             scope_link=payload.get("_links", {}).get("scope"),
         )
 
-    async def list_all(self, *, scope_filter: str | None, page_size: int) -> list[GridRecord]:
-        params: dict[str, str] = {"offset": "1", "pageSize": str(page_size)}
+    async def list_page(self, *, offset: int, page_size: int, scope_filter: str | None) -> tuple[list[GridRecord], int]:
+        params: dict[str, str] = {"offset": str(offset), "pageSize": str(page_size)}
         if scope_filter is not None:
             params["filters"] = json.dumps(
                 [{"scope": {"operator": "=", "values": [scope_filter]}}], separators=(",", ":")
             )
         payload = await self._transport.get_json("grids", params=params)
         elements = payload.get("_embedded", {}).get("elements", [])
-        return [self._record(item) for item in elements if isinstance(item, dict)]
+        records = [self._record(item) for item in elements if isinstance(item, dict)]
+        total = int(payload.get("total", len(records)))
+        return records, total
 
     async def get(self, grid_id: int) -> GridRecord:
         return self._record(await self._transport.get_json(f"grids/{grid_id}"))
