@@ -5533,6 +5533,11 @@ async def test_list_time_entry_activities_paginates_project_fallback() -> None:
                     },
                     request=request,
                 )
+            if offset == "3":
+                # _scan_and_paginate's limit+1 lookahead: with limit=1 and exactly
+                # one allowed match on page 2, it needs to confirm page 3 is empty
+                # before it can report truncated=False for the offset=1 call.
+                return httpx.Response(200, json={"total": 2, "_embedded": {"elements": []}}, request=request)
         if request.url.path == "/api/v3/time_entries/form":
             body = json.loads(request.content)
             project_href = body["_links"]["project"]["href"]
@@ -6179,6 +6184,54 @@ async def test_list_projects_cross_call_pagination_does_not_skip_or_duplicate() 
     assert first.next_offset == 2
     assert second.truncated is False
     assert second.next_offset is None
+
+
+@pytest.mark.asyncio
+async def test_list_projects_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
+    """Regression (OPM-373 Phase 5): list_projects' old hand-rolled scan-and-skip
+    loop set truncated=True as soon as `limit` allowed items were collected,
+    without checking whether a matching project actually exists beyond that
+    window. Here exactly 1 allowed project exists (limit=1) and nothing follows
+    it -- truncated must be False, not True."""
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects":
+            offset = request.url.params["offset"]
+            requested_offsets.append(offset)
+            if offset == "1":
+                return httpx.Response(
+                    200,
+                    json={
+                        "total": 1,
+                        "_embedded": {
+                            "elements": [
+                                {
+                                    "_type": "Project",
+                                    "id": 6,
+                                    "name": "Demo",
+                                    "identifier": "demo",
+                                    "_links": {"self": {"href": "/api/v3/projects/6", "title": "Demo"}},
+                                },
+                            ]
+                        },
+                    },
+                    request=request,
+                )
+            raise AssertionError(f"Unexpected offset: {offset}")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = dataclasses.replace(make_settings(), max_page_size=2)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_projects(limit=1)
+
+    assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
+    assert [p.identifier for p in result.results] == ["demo"]
+    assert result.truncated is False
+    assert result.next_offset is None
+
+    await client.aclose()
 
 
 @pytest.mark.asyncio
