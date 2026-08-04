@@ -9,6 +9,16 @@ development baseline.
 
 ## [Unreleased 0.3.6]
 
+### Changed
+
+- **Breaking: removed client-constructed `url` fields (and a few
+  sub-collection hrefs like `activities_url`/`relations_url`) from MCP
+  output models across most domains, including work packages, projects,
+  and users.** These were built from `base_url` + id, with no matching link
+  from the server, and some never resolved to a real page. `download_url`,
+  `avatar_url`, and `identity_url` are unaffected, as are the handful of
+  `url` fields that resolve a link OpenProject actually sends.
+
 ### Fixed
 
 - **`configure`'s generic copy-source for MCP clients without native
@@ -20,6 +30,13 @@ development baseline.
   on a filesystem error while writing or removing a client config.** A
   failure on one target no longer aborts the remaining ones, and the
   process exits non-zero with a summary of every failed target.
+- **`create_work_package`/`update_work_package`/`bulk_create_work_packages`/
+  `bulk_update_work_packages` now document two previously-undocumented
+  OpenProject behaviors**: a `due_date` on a non-working day can be
+  silently moved forward by OpenProject (with no way to opt out via this
+  server), and explicitly setting `percentage_done` together with a
+  closing `status` is hard-rejected on instances using status-based
+  progress calculation instead of being silently ignored.
 
 ## 0.3.5 – 2026-08-02
 
