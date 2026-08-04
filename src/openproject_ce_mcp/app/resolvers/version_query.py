@@ -19,7 +19,7 @@ from collections.abc import Awaitable, Callable
 
 from ...config import Settings
 from ...models import VersionSummary
-from ..pagination import paginate_client
+from ..pagination import paginate_client, scan_records_and_paginate
 from ..policies import access
 from ..policies.version_policy import version_payload_allowed
 from ..ports.project_ref import ProjectRefResolver
@@ -142,24 +142,74 @@ async def fetch_version_page(
 ) -> tuple[list[VersionSummary], int, int | None, bool]:
     """Raw, unmasked version-summary page: (page_results, total, next_offset, truncated).
 
-    A summary-projecting wrapper around `fetch_visible_version_records` --
     `VersionService.list()` (the only caller) needs `VersionSummary` rows to
     build `VersionListResult`, not the underlying `VersionRecord`s.
+
+    Two distinct strategies, per branch:
+    - `project` given: delegates to `fetch_visible_version_records` (walks
+      to completion, then slices) UNCHANGED -- the project-scoped endpoint
+      is a verified `UnpaginatedCollection` server-side (offset/pageSize
+      are silently ignored, the server always returns everything in one
+      response regardless), so there is no server-load problem here to fix;
+      early-stopping would not reduce work, only add complexity (OPM-373
+      Phase 5 scope decision).
+    - `project` is None (the global branch): scans server pages directly via
+      `scan_records_and_paginate` instead of walking to completion first.
+      Deliberately does NOT reuse `fetch_visible_version_records` (which
+      `VersionResolver` also depends on for full-collection name lookups,
+      an operation that cannot early-stop) -- introducing early-stopping
+      into that shared helper would silently break name resolution for any
+      version beyond the first `limit` allowed matches.
     """
     effective_limit = min(limit, settings.max_page_size, settings.max_results)
-    records = await fetch_visible_version_records(
-        api=api,
-        resolve_project_ref=resolve_project_ref,
-        settings=settings,
-        project_id_to_identifier=project_id_to_identifier,
-        project=project,
-        context=context,
-        text_limit=text_limit,
+
+    if project:
+        records = await fetch_visible_version_records(
+            api=api,
+            resolve_project_ref=resolve_project_ref,
+            settings=settings,
+            project_id_to_identifier=project_id_to_identifier,
+            project=project,
+            context=context,
+            text_limit=text_limit,
+        )
+        results = [r.summary for r in records]
+        if search:
+            search_key = search.casefold()
+            results = [item for item in results if search_key in (item.name or "").casefold()]
+        return paginate_client(offset=offset, limit=effective_limit, results=results)
+
+    access.ensure_read_enabled("version", settings=settings)
+    search_key = search.casefold() if search else None
+
+    def _record_allowed(record: VersionRecord) -> bool:
+        if not version_payload_allowed(
+            {"_links": {"definingProject": record.defining_project_link}},
+            settings=settings,
+            project_id_to_identifier=project_id_to_identifier,
+        ):
+            return False
+        if search_key is None:
+            return True
+        return search_key in (record.summary.name or "").casefold()
+
+    raw_items, truncated = await scan_records_and_paginate(
+        lambda o, ps: _list_global_page(api, offset=o, page_size=ps, text_limit=text_limit),
+        item_allowed=_record_allowed,
+        server_page_size=settings.max_page_size,
+        offset=offset,
+        limit=effective_limit,
+        key=lambda r: r.summary.id,
     )
-    results = [r.summary for r in records]
+    results = [r.summary for r in raw_items]
+    total = len(results)
+    return results, total, (offset + 1 if truncated else None), truncated
 
-    if search:
-        search_key = search.casefold()
-        results = [item for item in results if search_key in (item.name or "").casefold()]
 
-    return paginate_client(offset=offset, limit=effective_limit, results=results)
+async def _list_global_page(
+    api: VersionApi, *, offset: int, page_size: int, text_limit: int | None
+) -> tuple[list[VersionRecord], int]:
+    """Adapts `VersionApi.list_global`'s `VersionPage` return shape to the
+    `(records, total)` tuple contract `scan_records_and_paginate` expects."""
+    page = await api.list_global(offset=offset, page_size=page_size, text_limit=text_limit)
+    return page.records, (page.server_total if page.server_total is not None else len(page.records))

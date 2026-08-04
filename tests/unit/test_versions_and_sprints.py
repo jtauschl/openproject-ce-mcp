@@ -756,7 +756,10 @@ async def test_list_versions_global_backfills_after_allowlist_filter() -> None:
 
     assert [v.id for v in page.results] == [2, 4]
     assert page.count == 2
-    assert page.total == 3
+    # total is only the count returned on THIS page, not an exact count of
+    # the full allowlist-filtered collection -- OPM-373 Phase 5's
+    # total-contract change (ported from release/0.3.6).
+    assert page.total == 2
     assert page.truncated is True
     assert page.next_offset == 2
 
@@ -927,6 +930,50 @@ async def test_list_versions_global_search_filters_by_name_substring() -> None:
     no_match = await client.list_versions(search="nonexistent")
     assert no_match.results == []
     assert no_match.total == 0
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_versions_global_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
+    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    truncated=True as soon as `limit` allowed items are collected, without
+    checking whether a matching version actually exists beyond that window."""
+    import dataclasses
+
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/versions" and request.method == "GET":
+            offset = request.url.params["offset"]
+            requested_offsets.append(offset)
+            if offset == "1":
+                return httpx.Response(
+                    200,
+                    json={
+                        "_embedded": {
+                            "elements": [
+                                {
+                                    "id": 1,
+                                    "name": "v1",
+                                    "_links": {"definingProject": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                                }
+                            ]
+                        }
+                    },
+                    request=request,
+                )
+            raise AssertionError(f"Unexpected offset: {offset}")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    page = await client.list_versions(limit=1)
+
+    assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
+    assert [v.id for v in page.results] == [1]
+    assert page.truncated is False
+    assert page.next_offset is None
 
     await client.aclose()
 
