@@ -648,7 +648,6 @@ class OpenProjectClient:
                 payload=form_payload,
                 validation_errors=validation_errors,
                 job_status_id=None,
-                job_status_url=None,
             )
         if validation_errors:
             return ProjectCopyResult(
@@ -662,7 +661,6 @@ class OpenProjectClient:
                 payload=form_payload,
                 validation_errors=validation_errors,
                 job_status_id=None,
-                job_status_url=None,
             )
         self._ensure_write_enabled("project")
         response = await self._request("POST", f"projects/{project.id}/copy", json_body=form_payload)
@@ -682,8 +680,11 @@ class OpenProjectClient:
             # declares `job_id` as `type: String, desc: "Job UUID"` on every
             # supported version), never a plain integer -- _id_from_href's
             # int() parse would always fail here and silently return None.
+            # job_status_url itself (from the HTTP redirect Location header) is
+            # not exposed in the response: get_job_status already accepts
+            # job_status_id, so the URL would be redundant with no independent
+            # value, only an extra cost in tokens.
             job_status_id=_slug_from_href(job_status_url),
-            job_status_url=job_status_url,
         )
 
     async def get_job_status(self, job_status_id: str) -> JobStatusDetail:
@@ -4183,7 +4184,6 @@ class OpenProjectClient:
                 note=_delimit_user_content(_trim_text(payload.get("note"), limit=SUBJECT_LIMIT)),
                 work_package_id=_id_from_href(links.get("remindable", {}).get("href")),
                 creator=_trim_text(creator.get("name"), limit=SUBJECT_LIMIT) if isinstance(creator, dict) else None,
-                url=self._link_to_web_url(links.get("self", {}).get("href")),
             ),
         )
 
@@ -4434,7 +4434,6 @@ class OpenProjectClient:
                 id=int(payload["id"]),
                 name=payload.get("name"),
                 login=payload.get("login"),
-                url=self._web_url(f"users/{payload['id']}"),
             ),
         )
 
@@ -5752,13 +5751,9 @@ class OpenProjectClient:
             return f"{relative_path}?{parsed.query}"
         return relative_path
 
-    def _web_url(self, relative_path: str) -> str:
-        return urljoin(f"{self.settings.base_url.rstrip('/')}/", relative_path.lstrip("/"))
-
     def normalize_project(self, payload: dict[str, Any]) -> ProjectSummary:
         links = payload.get("_links", {})
         identifier = payload.get("identifier")
-        project_path = f"projects/{identifier or payload['id']}"
         return self._apply_hidden_fields(
             "project",
             ProjectSummary(
@@ -5767,7 +5762,6 @@ class OpenProjectClient:
                 identifier=identifier,
                 active=payload.get("active"),
                 description=self._visible_formattable_text(payload.get("description"), "project", "description"),
-                url=self._web_url(project_path),
                 public=payload.get("public"),
                 status=_link_title(links.get("status")),
                 status_explanation=self._visible_formattable_text(
@@ -5789,14 +5783,12 @@ class OpenProjectClient:
             RoleSummary(
                 id=int(payload["id"]),
                 name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Role {payload['id']}",
-                url=self._web_url(f"roles/{payload['id']}"),
             ),
         )
 
     def normalize_principal(self, payload: dict[str, Any]) -> PrincipalSummary:
         principal_type = _trim_text(payload.get("_type"), limit=SUBJECT_LIMIT)
         principal_id = int(payload["id"])
-        path_prefix = "groups" if principal_type == "Group" else "users"
         return self._apply_hidden_fields(
             "principal",
             PrincipalSummary(
@@ -5806,7 +5798,6 @@ class OpenProjectClient:
                 login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
                 email=_trim_text(payload.get("email"), limit=SUBJECT_LIMIT),
                 status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
-                url=self._web_url(f"{path_prefix}/{principal_id}"),
             ),
         )
 
@@ -5826,7 +5817,6 @@ class OpenProjectClient:
                 avatar_url=self._link_to_web_url(avatar_link.get("href")) if isinstance(avatar_link, dict) else None,
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
-                url=self._web_url(f"users/{payload['id']}"),
                 firstname=_trim_text(payload.get("firstName"), limit=SUBJECT_LIMIT),
                 lastname=_trim_text(payload.get("lastName"), limit=SUBJECT_LIMIT),
             ),
@@ -5855,7 +5845,6 @@ class OpenProjectClient:
                 identity_url=identity_url,
                 auth_source=auth_source,
                 groups=groups,
-                url=summary.url,
                 firstname=summary.firstname,
                 lastname=summary.lastname,
             ),
@@ -5889,7 +5878,6 @@ class OpenProjectClient:
                 updated_at=payload.get("updatedAt"),
                 can_update=bool(links.get("update") or links.get("updateImmediately")),
                 can_delete=bool(links.get("delete")),
-                url=self._web_url(f"groups/{payload['id']}"),
             ),
         )
 
@@ -5910,7 +5898,6 @@ class OpenProjectClient:
                     )
                     if label:
                         member_names.append(label)
-        memberships_url = self._link_to_web_url(payload.get("_links", {}).get("memberships", {}).get("href"))
         return self._apply_hidden_fields(
             "group",
             GroupDetail(
@@ -5918,12 +5905,10 @@ class OpenProjectClient:
                 name=summary.name,
                 member_count=summary.member_count,
                 members=member_names,
-                memberships_url=memberships_url,
                 created_at=summary.created_at,
                 updated_at=summary.updated_at,
                 can_update=summary.can_update,
                 can_delete=summary.can_delete,
-                url=summary.url,
             ),
         )
 
@@ -6000,7 +5985,6 @@ class OpenProjectClient:
                 ],
                 can_update="update" in links,
                 can_update_immediately="updateImmediately" in links,
-                url=self._web_url(f"memberships/{payload['id']}"),
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
             ),
@@ -6054,7 +6038,6 @@ class OpenProjectClient:
                 percentage_complete=_percentage_done(payload),
                 description=description,
                 has_description=description is not None,
-                url=self._web_url(f"work_packages/{payload['id']}"),
                 description_truncated=truncated,
                 description_length=length,
                 estimated_time=payload.get("estimatedTime"),
@@ -6143,9 +6126,6 @@ class OpenProjectClient:
                 percentage_complete=_percentage_done(payload),
                 lock_version=payload.get("lockVersion"),
                 description=description,
-                url=self._web_url(f"work_packages/{payload['id']}"),
-                activities_url=self._link_to_web_url(links.get("activities", {}).get("href")),
-                relations_url=self._link_to_web_url(links.get("relations", {}).get("href")),
                 description_truncated=truncated,
                 description_length=length,
                 estimated_time=payload.get("estimatedTime"),
@@ -6247,7 +6227,6 @@ class OpenProjectClient:
                 end_date=payload.get("endDate"),
                 defining_project=_link_title(links.get("definingProject")),
                 description=self._visible_formattable_text(payload.get("description"), "version", "description"),
-                url=self._web_url(f"versions/{payload['id']}"),
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
             ),
@@ -6266,7 +6245,6 @@ class OpenProjectClient:
                 end_date=summary.end_date,
                 defining_project=summary.defining_project,
                 description=summary.description,
-                url=summary.url,
                 created_at=summary.created_at,
                 updated_at=summary.updated_at,
             ),
@@ -6282,7 +6260,6 @@ class OpenProjectClient:
                 id=int(payload["id"]),
                 name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Sprint {payload['id']}",
                 status=_link_title(status_link),
-                status_href=status_link.get("href") if isinstance(status_link, dict) else None,
                 start_date=payload.get("startDate"),
                 finish_date=payload.get("finishDate"),
                 defining_workspace_id=_id_from_href(workspace_link.get("href"))
@@ -6291,7 +6268,6 @@ class OpenProjectClient:
                 defining_workspace=_link_title(workspace_link),
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
-                url=self._web_url(f"sprints/{payload['id']}"),
             ),
         )
 
@@ -6303,14 +6279,12 @@ class OpenProjectClient:
                 id=summary.id,
                 name=summary.name,
                 status=summary.status,
-                status_href=summary.status_href,
                 start_date=summary.start_date,
                 finish_date=summary.finish_date,
                 defining_workspace_id=summary.defining_workspace_id,
                 defining_workspace=summary.defining_workspace,
                 created_at=summary.created_at,
                 updated_at=summary.updated_at,
-                url=summary.url,
             ),
         )
 
@@ -6336,7 +6310,6 @@ class OpenProjectClient:
                 filter_count=len(filters),
                 can_update=bool(links.get("update") or links.get("updateImmediately")),
                 can_delete=bool(links.get("delete")),
-                url=self._board_web_url(payload),
             ),
         )
 
@@ -6370,7 +6343,6 @@ class OpenProjectClient:
                 updated_at=payload.get("updatedAt"),
                 can_update=summary.can_update,
                 can_delete=summary.can_delete,
-                url=summary.url,
             ),
         )
 
@@ -6392,7 +6364,6 @@ class OpenProjectClient:
                 starred=bool(payload.get("starred")),
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
-                url=self._web_url(f"api/v3/views/{payload['id']}"),
             ),
         )
 
@@ -6413,7 +6384,6 @@ class OpenProjectClient:
                 created_at=summary.created_at,
                 updated_at=summary.updated_at,
                 links=sorted(payload.get("_links", {}).keys()),
-                url=summary.url,
             ),
         )
 
@@ -6536,13 +6506,11 @@ class OpenProjectClient:
                 created_at=payload.get("createdAt"),
                 attachment_count=attachment_count,
                 can_update=bool(links.get("update") or links.get("updateImmediately")),
-                url=self._web_url(f"documents/{payload['id']}"),
             ),
         )
 
     def normalize_document_detail(self, payload: dict[str, Any]) -> DocumentDetail:
         summary = self.normalize_document(payload)
-        links = payload.get("_links", {})
         return self._apply_hidden_fields(
             "document",
             DocumentDetail(
@@ -6553,9 +6521,7 @@ class OpenProjectClient:
                 description=self._visible_formattable_text(payload.get("description"), "document", "description"),
                 created_at=summary.created_at,
                 attachment_count=summary.attachment_count,
-                attachments_url=self._link_to_web_url(links.get("attachments", {}).get("href")),
                 can_update=summary.can_update,
-                url=summary.url,
             ),
         )
 
@@ -6577,7 +6543,6 @@ class OpenProjectClient:
                 created_at=payload.get("createdAt"),
                 can_update=bool(links.get("update") or links.get("updateImmediately")),
                 can_delete=bool(links.get("delete")),
-                url=self._web_url(f"news/{payload['id']}"),
             ),
         )
 
@@ -6597,7 +6562,6 @@ class OpenProjectClient:
                 created_at=summary.created_at,
                 can_update=summary.can_update,
                 can_delete=summary.can_delete,
-                url=summary.url,
             ),
         )
 
@@ -6616,8 +6580,6 @@ class OpenProjectClient:
                 project_id=_id_from_href(links.get("project", {}).get("href")),
                 project=_link_title(links.get("project")),
                 content=content,
-                attachments_url=self._link_to_web_url(links.get("attachments", {}).get("href")),
-                url=self._web_url(f"wiki_pages/{payload['id']}"),
             ),
         )
 
@@ -6626,13 +6588,15 @@ class OpenProjectClient:
         links = _job_status_inner_links(payload)
         project_link = links.get("project") or links.get("sourceProject")
         resource_link = links.get("createdProject") or links.get("createdResource") or links.get("result")
+        # Job status ids are UUID strings (payload["jobId"]) on every supported
+        # version -- there is no top-level "id" field.
+        job_id = _trim_text(payload.get("jobId") or payload.get("id"), limit=SUBJECT_LIMIT) or _slug_from_href(
+            top_level_links.get("self", {}).get("href")
+        )
         return self._apply_hidden_fields(
             "job_status",
             JobStatusDetail(
-                # Job status ids are UUID strings (payload["jobId"]) on every
-                # supported version -- there is no top-level "id" field.
-                id=_trim_text(payload.get("jobId") or payload.get("id"), limit=SUBJECT_LIMIT)
-                or _slug_from_href(top_level_links.get("self", {}).get("href")),
+                id=job_id,
                 type=_trim_text(payload.get("_type"), limit=SUBJECT_LIMIT),
                 status=_trim_text(
                     payload.get("status") or payload.get("jobStatus") or payload.get("state"), limit=SUBJECT_LIMIT
@@ -6650,8 +6614,6 @@ class OpenProjectClient:
                 if isinstance(resource_link, dict)
                 else None,
                 created_resource_name=_link_title(resource_link),
-                links=sorted(links.keys()),
-                url=self._link_to_web_url(top_level_links.get("self", {}).get("href")),
             ),
         )
 
@@ -6673,7 +6635,6 @@ class OpenProjectClient:
                 project_id=project_id,
                 project=project_name,
                 is_default=bool(payload.get("isDefault")),
-                url=self._web_url(f"api/v3/categories/{category_id}"),
                 default_assignee_id=_id_from_href(
                     default_assignee_link.get("href") if isinstance(default_assignee_link, dict) else None
                 ),
@@ -6712,7 +6673,6 @@ class OpenProjectClient:
                 container_id=_id_from_href(container_href),
                 created_at=payload.get("createdAt"),
                 download_url=self._link_to_web_url(download_href),
-                url=self._web_url(f"api/v3/attachments/{payload['id']}"),
             ),
         )
 
@@ -6757,10 +6717,6 @@ class OpenProjectClient:
         if isinstance(value, dict):
             return _link_title(value) or _slug_from_href(value.get("href"))
         return _trim_text(value, limit=SUBJECT_LIMIT)
-
-    def _board_web_url(self, payload: dict[str, Any]) -> str:
-        board_id = int(payload["id"])
-        return urljoin(f"{self.settings.base_url.rstrip('/')}/", f"work_packages?query_id={board_id}")
 
     def normalize_instance_configuration(self, payload: dict[str, Any]) -> InstanceConfiguration:
         return self._apply_hidden_fields(
@@ -6807,7 +6763,6 @@ class OpenProjectClient:
                 available_features=base.available_features,
                 trialling_features=base.trialling_features,
                 enabled_internal_comments=payload.get("enabledInternalComments"),
-                url=self._web_url(f"api/v3/projects/{project.id}/configuration"),
             ),
         )
 
@@ -6822,7 +6777,6 @@ class OpenProjectClient:
                 finish_gate=_trim_text(payload.get("finishGateName"), limit=SUBJECT_LIMIT),
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
-                url=self._web_url(f"api/v3/project_phase_definitions/{phase_id}"),
             ),
         )
 
@@ -6849,7 +6803,6 @@ class OpenProjectClient:
                 finish_date=payload.get("finishDate"),
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
-                url=self._web_url(f"api/v3/project_phases/{phase_id}"),
             ),
         )
 
@@ -6866,7 +6819,6 @@ class OpenProjectClient:
                 position=payload.get("position"),
                 is_default=bool(payload.get("default")),
                 projects=[item for item in projects if item],
-                url=self._web_url(f"time_entries/activities/{activity_id}"),
             ),
         )
 
@@ -6899,7 +6851,6 @@ class OpenProjectClient:
                 comment_length=comment_length,
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
-                url=self._web_url(f"time_entries/{payload['id']}"),
             ),
         )
 
@@ -6914,7 +6865,6 @@ class OpenProjectClient:
                 is_closed=bool(payload.get("isClosed")),
                 color=_trim_text(payload.get("color"), limit=SUBJECT_LIMIT),
                 position=payload.get("position"),
-                url=self._api_href(f"statuses/{status_id}"),
                 is_readonly=payload.get("isReadonly"),
                 default_done_ratio=payload.get("defaultDoneRatio"),
                 excluded_from_totals=payload.get("excludedFromTotals"),
@@ -6946,7 +6896,6 @@ class OpenProjectClient:
                 position=payload.get("position"),
                 is_default=bool(payload.get("isDefault")),
                 is_milestone=bool(payload.get("isMilestone")),
-                url=self._web_url(f"types/{type_id}"),
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
             ),
@@ -6960,7 +6909,6 @@ class OpenProjectClient:
                 id=watcher_id,
                 name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"User {watcher_id}",
                 login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
-                url=self._web_url(f"users/{watcher_id}"),
             ),
         )
 
@@ -6992,7 +6940,6 @@ class OpenProjectClient:
                 work_package_id=work_package_id,
                 work_package_subject=work_package_subject,
                 created_at=payload.get("createdAt") or "",
-                url=self._api_href(f"notifications/{notification_id}"),
             ),
         )
 
@@ -7012,7 +6959,6 @@ class OpenProjectClient:
                 storage_name=storage_name,
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
-                url=self._api_href(f"file_links/{file_link_id}"),
             ),
         )
 
@@ -7030,7 +6976,6 @@ class OpenProjectClient:
                 scope=scope,
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
-                url=self._api_href(f"grids/{grid_id}"),
             ),
         )
 
@@ -7990,7 +7935,6 @@ class OpenProjectClient:
                 id=int(item["id"]),
                 identifier=item.get("identifier"),
                 name=_trim_text(item.get("name"), limit=SUBJECT_LIMIT) or f"Project {item['id']}",
-                url=self._web_url(f"projects/{item.get('identifier') or item['id']}"),
             )
             for item in elements
             if isinstance(item, dict)

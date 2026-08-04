@@ -1081,15 +1081,15 @@ async def test_hidden_fields_support_wildcards_for_principal_reads() -> None:
     )
 
     # Hidden fields are tagged (not nulled). The wildcard patterns match
-    # name/email/url; the values remain on the dataclass, and the serialization seam
-    # removes exactly these keys from the response.
-    assert principal._hidden_keys == frozenset({"name", "email", "url"})
+    # name/email ("url" matches nothing -- PrincipalSummary has no url field);
+    # the values remain on the dataclass, and the serialization seam removes
+    # exactly these keys from the response.
+    assert principal._hidden_keys == frozenset({"name", "email"})
     assert principal.name == "Alice"  # value preserved on the dataclass
     assert principal.login == "alice"
     serialized = _to_payload(principal)
     assert "name" not in serialized
     assert "email" not in serialized
-    assert "url" not in serialized
     assert serialized["login"] == "alice"
 
     await client.aclose()
@@ -4209,10 +4209,10 @@ async def test_get_project_configuration_and_copy_project() -> None:
     assert preview.ready is True
     assert preview.requires_confirmation is True
     assert preview.job_status_id is None
-    assert preview.job_status_url is None
+    assert not hasattr(preview, "job_status_url")
     assert copied.confirmed is True
     assert copied.job_status_id == "32ac4e5e-1e49-4cbd-b70e-bc1c781d8af2"
-    assert copied.job_status_url == "https://op.example.com/api/v3/job_statuses/32ac4e5e-1e49-4cbd-b70e-bc1c781d8af2"
+    assert not hasattr(copied, "job_status_url")
 
     await client.aclose()
 
@@ -7452,8 +7452,7 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
     assert user.language == "en"
     assert user.groups == ["Admins"]
     # Regression: identity_url must come from the real identityUrl property,
-    # not the unrelated showUser link (which just duplicates the already-
-    # modeled `url` field).
+    # not the unrelated showUser link.
     assert user.identity_url == "https://idp.example.com/users/alice"
     assert groups.count == 1
     assert groups.results[0].member_count == 2
@@ -14053,7 +14052,7 @@ async def test_list_sprints_normalizes_backlogs_collection() -> None:
     assert result.results[0].id == 1
     assert result.results[0].name == "0.3.0 Release Finalization"
     assert result.results[0].status == "In Planning"
-    assert result.results[0].status_href == "urn:openproject-org:api:v3:sprints:status:in_planning"
+    assert not hasattr(result.results[0], "status_href")
     assert result.results[0].finish_date == "2026-07-10"
     assert result.results[0].defining_workspace_id == 7
     assert result.results[0].defining_workspace == "Demo"
@@ -16107,7 +16106,7 @@ async def test_project_admin_context_returns_lean_parent_refs_filtered_by_allowl
 
     1. available_parent_projects previously returned full ProjectSummary
        objects (description/status_explanation up to 1200 chars each) for a
-       picklist use case that only needs id/identifier/name/url -- now a
+       picklist use case that only needs id/identifier/name -- now a
        lightweight ProjectRef.
     2. A parent-project candidate outside OPENPROJECT_READ_PROJECTS leaked its
        name/identifier through this picklist regardless -- the same allowlist
