@@ -3999,6 +3999,103 @@ class OpenProjectClient:
             server_offset += 1
         return elements
 
+    async def _scan_and_paginate(
+        self,
+        path: str,
+        *,
+        item_allowed: Callable[[dict[str, Any]], Awaitable[bool]],
+        offset: int,
+        limit: int,
+        params_extra: dict[str, str] | None = None,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Re-scan-and-skip pagination for a query filtered by a per-item predicate.
+
+        Shared by every list method that must filter results against an
+        allowlist/ACL/search predicate the server itself cannot apply (or
+        cannot apply completely), so a single bounded server fetch would
+        silently hide any matching item beyond that one page. Every call
+        re-scans from server page 1, skipping the first `(offset - 1) *
+        limit` already-seen allowed matches before collecting the next
+        `limit` -- some redundant server calls on deep pagination, but no
+        allowed item is ever silently skipped or duplicated across calls.
+        `offset`/`limit` paginate in units of the caller's own `limit`,
+        which can differ from the server's own page size
+        (`settings.max_page_size`) -- the two spaces can't be conflated
+        into one server-side offset.
+
+        Extracted to unify three independent hand-rolled scan-and-skip loops
+        found in this file with the same shape (list_projects, the former
+        _paginate_relations, list_notifications' _rescan_notifications) --
+        this project's own "3+ identical copies" unification threshold.
+        _paginate_relations is migrated to delegate here in the same change
+        that introduces this helper; list_projects and _rescan_notifications
+        are migrated in follow-up commits (still hand-rolled as of this
+        commit). All three shared the same real bug this version fixes: they
+        stopped scanning and set `truncated=True` as soon as `limit` allowed
+        items were collected, without checking whether a matching item
+        actually exists beyond that window. When the item that reached
+        `limit` happened to be the last one on its page (or the last one in
+        the whole collection), the next-offset promise was a false positive
+        -- a follow-up call with the reported `next_offset` would silently
+        return nothing. Fixed here by collecting one extra item (`limit + 1`)
+        before deciding `truncated`: only report it when a genuine
+        `limit + 1`-th allowed item was actually found, not merely inferred
+        from "this page happened to have more raw elements than we needed."
+
+        Returns the raw (unnormalized) allowed elements for the requested
+        page -- callers normalize/further-filter afterward, since result
+        types differ per caller.
+        """
+        skip_count = (offset - 1) * limit
+        skipped = 0
+        results: list[dict[str, Any]] = []
+        seen_ids: set[Any] = set()
+        server_offset = 1
+        server_page_size = self.settings.max_page_size
+        is_first_page = True
+
+        while len(results) <= limit:
+            payload = await self._get(
+                path,
+                params={"offset": str(server_offset), "pageSize": str(server_page_size), **(params_extra or {})},
+            )
+            raw_elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+            if not raw_elements:
+                break
+            # Same repeat-page guard as _fetch_all_pages: some project-scoped
+            # sub-collection endpoints silently ignore offset/pageSize and
+            # always return the same full page, which would otherwise loop
+            # forever since `len(raw_elements) < server_page_size` never
+            # becomes true.
+            page_ids = {item.get("id") for item in raw_elements}
+            if not is_first_page and page_ids and page_ids <= seen_ids:
+                break
+            is_first_page = False
+            seen_ids.update(page_ids)
+
+            allowed = [item for item in raw_elements if await item_allowed(item)]
+            for item in allowed:
+                if skipped < skip_count:
+                    skipped += 1
+                    continue
+                results.append(item)
+                if len(results) > limit:
+                    # The (limit + 1)-th allowed item proves at least one more
+                    # match exists beyond the requested page -- stop
+                    # immediately, don't bother checking server exhaustion.
+                    break
+
+            if len(results) > limit:
+                break
+            if len(raw_elements) < server_page_size:
+                break
+            server_offset += 1
+
+        truncated = len(results) > limit
+        if truncated:
+            results = results[:limit]
+        return results, truncated
+
     async def _paginate_relations(
         self,
         *,
@@ -4007,55 +4104,11 @@ class OpenProjectClient:
         offset: int,
         limit: int,
     ) -> tuple[list[RelationSummary], bool]:
-        """Re-scan-and-skip pagination for an ACL-filtered relations query.
-
-        `offset`/`limit` paginate in units of the caller's own limit, which can
-        differ from the server's own page size (`max_page_size`) -- the two
-        spaces can't be conflated into one server-side offset (same rationale
-        as list_projects). Every call re-scans from server page 1, skipping the
-        first `(offset - 1) * limit` already-seen allowed matches before
-        collecting the next `limit` -- some redundant server calls on deep
-        pagination, but no allowed relation is ever silently skipped or
-        duplicated across calls.
-        """
-        skip_count = (offset - 1) * limit
-        skipped = 0
-        results: list[RelationSummary] = []
-        server_offset = 1
-        server_page_size = self.settings.max_page_size
-        exhausted = False
-
-        while len(results) < limit:
-            payload = await self._get(
-                "relations",
-                params={"offset": str(server_offset), "pageSize": str(server_page_size), **params_extra},
-            )
-            raw_elements = payload.get("_embedded", {}).get("elements", [])
-            if not raw_elements:
-                exhausted = True
-                break
-
-            allowed_items = [item for item in raw_elements if isinstance(item, dict) and await item_allowed(item)]
-            hit_limit_mid_page = False
-            for item in allowed_items:
-                if skipped < skip_count:
-                    skipped += 1
-                    continue
-                results.append(self.normalize_relation(item))
-                if len(results) >= limit:
-                    hit_limit_mid_page = True
-                    break
-
-            if hit_limit_mid_page:
-                break
-
-            server_total = int(payload.get("total", 0))
-            if _next_offset(server_offset, server_page_size, server_total) is None:
-                exhausted = True
-                break
-            server_offset += 1
-
-        return results, not exhausted
+        """Relations-specific wrapper around the shared `_scan_and_paginate` scanner."""
+        raw_items, truncated = await self._scan_and_paginate(
+            "relations", item_allowed=item_allowed, offset=offset, limit=limit, params_extra=params_extra
+        )
+        return [self.normalize_relation(item) for item in raw_items], truncated
 
     async def get_work_package_activities(
         self, work_package_id: int | str, *, limit: int | None = None, text_limit: int | None = None

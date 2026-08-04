@@ -15950,6 +15950,74 @@ async def test_list_relations_walks_multiple_server_pages_when_allowlist_thins_f
 
 
 @pytest.mark.asyncio
+async def test_list_relations_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
+    """Regression: the shared _scan_and_paginate scanner previously (as three
+    separate hand-rolled copies: list_projects, the former
+    _paginate_relations, list_notifications' former _rescan_notifications)
+    set truncated=True as soon as `limit` allowed items were collected,
+    without checking whether a matching item actually exists beyond that
+    window. When the item that reached `limit` was the last allowed match
+    overall (as here: exactly 2 allowed relations exist, limit=2, and the
+    server has nothing more to offer on a follow-up page), truncated must
+    be False -- a follow-up call with next_offset would otherwise find
+    nothing. The fix collects one extra (limit + 1) item before deciding,
+    which means a genuinely-exhausted collection costs one extra
+    (now-empty) page request -- confirmed here by asserting page 2 is
+    requested and returns no elements."""
+    work_package_projects = {10: "demo", 11: "demo", 20: "demo", 21: "demo"}
+    requested_offsets: list[str] = []
+
+    def _relation(rel_id: int, from_wp: int, to_wp: int) -> dict:
+        return {
+            "id": rel_id,
+            "type": "relates",
+            "_links": {
+                "from": {"href": f"/api/v3/work_packages/{from_wp}"},
+                "to": {"href": f"/api/v3/work_packages/{to_wp}"},
+            },
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations":
+            page = request.url.params["offset"]
+            requested_offsets.append(page)
+            if page == "1":
+                return httpx.Response(
+                    200,
+                    json={"total": 2, "_embedded": {"elements": [_relation(1, 10, 11), _relation(2, 20, 21)]}},
+                    request=request,
+                )
+            if page == "2":
+                return httpx.Response(200, json={"total": 2, "_embedded": {"elements": []}}, request=request)
+        match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if match:
+            wp_id = int(match.group(1))
+            project_name = work_package_projects[wp_id]
+            return httpx.Response(
+                200,
+                json={
+                    "id": wp_id,
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": project_name}},
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(max_page_size=2, read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_relations(limit=2)
+
+    assert requested_offsets == ["1", "2"], f"expected pages 1 then 2 (lookahead), got {requested_offsets}"
+    assert result.count == 2
+    assert [r.id for r in result.results] == [1, 2]
+    assert result.truncated is False
+    assert result.next_offset is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_project_memberships_walks_multiple_server_pages() -> None:
     """Regression: list_project_memberships issued a single unparametrized GET
     against the project's memberships href, relying entirely on OpenProject's
