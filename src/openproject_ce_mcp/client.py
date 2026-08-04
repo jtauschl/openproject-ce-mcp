@@ -1463,14 +1463,7 @@ class OpenProjectClient:
     ) -> NewsListResult:
         self._ensure_read_enabled("project")
         effective_limit = self._resolve_limit(limit)
-        # News is genuinely OffsetPaginatedCollection server-side (verified against
-        # op-sources) and results are filtered client-side against the allowlist --
-        # a single bounded fetch capped at max_results would silently hide any news
-        # item beyond that cap, same bug class as list_project_memberships/
-        # list_versions' global branch.
-        elements = await self._fetch_all_pages("news")
-        results = [self.normalize_news(item) for item in elements if self._news_payload_allowed(item)]
-
+        project_candidates: set[str] | None = None
         if project is not None:
             project_payload = await self._resolve_project_ref(project, write=False)
             project_candidates = {
@@ -1478,37 +1471,44 @@ class OpenProjectClient:
                 (_trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
                 (_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or "").casefold(),
             }
-            results = [
-                item
-                for item in results
-                if not project_candidates.isdisjoint(
-                    {
-                        str(item.project_id).casefold() if item.project_id is not None else "",
-                        (item.project or "").casefold(),
-                    }
+        search_key = search.casefold() if search is not None else None
+
+        async def _news_item_allowed(item: dict[str, Any]) -> bool:
+            if not self._news_payload_allowed(item):
+                return False
+            normalized = self.normalize_news(item)
+            if project_candidates is not None and project_candidates.isdisjoint(
+                {
+                    str(normalized.project_id).casefold() if normalized.project_id is not None else "",
+                    (normalized.project or "").casefold(),
+                }
+            ):
+                return False
+            if search_key is not None:
+                return (
+                    search_key in (normalized.title or "").casefold()
+                    or search_key in (normalized.summary or "").casefold()
                 )
-            ]
+            return True
 
-        if search is not None:
-            search_key = search.casefold()
-            results = [
-                item
-                for item in results
-                if search_key in (item.title or "").casefold() or search_key in (item.summary or "").casefold()
-            ]
-
+        # News is genuinely OffsetPaginatedCollection server-side (verified against
+        # op-sources) and results are filtered client-side against the allowlist --
+        # a single bounded fetch capped at max_results would silently hide any news
+        # item beyond that cap, same bug class as list_project_memberships/
+        # list_versions' global branch.
+        raw_items, truncated = await self._scan_and_paginate(
+            "news", item_allowed=_news_item_allowed, offset=offset, limit=effective_limit
+        )
+        results = [self.normalize_news(item) for item in raw_items]
         total = len(results)
-        start = (offset - 1) * effective_limit
-        end = start + effective_limit
-        page = results[start:end]
         return NewsListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=len(page),
-            next_offset=offset + 1 if end < total else None,
-            truncated=end < total,
-            results=page,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
+            results=results,
         )
 
     async def get_news(self, news_id: int) -> NewsDetail:

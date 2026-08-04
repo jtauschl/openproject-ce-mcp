@@ -13343,8 +13343,9 @@ async def test_list_news_walks_every_server_page_when_allowlist_thins_first_page
     """Regression: News is genuinely OffsetPaginatedCollection server-side
     (verified against op-sources) and results are filtered client-side against
     the read allowlist -- a single bounded fetch capped at max_results used to
-    silently hide any news item beyond that cap. Now walks every server page
-    via _fetch_all_pages, same fix pattern as list_versions' global branch."""
+    silently hide any news item beyond that cap. Now scans server pages via
+    _scan_and_paginate, same fix pattern as list_versions' global branch
+    (OPM-373 Phase 5)."""
     requested_offsets: list[str] = []
 
     def news_item(item_id: int, allowed: bool) -> dict:
@@ -13386,6 +13387,113 @@ async def test_list_news_walks_every_server_page_when_allowlist_thins_first_page
 
     assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
     assert [n.id for n in result.results] == [3]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_news_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
+    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    truncated=True as soon as `limit` allowed items are collected, without
+    checking whether a matching news item actually exists beyond that
+    window."""
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/news" and request.method == "GET":
+            offset = request.url.params["offset"]
+            requested_offsets.append(offset)
+            if offset == "1":
+                return httpx.Response(
+                    200,
+                    json={
+                        "_embedded": {
+                            "elements": [
+                                {
+                                    "id": 1,
+                                    "title": "Demo News",
+                                    "summary": "s",
+                                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                                }
+                            ]
+                        },
+                    },
+                    request=request,
+                )
+            raise AssertionError(f"Unexpected offset: {offset}")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.list_news(limit=1)
+
+    assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
+    assert [n.id for n in result.results] == [1]
+    assert result.truncated is False
+    assert result.next_offset is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_news_project_and_search_filters_match_normalized_fields() -> None:
+    """The allowlist, project=, and search= filters must each independently
+    exclude a non-matching item, matching against the NORMALIZED
+    project_id/project/title/summary fields (not raw payload) -- preserving
+    pre-migration behavior exactly."""
+    settings = dataclasses.replace(make_settings(), read_projects=("demo", "other"))
+
+    def _news_in_project(item_id: int, *, project_href: str, project_title: str, title: str) -> dict:
+        return {
+            "id": item_id,
+            "title": title,
+            "summary": "irrelevant",
+            "_links": {"project": {"href": project_href, "title": project_title}},
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 6, "identifier": "demo", "name": "Demo", "active": True},
+                request=request,
+            )
+        if request.url.path == "/api/v3/news" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            # id=1: demo project, matching search -- matches all filters.
+                            _news_in_project(
+                                1, project_href="/api/v3/projects/6", project_title="Demo", title="Release Notes"
+                            ),
+                            # id=2: demo project, non-matching title -- excluded by search.
+                            _news_in_project(
+                                2, project_href="/api/v3/projects/6", project_title="Demo", title="Unrelated"
+                            ),
+                            # id=3: allowed (project "other"), matching search, but a
+                            # DIFFERENT project than project="demo" -- excluded by the
+                            # project filter alone.
+                            _news_in_project(
+                                3, project_href="/api/v3/projects/7", project_title="Other", title="Release Notes"
+                            ),
+                        ]
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    # No project= filter: isolates the allowlist+search checks.
+    unfiltered = await client.list_news(search="release")
+    assert [n.id for n in unfiltered.results] == [1, 3]
+
+    # project="demo": isolates the project check among already-allowed items.
+    filtered = await client.list_news(project="demo", search="release")
+    assert [n.id for n in filtered.results] == [1]
 
     await client.aclose()
 
