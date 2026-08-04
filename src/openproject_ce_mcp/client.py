@@ -1357,12 +1357,7 @@ class OpenProjectClient:
     ) -> DocumentListResult:
         self._ensure_read_enabled("project")
         effective_limit = self._resolve_limit(limit)
-        # Filtered client-side against the allowlist, so a full walk of every
-        # server page is required -- a single bounded fetch would silently hide
-        # any document beyond that cap.
-        elements = await self._fetch_all_pages("documents")
-        results = [self.normalize_document(item) for item in elements if self._document_payload_allowed(item)]
-
+        project_candidates: set[str] | None = None
         if project is not None:
             project_payload = await self._resolve_project_ref(project, write=False)
             project_candidates = {
@@ -1370,29 +1365,38 @@ class OpenProjectClient:
                 (_trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
                 (_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or "").casefold(),
             }
-            results = [
-                item
-                for item in results
-                if not project_candidates.isdisjoint(
-                    {
-                        str(item.project_id).casefold() if item.project_id is not None else "",
-                        (item.project or "").casefold(),
-                    }
-                )
-            ]
 
+        async def _document_item_allowed(item: dict[str, Any]) -> bool:
+            if not self._document_payload_allowed(item):
+                return False
+            if project_candidates is None:
+                return True
+            # project matching runs against the NORMALIZED item (item.project_id/
+            # item.project), matching the pre-migration behavior exactly.
+            normalized = self.normalize_document(item)
+            return not project_candidates.isdisjoint(
+                {
+                    str(normalized.project_id).casefold() if normalized.project_id is not None else "",
+                    (normalized.project or "").casefold(),
+                }
+            )
+
+        # Filtered client-side against the allowlist, so a full scan of every
+        # server page is required -- a single bounded fetch would silently hide
+        # any document beyond that cap.
+        raw_items, truncated = await self._scan_and_paginate(
+            "documents", item_allowed=_document_item_allowed, offset=offset, limit=effective_limit
+        )
+        results = [self.normalize_document(item) for item in raw_items]
         total = len(results)
-        start = (offset - 1) * effective_limit
-        end = start + effective_limit
-        page = results[start:end]
         return DocumentListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=len(page),
-            next_offset=offset + 1 if end < total else None,
-            truncated=end < total,
-            results=page,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
+            results=results,
         )
 
     async def get_document(self, document_id: int) -> DocumentDetail:

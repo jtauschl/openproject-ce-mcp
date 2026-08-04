@@ -13395,6 +13395,130 @@ async def test_document_description_delimited():
     await client.aclose()
 
 
+def _document_item(item_id: int, *, allowed: bool) -> dict:
+    project_id = 6 if allowed else 99
+    title = "Demo" if allowed else "Secret Project"
+    return {
+        "id": item_id,
+        "title": f"Document {item_id}",
+        "_links": {"project": {"href": f"/api/v3/projects/{project_id}", "title": title}},
+    }
+
+
+@pytest.mark.asyncio
+async def test_list_documents_walks_multiple_server_pages_when_allowlist_thins_first_page() -> None:
+    """OPM-373 Phase 5: list_documents must scan multiple server pages until it
+    collects `limit` allowed documents, not stop after a single bounded fetch."""
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",), max_page_size=2)
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/documents" and request.method == "GET":
+            offset = request.url.params["offset"]
+            requested_offsets.append(offset)
+            assert request.url.params["pageSize"] == "2"
+            if offset == "1":
+                return httpx.Response(
+                    200,
+                    json={
+                        "_embedded": {"elements": [_document_item(1, allowed=False), _document_item(2, allowed=False)]}
+                    },
+                    request=request,
+                )
+            if offset == "2":
+                return httpx.Response(
+                    200,
+                    json={"_embedded": {"elements": [_document_item(3, allowed=True)]}},
+                    request=request,
+                )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.list_documents(limit=1)
+
+    assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
+    assert [d.id for d in result.results] == [3]
+    assert result.truncated is False
+    assert result.next_offset is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_documents_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
+    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    truncated=True as soon as `limit` allowed items are collected, without
+    checking whether a matching document actually exists beyond that window."""
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/documents" and request.method == "GET":
+            offset = request.url.params["offset"]
+            requested_offsets.append(offset)
+            if offset == "1":
+                return httpx.Response(
+                    200, json={"_embedded": {"elements": [_document_item(1, allowed=True)]}}, request=request
+                )
+            raise AssertionError(f"Unexpected offset: {offset}")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.list_documents(limit=1)
+
+    assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
+    assert [d.id for d in result.results] == [1]
+    assert result.truncated is False
+    assert result.next_offset is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_documents_project_filter_matches_normalized_fields() -> None:
+    """The project= filter must match against the NORMALIZED project_id/project
+    fields (not raw payload), preserving pre-migration behavior exactly."""
+    settings = make_settings()
+
+    # Give document 2 a different project so only document 1 matches project="demo".
+    async def handler_with_mixed_projects(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 6, "identifier": "demo", "name": "Demo", "active": True},
+                request=request,
+            )
+        if request.url.path == "/api/v3/documents" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 1,
+                                "title": "In Demo",
+                                "_links": {"project": {"href": "/api/v3/projects/6", "title": "Demo"}},
+                            },
+                            {
+                                "id": 2,
+                                "title": "In Other",
+                                "_links": {"project": {"href": "/api/v3/projects/7", "title": "Other"}},
+                            },
+                        ]
+                    }
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler_with_mixed_projects))
+    result = await client.list_documents(project="demo")
+
+    assert [d.id for d in result.results] == [1]
+
+    await client.aclose()
+
+
 @pytest.mark.asyncio
 async def test_formattable_text_helper_does_not_double_delimit():
     """Regression guard for the fix itself: _visible_formattable_text and
