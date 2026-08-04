@@ -37,9 +37,19 @@ class NewsApi(Protocol):
     """Narrow, News-only Domain API port. NewsService depends on this
     Protocol, never on HttpxNewsApi concretely (enforced by the
     architecture-boundary test).
+
+    `list_page` replaced the earlier `list_all(page_size) ->
+    list[NewsRecord]` (OPM-373 Phase 5): that method walked the ENTIRE
+    server collection to completion via `paginate_all` before
+    `NewsService.list()` ever sliced out the requested `offset`/`limit`
+    window, so `offset`/`limit` reduced neither server load nor response
+    size. `list_page` follows the same `(offset, page_size) -> (records,
+    total)` shape `SprintApi`/`DocumentApi`/`ViewApi` already use, letting
+    `NewsService.list()` scan only as many server pages as needed via
+    `scan_records_and_paginate`.
     """
 
-    async def list_all(self, *, page_size: int) -> list[NewsRecord]: ...
+    async def list_page(self, *, offset: int, page_size: int) -> tuple[list[NewsRecord], int]: ...
     async def get(self, news_id: int) -> NewsRecord: ...
     async def commit_create(self, payload: dict[str, Any]) -> NewsDetail: ...
     async def commit_update(self, news_id: int, payload: dict[str, Any]) -> NewsDetail: ...

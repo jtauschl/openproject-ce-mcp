@@ -52,16 +52,22 @@ def _record(**kwargs: object) -> NewsRecord:
 class _FakeNewsApi:
     def __init__(self, records: list[NewsRecord] | None = None) -> None:
         self._records = {r.summary.id: r for r in (records or [_record()])}
-        self.list_all_calls: list[int] = []
+        self.list_page_calls: list[int] = []
         self.get_calls: list[int] = []
         self.commit_create_calls: list[dict] = []
         self.commit_update_calls: list[tuple[int, dict]] = []
         self.delete_calls: list[int] = []
         self.commit_result_project: str = "Demo Project"
 
-    async def list_all(self, *, page_size: int) -> list[NewsRecord]:
-        self.list_all_calls.append(page_size)
-        return list(self._records.values())
+    async def list_page(self, *, offset: int, page_size: int) -> tuple[list[NewsRecord], int]:
+        self.list_page_calls.append(page_size)
+        # A single-page fake is sufficient for these Service-level tests --
+        # scan_records_and_paginate's own multi-page scanning behavior is
+        # covered by test_app_pagination.py and _PagedFakeNewsApi below.
+        if offset > 1:
+            return [], len(self._records)
+        records = list(self._records.values())
+        return records, len(records)
 
     async def get(self, news_id: int) -> NewsRecord:
         self.get_calls.append(news_id)
@@ -106,7 +112,7 @@ async def test_list_returns_stamped_summaries() -> None:
 
     assert result.count == 1
     assert result.results[0].id == 1
-    assert len(api.list_all_calls) == 1
+    assert len(api.list_page_calls) == 1
 
 
 @pytest.mark.asyncio
@@ -168,6 +174,49 @@ async def test_list_excludes_records_outside_read_allowlist() -> None:
     result = await service.list()
 
     assert result.results == []
+
+
+class _PagedFakeNewsApi:
+    """Unlike _FakeNewsApi (single-page, offset-blind), this simulates a
+    real multi-page server for exact-limit/truncation regression tests."""
+
+    def __init__(self, pages: dict[int, list[NewsRecord]]) -> None:
+        self._pages = pages
+        self.offsets_requested: list[int] = []
+
+    async def list_page(self, *, offset: int, page_size: int) -> tuple[list[NewsRecord], int]:
+        self.offsets_requested.append(offset)
+        records = self._pages.get(offset, [])
+        return records, len(records)
+
+    async def get(self, news_id: int) -> NewsRecord:
+        raise NotImplementedError
+
+    async def commit_create(self, payload: dict) -> NewsDetail:
+        raise NotImplementedError
+
+    async def commit_update(self, news_id: int, payload: dict) -> NewsDetail:
+        raise NotImplementedError
+
+    async def delete(self, news_id: int) -> None:
+        raise NotImplementedError
+
+
+@pytest.mark.asyncio
+async def test_list_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
+    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    truncated=True as soon as `limit` allowed items are collected, without
+    checking whether a matching news item actually exists beyond that
+    window."""
+    api = _PagedFakeNewsApi({1: [_record(news_id=1)]})
+    service = _service(api)
+
+    result = await service.list(limit=1)
+
+    assert api.offsets_requested == [1], f"expected only one (short) page, got {api.offsets_requested}"
+    assert [n.id for n in result.results] == [1]
+    assert result.truncated is False
+    assert result.next_offset is None
 
 
 @pytest.mark.asyncio
