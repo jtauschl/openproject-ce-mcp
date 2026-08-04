@@ -1873,6 +1873,10 @@ async def create_work_package(
     The tool validates the payload first. Set confirm=true to write.
     assignee: 'me' or numeric user id (e.g., 42). Call list_users to find ids. parent: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number to nest the new work package under a parent.
     estimated_time, remaining_time, duration accept ISO8601 duration strings (e.g., 'PT8H' for 8 hours, 'PT1H30M' for 1.5 hours, 'P1D' for 1 day, 'P2W' for 2 weeks).
+    due_date falling on a non-working day (e.g. a weekend) can be silently moved forward to the
+    next working day by OpenProject — compare the request and the returned `result.due_date` if
+    the exact calendar date matters. This server does not expose a way to opt out of that shift
+    (OpenProject's own `ignoreNonWorkingDays` flag is not a write parameter here).
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope.
     If you issue multiple create_work_package/create_subtask calls concurrently, OpenProject assigns IDs in
@@ -2025,6 +2029,13 @@ async def update_work_package(
     Setting status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H when you
     don't supply them explicitly and OpenProject's schema reports those fields as writable (on instances
     using status-based progress calculation, OpenProject already derives them itself and this is skipped).
+    On such an instance, explicitly passing percentage_done together with a closing status is rejected
+    with a hard validation error (percentageDone is not writable there) rather than silently ignored —
+    omit percentage_done and let OpenProject derive it instead.
+    due_date falling on a non-working day (e.g. a weekend) can be silently moved forward to the
+    next working day by OpenProject — compare the request and the returned `result.due_date` if
+    the exact calendar date matters. This server does not expose a way to opt out of that shift
+    (OpenProject's own `ignoreNonWorkingDays` flag is not a write parameter here).
     A rejected validation preview is not a tool error; inspect `ready` and
     `validation_errors` in the result rather than the MCP error envelope.
     """
@@ -2132,6 +2143,11 @@ async def bulk_create_work_packages(
     (YYYY-MM-DD), `due_date` (YYYY-MM-DD), `estimated_time`, `remaining_time`, `duration`
     (ISO8601 duration strings, e.g. 'PT8H' or 'P1D'). An item containing any other key is
     rejected with an indexed validation error rather than silently dropping the unrecognized field.
+    due_date falling on a non-working day (e.g. a weekend) can be silently moved forward to the
+    next working day by OpenProject — compare the request and the returned item's
+    `result.result.due_date` if the exact calendar date matters. This server does not expose a
+    way to opt out of that shift (OpenProject's own `ignoreNonWorkingDays` flag is not a write
+    parameter here).
 
     With confirm=false (default) all items are validated and a preview is returned.
     With confirm=true all items are created. Failed items are reported in the result — the operation
@@ -2270,7 +2286,15 @@ async def bulk_update_work_packages(
     rejected with an indexed validation error rather than silently dropping the unrecognized field.
     Setting an item's status to a closed status auto-fills percentage_done=100 and remaining_time=PT0H
     when that item doesn't supply them explicitly and OpenProject's schema reports those fields as
-    writable.
+    writable. On an instance using status-based progress calculation, explicitly passing
+    percentage_done together with a closing status on the same item is rejected with a hard,
+    indexed validation error (percentageDone is not writable there) rather than silently ignored —
+    omit percentage_done on that item and let OpenProject derive it instead.
+    due_date falling on a non-working day (e.g. a weekend) can be silently moved forward to the
+    next working day by OpenProject — compare the request and the returned item's
+    `result.result.due_date` if the exact calendar date matters. This server does not expose a
+    way to opt out of that shift (OpenProject's own `ignoreNonWorkingDays` flag is not a write
+    parameter here).
 
     With confirm=false (default) all items are validated and a preview is returned.
     With confirm=true all items are updated. Failed items are reported in the result — the operation
