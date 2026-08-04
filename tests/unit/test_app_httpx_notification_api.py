@@ -163,7 +163,7 @@ async def test_mark_all_read_posts_an_empty_json_body() -> None:
 def test_normalize_notification_resolves_work_package_resource_link() -> None:
     payload = _notification_payload(resource_href="/api/v3/work_packages/9")
 
-    summary = normalize_notification(payload, api_prefix="/api/v3/")
+    summary = normalize_notification(payload)
 
     assert summary.work_package_id == 9
     assert summary.work_package_subject == "Task"
@@ -173,6 +173,6 @@ def test_normalize_notification_resolves_work_package_resource_link() -> None:
 def test_normalize_notification_falls_back_to_subject_when_missing() -> None:
     payload = _notification_payload(subject=None)
 
-    summary = normalize_notification(payload, api_prefix="/api/v3/")
+    summary = normalize_notification(payload)
 
     assert summary.subject == "Notification 7"

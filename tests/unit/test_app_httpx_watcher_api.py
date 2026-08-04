@@ -31,14 +31,13 @@ async def test_list_for_work_package_requests_watchers_sub_collection() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_watcher_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWatcherApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWatcherApi(HttpxTransport(http_client))
         summaries = await api.list_for_work_package(9)
 
     assert len(summaries) == 1
     assert summaries[0].id == 5
     assert summaries[0].name == "Ada Lovelace"
     assert summaries[0].login == "ada"
-    assert summaries[0].url == f"{BASE_URL}/users/5"
 
 
 @pytest.mark.asyncio
@@ -47,7 +46,7 @@ async def test_list_for_work_package_missing_embedded_elements_returns_empty_lis
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWatcherApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWatcherApi(HttpxTransport(http_client))
         summaries = await api.list_for_work_package(9)
 
     assert summaries == []
@@ -60,7 +59,7 @@ async def test_get_user_requests_single_user() -> None:
         return httpx.Response(200, json=_watcher_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWatcherApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWatcherApi(HttpxTransport(http_client))
         watcher = await api.get_user(5)
 
     assert watcher.id == 5
@@ -77,7 +76,7 @@ async def test_add_posts_user_link_and_returns_normalized_watcher() -> None:
         return httpx.Response(201, json=_watcher_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWatcherApi(HttpxTransport(http_client), base_url=BASE_URL, api_prefix="/api/v3/")
+        api = HttpxWatcherApi(HttpxTransport(http_client), api_prefix="/api/v3/")
         watcher = await api.add(9, 5)
 
     assert watcher.id == 5
@@ -91,7 +90,7 @@ async def test_remove_sends_delete_request() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWatcherApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWatcherApi(HttpxTransport(http_client))
         await api.remove(9, 5)
 
 
@@ -99,19 +98,19 @@ def test_normalize_watcher_falls_back_to_generated_name_when_missing() -> None:
     payload = _watcher_payload()
     del payload["name"]
 
-    summary = normalize_watcher(payload, base_url=BASE_URL)
+    summary = normalize_watcher(payload)
 
     assert summary.name == "User 5"
 
 
 def test_normalize_watcher_handles_missing_login() -> None:
-    summary = normalize_watcher(_watcher_payload(login=None), base_url=BASE_URL)
+    summary = normalize_watcher(_watcher_payload(login=None))
 
     assert summary.login is None
 
 
 def test_normalize_watcher_trims_long_name() -> None:
-    summary = normalize_watcher(_watcher_payload(name="x" * 300), base_url=BASE_URL)
+    summary = normalize_watcher(_watcher_payload(name="x" * 300))
 
     assert len(summary.name) == 255
     assert summary.name.endswith("…")

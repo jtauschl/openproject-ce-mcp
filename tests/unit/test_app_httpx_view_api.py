@@ -41,7 +41,7 @@ async def test_list_all_requests_the_views_endpoint() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_view_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxViewApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxViewApi(HttpxTransport(http_client))
         records, total = await api.list_all(offset=1, page_size=50)
 
     assert total == 1
@@ -56,7 +56,6 @@ async def test_list_all_requests_the_views_endpoint() -> None:
     assert summary.query == "My Query"
     assert summary.public is True
     assert summary.starred is False
-    assert summary.url == f"{BASE_URL}/api/v3/views/1"
     assert records[0].project_link == {"href": "/api/v3/projects/6", "title": "Demo Project"}
 
 
@@ -68,7 +67,7 @@ async def test_list_all_normalizes_a_view_without_a_project_link() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxViewApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxViewApi(HttpxTransport(http_client))
         records, _ = await api.list_all(offset=1, page_size=50)
 
     summary = records[0].summary
@@ -83,7 +82,7 @@ async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxViewApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxViewApi(HttpxTransport(http_client))
         records, total = await api.list_all(offset=1, page_size=50)
 
     assert records == []
@@ -98,7 +97,7 @@ async def test_get_requests_the_single_view_endpoint() -> None:
         return httpx.Response(200, json=_view_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxViewApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxViewApi(HttpxTransport(http_client))
         record = await api.get(1)
 
     assert record.summary.id == 1
@@ -111,7 +110,7 @@ async def test_detail_reuses_every_summary_field_and_adds_sorted_links() -> None
         return httpx.Response(200, json=_view_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxViewApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxViewApi(HttpxTransport(http_client))
         record = await api.get(1)
 
     detail = record.detail
@@ -125,5 +124,4 @@ async def test_detail_reuses_every_summary_field_and_adds_sorted_links() -> None
     assert detail.query == summary.query
     assert detail.public == summary.public
     assert detail.starred == summary.starred
-    assert detail.url == summary.url
     assert detail.links == sorted(["query", "project"])

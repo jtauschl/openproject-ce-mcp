@@ -5,11 +5,10 @@ No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
 against client.py's real module-level `_trim_text`/`_id_from_href`/
 `_link_title` -- unchanged, safe to reuse, same as Views' adapter).
 
-The `url` field is built via `urljoin` against the base URL directly (verbatim
-port of client.py's `self._web_url(f"sprints/{id}")`) -- a **web UI** URL, not
-an API path, unlike Views' adapter (which builds `api/v3/views/{id}`). Do not
-conflate the two: Sprints' legacy normalizer always used the web-UI-URL
-builder, never the API-path builder.
+No web `url` field: OpenProject's Backlogs module has no MVC layer for
+sprints at all (`only: %i[index create update]`, no `show` route or
+controller action) -- the field this adapter used to build (`sprints/{id}`)
+never resolved to a real page.
 
 NotFoundError from the transport propagates unwrapped from every method here --
 the three distinct "Backlogs module" messages are a Service-layer concern (see
@@ -20,7 +19,6 @@ ProjectService rather than handling it in the adapter.
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urljoin
 
 from ...models import SprintDetail, SprintSummary
 from ..ports.sprint_api import SprintRecord
@@ -48,7 +46,7 @@ def _defining_workspace_link(payload: dict[str, Any]) -> Any:
     return None
 
 
-def normalize_sprint(payload: dict[str, Any], *, base_url: str) -> SprintSummary:
+def normalize_sprint(payload: dict[str, Any]) -> SprintSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
     Verbatim port of client.py's normalize_sprint, minus the
@@ -69,7 +67,6 @@ def normalize_sprint(payload: dict[str, Any], *, base_url: str) -> SprintSummary
         defining_workspace=_link_title(workspace_link),
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
-        url=urljoin(f"{base_url.rstrip('/')}/", f"sprints/{sprint_id}"),
     )
 
 
@@ -95,7 +92,6 @@ def summary_to_detail(summary: SprintSummary) -> SprintDetail:
         defining_workspace=summary.defining_workspace,
         created_at=summary.created_at,
         updated_at=summary.updated_at,
-        url=summary.url,
     )
 
 
@@ -110,13 +106,12 @@ def _has_usable_id(item: Any) -> bool:
 
 
 class HttpxSprintApi:
-    def __init__(self, transport: Transport, *, base_url: str) -> None:
+    def __init__(self, transport: Transport) -> None:
         self._transport = transport
-        self._base_url = base_url
 
     def _record(self, payload: dict[str, Any]) -> SprintRecord:
         embedded = payload.get("_embedded", {}).get("definingWorkspace")
-        summary = normalize_sprint(payload, base_url=self._base_url)
+        summary = normalize_sprint(payload)
         return SprintRecord(
             summary=summary,
             detail=summary_to_detail(summary),

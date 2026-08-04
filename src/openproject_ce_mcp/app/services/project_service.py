@@ -395,7 +395,6 @@ class ProjectService:
                 payload=form.payload,
                 validation_errors=form.validation_errors,
                 job_status_id=None,
-                job_status_url=None,
             )
         if form.validation_errors:
             return ProjectCopyResult(
@@ -409,7 +408,6 @@ class ProjectService:
                 payload=form.payload,
                 validation_errors=form.validation_errors,
                 job_status_id=None,
-                job_status_url=None,
             )
         access.ensure_write_enabled("project", settings=self._settings)
         job_status_url = await self._api.commit_copy(project.id, form.payload)
@@ -427,8 +425,11 @@ class ProjectService:
             # declares job_id as `type: String, desc: "Job UUID"` on every
             # supported version), never a plain integer -- id_from_href's
             # int() parse would always fail here and silently return None.
+            # job_status_url itself (from the HTTP redirect Location header) is
+            # not exposed in the response: get_job_status already accepts
+            # job_status_id, so the URL would be redundant with no independent
+            # value, only an extra cost in tokens.
             job_status_id=_slug_from_href(job_status_url),
-            job_status_url=job_status_url,
         )
 
     async def set_favorite(self, project_ref: str, *, favorite: bool, confirm: bool) -> FavoriteWriteResult:
@@ -570,7 +571,6 @@ class ProjectService:
             available_features=sorted(str(item) for item in payload.get("availableFeatures", []) if str(item).strip()),
             trialling_features=sorted(str(item) for item in payload.get("triallingFeatures", []) if str(item).strip()),
             enabled_internal_comments=payload.get("enabledInternalComments"),
-            url=f"{self._base_url.rstrip('/')}/api/v3/projects/{project.id}/configuration",
         )
 
 

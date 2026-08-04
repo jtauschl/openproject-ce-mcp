@@ -13,7 +13,7 @@ from mcp.server.fastmcp import FastMCP
 
 from . import __version__
 from .client import OpenProjectClient
-from .config import Settings, configure_logging, legacy_env_warnings
+from .config import ConfigError, Settings, configure_logging, legacy_env_warnings
 from .tools import register_tools
 
 # Server instructions surfaced to the connecting agent in the MCP `initialize`
@@ -224,7 +224,12 @@ def main() -> None:
     bare word (e.g. a typo'd subcommand like "confiugure") is not something any
     MCP client would ever pass, so it's treated as a human mistake and reported
     via argparse's own "invalid choice" error instead of silently starting the
-    server and failing confusingly on missing configuration.
+    server and failing confusingly on missing configuration. An unrecognized
+    flag (e.g. "--configure", a typo for the "configure" subcommand) still
+    starts the server, but if that launch then fails with a ConfigError (e.g.
+    missing OPENPROJECT_BASE_URL), the flag is surfaced as a likely CLI typo
+    pointing at --help/configure, rather than a bare traceback -- a real MCP
+    client launch never passes a stray flag in the first place.
     """
     parser = _build_parser()
     arg = sys.argv[1] if len(sys.argv) > 1 else None
@@ -232,7 +237,19 @@ def main() -> None:
     if arg not in _cli_tokens(parser):
         if arg is not None and not arg.startswith("-"):
             parser.parse_args(sys.argv[1:])  # always exits: "invalid choice" usage error
-        _run_server()
+        try:
+            _run_server()
+        except ConfigError as exc:
+            if arg is not None:
+                print(f"error: {exc}", file=sys.stderr)
+                print(
+                    f"'{arg}' is not a recognized option. "
+                    "Run 'openproject-ce-mcp --help' for usage, or "
+                    "'openproject-ce-mcp configure' to set up the server.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            raise
         return
 
     if arg == "configure":

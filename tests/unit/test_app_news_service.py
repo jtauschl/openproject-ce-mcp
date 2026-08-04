@@ -32,7 +32,6 @@ def _summary(
         created_at="2026-01-01T00:00:00Z",
         can_update=True,
         can_delete=True,
-        url=f"{BASE_URL}/news/{news_id}",
     )
 
 

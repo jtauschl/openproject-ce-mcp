@@ -5,17 +5,14 @@ No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
 against client.py's real module-level `_trim_text`/`_id_from_href`/
 `_link_title` -- unchanged, safe to reuse).
 
-The `url` field is built via `urljoin` against the *API* path
-`api/v3/views/{id}` (verbatim port of client.py's
-`self._web_url(f"api/v3/views/{id}")`), same inline pattern as Categories'
-adapter -- not a `_link_to_web_url` call, since this is a locally-built
-relative path, not a server-supplied href.
+No `url` field: it used to be built via `urljoin` against the *API* path
+`api/v3/views/{id}` -- a locally-constructed path, not a server-supplied
+href, so it was dropped per the "no constructed output URLs" rule.
 """
 
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urljoin
 
 from ...models import ViewDetail, ViewSummary
 from ..ports.view_api import ViewRecord
@@ -26,7 +23,7 @@ from ._text import link_title as _link_title
 from ._text import trim_text as _trim_text
 
 
-def normalize_view(payload: dict[str, Any], *, base_url: str) -> ViewSummary:
+def normalize_view(payload: dict[str, Any]) -> ViewSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
     Verbatim port of client.py's normalize_view, minus the
@@ -50,7 +47,6 @@ def normalize_view(payload: dict[str, Any], *, base_url: str) -> ViewSummary:
         starred=bool(payload.get("starred")),
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
-        url=urljoin(f"{base_url.rstrip('/')}/", f"api/v3/views/{view_id}"),
     )
 
 
@@ -80,17 +76,15 @@ def summary_to_detail(summary: ViewSummary, *, links: list[str]) -> ViewDetail:
         created_at=summary.created_at,
         updated_at=summary.updated_at,
         links=links,
-        url=summary.url,
     )
 
 
 class HttpxViewApi:
-    def __init__(self, transport: Transport, *, base_url: str) -> None:
+    def __init__(self, transport: Transport) -> None:
         self._transport = transport
-        self._base_url = base_url
 
     def _record(self, payload: dict[str, Any]) -> ViewRecord:
-        summary = normalize_view(payload, base_url=self._base_url)
+        summary = normalize_view(payload)
         return ViewRecord(
             summary=summary,
             detail=summary_to_detail(summary, links=sorted(payload.get("_links", {}).keys())),

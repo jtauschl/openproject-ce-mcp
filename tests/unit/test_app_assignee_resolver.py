@@ -8,7 +8,7 @@ from openproject_ce_mcp.models import CurrentUser
 
 
 async def _current_user() -> CurrentUser:
-    return CurrentUser(id=99, name="Me", login="me", url="https://op.example.com/users/99")
+    return CurrentUser(id=99, name="Me", login="me")
 
 
 @pytest.mark.asyncio
@@ -29,7 +29,7 @@ async def test_resolve_id_numeric_passthrough() -> None:
 
     async def current_user() -> CurrentUser:
         calls.append("called")
-        return CurrentUser(id=99, name="Me", login="me", url="https://op.example.com/users/99")
+        return CurrentUser(id=99, name="Me", login="me")
 
     resolver = AssigneeResolver(current_user=current_user)
     assert await resolver.resolve_id("42") == "42"

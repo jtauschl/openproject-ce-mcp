@@ -30,7 +30,6 @@ def _summary(
         defining_workspace=defining_workspace,
         created_at="2026-01-01T00:00:00Z",
         updated_at="2026-01-02T00:00:00Z",
-        url=f"{BASE_URL}/sprints/{sprint_id}",
     )
 
 
@@ -46,7 +45,6 @@ def _detail(**kwargs: object) -> SprintDetail:
         defining_workspace=summary.defining_workspace,
         created_at=summary.created_at,
         updated_at=summary.updated_at,
-        url=summary.url,
     )
 
 

@@ -5,13 +5,9 @@ No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
 against client.py's real module-level `_trim_text`/`_id_from_href`/
 `_link_title` -- unchanged, safe to reuse).
 
-The `url` field is built from `client.py`'s `_web_url` helper
-(`urljoin(f"{base_url.rstrip('/')}/", relative_path.lstrip('/'))`, a plain
-relative-path join against the configured base URL with no same-origin
-check -- not the same helper as `_link_to_web_url`, which resolves an href
-and does check origin) against the *API* path `api/v3/categories/{id}`, not
-a bare `categories/{id}` web path (verbatim port of client.py's
-`self._web_url(f"api/v3/categories/{category_id}")`).
+No `url` field: it used to be a client-constructed API path
+(`api/v3/categories/{id}`) -- not a server-supplied href, so it was dropped
+per the "no constructed output URLs" rule.
 
 `get(category_id)` uses OpenProject's real `GET /api/v3/categories/{id}`
 endpoint (verified against OpenProject's own API implementation).
@@ -20,7 +16,6 @@ endpoint (verified against OpenProject's own API implementation).
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urljoin
 
 from ...models import CategorySummary
 from ..ports.category_api import CategoryRecord
@@ -31,9 +26,7 @@ from ._text import link_title as _link_title
 from ._text import trim_text as _trim_text
 
 
-def normalize_category(
-    payload: dict[str, Any], *, project_id: int | None, project_name: str | None, base_url: str
-) -> CategorySummary:
+def normalize_category(payload: dict[str, Any], *, project_id: int | None, project_name: str | None) -> CategorySummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
     Verbatim port of client.py's normalize_category, minus the
@@ -49,7 +42,6 @@ def normalize_category(
         project_id=project_id,
         project=project_name,
         is_default=bool(payload.get("isDefault")),
-        url=urljoin(f"{base_url.rstrip('/')}/", f"api/v3/categories/{category_id}"),
         default_assignee_id=_id_from_href(
             default_assignee_link.get("href") if isinstance(default_assignee_link, dict) else None
         ),
@@ -58,9 +50,8 @@ def normalize_category(
 
 
 class HttpxCategoryApi:
-    def __init__(self, transport: Transport, *, base_url: str) -> None:
+    def __init__(self, transport: Transport) -> None:
         self._transport = transport
-        self._base_url = base_url
 
     async def list_for_project(self, project_id: int, *, project_name: str | None) -> list[CategoryRecord]:
         # project_name is trimmed here (not by the Service caller) -- verbatim
@@ -72,9 +63,7 @@ class HttpxCategoryApi:
         elements = payload.get("_embedded", {}).get("elements", [])
         return [
             CategoryRecord(
-                summary=normalize_category(
-                    item, project_id=project_id, project_name=trimmed_project_name, base_url=self._base_url
-                ),
+                summary=normalize_category(item, project_id=project_id, project_name=trimmed_project_name),
                 project_link=None,
             )
             for item in elements
@@ -88,8 +77,6 @@ class HttpxCategoryApi:
         project_id = _id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None
         project_name = _link_title(project_link)
         return CategoryRecord(
-            summary=normalize_category(
-                payload, project_id=project_id, project_name=project_name, base_url=self._base_url
-            ),
+            summary=normalize_category(payload, project_id=project_id, project_name=project_name),
             project_link=project_link,
         )

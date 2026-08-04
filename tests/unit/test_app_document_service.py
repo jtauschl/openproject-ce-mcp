@@ -30,7 +30,6 @@ def _summary(
         created_at="2026-01-01T00:00:00Z",
         attachment_count=0,
         can_update=True,
-        url=f"{BASE_URL}/documents/{document_id}",
     )
 
 
@@ -44,9 +43,7 @@ def _detail(**kwargs: object) -> DocumentDetail:
         description=summary.description,
         created_at=summary.created_at,
         attachment_count=summary.attachment_count,
-        attachments_url=None,
         can_update=summary.can_update,
-        url=summary.url,
     )
 
 

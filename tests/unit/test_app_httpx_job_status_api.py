@@ -38,9 +38,7 @@ def test_normalize_job_status_builds_summary_from_project_link() -> None:
             "_links": {
                 "self": {"href": "/api/v3/job_statuses/77"},
             },
-        },
-        base_url=BASE_URL,
-        origin=BASE_URL,
+        }
     )
     assert detail.id == "77"
     assert detail.status == "in_progress"
@@ -50,7 +48,7 @@ def test_normalize_job_status_builds_summary_from_project_link() -> None:
     assert detail.project == "Demo"
     assert detail.created_resource_id == 88
     assert detail.created_resource_name == "Demo Copy"
-    assert detail.url == f"{BASE_URL}/api/v3/job_statuses/77"
+    assert not hasattr(detail, "url")
 
 
 def test_normalize_job_status_falls_back_to_source_project_link() -> None:
@@ -66,30 +64,20 @@ def test_normalize_job_status_falls_back_to_source_project_link() -> None:
                 },
             },
             "_links": {"self": {"href": "/api/v3/job_statuses/77"}},
-        },
-        base_url=BASE_URL,
-        origin=BASE_URL,
+        }
     )
     assert detail.project_id == 9
     assert detail.project == "Source Project"
 
 
 def test_normalize_job_status_uses_self_href_id_fallback_when_no_id_field() -> None:
-    detail = normalize_job_status(
-        {"_links": {"self": {"href": "/api/v3/job_statuses/42"}}},
-        base_url=BASE_URL,
-        origin=BASE_URL,
-    )
+    detail = normalize_job_status({"_links": {"self": {"href": "/api/v3/job_statuses/42"}}})
     assert detail.id == "42"
 
 
 def test_normalize_job_status_trims_long_message_to_formattable_limit() -> None:
     long_message = "x" * 2000
-    detail = normalize_job_status(
-        {"id": 1, "message": long_message, "_links": {}},
-        base_url=BASE_URL,
-        origin=BASE_URL,
-    )
+    detail = normalize_job_status({"id": 1, "message": long_message, "_links": {}})
     assert detail.message is not None
     assert len(detail.message) <= 1_200
 
@@ -110,7 +98,7 @@ async def test_get_requests_job_status_by_id() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxJobStatusApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxJobStatusApi(HttpxTransport(http_client))
         record = await api.get("77")
 
     assert record.summary.id == "77"
@@ -130,7 +118,7 @@ async def test_get_rejects_path_traversal_id() -> None:
         raise AssertionError(f"No request should ever be issued: {request.method} {request.url}")
 
     async with _client(handler) as http_client:
-        api = HttpxJobStatusApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxJobStatusApi(HttpxTransport(http_client))
         with pytest.raises(InvalidInputError, match="job_status_id"):
             await api.get("../projects/42")
 
@@ -153,7 +141,7 @@ async def test_get_record_carries_raw_project_link_for_allowlist_check() -> None
         )
 
     async with _client(handler) as http_client:
-        api = HttpxJobStatusApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxJobStatusApi(HttpxTransport(http_client))
         record = await api.get("77")
 
     assert record.project_link == {"href": "/api/v3/projects/6", "title": "Demo"}
@@ -182,7 +170,7 @@ async def test_get_record_project_link_falls_back_to_source_project() -> None:
         )
 
     async with _client(handler) as http_client:
-        api = HttpxJobStatusApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxJobStatusApi(HttpxTransport(http_client))
         record = await api.get("77")
 
     assert record.project_link == {"href": "/api/v3/projects/9", "title": "Source Project"}
@@ -212,7 +200,7 @@ async def test_get_record_keeps_falsy_present_project_link_instead_of_falling_ba
         )
 
     async with _client(handler) as http_client:
-        api = HttpxJobStatusApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxJobStatusApi(HttpxTransport(http_client))
         record = await api.get("77")
 
     assert record.project_link == {}
@@ -241,7 +229,7 @@ async def test_get_record_created_project_id_extracted_from_created_project_link
         )
 
     async with _client(handler) as http_client:
-        api = HttpxJobStatusApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxJobStatusApi(HttpxTransport(http_client))
         record = await api.get("77")
 
     assert record.created_project_id == 88
@@ -258,7 +246,7 @@ async def test_get_record_created_project_id_is_none_without_created_project_lin
         )
 
     async with _client(handler) as http_client:
-        api = HttpxJobStatusApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
+        api = HttpxJobStatusApi(HttpxTransport(http_client))
         record = await api.get(77)
 
     assert record.created_project_id is None

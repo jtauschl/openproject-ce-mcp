@@ -21,7 +21,6 @@ def _summary(file_link_id: int = 5) -> FileLinkSummary:
         storage_name="Nextcloud",
         created_at="2026-01-01T00:00:00Z",
         updated_at="2026-01-02T00:00:00Z",
-        url=f"/api/v3/file_links/{file_link_id}",
     )
 
 

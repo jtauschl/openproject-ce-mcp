@@ -51,11 +51,8 @@ from ._text import SUBJECT_LIMIT
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
-from ._text import link_to_web_url as _shared_link_to_web_url
 from ._text import normalize_form_validation_errors as _normalize_form_validation_errors
-from ._text import origin_from_url as _origin_from_url
 from ._text import trim_text as _trim_text
-from ._text import web_url as _shared_web_url
 
 FORMATTABLE_LIMIT = 1_200
 WORK_PACKAGE_CHILDREN_LIMIT = 50
@@ -125,9 +122,7 @@ def _work_package_dates(payload: dict[str, Any]) -> tuple[str | None, str | None
     return start_date, due_date
 
 
-def normalize_work_package_summary(
-    payload: dict[str, Any], *, base_url: str, text_limit: int | None
-) -> WorkPackageSummary:
+def normalize_work_package_summary(payload: dict[str, Any], *, text_limit: int | None) -> WorkPackageSummary:
     """Pure HAL->model translation. Verbatim port of client.py's
     normalize_work_package_summary, minus the _apply_hidden_fields call and
     the hidden-field-aware text extraction -- hidden-field masking (including
@@ -160,7 +155,6 @@ def normalize_work_package_summary(
         due_date=due_date,
         description=_delimit_user_content(description),
         has_description=description is not None,
-        url=_shared_web_url(f"work_packages/{payload['id']}", base_url=base_url),
         description_truncated=truncated,
         description_length=length,
         estimated_time=payload.get("estimatedTime"),
@@ -191,8 +185,6 @@ def normalize_work_package_summary(
 def normalize_work_package_detail(
     payload: dict[str, Any],
     *,
-    base_url: str,
-    origin: str,
     text_limit: int | None = FORMATTABLE_LIMIT,
     summary: WorkPackageSummary | None = None,
 ) -> WorkPackageDetail:
@@ -210,7 +202,7 @@ def normalize_work_package_detail(
     summary's, not just a different truncation limit).
     """
     if summary is None:
-        summary = normalize_work_package_summary(payload, base_url=base_url, text_limit=text_limit)
+        summary = normalize_work_package_summary(payload, text_limit=text_limit)
     links = payload.get("_links", {})
     description, truncated, length = _extract_formattable_text_with_meta(
         payload.get("description"), limit=text_limit, preserve_newlines=True
@@ -256,11 +248,6 @@ def normalize_work_package_detail(
         due_date=due_date,
         lock_version=payload.get("lockVersion"),
         description=_delimit_user_content(description),
-        url=summary.url,
-        activities_url=_shared_link_to_web_url(
-            links.get("activities", {}).get("href"), base_url=base_url, origin=origin
-        ),
-        relations_url=_shared_link_to_web_url(links.get("relations", {}).get("href"), base_url=base_url, origin=origin),
         description_truncated=truncated,
         description_length=length,
         estimated_time=summary.estimated_time,
@@ -288,23 +275,17 @@ def normalize_work_package_detail(
 
 
 class HttpxWorkPackageApi:
-    def __init__(self, transport: Transport, *, base_url: str, api_prefix: str = "/api/v3/") -> None:
+    def __init__(self, transport: Transport, *, api_prefix: str = "/api/v3/") -> None:
         self._transport = transport
-        self._base_url = base_url
-        self._origin = _origin_from_url(base_url)
         self._api_prefix = api_prefix
 
     def to_record(self, payload: dict[str, Any], *, text_limit: int | None) -> WorkPackageRecord:
-        base_url = self._base_url
-        origin = self._origin
-        summary = normalize_work_package_summary(payload, base_url=base_url, text_limit=text_limit)
+        summary = normalize_work_package_summary(payload, text_limit=text_limit)
         return WorkPackageRecord(
             summary=summary,
             # Lazy: list()/search() callers never read this -- only get()'s
             # single-item path needs the full detail normalization.
-            to_detail=lambda: normalize_work_package_detail(
-                payload, base_url=base_url, origin=origin, text_limit=text_limit, summary=summary
-            ),
+            to_detail=lambda: normalize_work_package_detail(payload, text_limit=text_limit, summary=summary),
             payload=payload,
         )
 

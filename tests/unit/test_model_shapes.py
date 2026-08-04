@@ -308,7 +308,6 @@ EXPECTED_WRITE_RESULT_FIELD_ORDER: dict[str, list[str]] = {
         "payload",
         "validation_errors",
         "job_status_id",
-        "job_status_url",
     ],
     "ProjectWriteResult": [
         "action",
@@ -636,7 +635,6 @@ async def test_get_project_tolerates_ancestor_without_display_id() -> None:
             identifier="sub-project",
             active=True,
             description=None,
-            url="https://example.org/projects/sub-project",
             ancestors=[
                 {"href": "/api/v3/projects/1", "title": "Root", "display_id": None},
             ],
@@ -680,9 +678,6 @@ async def test_get_work_package_tolerates_ancestor_without_display_id() -> None:
             due_date=None,
             lock_version=None,
             description=None,
-            url="https://example.org/work_packages/952",
-            activities_url=None,
-            relations_url=None,
             ancestors=[
                 {"href": "/api/v3/work_packages/1", "title": "Root task", "display_id": None},
             ],

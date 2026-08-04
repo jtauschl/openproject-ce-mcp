@@ -64,8 +64,8 @@ async def test_get_work_package_returns_compact_summary() -> None:
 
     assert result.id == 42
     assert result.subject == "Investigate API wrapper"
-    assert result.activities_url == "https://op.example.com/api/v3/work_packages/42/activities"
-    assert result.relations_url == "https://op.example.com/api/v3/work_packages/42/relations"
+    assert not hasattr(result, "activities_url")
+    assert not hasattr(result, "relations_url")
 
     await client.aclose()
 

@@ -11,7 +11,7 @@ from openproject_ce_mcp.models import WatcherSummary
 
 
 def _summary(user_id: int = 5, *, name: str = "Ada Lovelace", login: str | None = "ada") -> WatcherSummary:
-    return WatcherSummary(id=user_id, name=name, login=login, url=f"https://op.example.com/users/{user_id}")
+    return WatcherSummary(id=user_id, name=name, login=login)
 
 
 class _FakeWatcherApi:

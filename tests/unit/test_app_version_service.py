@@ -21,7 +21,6 @@ def _summary(version_id: int = 8, name: str = "Release 1") -> VersionSummary:
         end_date=None,
         defining_project="Demo",
         description=None,
-        url=f"https://op.example.com/versions/{version_id}",
     )
 
 
@@ -36,7 +35,6 @@ def _detail(version_id: int = 8, name: str = "Release 1") -> VersionDetail:
         end_date=s.end_date,
         defining_project=s.defining_project,
         description=s.description,
-        url=s.url,
     )
 
 

@@ -37,7 +37,7 @@ async def test_list_groups_requests_offset_and_page_size() -> None:
         return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [_group_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxGroupApi(HttpxTransport(http_client))
         records, total = await api.list_groups(offset=1, page_size=20)
 
     assert total == 1
@@ -46,10 +46,9 @@ async def test_list_groups_requests_offset_and_page_size() -> None:
     assert summary.id == 3
     assert summary.name == "Backend"
     assert summary.member_count == 1
-    assert summary.url == f"{BASE_URL}/groups/3"
     detail = records[0].to_detail()
     assert detail.members == ["Ada Lovelace"]
-    assert detail.memberships_url == f"{BASE_URL}/api/v3/memberships?filters=..."
+    assert not hasattr(detail, "memberships_url")
 
 
 @pytest.mark.asyncio
@@ -62,7 +61,7 @@ async def test_list_groups_falls_back_to_record_count_when_total_missing() -> No
         )
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxGroupApi(HttpxTransport(http_client))
         records, total = await api.list_groups(offset=1, page_size=20)
 
     assert total == 2
@@ -78,7 +77,7 @@ async def test_list_groups_search_walks_a_single_short_page_to_completion() -> N
         return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [_group_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxGroupApi(HttpxTransport(http_client))
         records = await api.list_groups_search(page_size=100)
 
     assert len(records) == 1
@@ -106,7 +105,7 @@ async def test_list_groups_search_walks_every_server_page() -> None:
         return httpx.Response(200, json={"total": 3, "_embedded": {"elements": page_groups}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxGroupApi(HttpxTransport(http_client))
         records = await api.list_groups_search(page_size=2)
 
     assert requested_offsets == ["1", "2"]
@@ -120,7 +119,7 @@ async def test_get_group_uses_plain_numeric_id() -> None:
         return httpx.Response(200, json=_group_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxGroupApi(HttpxTransport(http_client))
         record = await api.get_group(3)
 
     assert record.summary.id == 3
@@ -135,7 +134,7 @@ async def test_get_member_ids_extracts_ids_from_links_members() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxGroupApi(HttpxTransport(http_client))
         ids = await api.get_member_ids(3)
 
     assert ids == {5, 6}
@@ -149,7 +148,7 @@ async def test_get_member_ids_tolerates_missing_or_malformed_links() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxGroupApi(HttpxTransport(http_client))
         ids = await api.get_member_ids(3)
 
     assert ids == set()
@@ -163,7 +162,7 @@ async def test_commit_create_posts_to_groups_and_returns_summary_not_detail() ->
         return httpx.Response(200, json=_group_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxGroupApi(HttpxTransport(http_client))
         result = await api.commit_create({"name": "Backend"})
 
     assert result.id == 3
@@ -178,7 +177,7 @@ async def test_commit_update_patches_the_group() -> None:
         return httpx.Response(200, json=_group_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxGroupApi(HttpxTransport(http_client))
         result = await api.commit_update(3, {"name": "Backend"})
 
     assert result.id == 3
@@ -192,14 +191,14 @@ async def test_commit_delete_sends_delete() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxGroupApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxGroupApi(HttpxTransport(http_client))
         await api.commit_delete(3)
 
 
 def test_normalize_group_tolerates_dict_shaped_members_collection() -> None:
     payload = _group_payload(members={"count": 4})
 
-    summary = normalize_group(payload, base_url=BASE_URL)
+    summary = normalize_group(payload)
 
     assert summary.member_count == 4
 
@@ -207,7 +206,7 @@ def test_normalize_group_tolerates_dict_shaped_members_collection() -> None:
 def test_normalize_group_tolerates_list_shaped_members_collection() -> None:
     payload = _group_payload(members=[{"name": "A"}, {"name": "B"}])
 
-    summary = normalize_group(payload, base_url=BASE_URL)
+    summary = normalize_group(payload)
 
     assert summary.member_count == 2
 
@@ -234,7 +233,7 @@ def test_normalize_group_counts_link_members_on_the_real_list_endpoint() -> None
         },
     }
 
-    summary = normalize_group(payload, base_url=BASE_URL)
+    summary = normalize_group(payload)
 
     assert summary.member_count == 2
 
@@ -242,13 +241,13 @@ def test_normalize_group_counts_link_members_on_the_real_list_endpoint() -> None
 def test_normalize_group_detail_falls_back_to_link_title_when_name_missing() -> None:
     payload = _group_payload(members=[{"_links": {"self": {"href": "/api/v3/users/7", "title": "Bob"}}}])
 
-    detail = normalize_group_detail(payload, base_url=BASE_URL, origin=BASE_URL)
+    detail = normalize_group_detail(payload)
 
     assert detail.members == ["Bob"]
 
 
 def test_normalize_group_no_hidden_field_masking_applied() -> None:
     # Pure HAL->model translation only -- masking is the Service's job.
-    summary = normalize_group(_group_payload(), base_url=BASE_URL)
+    summary = normalize_group(_group_payload())
 
     assert not hasattr(summary, "_hidden_keys") or summary._hidden_keys == frozenset()

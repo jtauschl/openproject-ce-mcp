@@ -42,7 +42,6 @@ def _summary(
         comment=comment,
         created_at=None,
         updated_at=None,
-        url="https://op.example.com/time_entries/7",
     )
 
 
@@ -53,7 +52,6 @@ def _activity_summary(activity_id: int = 1, *, name: str = "Development") -> Tim
         position=1,
         is_default=True,
         projects=["Demo"],
-        url=f"https://op.example.com/time_entries/activities/{activity_id}",
     )
 
 
@@ -170,7 +168,6 @@ class _FakeProjectApi:
                     identifier=f"proj-{pid}",
                     active=True,
                     description=None,
-                    url=f"https://op.example.com/projects/{pid}",
                 ),
                 to_detail=lambda: (_ for _ in ()).throw(AssertionError("unused")),
                 payload={"id": pid, "name": name, "_links": {"self": {"href": f"/api/v3/projects/{pid}"}}},
@@ -199,7 +196,6 @@ class _FakeUserApi:
             avatar_url=None,
             created_at=None,
             updated_at=None,
-            url=f"https://op.example.com/users/{self._user_id}",
         )
         return UserRecord(summary=summary, to_detail=lambda: (_ for _ in ()).throw(AssertionError("unused")))
 
@@ -259,7 +255,7 @@ def _resolve_principal_id_ok(user_id: str = "9"):
 
 def _get_current_user_ok(name: str = "Current User"):
     async def get() -> CurrentUser:
-        return CurrentUser(id=1, name=name, login="me", url="https://op.example.com/users/1")
+        return CurrentUser(id=1, name=name, login="me")
 
     return get
 

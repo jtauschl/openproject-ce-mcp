@@ -20,7 +20,6 @@ def _status_summary(status_id: int = 1, *, default_done_ratio: int | None = 30) 
         is_closed=False,
         color="#1A67A3",
         position=2,
-        url=f"/api/v3/statuses/{status_id}",
         is_readonly=False,
         default_done_ratio=default_done_ratio,
         excluded_from_totals=False,
@@ -46,7 +45,6 @@ def _type_summary(type_id: int = 1) -> TypeSummary:
         position=1,
         is_default=True,
         is_milestone=False,
-        url=f"https://op.example.com/types/{type_id}",
         created_at="2026-01-01T00:00:00Z",
         updated_at="2026-01-02T00:00:00Z",
     )

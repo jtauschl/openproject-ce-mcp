@@ -49,10 +49,9 @@ from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import normalize_form_validation_errors as normalize_validation_errors
 from ._text import trim_text as _trim_text
-from ._text import web_url as _web_url
 
 
-def normalize_time_entry_raw(payload: dict[str, Any], *, base_url: str, text_limit: int | None) -> TimeEntrySummary:
+def normalize_time_entry_raw(payload: dict[str, Any], *, text_limit: int | None) -> TimeEntrySummary:
     """Pure HAL extraction, no hidden-field awareness (see module docstring).
 
     ``text_limit=None`` returns the full comment uncapped (get_time_entry);
@@ -81,7 +80,6 @@ def normalize_time_entry_raw(payload: dict[str, Any], *, base_url: str, text_lim
         comment_length=full_length,
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
-        url=_web_url(f"time_entries/{payload['id']}", base_url=base_url),
     )
 
 
@@ -106,7 +104,7 @@ def _extract_formattable_text_with_meta(value: Any, *, limit: int | None) -> tup
     return _trim_text_with_meta(raw, limit=limit)
 
 
-def normalize_time_entry_activity_raw(payload: dict[str, Any], *, base_url: str) -> TimeEntryActivitySummary:
+def normalize_time_entry_activity_raw(payload: dict[str, Any]) -> TimeEntryActivitySummary:
     activity_id = int(payload["id"])
     projects = [_link_title(item) for item in payload.get("_links", {}).get("projects", []) if isinstance(item, dict)]
     return TimeEntryActivitySummary(
@@ -115,23 +113,19 @@ def normalize_time_entry_activity_raw(payload: dict[str, Any], *, base_url: str)
         position=payload.get("position"),
         is_default=bool(payload.get("default")),
         projects=[item for item in projects if item],
-        url=_web_url(f"time_entries/activities/{activity_id}", base_url=base_url),
     )
 
 
 class HttpxTimeEntryApi:
-    def __init__(self, transport: Transport, *, base_url: str, api_prefix: str = "/api/v3/") -> None:
+    def __init__(self, transport: Transport, *, api_prefix: str = "/api/v3/") -> None:
         self._transport = transport
-        self._base_url = base_url
         self._api_prefix = api_prefix
 
     def to_record(self, payload: dict[str, Any], *, text_limit: int | None) -> TimeEntryRecord:
-        return TimeEntryRecord(
-            summary=lambda: normalize_time_entry_raw(payload, base_url=self._base_url, text_limit=text_limit)
-        )
+        return TimeEntryRecord(summary=lambda: normalize_time_entry_raw(payload, text_limit=text_limit))
 
     def to_activity_record(self, payload: dict[str, Any]) -> TimeEntryActivityRecord:
-        return TimeEntryActivityRecord(summary=normalize_time_entry_activity_raw(payload, base_url=self._base_url))
+        return TimeEntryActivityRecord(summary=normalize_time_entry_activity_raw(payload))
 
     def parse_form_result(self, form: dict[str, Any]) -> TimeEntryFormResult:
         embedded = form.get("_embedded", {})

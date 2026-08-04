@@ -48,7 +48,6 @@ def _summary(
         due_date=None,
         description=description,
         has_description=description is not None,
-        url=f"https://op.example.com/work_packages/{wp_id}",
         description_truncated=description_truncated,
         description_length=description_length,
     )
@@ -74,9 +73,6 @@ def _detail(wp_id: int = 6, *, children=None, ancestors=None) -> WorkPackageDeta
         due_date=None,
         lock_version=1,
         description="Some description",
-        url=f"https://op.example.com/work_packages/{wp_id}",
-        activities_url=None,
-        relations_url=None,
         children=children,
         ancestors=ancestors,
     )
@@ -198,7 +194,6 @@ class _FakeStatusApi:
                 is_closed=self.is_closed,
                 color=None,
                 position=1,
-                url="https://op.example.com/statuses/1",
             ),
             lookup_name=name,
         )
@@ -299,7 +294,7 @@ def _service(
         return int(ref)
 
     async def current_user():
-        return CurrentUser(id=42, name="Admin", login="admin", url="https://op.example.com/users/42")
+        return CurrentUser(id=42, name="Admin", login="admin")
 
     service = WorkPackageService(
         api=fake_api,

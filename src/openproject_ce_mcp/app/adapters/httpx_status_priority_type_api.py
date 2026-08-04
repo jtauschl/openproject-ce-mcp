@@ -10,22 +10,20 @@ applied after these return -- see `status_priority_type_service.py`).
 Verbatim ports of client.py's originals, minus each one's own
 `_apply_hidden_fields` call.
 
-Two different URL-building shapes are preserved deliberately, not unified --
-verified as a genuine, non-accidental difference in client.py, not a
-copy-paste drift to fix: `normalize_status`'s `url` used `self._api_href(...)`
-(a relative `/api/v3/...` href, via the shared `app/api_href.py` helper here),
-while `normalize_type`'s `url` used `self._web_url(...)` (an absolute web URL
-joined against `base_url`, matching Category's adapter's `urljoin` pattern).
-`PrioritySummary` has no `url` field at all -- client.py's original
-`normalize_priority` never built one.
+No domain here has a `url` field: `normalize_status`'s used to be built via
+`api_href(...)` (a client-constructed relative `/api/v3/...` path, not a
+server-supplied href), so it was dropped. `normalize_type` never had one --
+OpenProject's `resources :types` routes a `show` action, but
+`WorkPackageTypes::TypesController` never implements it (no `show` method,
+no `show.html.erb` view) -- the web URL this adapter used to build never
+resolved to anything. `PrioritySummary` has no `url` field at all --
+client.py's original `normalize_priority` never built one.
 """
 
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urljoin
 
-from ...app.api_href import api_href
 from ...models import PrioritySummary, StatusSummary, TypeSummary
 from ..ports.status_priority_type_api import PriorityRecord, StatusRecord, TypeRecord
 from ..transport.protocol import Transport
@@ -33,7 +31,7 @@ from ._text import SUBJECT_LIMIT
 from ._text import trim_text as _trim_text
 
 
-def normalize_status(payload: dict[str, Any], *, api_prefix: str) -> StatusSummary:
+def normalize_status(payload: dict[str, Any]) -> StatusSummary:
     status_id = int(payload["id"])
     return StatusSummary(
         id=status_id,
@@ -42,7 +40,6 @@ def normalize_status(payload: dict[str, Any], *, api_prefix: str) -> StatusSumma
         is_closed=bool(payload.get("isClosed")),
         color=_trim_text(payload.get("color"), limit=SUBJECT_LIMIT),
         position=payload.get("position"),
-        url=api_href(f"statuses/{status_id}", api_prefix=api_prefix),
         is_readonly=payload.get("isReadonly"),
         default_done_ratio=payload.get("defaultDoneRatio"),
         excluded_from_totals=payload.get("excludedFromTotals"),
@@ -61,7 +58,7 @@ def normalize_priority(payload: dict[str, Any]) -> PrioritySummary:
     )
 
 
-def normalize_type(payload: dict[str, Any], *, base_url: str) -> TypeSummary:
+def normalize_type(payload: dict[str, Any]) -> TypeSummary:
     type_id = int(payload["id"])
     return TypeSummary(
         id=type_id,
@@ -70,7 +67,6 @@ def normalize_type(payload: dict[str, Any], *, base_url: str) -> TypeSummary:
         position=payload.get("position"),
         is_default=bool(payload.get("isDefault")),
         is_milestone=bool(payload.get("isMilestone")),
-        url=urljoin(f"{base_url.rstrip('/')}/", f"types/{type_id}"),
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
     )
@@ -102,25 +98,21 @@ def _has_usable_id(item: Any) -> bool:
 
 
 class HttpxStatusPriorityTypeApi:
-    def __init__(self, transport: Transport, *, base_url: str, api_prefix: str) -> None:
+    def __init__(self, transport: Transport) -> None:
         self._transport = transport
-        self._base_url = base_url
-        self._api_prefix = api_prefix
 
     async def list_statuses(self) -> list[StatusRecord]:
         payload = await self._transport.get_json("statuses")
         elements = payload.get("_embedded", {}).get("elements", [])
         return [
-            StatusRecord(summary=normalize_status(item, api_prefix=self._api_prefix), lookup_name=_lookup_name(item))
+            StatusRecord(summary=normalize_status(item), lookup_name=_lookup_name(item))
             for item in elements
             if _has_usable_id(item)
         ]
 
     async def get_status(self, status_id: int) -> StatusRecord:
         payload = await self._transport.get_json(f"statuses/{status_id}")
-        return StatusRecord(
-            summary=normalize_status(payload, api_prefix=self._api_prefix), lookup_name=_lookup_name(payload)
-        )
+        return StatusRecord(summary=normalize_status(payload), lookup_name=_lookup_name(payload))
 
     async def list_priorities(self) -> list[PriorityRecord]:
         payload = await self._transport.get_json("priorities")
@@ -140,11 +132,11 @@ class HttpxStatusPriorityTypeApi:
         payload = await self._transport.get_json(path)
         elements = payload.get("_embedded", {}).get("elements", [])
         return [
-            TypeRecord(summary=normalize_type(item, base_url=self._base_url), lookup_name=_lookup_name(item))
+            TypeRecord(summary=normalize_type(item), lookup_name=_lookup_name(item))
             for item in elements
             if _has_usable_id(item)
         ]
 
     async def get_type(self, type_id: int) -> TypeRecord:
         payload = await self._transport.get_json(f"types/{type_id}")
-        return TypeRecord(summary=normalize_type(payload, base_url=self._base_url), lookup_name=_lookup_name(payload))
+        return TypeRecord(summary=normalize_type(payload), lookup_name=_lookup_name(payload))

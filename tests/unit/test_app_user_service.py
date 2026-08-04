@@ -26,7 +26,6 @@ def _summary(user_id: int = 5, *, login: str = "ada", name: str = "Ada Lovelace"
         avatar_url=None,
         created_at="2026-01-01T00:00:00Z",
         updated_at="2026-06-01T00:00:00Z",
-        url=f"{BASE_URL}/users/{user_id}",
         firstname="Ada",
         lastname="Lovelace",
     )
@@ -49,7 +48,6 @@ def _detail(user_id: int = 5, **kwargs: object) -> UserDetail:
         identity_url=None,
         auth_source=None,
         groups=[],
-        url=summary.url,
         firstname=summary.firstname,
         lastname=summary.lastname,
     )

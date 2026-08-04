@@ -12,7 +12,6 @@ equivalents (see `_text.py`'s module docstring) and are not shared.
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urljoin
 
 from ...models import VersionDetail, VersionSummary
 from ..ports.version_api import VersionFormResult, VersionPage, VersionRecord, summary_to_detail
@@ -70,9 +69,7 @@ def _normalize_validation_errors(value: Any) -> dict[str, str]:
     return normalized
 
 
-def normalize_version(
-    payload: dict[str, Any], *, base_url: str, text_limit: int | None = FORMATTABLE_LIMIT
-) -> VersionSummary:
+def normalize_version(payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT) -> VersionSummary:
     """Pure HAL->model translation (ADR: "lives in the Domain API adapter").
 
     Verbatim port of client.py's normalize_version, minus the _apply_hidden_fields
@@ -98,16 +95,13 @@ def normalize_version(
         description=_delimit_user_content(description),
         description_truncated=description_truncated,
         description_length=description_length,
-        url=urljoin(f"{base_url.rstrip('/')}/", f"versions/{payload['id']}"),
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
     )
 
 
-def normalize_version_detail(
-    payload: dict[str, Any], *, base_url: str, text_limit: int | None = FORMATTABLE_LIMIT
-) -> VersionDetail:
-    return summary_to_detail(normalize_version(payload, base_url=base_url, text_limit=text_limit))
+def normalize_version_detail(payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT) -> VersionDetail:
+    return summary_to_detail(normalize_version(payload, text_limit=text_limit))
 
 
 def _has_usable_id(item: Any) -> bool:
@@ -121,13 +115,12 @@ def _has_usable_id(item: Any) -> bool:
 
 
 class HttpxVersionApi:
-    def __init__(self, transport: Transport, *, base_url: str) -> None:
+    def __init__(self, transport: Transport) -> None:
         self._transport = transport
-        self._base_url = base_url
 
     def _record(self, payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT) -> VersionRecord:
         return VersionRecord(
-            summary=normalize_version(payload, base_url=self._base_url, text_limit=text_limit),
+            summary=normalize_version(payload, text_limit=text_limit),
             defining_project_link=payload.get("_links", {}).get("definingProject"),
             lookup_name=str(payload.get("name", "")),
         )
@@ -168,11 +161,11 @@ class HttpxVersionApi:
 
     async def commit_create(self, payload: dict[str, Any]) -> VersionDetail:
         response = await self._transport.post_json("versions", json_body=payload)
-        return normalize_version_detail(response, base_url=self._base_url)
+        return normalize_version_detail(response)
 
     async def commit_update(self, version_id: int, payload: dict[str, Any]) -> VersionDetail:
         response = await self._transport.patch_json(f"versions/{version_id}", json_body=payload)
-        return normalize_version_detail(response, base_url=self._base_url)
+        return normalize_version_detail(response)
 
     async def delete(self, version_id: int) -> None:
         await self._transport.delete(f"versions/{version_id}")

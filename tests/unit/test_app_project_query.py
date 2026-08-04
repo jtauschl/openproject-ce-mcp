@@ -18,7 +18,6 @@ def _summary(project_id: int, name: str, *, identifier: str | None = None) -> Pr
         identifier=identifier,
         active=True,
         description=None,
-        url=f"https://op.example.com/projects/{project_id}",
     )
 
 

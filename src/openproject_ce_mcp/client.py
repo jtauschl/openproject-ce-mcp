@@ -349,7 +349,7 @@ class OpenProjectClient:
             base_url=settings.base_url,
         )
 
-        self._version_api: VersionApi = HttpxVersionApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._version_api: VersionApi = HttpxVersionApi(HttpxTransport(self._http))
         self._version_service = VersionService(
             api=self._version_api,
             settings=settings,
@@ -369,7 +369,7 @@ class OpenProjectClient:
             project_id_to_identifier=self._project_id_to_identifier,
         )
 
-        self._role_api: RoleApi = HttpxRoleApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._role_api: RoleApi = HttpxRoleApi(HttpxTransport(self._http))
         self._role_service = RoleService(api=self._role_api, settings=settings)
 
         self._instance_configuration_api: InstanceConfigurationApi = HttpxInstanceConfigurationApi(
@@ -379,12 +379,10 @@ class OpenProjectClient:
             api=self._instance_configuration_api, settings=settings
         )
 
-        self._current_user_api: CurrentUserApi = HttpxCurrentUserApi(
-            HttpxTransport(self._http), base_url=settings.base_url
-        )
+        self._current_user_api: CurrentUserApi = HttpxCurrentUserApi(HttpxTransport(self._http))
         self._current_user_service = CurrentUserService(api=self._current_user_api, settings=settings)
 
-        self._principal_api: PrincipalApi = HttpxPrincipalApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._principal_api: PrincipalApi = HttpxPrincipalApi(HttpxTransport(self._http))
         self._principal_service = PrincipalService(api=self._principal_api, settings=settings)
         self._principal_resolver = PrincipalResolver(
             api=self._principal_api, current_user=self.get_current_user, settings=settings
@@ -397,7 +395,7 @@ class OpenProjectClient:
         self._user_preferences_api: UserPreferencesApi = HttpxUserPreferencesApi(HttpxTransport(self._http))
         self._user_preferences_service = UserPreferencesService(api=self._user_preferences_api, settings=settings)
 
-        self._group_api: GroupApi = HttpxGroupApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._group_api: GroupApi = HttpxGroupApi(HttpxTransport(self._http))
         self._group_service = GroupService(api=self._group_api, settings=settings, api_prefix=self._api_prefix)
 
         self._membership_api: MembershipApi = HttpxMembershipApi(
@@ -413,7 +411,7 @@ class OpenProjectClient:
             api_prefix=self._api_prefix,
         )
 
-        self._news_api: NewsApi = HttpxNewsApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._news_api: NewsApi = HttpxNewsApi(HttpxTransport(self._http))
         self._news_service = NewsService(
             api=self._news_api,
             settings=settings,
@@ -421,7 +419,7 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
-        self._document_api: DocumentApi = HttpxDocumentApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._document_api: DocumentApi = HttpxDocumentApi(HttpxTransport(self._http))
         self._document_service = DocumentService(
             api=self._document_api,
             settings=settings,
@@ -429,14 +427,14 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
-        self._wiki_page_api: WikiPageApi = HttpxWikiPageApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._wiki_page_api: WikiPageApi = HttpxWikiPageApi(HttpxTransport(self._http))
         self._wiki_page_service = WikiPageService(
             api=self._wiki_page_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
         )
 
-        self._category_api: CategoryApi = HttpxCategoryApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._category_api: CategoryApi = HttpxCategoryApi(HttpxTransport(self._http))
         self._category_service = CategoryService(
             api=self._category_api,
             settings=settings,
@@ -444,7 +442,7 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
-        self._view_api: ViewApi = HttpxViewApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._view_api: ViewApi = HttpxViewApi(HttpxTransport(self._http))
         self._view_service = ViewService(
             api=self._view_api,
             settings=settings,
@@ -452,7 +450,7 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
-        self._sprint_api: SprintApi = HttpxSprintApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._sprint_api: SprintApi = HttpxSprintApi(HttpxTransport(self._http))
         self._sprint_service = SprintService(
             api=self._sprint_api,
             settings=settings,
@@ -466,14 +464,14 @@ class OpenProjectClient:
             project_id_to_identifier=self._project_id_to_identifier,
         )
 
-        self._grid_api: GridApi = HttpxGridApi(HttpxTransport(self._http), api_prefix=self._api_prefix)
+        self._grid_api: GridApi = HttpxGridApi(HttpxTransport(self._http))
         self._grid_service = GridService(
             api=self._grid_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
         )
 
-        self._board_api: BoardApi = HttpxBoardApi(HttpxTransport(self._http), base_url=settings.base_url)
+        self._board_api: BoardApi = HttpxBoardApi(HttpxTransport(self._http))
         self._board_service = BoardService(
             api=self._board_api,
             settings=settings,
@@ -493,9 +491,7 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
-        self._status_priority_type_api: StatusPriorityTypeApi = HttpxStatusPriorityTypeApi(
-            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
-        )
+        self._status_priority_type_api: StatusPriorityTypeApi = HttpxStatusPriorityTypeApi(HttpxTransport(self._http))
         self._status_priority_type_service = StatusPriorityTypeService(
             api=self._status_priority_type_api,
             settings=settings,
@@ -515,9 +511,7 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
         )
 
-        self._job_status_api: JobStatusApi = HttpxJobStatusApi(
-            HttpxTransport(self._http), base_url=settings.base_url, origin=self._origin
-        )
+        self._job_status_api: JobStatusApi = HttpxJobStatusApi(HttpxTransport(self._http))
         self._job_status_service = JobStatusService(
             api=self._job_status_api,
             settings=settings,
@@ -552,7 +546,7 @@ class OpenProjectClient:
         # the seam the 8 already-migrated work-package-reference-dependent
         # domains use).
         self._work_package_api: WorkPackageApi = HttpxWorkPackageApi(
-            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
+            HttpxTransport(self._http), api_prefix=self._api_prefix
         )
         # Constructed here (moved up from its own block further below) so
         # WorkPackageService can depend on it directly for add_comment()'s
@@ -579,7 +573,7 @@ class OpenProjectClient:
             api_prefix=self._api_prefix,
         )
 
-        self._file_link_api: FileLinkApi = HttpxFileLinkApi(HttpxTransport(self._http), api_prefix=self._api_prefix)
+        self._file_link_api: FileLinkApi = HttpxFileLinkApi(HttpxTransport(self._http))
         self._file_link_service = FileLinkService(
             api=self._file_link_api,
             work_package_lookup_api=self._work_package_lookup_api,
@@ -588,9 +582,7 @@ class OpenProjectClient:
             resolve_work_package_id=self._work_package_resolver.resolve_id,
         )
 
-        self._watcher_api: WatcherApi = HttpxWatcherApi(
-            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
-        )
+        self._watcher_api: WatcherApi = HttpxWatcherApi(HttpxTransport(self._http), api_prefix=self._api_prefix)
         self._watcher_service = WatcherService(
             api=self._watcher_api,
             settings=settings,
@@ -606,9 +598,7 @@ class OpenProjectClient:
             resolve_work_package_id=self._work_package_resolver.resolve_id,
         )
 
-        self._reminder_api: ReminderApi = HttpxReminderApi(
-            HttpxTransport(self._http), base_url=settings.base_url, origin=self._origin
-        )
+        self._reminder_api: ReminderApi = HttpxReminderApi(HttpxTransport(self._http))
         self._reminder_service = ReminderService(
             api=self._reminder_api,
             work_package_lookup_api=self._work_package_lookup_api,
@@ -618,9 +608,7 @@ class OpenProjectClient:
             work_package_project_allowed=self._work_package_resolver.project_link_allowed,
         )
 
-        self._notification_api: NotificationApi = HttpxNotificationApi(
-            HttpxTransport(self._http), api_prefix=self._api_prefix
-        )
+        self._notification_api: NotificationApi = HttpxNotificationApi(HttpxTransport(self._http))
         self._notification_service = NotificationService(
             api=self._notification_api,
             settings=settings,
@@ -639,9 +627,7 @@ class OpenProjectClient:
             api_prefix=self._api_prefix,
         )
 
-        self._time_entry_api: TimeEntryApi = HttpxTimeEntryApi(
-            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
-        )
+        self._time_entry_api: TimeEntryApi = HttpxTimeEntryApi(HttpxTransport(self._http), api_prefix=self._api_prefix)
         self._time_entry_service = TimeEntryService(
             api=self._time_entry_api,
             project_api=self._project_api,
@@ -1001,7 +987,7 @@ class OpenProjectClient:
         project_payload = await self._resolve_project_ref(project_ref, write=False)
         project_summary = _hidden_fields_policy.apply_hidden_fields(
             "project",
-            _normalize_project(project_payload, base_url=self.settings.base_url, text_limit=self.settings.text_limit),
+            _normalize_project(project_payload, text_limit=self.settings.text_limit),
             settings=self.settings,
         )
         memberships = await self.list_project_memberships(project_ref)

@@ -27,6 +27,13 @@ support.
 
 ### Changed
 
+- **Breaking: removed client-constructed `url` fields (and a few
+  sub-collection hrefs like `activities_url`/`relations_url`) from MCP
+  output models across most domains, including work packages, projects,
+  and users.** These were built from `base_url` + id, with no matching link
+  from the server, and some never resolved to a real page. `download_url`,
+  `avatar_url`, and `identity_url` are unaffected, as are the handful of
+  `url` fields that resolve a link OpenProject actually sends.
 - **Breaking: `search_work_packages`'s `query` parameter is renamed to
   `search`**, matching every other search-capable tool.
 - **Breaking: `list_roles` now returns a paginated result** instead of the

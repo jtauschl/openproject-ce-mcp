@@ -29,7 +29,6 @@ def _summary(
         project_id=project_id,
         project=project,
         is_default=False,
-        url=f"https://op.example.com/api/v3/categories/{category_id}",
         default_assignee_id=default_assignee_id,
         default_assignee=default_assignee,
     )

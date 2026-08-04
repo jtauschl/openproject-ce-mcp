@@ -50,7 +50,6 @@ async def test_list_users_requests_offset_and_page_size() -> None:
     summary = records[0].summary
     assert summary.id == 5
     assert summary.login == "ada"
-    assert summary.url == f"{BASE_URL}/users/5"
     detail = records[0].to_detail()
     assert detail.firstname == "Ada"
     assert detail.lastname == "Lovelace"

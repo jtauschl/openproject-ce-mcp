@@ -23,7 +23,6 @@ def summary_to_detail(s: VersionSummary) -> VersionDetail:
         end_date=s.end_date,
         defining_project=s.defining_project,
         description=s.description,
-        url=s.url,
         created_at=s.created_at,
         updated_at=s.updated_at,
         description_truncated=s.description_truncated,

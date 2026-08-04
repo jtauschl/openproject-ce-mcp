@@ -34,7 +34,6 @@ def _summary(
         filter_count=0,
         can_update=True,
         can_delete=True,
-        url=f"{BASE_URL}/work_packages?query_id={board_id}",
     )
 
 
@@ -63,7 +62,6 @@ def _detail(**kwargs: object) -> BoardDetail:
         updated_at="2026-01-02T00:00:00Z",
         can_update=summary.can_update,
         can_delete=summary.can_delete,
-        url=summary.url,
     )
 
 

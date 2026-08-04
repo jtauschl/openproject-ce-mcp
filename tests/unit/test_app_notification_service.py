@@ -24,7 +24,6 @@ def _summary(notification_id: int = 1) -> NotificationSummary:
         work_package_id=None,
         work_package_subject=None,
         created_at="2026-01-01T00:00:00Z",
-        url=f"https://op.example.com/api/v3/notifications/{notification_id}",
     )
 
 

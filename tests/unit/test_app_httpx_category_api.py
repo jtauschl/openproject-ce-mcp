@@ -34,7 +34,7 @@ async def test_list_for_project_requests_the_project_scoped_endpoint() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_category_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxCategoryApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxCategoryApi(HttpxTransport(http_client))
         records = await api.list_for_project(6, project_name="Demo Project")
 
     assert len(records) == 1
@@ -46,7 +46,6 @@ async def test_list_for_project_requests_the_project_scoped_endpoint() -> None:
     assert summary.is_default is True
     assert summary.default_assignee_id == 9
     assert summary.default_assignee == "Ada Lovelace"
-    assert summary.url == f"{BASE_URL}/api/v3/categories/1"
 
 
 @pytest.mark.asyncio
@@ -56,7 +55,7 @@ async def test_list_for_project_trims_a_too_long_project_name() -> None:
 
     long_name = "x" * 300
     async with _client(handler) as http_client:
-        api = HttpxCategoryApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxCategoryApi(HttpxTransport(http_client))
         records = await api.list_for_project(6, project_name=long_name)
 
     assert records[0].summary.project is not None
@@ -70,7 +69,7 @@ async def test_list_for_project_missing_embedded_elements_returns_empty_list() -
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxCategoryApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxCategoryApi(HttpxTransport(http_client))
         records = await api.list_for_project(6, project_name="Demo Project")
 
     assert records == []
@@ -84,7 +83,7 @@ async def test_list_for_project_falls_back_to_placeholder_name_when_missing() ->
         return httpx.Response(200, json={"_embedded": {"elements": [payload]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxCategoryApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxCategoryApi(HttpxTransport(http_client))
         records = await api.list_for_project(6, project_name=None)
 
     assert records[0].summary.name == "Category 1"
@@ -99,7 +98,7 @@ async def test_list_for_project_handles_missing_default_assignee() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [payload]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxCategoryApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxCategoryApi(HttpxTransport(http_client))
         records = await api.list_for_project(6, project_name="Demo Project")
 
     assert records[0].summary.default_assignee_id is None
@@ -121,7 +120,7 @@ async def test_get_requests_the_real_single_category_endpoint() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxCategoryApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxCategoryApi(HttpxTransport(http_client))
         record = await api.get(1)
 
     assert record.summary.id == 1
@@ -136,7 +135,7 @@ async def test_get_handles_missing_project_link() -> None:
         return httpx.Response(200, json=_category_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxCategoryApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxCategoryApi(HttpxTransport(http_client))
         record = await api.get(1)
 
     assert record.summary.project_id is None

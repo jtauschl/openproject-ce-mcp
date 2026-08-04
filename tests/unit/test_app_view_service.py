@@ -33,7 +33,6 @@ def _summary(
         starred=False,
         created_at="2026-01-01T00:00:00Z",
         updated_at="2026-01-02T00:00:00Z",
-        url=f"{BASE_URL}/api/v3/views/{view_id}",
     )
 
 
@@ -52,7 +51,6 @@ def _detail(**kwargs: object) -> ViewDetail:
         created_at=summary.created_at,
         updated_at=summary.updated_at,
         links=["project", "query"],
-        url=summary.url,
     )
 
 

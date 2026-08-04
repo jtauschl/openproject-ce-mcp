@@ -2,16 +2,16 @@
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`id_from_href`/`link_title`/`delimit_user_content`/
-`link_to_web_url`/`web_url`/`slug_from_href`/`SUBJECT_LIMIT` come from
+`link_to_web_url`/`slug_from_href`/`SUBJECT_LIMIT` come from
 `app/adapters/_text.py` -- verified against client.py's real
-`normalize_attachment` (client.py:3517-3548), which needs all seven:
+`normalize_attachment` (client.py:3517-3548), which needs:
 `trim_text` (title/file_name/content_type/status truncation),
 `delimit_user_content` + `_extract_formattable_text` (description --
 `_extract_formattable_text` stays local, per the documented per-adapter
 exception), `link_title` (author), `id_from_href` (container_id from the
 container link), `slug_from_href` (container_type fallback for a non-work-
--package container), `link_to_web_url` (same-origin-checked download_url),
-`web_url` (the attachment's own API url).
+-package container), `link_to_web_url` (same-origin-checked download_url,
+server-supplied via `downloadLocation`/`staticDownloadLocation`).
 
 `list_for_work_package` hand-rolls its own page-walk (offset/pageSize with a
 `seen_ids`/first-page guard against a server that ignores both params and
@@ -37,7 +37,6 @@ from ._text import link_title as _link_title
 from ._text import link_to_web_url as _link_to_web_url
 from ._text import slug_from_href as _slug_from_href
 from ._text import trim_text as _trim_text
-from ._text import web_url as _web_url
 
 
 def _extract_formattable_text(value: Any) -> str | None:
@@ -86,7 +85,6 @@ def normalize_attachment(payload: dict[str, Any], *, base_url: str, origin: str)
         container_id=_id_from_href(container_href),
         created_at=payload.get("createdAt"),
         download_url=_link_to_web_url(download_href, base_url=base_url, origin=origin),
-        url=_web_url(f"api/v3/attachments/{payload['id']}", base_url=base_url),
     )
 
 

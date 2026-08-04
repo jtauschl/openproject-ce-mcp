@@ -29,7 +29,6 @@ def _summary(
         container_id=container_id,
         created_at="2026-01-01T00:00:00Z",
         download_url="/api/v3/attachments/5/content",
-        url="/api/v3/attachments/5",
     )
 
 

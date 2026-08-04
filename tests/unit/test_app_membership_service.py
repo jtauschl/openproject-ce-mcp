@@ -33,7 +33,6 @@ def _summary(
         role_names=role_names or ["Member"],
         can_update=True,
         can_update_immediately=False,
-        url=f"{BASE_URL}/memberships/{membership_id}",
     )
 
 
@@ -105,7 +104,7 @@ async def _resolve_principal_ref(principal_ref: str) -> str:
 
 class _FakeRoleApi:
     def __init__(self, records: list[RoleRecord] | None = None) -> None:
-        self._records = records or [RoleRecord(summary=RoleSummary(id=1, name="Member", url=f"{BASE_URL}/roles/1"))]
+        self._records = records or [RoleRecord(summary=RoleSummary(id=1, name="Member"))]
         self.list_calls: list[tuple[int, int]] = []
 
     async def list_roles(self, *, offset: int, page_size: int) -> tuple[list[RoleRecord], int]:
@@ -404,8 +403,8 @@ async def test_create_role_not_found_raises() -> None:
 async def test_create_role_ambiguous_raises() -> None:
     role_api = _FakeRoleApi(
         records=[
-            RoleRecord(summary=RoleSummary(id=1, name="Member", url=f"{BASE_URL}/roles/1")),
-            RoleRecord(summary=RoleSummary(id=2, name="Member", url=f"{BASE_URL}/roles/2")),
+            RoleRecord(summary=RoleSummary(id=1, name="Member")),
+            RoleRecord(summary=RoleSummary(id=2, name="Member")),
         ]
     )
     api = _FakeMembershipApi()
@@ -431,8 +430,8 @@ async def test_create_role_lookup_calls_role_api_once_not_page_walking() -> None
     """
     role_api = _FakeRoleApi(
         records=[
-            RoleRecord(summary=RoleSummary(id=1, name="Reader", url=f"{BASE_URL}/roles/1")),
-            RoleRecord(summary=RoleSummary(id=2, name="Member", url=f"{BASE_URL}/roles/2")),
+            RoleRecord(summary=RoleSummary(id=1, name="Reader")),
+            RoleRecord(summary=RoleSummary(id=2, name="Member")),
         ]
     )
     settings = dataclasses.replace(make_settings(), default_page_size=1, max_page_size=1)
@@ -453,7 +452,7 @@ async def test_create_role_lookup_uses_max_results_not_max_page_size() -> None:
     ignores this value's exact size anyway but a stale max_page_size-sized
     request would (incorrectly, per the fix above) look like a page walk
     is needed."""
-    role_api = _FakeRoleApi(records=[RoleRecord(summary=RoleSummary(id=1, name="Member", url=f"{BASE_URL}/roles/1"))])
+    role_api = _FakeRoleApi(records=[RoleRecord(summary=RoleSummary(id=1, name="Member"))])
     settings = dataclasses.replace(make_settings(), default_page_size=1, max_page_size=20, max_results=100)
     api = _FakeMembershipApi()
     service = _service(api, settings=settings, role_api=role_api)
@@ -484,7 +483,7 @@ async def test_create_with_numeric_role_id_skips_the_role_list_fetch() -> None:
 async def test_create_with_mixed_numeric_and_named_roles_still_fetches_once() -> None:
     """A mix of numeric and by-name refs must still trigger exactly one
     page-walk (for the by-name ref), not skip it entirely."""
-    role_api = _FakeRoleApi(records=[RoleRecord(summary=RoleSummary(id=2, name="Member", url=f"{BASE_URL}/roles/2"))])
+    role_api = _FakeRoleApi(records=[RoleRecord(summary=RoleSummary(id=2, name="Member"))])
     api = _FakeMembershipApi()
     service = _service(api, role_api=role_api)
 

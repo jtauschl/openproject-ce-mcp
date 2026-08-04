@@ -22,7 +22,6 @@ def _status(status_id: int, name: str, *, lookup_name: str | None = None) -> Sta
             is_closed=False,
             color=None,
             position=1,
-            url=f"/api/v3/statuses/{status_id}",
             is_readonly=False,
             default_done_ratio=None,
             excluded_from_totals=False,
@@ -131,7 +130,7 @@ async def test_resolve_status_id_matches_the_raw_name_exactly_via_real_port() ->
         )
 
     http = httpx.AsyncClient(base_url=f"{BASE_URL}/api/v3/", transport=httpx.MockTransport(handler))
-    api = HttpxStatusPriorityTypeApi(HttpxTransport(http), base_url=BASE_URL, api_prefix="/api/v3/")
+    api = HttpxStatusPriorityTypeApi(HttpxTransport(http))
     resolver = StatusPriorityTypeResolver(api=api)
 
     assert await resolver.resolve_status_id("In   Progress\t") == "1"
@@ -154,7 +153,7 @@ async def test_resolve_status_id_does_not_match_a_blank_name_against_the_synthet
         return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": ""}]}}, request=request)
 
     http = httpx.AsyncClient(base_url=f"{BASE_URL}/api/v3/", transport=httpx.MockTransport(handler))
-    api = HttpxStatusPriorityTypeApi(HttpxTransport(http), base_url=BASE_URL, api_prefix="/api/v3/")
+    api = HttpxStatusPriorityTypeApi(HttpxTransport(http))
     resolver = StatusPriorityTypeResolver(api=api)
 
     with pytest.raises(InvalidInputError, match="was not found"):

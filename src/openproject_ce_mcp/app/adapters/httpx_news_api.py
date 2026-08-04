@@ -13,7 +13,6 @@ byte-identical copy).
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urljoin
 
 from ...models import NewsDetail, NewsSummary
 from ..pagination import paginate_all
@@ -34,7 +33,7 @@ def _extract_formattable_text(value: Any, *, limit: int) -> str | None:
     return _trim_text(raw, limit=limit)
 
 
-def normalize_news(payload: dict[str, Any], *, base_url: str) -> NewsSummary:
+def normalize_news(payload: dict[str, Any]) -> NewsSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
     Verbatim port of client.py's normalize_news, minus the
@@ -59,11 +58,10 @@ def normalize_news(payload: dict[str, Any], *, base_url: str) -> NewsSummary:
         created_at=payload.get("createdAt"),
         can_update=_can_update_from_links(links),
         can_delete=bool(links.get("delete")),
-        url=urljoin(f"{base_url.rstrip('/')}/", f"news/{payload['id']}"),
     )
 
 
-def normalize_news_detail(payload: dict[str, Any], *, base_url: str, summary: NewsSummary | None = None) -> NewsDetail:
+def normalize_news_detail(payload: dict[str, Any], *, summary: NewsSummary | None = None) -> NewsDetail:
     """Verbatim port of client.py's normalize_news_detail. Reuses every field
     from normalize_news() EXCEPT description, which is independently
     re-extracted from the same raw payload at the larger FORMATTABLE_LIMIT
@@ -77,7 +75,7 @@ def normalize_news_detail(payload: dict[str, Any], *, base_url: str, summary: Ne
     here.
     """
     if summary is None:
-        summary = normalize_news(payload, base_url=base_url)
+        summary = normalize_news(payload)
     description = _delimit_user_content(_extract_formattable_text(payload.get("description"), limit=FORMATTABLE_LIMIT))
     return NewsDetail(
         id=summary.id,
@@ -90,29 +88,26 @@ def normalize_news_detail(payload: dict[str, Any], *, base_url: str, summary: Ne
         created_at=summary.created_at,
         can_update=summary.can_update,
         can_delete=summary.can_delete,
-        url=summary.url,
     )
 
 
 class HttpxNewsApi:
-    def __init__(self, transport: Transport, *, base_url: str) -> None:
+    def __init__(self, transport: Transport) -> None:
         self._transport = transport
-        self._base_url = base_url
 
     def _record(self, payload: dict[str, Any]) -> NewsRecord:
-        base_url = self._base_url
-        summary = normalize_news(payload, base_url=base_url)
+        summary = normalize_news(payload)
         return NewsRecord(
             summary=summary,
             # Lazy: only get()/update()/delete() (single-item paths) ever call
             # this; list_all()'s per-row records never do, so this avoids a
             # second, independent FORMATTABLE_LIMIT-capped re-extraction of
             # every record's description on every list call. The closure
-            # captures only `payload`/`base_url`/`summary` (small, per-record),
-            # not `self` -- it does not keep a whole adapter/transport alive.
+            # captures only `payload`/`summary` (small, per-record), not
+            # `self` -- it does not keep a whole adapter/transport alive.
             # Passing `summary` through avoids re-deriving every OTHER field
-            # (id, title, project, author, url, ...) a second time.
-            to_detail=lambda: normalize_news_detail(payload, base_url=base_url, summary=summary),
+            # (id, title, project, author, ...) a second time.
+            to_detail=lambda: normalize_news_detail(payload, summary=summary),
             project_link=payload.get("_links", {}).get("project"),
         )
 
@@ -138,11 +133,11 @@ class HttpxNewsApi:
 
     async def commit_create(self, payload: dict[str, Any]) -> NewsDetail:
         response = await self._transport.post_json("news", json_body=payload)
-        return normalize_news_detail(response, base_url=self._base_url)
+        return normalize_news_detail(response)
 
     async def commit_update(self, news_id: int, payload: dict[str, Any]) -> NewsDetail:
         response = await self._transport.patch_json(f"news/{news_id}", json_body=payload)
-        return normalize_news_detail(response, base_url=self._base_url)
+        return normalize_news_detail(response)
 
     async def delete(self, news_id: int) -> None:
         await self._transport.delete(f"news/{news_id}")

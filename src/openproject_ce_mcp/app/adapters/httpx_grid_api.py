@@ -19,7 +19,6 @@ import json
 from typing import Any
 
 from ...models import GridSummary
-from ..api_href import api_href as _api_href
 from ..ports.grid_api import GridFormResult, GridRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
@@ -27,7 +26,7 @@ from ._text import normalize_form_validation_errors as _normalize_validation_err
 from ._text import trim_text as _trim_text
 
 
-def normalize_grid(payload: dict[str, Any], *, api_prefix: str) -> GridSummary:
+def normalize_grid(payload: dict[str, Any]) -> GridSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
     Verbatim port of client.py's normalize_grid, minus the
@@ -48,18 +47,16 @@ def normalize_grid(payload: dict[str, Any], *, api_prefix: str) -> GridSummary:
         scope=scope,
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
-        url=_api_href(f"grids/{grid_id}", api_prefix=api_prefix),
     )
 
 
 class HttpxGridApi:
-    def __init__(self, transport: Transport, *, api_prefix: str = "/api/v3/") -> None:
+    def __init__(self, transport: Transport) -> None:
         self._transport = transport
-        self._api_prefix = api_prefix
 
     def _record(self, payload: dict[str, Any]) -> GridRecord:
         return GridRecord(
-            summary=normalize_grid(payload, api_prefix=self._api_prefix),
+            summary=normalize_grid(payload),
             scope_link=payload.get("_links", {}).get("scope"),
         )
 
@@ -84,11 +81,11 @@ class HttpxGridApi:
 
     async def commit_create(self, payload: dict[str, Any]) -> GridSummary:
         response = await self._transport.post_json("grids", json_body=payload)
-        return normalize_grid(response, api_prefix=self._api_prefix)
+        return normalize_grid(response)
 
     async def commit_update(self, grid_id: int, payload: dict[str, Any]) -> GridSummary:
         response = await self._transport.patch_json(f"grids/{grid_id}", json_body=payload)
-        return normalize_grid(response, api_prefix=self._api_prefix)
+        return normalize_grid(response)
 
     async def delete(self, grid_id: int) -> None:
         await self._transport.delete(f"grids/{grid_id}")

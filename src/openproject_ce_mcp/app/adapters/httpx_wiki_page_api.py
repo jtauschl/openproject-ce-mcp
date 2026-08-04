@@ -1,11 +1,15 @@
 """HTTP-backed WikiPageApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
-`_id_from_href`/`_link_title`/`_delimit_user_content`/`_link_to_web_url`/
-`_origin_from_url`/`_web_url`/`SUBJECT_LIMIT` are shared via
-`app/adapters/_text.py`, matching client.py's bound-method original
-(client.py:4512-4513: `_web_url(self, relative_path)` ->
-`urljoin(f"{self.settings.base_url.rstrip('/')}/", relative_path.lstrip('/'))`).
+`_id_from_href`/`_link_title`/`_delimit_user_content`/`SUBJECT_LIMIT` are
+shared via `app/adapters/_text.py`.
+
+No web `url`/`attachments_url` fields: the adapter previously built
+`wiki_pages/{numeric_id}`, which never resolved (OpenProject's real wiki
+route is project-scoped and keyed by the page's title-derived slug, not its
+numeric id -- and the API doesn't expose that slug at all, only `id`/
+`title`), and `attachments_url` was a pure API sub-collection href with no
+dedicated MCP tool to justify keeping it.
 """
 
 from __future__ import annotations
@@ -19,15 +23,12 @@ from ._text import SUBJECT_LIMIT
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
-from ._text import link_to_web_url as _link_to_web_url
-from ._text import origin_from_url as _origin_from_url
 from ._text import trim_text as _trim_text
-from ._text import web_url as _web_url
 
 CONTENT_LIMIT = 50_000
 
 
-def normalize_wiki_page(payload: dict[str, Any], *, base_url: str, origin: str) -> WikiPageDetail:
+def normalize_wiki_page(payload: dict[str, Any]) -> WikiPageDetail:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
     Verbatim port of client.py's normalize_wiki_page, minus the
@@ -47,20 +48,16 @@ def normalize_wiki_page(payload: dict[str, Any], *, base_url: str, origin: str) 
         project_id=_id_from_href(links.get("project", {}).get("href")),
         project=_link_title(links.get("project")),
         content=content,
-        attachments_url=_link_to_web_url(links.get("attachments", {}).get("href"), base_url=base_url, origin=origin),
-        url=_web_url(f"wiki_pages/{payload['id']}", base_url=base_url),
     )
 
 
 class HttpxWikiPageApi:
-    def __init__(self, transport: Transport, *, base_url: str) -> None:
+    def __init__(self, transport: Transport) -> None:
         self._transport = transport
-        self._base_url = base_url
-        self._origin = _origin_from_url(base_url)
 
     async def get(self, wiki_page_id: int) -> WikiPageRecord:
         payload = await self._transport.get_json(f"wiki_pages/{wiki_page_id}")
         return WikiPageRecord(
-            detail=normalize_wiki_page(payload, base_url=self._base_url, origin=self._origin),
+            detail=normalize_wiki_page(payload),
             project_link=payload.get("_links", {}).get("project"),
         )

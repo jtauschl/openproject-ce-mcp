@@ -72,7 +72,6 @@ def test_version_list_result_shape_is_locked_and_matches_the_shared_page_envelop
                 end_date=None,
                 defining_project=None,
                 description=None,
-                url="https://op.example.com/versions/1",
             )
         ],
     )
@@ -93,7 +92,6 @@ def test_version_list_result_shape_is_locked_and_matches_the_shared_page_envelop
                 "end_date": None,
                 "defining_project": None,
                 "description": None,
-                "url": "https://op.example.com/versions/1",
                 "created_at": None,
                 "updated_at": None,
                 "description_truncated": False,

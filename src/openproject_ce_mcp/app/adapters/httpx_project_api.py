@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from typing import Any
-from urllib.parse import quote, urljoin, urlparse
+from urllib.parse import quote, urlparse
 
 from ...models import (
     OptionValue,
@@ -102,9 +102,7 @@ def _extract_formattable_text_with_meta(
     return _trim_text_with_meta(raw, limit=limit, preserve_newlines=preserve_newlines)
 
 
-def normalize_project(
-    payload: dict[str, Any], *, base_url: str, text_limit: int | None = FORMATTABLE_LIMIT
-) -> ProjectSummary:
+def normalize_project(payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT) -> ProjectSummary:
     """Pure HAL->model translation. Verbatim port of client.py's normalize_project,
     minus the _apply_hidden_fields call and the hidden-field-aware text extraction --
     hidden-field masking is a Policy/Service decision applied after this returns.
@@ -122,7 +120,6 @@ def normalize_project(
     status_explanation, status_explanation_truncated, status_explanation_length = _extract_formattable_text_with_meta(
         payload.get("statusExplanation"), limit=text_limit
     )
-    project_path = f"projects/{identifier or payload['id']}"
     return ProjectSummary(
         id=int(payload["id"]),
         name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Project {payload['id']}",
@@ -131,7 +128,6 @@ def normalize_project(
         description=_delimit_user_content(description),
         description_truncated=description_truncated,
         description_length=description_length,
-        url=urljoin(f"{base_url.rstrip('/')}/", project_path),
         public=payload.get("public"),
         status=_link_title(links.get("status")),
         status_explanation=_delimit_user_content(status_explanation),
@@ -150,7 +146,6 @@ def normalize_project(
 def normalize_project_detail(
     payload: dict[str, Any],
     *,
-    base_url: str,
     text_limit: int | None = FORMATTABLE_LIMIT,
     summary: ProjectSummary | None = None,
 ) -> ProjectDetail:
@@ -169,7 +164,7 @@ def normalize_project_detail(
     a cheap copy off `summary`.
     """
     if summary is None:
-        summary = normalize_project(payload, base_url=base_url)
+        summary = normalize_project(payload)
     links = payload.get("_links", {})
     description, description_truncated, description_length = _extract_formattable_text_with_meta(
         payload.get("description"), limit=text_limit, preserve_newlines=True
@@ -194,7 +189,6 @@ def normalize_project_detail(
         description=_delimit_user_content(description),
         description_truncated=description_truncated,
         description_length=description_length,
-        url=summary.url,
         public=summary.public,
         status=summary.status,
         status_explanation=_delimit_user_content(status_explanation),
@@ -261,7 +255,7 @@ def normalize_project_field_schema(key: str, payload: dict[str, Any]) -> Project
     )
 
 
-def normalize_project_phase_definition(payload: dict[str, Any], *, base_url: str) -> ProjectPhaseDefinition:
+def normalize_project_phase_definition(payload: dict[str, Any]) -> ProjectPhaseDefinition:
     phase_id = int(payload["id"])
     return ProjectPhaseDefinition(
         id=phase_id,
@@ -270,11 +264,10 @@ def normalize_project_phase_definition(payload: dict[str, Any], *, base_url: str
         finish_gate=_trim_text(payload.get("finishGateName"), limit=SUBJECT_LIMIT),
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
-        url=urljoin(f"{base_url.rstrip('/')}/", f"api/v3/project_phase_definitions/{phase_id}"),
     )
 
 
-def normalize_project_phase(payload: dict[str, Any], *, base_url: str) -> ProjectPhase:
+def normalize_project_phase(payload: dict[str, Any]) -> ProjectPhase:
     phase_id = int(payload["id"])
     links = payload.get("_links", {})
     phase_definition_link = links.get("projectPhaseDefinition")
@@ -295,7 +288,6 @@ def normalize_project_phase(payload: dict[str, Any], *, base_url: str) -> Projec
         finish_date=payload.get("finishDate"),
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
-        url=urljoin(f"{base_url.rstrip('/')}/", f"api/v3/project_phases/{phase_id}"),
     )
 
 
@@ -356,24 +348,21 @@ class HttpxProjectApi:
         return _shared_link_to_web_url(href, base_url=self._base_url, origin=self._origin)
 
     def _record(self, payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT) -> ProjectRecord:
-        base_url = self._base_url
-        summary = normalize_project(payload, base_url=base_url, text_limit=text_limit)
+        summary = normalize_project(payload, text_limit=text_limit)
         return ProjectRecord(
             summary=summary,
             # Lazy: most callers (ProjectResolver.resolve()/resolve_id(), used
             # by every domain's project-reference resolution; ProjectService.
             # list()) never read this. The closure captures only
-            # `payload`/`base_url`/`text_limit`/`summary` (small, per-record),
-            # not `self` -- it does not keep a whole adapter/transport alive.
-            # Passing `summary` through avoids re-deriving every OTHER field
-            # (id, name, identifier, url, status, parent, ...) a second time;
+            # `payload`/`text_limit`/`summary` (small, per-record), not `self`
+            # -- it does not keep a whole adapter/transport alive. Passing
+            # `summary` through avoids re-deriving every OTHER field (id,
+            # name, identifier, status, parent, ...) a second time;
             # description/status_explanation are still re-extracted
             # independently inside normalize_project_detail regardless
             # (preserve_newlines=True there is a genuinely different
             # extraction, not just a truncation-limit divergence).
-            to_detail=lambda: normalize_project_detail(
-                payload, base_url=base_url, text_limit=text_limit, summary=summary
-            ),
+            to_detail=lambda: normalize_project_detail(payload, text_limit=text_limit, summary=summary),
             payload=payload,
         )
 
@@ -419,11 +408,11 @@ class HttpxProjectApi:
 
     async def commit_create(self, payload: dict[str, Any]) -> ProjectDetail:
         response = await self._transport.post_json("projects", json_body=payload)
-        return normalize_project_detail(response, base_url=self._base_url)
+        return normalize_project_detail(response)
 
     async def commit_update(self, project_id: int, payload: dict[str, Any]) -> ProjectDetail:
         response = await self._transport.patch_json(f"projects/{project_id}", json_body=payload)
-        return normalize_project_detail(response, base_url=self._base_url)
+        return normalize_project_detail(response)
 
     async def delete(self, project_id: int) -> None:
         await self._transport.delete(f"projects/{project_id}")
@@ -457,7 +446,6 @@ class HttpxProjectApi:
                 id=int(item["id"]),
                 identifier=item.get("identifier"),
                 name=_trim_text(item.get("name"), limit=SUBJECT_LIMIT) or f"Project {item['id']}",
-                url=urljoin(f"{self._base_url.rstrip('/')}/", f"projects/{item.get('identifier') or item['id']}"),
             )
             for item in elements
             if isinstance(item, dict)
@@ -470,19 +458,19 @@ class HttpxProjectApi:
         payload = await self._transport.get_json("project_phase_definitions")
         elements = payload.get("_embedded", {}).get("elements", [])
         return [
-            normalize_project_phase_definition(item, base_url=self._base_url)
+            normalize_project_phase_definition(item)
             for item in elements
             if isinstance(item, dict) and item.get("_type") == "ProjectPhaseDefinition"
         ]
 
     async def get_phase_definition(self, phase_definition_id: int) -> ProjectPhaseDefinition:
         payload = await self._transport.get_json(f"project_phase_definitions/{phase_definition_id}")
-        return normalize_project_phase_definition(payload, base_url=self._base_url)
+        return normalize_project_phase_definition(payload)
 
     async def get_phase(self, phase_id: int) -> ProjectPhaseRecord:
         payload = await self._transport.get_json(f"project_phases/{phase_id}")
         return ProjectPhaseRecord(
-            phase=normalize_project_phase(payload, base_url=self._base_url),
+            phase=normalize_project_phase(payload),
             project_link=payload.get("_links", {}).get("project"),
         )
 

@@ -70,7 +70,6 @@ class ProjectSummary:
     identifier: str | None
     active: bool | None
     description: str | None
-    url: str
     public: bool | None = None
     status: str | None = None
     status_explanation: str | None = None
@@ -107,7 +106,6 @@ class ProjectListResult(PageResult):
 class RoleSummary:
     id: int
     name: str
-    url: str
 
 
 @dataclass
@@ -126,7 +124,6 @@ class MembershipSummary:
     role_names: list[str]
     can_update: bool
     can_update_immediately: bool
-    url: str
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -152,7 +149,6 @@ class ProjectCopyResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     job_status_id: str | None
-    job_status_url: str | None
 
 
 @dataclass
@@ -169,8 +165,6 @@ class JobStatusDetail:
     created_resource_type: str | None
     created_resource_id: int | None
     created_resource_name: str | None
-    links: list[str]
-    url: str | None
 
 
 @dataclass
@@ -204,7 +198,6 @@ class PrincipalSummary:
     login: str | None
     email: str | None
     status: str | None
-    url: str
 
 
 @dataclass
@@ -224,7 +217,6 @@ class UserSummary:
     avatar_url: str | None
     created_at: str | None
     updated_at: str | None
-    url: str
     firstname: str | None = None
     lastname: str | None = None
 
@@ -245,7 +237,6 @@ class UserDetail:
     identity_url: str | None
     auth_source: str | None
     groups: list[str]
-    url: str
     firstname: str | None = None
     lastname: str | None = None
 
@@ -264,7 +255,6 @@ class GroupSummary:
     updated_at: str | None
     can_update: bool
     can_delete: bool
-    url: str
 
 
 @dataclass
@@ -273,12 +263,10 @@ class GroupDetail:
     name: str | None
     member_count: int
     members: list[str]
-    memberships_url: str | None
     created_at: str | None
     updated_at: str | None
     can_update: bool
     can_delete: bool
-    url: str
 
 
 @dataclass
@@ -346,7 +334,7 @@ class ProjectFieldSchema:
 
 @dataclass
 class ProjectRef:
-    """Lightweight project picklist entry — id/identifier/name/url only.
+    """Lightweight project picklist entry — id/identifier/name only.
 
     Used where a caller needs to pick a project by reference (e.g. a parent
     project) but not read its full description/status: the full ProjectSummary
@@ -357,7 +345,6 @@ class ProjectRef:
     id: int
     identifier: str | None
     name: str
-    url: str
 
 
 @dataclass
@@ -382,7 +369,6 @@ class ProjectConfiguration:
     available_features: list[str]
     trialling_features: list[str]
     enabled_internal_comments: bool | None
-    url: str
 
 
 @dataclass
@@ -433,7 +419,6 @@ class WorkPackageSummary:
     due_date: str | None
     description: str | None
     has_description: bool
-    url: str
     description_truncated: bool = False
     description_length: int | None = None
     estimated_time: str | None = None
@@ -477,9 +462,6 @@ class WorkPackageDetail:
     due_date: str | None
     lock_version: int | None
     description: str | None
-    url: str
-    activities_url: str | None
-    relations_url: str | None
     description_truncated: bool = False
     description_length: int | None = None
     estimated_time: str | None = None
@@ -591,7 +573,6 @@ class VersionSummary:
     end_date: str | None
     defining_project: str | None
     description: str | None
-    url: str
     created_at: str | None = None
     updated_at: str | None = None
     description_truncated: bool = False
@@ -631,7 +612,6 @@ class SprintSummary:
     defining_workspace: str | None
     created_at: str | None
     updated_at: str | None
-    url: str
 
 
 @dataclass
@@ -671,7 +651,6 @@ class BoardSummary:
     filter_count: int
     can_update: bool
     can_delete: bool
-    url: str
 
 
 @dataclass
@@ -698,7 +677,6 @@ class BoardDetail:
     updated_at: str | None
     can_update: bool
     can_delete: bool
-    url: str
 
 
 @dataclass
@@ -728,7 +706,6 @@ class ViewSummary:
     starred: bool
     created_at: str | None
     updated_at: str | None
-    url: str
 
 
 @dataclass
@@ -745,7 +722,6 @@ class ViewDetail:
     created_at: str | None
     updated_at: str | None
     links: list[str]
-    url: str
 
 
 @dataclass
@@ -806,7 +782,6 @@ class CategorySummary:
     project_id: int | None
     project: str | None
     is_default: bool
-    url: str
     default_assignee_id: int | None = None
     default_assignee: str | None = None
 
@@ -826,7 +801,6 @@ class DocumentSummary:
     created_at: str | None
     attachment_count: int
     can_update: bool
-    url: str
 
 
 @dataclass
@@ -838,9 +812,7 @@ class DocumentDetail:
     description: str | None
     created_at: str | None
     attachment_count: int
-    attachments_url: str | None
     can_update: bool
-    url: str
 
 
 @dataclass
@@ -871,7 +843,6 @@ class AttachmentSummary:
     container_id: int | None
     created_at: str | None
     download_url: str | None
-    url: str
 
 
 @dataclass
@@ -910,7 +881,6 @@ class ProjectPhaseDefinition:
     finish_gate: str | None
     created_at: str | None
     updated_at: str | None
-    url: str
 
 
 @dataclass
@@ -930,7 +900,6 @@ class ProjectPhase:
     finish_date: str | None
     created_at: str | None
     updated_at: str | None
-    url: str
 
 
 @dataclass
@@ -940,7 +909,6 @@ class TimeEntryActivitySummary:
     position: int | None
     is_default: bool
     projects: list[str]
-    url: str
 
 
 @dataclass
@@ -965,7 +933,6 @@ class TimeEntrySummary:
     comment: str | None
     created_at: str | None
     updated_at: str | None
-    url: str
     comment_truncated: bool = False
     comment_length: int | None = None
 
@@ -989,7 +956,6 @@ class CurrentUser:
     id: int
     name: str | None
     login: str | None
-    url: str
 
 
 @dataclass
@@ -1039,7 +1005,6 @@ class NewsSummary:
     created_at: str | None
     can_update: bool
     can_delete: bool
-    url: str
 
 
 @dataclass
@@ -1071,8 +1036,6 @@ class WikiPageDetail:
     project_id: int | None
     project: str | None
     content: str | None
-    attachments_url: str | None
-    url: str
 
 
 @dataclass
@@ -1090,7 +1053,6 @@ class StatusSummary:
     is_closed: bool
     color: str | None
     position: int | None
-    url: str
     is_readonly: bool | None = None
     default_done_ratio: int | None = None
     excluded_from_totals: bool | None = None
@@ -1124,7 +1086,6 @@ class TypeSummary:
     position: int | None
     is_default: bool
     is_milestone: bool
-    url: str
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -1139,7 +1100,6 @@ class WatcherSummary:
     id: int
     name: str
     login: str | None
-    url: str
 
 
 @dataclass
@@ -1166,7 +1126,6 @@ class NotificationSummary:
     work_package_id: int | None
     work_package_subject: str | None
     created_at: str
-    url: str
 
 
 @dataclass
@@ -1202,7 +1161,6 @@ class FileLinkSummary:
     storage_name: str | None
     created_at: str | None
     updated_at: str | None
-    url: str
 
 
 @dataclass
@@ -1226,7 +1184,6 @@ class GridSummary:
     scope: str | None
     created_at: str | None
     updated_at: str | None
-    url: str
 
 
 @dataclass
@@ -1356,7 +1313,6 @@ class ReminderSummary:
     note: str | None
     work_package_id: int | None
     creator: str | None
-    url: str | None
 
 
 @dataclass

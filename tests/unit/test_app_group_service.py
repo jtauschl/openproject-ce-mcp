@@ -24,7 +24,6 @@ def _summary(group_id: int = 3, *, name: str = "Backend", member_count: int = 2)
         updated_at="2026-06-01T00:00:00Z",
         can_update=True,
         can_delete=True,
-        url=f"{BASE_URL}/groups/{group_id}",
     )
 
 
@@ -35,12 +34,10 @@ def _detail(group_id: int = 3, **kwargs: object) -> GroupDetail:
         name=summary.name,
         member_count=summary.member_count,
         members=["Ada Lovelace", "Bob Builder"],
-        memberships_url=f"{BASE_URL}/memberships",
         created_at=summary.created_at,
         updated_at=summary.updated_at,
         can_update=summary.can_update,
         can_delete=summary.can_delete,
-        url=summary.url,
     )
 
 

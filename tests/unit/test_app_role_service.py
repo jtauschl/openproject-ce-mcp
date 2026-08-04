@@ -13,7 +13,7 @@ from openproject_ce_mcp.tools import _to_payload
 
 
 def _role_summary(role_id: int = 8, name: str = "Project admin") -> RoleSummary:
-    return RoleSummary(id=role_id, name=name, url=f"https://op.example.com/roles/{role_id}")
+    return RoleSummary(id=role_id, name=name)
 
 
 class _FakeRoleApi:
@@ -61,16 +61,16 @@ async def test_list_roles_checks_read_enabled() -> None:
 
 @pytest.mark.asyncio
 async def test_list_roles_applies_hidden_field_masking() -> None:
-    settings = dataclasses.replace(make_settings(), hidden_fields={"role": ("url",)})
+    settings = dataclasses.replace(make_settings(), hidden_fields={"role": ("name",)})
     api = _FakeRoleApi()
     service = _service(api, settings=settings)
 
     result = await service.list_roles()
     role = result.results[0]
 
-    assert role._hidden_keys == frozenset({"url"})
+    assert role._hidden_keys == frozenset({"name"})
     serialized = _to_payload(role)
-    assert "url" not in serialized
+    assert "name" not in serialized
     assert serialized["id"] == 8
 
 

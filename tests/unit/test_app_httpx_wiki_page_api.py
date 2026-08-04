@@ -22,7 +22,6 @@ def _wiki_page_payload(wiki_page_id: int = 20, **extra) -> dict:
         "text": {"format": "markdown", "raw": "Wiki page content"},
         "_links": {
             "project": {"href": "/api/v3/projects/1", "title": "Demo Project"},
-            "attachments": {"href": f"/api/v3/wiki_pages/{wiki_page_id}/attachments"},
         },
     }
     payload.update(extra)
@@ -36,7 +35,7 @@ async def test_get_builds_record_with_normalized_detail_and_raw_project_link() -
         return httpx.Response(200, json=_wiki_page_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWikiPageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWikiPageApi(HttpxTransport(http_client))
         record = await api.get(20)
 
     assert record.detail.id == 20
@@ -44,8 +43,8 @@ async def test_get_builds_record_with_normalized_detail_and_raw_project_link() -
     assert record.detail.project == "Demo Project"
     assert record.detail.project_id == 1
     assert record.detail.content == "<user-content>Wiki page content</user-content>"
-    assert record.detail.attachments_url == f"{BASE_URL}/api/v3/wiki_pages/20/attachments"
-    assert record.detail.url == f"{BASE_URL}/wiki_pages/20"
+    assert not hasattr(record.detail, "attachments_url")
+    assert not hasattr(record.detail, "url")
     assert record.project_link == {"href": "/api/v3/projects/1", "title": "Demo Project"}
 
 
@@ -59,7 +58,7 @@ async def test_get_falls_back_to_content_key_when_text_is_absent() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWikiPageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWikiPageApi(HttpxTransport(http_client))
         record = await api.get(20)
 
     assert record.detail.content == "<user-content>Fallback content</user-content>"
@@ -74,25 +73,10 @@ async def test_get_title_falls_back_to_placeholder_when_missing() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWikiPageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWikiPageApi(HttpxTransport(http_client))
         record = await api.get(20)
 
     assert record.detail.title == "Wiki page 20"
-
-
-@pytest.mark.asyncio
-async def test_get_attachments_url_returns_none_for_foreign_origin_href() -> None:
-    payload = _wiki_page_payload()
-    payload["_links"]["attachments"] = {"href": "https://evil.example.com/attachments"}
-
-    async def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=payload, request=request)
-
-    async with _client(handler) as http_client:
-        api = HttpxWikiPageApi(HttpxTransport(http_client), base_url=BASE_URL)
-        record = await api.get(20)
-
-    assert record.detail.attachments_url is None
 
 
 @pytest.mark.asyncio
@@ -105,7 +89,7 @@ async def test_get_content_truncates_at_50000_chars() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxWikiPageApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxWikiPageApi(HttpxTransport(http_client))
         record = await api.get(20)
 
     assert record.detail.content is not None

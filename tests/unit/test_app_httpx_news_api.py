@@ -40,7 +40,7 @@ async def test_list_all_walks_a_single_short_page_and_builds_records() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_news_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxNewsApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxNewsApi(HttpxTransport(http_client))
         records = await api.list_all(page_size=50)
 
     assert len(records) == 1
@@ -75,7 +75,7 @@ async def test_list_all_walks_every_server_page() -> None:
         return httpx.Response(200, json={"total": 3, "_embedded": {"elements": page_news}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxNewsApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxNewsApi(HttpxTransport(http_client))
         records = await api.list_all(page_size=2)
 
     assert requested_offsets == ["1", "2"]
@@ -88,7 +88,7 @@ async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxNewsApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxNewsApi(HttpxTransport(http_client))
         records = await api.list_all(page_size=50)
 
     assert records == []
@@ -101,7 +101,7 @@ async def test_get_builds_record_with_detail_shaped_description_and_raw_project_
         return httpx.Response(200, json=_news_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxNewsApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxNewsApi(HttpxTransport(http_client))
         record = await api.get(1)
 
     assert record.summary.id == 1
@@ -125,7 +125,7 @@ async def test_get_summary_and_detail_apply_different_truncation_limits_to_same_
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxNewsApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxNewsApi(HttpxTransport(http_client))
         record = await api.get(1)
 
     detail = record.to_detail()
@@ -150,7 +150,7 @@ async def test_get_falls_back_to_html_when_raw_is_absent() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxNewsApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxNewsApi(HttpxTransport(http_client))
         record = await api.get(1)
 
     assert record.summary.description == "<user-content><p>HTML only content</p></user-content>"
@@ -164,7 +164,7 @@ async def test_commit_create_posts_and_returns_detail() -> None:
         return httpx.Response(201, json=_news_payload(news_id=42), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxNewsApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxNewsApi(HttpxTransport(http_client))
         detail = await api.commit_create({"title": "New feature"})
 
     assert detail.id == 42
@@ -178,7 +178,7 @@ async def test_commit_update_patches_and_returns_detail() -> None:
         return httpx.Response(200, json=_news_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxNewsApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxNewsApi(HttpxTransport(http_client))
         detail = await api.commit_update(1, {"title": "Updated"})
 
     assert detail.id == 1
@@ -192,5 +192,5 @@ async def test_delete_sends_delete_request() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxNewsApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxNewsApi(HttpxTransport(http_client))
         await api.delete(1)

@@ -20,7 +20,6 @@ def _summary(reminder_id: int = 7, *, work_package_id: int | None = 42) -> Remin
         note="n",
         work_package_id=work_package_id,
         creator="Alice",
-        url=f"https://op.example.com/reminders/{reminder_id}",
     )
 
 

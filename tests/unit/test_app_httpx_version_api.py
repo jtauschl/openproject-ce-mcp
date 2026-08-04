@@ -45,7 +45,7 @@ async def test_list_for_project_hits_project_scoped_endpoint_with_offset_and_pag
         return httpx.Response(200, json={"total": 25, "_embedded": {"elements": [_version_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxVersionApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxVersionApi(HttpxTransport(http_client))
         page = await api.list_for_project(6, offset=2, page_size=10)
 
     assert page.server_total == 25
@@ -64,7 +64,7 @@ async def test_list_global_hits_unscoped_endpoint_and_has_no_server_total() -> N
         return httpx.Response(200, json={"_embedded": {"elements": [_version_payload(version_id=2)]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxVersionApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxVersionApi(HttpxTransport(http_client))
         page = await api.list_global(offset=1, page_size=100)
 
     assert page.server_total is None
@@ -78,7 +78,7 @@ async def test_get_fetches_by_id() -> None:
         return httpx.Response(200, json=_version_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxVersionApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxVersionApi(HttpxTransport(http_client))
         record = await api.get(8)
 
     assert record.summary.id == 8
@@ -99,7 +99,7 @@ async def test_create_form_posts_to_form_endpoint_and_reports_validation_errors(
         )
 
     async with _client(handler) as http_client:
-        api = HttpxVersionApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxVersionApi(HttpxTransport(http_client))
         form = await api.create_form({"name": "Release 1"})
 
     assert form.payload == {"name": "Release 1"}
@@ -116,7 +116,7 @@ async def test_update_form_uses_post_not_patch() -> None:
         return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxVersionApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxVersionApi(HttpxTransport(http_client))
         form = await api.update_form(8, {"name": "Release 1.1"})
 
     assert form.validation_errors == {}
@@ -130,7 +130,7 @@ async def test_commit_create_posts_and_returns_normalized_detail() -> None:
         return httpx.Response(201, json=_version_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxVersionApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxVersionApi(HttpxTransport(http_client))
         detail = await api.commit_create({"name": "Release 1"})
 
     assert detail.id == 8
@@ -145,7 +145,7 @@ async def test_commit_update_patches_and_returns_normalized_detail() -> None:
         return httpx.Response(200, json=_version_payload(name="Release 1.1"), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxVersionApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxVersionApi(HttpxTransport(http_client))
         detail = await api.commit_update(8, {"name": "Release 1.1"})
 
     assert detail.name == "Release 1.1"
@@ -159,7 +159,7 @@ async def test_delete_issues_delete_request() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxVersionApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxVersionApi(HttpxTransport(http_client))
         await api.delete(8)  # must not raise
 
 
@@ -178,7 +178,7 @@ async def test_get_survives_explicit_null_links_at_top_level() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxVersionApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxVersionApi(HttpxTransport(http_client))
         record = await api.get(8)
 
     assert record.summary.id == 8
@@ -201,7 +201,7 @@ async def test_list_global_survives_explicit_null_links_nested_in_a_collection_e
         return httpx.Response(200, json={"_embedded": {"elements": [element]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxVersionApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxVersionApi(HttpxTransport(http_client))
         page = await api.list_global(offset=1, page_size=100)
 
     assert len(page.records) == 1
@@ -228,6 +228,6 @@ async def test_status_mapping_table(status_code, body, expected_exception) -> No
         return httpx.Response(status_code, json=body, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxVersionApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxVersionApi(HttpxTransport(http_client))
         with pytest.raises(expected_exception):
             await api.get(8)

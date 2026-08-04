@@ -46,7 +46,6 @@ def _summary(project_id: int = 6, name: str = "Demo Project", identifier: str = 
         identifier=identifier,
         active=True,
         description=None,
-        url=f"{BASE_URL}/projects/{project_id}",
     )
 
 
@@ -102,13 +101,11 @@ class _FakeProjectApi:
 
     async def commit_create(self, payload) -> ProjectDetail:
         self.commit_create_calls.append(payload)
-        return normalize_project_detail(_payload(name=payload.get("name", "Demo Project")), base_url=BASE_URL)
+        return normalize_project_detail(_payload(name=payload.get("name", "Demo Project")))
 
     async def commit_update(self, project_id, payload) -> ProjectDetail:
         self.commit_update_calls.append((project_id, payload))
-        return normalize_project_detail(
-            _payload(project_id=project_id, name=payload.get("name", "Demo Project")), base_url=BASE_URL
-        )
+        return normalize_project_detail(_payload(project_id=project_id, name=payload.get("name", "Demo Project")))
 
     async def delete(self, project_id) -> None:
         self.delete_calls.append(project_id)
@@ -256,9 +253,7 @@ async def test_get_configuration_applies_hidden_field_masking() -> None:
 async def test_list_phase_definitions_applies_hidden_field_masking() -> None:
     api = _FakeProjectApi()
     api.phase_definitions = [
-        ProjectPhaseDefinition(
-            id=1, name="Init", start_gate=None, finish_gate=None, created_at=None, updated_at=None, url=""
-        )
+        ProjectPhaseDefinition(id=1, name="Init", start_gate=None, finish_gate=None, created_at=None, updated_at=None)
     ]
     settings = dataclasses.replace(make_settings(), hidden_fields={"project_phase_definition": ("start_gate",)})
     service = _service(api, settings=settings)
@@ -286,9 +281,7 @@ async def test_get_phase_applies_hidden_field_masking() -> None:
 async def test_list_phase_definitions_returns_wrapped_result() -> None:
     api = _FakeProjectApi()
     api.phase_definitions = [
-        ProjectPhaseDefinition(
-            id=1, name="Init", start_gate=None, finish_gate=None, created_at=None, updated_at=None, url=""
-        )
+        ProjectPhaseDefinition(id=1, name="Init", start_gate=None, finish_gate=None, created_at=None, updated_at=None)
     ]
     service = _service(api)
 
@@ -311,7 +304,6 @@ def _phase_record(*, project_link: dict | None) -> ProjectPhaseRecord:
             finish_date=None,
             created_at=None,
             updated_at=None,
-            url="",
         ),
         project_link=project_link,
     )
@@ -376,7 +368,7 @@ async def test_stamp_zeroes_hidden_status_explanation_metadata() -> None:
 @pytest.mark.asyncio
 async def test_get_admin_context_includes_writable_fields_and_parent_projects() -> None:
     api = _FakeProjectApi()
-    api.parent_projects = [ProjectRef(id=1, identifier="root", name="Root", url="")]
+    api.parent_projects = [ProjectRef(id=1, identifier="root", name="Root")]
     service = _admin_service(api)
 
     context = await service.get_admin_context("demo")
@@ -396,8 +388,8 @@ async def test_get_admin_context_filters_parent_projects_by_read_allowlist() -> 
     candidate is dropped entirely, not just its full detail."""
     api = _FakeProjectApi()
     api.parent_projects = [
-        ProjectRef(id=1, identifier="root", name="Root", url=""),
-        ProjectRef(id=2, identifier="secret", name="Secret", url=""),
+        ProjectRef(id=1, identifier="root", name="Root"),
+        ProjectRef(id=2, identifier="secret", name="Secret"),
     ]
     settings = dataclasses.replace(make_settings(), read_projects=("demo", "root"))
     service = _admin_service(api, settings=settings)
@@ -784,7 +776,7 @@ async def test_copy_returns_preview_without_committing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_copy_commits_and_returns_job_status_url() -> None:
+async def test_copy_commits_and_derives_job_status_id_without_exposing_the_url() -> None:
     settings = dataclasses.replace(make_settings(), enable_project_write=True)
     api = _FakeProjectApi()
     service = _service(api, settings=settings)
@@ -792,7 +784,11 @@ async def test_copy_commits_and_returns_job_status_url() -> None:
     result = await service.copy(source_project="demo", name="Copy", identifier="copy-project", confirm=True)
 
     assert result.confirmed is True
-    assert result.job_status_url == api.job_status_url
+    # job_status_id is derived from the job_status_url internally (get_job_status
+    # is the intended follow-up call), but the redundant url itself is no
+    # longer part of the response -- OPM-373 token-reduction bugfix.
+    assert result.job_status_id == "1"
+    assert not hasattr(result, "job_status_url")
     assert len(api.commit_copy_calls) == 1
 
 

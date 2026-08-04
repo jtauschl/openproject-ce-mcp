@@ -22,7 +22,6 @@ import json
 from typing import Any
 
 from ...models import NotificationSummary
-from ..api_href import api_href as _api_href
 from ..ports.notification_api import NotificationPage, NotificationRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
@@ -31,7 +30,7 @@ from ._text import link_title as _link_title
 from ._text import trim_text as _trim_text
 
 
-def normalize_notification(payload: dict[str, Any], *, api_prefix: str) -> NotificationSummary:
+def normalize_notification(payload: dict[str, Any]) -> NotificationSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
     Verbatim port of client.py's normalize_notification, minus the
@@ -63,14 +62,12 @@ def normalize_notification(payload: dict[str, Any], *, api_prefix: str) -> Notif
         work_package_id=work_package_id,
         work_package_subject=work_package_subject,
         created_at=payload.get("createdAt") or "",
-        url=_api_href(f"notifications/{notification_id}", api_prefix=api_prefix),
     )
 
 
 class HttpxNotificationApi:
-    def __init__(self, transport: Transport, *, api_prefix: str = "/api/v3/") -> None:
+    def __init__(self, transport: Transport) -> None:
         self._transport = transport
-        self._api_prefix = api_prefix
 
     def _record(self, payload: dict[str, Any]) -> NotificationRecord:
         # `summary` is lazy (see NotificationRecord's docstring): list_all()'s
@@ -81,7 +78,7 @@ class HttpxNotificationApi:
         # discard on a project it cannot even read.
         links = payload.get("_links", {})
         return NotificationRecord(
-            summary=lambda: normalize_notification(payload, api_prefix=self._api_prefix),
+            summary=lambda: normalize_notification(payload),
             project_link=links.get("project"),
             resource_link=links.get("resource"),
         )

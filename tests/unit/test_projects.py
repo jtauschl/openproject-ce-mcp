@@ -589,10 +589,10 @@ async def test_get_project_configuration_and_copy_project() -> None:
     assert preview.ready is True
     assert preview.requires_confirmation is True
     assert preview.job_status_id is None
-    assert preview.job_status_url is None
+    assert not hasattr(preview, "job_status_url")
     assert copied.confirmed is True
     assert copied.job_status_id == "32ac4e5e-1e49-4cbd-b70e-bc1c781d8af2"
-    assert copied.job_status_url == "https://op.example.com/api/v3/job_statuses/32ac4e5e-1e49-4cbd-b70e-bc1c781d8af2"
+    assert not hasattr(copied, "job_status_url")
 
     await client.aclose()
 

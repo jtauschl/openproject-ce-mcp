@@ -17,7 +17,6 @@ def _type(type_id: int, name: str, *, lookup_name: str | None = None) -> TypeRec
             position=1,
             is_default=False,
             is_milestone=False,
-            url=f"https://op.example.com/types/{type_id}",
             created_at=None,
             updated_at=None,
         ),

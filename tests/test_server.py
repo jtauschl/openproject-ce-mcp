@@ -1,5 +1,7 @@
 """Tests for dynamic tool registration in create_app()."""
 
+import pytest
+
 import openproject_ce_mcp.server as server
 from openproject_ce_mcp import __version__
 from openproject_ce_mcp.config import Settings
@@ -503,6 +505,51 @@ def test_main_unexpected_flag_still_runs_server(monkeypatch) -> None:
     monkeypatch.setattr(srv.sys, "argv", ["openproject-ce-mcp", "--some-client-flag"])
     srv.main()
     assert ran == [True]
+
+
+def test_main_unrecognized_flag_hints_at_help_when_config_is_missing(monkeypatch, capsys) -> None:
+    # "--configure" is a common typo for the "configure" subcommand (no
+    # leading "--"). It isn't a recognized token, so by design it falls
+    # through to a normal server launch -- which then fails on missing
+    # OPENPROJECT_BASE_URL. That failure should point at --help/configure,
+    # not raise a bare ConfigError traceback, since the presence of an
+    # unrecognized flag is itself evidence of a likely CLI typo.
+    import os
+
+    import openproject_ce_mcp.server as srv
+
+    for name in list(os.environ):
+        if name.startswith("OPENPROJECT_"):
+            monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(srv.sys, "argv", ["openproject-ce-mcp", "--configure"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        srv.main()
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "OPENPROJECT_BASE_URL is required" in err
+    assert "--configure" in err
+    assert "--help" in err
+    assert "configure" in err
+
+
+def test_main_no_args_raises_bare_config_error_when_config_is_missing(monkeypatch, capsys) -> None:
+    # A real MCP client launch passes no argv at all -- there is no
+    # unrecognized flag to point at, so the original ConfigError propagates
+    # unchanged.
+    import os
+
+    import openproject_ce_mcp.server as srv
+    from openproject_ce_mcp.config import ConfigError
+
+    for name in list(os.environ):
+        if name.startswith("OPENPROJECT_"):
+            monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(srv.sys, "argv", ["openproject-ce-mcp"])
+
+    with pytest.raises(ConfigError, match="OPENPROJECT_BASE_URL is required"):
+        srv.main()
 
 
 def test_main_unrecognized_subcommand_errors_instead_of_running_server(monkeypatch, capsys) -> None:

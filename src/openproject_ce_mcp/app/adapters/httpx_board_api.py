@@ -5,11 +5,9 @@ backed by OpenProject's `queries` resource (`_type: "Query"`), not a
 dedicated `boards` endpoint -- every HTTP call targets `queries`/
 `queries/{id}`/`queries/form`/`queries/{id}/form`.
 
-`_board_web_url` hand-builds a work-package-list WEB url
-(`{base_url}/work_packages?query_id={id}`), not an `api/v3/...` href --
-this does NOT match `_text.py`'s `link_to_web_url` shape (which derives a
-web URL from a server-supplied API href), so it stays a local one-off,
-verbatim-ported from client.py's original.
+No `url` field: it used to be a client-constructed work-package-list web
+url (`{base_url}/work_packages?query_id={id}`) -- not a server-supplied
+href, so it was dropped per the "no constructed output URLs" rule.
 
 `_normalize_board_filter`/`_normalize_filter_values`/
 `_normalize_query_link_list`/`_normalize_query_link_label` are Boards-only
@@ -28,7 +26,6 @@ migrated.
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urljoin
 
 from ...models import BoardDetail, BoardFilter, BoardSummary
 from ..ports.board_api import BoardFormResult, BoardRecord
@@ -92,12 +89,7 @@ def _normalize_query_link_list(value: Any) -> list[str]:
     return normalized
 
 
-def _board_web_url(payload: dict[str, Any], *, base_url: str) -> str:
-    board_id = int(payload["id"])
-    return urljoin(f"{base_url.rstrip('/')}/", f"work_packages?query_id={board_id}")
-
-
-def normalize_board(payload: dict[str, Any], *, base_url: str) -> BoardSummary:
+def normalize_board(payload: dict[str, Any]) -> BoardSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
     Verbatim port of client.py's normalize_board, minus the
@@ -123,7 +115,6 @@ def normalize_board(payload: dict[str, Any], *, base_url: str) -> BoardSummary:
         filter_count=len(filters),
         can_update=_can_update_from_links(links),
         can_delete=bool(links.get("delete")),
-        url=_board_web_url(payload, base_url=base_url),
     )
 
 
@@ -163,17 +154,15 @@ def summary_to_detail(summary: BoardSummary, *, payload: dict[str, Any]) -> Boar
         updated_at=payload.get("updatedAt"),
         can_update=summary.can_update,
         can_delete=summary.can_delete,
-        url=summary.url,
     )
 
 
 class HttpxBoardApi:
-    def __init__(self, transport: Transport, *, base_url: str) -> None:
+    def __init__(self, transport: Transport) -> None:
         self._transport = transport
-        self._base_url = base_url
 
     def _record(self, payload: dict[str, Any]) -> BoardRecord:
-        summary = normalize_board(payload, base_url=self._base_url)
+        summary = normalize_board(payload)
         return BoardRecord(
             summary=summary,
             detail=summary_to_detail(summary, payload=payload),
@@ -203,11 +192,11 @@ class HttpxBoardApi:
 
     async def commit_create(self, payload: dict[str, Any]) -> BoardDetail:
         response = await self._transport.post_json("queries", json_body=payload)
-        return summary_to_detail(normalize_board(response, base_url=self._base_url), payload=response)
+        return summary_to_detail(normalize_board(response), payload=response)
 
     async def commit_update(self, board_id: int, payload: dict[str, Any]) -> BoardDetail:
         response = await self._transport.patch_json(f"queries/{board_id}", json_body=payload)
-        return summary_to_detail(normalize_board(response, base_url=self._base_url), payload=response)
+        return summary_to_detail(normalize_board(response), payload=response)
 
     async def delete(self, board_id: int) -> None:
         await self._transport.delete(f"queries/{board_id}")

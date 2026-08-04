@@ -41,7 +41,7 @@ async def test_list_for_work_package_requests_sub_collection_with_pagination_par
         )
 
     async with _client(handler) as http_client:
-        api = HttpxFileLinkApi(HttpxTransport(http_client), api_prefix="/api/v3/")
+        api = HttpxFileLinkApi(HttpxTransport(http_client))
         records, total = await api.list_for_work_package(9, offset=1, page_size=20)
 
     assert total == 1
@@ -51,7 +51,6 @@ async def test_list_for_work_package_requests_sub_collection_with_pagination_par
     assert summary.title == "spec.pdf"
     assert summary.storage_id == 3
     assert summary.storage_name == "Nextcloud"
-    assert summary.url == "/api/v3/file_links/5"
     assert records[0].container_link == {"href": "/api/v3/work_packages/9"}
 
 
@@ -61,7 +60,7 @@ async def test_list_for_work_package_missing_embedded_elements_returns_empty_lis
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxFileLinkApi(HttpxTransport(http_client), api_prefix="/api/v3/")
+        api = HttpxFileLinkApi(HttpxTransport(http_client))
         records, total = await api.list_for_work_package(9, offset=1, page_size=20)
 
     assert records == []
@@ -75,7 +74,7 @@ async def test_get_requests_single_file_link() -> None:
         return httpx.Response(200, json=_file_link_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxFileLinkApi(HttpxTransport(http_client), api_prefix="/api/v3/")
+        api = HttpxFileLinkApi(HttpxTransport(http_client))
         record = await api.get(5)
 
     assert record.summary.id == 5
@@ -88,7 +87,7 @@ async def test_get_handles_missing_container_link() -> None:
         return httpx.Response(200, json=_file_link_payload(container_href=None), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxFileLinkApi(HttpxTransport(http_client), api_prefix="/api/v3/")
+        api = HttpxFileLinkApi(HttpxTransport(http_client))
         record = await api.get(5)
 
     assert record.container_link is None
@@ -102,7 +101,7 @@ async def test_delete_sends_delete_request() -> None:
         return httpx.Response(204, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxFileLinkApi(HttpxTransport(http_client), api_prefix="/api/v3/")
+        api = HttpxFileLinkApi(HttpxTransport(http_client))
         await api.delete(5)
 
 
@@ -111,7 +110,7 @@ def test_normalize_file_link_falls_back_to_origin_data_name_when_title_missing()
     del payload["title"]
     payload["originData"] = {"name": "fallback-name.pdf"}
 
-    summary = normalize_file_link(payload, api_prefix="/api/v3/")
+    summary = normalize_file_link(payload)
 
     assert summary.title == "fallback-name.pdf"
 
@@ -120,7 +119,7 @@ def test_normalize_file_link_falls_back_to_generated_title_when_nothing_present(
     payload = _file_link_payload()
     del payload["title"]
 
-    summary = normalize_file_link(payload, api_prefix="/api/v3/")
+    summary = normalize_file_link(payload)
 
     assert summary.title == "File link 5"
 
@@ -129,7 +128,7 @@ def test_normalize_file_link_trims_long_title() -> None:
     payload = _file_link_payload()
     payload["title"] = "x" * 300
 
-    summary = normalize_file_link(payload, api_prefix="/api/v3/")
+    summary = normalize_file_link(payload)
 
     assert len(summary.title) == 255
     assert summary.title.endswith("…")
@@ -139,7 +138,7 @@ def test_normalize_file_link_handles_missing_storage_link() -> None:
     payload = _file_link_payload()
     del payload["_links"]["storage"]
 
-    summary = normalize_file_link(payload, api_prefix="/api/v3/")
+    summary = normalize_file_link(payload)
 
     assert summary.storage_id is None
     assert summary.storage_name is None

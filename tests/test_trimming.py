@@ -60,7 +60,6 @@ def _wp_summary(**overrides) -> m.WorkPackageSummary:
         "due_date": None,
         "description": "desc",
         "has_description": True,
-        "url": "http://x/5",
         "description_truncated": False,
         "description_length": 4,
     }
@@ -101,9 +100,6 @@ def _wp_detail(**overrides) -> m.WorkPackageDetail:
         "due_date": None,
         "lock_version": 1,
         "description": "desc",
-        "url": "http://x/5",
-        "activities_url": "http://x/5/activities",
-        "relations_url": "http://x/5/relations",
     }
     defaults.update(overrides)
     return m.WorkPackageDetail(**defaults)
@@ -299,7 +295,7 @@ def test_batch_read_select_trims_nested_work_package_fields() -> None:
 
 def test_batch_read_select_none_returns_full_detail() -> None:
     out = _to_payload(_batch_read())
-    assert "activities_url" in out["results"][0]["work_package"]
+    assert "description" in out["results"][0]["work_package"]
 
 
 def test_batch_read_select_skips_failed_items_without_crash() -> None:
@@ -384,10 +380,9 @@ def test_returns_trimmable_true_for_bulk_update() -> None:
 
 def test_hidden_keys_attribute_removes_keys() -> None:
     row = _wp_summary()
-    object.__setattr__(row, "_hidden_keys", frozenset({"description", "url"}))
+    object.__setattr__(row, "_hidden_keys", frozenset({"description"}))
     out = _to_payload(_wp_list(results=[row]))
     assert "description" not in out["results"][0]
-    assert "url" not in out["results"][0]
     assert "_hidden_keys" not in out["results"][0]
 
 

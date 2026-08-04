@@ -54,7 +54,7 @@ async def test_list_all_requests_the_sprints_endpoint() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_sprint_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxSprintApi(HttpxTransport(http_client))
         records, total = await api.list_all(offset=1, page_size=50)
 
     assert total == 1
@@ -67,27 +67,9 @@ async def test_list_all_requests_the_sprints_endpoint() -> None:
     assert summary.finish_date == "2026-07-10"
     assert summary.defining_workspace_id == 7
     assert summary.defining_workspace == "Demo"
-    assert summary.url == f"{BASE_URL}/sprints/1"
+    assert not hasattr(summary, "url")
     assert records[0].defining_workspace_link == {"href": "/api/v3/projects/7", "title": "Demo"}
     assert records[0].defining_workspace_payload is None
-
-
-@pytest.mark.asyncio
-async def test_url_is_a_web_ui_url_not_an_api_path() -> None:
-    """Sprints' url field is built like client.py's `_web_url` (base_url +
-    relative path, no `api/v3` prefix) -- unlike Views' adapter, which builds
-    an API path. This is the one field where copying Views' pattern verbatim
-    would be wrong.
-    """
-
-    async def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=_sprint_payload(sprint_id=42), request=request)
-
-    async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client), base_url=BASE_URL)
-        record = await api.get(42)
-
-    assert record.summary.url == f"{BASE_URL}/sprints/42"
 
 
 @pytest.mark.asyncio
@@ -96,7 +78,7 @@ async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxSprintApi(HttpxTransport(http_client))
         records, total = await api.list_all(offset=1, page_size=50)
 
     assert records == []
@@ -111,7 +93,7 @@ async def test_list_for_project_requests_the_project_scoped_endpoint() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_sprint_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxSprintApi(HttpxTransport(http_client))
         records, total = await api.list_for_project(7, offset=1, page_size=50)
 
     assert total == 1
@@ -131,7 +113,7 @@ async def test_list_for_project_returns_records_and_total_at_arbitrary_offset() 
         )
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxSprintApi(HttpxTransport(http_client))
         records, total = await api.list_for_project(7, offset=2, page_size=20)
 
     assert [r.summary.id for r in records] == [1, 2]
@@ -146,7 +128,7 @@ async def test_get_requests_the_single_sprint_endpoint() -> None:
         return httpx.Response(200, json=_sprint_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxSprintApi(HttpxTransport(http_client))
         record = await api.get(1)
 
     assert record.summary.id == 1
@@ -162,7 +144,7 @@ async def test_detail_reuses_every_summary_field_verbatim() -> None:
         return httpx.Response(200, json=_sprint_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxSprintApi(HttpxTransport(http_client))
         record = await api.get(1)
 
     detail = record.detail
@@ -176,7 +158,6 @@ async def test_detail_reuses_every_summary_field_verbatim() -> None:
     assert detail.defining_workspace == summary.defining_workspace
     assert detail.created_at == summary.created_at
     assert detail.updated_at == summary.updated_at
-    assert detail.url == summary.url
 
 
 @pytest.mark.asyncio
@@ -191,7 +172,7 @@ async def test_defining_workspace_link_falls_back_to_embedded_self_link() -> Non
         return httpx.Response(200, json=_sprint_payload(with_link=False, with_embedded=True), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxSprintApi(HttpxTransport(http_client))
         record = await api.get(1)
 
     assert record.defining_workspace_link == {"href": "/api/v3/projects/7", "title": "Demo"}
@@ -212,7 +193,7 @@ async def test_no_defining_workspace_at_all_yields_none_link_and_payload() -> No
         return httpx.Response(200, json=_sprint_payload(with_link=False, with_embedded=False), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxSprintApi(HttpxTransport(http_client))
         record = await api.get(1)
 
     assert record.defining_workspace_link is None
@@ -232,6 +213,6 @@ async def test_not_found_propagates_unwrapped_from_the_adapter() -> None:
         return httpx.Response(404, json={"message": "Not found"}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxSprintApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxSprintApi(HttpxTransport(http_client))
         with pytest.raises(NotFoundError, match="OpenProject resource not found."):
             await api.list_all(offset=1, page_size=50)

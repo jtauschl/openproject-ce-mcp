@@ -20,7 +20,6 @@ def _principal(principal_id: int, name: str, *, lookup_name: str | None = None) 
             login=name.lower(),
             email=None,
             status=None,
-            url=f"https://op.example.com/users/{principal_id}",
         ),
         lookup_name=name if lookup_name is None else lookup_name,
     )
@@ -43,7 +42,7 @@ class _FakePrincipalApi:
 
 
 async def _current_user() -> CurrentUser:
-    return CurrentUser(id=99, name="Me", login="me", url="https://op.example.com/users/99")
+    return CurrentUser(id=99, name="Me", login="me")
 
 
 @pytest.mark.asyncio

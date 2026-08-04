@@ -28,7 +28,7 @@ async def test_list_roles_requests_offset_and_page_size() -> None:
         return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [_role_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRoleApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxRoleApi(HttpxTransport(http_client))
         records, total = await api.list_roles(offset=1, page_size=20)
 
     assert total == 1
@@ -36,7 +36,7 @@ async def test_list_roles_requests_offset_and_page_size() -> None:
     summary = records[0].summary
     assert summary.id == 8
     assert summary.name == "Project admin"
-    assert summary.url == f"{BASE_URL}/roles/8"
+    assert not hasattr(summary, "url")
 
 
 @pytest.mark.asyncio
@@ -45,7 +45,7 @@ async def test_list_roles_missing_embedded_elements_returns_empty_list() -> None
         return httpx.Response(200, json={"total": 0}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxRoleApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxRoleApi(HttpxTransport(http_client))
         records, total = await api.list_roles(offset=1, page_size=20)
 
     assert records == []
@@ -62,7 +62,7 @@ async def test_list_roles_falls_back_to_a_placeholder_name_when_missing() -> Non
         )
 
     async with _client(handler) as http_client:
-        api = HttpxRoleApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxRoleApi(HttpxTransport(http_client))
         records, _total = await api.list_roles(offset=1, page_size=20)
 
     assert records[0].summary.name == "Role 3"
@@ -78,7 +78,7 @@ async def test_list_roles_falls_back_to_record_count_when_total_missing() -> Non
         )
 
     async with _client(handler) as http_client:
-        api = HttpxRoleApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxRoleApi(HttpxTransport(http_client))
         records, total = await api.list_roles(offset=1, page_size=20)
 
     assert total == 2

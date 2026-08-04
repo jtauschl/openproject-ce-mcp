@@ -27,8 +27,6 @@ def _detail(*, job_status_id: int = 77, project: str | None = "Demo", project_id
         created_resource_type=None,
         created_resource_id=None,
         created_resource_name=None,
-        links=["self", "project"],
-        url="https://op.example.com/api/v3/job_statuses/77",
     )
 
 
@@ -59,7 +57,7 @@ class _FakeProjectApi:
 
 def _project_record(*, project_id: int, identifier: str) -> ProjectRecord:
     summary = ProjectSummary(
-        id=project_id, name=identifier.title(), identifier=identifier, active=True, description=None, url=""
+        id=project_id, name=identifier.title(), identifier=identifier, active=True, description=None
     )
     return ProjectRecord(summary=summary, to_detail=lambda: None, payload={})  # type: ignore[arg-type]
 

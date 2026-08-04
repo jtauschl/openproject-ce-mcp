@@ -40,7 +40,7 @@ async def test_list_all_sends_bounded_page_and_builds_records() -> None:
         return httpx.Response(200, json={"_embedded": {"elements": [_document_payload()]}}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxDocumentApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxDocumentApi(HttpxTransport(http_client))
         records, total = await api.list_all(offset=1, page_size=50)
 
     assert total == 1
@@ -61,7 +61,7 @@ async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxDocumentApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxDocumentApi(HttpxTransport(http_client))
         records, total = await api.list_all(offset=1, page_size=50)
 
     assert records == []
@@ -75,7 +75,7 @@ async def test_get_builds_record_with_detail_shaped_description_and_raw_project_
         return httpx.Response(200, json=_document_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxDocumentApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxDocumentApi(HttpxTransport(http_client))
         record = await api.get(1)
 
     assert record.summary.id == 1
@@ -84,7 +84,7 @@ async def test_get_builds_record_with_detail_shaped_description_and_raw_project_
     assert record.summary.description == "<user-content>Detailed document description content</user-content>"
     assert detail.description == "<user-content>Detailed document description content</user-content>"
     assert detail.attachment_count == 2
-    assert detail.attachments_url == f"{BASE_URL}/api/v3/documents/1/attachments"
+    assert not hasattr(detail, "attachments_url")
     assert record.project_link == {"href": "/api/v3/projects/6", "title": "Demo Project"}
 
 
@@ -98,7 +98,7 @@ async def test_get_summary_and_detail_apply_different_truncation_limits_to_same_
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxDocumentApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxDocumentApi(HttpxTransport(http_client))
         record = await api.get(1)
 
     detail = record.to_detail()
@@ -122,7 +122,7 @@ async def test_get_falls_back_to_html_when_raw_is_absent() -> None:
         return httpx.Response(200, json=payload, request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxDocumentApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxDocumentApi(HttpxTransport(http_client))
         record = await api.get(1)
 
     assert record.summary.description == "<user-content><p>HTML only content</p></user-content>"
@@ -136,7 +136,7 @@ async def test_commit_update_patches_and_returns_detail() -> None:
         return httpx.Response(200, json=_document_payload(), request=request)
 
     async with _client(handler) as http_client:
-        api = HttpxDocumentApi(HttpxTransport(http_client), base_url=BASE_URL)
+        api = HttpxDocumentApi(HttpxTransport(http_client))
         detail = await api.commit_update(1, {"title": "Updated"})
 
     assert detail.id == 1

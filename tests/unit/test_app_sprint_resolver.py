@@ -22,7 +22,6 @@ def _summary(sprint_id: int, name: str, *, defining_workspace_id: int | None = 1
         defining_workspace="Demo Project",
         created_at="2026-01-01T00:00:00Z",
         updated_at="2026-01-02T00:00:00Z",
-        url=f"{BASE_URL}/sprints/{sprint_id}",
     )
 
 

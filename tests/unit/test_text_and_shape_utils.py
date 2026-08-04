@@ -214,7 +214,6 @@ def test_normalize_project_description_and_status_explanation_are_delimited() ->
             "statusExplanation": {"raw": "on track"},
             "_links": {},
         },
-        base_url=settings.base_url,
         text_limit=settings.text_limit,
     )
 
@@ -230,7 +229,6 @@ def test_normalize_project_description_is_capped_at_list_context_default() -> No
 
     project = normalize_project(
         {"id": 1, "name": "Demo", "identifier": "demo", "description": {"raw": long_description}, "_links": {}},
-        base_url=settings.base_url,
         text_limit=settings.text_limit,
     )
 
@@ -278,7 +276,6 @@ def test_normalize_time_entry_comment_is_delimited() -> None:
 
     entry = normalize_time_entry_raw(
         {"id": 1, "comment": {"raw": "worked on it"}, "_links": {}},
-        base_url="https://op.example.com",
         text_limit=None,
     )
 
@@ -288,7 +285,6 @@ def test_normalize_time_entry_comment_is_delimited() -> None:
 def test_normalize_version_description_is_delimited() -> None:
     version = normalize_version(
         {"id": 1, "name": "1.0", "description": {"raw": "release notes"}, "_links": {}},
-        base_url="https://op.example.com",
     )
 
     assert version.description == "<user-content>release notes</user-content>"
@@ -302,7 +298,6 @@ def test_summary_cap_follows_text_limit_setting() -> None:
 
     summary = normalize_work_package_summary(
         {"id": 7, "subject": "Sample", "description": {"raw": "y" * 900}, "_links": {"project": {"title": "Demo"}}},
-        base_url=settings.base_url,
         text_limit=settings.text_limit,
     )
 
@@ -357,7 +352,6 @@ def test_work_package_summary_description_delimited():
                 "project": {"href": "/api/v3/projects/1", "title": "Demo"},
             },
         },
-        base_url=settings.base_url,
         text_limit=settings.text_limit,
     )
 
@@ -365,8 +359,6 @@ def test_work_package_summary_description_delimited():
 
 
 def test_work_package_detail_description_delimited():
-    settings = _base_settings()
-
     detail = normalize_work_package_detail(
         {
             "id": 456,
@@ -378,8 +370,6 @@ def test_work_package_detail_description_delimited():
                 "project": {"href": "/api/v3/projects/1", "title": "Demo"},
             },
         },
-        base_url=settings.base_url,
-        origin=_origin_from_url(settings.base_url),
     )
 
     assert detail.description == "<user-content>Detailed user content</user-content>"
@@ -424,7 +414,7 @@ def test_time_entry_comment_hidden_by_time_entry_scope_not_activity_scope():
             "activity": {"href": "/api/v3/time_entries/activities/1", "title": "Development"},
         },
     }
-    raw = normalize_time_entry_raw(payload, base_url="https://op.example.com", text_limit=None)
+    raw = normalize_time_entry_raw(payload, text_limit=None)
 
     def _service(settings) -> TimeEntryService:
         return TimeEntryService(
@@ -451,7 +441,6 @@ def test_time_entry_comment_hidden_by_time_entry_scope_not_activity_scope():
     assert time_entry_hidden.comment is None
 
 
-@pytest.mark.asyncio
 def test_delimit_user_content_handles_injection_attempt():
     """Test that content already containing delimiter tags gets double-wrapped (makes injection visible)."""
     from openproject_ce_mcp.app.adapters._text import delimit_user_content as _delimit_user_content
@@ -505,7 +494,6 @@ def test_work_package_subject_not_delimited():
                 "project": {"href": "/api/v3/projects/1", "title": "Demo"},
             },
         },
-        base_url=settings.base_url,
         text_limit=settings.text_limit,
     )
 
@@ -928,13 +916,12 @@ def test_normalize_work_package_summary_uses_date_field_for_milestones() -> None
         "_links": {"type": {"title": "Milestone"}},
     }
 
-    summary = normalize_work_package_summary(payload, base_url=settings.base_url, text_limit=settings.text_limit)
+    summary = normalize_work_package_summary(payload, text_limit=settings.text_limit)
     assert summary.start_date == "2026-08-17"
     assert summary.due_date == "2026-08-17"
 
 
 def test_normalize_work_package_detail_uses_date_field_for_milestones() -> None:
-    settings = make_settings()
     payload = {
         "id": 1,
         "subject": "Launch",
@@ -942,9 +929,7 @@ def test_normalize_work_package_detail_uses_date_field_for_milestones() -> None:
         "_links": {"type": {"title": "Milestone"}},
     }
 
-    detail = normalize_work_package_detail(
-        payload, base_url=settings.base_url, origin=_origin_from_url(settings.base_url)
-    )
+    detail = normalize_work_package_detail(payload)
     assert detail.start_date == "2026-08-17"
     assert detail.due_date == "2026-08-17"
 
@@ -964,7 +949,7 @@ def test_normalize_work_package_prefers_start_date_due_date_over_milestone_date_
         "_links": {"type": {"title": "Task"}},
     }
 
-    summary = normalize_work_package_summary(payload, base_url=settings.base_url, text_limit=settings.text_limit)
+    summary = normalize_work_package_summary(payload, text_limit=settings.text_limit)
     assert summary.start_date == "2026-08-01"
     assert summary.due_date == "2026-08-10"
 
@@ -986,7 +971,7 @@ def test_normalize_project_detail_builds_ancestors_from_links() -> None:
         },
     }
 
-    detail = normalize_project_detail(payload, base_url="https://op.example.com")
+    detail = normalize_project_detail(payload)
 
     assert detail.ancestors == [
         {"href": "/api/v3/projects/1", "title": "Root", "display_id": None},
@@ -1002,7 +987,7 @@ def test_normalize_project_detail_truncates_long_ancestor_chains() -> None:
     ancestors = [{"href": f"/api/v3/projects/{i}", "title": f"P{i}"} for i in range(PROJECT_ANCESTORS_LIMIT + 5)]
     payload = {"id": 1, "name": "Deep", "_links": {"ancestors": ancestors}}
 
-    detail = normalize_project_detail(payload, base_url="https://op.example.com")
+    detail = normalize_project_detail(payload)
 
     assert detail.ancestors is not None
     assert len(detail.ancestors) == PROJECT_ANCESTORS_LIMIT
@@ -1012,7 +997,7 @@ def test_normalize_project_detail_truncates_long_ancestor_chains() -> None:
 def test_normalize_project_detail_leaves_ancestors_none_when_absent() -> None:
     payload = {"id": 1, "name": "Top", "_links": {}}
 
-    detail = normalize_project_detail(payload, base_url="https://op.example.com")
+    detail = normalize_project_detail(payload)
 
     assert detail.ancestors is None
     assert detail.ancestors_truncated is False

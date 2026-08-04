@@ -13,7 +13,7 @@ configured origin is rejected BEFORE any authenticated request is made).
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import parse_qsl, urljoin, urlparse
+from urllib.parse import parse_qsl, urlparse
 
 from ...models import MembershipSummary
 from ..errors import OpenProjectServerError
@@ -41,12 +41,14 @@ def _normalize_validation_errors(value: Any) -> dict[str, str]:
     return normalized
 
 
-def normalize_membership(payload: dict[str, Any], *, base_url: str) -> MembershipSummary:
+def normalize_membership(payload: dict[str, Any]) -> MembershipSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
     Verbatim port of client.py's normalize_membership, minus the
     _apply_hidden_fields call -- hidden-field masking is a Policy decision the
-    Service applies after this returns, not something the adapter does.
+    Service applies after this returns, not something the adapter does. Also
+    drops the dead web `url` field: OpenProject has no bare `/memberships/:id`
+    show route at all (only nested user-scoped create/update/destroy).
     """
     links = payload.get("_links", {})
     roles = links.get("roles", [])
@@ -70,7 +72,6 @@ def normalize_membership(payload: dict[str, Any], *, base_url: str) -> Membershi
         ],
         can_update="update" in links,
         can_update_immediately="updateImmediately" in links,
-        url=urljoin(f"{base_url.rstrip('/')}/", f"memberships/{payload['id']}"),
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
     )
@@ -79,7 +80,6 @@ def normalize_membership(payload: dict[str, Any], *, base_url: str) -> Membershi
 class HttpxMembershipApi:
     def __init__(self, transport: Transport, *, base_url: str, api_prefix: str = "/api/v3/") -> None:
         self._transport = transport
-        self._base_url = base_url
         self._origin = _origin_from_url(base_url)
         self._api_prefix = api_prefix
 
@@ -106,7 +106,7 @@ class HttpxMembershipApi:
 
     def _record(self, payload: dict[str, Any]) -> MembershipRecord:
         return MembershipRecord(
-            summary=normalize_membership(payload, base_url=self._base_url),
+            summary=normalize_membership(payload),
             project_link=payload.get("_links", {}).get("project"),
         )
 
@@ -139,11 +139,11 @@ class HttpxMembershipApi:
 
     async def commit_create(self, payload: dict[str, Any]) -> MembershipSummary:
         response = await self._transport.post_json("memberships", json_body=payload)
-        return normalize_membership(response, base_url=self._base_url)
+        return normalize_membership(response)
 
     async def commit_update(self, membership_id: int, payload: dict[str, Any]) -> MembershipSummary:
         response = await self._transport.patch_json(f"memberships/{membership_id}", json_body=payload)
-        return normalize_membership(response, base_url=self._base_url)
+        return normalize_membership(response)
 
     async def delete(self, membership_id: int) -> None:
         await self._transport.delete(f"memberships/{membership_id}")

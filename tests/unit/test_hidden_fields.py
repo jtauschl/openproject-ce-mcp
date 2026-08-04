@@ -57,8 +57,7 @@ async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
                 "identifier": "demo",
                 "description": {"raw": "secret"},
                 "_links": {},
-            },
-            base_url=settings.base_url,
+            }
         ),
         settings=settings,
     )
@@ -74,9 +73,7 @@ async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
                     "activities": {"href": "/api/v3/work_packages/42/activities"},
                     "relations": {"href": "/api/v3/work_packages/42/relations"},
                 },
-            },
-            base_url=settings.base_url,
-            origin=_origin_from_url(settings.base_url),
+            }
         ),
         settings=settings,
     )
@@ -140,22 +137,21 @@ async def test_hidden_fields_support_wildcards_for_principal_reads() -> None:
     principal = hidden_fields.apply_hidden_fields(
         "principal",
         normalize_principal(
-            {"id": 5, "_type": "User", "name": "Alice", "login": "alice", "email": "alice@example.com"},
-            base_url="https://op.example.com",
+            {"id": 5, "_type": "User", "name": "Alice", "login": "alice", "email": "alice@example.com"}
         ),
         settings=client.settings,
     )
 
     # Hidden fields are tagged (not nulled). The wildcard patterns match
-    # name/email/url; the values remain on the dataclass, and the serialization seam
-    # removes exactly these keys from the response.
-    assert principal._hidden_keys == frozenset({"name", "email", "url"})
+    # name/email ("url" matches nothing -- PrincipalSummary has no url field);
+    # the values remain on the dataclass, and the serialization seam removes
+    # exactly these keys from the response.
+    assert principal._hidden_keys == frozenset({"name", "email"})
     assert principal.name == "Alice"  # value preserved on the dataclass
     assert principal.login == "alice"
     serialized = _to_payload(principal)
     assert "name" not in serialized
     assert "email" not in serialized
-    assert "url" not in serialized
     assert serialized["login"] == "alice"
 
     await client.aclose()
@@ -425,8 +421,7 @@ def test_hidden_sprint_fields_are_tagged_and_dropped_from_payload() -> None:
                     }
                 },
                 "_links": {},
-            },
-            base_url=settings.base_url,
+            }
         ),
         settings=settings,
     )
@@ -464,9 +459,7 @@ async def test_hidden_work_package_scheduling_fields_are_tagged_and_dropped_from
 
     summary = hidden_fields.apply_hidden_fields(
         "work_package",
-        normalize_work_package_summary(
-            payload, base_url=client.settings.base_url, text_limit=client.settings.text_limit
-        ),
+        normalize_work_package_summary(payload, text_limit=client.settings.text_limit),
         settings=client.settings,
     )
     assert summary._hidden_keys == frozenset({"schedule_manually"})
@@ -483,9 +476,7 @@ async def test_hidden_work_package_scheduling_fields_are_tagged_and_dropped_from
 
     detail = hidden_fields.apply_hidden_fields(
         "work_package",
-        normalize_work_package_detail(
-            payload, base_url=settings.base_url, origin=_origin_from_url(settings.base_url), text_limit=None
-        ),
+        normalize_work_package_detail(payload, text_limit=None),
         settings=settings,
     )
     assert detail._hidden_keys == frozenset({"schedule_manually"})
@@ -516,8 +507,7 @@ async def test_hidden_status_fields_are_tagged_and_dropped_from_payload() -> Non
             "isReadonly": False,
             "defaultDoneRatio": 30,
             "excludedFromTotals": False,
-        },
-        api_prefix="/api/v3/",
+        }
     )
     status = hidden_fields.apply_hidden_fields("status", status, settings=settings)
 
@@ -547,8 +537,7 @@ async def test_hidden_type_fields_are_tagged_and_dropped_from_payload() -> None:
             "isMilestone": False,
             "createdAt": "2026-01-01T00:00:00Z",
             "updatedAt": "2026-06-01T00:00:00Z",
-        },
-        base_url="https://op.example.com",
+        }
     )
     work_package_type = hidden_fields.apply_hidden_fields("type", work_package_type, settings=settings)
 
@@ -579,18 +568,14 @@ def test_hidden_version_fields_are_tagged_and_dropped_from_payload() -> None:
         "_links": {},
     }
 
-    summary = hidden_fields.apply_hidden_fields(
-        "version", normalize_version(payload, base_url=settings.base_url), settings=settings
-    )
+    summary = hidden_fields.apply_hidden_fields("version", normalize_version(payload), settings=settings)
     assert summary._hidden_keys == frozenset({"updated_at"})
     assert summary.updated_at == "2026-06-01T00:00:00Z"  # preserved on the dataclass
     assert summary.created_at == "2026-01-01T00:00:00Z"
     serialized = _to_payload(summary)
     assert "updated_at" not in serialized
 
-    detail = hidden_fields.apply_hidden_fields(
-        "version", normalize_version_detail(payload, base_url=settings.base_url), settings=settings
-    )
+    detail = hidden_fields.apply_hidden_fields("version", normalize_version_detail(payload), settings=settings)
     assert detail._hidden_keys == frozenset({"updated_at"})
     assert detail.created_at == "2026-01-01T00:00:00Z"
 
@@ -679,8 +664,7 @@ def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() -> None:
                 "createdAt": "2026-01-01T00:00:00Z",
                 "updatedAt": "2026-06-01T00:00:00Z",
                 "_links": {},
-            },
-            base_url=settings.base_url,
+            }
         ),
         settings=settings,
     )
@@ -709,7 +693,6 @@ def test_hidden_membership_fields_are_tagged_and_dropped_from_payload() -> None:
 # (test_project_name_hidden_by_notification_scope_not_project_scope).
 
 
-@pytest.mark.asyncio
 # Emoji Reactions' hidden-field-masking coverage lives in
 # tests/unit/test_app_httpx_emoji_reaction_api.py (normalize_emoji_reaction's
 # pure HAL->model shape) and tests/unit/test_app_emoji_reaction_service.py
@@ -785,8 +768,7 @@ async def test_hidden_project_favorited_field_is_tagged_and_dropped_from_payload
                 "identifier": "demo",
                 "favorited": True,
                 "_links": {},
-            },
-            base_url=settings.base_url,
+            }
         ),
         settings=settings,
     )

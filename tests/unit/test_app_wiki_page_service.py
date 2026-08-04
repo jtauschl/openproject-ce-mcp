@@ -20,8 +20,6 @@ def _detail(wiki_page_id: int = 20, *, project_id: int = 6, project: str = "Demo
         project_id=project_id,
         project=project,
         content="<user-content>Wiki page content</user-content>",
-        attachments_url=None,
-        url=f"{BASE_URL}/wiki_pages/{wiki_page_id}",
     )
 
 
