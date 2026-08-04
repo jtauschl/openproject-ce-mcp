@@ -5182,22 +5182,29 @@ class OpenProjectClient:
         extra_params: dict[str, str] = {}
         if scope is not None:
             extra_params["filters"] = _json_param([{"scope": {"operator": "=", "values": [scope]}}])
+
+        async def _grid_item_allowed(item: dict[str, Any]) -> bool:
+            return self._grid_payload_allowed(item)
+
         # Regression found via a bidirectional bugfix audit against
         # release/0.4.0: a single bounded fetch capped at max_results
         # silently hid any grid beyond that server-side cap.
-        elements = await self._fetch_all_pages("grids", extra_params=extra_params)
-        filtered = [self.normalize_grid(item) for item in elements if self._grid_payload_allowed(item)]
-        total = len(filtered)
-        start = (offset - 1) * effective_limit
-        end = start + effective_limit
-        results = filtered[start:end]
+        raw_items, truncated = await self._scan_and_paginate(
+            "grids",
+            item_allowed=_grid_item_allowed,
+            offset=offset,
+            limit=effective_limit,
+            params_extra=extra_params,
+        )
+        results = [self.normalize_grid(item) for item in raw_items]
+        total = len(results)
         return GridListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=len(results),
-            next_offset=offset + 1 if end < total else None,
-            truncated=end < total,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
             results=results,
         )
 

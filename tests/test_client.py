@@ -9371,12 +9371,12 @@ async def test_list_grids_filters_disallowed_project_scope() -> None:
 async def test_list_grids_paginates_client_side() -> None:
     # Regression test: list_grids previously sent no offset/pageSize at all and
     # returned every matching grid in one unbounded call. Fixed to clamp and
-    # paginate like every sibling list_* method.
+    # scan-and-paginate like every sibling list_* method (OPM-373 Phase 5).
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/grids" and request.method == "GET":
             assert request.url.params.get("offset") == "1"
-            # list_grids now walks every server page via _fetch_all_pages,
-            # which pages at settings.max_page_size (not settings.max_results).
+            # list_grids now scans server pages via _scan_and_paginate, which
+            # pages at settings.max_page_size (not settings.max_results).
             assert request.url.params.get("pageSize") == "50"
             return httpx.Response(
                 200,
@@ -9395,9 +9395,44 @@ async def test_list_grids_paginates_client_side() -> None:
 
     assert [g.id for g in result.results] == [1, 2]
     assert result.count == 2
-    assert result.total == 5
+    # total is a lower bound (len(results) on this page), not an exact count of
+    # the full collection -- OPM-373 Phase 5's total-contract change, same
+    # convention as list_relations/list_notifications/list_projects/list_sprints.
+    assert result.total == 2
     assert result.next_offset == 2
     assert result.truncated is True
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_grids_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
+    """Regression (OPM-373 Phase 5): a naive walk-then-slice/scan implementation
+    can set truncated=True as soon as `limit` allowed items are collected,
+    without checking whether a matching grid actually exists beyond that
+    window. Here exactly 1 allowed grid exists (limit=1) and nothing follows
+    it -- truncated must be False."""
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/grids" and request.method == "GET":
+            offset = request.url.params["offset"]
+            requested_offsets.append(offset)
+            if offset == "1":
+                return httpx.Response(
+                    200, json={"_embedded": {"elements": [_make_grid_payload(grid_id=1)]}}, request=request
+                )
+            raise AssertionError(f"Unexpected offset: {offset}")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _make_grid_settings()
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    result = await client.list_grids(limit=1)
+
+    assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
+    assert [g.id for g in result.results] == [1]
+    assert result.truncated is False
+    assert result.next_offset is None
 
     await client.aclose()
 
