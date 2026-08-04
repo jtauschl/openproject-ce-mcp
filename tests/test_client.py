@@ -14771,7 +14771,10 @@ async def test_list_sprints_backfills_after_allowlist_filter() -> None:
 
     assert [s.id for s in page.results] == [2, 4]
     assert page.count == 2
-    assert page.total == 3
+    # total is a lower bound (len(results) on this page), not an exact count of
+    # the full allowlist-filtered collection -- OPM-373 Phase 5's total-contract
+    # change, same convention as list_relations/list_notifications.
+    assert page.total == 2
     assert page.truncated is True
     assert page.next_offset == 2
 
@@ -14839,9 +14842,110 @@ async def test_list_project_sprints_backfills_after_allowlist_filter() -> None:
 
     assert [s.id for s in page.results] == [2, 4]
     assert page.count == 2
-    assert page.total == 3
+    # total is a lower bound (len(results) on this page), not an exact count of
+    # the full allowlist-filtered collection -- OPM-373 Phase 5's total-contract
+    # change, same convention as list_relations/list_notifications.
+    assert page.total == 2
     assert page.truncated is True
     assert page.next_offset == 2
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_sprints_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
+    """Regression (OPM-373 Phase 5): the old walk-then-slice implementation set
+    truncated based on comparing the slice end against the fully-filtered total,
+    which happened to be correct there -- but the new scan-and-paginate helper
+    must independently get this right too. Exactly 1 allowed sprint exists
+    (limit=1) and nothing follows it -- truncated must be False."""
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
+
+    def sprint_item(item_id: int) -> dict:
+        return {
+            "_type": "Sprint",
+            "id": item_id,
+            "name": f"Sprint {item_id}",
+            "_embedded": {
+                "definingWorkspace": {
+                    "_type": "Project",
+                    "id": 7,
+                    "identifier": "demo",
+                    "name": "Demo",
+                    "_links": {"self": {"href": "/api/v3/projects/7", "title": "Demo"}},
+                }
+            },
+            "_links": {},
+        }
+
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/sprints" and request.method == "GET":
+            offset = request.url.params["offset"]
+            requested_offsets.append(offset)
+            if offset == "1":
+                return httpx.Response(200, json={"_embedded": {"elements": [sprint_item(1)]}}, request=request)
+            raise AssertionError(f"Unexpected offset: {offset}")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    page = await client.list_sprints(limit=1)
+
+    assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
+    assert [s.id for s in page.results] == [1]
+    assert page.truncated is False
+    assert page.next_offset is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_list_project_sprints_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
+    """Same exact-limit regression as list_sprints above, for the project-scoped variant."""
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
+
+    def sprint_item(item_id: int) -> dict:
+        return {
+            "_type": "Sprint",
+            "id": item_id,
+            "name": f"Sprint {item_id}",
+            "_embedded": {
+                "definingWorkspace": {
+                    "_type": "Project",
+                    "id": 7,
+                    "identifier": "demo",
+                    "name": "Demo",
+                    "_links": {"self": {"href": "/api/v3/projects/7", "title": "Demo"}},
+                }
+            },
+            "_links": {},
+        }
+
+    requested_offsets: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 7, "identifier": "demo", "name": "Demo", "active": True},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/7/sprints" and request.method == "GET":
+            offset = request.url.params["offset"]
+            requested_offsets.append(offset)
+            if offset == "1":
+                return httpx.Response(200, json={"_embedded": {"elements": [sprint_item(1)]}}, request=request)
+            raise AssertionError(f"Unexpected offset: {offset}")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+    page = await client.list_project_sprints("demo", limit=1)
+
+    assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
+    assert [s.id for s in page.results] == [1]
+    assert page.truncated is False
+    assert page.next_offset is None
 
     await client.aclose()
 

@@ -3447,29 +3447,32 @@ class OpenProjectClient:
     ) -> SprintListResult:
         self._ensure_read_enabled("project")
         effective_limit = self._resolve_limit(limit)
+
+        async def _sprint_item_allowed(item: dict[str, Any]) -> bool:
+            return self._sprint_payload_allowed(item)
+
         # Results are always filtered client-side against the allowlist (sprints can
-        # be shared cross-project via Backlogs sharing), so a full walk of every
-        # server page is required -- a single bounded fetch would silently hide any
+        # be shared cross-project via Backlogs sharing), so a full scan of server
+        # pages is required -- a single bounded fetch would silently hide any
         # sprint beyond that cap.
         try:
-            elements = await self._fetch_all_pages("sprints")
+            raw_items, truncated = await self._scan_and_paginate(
+                "sprints", item_allowed=_sprint_item_allowed, offset=offset, limit=effective_limit
+            )
         except NotFoundError as exc:
             raise NotFoundError(
                 "OpenProject sprints require the Backlogs module and OpenProject 17.3 or newer."
             ) from exc
-        results = [self.normalize_sprint(item) for item in elements if self._sprint_payload_allowed(item)]
+        results = [self.normalize_sprint(item) for item in raw_items]
         total = len(results)
-        start = (offset - 1) * effective_limit
-        end = start + effective_limit
-        page = results[start:end]
         return SprintListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=len(page),
-            next_offset=offset + 1 if end < total else None,
-            truncated=end < total,
-            results=page,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
+            results=results,
         )
 
     async def list_project_sprints(
@@ -3483,31 +3486,37 @@ class OpenProjectClient:
         project_payload = await self._get_project_payload(project)
         project_id = int(project_payload["id"])
         effective_limit = self._resolve_limit(limit)
+
+        async def _sprint_item_allowed(item: dict[str, Any]) -> bool:
+            return self._sprint_payload_allowed(item)
+
         # Even though this is project-scoped, results are still filtered client-side
         # (a sprint shared into this project can be *defined* by a different, possibly
-        # disallowed project), so a full walk of every server page is required -- a
+        # disallowed project), so a full scan of server pages is required -- a
         # single bounded fetch would silently hide any sprint beyond that cap, which
         # also broke _resolve_sprint_id's name lookup for a project with more sprints
         # than the cap.
         try:
-            elements = await self._fetch_all_pages(f"projects/{project_id}/sprints")
+            raw_items, truncated = await self._scan_and_paginate(
+                f"projects/{project_id}/sprints",
+                item_allowed=_sprint_item_allowed,
+                offset=offset,
+                limit=effective_limit,
+            )
         except NotFoundError as exc:
             raise NotFoundError(
                 "OpenProject project sprints require the Backlogs module and OpenProject 17.3 or newer."
             ) from exc
-        results = [self.normalize_sprint(item) for item in elements if self._sprint_payload_allowed(item)]
+        results = [self.normalize_sprint(item) for item in raw_items]
         total = len(results)
-        start = (offset - 1) * effective_limit
-        end = start + effective_limit
-        page = results[start:end]
         return SprintListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=len(page),
-            next_offset=offset + 1 if end < total else None,
-            truncated=end < total,
-            results=page,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
+            results=results,
         )
 
     async def get_sprint(self, sprint_id: int) -> SprintDetail:
