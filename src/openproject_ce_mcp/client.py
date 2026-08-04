@@ -3402,35 +3402,59 @@ class OpenProjectClient:
             # fetch would over-fetch (return every version, not just the requested
             # page) while reporting misleading pagination metadata. Walk (a no-op
             # single request, since the server already returns everything) and slice
-            # client-side, same as the global/search branches below.
+            # client-side. Not migrated to _scan_and_paginate: there is no server-load
+            # problem here to fix (the server already returns everything in one call
+            # regardless of offset/pageSize), unlike the global branch below.
             project_payload = await self._get_project_payload(project)
             project_id = int(project_payload["id"])
             elements = await self._fetch_all_pages(f"projects/{project_id}/versions")
             results = [self.normalize_version(item) for item in elements]
-        else:
-            # The global endpoint has no project filter, so results are filtered
-            # client-side against OPENPROJECT_READ_PROJECTS -- a full walk of every
-            # server page is required, or any version beyond a single bounded
-            # fetch's cap would be silently hidden.
-            elements = await self._fetch_all_pages("versions")
-            results = [self.normalize_version(item) for item in elements if self._version_payload_allowed(item)]
+            if search:
+                search_key = search.casefold()
+                results = [item for item in results if search_key in (item.name or "").casefold()]
 
-        if search:
-            search_key = search.casefold()
-            results = [item for item in results if search_key in (item.name or "").casefold()]
+            total = len(results)
+            start = (offset - 1) * effective_limit
+            end = start + effective_limit
+            page = results[start:end]
+            return VersionListResult(
+                offset=offset,
+                limit=effective_limit,
+                total=total,
+                count=len(page),
+                next_offset=offset + 1 if end < total else None,
+                truncated=end < total,
+                results=page,
+            )
 
+        # The global endpoint has no project filter, so results are filtered
+        # client-side against OPENPROJECT_READ_PROJECTS -- a full scan of server
+        # pages is required, or any version beyond a single bounded fetch's cap
+        # would be silently hidden.
+        async def _version_item_allowed(item: dict[str, Any]) -> bool:
+            if not self._version_payload_allowed(item):
+                return False
+            if search:
+                # search must match the NORMALIZED name (trimmed, with the
+                # "Version {id}" fallback normalize_version applies), not the
+                # raw payload field -- OPM-373 Phase 5 plan review finding.
+                normalized = self.normalize_version(item)
+                return search.casefold() in (normalized.name or "").casefold()
+            return True
+
+        raw_items, truncated = await self._scan_and_paginate(
+            "versions", item_allowed=_version_item_allowed, offset=offset, limit=effective_limit
+        )
+        results = [self.normalize_version(item) for item in raw_items]
         total = len(results)
-        start = (offset - 1) * effective_limit
-        end = start + effective_limit
-        page = results[start:end]
         return VersionListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
-            count=len(page),
-            next_offset=offset + 1 if end < total else None,
-            truncated=end < total,
-            results=page,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
+            results=results,
         )
 
     async def get_version(self, version_id: int) -> VersionDetail:
