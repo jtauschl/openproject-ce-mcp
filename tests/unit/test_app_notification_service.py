@@ -79,17 +79,54 @@ def _work_package_project_allowed_from(allowed_hrefs: set[str]):
     return check
 
 
+def _work_package_project_allowed_bulk_from(allowed_hrefs: set[str], *, errors: dict[str, Exception] | None = None):
+    """Fake `WorkPackageProjectAllowedBulkCheck` (OPM-379/F3): mirrors
+    `WorkPackageResolver.project_links_allowed`'s dedupe/cache/only-bools-
+    cached contract closely enough for Service-level tests. `calls` records
+    each bulk invocation's deduped href list (in order) -- concurrency itself
+    is exercised at the resolver level, not re-proven here. `errors` lets a
+    test force a specific href's outcome to be a captured Exception instead
+    of a bool, exactly like the real resolver would produce for a failed
+    lookup -- a failed href is deliberately never cached, same as the real
+    resolver."""
+    calls: list[list[str]] = []
+    error_map = errors or {}
+
+    async def bulk(hrefs, *, context) -> dict[str, bool | Exception]:
+        unique = list(dict.fromkeys(hrefs))
+        calls.append(unique)
+        outcomes: dict[str, bool | Exception] = {}
+        for href in unique:
+            cached = context.get(href)
+            if cached is not None:
+                outcomes[href] = cached
+                continue
+            if href in error_map:
+                outcomes[href] = error_map[href]
+                continue
+            allowed = href in allowed_hrefs
+            context.set(href, allowed)
+            outcomes[href] = allowed
+        return outcomes
+
+    bulk.calls = calls  # type: ignore[attr-defined]
+    return bulk
+
+
 def _service(
     *,
     api: _FakeNotificationApi | None = None,
     settings=None,
     work_package_project_allowed=None,
+    work_package_project_allowed_bulk=None,
 ) -> NotificationService:
     return NotificationService(
         api=api or _FakeNotificationApi(),
         settings=settings or dataclasses.replace(make_settings(), enable_personal_read=True),
         project_id_to_identifier=PROJECT_ID_TO_IDENTIFIER,
         work_package_project_allowed=work_package_project_allowed or _work_package_project_allowed_from(set()),
+        work_package_project_allowed_bulk=work_package_project_allowed_bulk
+        or _work_package_project_allowed_bulk_from(set()),
     )
 
 
@@ -158,13 +195,13 @@ async def test_list_all_resolves_work_package_resource_link_without_project_link
     record = _record(1, resource_link={"href": "/api/v3/work_packages/9"})
     api = _FakeNotificationApi(records=[record])
     settings = dataclasses.replace(make_settings(), enable_personal_read=True, read_projects=("demo",))
-    check = _work_package_project_allowed_from(set())  # denied
-    service = _service(api=api, settings=settings, work_package_project_allowed=check)
+    check = _work_package_project_allowed_bulk_from(set())  # denied
+    service = _service(api=api, settings=settings, work_package_project_allowed_bulk=check)
 
     result = await service.list_all()
 
     assert result.count == 0
-    assert check.calls == ["/api/v3/work_packages/9"]  # type: ignore[attr-defined]
+    assert check.calls == [["/api/v3/work_packages/9"]]  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -176,13 +213,15 @@ async def test_list_all_resolves_multiple_distinct_work_packages_in_order() -> N
     denied = _record(2, resource_link={"href": "/api/v3/work_packages/2"})
     api = _FakeNotificationApi(records=[allowed, denied])
     settings = dataclasses.replace(make_settings(), enable_personal_read=True, read_projects=("demo",))
-    check = _work_package_project_allowed_from({"/api/v3/work_packages/1"})
-    service = _service(api=api, settings=settings, work_package_project_allowed=check)
+    check = _work_package_project_allowed_bulk_from({"/api/v3/work_packages/1"})
+    service = _service(api=api, settings=settings, work_package_project_allowed_bulk=check)
 
     result = await service.list_all()
 
     assert [n.id for n in result.results] == [1]
-    assert check.calls == ["/api/v3/work_packages/1", "/api/v3/work_packages/2"]  # type: ignore[attr-defined]
+    # Both notifications fit on one server page -- the bulk hook fires once
+    # with both hrefs.
+    assert check.calls == [["/api/v3/work_packages/1", "/api/v3/work_packages/2"]]  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -203,8 +242,8 @@ async def test_list_all_never_normalizes_a_record_filtered_out_by_the_allowlist(
 async def test_list_all_skips_filtering_under_wide_open_scope() -> None:
     api = _FakeNotificationApi(records=[_record(1), _record(2)])
     settings = dataclasses.replace(make_settings(), enable_personal_read=True, read_projects=("*",))
-    check = _work_package_project_allowed_from(set())
-    service = _service(api=api, settings=settings, work_package_project_allowed=check)
+    check = _work_package_project_allowed_bulk_from(set())
+    service = _service(api=api, settings=settings, work_package_project_allowed_bulk=check)
 
     result = await service.list_all()
 
@@ -281,6 +320,95 @@ async def test_list_all_reports_not_truncated_under_restrictive_scope_when_genui
     assert result.count == 1
     assert result.truncated is False
     assert result.next_offset is None
+
+
+@pytest.mark.asyncio
+async def test_list_all_not_truncated_when_exactly_limit_allowed_matches_exist_under_restrictive_scope() -> None:
+    """Regression test for OPM-379/F3 Korrektur 6c: `_rescan_and_skip`
+    previously set `truncated=True` as soon as `len(results) >= limit` was
+    reached MID-PAGE, WITHOUT the `limit + 1` lookahead every sibling scan
+    helper (`fetch_bounded_and_paginate`/`scan_and_paginate`/
+    `scan_records_and_paginate`) already uses to confirm a genuine next match
+    exists beyond the requested window -- a false positive whenever a page
+    happened to end exactly at the limit-th allowed record, WITHOUT ever
+    checking whether a further server page had more. Here the first page has
+    exactly `limit`(=2) allowed records, and a second (now-required lookahead)
+    page is empty/exhausted -- the pre-fix code would have set
+    truncated=True right after page 1 and NEVER issued the page-2 request at
+    all; the fixed code must fetch page 2 to confirm exhaustion, mirroring
+    the sibling `..._not_truncated_when_exactly_limit_allowed_matches_exist`
+    tests elsewhere in this test suite (e.g. test_bounded_fetch_collector.py,
+    test_app_document_service.py, test_app_news_service.py)."""
+    allowed_1 = _record(1, project_link={"href": "/api/v3/projects/1", "title": "Demo"})
+    allowed_2 = _record(2, project_link={"href": "/api/v3/projects/1", "title": "Demo"})
+    api = _FakePaginatedNotificationApi(pages=[[allowed_1, allowed_2], []])
+    settings = dataclasses.replace(make_settings(), enable_personal_read=True, read_projects=("demo",))
+    service = _service(api=api, settings=settings)
+
+    result = await service.list_all(limit=2)
+
+    assert result.count == 2
+    assert [n.id for n in result.results] == [1, 2]
+    assert result.truncated is False
+    assert result.next_offset is None
+    # The lookahead page MUST have been fetched -- the pre-fix code stopped
+    # (and set truncated=True) right after page 1, without ever issuing this
+    # second request.
+    assert len(api.list_all_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_all_raises_exception_for_a_record_inside_the_skip_window() -> None:
+    """Regression test: a record whose allowlist check fails MUST still
+    raise even when it falls inside the (offset-1)*limit skip window -- the
+    skip counter only skips already-confirmed ALLOWED records, it does not
+    skip performing the check itself, so the old one-at-a-time control flow
+    would have awaited (and propagated a failure for) every record up to and
+    including the (limit+1)-th allowed one, not just the ones actually kept
+    in the returned page. A 2nd-round Codex review caught this: an earlier
+    draft of the fix wrongly treated any failure inside the skip window as
+    "not a match" and silently continued instead of raising."""
+    failing = _record(1, resource_link={"href": "/api/v3/work_packages/1"})
+    kept = _record(2, resource_link={"href": "/api/v3/work_packages/2"})
+    api = _FakeNotificationApi(records=[failing, kept])
+    settings = dataclasses.replace(make_settings(), enable_personal_read=True, read_projects=("demo",))
+    check = _work_package_project_allowed_bulk_from(
+        {"/api/v3/work_packages/2"},
+        errors={"/api/v3/work_packages/1": RuntimeError("transient failure inside the skip window")},
+    )
+    service = _service(api=api, settings=settings, work_package_project_allowed_bulk=check)
+
+    # offset=2, limit=1 -> skip_count = (2-1)*1 = 1, so the first allowed
+    # record found would be skipped, not the first record in raw order --
+    # `failing` is the record actually inside that skip window here.
+    with pytest.raises(RuntimeError, match="transient failure inside the skip window"):
+        await service.list_all(offset=2, limit=1)
+
+
+@pytest.mark.asyncio
+async def test_list_all_raises_exception_still_within_the_limit_plus_one_lookahead() -> None:
+    """Regression test: a record whose allowlist check fails while
+    `len(results) == limit` (i.e. the loop is still searching for the
+    (limit+1)-th confirmed match, per `while len(results) <= limit`) MUST
+    still raise -- only records the loop never reaches AFTER the (limit+1)-th
+    allowed record is actually found and appended (the `break` further down)
+    are exempt. An earlier draft of the fix wrongly swallowed any failure
+    once `len(results) >= limit`, which is one record too early."""
+    kept = _record(1, resource_link={"href": "/api/v3/work_packages/1"})
+    failing = _record(2, resource_link={"href": "/api/v3/work_packages/2"})
+    api = _FakeNotificationApi(records=[kept, failing])
+    settings = dataclasses.replace(make_settings(), enable_personal_read=True, read_projects=("demo",))
+    check = _work_package_project_allowed_bulk_from(
+        {"/api/v3/work_packages/1"},
+        errors={"/api/v3/work_packages/2": RuntimeError("failure still inside the lookahead search")},
+    )
+    service = _service(api=api, settings=settings, work_package_project_allowed_bulk=check)
+
+    # limit=1: after `kept` is appended, len(results) == 1 == limit -- the
+    # loop is still searching for the (limit+1)-th match, so `failing`'s
+    # outcome must still be consulted (and raised), not silently discarded.
+    with pytest.raises(RuntimeError, match="failure still inside the lookahead search"):
+        await service.list_all(limit=1)
 
 
 class _FakePaginatedNotificationApi:

@@ -156,6 +156,33 @@ def _work_package_project_allowed_from(allowed_hrefs: set[str]):
     return check
 
 
+def _work_package_project_allowed_bulk_from(allowed_hrefs: set[str]):
+    """Fake `WorkPackageProjectAllowedBulkCheck` (OPM-379/F3): mirrors
+    `WorkPackageResolver.project_links_allowed`'s dedupe/cache/only-bools-
+    cached contract closely enough for Service-level tests. `calls` records
+    each bulk invocation's deduped href list (in order), for tests that need
+    to assert the Service resolved the right set of hrefs -- concurrency
+    itself is exercised at the resolver level, not re-proven here."""
+    calls: list[list[str]] = []
+
+    async def bulk(hrefs, *, context) -> dict[str, bool | Exception]:
+        unique = list(dict.fromkeys(hrefs))
+        calls.append(unique)
+        outcomes: dict[str, bool | Exception] = {}
+        for href in unique:
+            cached = context.get(href)
+            if cached is not None:
+                outcomes[href] = cached
+                continue
+            allowed = href in allowed_hrefs
+            context.set(href, allowed)
+            outcomes[href] = allowed
+        return outcomes
+
+    bulk.calls = calls  # type: ignore[attr-defined]
+    return bulk
+
+
 def _service(
     *,
     api: _FakeReminderApi | None = None,
@@ -163,6 +190,7 @@ def _service(
     settings=None,
     resolve_work_package_id=None,
     work_package_project_allowed=None,
+    work_package_project_allowed_bulk=None,
 ) -> ReminderService:
     return ReminderService(
         api=api or _FakeReminderApi(),
@@ -172,6 +200,8 @@ def _service(
         resolve_work_package_id=resolve_work_package_id or _resolve_work_package_id_ok(),
         work_package_project_allowed=work_package_project_allowed
         or _work_package_project_allowed_from({"/api/v3/work_packages/42"}),
+        work_package_project_allowed_bulk=work_package_project_allowed_bulk
+        or _work_package_project_allowed_bulk_from({"/api/v3/work_packages/42"}),
     )
 
 
@@ -197,14 +227,15 @@ async def test_list_all_filters_by_read_projects_via_work_package() -> None:
     denied = _raw(2, remindable_href="/api/v3/work_packages/2")
     api = _FakeReminderApi(raw_elements=[allowed, denied])
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
-    check = _work_package_project_allowed_from({"/api/v3/work_packages/1"})
-    service = _service(api=api, settings=settings, work_package_project_allowed=check)
+    check = _work_package_project_allowed_bulk_from({"/api/v3/work_packages/1"})
+    service = _service(api=api, settings=settings, work_package_project_allowed_bulk=check)
 
     result = await service.list_all()
 
     assert result.count == 1
     assert result.results[0].id == 1
-    assert check.calls == ["/api/v3/work_packages/1", "/api/v3/work_packages/2"]  # type: ignore[attr-defined]
+    assert len(check.calls) == 1, "both reminders fit on one server page -- the bulk hook must fire exactly once"
+    assert set(check.calls[0]) == {"/api/v3/work_packages/1", "/api/v3/work_packages/2"}  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -220,8 +251,8 @@ async def test_list_all_never_normalizes_a_record_filtered_out_by_the_allowlist(
     denied = _record_that_crashes_if_normalized(2, remindable_href="/api/v3/work_packages/2")
     api = _FakeReminderApi(raw_elements=[allowed, denied])
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
-    check = _work_package_project_allowed_from({"/api/v3/work_packages/1"})
-    service = _service(api=api, settings=settings, work_package_project_allowed=check)
+    check = _work_package_project_allowed_bulk_from({"/api/v3/work_packages/1"})
+    service = _service(api=api, settings=settings, work_package_project_allowed_bulk=check)
 
     result = await service.list_all()
 
@@ -234,12 +265,14 @@ async def test_list_all_skips_records_with_no_remindable_link() -> None:
     no_link = _raw(1, remindable_href=None)
     api = _FakeReminderApi(raw_elements=[no_link])
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
-    check = _work_package_project_allowed_from(set())
-    service = _service(api=api, settings=settings, work_package_project_allowed=check)
+    check = _work_package_project_allowed_bulk_from(set())
+    service = _service(api=api, settings=settings, work_package_project_allowed_bulk=check)
 
     result = await service.list_all()
 
     assert result.count == 0
+    # No remindable href to resolve at all -- the bulk hook must not even be
+    # called with an empty href list.
     assert check.calls == []  # type: ignore[attr-defined]
 
 
@@ -247,8 +280,8 @@ async def test_list_all_skips_records_with_no_remindable_link() -> None:
 async def test_list_all_skips_filtering_under_wide_open_scope() -> None:
     api = _FakeReminderApi()
     settings = dataclasses.replace(make_settings(), read_projects=("*",))
-    check = _work_package_project_allowed_from(set())
-    service = _service(api=api, settings=settings, work_package_project_allowed=check)
+    check = _work_package_project_allowed_bulk_from(set())
+    service = _service(api=api, settings=settings, work_package_project_allowed_bulk=check)
 
     result = await service.list_all()
 

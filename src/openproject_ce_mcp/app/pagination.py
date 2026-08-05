@@ -87,6 +87,7 @@ async def fetch_bounded_and_paginate(
     server_page_size: int,
     offset: int,
     limit: int,
+    item_allowed_bulk: Callable[[list[dict[str, Any]]], Awaitable[list[bool | Exception]]] | None = None,
 ) -> tuple[list[_T], int, int | None, bool]:
     """Scan server pages, normalize + filter the raw elements, and stop as
     soon as `limit + 1` allowed items are confirmed (or the collection is
@@ -127,6 +128,30 @@ async def fetch_bounded_and_paginate(
     forever, re-fetching the same full page. Tracked against the RAW element
     ids (before item_allowed/normalize), so a page that's merely fully
     filtered out doesn't get mistaken for a repeat.
+
+    `item_allowed_bulk` (OPM-379/F3) is a page-batching alternative to
+    `item_allowed`: given ALL of a fetched page's raw elements at once, it
+    resolves whatever concurrent I/O each element's allowlist decision needs
+    (e.g. Relations' from/to hrefs) in one batch, before the sequential
+    skip/limit+1-lookahead consumption loop below runs -- that loop is
+    otherwise UNCHANGED, it just reads a pre-resolved `bool | Exception`
+    outcome per element instead of awaiting `item_allowed(item)` one at a
+    time. Exactly one of `item_allowed`/`item_allowed_bulk` may be given (or
+    neither, for an unfiltered scan) -- callers that don't need concurrent
+    per-item resolution keep using the simpler `item_allowed` path
+    unchanged. Deliberately still resolves a whole PAGE at a time, never the
+    whole call's collection -- resolving speculatively beyond the current
+    page would defeat the early-stopping this helper exists for (see the
+    module-level OPM-379 plan notes: collecting across the whole call would
+    silently reintroduce the full-collection-scan bug OPM-373 Phase 5 fixed).
+
+    An `Exception` outcome is only raised if the sequential consumption logic
+    would actually have reached that element under the old one-at-a-time
+    `item_allowed` control flow (i.e. skip-counted or considered for the
+    limit+1 lookahead) -- an outcome for an element the loop breaks out of
+    the page before reaching is silently discarded, matching what the old
+    sequential logic would have done (it would never have awaited that
+    element's check at all).
     """
     skip_count = (offset - 1) * limit
     skipped = 0
@@ -146,8 +171,21 @@ async def fetch_bounded_and_paginate(
         is_first_page = False
         seen_ids.update(page_ids)
 
-        for item in raw_elements:
-            if item_allowed is not None and not await item_allowed(item):
+        page_outcomes: list[bool | Exception] | None = None
+        if item_allowed_bulk is not None:
+            page_outcomes = await item_allowed_bulk(raw_elements)
+
+        for index, item in enumerate(raw_elements):
+            if page_outcomes is not None:
+                outcome = page_outcomes[index]
+                if isinstance(outcome, Exception):
+                    raise outcome
+                allowed = outcome
+            elif item_allowed is not None:
+                allowed = await item_allowed(item)
+            else:
+                allowed = True
+            if not allowed:
                 continue
             if skipped < skip_count:
                 skipped += 1
@@ -157,7 +195,10 @@ async def fetch_bounded_and_paginate(
                 # The (limit + 1)-th allowed item proves at least one more
                 # match exists beyond the requested page -- stop
                 # immediately, without checking the rest of this page or
-                # server exhaustion.
+                # server exhaustion. Any outcome for a later element in
+                # page_outcomes (already resolved speculatively) is simply
+                # never consulted here, so a deferred Exception past this
+                # point is correctly never raised.
                 break
 
         if len(results) > limit:

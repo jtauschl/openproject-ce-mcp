@@ -570,6 +570,7 @@ class OpenProjectClient:
             activity_api=self._activity_api,
             current_user=self.get_current_user,
             work_package_project_allowed=self._work_package_resolver.project_link_allowed,
+            work_package_project_allowed_bulk=self._work_package_resolver.project_links_allowed,
             api_prefix=self._api_prefix,
         )
 
@@ -606,6 +607,7 @@ class OpenProjectClient:
             project_id_to_identifier=self._project_id_to_identifier,
             resolve_work_package_id=self._work_package_resolver.resolve_id,
             work_package_project_allowed=self._work_package_resolver.project_link_allowed,
+            work_package_project_allowed_bulk=self._work_package_resolver.project_links_allowed,
         )
 
         self._notification_api: NotificationApi = HttpxNotificationApi(HttpxTransport(self._http))
@@ -614,6 +616,7 @@ class OpenProjectClient:
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
             work_package_project_allowed=self._work_package_resolver.project_link_allowed,
+            work_package_project_allowed_bulk=self._work_package_resolver.project_links_allowed,
         )
 
         self._relation_api: RelationApi = HttpxRelationApi(HttpxTransport(self._http))
@@ -624,6 +627,7 @@ class OpenProjectClient:
             project_id_to_identifier=self._project_id_to_identifier,
             resolve_work_package_id=self._work_package_resolver.resolve_id,
             work_package_project_allowed=self._work_package_resolver.project_link_allowed,
+            work_package_project_allowed_bulk=self._work_package_resolver.project_links_allowed,
             api_prefix=self._api_prefix,
         )
 

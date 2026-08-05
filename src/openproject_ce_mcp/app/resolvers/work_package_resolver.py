@@ -20,11 +20,24 @@ building their own bare `dict[str, bool] = {}`
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Iterable
+
 from ...config import Settings
 from ..errors import NotFoundError
 from ..policies import scope as scope_policy
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_resolution import WorkPackageAllowedContext
+
+# Bounds concurrent allowlist-check HTTP requests across relations,
+# notifications, reminders, and work-package hierarchy filtering (OPM-379/F3).
+# A named constant, not tuned to match WorkPackageService's separate F6 batch
+# semaphore (also 10) -- these limit different traffic. Ten is reasonable
+# because a single top-level call's candidate set is itself bounded (a server
+# page of ~50-100 hrefs, or a hierarchy capped at 50 children + 20 ancestors):
+# it caps burst pressure while still resolving those bounded sets in a small
+# number of waves, not a general-purpose server-wide throttle.
+_ALLOWLIST_BULK_CONCURRENCY = 10
 
 
 class WorkPackageResolver:
@@ -34,6 +47,14 @@ class WorkPackageResolver:
         self._api = api
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
+        # Instance-scoped so it genuinely bounds combined allowlist traffic
+        # across all 4 F3 call sites, not just one call's own fan-out (same
+        # reasoning as WorkPackageService's `_batch_read_semaphore`, but a
+        # deliberately SEPARATE instance -- see that class's own comment for
+        # the deadlock this independence avoids: a task holding a batch-read
+        # permit while its own nested hierarchy-allowlist check waits on the
+        # same semaphore would never release it).
+        self._allowlist_semaphore = asyncio.Semaphore(_ALLOWLIST_BULK_CONCURRENCY)
 
     async def resolve_id(self, work_package_ref: int | str, *, write: bool = False) -> int:
         """Resolve a work-package reference to its canonical numeric id.
@@ -94,6 +115,55 @@ class WorkPackageResolver:
             context.set(href, allowed)
             return allowed
         return await self._project_link_allowed_uncached(href)
+
+    async def project_links_allowed(
+        self, hrefs: Iterable[str], *, context: WorkPackageAllowedContext
+    ) -> dict[str, bool | Exception]:
+        """Resolve a batch of hrefs concurrently (OPM-379/F3).
+
+        Deduplicates in insertion order (`dict.fromkeys`, not `set` -- keeps
+        scheduling and exception-ordering deterministic for tests). Cache hits
+        short-circuit with no I/O; cache misses are fetched concurrently under
+        `self._allowlist_semaphore`. Only successful `bool` outcomes are
+        written into `context`; a failed href's outcome is a captured regular
+        `Exception` (never `BaseException`/`CancelledError`, which propagate
+        normally) and is NOT cached, so a retry fetches fresh rather than
+        replaying a stale failure.
+
+        The caller decides which (if any) of the returned exceptions actually
+        matter -- e.g. a relation whose `to` side would never have been
+        checked under the old sequential control flow once `from` was already
+        denied must not have a `to`-side transport error abort the whole
+        list. Consuming this result in original per-item order and re-raising
+        only the first exception the old sequential logic would actually have
+        reached preserves that behavior; see the 4 call sites for how each
+        applies this.
+        """
+        unique_hrefs = list(dict.fromkeys(hrefs))
+        outcomes: dict[str, bool | Exception] = {}
+        misses = []
+        for href in unique_hrefs:
+            cached = context.get(href)
+            if cached is not None:
+                outcomes[href] = cached
+            else:
+                misses.append(href)
+
+        async def _resolve_one(href: str) -> None:
+            async with self._allowlist_semaphore:
+                try:
+                    allowed = await self._project_link_allowed_uncached(href)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001 -- captured as a deferred outcome, see docstring
+                    outcomes[href] = exc
+                    return
+            context.set(href, allowed)
+            outcomes[href] = allowed
+
+        if misses:
+            await asyncio.gather(*(_resolve_one(href) for href in misses))
+        return outcomes
 
     async def _project_link_allowed_uncached(self, href: str) -> bool:
         try:

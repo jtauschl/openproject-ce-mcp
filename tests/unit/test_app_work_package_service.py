@@ -17,6 +17,7 @@ from openproject_ce_mcp.app.ports.activity_api import ActivityRecord
 from openproject_ce_mcp.app.ports.status_priority_type_api import StatusRecord
 from openproject_ce_mcp.app.ports.work_package_api import WorkPackageFormResult, WorkPackagePage, WorkPackageRecord
 from openproject_ce_mcp.app.ports.work_package_resolution import WorkPackageAllowedContext
+from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
 from openproject_ce_mcp.app.services.work_package_service import WorkPackageService
 from openproject_ce_mcp.models import ActivitySummary, CurrentUser, StatusSummary, WorkPackageDetail, WorkPackageSummary
 
@@ -251,12 +252,37 @@ async def _all_project_allowed(href: str, *, context: WorkPackageAllowedContext 
     return True
 
 
+def _bulk_from_single(single):
+    """Builds a `WorkPackageProjectAllowedBulkCheck` fake from an existing
+    single-href `WorkPackageProjectAllowedCheck` fake (OPM-379/F3): since
+    `_filter_hierarchy_allowlist` now resolves children+ancestors through the
+    bulk seam exclusively, every single-href fake in this file needs a bulk
+    equivalent too -- this derives one generically instead of hand-writing a
+    bulk version of each (`_all_project_allowed`, `_no_project_allowed`,
+    per-test custom predicates)."""
+
+    async def bulk(hrefs, *, context) -> dict[str, bool | Exception]:
+        outcomes: dict[str, bool | Exception] = {}
+        for href in dict.fromkeys(hrefs):
+            cached = context.get(href)
+            if cached is not None:
+                outcomes[href] = cached
+                continue
+            allowed = await single(href, context=None)
+            context.set(href, allowed)
+            outcomes[href] = allowed
+        return outcomes
+
+    return bulk
+
+
 def _service(
     api: _FakeWorkPackageApi | None = None,
     *,
     settings=None,
     project_id_to_identifier: dict[int, str] | None = None,
     work_package_project_allowed=None,
+    work_package_project_allowed_bulk=None,
     status_api: _FakeStatusApi | None = None,
     activity_api: _FakeActivityApi | None = None,
     resolve_work_package_id=None,
@@ -316,6 +342,8 @@ def _service(
         activity_api=activity_api or _FakeActivityApi(),
         current_user=current_user,
         work_package_project_allowed=work_package_project_allowed or _all_project_allowed,
+        work_package_project_allowed_bulk=work_package_project_allowed_bulk
+        or _bulk_from_single(work_package_project_allowed or _all_project_allowed),
         api_prefix="/api/v3/",
     )
     return service, fake_api
@@ -575,6 +603,48 @@ async def test_get_filters_hierarchy_entries_outside_read_allowlist() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_filters_hierarchy_deduplicates_an_href_shared_by_children_and_ancestors() -> None:
+    """OPM-379/F3 Korrektur 2: children and ancestors are combined into ONE
+    deduplicated bulk resolution, not resolved separately -- a shared href
+    appearing in both arrays (e.g. the same work package genuinely is both a
+    sibling reference AND an ancestor in some malformed/edge-case server
+    response) must only trigger one resolution, not two."""
+    shared_href = "/api/v3/work_packages/10"
+    children = [{"href": shared_href, "title": "Shared", "display_id": None}]
+    ancestors = [{"href": shared_href, "title": "Shared", "display_id": None}]
+    detail = _detail(6, children=children, ancestors=ancestors)
+    record = _record(6, detail=detail)
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = record
+
+    calls: list[list[str]] = []
+
+    async def tracking_bulk(hrefs, *, context) -> dict[str, bool | Exception]:
+        unique = list(dict.fromkeys(hrefs))
+        calls.append(unique)
+        outcomes: dict[str, bool | Exception] = {}
+        for href in unique:
+            outcomes[href] = True
+            context.set(href, True)
+        return outcomes
+
+    service, _ = _service(
+        api,
+        settings=dataclasses.replace(make_settings(), read_projects=("demo",)),
+        work_package_project_allowed_bulk=tracking_bulk,
+    )
+
+    result = await service.get(6)
+
+    assert result.children == children
+    assert result.ancestors == ancestors
+    # ONE bulk call, for the whole combined+deduplicated href set -- not one
+    # call for children and a separate one for ancestors, and the shared
+    # href appears only once.
+    assert calls == [[shared_href]]
+
+
+@pytest.mark.asyncio
 async def test_get_skips_hierarchy_filtering_under_unrestricted_scope() -> None:
     """Under read_projects=('*',), the hierarchy filter must short-circuit
     without calling work_package_project_allowed at all."""
@@ -670,6 +740,67 @@ async def test_get_batch_bounds_concurrent_requests_to_the_semaphore_limit() -> 
 
     assert api.peak_active <= 10
     assert api.peak_active > 1, "expected genuine overlap between calls, not accidental serialization"
+
+
+@pytest.mark.asyncio
+async def test_get_batch_hierarchy_filtering_completes_under_a_timeout_while_f6_semaphore_is_saturated() -> None:
+    """OPM-379/F3+F6 structural independence, behaviorally proven (not just
+    the object-identity assertion in test_architecture_boundaries.py): each
+    of get_batch()'s 10 concurrently in-flight get() calls holds an F6
+    `_batch_read_semaphore` permit for its ENTIRE duration, INCLUDING its own
+    nested `_filter_hierarchy_allowlist()` call, which needs the SEPARATE F3
+    allowlist semaphore to resolve each work package's ancestor href. If F3
+    and F6 shared one semaphore, this would deadlock: all 10 permits held by
+    the 10 in-flight get() calls, every one of them then blocked waiting for
+    an F3 permit that can only free up once a get() call finishes -- which
+    can't happen while it's still waiting. Proven by requiring the whole
+    get_batch() (more ids than the semaphore limit, so genuine saturation is
+    guaranteed) to complete within a generous timeout."""
+    ids = list(range(1, 21))  # double the semaphore limit -- guarantees saturation, not just possible overlap
+    ancestor_href = "/api/v3/work_packages/999"
+
+    class _HierarchyApi(_ConcurrencyTrackingWorkPackageApi):
+        def __init__(self, *, ids: list[int]) -> None:
+            super().__init__(ids=ids)
+            self._records_by_id = {
+                i: _record(i, detail=_detail(i, ancestors=[{"href": ancestor_href, "title": "Ancestor"}])) for i in ids
+            }
+
+    api = _HierarchyApi(ids=ids)
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",))
+
+    class _AncestorLookupApi:
+        """Minimal real WorkPackageLookupApi fake, used ONLY so this test
+        routes through the REAL `WorkPackageResolver.project_links_allowed`
+        (and its real, separate `_allowlist_semaphore`) instead of a fake
+        bulk callback that never touches the actual F3 semaphore -- a fake
+        callback would only prove F6 doesn't deadlock on ITSELF, not that F6
+        and the real F3 semaphore are safe together (2nd Codex review round
+        finding: the original version of this test used a fake bulk hook and
+        so never actually exercised the real semaphore it claims to prove
+        independence from)."""
+
+        async def get(self, work_package_ref: str) -> dict:
+            raise AssertionError("unused")
+
+        async def get_by_href(self, href: str) -> dict:
+            await asyncio.sleep(0)  # yields control, same as a real leaf HTTP lookup would
+            return {"id": 999, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}}
+
+    resolver = WorkPackageResolver(
+        api=_AncestorLookupApi(), settings=settings, project_id_to_identifier=PROJECT_ID_TO_IDENTIFIER
+    )
+    service, _ = _service(
+        api,
+        settings=settings,
+        work_package_project_allowed=resolver.project_link_allowed,
+        work_package_project_allowed_bulk=resolver.project_links_allowed,
+    )
+
+    result = await asyncio.wait_for(service.get_batch(ids=ids), timeout=5.0)
+
+    assert result.succeeded == len(ids)
+    assert api.peak_active <= 10
 
 
 @pytest.mark.asyncio

@@ -87,6 +87,23 @@ support.
   `total` on these tools is now a lower bound (the count returned on this
   page), the same convention every other paginated list tool already uses;
   page with `next_offset` until it is `null`.
+- **`list_relations`, `get_work_package_relations`, `list_notifications`,
+  `list_reminders`, and `get_work_package`'s children/ancestors filtering
+  now resolve their per-item project-allowlist checks concurrently (bounded,
+  max 10 at once) instead of one HTTP request at a time.** Under a
+  restricted `OPENPROJECT_READ_PROJECTS`, these tools previously awaited one
+  work-package lookup per relation/notification/reminder/hierarchy entry in
+  strict sequence; a page or hierarchy with many entries could take
+  proportionally long. Result contents, ordering, and pagination behavior
+  are unchanged.
+- **`list_notifications` (under a restrictive `OPENPROJECT_READ_PROJECTS`)
+  could report `truncated: true`/a `next_offset` on the last page when the
+  number of allowed matches landed exactly on `limit`**, even though no
+  further match actually existed — a follow-up call with that `next_offset`
+  would silently return nothing. Now confirms at least one more allowed
+  match genuinely exists beyond the requested page before reporting
+  truncation, the same lookahead already used by every other paginated
+  list tool.
 
 ### Docs
 

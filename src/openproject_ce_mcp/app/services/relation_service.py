@@ -87,7 +87,11 @@ from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.relation_api import RelationApi, RelationRecord
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
-from ..ports.work_package_ref import WorkPackageIdResolver, WorkPackageProjectAllowedCheck
+from ..ports.work_package_ref import (
+    WorkPackageIdResolver,
+    WorkPackageProjectAllowedBulkCheck,
+    WorkPackageProjectAllowedCheck,
+)
 from ..ports.work_package_ref import work_package_ref as _validate_work_package_ref
 from ..ports.work_package_resolution import WorkPackageAllowedContext
 
@@ -102,6 +106,7 @@ class RelationService:
         project_id_to_identifier: dict[int, str],
         resolve_work_package_id: WorkPackageIdResolver,
         work_package_project_allowed: WorkPackageProjectAllowedCheck,
+        work_package_project_allowed_bulk: WorkPackageProjectAllowedBulkCheck,
         api_prefix: str,
     ) -> None:
         self._api = api
@@ -110,6 +115,7 @@ class RelationService:
         self._project_id_to_identifier = project_id_to_identifier
         self._resolve_work_package_id = resolve_work_package_id
         self._work_package_project_allowed = work_package_project_allowed
+        self._work_package_project_allowed_bulk = work_package_project_allowed_bulk
         self._api_prefix = api_prefix
 
     def _stamp(self, summary: RelationSummary) -> RelationSummary:
@@ -117,29 +123,66 @@ class RelationService:
             summary = dataclasses.replace(summary, from_subject=None, to_subject=None)
         return hidden_fields.apply_hidden_fields("relation", summary, settings=self._settings)
 
-    async def _relation_endpoints_allowed(self, record: RelationRecord, cache: WorkPackageAllowedContext) -> bool:
+    def _relation_endpoints_allowed_sync(self, record: RelationRecord, outcomes: dict[str, bool | Exception]) -> bool:
+        """Synchronous, sequential-order evaluation of a single relation's
+        from/to outcomes, both already resolved (speculatively, possibly
+        concurrently) by `_bulk_item_allowed` below. Preserves the OLD
+        sequential short-circuit semantics exactly: `from` is checked first,
+        and `to` is never even considered (its outcome -- success OR
+        exception -- is silently discarded) once `from` is missing/denied,
+        since the original one-at-a-time control flow would never have
+        reached `to` in that case either (OPM-379/F3 Korrektur 3)."""
         for link in (record.from_link, record.to_link):
             if not isinstance(link, dict) or not link.get("href"):
                 return False
-            if not await self._work_package_project_allowed(link["href"], context=cache):
+            outcome = outcomes[link["href"]]
+            if isinstance(outcome, Exception):
+                raise outcome
+            if not outcome:
                 return False
         return True
+
+    async def _bulk_item_allowed(
+        self, raw_elements: list[dict[str, Any]], *, cache: WorkPackageAllowedContext
+    ) -> list[bool | Exception]:
+        """Page-batching hook for `fetch_bounded_and_paginate` (OPM-379/F3):
+        collect every from/to href across the whole page, resolve them all
+        concurrently in one bulk call, then evaluate each relation
+        synchronously in original order/short-circuit semantics. `cache` is
+        the SAME `WorkPackageAllowedContext` across every page of one `_list`
+        call (passed in by the caller, not stored on `self`, so two
+        concurrent `_list` calls on the same Service instance never share
+        state) -- repeated hrefs within a page, or across pages of the same
+        top-level call, only trigger one resolution each.
+        """
+        records = [self._api.to_record(raw) for raw in raw_elements]
+        hrefs = [
+            link["href"]
+            for record in records
+            for link in (record.from_link, record.to_link)
+            if isinstance(link, dict) and link.get("href")
+        ]
+        outcomes = await self._work_package_project_allowed_bulk(hrefs, context=cache)
+        results: list[bool | Exception] = []
+        for record in records:
+            try:
+                results.append(self._relation_endpoints_allowed_sync(record, outcomes))
+            except Exception as exc:  # noqa: BLE001 -- deferred to the caller's sequential consumption, see docstring
+                results.append(exc)
+        return results
 
     async def _list(self, *, filters: str | None, offset: int, limit: int) -> RelationListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
         allowlisted = not scope_policy.scope_allows_all(self._settings.read_projects)
         cache = WorkPackageAllowedContext()
 
-        async def item_allowed(raw: dict[str, Any]) -> bool:
-            if not allowlisted:
-                return True
-            record = self._api.to_record(raw)
-            return await self._relation_endpoints_allowed(record, cache)
+        item_allowed_bulk = (lambda raw: self._bulk_item_allowed(raw, cache=cache)) if allowlisted else None
 
         page, total, next_offset, truncated = await fetch_bounded_and_paginate(
             fetch_page=lambda o, ps: self._api.fetch_page(offset=o, page_size=ps, filters=filters),
             normalize=lambda raw: self._stamp(self._api.to_record(raw).summary()),
-            item_allowed=item_allowed,
+            item_allowed=None,
+            item_allowed_bulk=item_allowed_bulk,
             server_page_size=self._settings.max_page_size,
             offset=offset,
             limit=limit,

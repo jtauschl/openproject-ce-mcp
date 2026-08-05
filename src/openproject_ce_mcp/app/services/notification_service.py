@@ -22,6 +22,18 @@ the Service, matching Reminders' precedent exactly:
 - neither link present -> genuinely personal/global, passes through
   unchecked (verbatim behavior of client.py's original).
 
+`_rescan_and_skip`'s restrictive-scope path resolves each server page's
+work-package hrefs concurrently via `WorkPackageProjectAllowedBulkCheck`
+(`_resolve_page_allowed`, OPM-379/F3) instead of one `WorkPackageProjectAllowedCheck`
+call per record -- the skip-counting/`limit + 1`-lookahead consumption logic
+itself is unchanged, it now just reads pre-resolved `bool | Exception`
+outcomes. The same change also fixed an independent bug (OPM-379/F3
+Korrektur 6c): `_rescan_and_skip` previously set `truncated=True` as soon as
+`len(results) >= limit` was reached mid-page, without the `limit + 1`
+lookahead every sibling scan helper already uses to confirm a genuine next
+match exists -- a false positive whenever a page happened to end exactly at
+the limit-th allowed record.
+
 `mark_read()`/`mark_all_read()` each stay a single flat method (not the
 shared `_write_outcome.py` state machine): neither goes through a
 `<domain>/form` endpoint, and OpenProject's response carries no body to
@@ -56,7 +68,7 @@ from ..pagination import effective_limit
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.notification_api import NotificationApi, NotificationRecord
-from ..ports.work_package_ref import WorkPackageProjectAllowedCheck
+from ..ports.work_package_ref import WorkPackageProjectAllowedBulkCheck, WorkPackageProjectAllowedCheck
 from ..ports.work_package_resolution import WorkPackageAllowedContext
 
 
@@ -68,11 +80,13 @@ class NotificationService:
         settings: Settings,
         project_id_to_identifier: dict[int, str],
         work_package_project_allowed: WorkPackageProjectAllowedCheck,
+        work_package_project_allowed_bulk: WorkPackageProjectAllowedBulkCheck,
     ) -> None:
         self._api = api
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
         self._work_package_project_allowed = work_package_project_allowed
+        self._work_package_project_allowed_bulk = work_package_project_allowed_bulk
 
     async def list_all(
         self, *, unread_only: bool = False, limit: int | None = None, offset: int = 1
@@ -114,15 +128,33 @@ class NotificationService:
         self, *, unread_only: bool, offset: int, limit: int
     ) -> tuple[list[NotificationRecord], int, bool]:
         """Re-scan server pages from the start, skipping already-seen allowed
-        matches, until `limit` allowed records are collected or the server
-        collection is exhausted -- verbatim shape of
-        `app/resolvers/project_query.fetch_project_page`'s identical
-        re-scan-and-skip loop, needed for the same reason: a restrictive read
-        scope means a server page's allowed subset can run dry before the
-        caller's own requested page size does, without the server collection
-        itself being exhausted. A filtered-empty server page does NOT prove no
-        further allowed notifications exist on later pages, so a single page
-        is never treated as conclusive.
+        matches, until `limit + 1` allowed records are collected (or the
+        server collection is genuinely exhausted) -- same re-scan-and-skip
+        shape as `app/resolvers/project_query.fetch_project_page`, needed for
+        the same reason: a restrictive read scope means a server page's
+        allowed subset can run dry before the caller's own requested page
+        size does, without the server collection itself being exhausted. A
+        filtered-empty server page does NOT prove no further allowed
+        notifications exist on later pages, so a single page is never treated
+        as conclusive.
+
+        Collects one extra (`limit + 1`) allowed record before deciding
+        `truncated`, matching every sibling scan helper
+        (`fetch_bounded_and_paginate`/`scan_and_paginate`/
+        `scan_records_and_paginate`) -- an earlier version of this method
+        stopped and set `truncated=True` as soon as `len(results) >= limit`
+        was reached mid-page, WITHOUT checking whether a genuine next match
+        existed beyond that window (a false-positive `next_offset`/
+        `truncated` promise whenever the page happened to end exactly at the
+        limit-th allowed record). Fixed here in the same change that
+        page-batches the allowlist checks (OPM-379/F3 Korrektur 6c).
+
+        Per-page allowlist resolution is now batched (OPM-379/F3): every raw
+        record's candidate work-package href is collected up front and
+        resolved in one bulk call via `_work_package_project_allowed_bulk`,
+        instead of awaiting `_record_allowed` one record at a time -- the
+        skip-counting/limit+1-lookahead consumption loop below is otherwise
+        structurally unchanged, it just reads pre-resolved outcomes.
         """
         skip_count = (offset - 1) * limit
         skipped = 0
@@ -130,57 +162,92 @@ class NotificationService:
         cache = WorkPackageAllowedContext()
         server_offset = 1
         server_page_size = self._settings.max_page_size
-        truncated = False
 
-        while len(results) < limit:
+        while len(results) <= limit:
             page = await self._api.list_all(unread_only=unread_only, offset=server_offset, limit=server_page_size)
             if not page.records:
                 break
 
-            allowed_records = [record for record in page.records if await self._record_allowed(record, cache)]
+            outcomes = await self._resolve_page_allowed(page.records, cache=cache)
 
-            hit_limit_mid_page = False
-            for record in allowed_records:
+            for record, outcome in zip(page.records, outcomes, strict=True):
+                if isinstance(outcome, Exception):
+                    # Every record reached by this loop iteration -- skip
+                    # window or not -- WOULD have been awaited by the old
+                    # one-at-a-time control flow too (the skip counter only
+                    # skips already-confirmed ALLOWED records, it does not
+                    # skip the check itself; and the loop only stops once the
+                    # (limit+1)-th allowed record is actually found and
+                    # appended, via the `break` below -- not merely once
+                    # `len(results) == limit`). So a speculative failure here
+                    # always raises; only outcomes for records the loop never
+                    # reaches at all (a later record on this page, once the
+                    # break already fired) are silently discarded, same as
+                    # `fetch_bounded_and_paginate`/`_scan_and_paginate`.
+                    raise outcome
+                if not outcome:
+                    continue
                 if skipped < skip_count:
                     skipped += 1
                     continue
                 results.append(record)
-                if len(results) >= limit:
-                    hit_limit_mid_page = True
+                if len(results) > limit:
+                    # The (limit + 1)-th allowed record proves at least one
+                    # more match exists beyond the requested page -- stop
+                    # immediately, without checking the rest of this page or
+                    # server exhaustion.
                     break
 
-            if hit_limit_mid_page:
-                # This page had more allowed matches than needed -- stop without
-                # checking server exhaustion: there's at least one more allowed
-                # notification waiting, so treating this as "exhausted" would
-                # wrongly hide it from a follow-up call. Report truncated=True
-                # so the caller knows to request the next offset instead of
-                # assuming this page is everything.
-                truncated = True
+            if len(results) > limit:
                 break
-
             if page.exhausted:
                 break
             server_offset += 1
 
+        truncated = len(results) > limit
+        if truncated:
+            results = results[:limit]
         return results, len(results), truncated
 
-    async def _record_allowed(self, record: NotificationRecord, cache: WorkPackageAllowedContext) -> bool:
-        if record.project_link is not None:
-            return scope_policy.project_link_payload_allowed(
-                {"_links": {"project": record.project_link}},
-                link_key="project",
-                settings=self._settings,
-                project_id_to_identifier=self._project_id_to_identifier,
-            )
-        resource_href = record.resource_link.get("href") if isinstance(record.resource_link, dict) else None
-        if isinstance(resource_href, str) and "work_packages/" in resource_href:
-            # Work-package-linked notification without its own resolvable
-            # project link -- resolve via the work package itself instead of
-            # trusting the absent link (same helper/cache pattern as
-            # list_relations/list_reminders).
-            return await self._work_package_project_allowed(resource_href, context=cache)
-        return True  # no project link and no work-package resource link: genuinely personal/global
+    async def _resolve_page_allowed(
+        self, records: list[NotificationRecord], *, cache: WorkPackageAllowedContext
+    ) -> list[bool | Exception]:
+        """Page-batching allowlist resolution (OPM-379/F3): collect every
+        record's candidate work-package href (records with their own
+        `project_link`, or neither kind of link, need no I/O and are resolved
+        synchronously) and resolve the rest concurrently in one bulk call --
+        same three-way branch client.py's original `_notification_payload_allowed`
+        used (and this Service's own pre-F3 `_record_allowed` verbatim-ported),
+        just resolving a whole page's work-package hrefs together instead of
+        one record at a time.
+        """
+        hrefs: list[str] = []
+        for record in records:
+            if record.project_link is not None:
+                continue
+            resource_href = record.resource_link.get("href") if isinstance(record.resource_link, dict) else None
+            if isinstance(resource_href, str) and "work_packages/" in resource_href:
+                hrefs.append(resource_href)
+        bulk_outcomes = await self._work_package_project_allowed_bulk(hrefs, context=cache) if hrefs else {}
+
+        results: list[bool | Exception] = []
+        for record in records:
+            if record.project_link is not None:
+                results.append(
+                    scope_policy.project_link_payload_allowed(
+                        {"_links": {"project": record.project_link}},
+                        link_key="project",
+                        settings=self._settings,
+                        project_id_to_identifier=self._project_id_to_identifier,
+                    )
+                )
+                continue
+            resource_href = record.resource_link.get("href") if isinstance(record.resource_link, dict) else None
+            if isinstance(resource_href, str) and "work_packages/" in resource_href:
+                results.append(bulk_outcomes[resource_href])
+                continue
+            results.append(True)  # no project link and no work-package resource link: genuinely personal/global
+        return results
 
     def _stamp(self, summary: NotificationSummary) -> NotificationSummary:
         return hidden_fields.apply_hidden_fields("notification", summary, settings=self._settings)

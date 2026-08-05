@@ -155,6 +155,38 @@ def _work_package_project_allowed_from(allowed_hrefs: set[str]):
     return check
 
 
+def _work_package_project_allowed_bulk_from(allowed_hrefs: set[str], *, errors: dict[str, Exception] | None = None):
+    """Fake `WorkPackageProjectAllowedBulkCheck`: mirrors
+    `WorkPackageResolver.project_links_allowed`'s real contract (dedupe,
+    cache-aware, only successful bools written back to `context`) closely
+    enough for Service-level tests -- concurrency itself is exercised at the
+    resolver level (test_app_work_package_resolver.py), not re-proven here.
+    `errors` lets a test force specific hrefs to resolve as a captured
+    Exception outcome instead of a bool."""
+    calls: list[list[str]] = []
+    error_map = errors or {}
+
+    async def check(hrefs, *, context) -> dict[str, bool | Exception]:
+        unique = list(dict.fromkeys(hrefs))
+        calls.append(unique)
+        outcomes: dict[str, bool | Exception] = {}
+        for href in unique:
+            cached = context.get(href)
+            if cached is not None:
+                outcomes[href] = cached
+                continue
+            if href in error_map:
+                outcomes[href] = error_map[href]
+                continue
+            allowed = href in allowed_hrefs
+            context.set(href, allowed)
+            outcomes[href] = allowed
+        return outcomes
+
+    check.calls = calls  # type: ignore[attr-defined]
+    return check
+
+
 def _service(
     *,
     api: _FakeRelationApi | None = None,
@@ -162,6 +194,7 @@ def _service(
     settings=None,
     resolve_work_package_id=None,
     work_package_project_allowed=None,
+    work_package_project_allowed_bulk=None,
 ) -> RelationService:
     return RelationService(
         api=api or _FakeRelationApi(),
@@ -171,6 +204,8 @@ def _service(
         resolve_work_package_id=resolve_work_package_id or _resolve_work_package_id_ok(),
         work_package_project_allowed=work_package_project_allowed
         or _work_package_project_allowed_from({"/api/v3/work_packages/1", "/api/v3/work_packages/2"}),
+        work_package_project_allowed_bulk=work_package_project_allowed_bulk
+        or _work_package_project_allowed_bulk_from({"/api/v3/work_packages/1", "/api/v3/work_packages/2"}),
         api_prefix="/api/v3/",
     )
 
@@ -202,10 +237,10 @@ async def test_list_all_filters_by_read_allowlist_both_sides() -> None:
     )
     api = _FakeRelationApi(records=[kept, dropped_source, dropped_target])
     settings = dataclasses.replace(make_settings(), read_projects=("allowed",))
-    check = _work_package_project_allowed_from(
+    check = _work_package_project_allowed_bulk_from(
         {"/api/v3/work_packages/10", "/api/v3/work_packages/11", "/api/v3/work_packages/30"}
     )
-    service = _service(api=api, settings=settings, work_package_project_allowed=check)
+    service = _service(api=api, settings=settings, work_package_project_allowed_bulk=check)
 
     result = await service.list_all()
 
@@ -228,21 +263,23 @@ async def test_list_for_work_package_resolves_anchor_and_sends_involved_filter()
 
 @pytest.mark.asyncio
 async def test_list_all_checks_both_hrefs_and_reuses_one_cache() -> None:
-    """Asserts the call-list on work_package_project_allowed, not just the
-    filtered outcome -- a bug that swapped from_link/to_link or checked one
-    side twice could otherwise produce a correct-looking result by
+    """Asserts the call-list on work_package_project_allowed_bulk, not just
+    the filtered outcome -- a bug that swapped from_link/to_link or checked
+    one side twice could otherwise produce a correct-looking result by
     coincidence. Also proves a SINGLE WorkPackageAllowedContext instance is
     threaded through every from/to check across the whole list() call
-    (documented optimization in this Service's module docstring) -- the
-    cache's actual hit/miss behavior is WorkPackageResolver's own
-    responsibility and is tested in test_app_work_package_resolver.py; what
-    belongs here is proving the Service constructs exactly one context and
-    reuses it, not a fresh one per relation or per side."""
+    (documented optimization in this Service's module docstring): both
+    relations fit on the one server page this fake returns, so the bulk hook
+    fires exactly once, with all four hrefs (deduped, none repeat here) in a
+    single call -- the cache's actual hit/miss behavior is
+    WorkPackageResolver's own responsibility and is tested in
+    test_app_work_package_resolver.py; what belongs here is proving the
+    Service resolves every from/to href, not skipping or duplicating one."""
     first = _record(1, from_href="/api/v3/work_packages/10", to_href="/api/v3/work_packages/11")
     second = _record(2, from_href="/api/v3/work_packages/12", to_href="/api/v3/work_packages/13")
     api = _FakeRelationApi(records=[first, second])
     settings = dataclasses.replace(make_settings(), read_projects=("allowed",))
-    check = _work_package_project_allowed_from(
+    check = _work_package_project_allowed_bulk_from(
         {
             "/api/v3/work_packages/10",
             "/api/v3/work_packages/11",
@@ -250,18 +287,92 @@ async def test_list_all_checks_both_hrefs_and_reuses_one_cache() -> None:
             "/api/v3/work_packages/13",
         }
     )
-    service = _service(api=api, settings=settings, work_package_project_allowed=check)
+    service = _service(api=api, settings=settings, work_package_project_allowed_bulk=check)
 
     result = await service.list_all()
 
     assert [r.id for r in result.results] == [1, 2]
-    assert check.calls == [
+    assert len(check.calls) == 1, "both relations fit on one server page -- the bulk hook must fire exactly once"
+    assert set(check.calls[0]) == {
         "/api/v3/work_packages/10",
         "/api/v3/work_packages/11",
         "/api/v3/work_packages/12",
         "/api/v3/work_packages/13",
-    ]
-    assert len({id(c) for c in check.contexts}) == 1, "one WorkPackageAllowedContext must be shared, not recreated"
+    }
+
+
+@pytest.mark.asyncio
+async def test_list_all_swallows_to_side_exception_when_from_side_already_denied() -> None:
+    """OPM-379/F3 Korrektur 3: with bulk resolution, a relation's `to` href is
+    now speculatively resolved even when `from` is already denied -- the old
+    sequential control flow would never have checked `to` at all in that
+    case. If `to`'s speculative resolution fails (e.g. a transient 5xx), that
+    failure must be silently swallowed (the relation is simply excluded, not
+    an error) since `from` being False already means the old logic would
+    never have reached `to`."""
+    record = _record(1, from_href="/api/v3/work_packages/10", to_href="/api/v3/work_packages/11")
+    api = _FakeRelationApi(records=[record])
+    settings = dataclasses.replace(make_settings(), read_projects=("allowed",))
+    check = _work_package_project_allowed_bulk_from(
+        set(),  # from=10 denied
+        errors={"/api/v3/work_packages/11": RuntimeError("to-side transient failure")},
+    )
+    service = _service(api=api, settings=settings, work_package_project_allowed_bulk=check)
+
+    result = await service.list_all()
+
+    assert result.results == []  # excluded, not raised
+
+
+@pytest.mark.asyncio
+async def test_list_all_raises_to_side_exception_when_from_side_allowed() -> None:
+    """Counterpart: once `from` IS allowed, the old sequential logic WOULD
+    have gone on to check `to` -- a failure resolving `to` must propagate."""
+    record = _record(1, from_href="/api/v3/work_packages/10", to_href="/api/v3/work_packages/11")
+    api = _FakeRelationApi(records=[record])
+    settings = dataclasses.replace(make_settings(), read_projects=("allowed",))
+    check = _work_package_project_allowed_bulk_from(
+        {"/api/v3/work_packages/10"},  # from=10 allowed
+        errors={"/api/v3/work_packages/11": RuntimeError("to-side transient failure")},
+    )
+    service = _service(api=api, settings=settings, work_package_project_allowed_bulk=check)
+
+    with pytest.raises(RuntimeError, match="to-side transient failure"):
+        await service.list_all()
+
+
+@pytest.mark.asyncio
+async def test_list_all_exception_past_the_limit_plus_one_lookahead_is_not_raised() -> None:
+    """A relation whose from/to resolution fails, but which sits AFTER the
+    limit+1-th allowed match on the same server page, must not raise -- the
+    old one-at-a-time control flow would never have reached it either."""
+    kept_1 = _record(1, from_href="/api/v3/work_packages/1", to_href="/api/v3/work_packages/2")
+    kept_2 = _record(2, from_href="/api/v3/work_packages/3", to_href="/api/v3/work_packages/4")
+    failing = _record(3, from_href="/api/v3/work_packages/5", to_href="/api/v3/work_packages/6")
+    api = _FakeRelationApi(records=[kept_1, kept_2, failing])
+    settings = dataclasses.replace(make_settings(), read_projects=("allowed",))
+    check = _work_package_project_allowed_bulk_from(
+        {
+            "/api/v3/work_packages/1",
+            "/api/v3/work_packages/2",
+            "/api/v3/work_packages/3",
+            "/api/v3/work_packages/4",
+        },
+        errors={
+            "/api/v3/work_packages/5": RuntimeError("must never be raised"),
+            "/api/v3/work_packages/6": RuntimeError("must never be raised"),
+        },
+    )
+    service = _service(api=api, settings=settings, work_package_project_allowed_bulk=check)
+
+    # limit=1 needs limit+1=2 confirmed matches to stop -- kept_1 and kept_2
+    # both fit on this single server page (default max_page_size comfortably
+    # covers 3 raw elements), so `failing`'s outcomes are resolved
+    # speculatively but never consulted.
+    result = await service._list(filters=None, offset=1, limit=1)
+
+    assert [r.id for r in result.results] == [1]
+    assert result.truncated is True
 
 
 @pytest.mark.asyncio

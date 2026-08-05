@@ -48,7 +48,11 @@ from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.reminder_api import ReminderApi
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
-from ..ports.work_package_ref import WorkPackageIdResolver, WorkPackageProjectAllowedCheck
+from ..ports.work_package_ref import (
+    WorkPackageIdResolver,
+    WorkPackageProjectAllowedBulkCheck,
+    WorkPackageProjectAllowedCheck,
+)
 from ..ports.work_package_resolution import WorkPackageAllowedContext
 
 
@@ -62,6 +66,7 @@ class ReminderService:
         project_id_to_identifier: dict[int, str],
         resolve_work_package_id: WorkPackageIdResolver,
         work_package_project_allowed: WorkPackageProjectAllowedCheck,
+        work_package_project_allowed_bulk: WorkPackageProjectAllowedBulkCheck,
     ) -> None:
         self._api = api
         self._work_package_lookup_api = work_package_lookup_api
@@ -69,6 +74,7 @@ class ReminderService:
         self._project_id_to_identifier = project_id_to_identifier
         self._resolve_work_package_id = resolve_work_package_id
         self._work_package_project_allowed = work_package_project_allowed
+        self._work_package_project_allowed_bulk = work_package_project_allowed_bulk
 
     def _stamp(self, summary: ReminderSummary) -> ReminderSummary:
         return hidden_fields.apply_hidden_fields("reminder", summary, settings=self._settings)
@@ -89,14 +95,29 @@ class ReminderService:
         allowlisted = not scope_policy.scope_allows_all(self._settings.read_projects)
         cache = WorkPackageAllowedContext()
 
-        async def item_allowed(raw: dict[str, Any]) -> bool:
-            if not allowlisted:
-                return True
-            record = self._api.to_record(raw)
-            href = record.remindable_link.get("href") if isinstance(record.remindable_link, dict) else None
-            if not href:
-                return False  # can't verify -> fail closed
-            return await self._work_package_project_allowed(href, context=cache)
+        async def item_allowed_bulk(raw_elements: list[dict[str, Any]]) -> list[bool | Exception]:
+            """Page-batching hook (OPM-379/F3): collect every raw reminder's
+            `remindable` href up front and resolve them all concurrently in
+            one bulk call, then map back per item -- a missing href needs no
+            I/O and fails closed synchronously, same as the old per-item
+            `item_allowed` did."""
+            hrefs = []
+            for raw in raw_elements:
+                record = self._api.to_record(raw)
+                href = record.remindable_link.get("href") if isinstance(record.remindable_link, dict) else None
+                if href:
+                    hrefs.append(href)
+            outcomes = await self._work_package_project_allowed_bulk(hrefs, context=cache) if hrefs else {}
+
+            results: list[bool | Exception] = []
+            for raw in raw_elements:
+                record = self._api.to_record(raw)
+                href = record.remindable_link.get("href") if isinstance(record.remindable_link, dict) else None
+                if not href:
+                    results.append(False)  # can't verify -> fail closed
+                    continue
+                results.append(outcomes[href])
+            return results
 
         # Reminders is really offset-paginated server-side (verified against
         # OpenProject's own API implementation: ReminderCollectionRepresenter
@@ -112,7 +133,8 @@ class ReminderService:
         raw_items, total, next_offset, truncated = await fetch_bounded_and_paginate(
             fetch_page=lambda o, ps: self._api.fetch_page(offset=o, page_size=ps),
             normalize=lambda raw: self._stamp(self._api.to_record(raw).summary()),
-            item_allowed=item_allowed,
+            item_allowed=None,
+            item_allowed_bulk=item_allowed_bulk if allowlisted else None,
             server_page_size=self._settings.max_page_size,
             offset=offset,
             limit=effective_limit,

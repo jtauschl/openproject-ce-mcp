@@ -25,7 +25,7 @@ layer both may import from (see the layer-dependency rules in
 
 from __future__ import annotations
 
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Iterable
 from typing import Protocol
 from urllib.parse import quote
 
@@ -72,3 +72,24 @@ class WorkPackageProjectAllowedCheck(Protocol):
     """Narrow seam onto `WorkPackageResolver.project_link_allowed`."""
 
     def __call__(self, href: str, *, context: WorkPackageAllowedContext | None = None) -> Awaitable[bool]: ...
+
+
+class WorkPackageProjectAllowedBulkCheck(Protocol):
+    """Narrow seam onto `WorkPackageResolver.project_links_allowed` (OPM-379/F3).
+
+    Resolves a batch of hrefs concurrently, bounded by a shared instance-scoped
+    semaphore (see `WorkPackageResolver` for its independence from
+    `WorkPackageService._batch_read_semaphore`, OPM-379/F6 — a shared semaphore
+    would deadlock). Returns `bool | Exception` per href rather than plain
+    `bool`: a caller resolving hrefs it would not all have reached under the
+    old sequential control flow (e.g. a relation's `to` side when `from` is
+    already denied) must be able to defer judging which speculative failures
+    actually matter, instead of an exception from an irrelevant href aborting
+    the whole page. Only successful `bool` outcomes are written into `context`
+    -- a failed href is never cached, so a retry (this call or a later one)
+    fetches fresh rather than replaying a stale error.
+    """
+
+    def __call__(
+        self, hrefs: Iterable[str], *, context: WorkPackageAllowedContext
+    ) -> Awaitable[dict[str, bool | Exception]]: ...

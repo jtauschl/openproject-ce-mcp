@@ -1016,6 +1016,90 @@ def test_work_package_resolver_methods_structurally_satisfy_the_seam_protocols()
         "WorkPackageResolver.project_link_allowed no longer structurally satisfies WorkPackageProjectAllowedCheck"
     )
 
+    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageProjectAllowedBulkCheck
+
+    bulk_params = _bound_params(WorkPackageResolver.project_links_allowed)
+    protocol_params = _bound_params(WorkPackageProjectAllowedBulkCheck.__call__)
+    assert [_comparable(p) for p in bulk_params] == [_comparable(p) for p in protocol_params], (
+        "WorkPackageResolver.project_links_allowed no longer structurally satisfies WorkPackageProjectAllowedBulkCheck"
+    )
+
+
+def test_f3_allowlist_semaphore_is_structurally_separate_from_f6_batch_read_semaphore() -> None:
+    """OPM-379/F3's bulk-allowlist-resolution semaphore
+    (`WorkPackageResolver._allowlist_semaphore`) must be a genuinely SEPARATE
+    `asyncio.Semaphore` instance from OPM-379/F6's
+    `WorkPackageService._batch_read_semaphore` -- sharing one would deadlock:
+    `get_batch()` holds F6 permits while its own nested calls to
+    `get()` -> `_filter_hierarchy_allowlist()` wait on the SAME semaphore for
+    the F3 allowlist bulk-check, so a saturated batch could never release the
+    permit its own nested check is waiting for. Both are allowed to share the
+    same numeric limit (10) -- that's not a contradiction, only object
+    identity must differ. A pure numeric-value check would not have caught a
+    future refactor that accidentally passed the same Semaphore object to
+    both, so this asserts identity, not just value equality."""
+    import asyncio
+
+    from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
+    from openproject_ce_mcp.app.services.work_package_service import WorkPackageService
+    from openproject_ce_mcp.config import Settings
+
+    def _settings() -> Settings:
+        return Settings(
+            base_url="https://example.test",
+            api_token="token",
+            timeout=30.0,
+            verify_ssl=True,
+            default_page_size=25,
+            max_page_size=100,
+            max_results=1000,
+            log_level="INFO",
+        )
+
+    class _StubApi:
+        async def get(self, ref: str) -> dict:
+            raise AssertionError("unused")
+
+        async def get_by_href(self, href: str) -> dict:
+            raise AssertionError("unused")
+
+    resolver = WorkPackageResolver(api=_StubApi(), settings=_settings(), project_id_to_identifier={})
+
+    async def _unused(*args: object, **kwargs: object) -> object:
+        raise AssertionError("unused")
+
+    class _StubWorkPackageApi:
+        def __getattr__(self, name: str) -> object:
+            raise AssertionError(f"unused: {name}")
+
+    service = WorkPackageService(
+        api=_StubWorkPackageApi(),  # type: ignore[arg-type]
+        settings=_settings(),
+        project_id_to_identifier={},
+        resolve_project_ref=_unused,  # type: ignore[arg-type]
+        resolve_type_id=_unused,  # type: ignore[arg-type]
+        resolve_version_id=_unused,  # type: ignore[arg-type]
+        resolve_status_id=_unused,  # type: ignore[arg-type]
+        resolve_priority_id=_unused,  # type: ignore[arg-type]
+        resolve_principal_id=_unused,  # type: ignore[arg-type]
+        resolve_assignee_id=_unused,  # type: ignore[arg-type]
+        resolve_sprint_id=_unused,  # type: ignore[arg-type]
+        resolve_work_package_id=_unused,  # type: ignore[arg-type]
+        status_api=_StubWorkPackageApi(),  # type: ignore[arg-type]
+        activity_api=_StubWorkPackageApi(),  # type: ignore[arg-type]
+        current_user=_unused,  # type: ignore[arg-type]
+        work_package_project_allowed=resolver.project_link_allowed,
+        work_package_project_allowed_bulk=resolver.project_links_allowed,
+        api_prefix="/api/v3/",
+    )
+
+    assert isinstance(resolver._allowlist_semaphore, asyncio.Semaphore)
+    assert isinstance(service._batch_read_semaphore, asyncio.Semaphore)
+    assert resolver._allowlist_semaphore is not service._batch_read_semaphore, (
+        "F3's allowlist bulk-resolution semaphore and F6's batch-read semaphore must be distinct objects, "
+        "or get_batch() -> get() -> _filter_hierarchy_allowlist() nesting under saturation would deadlock"
+    )
+
 
 def test_file_link_service_binds_its_three_dependencies_to_the_right_protocols() -> None:
     """FileLinkService has THREE Protocol dependencies, not the usual one --
@@ -1132,7 +1216,11 @@ def test_reminder_service_binds_its_four_dependencies_to_the_right_protocols() -
     from openproject_ce_mcp.app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
     from openproject_ce_mcp.app.ports.reminder_api import ReminderApi
     from openproject_ce_mcp.app.ports.work_package_lookup_api import WorkPackageLookupApi
-    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageIdResolver, WorkPackageProjectAllowedCheck
+    from openproject_ce_mcp.app.ports.work_package_ref import (
+        WorkPackageIdResolver,
+        WorkPackageProjectAllowedBulkCheck,
+        WorkPackageProjectAllowedCheck,
+    )
     from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
     from openproject_ce_mcp.app.services.reminder_service import ReminderService
 
@@ -1161,6 +1249,14 @@ def test_reminder_service_binds_its_four_dependencies_to_the_right_protocols() -
         "ReminderService.__init__'s work_package_project_allowed param must not be the concrete resolver class"
     )
 
+    assert hints["work_package_project_allowed_bulk"] is WorkPackageProjectAllowedBulkCheck, (
+        "ReminderService.__init__'s work_package_project_allowed_bulk param must be typed "
+        "WorkPackageProjectAllowedBulkCheck (OPM-379/F3)"
+    )
+    assert hints["work_package_project_allowed_bulk"] is not WorkPackageResolver, (
+        "ReminderService.__init__'s work_package_project_allowed_bulk param must not be the concrete resolver class"
+    )
+
 
 def test_notification_service_binds_the_api_param_to_notification_api_specifically() -> None:
     """Notifications mirrors Reminders' list()
@@ -1171,7 +1267,10 @@ def test_notification_service_binds_the_api_param_to_notification_api_specifical
     that resolves a caller-supplied work-package reference)."""
     from openproject_ce_mcp.app.adapters.httpx_notification_api import HttpxNotificationApi
     from openproject_ce_mcp.app.ports.notification_api import NotificationApi
-    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageProjectAllowedCheck
+    from openproject_ce_mcp.app.ports.work_package_ref import (
+        WorkPackageProjectAllowedBulkCheck,
+        WorkPackageProjectAllowedCheck,
+    )
     from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
     from openproject_ce_mcp.app.services.notification_service import NotificationService
 
@@ -1188,6 +1287,14 @@ def test_notification_service_binds_the_api_param_to_notification_api_specifical
         "NotificationService.__init__'s work_package_project_allowed param must not be the concrete resolver class"
     )
 
+    assert hints["work_package_project_allowed_bulk"] is WorkPackageProjectAllowedBulkCheck, (
+        "NotificationService.__init__'s work_package_project_allowed_bulk param must be typed "
+        "WorkPackageProjectAllowedBulkCheck (OPM-379/F3)"
+    )
+    assert hints["work_package_project_allowed_bulk"] is not WorkPackageResolver, (
+        "NotificationService.__init__'s work_package_project_allowed_bulk param must not be the concrete resolver class"
+    )
+
 
 def test_relation_service_binds_its_dependencies_to_the_right_protocols() -> None:
     """Relations mirrors Reminders' widest seam surface: list_all()/
@@ -1202,7 +1309,11 @@ def test_relation_service_binds_its_dependencies_to_the_right_protocols() -> Non
     from openproject_ce_mcp.app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
     from openproject_ce_mcp.app.ports.relation_api import RelationApi
     from openproject_ce_mcp.app.ports.work_package_lookup_api import WorkPackageLookupApi
-    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageIdResolver, WorkPackageProjectAllowedCheck
+    from openproject_ce_mcp.app.ports.work_package_ref import (
+        WorkPackageIdResolver,
+        WorkPackageProjectAllowedBulkCheck,
+        WorkPackageProjectAllowedCheck,
+    )
     from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
     from openproject_ce_mcp.app.services.relation_service import RelationService
 
@@ -1229,6 +1340,14 @@ def test_relation_service_binds_its_dependencies_to_the_right_protocols() -> Non
     )
     assert hints["work_package_project_allowed"] is not WorkPackageResolver, (
         "RelationService.__init__'s work_package_project_allowed param must not be the concrete resolver class"
+    )
+
+    assert hints["work_package_project_allowed_bulk"] is WorkPackageProjectAllowedBulkCheck, (
+        "RelationService.__init__'s work_package_project_allowed_bulk param must be typed "
+        "WorkPackageProjectAllowedBulkCheck (OPM-379/F3)"
+    )
+    assert hints["work_package_project_allowed_bulk"] is not WorkPackageResolver, (
+        "RelationService.__init__'s work_package_project_allowed_bulk param must not be the concrete resolver class"
     )
 
 
@@ -1394,7 +1513,11 @@ def test_work_package_service_binds_the_api_param_to_work_package_api_specifical
     from openproject_ce_mcp.app.ports.status_priority_type_api import StatusPriorityTypeApi
     from openproject_ce_mcp.app.ports.version_ref import VersionIdResolver
     from openproject_ce_mcp.app.ports.work_package_api import WorkPackageApi
-    from openproject_ce_mcp.app.ports.work_package_ref import WorkPackageIdResolver, WorkPackageProjectAllowedCheck
+    from openproject_ce_mcp.app.ports.work_package_ref import (
+        WorkPackageIdResolver,
+        WorkPackageProjectAllowedBulkCheck,
+        WorkPackageProjectAllowedCheck,
+    )
     from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
     from openproject_ce_mcp.app.services.work_package_service import WorkPackageService
 
@@ -1409,6 +1532,14 @@ def test_work_package_service_binds_the_api_param_to_work_package_api_specifical
     )
     assert hints["work_package_project_allowed"] is not WorkPackageResolver, (
         "WorkPackageService.__init__'s work_package_project_allowed param must not be the concrete resolver class"
+    )
+
+    assert hints["work_package_project_allowed_bulk"] is WorkPackageProjectAllowedBulkCheck, (
+        "WorkPackageService.__init__'s work_package_project_allowed_bulk param must be typed "
+        "WorkPackageProjectAllowedBulkCheck (OPM-379/F3)"
+    )
+    assert hints["work_package_project_allowed_bulk"] is not WorkPackageResolver, (
+        "WorkPackageService.__init__'s work_package_project_allowed_bulk param must not be the concrete resolver class"
     )
 
     assert hints["resolve_work_package_id"] is WorkPackageIdResolver, (

@@ -123,7 +123,12 @@ from ..ports.status_ref import StatusRefResolver
 from ..ports.type_ref import TypeRefResolver
 from ..ports.version_ref import VersionIdResolver
 from ..ports.work_package_api import WorkPackageApi
-from ..ports.work_package_ref import WorkPackageIdResolver, WorkPackageProjectAllowedCheck, work_package_ref
+from ..ports.work_package_ref import (
+    WorkPackageIdResolver,
+    WorkPackageProjectAllowedBulkCheck,
+    WorkPackageProjectAllowedCheck,
+    work_package_ref,
+)
 from ..ports.work_package_resolution import WorkPackageAllowedContext
 from ._write_outcome import _finalize_write, _WriteOutcome
 
@@ -281,6 +286,7 @@ class WorkPackageService:
         activity_api: ActivityApi,
         current_user: CurrentUserLookup,
         work_package_project_allowed: WorkPackageProjectAllowedCheck,
+        work_package_project_allowed_bulk: WorkPackageProjectAllowedBulkCheck,
         api_prefix: str,
     ) -> None:
         self._api = api
@@ -299,6 +305,7 @@ class WorkPackageService:
         self._activity_api = activity_api
         self._current_user = current_user
         self._work_package_project_allowed = work_package_project_allowed
+        self._work_package_project_allowed_bulk = work_package_project_allowed_bulk
         self._api_prefix = api_prefix
         # Shared across every get_batch() call on this Service instance (not
         # constructed per-call), so N genuinely bounds this Service's total
@@ -637,10 +644,18 @@ class WorkPackageService:
     async def _filter_hierarchy_allowlist(self, detail: WorkPackageDetail) -> WorkPackageDetail:
         """Drop children/ancestors entries outside OPENPROJECT_READ_PROJECTS.
         Verbatim behavioral port of client.py's `_filter_hierarchy_allowlist`,
-        using the existing `WorkPackageProjectAllowedCheck` seam (bound to
-        `self._work_package_resolver.project_link_allowed`, unchanged) rather
-        than a new resolver -- this Service is one of several consumers of
-        the SAME resolver other app/ domains already share.
+        using the existing `WorkPackageProjectAllowedBulkCheck` seam (bound to
+        `self._work_package_resolver.project_links_allowed`, OPM-379/F3)
+        rather than a new resolver -- this Service is one of several
+        consumers of the SAME resolver other app/ domains already share.
+
+        `children`/`ancestors` are combined into ONE deduplicated bulk
+        resolution (not `keep(children)` then sequentially `keep(ancestors)`,
+        the pre-F3 shape) -- both arrays are hard-capped (50/20 entries) by
+        the Adapter, no server pagination involved, so unlike the 3 scan call
+        sites (Relations/Notifications/Reminders) there is no early-stopping
+        concern here that would require page-by-page batching (OPM-379/F3
+        Korrektur 2).
 
         Also re-derives `children_truncated`/`ancestors_truncated` (a
         pre-existing bug ported from client.py's original, fixed here): the
@@ -664,9 +679,15 @@ class WorkPackageService:
             return detail
         cache = WorkPackageAllowedContext()
 
-        async def keep(
-            entries: builtins.list[dict[str, str | None]] | None,
-        ) -> builtins.list[dict[str, str | None]] | None:
+        def hrefs_of(entries: builtins.list[dict[str, str | None]] | None) -> builtins.list[str]:
+            if not entries:
+                return []
+            return [href for entry in entries if (href := entry.get("href"))]
+
+        all_hrefs = hrefs_of(detail.children) + hrefs_of(detail.ancestors)
+        outcomes = await self._work_package_project_allowed_bulk(all_hrefs, context=cache) if all_hrefs else {}
+
+        def keep(entries: builtins.list[dict[str, str | None]] | None) -> builtins.list[dict[str, str | None]] | None:
             if not entries:
                 return entries
             filtered = []
@@ -674,14 +695,17 @@ class WorkPackageService:
                 href = entry.get("href")
                 if not href:
                     continue
-                if await self._work_package_project_allowed(href, context=cache):
+                outcome = outcomes[href]
+                if isinstance(outcome, Exception):
+                    raise outcome
+                if outcome:
                     filtered.append(entry)
             return filtered or None
 
         original_children_count = len(detail.children) if detail.children else 0
         original_ancestors_count = len(detail.ancestors) if detail.ancestors else 0
-        children = await keep(detail.children)
-        ancestors = await keep(detail.ancestors)
+        children = keep(detail.children)
+        ancestors = keep(detail.ancestors)
         children_count = len(children) if children else 0
         ancestors_count = len(ancestors) if ancestors else 0
         return dataclasses.replace(
