@@ -2,20 +2,16 @@
 
 Mirrors `ProjectResolver`'s shape (`app/resolvers/project_resolver.py`):
 constructor takes `api` + `settings`, depends only on the `WorkPackageLookupApi`
-Port (never raw HTTP), exposes `resolve_id`-style methods. Extracted so the 7
-still-flat client.py domains that depend on work-package-reference resolution
-(Attachments, Time Entries, Reminders, Watchers, Emoji Reactions, Relations,
-Notifications, File Links) can each migrate independently later without
-waiting for the full Work Packages CRUD migration (~1170 lines, the last big
-blocker, not attempted here).
+Port (never raw HTTP), exposes `resolve_id`-style methods. Shared by every
+domain that needs work-package-reference resolution (Attachments, Time
+Entries, Reminders, Watchers, Emoji Reactions, Relations, Notifications,
+Activities, File Links, and Work Packages itself), so each can resolve a
+numeric id, a project-prefixed identifier, or check project-allowlist
+membership for a work-package href without duplicating that logic.
 
-`resolve_id()` is a verbatim behavioral port of client.py's
-`_resolve_work_package_id` body; `project_link_allowed()` is a verbatim
-behavioral port of `_work_package_project_allowed`, plus an optional
-`WorkPackageAllowedContext` cache parameter so the 5 client.py call sites
-can thread a shared `WorkPackageAllowedContext` through instead of each
-building their own bare `dict[str, bool] = {}`
-(see client.py's call sites for `_work_package_project_allowed`).
+`project_link_allowed()` accepts an optional `WorkPackageAllowedContext`
+cache parameter so callers can thread a shared cache through instead of
+building their own per-call cache.
 """
 
 from __future__ import annotations
@@ -30,8 +26,8 @@ from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_resolution import WorkPackageAllowedContext
 
 # Bounds concurrent allowlist-check HTTP requests across relations,
-# notifications, reminders, and work-package hierarchy filtering (OPM-379/F3).
-# A named constant, not tuned to match WorkPackageService's separate F6 batch
+# notifications, reminders, and work-package hierarchy filtering.
+# A named constant, not tuned to match WorkPackageService's separate batch-read
 # semaphore (also 10) -- these limit different traffic. Ten is reasonable
 # because a single top-level call's candidate set is itself bounded (a server
 # page of ~50-100 hrefs, or a hierarchy capped at 50 children + 20 ancestors):
@@ -48,7 +44,7 @@ class WorkPackageResolver:
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
         # Instance-scoped so it genuinely bounds combined allowlist traffic
-        # across all 4 F3 call sites, not just one call's own fan-out (same
+        # across all call sites, not just one call's own fan-out (same
         # reasoning as WorkPackageService's `_batch_read_semaphore`, but a
         # deliberately SEPARATE instance -- see that class's own comment for
         # the deadlock this independence avoids: a task holding a batch-read
@@ -119,7 +115,7 @@ class WorkPackageResolver:
     async def project_links_allowed(
         self, hrefs: Iterable[str], *, context: WorkPackageAllowedContext
     ) -> dict[str, bool | Exception]:
-        """Resolve a batch of hrefs concurrently (OPM-379/F3).
+        """Resolve a batch of hrefs concurrently.
 
         Deduplicates in insertion order (`dict.fromkeys`, not `set` -- keeps
         scheduling and exception-ordering deterministic for tests). Cache hits
@@ -131,13 +127,13 @@ class WorkPackageResolver:
         replaying a stale failure.
 
         The caller decides which (if any) of the returned exceptions actually
-        matter -- e.g. a relation whose `to` side would never have been
-        checked under the old sequential control flow once `from` was already
-        denied must not have a `to`-side transport error abort the whole
-        list. Consuming this result in original per-item order and re-raising
-        only the first exception the old sequential logic would actually have
-        reached preserves that behavior; see the 4 call sites for how each
-        applies this.
+        matter -- e.g. a relation whose `to` side would never be checked once
+        its `from` side was already denied under sequential, short-circuiting
+        evaluation must not have a `to`-side transport error abort the whole
+        list. Callers must consume this result in original per-item order and
+        re-raise only the first exception that sequential, short-circuiting
+        evaluation would actually have reached; see the call sites for how
+        each applies this.
         """
         unique_hrefs = list(dict.fromkeys(hrefs))
         outcomes: dict[str, bool | Exception] = {}

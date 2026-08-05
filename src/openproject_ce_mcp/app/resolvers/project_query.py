@@ -11,11 +11,10 @@ applied once each page's items are known), search-filtered, paginated -- but doe
 NOT apply hidden-field masking. That is `ProjectService`'s job (masking never
 changes field *values*, only stamps a later-serialization-time redaction marker,
 so deferring it to *after* this function returns is behaviorally identical to
-masking eagerly during page-building, as the original inline `list_projects` did).
+masking eagerly during page-building).
 
-Verbatim port of client.py's list_projects re-scan-and-skip loop (client.py:
-353-436): does NOT use the shared paginate_client/paginate_server helpers,
-because client- and server-pagination units can differ and allowlist filtering
+Does NOT use the shared paginate_client/paginate_server helpers, because
+client- and server-pagination units can differ and allowlist filtering
 happens mid-page -- every call re-scans from server page 1, skipping the first
 `(offset - 1) * effective_limit` already-seen allowed matches.
 """
@@ -62,8 +61,7 @@ async def fetch_project_page(
             exhausted = True
             break
 
-        # Fail closed: only allowlisted projects are ever collected (verbatim port
-        # of client.py's `projects = [p for p in projects if self._project_payload_allowed(p)]`).
+        # Fail closed: only allowlisted projects are ever collected.
         def _record_allowed(record: ProjectRecord) -> bool:
             return payload_allowed(
                 lambda: project_policy.ensure_project_read_allowed(

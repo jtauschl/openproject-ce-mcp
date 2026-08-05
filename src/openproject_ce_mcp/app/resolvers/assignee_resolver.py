@@ -1,13 +1,12 @@
 """Assignee-reference resolver.
 
-Verbatim behavioral port of the pre-existing `_resolve_assignee_id`.
 Deliberately narrower than `PrincipalResolver`: accepts only `"me"` or a bare
-numeric user id, never a name search -- the pre-existing, deliberate
-behavioral asymmetry between filtering (accepts names, via `PrincipalRefResolver`)
-and writing (numeric-or-me only, via this resolver and `AssigneeRefResolver`).
-Depends only on the `CurrentUserLookup` seam, no domain-API Port -- unlike
-every other Resolver in this package, so no architecture-boundary "api param
-typed as the Port" pin test applies here (there is no `api` param to mistype).
+numeric user id, never a name search -- a deliberate behavioral asymmetry
+between filtering (accepts names, via `PrincipalRefResolver`) and writing
+(numeric-or-me only, via this resolver and `AssigneeRefResolver`). Depends
+only on the `CurrentUserLookup` seam, no domain-API Port -- unlike every
+other Resolver in this package, so no architecture-boundary "api param typed
+as the Port" pin test applies here (there is no `api` param to mistype).
 """
 
 from __future__ import annotations

@@ -1,8 +1,7 @@
 """Version-reference resolver.
 
 Resolves a version reference (numeric id, or exact case-insensitive name) to a
-concrete numeric-id string. Verbatim behavioral port of the pre-existing
-`_resolve_version_id`. Depends on `VersionApi` + `fetch_visible_version_records`
+concrete numeric-id string. Depends on `VersionApi` + `fetch_visible_version_records`
 (both at or below its own layer) -- never on `VersionService`.
 
 Name comparison uses `VersionRecord.lookup_name` (the raw, never-synthesized
@@ -15,8 +14,7 @@ match a version whose real name was blank. See `app/ports/version_api.py`'s
 `VersionService.list()` uses) specifically because it needs each record's
 `lookup_name`, which a `VersionSummary` doesn't carry -- and, as a side
 effect, scans the full visible-record list once per resolve_id call instead
-of re-fetching the same server pages once per client-side page the way the
-previous `fetch_version_page`-based implementation did.
+of re-fetching the same server pages once per client-side page.
 """
 
 from __future__ import annotations
@@ -88,17 +86,18 @@ class VersionResolver:
         if version_ref.isdigit():
             # No target project to check availability against — reached via a global,
             # unscoped `version` filter on list_work_packages/search_work_packages
-            # (project is optional there). Deliberately conservative: falls back to a
-            # direct definingProject check, which can reject a version shared *into*
-            # an allowed project when that project isn't specified as the check
-            # target (no way to know which sharing context applies without one) — an
-            # accepted fail-closed trade-off for the project-less path, not a bug.
+            # (project is optional there). This path is intentionally fail-closed,
+            # not a bug: it falls back to a direct definingProject check, which can
+            # reject a version shared *into* an allowed project when that project
+            # isn't specified as the check target (there is no way to know which
+            # sharing context applies without one). That is an accepted trade-off
+            # for the project-less path -- do not "fix" it by loosening the check.
             #
-            # Deliberately does NOT call ensure_read_enabled (existing quirk, preserved
-            # exactly) -- calling the port directly here (bypassing
-            # fetch_visible_version_records, which is the only place that check
-            # lives) naturally reproduces that asymmetry rather than requiring a
-            # special case.
+            # This intentionally does NOT call ensure_read_enabled: calling the port
+            # directly here (bypassing fetch_visible_version_records, the only other
+            # place that check lives) means this path has no read-enablement gate at
+            # all. Do not add one without checking every caller that relies on this
+            # asymmetry.
             record = await self._api.get(int(version_ref))
             scope_policy.ensure_project_link_allowed(
                 record.defining_project_link,

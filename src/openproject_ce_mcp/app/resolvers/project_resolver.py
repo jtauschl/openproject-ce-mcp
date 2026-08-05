@@ -1,14 +1,12 @@
 """Project-reference resolver.
 
 Resolves a project reference (numeric id, exact identifier, or -- as a fallback --
-display name) to a resolved raw HAL payload. Verbatim behavioral port of the
-pre-existing `_resolve_project_ref`/`_resolve_project_by_name`/
-`_project_ambiguous_error`. Depends on `ProjectApi` + `fetch_project_page` (both at
-or below its own layer) -- never on `ProjectService`.
+display name) to a resolved raw HAL payload. Depends on `ProjectApi` +
+`fetch_project_page` (both at or below its own layer) -- never on
+`ProjectService`.
 
 Unlike VersionResolver, this resolver does not consume a `ProjectRefResolver` port
-seam -- it IS the concrete implementation the seam is bound to (client.py's
-`_get_project_payload`/`_resolve_project_ref` delegate to it after the rebind).
+seam -- it IS the concrete implementation the seam is bound to.
 `resolve()` implements the full `ProjectRefResolver` Protocol contract itself,
 including the `context` parameter.
 

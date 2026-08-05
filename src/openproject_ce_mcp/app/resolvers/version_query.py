@@ -9,8 +9,7 @@ allowlist-filtered, search-filtered, paginated -- but does NOT apply hidden-fiel
 masking and does NOT build `VersionListResult`. Both are `VersionService`'s job
 (masking never changes field *values*, only stamps a later-serialization-time
 redaction marker, so deferring it to *after* this function returns is behaviorally
-identical to masking eagerly during page-building, as the original inline
-`list_versions` did).
+identical to masking eagerly during page-building).
 """
 
 from __future__ import annotations
@@ -77,9 +76,8 @@ async def fetch_visible_version_records(
     `.summary`, for exact-name matching) both build on.
 
     access.ensure_read_enabled is called HERE (not by callers) so every caller gets
-    the identical, redundant-per-page check the original _resolve_version_id already
-    performed via its internal list_versions calls -- existing, tested behavior, not
-    a redundancy to "fix" away.
+    the identical, redundant-per-page check -- this redundancy is intentional,
+    tested behavior, not something to "fix" away.
     """
     access.ensure_read_enabled("version", settings=settings)
 
@@ -151,8 +149,7 @@ async def fetch_version_page(
       is a verified `UnpaginatedCollection` server-side (offset/pageSize
       are silently ignored, the server always returns everything in one
       response regardless), so there is no server-load problem here to fix;
-      early-stopping would not reduce work, only add complexity (OPM-373
-      Phase 5 scope decision).
+      early-stopping would not reduce work, only add complexity.
     - `project` is None (the global branch): scans server pages directly via
       `scan_records_and_paginate` instead of walking to completion first.
       Deliberately does NOT reuse `fetch_visible_version_records` (which

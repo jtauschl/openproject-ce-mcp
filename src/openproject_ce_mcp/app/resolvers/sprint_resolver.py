@@ -1,21 +1,17 @@
 """Sprint-reference resolver.
 
-Verbatim behavioral port of the flat `_resolve_sprint_id` -- the most
-behaviorally sensitive of the five work-package field resolvers (a
-server-paginated page-walk with two distinct lookup paths). Preserves its
-ambiguity check exactly (raises on more than one case-insensitive name match
--- same as `TypeResolver`, unlike `StatusPriorityTypeResolver`'s status/
-priority methods). Depends on the pre-existing `SprintApi` instance
-(`self._sprint_api`) and `app/policies/sprint_policy.py`'s existing pure
-functions (unchanged, no relocation needed), plus the `ProjectRefResolver`
-seam for resolving `project` to a numeric id.
+The most behaviorally sensitive of the five work-package field resolvers (a
+server-paginated page-walk with two distinct lookup paths). Raises on more
+than one case-insensitive name match -- same as `TypeResolver`, unlike
+`StatusPriorityTypeResolver`'s status/priority methods. Depends on the
+`SprintApi` Port and `app/policies/sprint_policy.py`'s pure functions, plus
+the `ProjectRefResolver` seam for resolving `project` to a numeric id.
 
 The repeated-page-ids termination safeguard (`page_ids <= seen_ids`) is
 security/correctness-relevant, not a style choice: some project-scoped
 sub-collection endpoints (verified live) silently ignore offset/page-size and
 always return every element -- without this check, `next_offset` never
-becomes `None` and the loop never terminates. Ported byte-for-byte, not
-"cleaned up."
+becomes `None` and the loop never terminates.
 
 Name comparison uses `SprintRecord.lookup_name` (the raw, never-synthesized
 name), not `summary.name`: `normalize_sprint` falls back to a synthetic

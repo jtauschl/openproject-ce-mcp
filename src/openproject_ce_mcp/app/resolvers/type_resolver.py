@@ -1,17 +1,12 @@
 """Work-package-type-reference resolver.
 
-Verbatim behavioral port of the flat `_resolve_type_id`, preserving its
-ambiguity check exactly (raises `InvalidInputError` on more than one
-case-insensitive name match -- unlike `StatusPriorityTypeResolver`'s
-status/priority methods, which silently return the first match; see that
-resolver's module docstring for the asymmetry). Depends on
-`StatusPriorityTypeApi` (the Port, not the gated Service -- same
-read-gate-bypass reasoning as `StatusPriorityTypeResolver`, reusing
-`normalize_type` instead of hand-parsing the raw payload a second time,
-fixing the same duplication `StatusPriorityTypeResolver` fixed for
-statuses/priorities) plus the pre-existing `ProjectRefResolver` seam
-(bound to `self._get_project_payload`) for resolving `project` to a numeric
-id first. Name comparison uses `TypeRecord.lookup_name` (the raw,
+Raises `InvalidInputError` on more than one case-insensitive name match --
+unlike `StatusPriorityTypeResolver`'s status/priority methods, which
+silently return the first match; see that resolver's module docstring for
+the asymmetry. Depends on `StatusPriorityTypeApi` (the Port, not the gated
+Service -- same read-gate-bypass reasoning as `StatusPriorityTypeResolver`)
+plus the `ProjectRefResolver` seam for resolving `project` to a numeric id
+first. Name comparison uses `TypeRecord.lookup_name` (the raw,
 never-synthesized name), not `summary.name` -- see
 `app/ports/status_priority_type_api.py`'s module docstring for why.
 """
