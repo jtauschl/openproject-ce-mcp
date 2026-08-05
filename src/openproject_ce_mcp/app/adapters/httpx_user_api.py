@@ -2,12 +2,10 @@
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
 `SUBJECT_LIMIT`/`link_to_web_url` are shared via `app/adapters/_text.py`.
-No `_visible_formattable_text`/inner masking gate to port -- User has no
-formattable-text field at all (every field is a plain scalar or a
-link-derived title), so the outer `hidden_fields.apply_hidden_fields`
-Service-side stamp is the only masking layer this domain ever had, verbatim
-port of client.py's `normalize_user`/`normalize_user_detail` minus that
-single `_apply_hidden_fields` call.
+User has no formattable-text field at all (every field is a plain scalar or
+a link-derived title), so the `hidden_fields.apply_hidden_fields`
+Service-side stamp is the only masking layer this domain has;
+`normalize_user`/`normalize_user_detail` exclude that call.
 """
 
 from __future__ import annotations
@@ -42,9 +40,7 @@ def _normalize_validation_errors(value: Any) -> dict[str, str]:
 
 
 def normalize_user(payload: dict[str, Any], *, base_url: str, origin: str) -> UserSummary:
-    """Pure HAL->model translation. Verbatim port of client.py's normalize_user,
-    minus the _apply_hidden_fields call.
-    """
+    """Pure HAL->model translation. Excludes hidden-field masking."""
     links = payload.get("_links", {})
     avatar_link = links.get("avatar")
     return UserSummary(
@@ -68,10 +64,10 @@ def normalize_user(payload: dict[str, Any], *, base_url: str, origin: str) -> Us
 def normalize_user_detail(
     payload: dict[str, Any], *, base_url: str, origin: str, summary: UserSummary | None = None
 ) -> UserDetail:
-    """Verbatim port of client.py's normalize_user_detail: field-copies from
-    the already-computed summary rather than re-extracting from the raw
-    payload with a different truncation limit (both use SUBJECT_LIMIT
-    uniformly) -- the eager `UserRecord.to_detail` shape depends on this.
+    """Field-copies from the already-computed summary rather than
+    re-extracting from the raw payload with a different truncation limit
+    (both use SUBJECT_LIMIT uniformly) -- the eager `UserRecord.to_detail`
+    shape depends on this.
 
     `summary` lets a caller that already built a `UserSummary` for the same
     payload (see `_record()`) pass it in directly instead of paying for a
@@ -135,11 +131,10 @@ class HttpxUserApi:
         return records, total
 
     async def get_user(self, user_ref: str) -> UserRecord:
-        # Verbatim port of client.py's `quote(user_ref, safe="")` -- user_ref
-        # can be a login (e.g. containing "@"/".") or the literal "me", not
-        # just a numeric id. A literal "."/".." path segment is still
-        # rejected by the generalized path-traversal guard -- a real login
-        # containing a dot never forms a bare "." segment on its own.
+        # user_ref can be a login (e.g. containing "@"/".") or the literal
+        # "me", not just a numeric id. A literal "."/".." path segment is
+        # still rejected by the generalized path-traversal guard -- a real
+        # login containing a dot never forms a bare "." segment on its own.
         safe_ref = _reject_path_traversal_segments(user_ref, field_name="user_ref")
         return self._record(await self._transport.get_json(f"users/{quote(safe_ref, safe='')}"))
 

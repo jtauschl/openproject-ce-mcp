@@ -1,14 +1,13 @@
 """HTTP-backed SprintApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
-`id_from_href`/`link_title` are shared via `app/adapters/_text.py` (verified
-against client.py's real module-level `_trim_text`/`_id_from_href`/
-`_link_title` -- unchanged, safe to reuse, same as Views' adapter).
+`id_from_href`/`link_title` are shared via `app/adapters/_text.py`, same as
+Views' adapter.
 
 No web `url` field: OpenProject's Backlogs module has no MVC layer for
 sprints at all (`only: %i[index create update]`, no `show` route or
-controller action) -- the field this adapter used to build (`sprints/{id}`)
-never resolved to a real page.
+controller action), so there is no real page a `sprints/{id}` URL could
+point to.
 
 NotFoundError from the transport propagates unwrapped from every method here --
 the three distinct "Backlogs module" messages are a Service-layer concern (see
@@ -30,9 +29,9 @@ from ._text import trim_text as _trim_text
 
 
 def _defining_workspace_link(payload: dict[str, Any]) -> Any:
-    """Verbatim port of client.py's `_sprint_workspace_link`: prefer the raw
-    `_links.definingWorkspace` link; if absent, synthesize one from the
-    embedded object's own `_links.self` (+ name as a title fallback).
+    """Prefer the raw `_links.definingWorkspace` link; if absent, synthesize
+    one from the embedded object's own `_links.self` (+ name as a title
+    fallback).
     """
     links = payload.get("_links", {})
     link = links.get("definingWorkspace")
@@ -49,9 +48,8 @@ def _defining_workspace_link(payload: dict[str, Any]) -> Any:
 def normalize_sprint(payload: dict[str, Any]) -> SprintSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_sprint, minus the
-    _apply_hidden_fields call -- hidden-field masking is a Service decision
-    applied after this returns (mirrors Views' adapter).
+    Excludes hidden-field masking -- that is a Service decision applied
+    after this returns (mirrors Views' adapter).
     """
     links = payload.get("_links", {})
     status_link = links.get("status")
@@ -76,11 +74,10 @@ def summary_to_detail(summary: SprintSummary) -> SprintDetail:
     detail, which adds `links`) -- built from the already-normalized
     `summary`, not the raw payload, mirroring `version_api.py`'s
     `summary_to_detail`. Building it via `normalize_sprint(payload, ...)` a
-    second time (as this originally did) would re-run the full HAL-parsing
-    pipeline on every row of every list call for a value list callers never
-    read (`.detail` is only read in `get()`) -- found during the Sprints
-    migration's step-6 efficiency audit, which also found the identical bug
-    pre-existing in `httpx_view_api.py`.
+    second time instead would re-run the full HAL-parsing pipeline on every
+    row of every list call for a value list callers never read (`.detail` is
+    only read in `get()`); the same avoidable cost also applies to
+    `httpx_view_api.py`.
     """
     return SprintDetail(
         id=summary.id,

@@ -47,12 +47,11 @@ class HttpxWorkPackageLookupApi:
     def _link_to_api_path(self, href: str) -> str:
         """Same-origin-checked href -> API-relative path (with the API prefix
         stripped, since the Transport's own base URL already includes it).
+        Also mirrored by `HttpxProjectApi._link_to_api_path`.
 
-        Verbatim port of client.py's `_link_to_api_path` (also mirrored by
-        `HttpxProjectApi._link_to_api_path`): an absolute href whose origin
-        differs from this instance's configured origin is rejected BEFORE any
-        authenticated request is made -- a manipulated/foreign link href must
-        never be contacted.
+        An absolute href whose origin differs from this instance's configured
+        origin is rejected BEFORE any authenticated request is made -- a
+        manipulated/foreign link href must never be contacted.
         """
         parsed = urlparse(href)
         if not parsed.scheme:

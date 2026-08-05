@@ -2,8 +2,7 @@
 
 Write-path methods (`validate_create`/`validate_update`/`parse_form`/
 `commit_create`/`commit_update`/`delete`/`post_comment`) are thin HTTP
-translations added alongside the READ slice below, once the write-path
-migration landed -- straightforward `Transport.{post_json,patch_json,delete}`
+translations -- straightforward `Transport.{post_json,patch_json,delete}`
 calls, no domain logic (schema-option resolution, custom-field matching, the
 auto-percentage/auto-remaining-time derivation) lives here; all of that is a
 `WorkPackageService` concern (see `app/ports/work_package_api.py`'s module
@@ -27,7 +26,7 @@ payload.
 `_origin_from_url`/`_reject_path_traversal_segments`/`SUBJECT_LIMIT` are
 shared via `app/adapters/_text.py`. `_normalize_text`/`_trim_text_with_meta`/
 `_extract_formattable_text_with_meta` (+ `FORMATTABLE_LIMIT`) are local,
-verbatim-copied from `httpx_project_api.py` -- per `_text.py`'s own module
+matching `httpx_project_api.py`'s own copies -- per `_text.py`'s own module
 docstring, these differ behaviorally across adapters (a genuinely different
 extraction, not just a truncation-limit divergence) and are not unified.
 `work_package_ref()` (path-safe reference encoding) is imported from
@@ -123,15 +122,13 @@ def _work_package_dates(payload: dict[str, Any]) -> tuple[str | None, str | None
 
 
 def normalize_work_package_summary(payload: dict[str, Any], *, text_limit: int | None) -> WorkPackageSummary:
-    """Pure HAL->model translation. Verbatim port of client.py's
-    normalize_work_package_summary, minus the _apply_hidden_fields call and
-    the hidden-field-aware text extraction -- hidden-field masking (including
-    zeroing description_truncated/description_length/has_description when
-    the description field itself is hidden) is a Service concern, applied
-    after this returns (see WorkPackageService._stamp).
+    """Pure HAL->model translation. Excludes hidden-field-aware text
+    extraction -- hidden-field masking (including zeroing
+    description_truncated/description_length/has_description when the
+    description field itself is hidden) is a Service concern, applied after
+    this returns (see WorkPackageService._stamp).
 
-    ``text_limit`` is an explicit parameter here (client.py's original read
-    `self.settings.text_limit` implicitly) since the adapter has no Settings
+    ``text_limit`` is an explicit parameter since the adapter has no Settings
     access -- the Service passes `settings.text_limit` through, matching
     `normalize_project`'s equivalent parameter.
     """
@@ -190,9 +187,8 @@ def normalize_work_package_detail(
 ) -> WorkPackageDetail:
     """Single-work-package read. ``text_limit=None`` (used by get()) returns the
     full description uncapped; the FORMATTABLE_LIMIT default keeps
-    write-preview-style callers capped (once a write path exists). Verbatim
-    port of client.py's normalize_work_package_detail, minus hidden-field
-    masking (Service concern).
+    write-preview-style callers capped. Excludes hidden-field masking
+    (Service concern).
 
     `summary` lets a caller that already built a `WorkPackageSummary` for the
     same payload pass it in to avoid a second full normalization -- callers

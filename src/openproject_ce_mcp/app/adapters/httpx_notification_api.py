@@ -2,18 +2,15 @@
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`link_title`/`id_from_href`/`SUBJECT_LIMIT` come
-from `app/adapters/_text.py` -- verified against client.py's real
-`normalize_notification` (client.py:4563-4593): this normalizer needs
+from `app/adapters/_text.py`, used by `normalize_notification` for
 `trim_text` (subject/reason truncation), `link_title` (project/reason link
 titles), and `id_from_href` (project/work-package ids from their links).
 
-`mark_read`/`mark_all_read` use `Transport.request_raw`, not `post_json` --
-both endpoints return 204/200/201 with no JSON body to parse (verbatim
-client.py behavior: the original checked `response.status_code not in {200,
-201, 204}` itself and raised `OpenProjectServerError` on anything else; here
+`mark_read`/`mark_all_read` use `Transport.request_raw`, not `post_json`:
+both endpoints return 204/200/201 with no JSON body to parse.
 `HttpxTransport._request` already raises via `raise_for_status` on any
 status >= 400 before `request_raw` returns, so a successful return already
-means success -- no separate status-code check is needed in this adapter).
+means success -- no separate status-code check is needed in this adapter.
 """
 
 from __future__ import annotations
@@ -33,9 +30,8 @@ from ._text import trim_text as _trim_text
 def normalize_notification(payload: dict[str, Any]) -> NotificationSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_notification, minus the
-    _apply_hidden_fields call -- masking is a Service-layer concern applied
-    after this returns (same pattern as every other migrated normalize_*).
+    Excludes hidden-field masking -- that is a Service-layer concern applied
+    after this returns (same pattern as every other normalize_*).
     """
     notification_id = int(payload["id"])
     links = payload.get("_links", {})
@@ -72,10 +68,10 @@ class HttpxNotificationApi:
     def _record(self, payload: dict[str, Any]) -> NotificationRecord:
         # `summary` is lazy (see NotificationRecord's docstring): list_all()'s
         # caller filters records by project_link/resource_link BEFORE ever
-        # reading .summary, matching client.py's original "filter raw,
-        # normalize survivors" order -- an eager field here would normalize
-        # (and potentially KeyError on) records the Service is about to
-        # discard on a project it cannot even read.
+        # reading .summary ("filter raw, normalize survivors" order) -- an
+        # eager field here would normalize (and potentially KeyError on)
+        # records the Service is about to discard on a project it cannot
+        # even read.
         links = payload.get("_links", {})
         return NotificationRecord(
             summary=lambda: normalize_notification(payload),

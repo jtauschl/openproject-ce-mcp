@@ -2,11 +2,11 @@
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
 `_link_title`/`_delimit_user_content`/`SUBJECT_LIMIT` are shared via
-`app/adapters/_text.py` (unified once every domain migrated). Still has its
-own `_extract_formattable_text`/`_trim_text_with_meta`/
-`_extract_formattable_text_with_meta`/`_normalize_validation_errors` (+
-`FORMATTABLE_LIMIT`) -- these differ behaviorally from the other adapters'
-equivalents (see `_text.py`'s module docstring) and are not shared.
+`app/adapters/_text.py`. Still has its own `_extract_formattable_text`/
+`_trim_text_with_meta`/`_extract_formattable_text_with_meta`/
+`_normalize_validation_errors` (+ `FORMATTABLE_LIMIT`) -- these differ
+behaviorally from the other adapters' equivalents (see `_text.py`'s module
+docstring) and are not shared.
 """
 
 from __future__ import annotations
@@ -32,9 +32,8 @@ def _extract_formattable_text(value: Any, *, limit: int = FORMATTABLE_LIMIT) -> 
 
 def _trim_text_with_meta(value: Any, *, limit: int | None) -> tuple[str | None, bool, int | None]:
     """Like ``_trim_text`` but reports truncation metadata. ``limit=None`` means
-    no cap. Duplicated from client.py's helper of the same name (see module
-    docstring) -- this copy deliberately skips the ``preserve_newlines`` option,
-    which client.py's version needs and this adapter's fields don't.
+    no cap. Deliberately skips the ``preserve_newlines`` option (see module
+    docstring): this adapter's fields don't need it.
     """
     if value is None:
         return None, False, None
@@ -72,13 +71,12 @@ def _normalize_validation_errors(value: Any) -> dict[str, str]:
 def normalize_version(payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT) -> VersionSummary:
     """Pure HAL->model translation (ADR: "lives in the Domain API adapter").
 
-    Verbatim port of client.py's normalize_version, minus the _apply_hidden_fields
-    call -- hidden-field masking is a Policy decision the Service applies after
-    the port returns, not something the adapter does.
+    Excludes hidden-field masking -- that is a Policy decision the Service
+    applies after this returns, not something the adapter does.
 
     ``text_limit=None`` returns the full description uncapped (single-version
-    read); the FORMATTABLE_LIMIT default keeps list/write-preview callers capped
-    (mirrors client.py's work-package/project pattern).
+    read); the FORMATTABLE_LIMIT default keeps list/write-preview callers
+    capped (mirrors the work-package/project pattern).
     """
     links = payload.get("_links", {})
     description, description_truncated, description_length = _extract_formattable_text_with_meta(

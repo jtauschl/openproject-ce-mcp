@@ -2,15 +2,13 @@
 
 No `httpx` import (depends on the `Transport` Protocol only).
 
-`normalize_form_validation_errors` (from `_text.py`) is client.py's own
-MODULE-LEVEL `_normalize_validation_errors` (client.py:6986-6998, 7071-7074),
-NOT HttpxMembershipApi's local copy -- the two genuinely differ:
-client.py's module-level version tries formattable-text extraction first,
-then `entry.get("message")`, then a raw trim fallback; Memberships' local
-copy skips the formattable-text branch entirely. client.py's original
-create_grid/update_grid used the module-level version (grids never had their
-own local copy in the flat code), so this adapter uses that exact
-three-branch shape to stay behaviorally equivalent.
+`normalize_form_validation_errors` (from `_text.py`) is NOT the same as
+HttpxMembershipApi's local validation-error normalizer -- the two genuinely
+differ in behavior and are not interchangeable: `normalize_form_validation_errors`
+tries formattable-text extraction first, then `entry.get("message")`, then a
+raw trim fallback; Memberships' local copy skips the formattable-text branch
+entirely. This adapter's `create`/`update` form-validation responses use the
+three-branch shape.
 """
 
 from __future__ import annotations
@@ -29,11 +27,9 @@ from ._text import trim_text as _trim_text
 def normalize_grid(payload: dict[str, Any]) -> GridSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_grid, minus the
-    _apply_hidden_fields call. Note GridSummary has no `name` field --
-    client.py's original never reads payload.get("name") either, even
-    though create_grid/update_grid accept and write one; this is the
-    existing contract, not a gap to fix here.
+    `GridSummary` has no `name` field: this function never reads
+    `payload.get("name")`, even though `create_grid`/`update_grid` accept and
+    write one. That asymmetry is the existing contract, not a gap to fix here.
     """
     grid_id = int(payload["id"])
     links = payload.get("_links", {})

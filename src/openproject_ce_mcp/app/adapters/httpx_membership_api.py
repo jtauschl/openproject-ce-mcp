@@ -2,12 +2,12 @@
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
 `_link_title`/`_id_from_href`/`_origin_from_url`/`SUBJECT_LIMIT` are shared
-via `app/adapters/_text.py` (unified once every domain migrated). Still has
-its own `_normalize_validation_errors` (differs behaviorally from Version's/
-Project's -- see `_text.py`'s module docstring for why it isn't shared) and
-`_link_to_api_path` (see HttpxProjectApi's copy of the same name for the full
-rationale: an absolute href whose origin differs from this instance's
-configured origin is rejected BEFORE any authenticated request is made).
+via `app/adapters/_text.py`. Still has its own `_normalize_validation_errors`
+(differs behaviorally from Version's/Project's -- see `_text.py`'s module
+docstring for why it isn't shared) and `_link_to_api_path` (see
+HttpxProjectApi's copy of the same name for the full rationale: an absolute
+href whose origin differs from this instance's configured origin is rejected
+BEFORE any authenticated request is made).
 """
 
 from __future__ import annotations
@@ -44,11 +44,10 @@ def _normalize_validation_errors(value: Any) -> dict[str, str]:
 def normalize_membership(payload: dict[str, Any]) -> MembershipSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_membership, minus the
-    _apply_hidden_fields call -- hidden-field masking is a Policy decision the
-    Service applies after this returns, not something the adapter does. Also
-    drops the dead web `url` field: OpenProject has no bare `/memberships/:id`
-    show route at all (only nested user-scoped create/update/destroy).
+    Excludes hidden-field masking -- that is a Policy decision the Service
+    applies after this returns, not something the adapter does. No web `url`
+    field: OpenProject has no bare `/memberships/:id` show route at all
+    (only nested user-scoped create/update/destroy).
     """
     links = payload.get("_links", {})
     roles = links.get("roles", [])
@@ -87,10 +86,9 @@ class HttpxMembershipApi:
         """Same-origin-checked href -> API-relative path (with the API prefix
         stripped, since the Transport's own base URL already includes it).
 
-        Verbatim port of client.py's _link_to_api_path: an absolute href whose
-        origin differs from this instance's configured origin is rejected
-        BEFORE any authenticated request is made -- a manipulated/foreign
-        `memberships` href must never be contacted.
+        An absolute href whose origin differs from this instance's configured
+        origin is rejected BEFORE any authenticated request is made -- a
+        manipulated/foreign `memberships` href must never be contacted.
         """
         parsed = urlparse(href)
         if not parsed.scheme:
@@ -114,9 +112,9 @@ class HttpxMembershipApi:
         # httpx's params= REPLACES a URL's existing query string rather than
         # merging with it, so offset/pageSize must be merged into the href's
         # own query (e.g. its "filters=...") ourselves, not passed as separate
-        # params -- verbatim port of client.py's former inline merge. The
-        # quirk is fully contained inside this adapter method; callers
-        # (MembershipService) pass a bare href and never see parse_qsl at all.
+        # params. The quirk is fully contained inside this adapter method;
+        # callers (MembershipService) pass a bare href and never see
+        # parse_qsl at all.
         path = self._link_to_api_path(project_memberships_href)
         base_path, _, query = path.partition("?")
         merged_params = dict(parse_qsl(query))

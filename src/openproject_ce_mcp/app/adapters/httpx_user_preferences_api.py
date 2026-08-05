@@ -1,9 +1,9 @@
 """HTTP-backed UserPreferencesApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). No `_text.py`
-imports: verified against client.py:4482-4492's normalize_user_preferences --
-every field is a direct `payload.get(...)`, no trimming/id-extraction/
-link-title logic and no HAL `_links` block at all on this payload shape.
+imports: every field is a direct `payload.get(...)`, no trimming/
+id-extraction/link-title logic and no HAL `_links` block at all on this
+payload shape.
 """
 
 from __future__ import annotations
@@ -16,15 +16,13 @@ from ..transport.protocol import Transport
 
 
 def normalize_user_preferences(payload: dict[str, Any]) -> UserPreferences:
-    """Pure HAL->model translation. Verbatim port of client.py's
-    normalize_user_preferences -- there was no _apply_hidden_fields call to
-    strip here, the original had none at all (masking is a new capability
-    this migration adds at the Service layer, not something being preserved).
+    """Pure HAL->model translation. This entity has no hidden-field masking
+    at all (masking, if any, is a Service-layer concern).
 
-    No "id"/"lang"/"notificationsReminderTime"/"updatedAt": OpenProject's real
-    UserPreferenceRepresenter has none of these fields (verified live) --
-    language lives on the User resource, not preferences, and there is no
-    equivalent of the other three at all.
+    No "id"/"lang"/"notificationsReminderTime"/"updatedAt": OpenProject's
+    UserPreferenceRepresenter has none of these fields -- language lives on
+    the User resource, not preferences, and there is no equivalent of the
+    other three at all.
     """
     return UserPreferences(
         time_zone=payload.get("timeZone"),

@@ -2,29 +2,22 @@
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `link_title`/`delimit_user_content` come from
-`app/adapters/_text.py` -- verified against client.py's real
-`normalize_activity` (client.py:3475-3515), which needs `link_title` (user)
-and `delimit_user_content` (each details-array entry's `raw` text).
+`app/adapters/_text.py`, used by `normalize_activity` for `link_title`
+(user) and `delimit_user_content` (each details-array entry's `raw` text).
 
 `_trim_text_with_meta`/`_extract_formattable_text_with_meta` stay LOCAL
 (deliberately not `_text.py`-shared, per the documented per-adapter
-exception -- see `httpx_time_entry_api.py`'s identical local copy for the
-established precedent): client.py's original called the hide-aware
-`_visible_formattable_text_with_meta` for `comment`, which is
-`_field_hidden("activity", "comment")` gating PLUS the unconditional
-extraction below. Both this adapter's `"activity"` entity string and the
-Service's own `apply_hidden_fields("activity", ...)` stamp resolve to the
-identical `field_hidden` predicate against the identical entity/field name
-(`"activity"`/`"comment"`) -- the "double masking, same predicate" case the
-runbook documents as harmless legacy redundancy, not a second independent
-control (per its own step-1 "verify, don't assume" trap). The adapter
-therefore extracts unconditionally; masking is applied once, in the Service.
+exception -- see `httpx_time_entry_api.py`'s identical local copy). The
+adapter extracts `comment` unconditionally, without a hide-aware gate;
+masking is applied once, in the Service, via
+`apply_hidden_fields("activity", ...)` against the same
+entity/field name (`"activity"`/`"comment"`) -- gating in both places would
+be redundant, not a second independent control.
 
-`normalize_activity` returns `(summary, comment_truncated)` is NOT the
-shape -- it takes `text_limit` directly (verbatim of the original's own
-parameter), called by the Service only on the elements that survive
-slicing, never on every element (see module docstring in `activity_api.py`
-port for the eager-vs-lazy reasoning this avoids).
+`normalize_activity` takes `text_limit` directly, called by the Service only
+on the elements that survive slicing, never on every element (see module
+docstring in `activity_api.py` port for the eager-vs-lazy reasoning this
+avoids).
 """
 
 from __future__ import annotations
@@ -42,9 +35,7 @@ FORMATTABLE_LIMIT = 1_200
 
 
 def _normalize_text(value: Any, *, preserve_newlines: bool) -> str:
-    """Verbatim port of client.py's module-level `_normalize_text`.
-
-    Default (``preserve_newlines=False``): collapse all whitespace/newlines
+    """Default (``preserve_newlines=False``): collapse all whitespace/newlines
     to single spaces. ``preserve_newlines=True`` (the only mode this adapter
     actually uses, for `comment`): keep paragraph/list structure -- CRLF->LF,
     collapse inline whitespace per line, strip trailing whitespace per line,
@@ -96,18 +87,15 @@ def _extract_formattable_text_with_meta(
 def normalize_activity(payload: dict[str, Any], *, text_limit: int | None = None) -> ActivitySummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_activity, minus the
-    _apply_hidden_fields call and the hide-aware gate -- masking is a
+    Excludes hidden-field masking and the hide-aware gate -- masking is a
     Service-layer concern applied after this returns (see module docstring).
     """
     links = payload.get("_links", {})
     raw_comment, truncated, length = _extract_formattable_text_with_meta(
         payload.get("comment"), limit=text_limit, preserve_newlines=True
     )
-    # `_visible_formattable_text_with_meta`'s original docstring: "The
-    # returned text is always wrapped by _delimit_user_content" -- verbatim
-    # here, since masking (the hide-aware gate that method also applied)
-    # moved to the Service layer, but the delimiter wrap did not.
+    # The returned text is always wrapped by _delimit_user_content, even
+    # though hide-aware masking itself lives in the Service layer.
     comment = _delimit_user_content(raw_comment)
 
     # Details array with limit. OpenProject sends each entry as both a

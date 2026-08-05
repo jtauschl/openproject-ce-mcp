@@ -2,13 +2,11 @@
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`id_from_href`/`link_title`/`SUBJECT_LIMIT` come
-from `app/adapters/_text.py` -- verified against client.py's real
-`normalize_file_link` (client.py:4444-4462): this normalizer needs exactly
-`trim_text` (title truncation), `id_from_href` (storage id from the storage
-link's href), and `link_title` (storage name from the storage link's title)
--- no formattable-text extraction, no delimit_user_content (file link titles
-are plain filenames, not user-content-marked rich text in the original
-either).
+from `app/adapters/_text.py`, used by `normalize_file_link` for `trim_text`
+(title truncation), `id_from_href` (storage id from the storage link's
+href), and `link_title` (storage name from the storage link's title) -- no
+formattable-text extraction, no delimit_user_content: file link titles are
+plain filenames, not user-content-marked rich text.
 """
 
 from __future__ import annotations
@@ -27,9 +25,8 @@ from ._text import trim_text as _trim_text
 def normalize_file_link(payload: dict[str, Any]) -> FileLinkSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_file_link, minus the
-    _apply_hidden_fields call -- masking is a Service-layer concern applied
-    after this returns (same pattern as every other migrated normalize_*).
+    Excludes hidden-field masking -- that is a Service-layer concern applied
+    after this returns (same pattern as every other normalize_*).
     """
     file_link_id = int(payload["id"])
     links = payload.get("_links", {})

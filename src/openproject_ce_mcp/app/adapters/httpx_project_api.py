@@ -13,11 +13,7 @@ Still has its own `_normalize_text`/`_trim_text_with_meta`/
 `_extract_formattable_text_with_meta`/`_normalize_validation_errors`
 (+ `FORMATTABLE_LIMIT`/`PROJECT_ANCESTORS_LIMIT`) -- these differ
 behaviorally from the other adapters' equivalents (see `_text.py`'s module
-docstring) and are not shared. A local `_slug_from_href` definition existed
-here with zero call sites in this file (found dead during a later
-migration's step-6 self-audit, alongside the discovery that this same
-helper was byte-identically duplicated in two other adapters) -- removed
-rather than imported from `_text.py`, since nothing here actually needs it.
+docstring) and are not shared.
 """
 
 from __future__ import annotations
@@ -103,14 +99,13 @@ def _extract_formattable_text_with_meta(
 
 
 def normalize_project(payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT) -> ProjectSummary:
-    """Pure HAL->model translation. Verbatim port of client.py's normalize_project,
-    minus the _apply_hidden_fields call and the hidden-field-aware text extraction --
-    hidden-field masking is a Policy/Service decision applied after this returns.
+    """Pure HAL->model translation. Excludes hidden-field masking and the
+    hidden-field-aware text extraction -- hidden-field masking is a
+    Policy/Service decision applied after this returns.
 
     ``text_limit`` defaults to FORMATTABLE_LIMIT (list-row cap) but callers that
     already resolved a single project (get_configuration, get_admin_context) pass
-    a smaller/settings-driven cap explicitly, matching client.py's list_projects
-    passing settings.text_limit into normalize_project's underlying calls.
+    a smaller/settings-driven cap explicitly.
     """
     links = payload.get("_links", {})
     identifier = payload.get("identifier")
@@ -151,8 +146,8 @@ def normalize_project_detail(
 ) -> ProjectDetail:
     """Single-project read. ``text_limit=None`` (used by get_project) returns the
     full description/status_explanation uncapped; the FORMATTABLE_LIMIT default
-    keeps write-preview callers capped. Verbatim port of client.py's
-    normalize_project_detail, minus hidden-field masking (Service concern).
+    keeps write-preview callers capped. Excludes hidden-field masking
+    (Service concern).
 
     `summary` lets a caller that already built a `ProjectSummary` for the
     same payload (see `_record()`) pass it in directly instead of paying for
@@ -317,10 +312,10 @@ class HttpxProjectApi:
         """Same-origin-checked href -> API-relative path (with the API prefix
         stripped, since the Transport's own base URL already includes it).
 
-        Verbatim port of client.py's _link_to_api_path: an absolute href whose
-        origin differs from this instance's configured origin is rejected
-        BEFORE any authenticated request is made -- a manipulated/foreign
-        `allowedValues.href` in a schema response must never be contacted.
+        An absolute href whose origin differs from this instance's configured
+        origin is rejected BEFORE any authenticated request is made -- a
+        manipulated/foreign `allowedValues.href` in a schema response must
+        never be contacted.
         """
         parsed = urlparse(href)
         if not parsed.scheme:

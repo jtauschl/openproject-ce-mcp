@@ -18,9 +18,8 @@ from ._text import trim_text as _trim_text
 def normalize_watcher(payload: dict[str, Any]) -> WatcherSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_watcher, minus the
-    _apply_hidden_fields call -- masking is a Service-layer concern applied
-    after this returns (same pattern as every other migrated normalize_*).
+    Excludes hidden-field masking -- that is a Service-layer concern applied
+    after this returns (same pattern as every other normalize_*).
     """
     watcher_id = int(payload["id"])
     return WatcherSummary(

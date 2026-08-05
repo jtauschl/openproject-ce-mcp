@@ -27,8 +27,7 @@ from ._text import trim_text as _trim_text
 def normalize_action(payload: dict[str, Any], *, base_url: str, origin: str) -> ActionSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_action, minus the
-    _apply_hidden_fields call.
+    Excludes hidden-field masking.
     """
     links = payload.get("_links", {})
     self_link = links.get("self", {})
@@ -43,8 +42,7 @@ def normalize_action(payload: dict[str, Any], *, base_url: str, origin: str) -> 
 def normalize_capability(payload: dict[str, Any], *, base_url: str, origin: str) -> CapabilitySummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_capability, minus the
-    _apply_hidden_fields call.
+    Excludes hidden-field masking.
     """
     links = payload.get("_links", {})
     self_link = links.get("self", {})

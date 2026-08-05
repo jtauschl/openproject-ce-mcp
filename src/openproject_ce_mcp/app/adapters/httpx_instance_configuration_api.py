@@ -15,8 +15,7 @@ from ._text import trim_text as _trim_text
 
 
 def normalize_instance_configuration(payload: dict[str, Any]) -> InstanceConfiguration:
-    """Pure HAL->model translation. Verbatim port of client.py's
-    normalize_instance_configuration, minus the _apply_hidden_fields call.
+    """Pure HAL->model translation. Excludes hidden-field masking.
 
     Two deliberately asymmetric list-building idioms, preserved exactly:
     `per_page_options` keeps only genuine `int` entries (no coercion of

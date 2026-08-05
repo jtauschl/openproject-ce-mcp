@@ -2,9 +2,8 @@
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`link_title`/`id_from_href`/`delimit_user_content`/
-`SUBJECT_LIMIT` come from `app/adapters/_text.py` -- verified against the
-pre-migration flat client.py's original `normalize_relation`: this normalizer
-needs `trim_text` (description truncation), `delimit_user_content` (description
+`SUBJECT_LIMIT` come from `app/adapters/_text.py`, used by `normalize_relation`
+for `trim_text` (description truncation), `delimit_user_content` (description
 wrapped as untrusted user content), `link_title` (from/to subject titles), and
 `id_from_href` (from/to numeric ids from their hrefs).
 
@@ -63,10 +62,10 @@ class HttpxRelationApi:
     def to_record(self, payload: dict[str, Any]) -> RelationRecord:
         links = payload.get("_links", {})
         # `summary` is lazy (see RelationRecord's docstring): the Service
-        # filters records by from_link/to_link BEFORE ever reading .summary,
-        # matching client.py's original "filter raw, normalize survivors"
-        # order -- an eager field here would normalize (and potentially
-        # KeyError on) records the Service is about to discard.
+        # filters records by from_link/to_link BEFORE ever reading .summary
+        # ("filter raw, normalize survivors" order) -- an eager field here
+        # would normalize (and potentially KeyError on) records the Service
+        # is about to discard.
         return RelationRecord(
             summary=lambda: normalize_relation(payload),
             from_link=links.get("from"),

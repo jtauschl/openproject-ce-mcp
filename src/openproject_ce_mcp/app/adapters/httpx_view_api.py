@@ -1,13 +1,11 @@
 """HTTP-backed ViewApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
-`id_from_href`/`link_title` are shared via `app/adapters/_text.py` (verified
-against client.py's real module-level `_trim_text`/`_id_from_href`/
-`_link_title` -- unchanged, safe to reuse).
+`id_from_href`/`link_title` are shared via `app/adapters/_text.py`.
 
-No `url` field: it used to be built via `urljoin` against the *API* path
-`api/v3/views/{id}` -- a locally-constructed path, not a server-supplied
-href, so it was dropped per the "no constructed output URLs" rule.
+No `url` field: a locally-constructed API path (`api/v3/views/{id}`) is not
+a server-supplied href, so it is not built here, per the "no constructed
+output URLs" rule.
 """
 
 from __future__ import annotations
@@ -26,10 +24,9 @@ from ._text import trim_text as _trim_text
 def normalize_view(payload: dict[str, Any]) -> ViewSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_view, minus the
-    _apply_hidden_fields call -- hidden-field masking is a Service decision
-    applied after this returns. Note `type` reads the HAL discriminator key
-    `_type` (underscore-prefixed), not `type`.
+    Excludes hidden-field masking -- that is a Service decision applied
+    after this returns. Note `type` reads the HAL discriminator key `_type`
+    (underscore-prefixed), not `type`.
     """
     links = payload.get("_links", {})
     project_link = links.get("project")
@@ -56,12 +53,10 @@ def summary_to_detail(summary: ViewSummary, *, links: list[str]) -> ViewDetail:
     truncation limit is applied anywhere, unlike Documents' description.
 
     Built from `summary` rather than by re-running `normalize_view` on the raw
-    payload a second time (the original version of this function did that) --
-    doubling `_trim_text`/`_id_from_href`/`_link_title` work on every row of
-    every `list_all` call for a value list callers never read (`.detail` is
-    only read in `get()`). Found during the Sprints migration's step-6
-    efficiency audit, which flagged this as a pre-existing bug here too,
-    mirroring `version_api.py`'s `summary_to_detail` pattern.
+    payload a second time, which would double `_trim_text`/`_id_from_href`/
+    `_link_title` work on every row of every `list_all` call for a value list
+    callers never read (`.detail` is only read in `get()`) -- mirrors
+    `version_api.py`'s `summary_to_detail` pattern.
     """
     return ViewDetail(
         id=summary.id,

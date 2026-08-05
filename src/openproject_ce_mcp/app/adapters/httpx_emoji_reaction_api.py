@@ -1,11 +1,10 @@
 """HTTP-backed EmojiReactionApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
-other adapter). `trim_text`/`SUBJECT_LIMIT` come from `app/adapters/_text.py`
--- verified against client.py's real `normalize_emoji_reaction`
-(client.py:2910-2924): this normalizer needs only `trim_text` (per-user
-title truncation) -- no id-from-href, no web-URL builder, since
-EmojiReactionSummary carries no id/url field at all.
+other adapter). `trim_text`/`SUBJECT_LIMIT` come from `app/adapters/_text.py`,
+used by `normalize_emoji_reaction` for per-user title truncation -- no
+id-from-href, no web-URL builder, since EmojiReactionSummary carries no
+id/url field at all.
 """
 
 from __future__ import annotations
@@ -21,9 +20,8 @@ from ._text import trim_text as _trim_text
 def normalize_emoji_reaction(payload: dict[str, Any]) -> EmojiReactionSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_emoji_reaction, minus the
-    _apply_hidden_fields call -- masking is a Service-layer concern applied
-    after this returns (same pattern as every other migrated normalize_*).
+    Excludes hidden-field masking -- that is a Service-layer concern applied
+    after this returns (same pattern as every other normalize_*).
     """
     users = [
         _trim_text(u.get("title"), limit=SUBJECT_LIMIT) or ""
@@ -39,9 +37,9 @@ def normalize_emoji_reaction(payload: dict[str, Any]) -> EmojiReactionSummary:
 
 
 def normalize_emoji_reactions(payload: dict[str, Any]) -> list[EmojiReactionSummary]:
-    """Verbatim port of client.py's `_emoji_reactions_result`'s element-mapping
-    half (the Result-wrapper construction itself is a Service-layer concern,
-    since count/results belong to EmojiReactionListResult, not this Port)."""
+    """The element-mapping half of building an emoji-reaction list result; the
+    Result-wrapper construction itself is a Service-layer concern, since
+    count/results belong to EmojiReactionListResult, not this Port."""
     elements = payload.get("_embedded", {}).get("elements", [])
     return [normalize_emoji_reaction(item) for item in elements if isinstance(item, dict)]
 

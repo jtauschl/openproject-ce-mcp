@@ -5,14 +5,13 @@ No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
 `app/adapters/_text.py`.
 
 `_query_ref_identity` is local: the shared self-link/href/id triple repeated
-across all 5 normalize_query_* functions in this module, matching client.py's
-original private helper of the same name and shape.
+across all 5 normalize_query_* functions in this module.
 
-Every single-item GET path segment is `quote(<id>, safe="")`-encoded, matching
-client.py's original (verbatim) -- these ids can contain characters like `:`
-or `=` (e.g. operator id `"=""`) that would otherwise corrupt the URL path if
-passed through unescaped. `filters`/`columns`/`operators`/
-`filter_instance_schemas` quote the raw id directly.
+Every single-item GET path segment is `quote(<id>, safe="")`-encoded: these
+ids can contain characters like `:` or `=` (e.g. operator id `"=""`) that
+would otherwise corrupt the URL path if passed through unescaped.
+`filters`/`columns`/`operators`/`filter_instance_schemas` quote the raw id
+directly.
 
 `sort_bys` is the one exception, not just an encoding detail: the
 route is `queries/sort_bys/:id-:direction` (hyphen-joined, verified against

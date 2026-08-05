@@ -13,12 +13,11 @@ from ..transport.protocol import Transport
 
 
 def normalize_current_user(payload: dict[str, Any]) -> CurrentUser:
-    """Pure HAL->model translation. Verbatim port of client.py's inline
-    CurrentUser construction, minus the _apply_hidden_fields call.
+    """Pure HAL->model translation. Excludes hidden-field masking.
 
     Deliberately does NOT trim `name`/`login` (no SUBJECT_LIMIT truncation),
-    unlike the sibling normalize_principal -- this asymmetry is pre-existing
-    and must not be "fixed" during migration.
+    unlike the sibling normalize_principal -- this asymmetry is intentional
+    and must not be "fixed".
     """
     return CurrentUser(
         id=int(payload["id"]),

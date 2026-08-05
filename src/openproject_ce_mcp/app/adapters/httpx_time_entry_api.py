@@ -3,26 +3,19 @@
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`id_from_href`/`link_title`/`delimit_user_content`/
 `web_url`/`SUBJECT_LIMIT`/`normalize_form_validation_errors` come from
-`app/adapters/_text.py` -- verified against the pre-migration flat client.py's
-original `normalize_time_entry`/`normalize_time_entry_activity`.
-`normalize_form_validation_errors` is client.py's own MODULE-LEVEL
-`_normalize_validation_errors` (the exact three-branch shape
-create_time_entry/update_time_entry used), shared with Grids' identical
-situation -- unified into `_text.py` during this migration's step-6
-self-audit once it became a 3rd identical copy.
+`app/adapters/_text.py`. `normalize_form_validation_errors` is the exact
+three-branch shape `create_time_entry`/`update_time_entry` use, shared with
+Grids' identical situation.
 
 Unlike `normalize_relation`, `normalize_time_entry_raw`/
-`normalize_time_entry_activity_raw` here are DELIBERATELY split from the
-pre-migration client.py originals: the originals also called
-`self._visible_formattable_text_with_meta(...)` (hide-aware, settings-
-dependent, for the `comment` field) and `self._apply_hidden_fields(...)` (the
-whole object) inline, making them NOT settings-free the way
-`normalize_relation` was. This adapter's functions do ONLY the pure HAL
-extraction -- `comment` is still trimmed/delimited (matching the untrusted-
-user-content handling every other domain applies, via the same `raw`-or-`html`
-fallback, whitespace-collapse, and ellipsis-truncation shape as
-`httpx_project_api.py`'s `_extract_formattable_text_with_meta`), but with NO
-hidden-field awareness at all. `TimeEntryService._stamp`/`_stamp_activity` apply the
+`normalize_time_entry_activity_raw` here do NOT call a hide-aware,
+settings-dependent extraction or apply hidden-field masking inline -- these
+functions do ONLY the pure HAL extraction. `comment` is still
+trimmed/delimited (matching the untrusted-user-content handling every other
+domain applies, via the same `raw`-or-`html` fallback, whitespace-collapse,
+and ellipsis-truncation shape as `httpx_project_api.py`'s
+`_extract_formattable_text_with_meta`), but with NO hidden-field awareness at
+all. `TimeEntryService._stamp`/`_stamp_activity` apply the
 `"time_entry"`/`"time_entry_activity"` hidden-field masking afterwards (see
 that module's docstring for the comment-specific metadata-clearing rationale).
 
@@ -31,7 +24,7 @@ error -- it must NOT convert failures to `None`/empty here, since one of its
 two callers (`TimeEntryService._resolve_activity_id`) needs a real error to
 propagate, not be silently swallowed (see time_entry_api.py's module
 docstring for the full rationale, and GitHub issue #10's log_own_time
-entity-vs-project-link distinction, preserved verbatim below).
+entity-vs-project-link distinction, described below).
 """
 
 from __future__ import annotations
@@ -55,8 +48,7 @@ def normalize_time_entry_raw(payload: dict[str, Any], *, text_limit: int | None)
     """Pure HAL extraction, no hidden-field awareness (see module docstring).
 
     ``text_limit=None`` returns the full comment uncapped (get_time_entry);
-    the caller passes settings.text_limit for list rows, matching the
-    pre-migration original's parameterization.
+    the caller passes settings.text_limit for list rows.
     """
     links = payload.get("_links", {})
     project_link = links.get("project")

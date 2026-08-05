@@ -4,11 +4,11 @@ No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`id_from_href`/`SUBJECT_LIMIT` come from
 `app/adapters/_text.py`.
 
-No web `url` field: the `self` link this adapter used to expose points at
-`GET /api/v3/reminders/{id}`, which does not exist -- `_find_raw` below
-documents that OpenProject's `route_param :id` block under
-`resource :reminders` mounts only `patch`/`delete`, never `get`. The
-constructed link was never dereferenceable, by API or by browser.
+No web `url` field: `GET /api/v3/reminders/{id}` does not exist -- `_find_raw`
+below documents that OpenProject's `route_param :id` block under
+`resource :reminders` mounts only `patch`/`delete`, never `get`. A `self`
+link built from that path would never be dereferenceable, by API or by
+browser.
 """
 
 from __future__ import annotations
@@ -28,9 +28,8 @@ from ._text import trim_text as _trim_text
 def normalize_reminder(payload: dict[str, Any]) -> ReminderSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_reminder, minus the
-    _apply_hidden_fields call -- masking is a Service-layer concern applied
-    after this returns (same pattern as every other migrated normalize_*).
+    Excludes hidden-field masking -- that is a Service-layer concern applied
+    after this returns (same pattern as every other normalize_*).
     """
     links = payload.get("_links", {})
     creator = payload.get("_embedded", {}).get("creator", {})
@@ -50,9 +49,9 @@ class HttpxReminderApi:
     def _record(self, payload: dict[str, Any]) -> ReminderRecord:
         # `summary` is lazy (see ReminderRecord's docstring): list_all()'s
         # caller filters records by remindable_link BEFORE ever reading
-        # .summary, matching client.py's original "filter raw, normalize
-        # survivors" order -- an eager field here would normalize (and
-        # potentially KeyError on) records the Service is about to discard.
+        # .summary ("filter raw, normalize survivors" order) -- an eager
+        # field here would normalize (and potentially KeyError on) records
+        # the Service is about to discard.
         return ReminderRecord(
             summary=lambda: normalize_reminder(payload),
             remindable_link=payload.get("_links", {}).get("remindable"),

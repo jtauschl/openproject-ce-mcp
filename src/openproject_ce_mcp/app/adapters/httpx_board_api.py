@@ -5,22 +5,20 @@ backed by OpenProject's `queries` resource (`_type: "Query"`), not a
 dedicated `boards` endpoint -- every HTTP call targets `queries`/
 `queries/{id}`/`queries/form`/`queries/{id}/form`.
 
-No `url` field: it used to be a client-constructed work-package-list web
-url (`{base_url}/work_packages?query_id={id}`) -- not a server-supplied
-href, so it was dropped per the "no constructed output URLs" rule.
+No `url` field: a client-constructed work-package-list web url
+(`{base_url}/work_packages?query_id={id}`) is not a server-supplied href, so
+it is not built here, per the "no constructed output URLs" rule.
 
 `_normalize_board_filter`/`_normalize_filter_values`/
 `_normalize_query_link_list`/`_normalize_query_link_label` are Boards-only
-HAL shapes with no sibling analog -- ported verbatim from client.py's
-module-level methods, deliberately not unified with anything.
+HAL shapes with no sibling analog, deliberately not unified with anything.
 
-`_resolve_query_reference_href` (client.py:6621-6641) is pure logic with no
-I/O -- it stays in `board_service.py`, not this adapter, mirroring how other
-Services own their pure write-payload-building helpers directly.
+`_resolve_query_reference_href` is pure logic with no I/O -- it stays in
+`board_service.py`, not this adapter, mirroring how other Services own their
+pure write-payload-building helpers directly.
 
-`_can_update_from_links` is shared via `app/adapters/_text.py`, joining it
-as the 3rd byte-identical copy (alongside Document/News) once Boards was
-migrated.
+`_can_update_from_links` is shared via `app/adapters/_text.py`, alongside
+Document/News.
 """
 
 from __future__ import annotations
@@ -92,9 +90,8 @@ def _normalize_query_link_list(value: Any) -> list[str]:
 def normalize_board(payload: dict[str, Any]) -> BoardSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_board, minus the
-    _apply_hidden_fields call -- hidden-field masking is a Service decision
-    applied after this returns.
+    Excludes hidden-field masking -- that is a Service decision applied
+    after this returns.
     """
     links = payload.get("_links", {})
     project_link = links.get("project")
@@ -123,12 +120,10 @@ def summary_to_detail(summary: BoardSummary, *, payload: dict[str, Any]) -> Boar
     payload) and adds the detail-only fields extracted from the raw payload
     once -- no second/different truncation limit is applied to any shared
     field. Built from `summary` rather than by re-running `normalize_board`'s
-    field extraction a second time (client.py's original `normalize_board_detail`
-    did call `normalize_board` internally, but that recomputes every summary
-    field from the raw payload again) -- mirrors `view_api.py`'s
-    `summary_to_detail` pattern, avoiding the double-normalization bug class
-    found in Views'/Sprints' adapters during the Sprints migration's step-6
-    efficiency audit.
+    field extraction a second time, which would recompute every summary
+    field from the raw payload again -- mirrors `view_api.py`'s
+    `summary_to_detail` pattern, avoiding the double-normalization cost that
+    also applies to Views'/Sprints' adapters.
     """
     links = payload.get("_links", {})
     return BoardDetail(

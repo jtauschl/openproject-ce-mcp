@@ -5,9 +5,7 @@ No `httpx` import (depends on the `Transport` Protocol only), no
 builds no raw absolute hrefs from server responses, every path is a fixed
 string (`news`, `news/{id}`). `_trim_text`/`_link_title`/`_id_from_href`/
 `_delimit_user_content`/`_can_update_from_links`/`SUBJECT_LIMIT` are shared
-via `app/adapters/_text.py` (unified once every domain migrated;
-`_can_update_from_links` joined the shared module once Boards made it a 3rd
-byte-identical copy).
+via `app/adapters/_text.py`.
 """
 
 from __future__ import annotations
@@ -35,14 +33,11 @@ def _extract_formattable_text(value: Any, *, limit: int) -> str | None:
 def normalize_news(payload: dict[str, Any]) -> NewsSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_news, minus the
-    _apply_hidden_fields call and the hidden-field-aware text extraction --
-    hidden-field masking of the whole `description` value is a Policy/Service
-    decision applied after this returns (client.py's entity="news"
-    hide-check only ever affected whether the raw
-    text was extracted at all; since the Service masks the entire field
-    afterwards regardless, dropping that check here changes nothing
-    observable -- same pattern as normalize_project's port).
+    Excludes hidden-field masking and the hidden-field-aware text
+    extraction -- hidden-field masking of the whole `description` value is a
+    Policy/Service decision applied after this returns: the Service masks
+    the entire field regardless, so omitting an extraction-time hide-check
+    here changes nothing observable (same pattern as normalize_project).
     """
     links = payload.get("_links", {})
     description = _delimit_user_content(_extract_formattable_text(payload.get("description"), limit=SUBJECT_LIMIT))
@@ -61,8 +56,8 @@ def normalize_news(payload: dict[str, Any]) -> NewsSummary:
 
 
 def normalize_news_detail(payload: dict[str, Any], *, summary: NewsSummary | None = None) -> NewsDetail:
-    """Verbatim port of client.py's normalize_news_detail. Reuses every field
-    from normalize_news() EXCEPT description, which is independently
+    """Reuses every field from normalize_news() EXCEPT description, which is
+    independently
     re-extracted from the same raw payload at the larger FORMATTABLE_LIMIT
     cap (not SUBJECT_LIMIT) -- the two normalizers apply different truncation
     limits to the same raw text, so this cannot be a simple copy of summary.

@@ -1,16 +1,14 @@
 """HTTP-backed CategoryApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
-`id_from_href`/`link_title` are shared via `app/adapters/_text.py` (verified
-against client.py's real module-level `_trim_text`/`_id_from_href`/
-`_link_title` -- unchanged, safe to reuse).
+`id_from_href`/`link_title` are shared via `app/adapters/_text.py`.
 
-No `url` field: it used to be a client-constructed API path
-(`api/v3/categories/{id}`) -- not a server-supplied href, so it was dropped
-per the "no constructed output URLs" rule.
+No `url` field: a client-constructed API path (`api/v3/categories/{id}`) is
+not a server-supplied href, so it is not built here, per the "no
+constructed output URLs" rule.
 
-`get(category_id)` uses OpenProject's real `GET /api/v3/categories/{id}`
-endpoint (verified against OpenProject's own API implementation).
+`get(category_id)` uses OpenProject's `GET /api/v3/categories/{id}`
+endpoint.
 """
 
 from __future__ import annotations
@@ -29,9 +27,8 @@ from ._text import trim_text as _trim_text
 def normalize_category(payload: dict[str, Any], *, project_id: int | None, project_name: str | None) -> CategorySummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_category, minus the
-    _apply_hidden_fields call -- hidden-field masking is a Policy/Service
-    decision applied after this returns, not something the adapter does.
+    Excludes hidden-field masking -- that is a Policy/Service decision
+    applied after this returns, not something the adapter does.
     """
     category_id = int(payload["id"])
     links = payload.get("_links", {})
@@ -54,9 +51,8 @@ class HttpxCategoryApi:
         self._transport = transport
 
     async def list_for_project(self, project_id: int, *, project_name: str | None) -> list[CategoryRecord]:
-        # project_name is trimmed here (not by the Service caller) -- verbatim
-        # port of client.py's `_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT)`,
-        # which normalize_category has always applied as part of HAL/text
+        # project_name is trimmed here (not by the Service caller) --
+        # normalize_category applies trimming as part of HAL/text
         # normalization, not as a Service-layer concern.
         trimmed_project_name = _trim_text(project_name, limit=SUBJECT_LIMIT)
         payload = await self._transport.get_json(f"projects/{project_id}/categories")

@@ -1,41 +1,27 @@
 """Shared HAL-normalization text/link helpers for the httpx_*_api adapters.
 
-Extracted from six byte-identical per-adapter copies once the sixth domain
-(Wiki Pages) migrated -- every adapter's own module docstring had documented
-this exact trigger condition ("unify only once every domain has migrated").
-`can_update_from_links` was added here once the Boards migration made it the
-3rd byte-identical copy (Document, News, Board all had the exact same
-`"update" in links or "updateImmediately" in links` body), found during
-Boards' step-6 self-audit. `origin_from_url` moved to the package-root
-`app/origin.py` (also found during Boards' step-6 audit) since
-`BoardService` needed the identical same-origin check but `services` cannot
-import from `adapters` -- re-exported here unchanged so every existing
-`from ._text import origin_from_url` import keeps working.
-Deliberately excludes most `_normalize_validation_errors`/
-`_extract_formattable_text` variants: several differ meaningfully between
-adapters (e.g. httpx_project_api.py's validation-error path calls a
-`_with_meta` variant, httpx_membership_api.py's skips the
-formattable-text-first branch) and are not safe to unify without changing
-behavior -- kept as adapter-local, near-identical-but-not-identical code, per
-this project's standing "don't unify what isn't truly the same" principle.
-`normalize_form_validation_errors` below is the one exception: it's the exact
-three-branch shape client.py's own MODULE-LEVEL `_normalize_validation_errors`
-used (not a per-adapter local copy), ported byte-identically into both
-httpx_grid_api.py and httpx_time_entry_api.py -- found as a 3rd identical copy
-(client.py's original counts as the first) during the Time Entries migration's
-step-6 self-audit.
+`origin_from_url` is re-exported here unchanged from the package-root
+`app/origin.py` so existing `from ._text import origin_from_url` imports
+keep working; it lives at the package root because `services` needs the same
+same-origin check but cannot import from `adapters`.
 
-`slug_from_href` was added here once a step-6 self-audit (during the Query
-Metadata migration) found it byte-identical across httpx_action_capability_api.py
-and httpx_query_metadata_api.py -- past this project's own "3+ identical
-copies" threshold once a third, genuinely dead copy in httpx_project_api.py
-(defined, but with zero call sites in that file) is counted too; the dead
-copy was removed outright there rather than migrated to an unused import.
-httpx_board_api.py's own `_slug_from_href` stays LOCAL and deliberately
-unmigrated: it uses `rsplit` with no `unquote` call, a genuinely different
-(not just differently-written) behavior for a percent-encoded slug --
-unifying it here would silently change Board's output for any href whose
-final segment needs unquoting, not just remove duplication.
+This module deliberately excludes most `_normalize_validation_errors`/
+`_extract_formattable_text` variants: several adapters' versions differ
+meaningfully (e.g. `httpx_project_api.py`'s validation-error path calls a
+`_with_meta` variant, `httpx_membership_api.py`'s skips the
+formattable-text-first branch) and are not safe to unify without changing
+behavior -- they stay adapter-local, near-identical-but-not-identical code,
+per this project's standing "don't unify what isn't truly the same"
+principle. `normalize_form_validation_errors` below is the one exception
+that is shared: a three-branch shape (formattable-text extraction, then
+`entry.get("message")`, then a raw trim fallback) used identically by
+`httpx_grid_api.py` and `httpx_time_entry_api.py`.
+
+`httpx_board_api.py`'s own `_slug_from_href` stays LOCAL and is not shared
+with `slug_from_href` below: it uses `rsplit` with no `unquote` call, a
+genuinely different (not just differently-written) behavior for a
+percent-encoded slug -- sharing it here would silently change Board's output
+for any href whose final segment needs unquoting.
 """
 
 from __future__ import annotations
@@ -126,11 +112,10 @@ def _extract_formattable_text(value: Any, *, limit: int) -> str | None:
 
 
 def normalize_form_validation_errors(value: Any, *, limit: int = SUBJECT_LIMIT) -> dict[str, str]:
-    """Ported from client.py's MODULE-LEVEL `_normalize_validation_errors` (not
-    a per-adapter local copy): try formattable-text extraction, then
-    `entry.get("message")`, then a raw trim fallback. Used by Grids' and Time
-    Entries' `create`/`update` form-validation responses -- both had this
-    exact three-branch shape in the pre-migration flat code.
+    """Try formattable-text extraction, then `entry.get("message")`, then a
+    raw trim fallback. Used by Grids' and Time Entries' `create`/`update`
+    form-validation responses, both of which share this exact three-branch
+    shape.
     """
     if not isinstance(value, dict):
         return {}

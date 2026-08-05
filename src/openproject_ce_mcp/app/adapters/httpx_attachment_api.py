@@ -3,8 +3,7 @@
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`id_from_href`/`link_title`/`delimit_user_content`/
 `link_to_web_url`/`slug_from_href`/`SUBJECT_LIMIT` come from
-`app/adapters/_text.py` -- verified against client.py's real
-`normalize_attachment` (client.py:3517-3548), which needs:
+`app/adapters/_text.py`, used by `normalize_attachment` for:
 `trim_text` (title/file_name/content_type/status truncation),
 `delimit_user_content` + `_extract_formattable_text` (description --
 `_extract_formattable_text` stays local, per the documented per-adapter
@@ -13,14 +12,13 @@ container link), `slug_from_href` (container_type fallback for a non-work-
 -package container), `link_to_web_url` (same-origin-checked download_url,
 server-supplied via `downloadLocation`/`staticDownloadLocation`).
 
-`list_for_work_package` hand-rolls its own page-walk (offset/pageSize with a
-`seen_ids`/first-page guard against a server that ignores both params and
-always returns the same full page) rather than using `app/pagination.
-paginate_all`: `paginate_all` requires a `(items, total)` return contract, and
-client.py's original `list_work_package_attachments` never read a `total`
-field from this endpoint's response -- only `_embedded.elements`. Reusing
-`paginate_all` here would be an unverified, speculative behavior change, not
-a structural port.
+The work-package attachments endpoint's response has no reliable `total`
+field -- only `_embedded.elements` is guaranteed. `list_for_work_package`
+therefore hand-rolls its own page-walk (offset/pageSize with a `seen_ids`/
+first-page guard against a server that ignores both params and always
+returns the same full page) rather than using `app/pagination.paginate_all`,
+which requires a `(items, total)` return contract this endpoint cannot
+reliably satisfy.
 """
 
 from __future__ import annotations
@@ -41,10 +39,8 @@ from ._text import trim_text as _trim_text
 
 def _extract_formattable_text(value: Any) -> str | None:
     """Local, deliberately not `_text.py`-shared (per the documented
-    per-adapter exception) -- verbatim of client.py's own
-    `_extract_formattable_text`, minus the truncation-limit parameter this
-    call site never used (description has no text_limit in
-    normalize_attachment)."""
+    per-adapter exception). No truncation-limit parameter: description has
+    no text_limit in normalize_attachment."""
     if not isinstance(value, dict):
         return None
     return value.get("raw") or value.get("html")
@@ -53,9 +49,8 @@ def _extract_formattable_text(value: Any) -> str | None:
 def normalize_attachment(payload: dict[str, Any], *, base_url: str, origin: str) -> AttachmentSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_attachment, minus the
-    _apply_hidden_fields call -- masking is a Service-layer concern applied
-    after this returns (same pattern as every other migrated normalize_*).
+    Excludes hidden-field masking -- that is a Service-layer concern applied
+    after this returns (same pattern as every other normalize_*).
     """
     links = payload.get("_links", {})
     container_link = links.get("container")
@@ -103,17 +98,13 @@ class HttpxAttachmentApi:
     async def list_for_work_package(
         self, work_package_id: int, *, offset: int, page_size: int
     ) -> tuple[list[AttachmentRecord], int]:
-        # No pageSize was ever sent by the original code, silently relying on
-        # OpenProject's own server-side default page size -- any attachment
-        # beyond that default was permanently unreachable. Returns one page
-        # at a time now (OPM-379/F5) -- the Service scans pages via
+        # Returns one page at a time; the Service scans pages via
         # scan_records_and_paginate instead of this Adapter walking the
-        # entire collection itself, matching every other migrated list
-        # domain's shape. This endpoint's response was never confirmed to
-        # carry a real `total` field (only `_embedded.elements` was ever
-        # read in client.py's original) -- `total` falls back to
-        # `len(records)` (this page's own count), the same
-        # unverified-total fallback `httpx_sprint_api.py` already uses.
+        # entire collection itself, matching every other list domain's
+        # shape. This endpoint's response has no reliable `total` field
+        # (only `_embedded.elements` is guaranteed) -- `total` falls back to
+        # `len(records)` (this page's own count), the same fallback
+        # `httpx_sprint_api.py` uses for the same reason.
         payload = await self._transport.get_json(
             f"work_packages/{work_package_id}/attachments",
             params={"offset": str(offset), "pageSize": str(page_size)},

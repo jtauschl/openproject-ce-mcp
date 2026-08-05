@@ -16,9 +16,7 @@ from ._text import trim_text as _trim_text
 
 
 def normalize_principal(payload: dict[str, Any]) -> PrincipalSummary:
-    """Pure HAL->model translation. Verbatim port of client.py's
-    normalize_principal, minus the _apply_hidden_fields call.
-    """
+    """Pure HAL->model translation. Excludes hidden-field masking."""
     principal_type = _trim_text(payload.get("_type"), limit=SUBJECT_LIMIT)
     principal_id = int(payload["id"])
     return PrincipalSummary(

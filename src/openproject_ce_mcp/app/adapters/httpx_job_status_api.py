@@ -27,11 +27,11 @@ from ._text import reject_path_traversal_segments as _reject_path_traversal_segm
 from ._text import slug_from_href as _slug_from_href
 from ._text import trim_text as _trim_text
 
-# Matches client.py's module-level FORMATTABLE_LIMIT (1_200) used for the
-# `message` field. Kept local rather than promoted to _text.py -- every other
-# adapter needing this constant (Documents, News, Project, Version, Extended
-# Metadata) keeps its own copy too, per this project's "don't unify what
-# isn't a shared *function*" convention for simple numeric constants.
+# Used for the `message` field (value 1_200). Kept local rather than
+# promoted to _text.py -- every other adapter needing this constant
+# (Documents, News, Project, Version, Extended Metadata) keeps its own copy
+# too, per this project's "don't unify what isn't a shared *function*"
+# convention for simple numeric constants.
 FORMATTABLE_LIMIT = 1_200
 
 
@@ -58,13 +58,12 @@ def _job_status_inner_links(payload: dict[str, Any]) -> dict[str, Any]:
 def normalize_job_status(payload: dict[str, Any]) -> JobStatusDetail:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_job_status, minus the
-    _apply_hidden_fields call -- hidden-field masking is a Service decision
-    applied after this returns.
+    Excludes hidden-field masking -- that is a Service decision applied
+    after this returns.
 
-    No `url` field: it used to be a client-constructed web page path
-    (`{base_url}/job_statuses/{job_id}`) -- not a server-supplied href, so it
-    was dropped per the "no constructed output URLs" rule.
+    No `url` field: a client-constructed web page path
+    (`{base_url}/job_statuses/{job_id}`) is not a server-supplied href, so it
+    is not built here, per the "no constructed output URLs" rule.
     """
     top_level_links = payload.get("_links", {})
     links = _job_status_inner_links(payload)

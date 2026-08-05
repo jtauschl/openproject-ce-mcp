@@ -1,16 +1,13 @@
 """HTTP-backed GroupApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). No
-`create_form`/`update_form`: verified against `client.py`'s `create_group`/
-`update_group`, neither calls a `groups/form` endpoint -- writes go
-directly to `POST groups`/`PATCH groups/{id}`.
+`create_form`/`update_form`: writes go directly to `POST groups`/
+`PATCH groups/{id}`; there is no `groups/form` endpoint.
 
-`normalize_group`/`normalize_group_detail` are verbatim ports of
-`client.py`'s originals, minus the `_apply_hidden_fields` call (the Service
-is the sole masking point). `member_count` tolerates both the real API
-shape (`_embedded.members` as a flat array) and a `{count, ...}`/
-`{total, ...}` collection-object shape defensively, matching the original's
-own tolerance.
+`normalize_group`/`normalize_group_detail` exclude the `_apply_hidden_fields`
+call -- the Service is the sole masking point. `member_count` tolerates both
+the real API shape (`_embedded.members` as a flat array) and a `{count, ...}`/
+`{total, ...}` collection-object shape defensively.
 """
 
 from __future__ import annotations
@@ -46,8 +43,8 @@ def _member_count(payload: dict[str, Any]) -> int:
 
 
 def normalize_group(payload: dict[str, Any]) -> GroupSummary:
-    """Pure HAL->model translation. Verbatim port of client.py's
-    normalize_group, minus the _apply_hidden_fields call.
+    """Pure HAL->model translation. Excludes hidden-field masking -- the
+    Service is the sole masking point.
     """
     links = payload.get("_links", {})
     return GroupSummary(
@@ -62,8 +59,8 @@ def normalize_group(payload: dict[str, Any]) -> GroupSummary:
 
 
 def normalize_group_detail(payload: dict[str, Any], *, summary: GroupSummary | None = None) -> GroupDetail:
-    """Verbatim port of client.py's normalize_group_detail: field-copies
-    from the already-computed summary rather than re-deriving it.
+    """Field-copies from the already-computed summary rather than
+    re-deriving it.
 
     `summary` lets a caller that already built a `GroupSummary` for the same
     payload (see `_record()`) pass it in directly instead of paying for a
@@ -123,10 +120,10 @@ class HttpxGroupApi:
         return self._record(await self._transport.get_json(f"groups/{group_id}"))
 
     async def get_member_ids(self, group_id: int) -> set[int]:
-        # Raw _links.members href->id extraction -- verbatim port of
-        # client.py's update_group member-diff step. GroupDetail.members
-        # only carries display names, so this reads the raw payload
-        # directly rather than going through normalize_group_detail.
+        # Raw _links.members href->id extraction, used for the update_group
+        # member-diff step. GroupDetail.members only carries display names,
+        # so this reads the raw payload directly rather than going through
+        # normalize_group_detail.
         payload = await self._transport.get_json(f"groups/{group_id}")
         member_links = payload.get("_links", {}).get("members", [])
         if not isinstance(member_links, list):

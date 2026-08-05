@@ -2,16 +2,14 @@
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
 `_id_from_href`/`_link_title`/`_delimit_user_content`/`_can_update_from_links`/
-`SUBJECT_LIMIT` are shared via `app/adapters/_text.py` (unified once every
-domain migrated, per that module's own docstring; `_can_update_from_links`
-joined the shared module once Boards made it a 3rd byte-identical copy).
+`SUBJECT_LIMIT` are shared via `app/adapters/_text.py`.
 `_extract_formattable_text`/`FORMATTABLE_LIMIT` stay local -- not shared
 across every adapter.
 
 `_extract_formattable_text` here keeps the `.get("raw") or .get("html")`
-fallback that client.py's original has (and that HttpxProjectApi/
-HttpxVersionApi also keep) -- verified against client.py directly rather
-than copied from HttpxNewsApi's local copy, which is missing this fallback.
+fallback (also kept by HttpxProjectApi/HttpxVersionApi) -- HttpxNewsApi's
+local copy is missing this fallback, a genuine behavioral difference, not
+an oversight to "fix" by unifying the two.
 
 No `attachments_url`: a pure API sub-collection href with no dedicated MCP
 tool to justify keeping it (unlike work packages, which have
@@ -43,12 +41,12 @@ def _extract_formattable_text(value: Any, *, limit: int) -> str | None:
 def normalize_document(payload: dict[str, Any]) -> DocumentSummary:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_document, minus the
-    _apply_hidden_fields call and the hidden-field-aware text extraction --
-    hidden-field masking of the whole `description` value is a Policy/Service
-    decision applied after this returns (same pattern as normalize_news's
-    port: dropping the field_hidden check here changes nothing observable,
-    since the Service masks the entire field afterwards regardless).
+    Excludes hidden-field masking and the hidden-field-aware text
+    extraction -- hidden-field masking of the whole `description` value is a
+    Policy/Service decision applied after this returns (same pattern as
+    normalize_news: omitting the field_hidden check here changes nothing
+    observable, since the Service masks the entire field afterwards
+    regardless).
     """
     links = payload.get("_links", {})
     attachments = payload.get("_embedded", {}).get("attachments", {})
@@ -69,9 +67,8 @@ def normalize_document(payload: dict[str, Any]) -> DocumentSummary:
 
 
 def normalize_document_detail(payload: dict[str, Any], *, summary: DocumentSummary | None = None) -> DocumentDetail:
-    """Verbatim port of client.py's normalize_document_detail. Reuses every
-    field from normalize_document() EXCEPT description, which is
-    independently re-extracted from the same raw payload at the larger
+    """Reuses every field from normalize_document() EXCEPT description,
+    which is independently re-extracted from the same raw payload at the larger
     FORMATTABLE_LIMIT cap (not SUBJECT_LIMIT) -- the two normalizers apply
     different truncation limits to the same raw text, so this cannot be a
     simple copy of summary.

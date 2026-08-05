@@ -15,10 +15,10 @@ from ._text import trim_text as _trim_text
 
 
 def normalize_role(payload: dict[str, Any]) -> RoleSummary:
-    """Pure HAL->model translation. Verbatim port of client.py's normalize_role,
-    minus the _apply_hidden_fields call and the dead web `url` field (OpenProject's
-    admin roles are Rails-routed `except: %i[show]` with no controller `show`
-    action -- the constructed URL never resolved to a real page).
+    """Pure HAL->model translation. Excludes hidden-field masking and the web
+    `url` field: OpenProject's admin roles are Rails-routed
+    `except: %i[show]` with no controller `show` action, so there is no real
+    page such a URL could point to.
     """
     role_id = int(payload["id"])
     return RoleSummary(

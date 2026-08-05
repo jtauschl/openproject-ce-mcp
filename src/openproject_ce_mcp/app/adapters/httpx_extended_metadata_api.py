@@ -1,14 +1,12 @@
 """HTTP-backed ExtendedMetadataApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `FORMATTABLE_LIMIT`
-is a local duplicate of client.py's module-level constant (client.py:235,
-value 1_200) -- not shared via `_text.py`, matching Documents/News/Versions/
-Projects' own local duplication of the same constant.
+(value 1_200) is a local constant, not shared via `_text.py`, matching
+Documents/News/Versions/Projects' own local duplication of the same constant.
 
 render_text is the only method that POSTs a raw (non-JSON) body -- it uses
-the Transport.post_raw_json method added specifically for this migration
-(Transport had no prior way to POST raw content with custom headers and
-parse a JSON response).
+`Transport.post_raw_json` to POST raw content with custom headers and parse
+a JSON response.
 """
 
 from __future__ import annotations
@@ -37,10 +35,9 @@ FORMATTABLE_LIMIT = 1_200
 
 
 def normalize_help_text(payload: dict[str, Any]) -> HelpTextSummary:
-    """Pure HAL->model translation. Verbatim port of client.py's
-    normalize_help_text, minus the (nonexistent) _apply_hidden_fields call --
-    the original never masked this entity at all (masking is a new
-    capability this migration adds at the Service layer)."""
+    """Pure HAL->model translation. Excludes hidden-field masking: this
+    entity has no hidden-field masking at the adapter level (masking, if
+    any, is a Service-layer concern)."""
     help_text_value = payload.get("helpText")
     return HelpTextSummary(
         id=int(payload["id"]),
@@ -54,7 +51,6 @@ def normalize_help_text(payload: dict[str, Any]) -> HelpTextSummary:
 
 
 def normalize_working_day(payload: dict[str, Any]) -> WorkingDay:
-    """Verbatim port of client.py's normalize_working_day."""
     return WorkingDay(
         name=payload.get("name", ""),
         day_of_week=int(payload.get("dayOfWeek", 0)),
@@ -63,7 +59,6 @@ def normalize_working_day(payload: dict[str, Any]) -> WorkingDay:
 
 
 def normalize_non_working_day(payload: dict[str, Any]) -> NonWorkingDay:
-    """Verbatim port of client.py's normalize_non_working_day."""
     return NonWorkingDay(
         date=payload.get("date", ""),
         name=payload.get("name"),

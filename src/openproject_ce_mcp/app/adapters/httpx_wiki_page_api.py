@@ -4,12 +4,12 @@ No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
 `_id_from_href`/`_link_title`/`_delimit_user_content`/`SUBJECT_LIMIT` are
 shared via `app/adapters/_text.py`.
 
-No web `url`/`attachments_url` fields: the adapter previously built
-`wiki_pages/{numeric_id}`, which never resolved (OpenProject's real wiki
-route is project-scoped and keyed by the page's title-derived slug, not its
-numeric id -- and the API doesn't expose that slug at all, only `id`/
-`title`), and `attachments_url` was a pure API sub-collection href with no
-dedicated MCP tool to justify keeping it.
+No web `url`/`attachments_url` fields: `wiki_pages/{numeric_id}` never
+resolves to a real page -- OpenProject's real wiki route is project-scoped
+and keyed by the page's title-derived slug, not its numeric id, and the API
+doesn't expose that slug at all, only `id`/`title`. `attachments_url` would
+be a pure API sub-collection href with no dedicated MCP tool to justify
+keeping it.
 """
 
 from __future__ import annotations
@@ -31,10 +31,9 @@ CONTENT_LIMIT = 50_000
 def normalize_wiki_page(payload: dict[str, Any]) -> WikiPageDetail:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
-    Verbatim port of client.py's normalize_wiki_page, minus the
-    _apply_hidden_fields call -- hidden-field masking of the whole
+    Excludes hidden-field masking -- hidden-field masking of the whole
     WikiPageDetail is a Policy/Service decision applied after this returns
-    (same pattern as normalize_document/normalize_news's port).
+    (same pattern as normalize_document/normalize_news).
     """
     links = payload.get("_links", {})
     text_block = payload.get("text") or payload.get("content")

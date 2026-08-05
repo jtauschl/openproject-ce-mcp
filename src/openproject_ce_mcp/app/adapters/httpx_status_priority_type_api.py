@@ -1,23 +1,19 @@
 """HTTP-backed StatusPriorityTypeApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `trim_text` is
-shared via `app/adapters/_text.py` (verified against client.py's real
-module-level `_trim_text` -- unchanged, safe to reuse).
+shared via `app/adapters/_text.py`.
 
 `normalize_status`/`normalize_priority`/`normalize_type` are pure HAL->model
 translation, no hidden-field awareness (masking is a Service-layer concern,
 applied after these return -- see `status_priority_type_service.py`).
-Verbatim ports of client.py's originals, minus each one's own
-`_apply_hidden_fields` call.
 
-No domain here has a `url` field: `normalize_status`'s used to be built via
-`api_href(...)` (a client-constructed relative `/api/v3/...` path, not a
-server-supplied href), so it was dropped. `normalize_type` never had one --
-OpenProject's `resources :types` routes a `show` action, but
+No domain here has a `url` field. A client-constructed relative
+`/api/v3/...` path is not a server-supplied href, so `normalize_status`
+builds none. `normalize_type` has none either: OpenProject's
+`resources :types` routes a `show` action, but
 `WorkPackageTypes::TypesController` never implements it (no `show` method,
-no `show.html.erb` view) -- the web URL this adapter used to build never
-resolved to anything. `PrioritySummary` has no `url` field at all --
-client.py's original `normalize_priority` never built one.
+no `show.html.erb` view), so there is no real page such a URL could point
+to. `PrioritySummary` has no `url` field at all.
 """
 
 from __future__ import annotations
