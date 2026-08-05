@@ -61,6 +61,21 @@ support.
   return an empty result or a permission error with no project allowlist
   granted; write tools already worked this way.
 
+### Fixed
+
+- **`list_relations`/`get_work_package_relations`, `list_time_entries`,
+  `list_sprints`/`list_project_sprints`, `list_grids`, `list_versions`
+  (without `project`), `list_documents`, `list_views`, `list_news`,
+  `list_boards` (when filtered by `project`/`search` or under a
+  restrictive `OPENPROJECT_READ_PROJECTS`), and `list_users`/`list_groups`
+  (with `search`) now actually reduce server load and response size when
+  paging** — `offset`/`limit` previously had no effect on how much data
+  these tools fetched from OpenProject: each call loaded the entire
+  matching collection into memory before slicing out the requested page,
+  regardless of `limit`. `total` on these tools is now a lower bound (the
+  count returned on this page) rather than an exact count of the full
+  matching collection; page with `next_offset` until it is `null`.
+
 ### Docs
 
 - Added the missing "Notes" section to the Cursor client guide.
