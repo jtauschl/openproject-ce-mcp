@@ -994,7 +994,11 @@ async def list_groups(
     an invalid name returns the allowed set.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap.
+    next_offset as the next call's offset to page past the cap. With search,
+    total is only the count of matching groups returned on THIS page, not a
+    full count of all matches — the search stops as soon as it has enough,
+    so an exact total would need an extra full walk. Page until next_offset
+    is null.
     """
     client = _client_from_context(ctx)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)

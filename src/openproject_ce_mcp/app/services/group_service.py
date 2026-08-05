@@ -58,7 +58,7 @@ from ...config import Settings
 from ...models import GroupDetail, GroupListResult, GroupSummary, GroupWriteResult, WriteResultState
 from ..api_href import api_href
 from ..pagination import effective_limit as _effective_limit
-from ..pagination import paginate_client, paginate_server
+from ..pagination import paginate_server, scan_records_and_paginate
 from ..policies import access, hidden_fields
 from ..ports.group_api import GroupApi
 
@@ -82,21 +82,34 @@ class GroupService:
         effective_limit = _effective_limit(limit, settings=self._settings)
 
         if search is not None:
-            records = await self._api.list_groups_search(page_size=self._settings.max_results)
             search_key = search.casefold()
-            matches = [record for record in records if search_key in (record.summary.name or "").casefold()]
-            summaries = [self._stamp(record.summary) for record in matches]
-            page, total, next_offset, truncated = paginate_client(
-                offset=offset, limit=effective_limit, results=summaries
+
+            def _record_matches(record: Any) -> bool:
+                return search_key in (record.summary.name or "").casefold()
+
+            # No server-side name filter exists for /groups, so scan every
+            # server page (Groups is genuinely OffsetPaginatedCollection
+            # server-side, verified against OpenProject's own API
+            # implementation) instead of trusting the server's pre-filter
+            # total (OPM-373 Phase 5).
+            raw_items, truncated = await scan_records_and_paginate(
+                lambda o, ps: self._api.list_groups(offset=o, page_size=ps),
+                item_allowed=_record_matches,
+                server_page_size=self._settings.max_page_size,
+                offset=offset,
+                limit=effective_limit,
+                key=lambda r: r.summary.id,
             )
+            results = [self._stamp(record.summary) for record in raw_items]
+            total = len(results)
             return GroupListResult(
                 offset=offset,
                 limit=effective_limit,
                 total=total,
-                count=len(page),
-                next_offset=next_offset,
+                count=total,
+                next_offset=offset + 1 if truncated else None,
                 truncated=truncated,
-                results=page,
+                results=results,
             )
 
         records, total = await self._api.list_groups(offset=offset, page_size=effective_limit)

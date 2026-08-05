@@ -864,7 +864,7 @@ async def test_list_groups_search_overfetches_and_filters_then_paginates() -> No
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/groups" and request.method == "GET":
             assert request.url.params["offset"] == "1"
-            assert request.url.params["pageSize"] == str(make_settings().max_results)
+            assert request.url.params["pageSize"] == str(make_settings().max_page_size)
             return httpx.Response(
                 200,
                 json={
@@ -888,11 +888,14 @@ async def test_list_groups_search_overfetches_and_filters_then_paginates() -> No
     page = await client.list_groups(search="alpha")
 
     assert {g.id for g in page.results} == {1, 4}
+    # total is a lower bound (len(results) on this page), not an exact count
+    # of the full search-filtered collection -- OPM-373 Phase 5's
+    # total-contract change.
     assert page.total == 2
 
     second_page = await client.list_groups(search="alpha", limit=1, offset=2)
     assert [g.id for g in second_page.results] == [4]
-    assert second_page.total == 2
+    assert second_page.total == 1
     assert second_page.truncated is False
     assert second_page.next_offset is None
 

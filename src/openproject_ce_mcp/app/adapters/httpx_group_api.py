@@ -18,7 +18,6 @@ from __future__ import annotations
 from typing import Any
 
 from ...models import GroupDetail, GroupSummary
-from ..pagination import paginate_all
 from ..ports.group_api import GroupRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
@@ -119,19 +118,6 @@ class HttpxGroupApi:
         records = [self._record(item) for item in elements if isinstance(item, dict)]
         total = int(payload.get("total", len(records)))
         return records, total
-
-    async def list_groups_search(self, *, page_size: int) -> list[GroupRecord]:
-        # Walk every server page for the caller to filter in-memory -- no
-        # server-side name filter exists to delegate to. Groups is genuinely
-        # OffsetPaginatedCollection server-side (verified against OpenProject's
-        # own API implementation), so a single bounded fetch capped at page_size
-        # (this method's prior behavior) would silently hide any match beyond
-        # that cap once the real group count exceeded it.
-        return await paginate_all(
-            lambda offset, size: self.list_groups(offset=offset, page_size=size),
-            page_size=page_size,
-            key=lambda r: r.summary.id,
-        )
 
     async def get_group(self, group_id: int) -> GroupRecord:
         return self._record(await self._transport.get_json(f"groups/{group_id}"))

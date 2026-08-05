@@ -2,10 +2,10 @@
 
 `GroupRecord` carries no link: Groups have no project concept at all, the
 same shape as `RoleRecord`/`UserRecord`. `to_detail` is a LAZY
-`Callable[[], GroupDetail]` thunk, not an eager field -- `list_groups()`/
-`list_groups_search()` build a `GroupRecord` per row but `GroupService.
-list_groups()` never reads `.to_detail` on that path (only `get_group()`
-does), and `normalize_group_detail` parses extra fields (`members`,
+`Callable[[], GroupDetail]` thunk, not an eager field -- `list_groups()`
+builds a `GroupRecord` per row but `GroupService.list_groups()` never
+reads `.to_detail` on that path (only `get_group()` does), and
+`normalize_group_detail` parses extra fields (`members`,
 `memberships_url`) beyond a cheap summary field-copy -- same rationale as
 `UserRecord`/`DocumentRecord`/`NewsRecord`'s lazy thunk.
 
@@ -22,6 +22,13 @@ as its own Port method: `GroupDetail.members` only carries display names,
 not ids, so the Service's member-diff arithmetic (`current | add - remove`)
 needs a dedicated raw-id accessor rather than reconstructing ids from the
 normalized detail model.
+
+`list_groups_search` was removed (OPM-373 Phase 5): it was a `paginate_all`
+wrapper around this same `list_groups(offset, page_size)` method, walking
+the entire collection before `GroupService.list_groups()`'s search branch
+ever sliced out the requested `offset`/`limit` window. That branch now
+scans `list_groups` directly via `scan_records_and_paginate`, folding the
+search predicate into `item_allowed` instead of a separate over-fetch step.
 """
 
 from __future__ import annotations
@@ -46,7 +53,6 @@ class GroupApi(Protocol):
     """
 
     async def list_groups(self, *, offset: int, page_size: int) -> tuple[list[GroupRecord], int]: ...
-    async def list_groups_search(self, *, page_size: int) -> list[GroupRecord]: ...
     async def get_group(self, group_id: int) -> GroupRecord: ...
     async def get_member_ids(self, group_id: int) -> set[int]: ...
     async def commit_create(self, payload: dict[str, Any]) -> GroupSummary: ...

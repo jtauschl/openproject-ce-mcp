@@ -51,7 +51,6 @@ class _FakeGroupApi:
         self._records = {r.summary.id: r for r in (records or [_record()])}
         self._member_ids = member_ids if member_ids is not None else {1, 2}
         self.list_groups_calls: list[tuple[int, int]] = []
-        self.list_groups_search_calls: list[int] = []
         self.get_group_calls: list[int] = []
         self.get_member_ids_calls: list[int] = []
         self.commit_create_calls: list[dict] = []
@@ -60,12 +59,14 @@ class _FakeGroupApi:
 
     async def list_groups(self, *, offset: int, page_size: int) -> tuple[list[GroupRecord], int]:
         self.list_groups_calls.append((offset, page_size))
+        # A single-page fake is sufficient for most of these Service-level
+        # tests -- scan_records_and_paginate's own multi-page scanning
+        # behavior is covered by test_app_pagination.py and
+        # _PagedFakeGroupApi below.
+        if offset > 1:
+            return [], len(self._records)
         records = list(self._records.values())
         return records, len(records)
-
-    async def list_groups_search(self, *, page_size: int) -> list[GroupRecord]:
-        self.list_groups_search_calls.append(page_size)
-        return list(self._records.values())
 
     async def get_group(self, group_id: int) -> GroupRecord:
         self.get_group_calls.append(group_id)
@@ -119,7 +120,6 @@ async def test_list_groups_returns_stamped_summaries() -> None:
     assert result.results[0].id == 3
     assert result.results[0].name == "Backend"
     assert api.list_groups_calls == [(1, make_settings().default_page_size)]
-    assert api.list_groups_search_calls == []
 
 
 @pytest.mark.asyncio
@@ -132,7 +132,6 @@ async def test_list_groups_checks_read_enabled() -> None:
         await service.list_groups()
 
     assert api.list_groups_calls == []
-    assert api.list_groups_search_calls == []
 
 
 @pytest.mark.asyncio
@@ -182,11 +181,13 @@ async def test_list_groups_search_overfetches_and_filters_then_paginates() -> No
     result = await service.list_groups(search="back", limit=1, offset=2)
 
     # 2 survivors match "back" (Backend, Backend Ops); page 2 with limit=1 is the 2nd survivor.
-    assert result.total == 2
+    # total is a lower bound (len(results) on this page), not an exact count
+    # of the full search-filtered collection -- OPM-373 Phase 5's
+    # total-contract change.
+    assert result.total == 1
     assert result.count == 1
     assert result.results[0].name == "Backend Ops"
-    assert api.list_groups_search_calls == [make_settings().max_results]
-    assert api.list_groups_calls == []
+    assert api.list_groups_calls == [(1, make_settings().max_page_size)]
 
 
 @pytest.mark.asyncio
@@ -198,6 +199,51 @@ async def test_list_groups_search_matches_name_case_insensitively() -> None:
     result = await service.list_groups(search="backend")
 
     assert result.count == 1
+
+
+class _PagedFakeGroupApi:
+    """Unlike _FakeGroupApi (single-page, offset-blind), this simulates a
+    real multi-page server for exact-limit/truncation regression tests."""
+
+    def __init__(self, pages: dict[int, list[GroupRecord]]) -> None:
+        self._pages = pages
+        self.offsets_requested: list[int] = []
+
+    async def list_groups(self, *, offset: int, page_size: int) -> tuple[list[GroupRecord], int]:
+        self.offsets_requested.append(offset)
+        records = self._pages.get(offset, [])
+        return records, len(records)
+
+    async def get_group(self, group_id: int) -> GroupRecord:
+        raise NotImplementedError
+
+    async def get_member_ids(self, group_id: int) -> set[int]:
+        raise NotImplementedError
+
+    async def commit_create(self, payload: dict) -> GroupSummary:
+        raise NotImplementedError
+
+    async def commit_update(self, group_id: int, payload: dict) -> GroupSummary:
+        raise NotImplementedError
+
+    async def commit_delete(self, group_id: int) -> None:
+        raise NotImplementedError
+
+
+@pytest.mark.asyncio
+async def test_list_groups_search_not_truncated_when_exactly_limit_matches_exist() -> None:
+    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    truncated=True as soon as `limit` matches are collected, without
+    checking whether a matching group actually exists beyond that window."""
+    api = _PagedFakeGroupApi({1: [_record(group_id=1, name="Backend")]})
+    service = _service(api)
+
+    result = await service.list_groups(search="back", limit=1)
+
+    assert api.offsets_requested == [1], f"expected only one (short) page, got {api.offsets_requested}"
+    assert [g.id for g in result.results] == [1]
+    assert result.truncated is False
+    assert result.next_offset is None
 
 
 # --- get_group -------------------------------------------------------------
