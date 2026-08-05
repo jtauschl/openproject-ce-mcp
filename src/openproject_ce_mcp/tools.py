@@ -485,10 +485,10 @@ async def list_projects(
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. Under a
-    restrictive OPENPROJECT_READ_PROJECTS, total reflects only the allowed
-    projects already scanned to fill this page, not a full count of all
-    matches — the search stops as soon as it has enough, so an exact total
-    would need an extra full walk. Page until next_offset is null.
+    restrictive OPENPROJECT_READ_PROJECTS, total is only the count of allowed
+    projects returned on THIS page, not a full count of all matches — the
+    search stops as soon as it has enough, so an exact total would need an
+    extra full walk. Page until next_offset is null.
     """
     client = _client_from_context(ctx)
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)
@@ -521,10 +521,10 @@ async def list_sprints(
     Requires the OpenProject Backlogs module; unavailable instances return a clear not-found message.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap. total reflects
-    only the allowed sprints already scanned to fill this page, not a full
-    count of all matches — the search stops as soon as it has enough, so an
-    exact total would need an extra full walk. Page until next_offset is null.
+    next_offset as the next call's offset to page past the cap. total is only
+    the count of allowed sprints returned on THIS page, not a full count of
+    all matches — the search stops as soon as it has enough, so an exact
+    total would need an extra full walk. Page until next_offset is null.
     """
     client = _client_from_context(ctx)
     safe_offset = _validate_offset(offset)
@@ -541,10 +541,10 @@ async def list_project_sprints(
     """List Backlogs sprints for a project by id or identifier.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap. total reflects
-    only the allowed sprints already scanned to fill this page, not a full
-    count of all matches — the search stops as soon as it has enough, so an
-    exact total would need an extra full walk. Page until next_offset is null.
+    next_offset as the next call's offset to page past the cap. total is only
+    the count of allowed sprints returned on THIS page, not a full count of
+    all matches — the search stops as soon as it has enough, so an exact
+    total would need an extra full walk. Page until next_offset is null.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
@@ -790,10 +790,10 @@ async def list_users(
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. With search,
-    total reflects only the matching users already scanned to fill this page,
-    not a full count of all matches — the search stops as soon as it has
-    enough, so an exact total would need an extra full walk. Page until
-    next_offset is null.
+    total is only the count of matching users returned on THIS page, not a
+    full count of all matches — the search stops as soon as it has enough,
+    so an exact total would need an extra full walk. Page until next_offset
+    is null.
     """
     client = _client_from_context(ctx)
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)
@@ -823,10 +823,10 @@ async def list_groups(
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. With search,
-    total reflects only the matching groups already scanned to fill this
-    page, not a full count of all matches — the search stops as soon as it
-    has enough, so an exact total would need an extra full walk. Page until
-    next_offset is null.
+    total is only the count of matching groups returned on THIS page, not a
+    full count of all matches — the search stops as soon as it has enough,
+    so an exact total would need an extra full walk. Page until next_offset
+    is null.
     """
     client = _client_from_context(ctx)
     safe_search = _validate_optional_query(search, field_name="search", max_length=100)
@@ -1082,10 +1082,10 @@ async def list_views(
     """List saved OpenProject views, optionally filtered by project or view subtype.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap. total reflects
-    only the allowed views already scanned to fill this page, not a full
-    count of all matches — the search stops as soon as it has enough, so an
-    exact total would need an extra full walk. Page until next_offset is null.
+    next_offset as the next call's offset to page past the cap. total is only
+    the count of allowed views returned on THIS page, not a full count of all
+    matches — the search stops as soon as it has enough, so an exact total
+    would need an extra full walk. Page until next_offset is null.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -1121,10 +1121,10 @@ async def list_documents(
     """List documents, optionally filtered to a single project.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap. total reflects
-    only the allowed documents already scanned to fill this page, not a full
-    count of all matches — the search stops as soon as it has enough, so an
-    exact total would need an extra full walk. Page until next_offset is null.
+    next_offset as the next call's offset to page past the cap. total is only
+    the count of allowed documents returned on THIS page, not a full count of
+    all matches — the search stops as soon as it has enough, so an exact
+    total would need an extra full walk. Page until next_offset is null.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -1177,11 +1177,11 @@ async def list_news(
     """List news entries, optionally filtered by project or title/summary search.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap. total reflects
-    only the allowed news entries already scanned to fill this page, not a
-    full count of all matches — the search stops as soon as it has enough,
-    so an exact total would need an extra full walk. Page until next_offset
-    is null.
+    next_offset as the next call's offset to page past the cap. total is only
+    the count of allowed news entries returned on THIS page, not a full
+    count of all matches — the search stops as soon as it has enough, so an
+    exact total would need an extra full walk. Page until next_offset is
+    null.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -2313,10 +2313,10 @@ async def list_versions(
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. Without project,
-    total reflects only the allowed versions already scanned to fill this page,
-    not a full count of all matches — the search stops as soon as it has enough,
-    so an exact total would need an extra full walk. Page until next_offset is
-    null.
+    total is only the count of allowed versions returned on THIS page, not a
+    full count of all matches — the search stops as soon as it has enough,
+    so an exact total would need an extra full walk. Page until next_offset
+    is null.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -2685,11 +2685,11 @@ async def list_time_entries(
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap. total reflects
-    only the allowed time entries already scanned to fill this page, not a
-    full count of all matches — the search stops as soon as it has enough,
-    so an exact total would need an extra full walk. Page until next_offset
-    is null.
+    next_offset as the next call's offset to page past the cap. total is only
+    the count of allowed time entries returned on THIS page, not a full
+    count of all matches — the search stops as soon as it has enough, so an
+    exact total would need an extra full walk. Page until next_offset is
+    null.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -3420,10 +3420,10 @@ async def list_grids(
     """List dashboard grids, optionally filtered by scope (page path).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap. total reflects
-    only the allowed grids already scanned to fill this page, not a full
-    count of all matches — the search stops as soon as it has enough, so an
-    exact total would need an extra full walk. Page until next_offset is null.
+    next_offset as the next call's offset to page past the cap. total is only
+    the count of allowed grids returned on THIS page, not a full count of all
+    matches — the search stops as soon as it has enough, so an exact total
+    would need an extra full walk. Page until next_offset is null.
     """
     client = _client_from_context(ctx)
     safe_scope = _validate_optional_query(scope, field_name="scope", max_length=500)
