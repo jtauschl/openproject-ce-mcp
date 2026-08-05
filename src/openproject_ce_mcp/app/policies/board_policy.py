@@ -16,8 +16,7 @@ malformed link is always rejected regardless of scope.
 The "global board" business rule (an unscoped/no-project board write requires
 BOTH read_projects and write_projects fully open) is NOT a per-link allowlist
 check at all -- it has no link to check against -- so it stays in
-BoardService.create(), verbatim-ported from client.py's `create_board`, not
-here.
+BoardService.create(), not here.
 """
 
 from __future__ import annotations

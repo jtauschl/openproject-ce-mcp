@@ -1,9 +1,7 @@
 """Projects-only policy. Pure, no I/O.
 
-Verbatim port of client.py's _ensure_project_allowed/_ensure_project_write_allowed/
-_ensure_project_write_candidate_allowed (client.py:7384-7420), built on the
-already-shared scope.py primitives rather than duplicating candidate-matching
-logic here.
+Read/write allowlist checks for projects, built on the shared scope.py
+primitives rather than duplicating candidate-matching logic here.
 """
 
 from __future__ import annotations
@@ -26,9 +24,7 @@ def ensure_project_read_allowed(
 
     project_ref (the ref the caller originally resolved by, e.g. an identifier
     or numeric-id string) is included as its own candidate alongside the
-    payload's own fields -- verbatim parity with client.py's
-    _ensure_project_allowed(project_ref, payload=...), which always passes
-    both.
+    payload's own fields.
     """
     if scope_allows_all(settings.read_projects):
         return
@@ -69,9 +65,8 @@ def ensure_project_create_target_allowed(
     """Read- then write-allowlist check on an intended create/copy target.
 
     No resolved payload with an `id` exists yet at create time, so this checks
-    the intended identifier/name directly -- read first, then write, matching
-    _ensure_project_write_candidate_allowed's order: a writable target must
-    also be readable.
+    the intended identifier/name directly -- read is checked first, then
+    write, since a writable target must also be readable.
     """
     candidates = project_candidates(project_id_to_identifier=project_id_to_identifier, identifier=identifier, name=name)
     if not scope_allows_all(settings.read_projects) and not scope_matches_candidates(

@@ -53,11 +53,7 @@ def ensure_field_writable(entity: str, field_name: str, *, settings: Settings) -
 
 
 def custom_field_hidden(field_name: str, key: str, *, settings: Settings) -> bool:
-    """Ported from client.py's `_custom_field_hidden` (kept there too, still used
-    by the still-flat `get_project_work_package_context` -- a deliberate
-    duplication, not a delete-and-redirect).
-
-    Matches BOTH the resolved schema field name and the raw input key against
+    """Matches BOTH the resolved schema field name and the raw input key against
     `settings.hide_custom_fields` glob patterns -- a caller might supply either
     "customField12" or the human-readable name, and either could match a
     configured hide pattern.
@@ -74,7 +70,7 @@ def custom_field_hidden(field_name: str, key: str, *, settings: Settings) -> boo
 def ensure_custom_field_input_writable(raw_key: str, *, settings: Settings) -> None:
     """Checked BEFORE schema resolution, using the raw caller-supplied key on
     both sides of the match (the schema key isn't known yet at this point in
-    create/update). Ported from client.py's `_ensure_custom_field_input_writable`."""
+    create/update)."""
     normalized = normalize_hide_token(str(raw_key).strip())
     if normalized and custom_field_hidden(raw_key, raw_key, settings=settings):
         raise InvalidInputError(
@@ -84,7 +80,7 @@ def ensure_custom_field_input_writable(raw_key: str, *, settings: Settings) -> N
 
 def ensure_custom_field_writable(field_name: str, key: str, *, settings: Settings) -> None:
     """Checked AFTER schema resolution, using the schema's own field name plus
-    its resolved key. Ported from client.py's `_ensure_custom_field_writable`."""
+    its resolved key."""
     if not custom_field_hidden(field_name, key, settings=settings):
         return
     raise InvalidInputError(

@@ -6,13 +6,12 @@ dashboard is always allowed, read or write, regardless of
 OPENPROJECT_READ_PROJECTS/OPENPROJECT_WRITE_PROJECTS) is domain-specific
 branching logic, not a generic scope.py primitive.
 
-Read and write functions intentionally have different parameter shapes,
-matching client.py's original asymmetry: the read functions take the raw
-scope HAL link dict (`_ensure_grid_payload_allowed` passes the whole link to
-`_ensure_project_link_allowed`, which also reads `link.get("title")`, not
-just `href`), while the write function takes a bare href string (its two
-flat call sites -- create_grid, _authorize_grid_write -- already have one in
-hand, per client.py:3995-4002).
+Read and write functions intentionally have different parameter shapes: the
+read functions take the raw scope HAL link dict (`_ensure_grid_payload_allowed`
+passes the whole link to `_ensure_project_link_allowed`, which also reads
+`link.get("title")`, not just `href`), while the write function takes a bare
+href string (its two call sites -- create_grid, _authorize_grid_write --
+already have one in hand).
 """
 
 from __future__ import annotations
@@ -35,7 +34,8 @@ def grid_scope_href(scope_link: dict[str, Any] | None) -> str | None:
     Shared with GridService, which needs the same extraction for an
     already-fetched grid's own scope_link before calling
     ensure_grid_write_allowed (whose parameter is a bare href string, not a
-    link dict -- see the module docstring for why the two shapes differ).
+    link dict -- see the module docstring for why the two parameter shapes
+    differ).
     """
     return scope_link.get("href") if isinstance(scope_link, dict) else None
 

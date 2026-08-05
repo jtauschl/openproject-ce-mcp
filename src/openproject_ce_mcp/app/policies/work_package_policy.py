@@ -1,8 +1,7 @@
 """Work-Packages-only policy. Pure, no I/O.
 
-Direct replacement for client.py's `_work_package_payload_allowed`. A work
-package's `_links.project` is a REQUIRED link (OpenProject's representer
-always emits one, or the URN_UNDISCLOSED placeholder for an
+A work package's `_links.project` is a REQUIRED link (OpenProject's
+representer always emits one, or the URN_UNDISCLOSED placeholder for an
 invisible-but-existing project) -- never optional -- so this uses
 `project_link_payload_allowed` (the `ensure_project_link_allowed`-backed,
 fail-closed-on-missing-link contract), matching Documents/News/Versions'

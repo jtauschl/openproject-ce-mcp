@@ -1,14 +1,11 @@
 """Project-scope / allowlist policy. Pure, no I/O.
 
 Contains small, deliberately duplicated private copies of `_trim_text`/
-`_slug_from_href` (+ `SUBJECT_LIMIT`) -- duplicated rather than
-imported from client.py to avoid `app/` importing from `client.py` (these are still
-used ~136/15 times respectively by every other domain's normalize_* methods).
-Unify only once every domain has migrated and client.py's copies become truly dead.
+`_slug_from_href` (+ `SUBJECT_LIMIT`) rather than a single shared helper, to
+keep this module free of dependencies on other, less-stable modules.
 
-`id_from_href` is exported (not underscore-prefixed) because, unlike the two
-helpers above, it crossed this project's own "3+ identical copies" threshold
-WITHIN `app/` itself (this module's own copy, `app/services/project_service.py`,
+`id_from_href` is exported (not underscore-prefixed) because it is shared
+across `app/` itself (this module's own copy, `app/services/project_service.py`,
 and `app/services/file_link_service.py`) -- `services` is permitted to import
 from `policies` (see `tests/test_architecture_boundaries.py`'s
 `_LAYER_DEPENDENCIES`), so this is the natural shared home rather than a new
@@ -208,11 +205,8 @@ def project_link_payload_allowed(
 ) -> bool:
     """Shared body for every domain's `<domain>_payload_allowed(payload, ...)`
     wrapper (`document_policy.py`, `news_policy.py`, `version_policy.py`):
-    each one only ever differed in which `_links` key carries the project
-    reference (`"project"` for Documents/News, `"definingProject"` for
-    Versions) -- found to be near-identical, cross-sibling duplication (not
-    the documented, sanctioned client.py-transition duplication) during the
-    Documents migration's post-implementation review.
+    each one only differs in which `_links` key carries the project reference
+    (`"project"` for Documents/News, `"definingProject"` for Versions).
     """
     return payload_allowed(
         lambda: ensure_project_link_allowed(
