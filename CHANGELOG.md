@@ -61,20 +61,63 @@ support.
   return an empty result or a permission error with no project allowlist
   granted; write tools already worked this way.
 
+### Docs
+
+- Added the missing "Notes" section to the Cursor client guide.
+- Documented that `configure` must be run from the same directory your AI
+  client opens as its workspace, so a project-scoped config actually lands
+  where the client looks for it.
+- Clarified that the VS Code/Copilot guide is about VS Code's own MCP host,
+  not a standalone "GitHub MCP server".
+
+## [Unreleased 0.3.6]
+
+### Changed
+
+- **Breaking: removed client-constructed `url` fields (and a few
+  sub-collection hrefs like `activities_url`/`relations_url`) from MCP
+  output models across most domains, including work packages, projects,
+  and users.** These were built from `base_url` + id, with no matching link
+  from the server, and some never resolved to a real page. `download_url`,
+  `avatar_url`, and `identity_url` are unaffected, as are the handful of
+  `url` fields that resolve a link OpenProject actually sends.
+
 ### Fixed
 
-- **`list_relations`/`get_work_package_relations`, `list_time_entries`,
-  `list_sprints`/`list_project_sprints`, `list_grids`, `list_versions`
-  (without `project`), `list_documents`, `list_views`, `list_news`,
-  `list_boards` (when filtered by `project`/`search` or under a
-  restrictive `OPENPROJECT_READ_PROJECTS`), and `list_users`/`list_groups`
-  (with `search`) now actually reduce server load and response size when
-  paging** — `offset`/`limit` previously had no effect on how much data
-  these tools fetched from OpenProject: each call loaded the entire
-  matching collection into memory before slicing out the requested page,
-  regardless of `limit`. `total` on these tools is now a lower bound (the
-  count returned on this page) rather than an exact count of the full
+- **`configure`'s generic copy-source for MCP clients without native
+  support no longer writes to `.mcp.json`** — it now writes to a dedicated
+  `openproject-mcp.example.json` with a placeholder token, so a real API
+  token can no longer end up in a file meant only as a copy-source
+  reference.
+- **`configure`/`--uninstall` no longer crash with an unhandled traceback
+  on a filesystem error while writing or removing a client config.** A
+  failure on one target no longer aborts the remaining ones, and the
+  process exits non-zero with a summary of every failed target.
+- **`create_work_package`/`update_work_package`/`bulk_create_work_packages`/
+  `bulk_update_work_packages` now document two previously-undocumented
+  OpenProject behaviors**: a `due_date` on a non-working day can be
+  silently moved forward by OpenProject (with no way to opt out via this
+  server), and explicitly setting `percentage_done` together with a
+  closing `status` is hard-rejected on instances using status-based
+  progress calculation instead of being silently ignored.
+- **`list_projects`/`list_sprints`/`list_project_sprints`/`list_grids`/
+  `list_versions` (without `project`)/`list_documents`/`list_views`/
+  `list_news`/`list_time_entries`/`list_users` and `list_groups` (both with
+  `search`) now actually reduce server load and response size when paging**
+  — `offset`/`limit` previously had no effect on how much data these tools
+  fetched from OpenProject: each call loaded the entire matching collection
+  into memory before slicing out the requested page, regardless of `limit`.
+  A related bug in the fix's first draft (`list_relations`/
+  `list_notifications`, already fixed) could also report `truncated: true`
+  on the last page when the number of matches landed exactly on `limit` —
+  the same fix applies here. `total` on these tools is now a lower bound
+  (the count returned on this page) rather than an exact count of the full
   matching collection; page with `next_offset` until it is `null`.
+- **`list_boards` (when filtering by `project`, `search`, or a restricted
+  `OPENPROJECT_READ_PROJECTS`) could silently hide a board beyond the
+  server's default result cap.** The client-side-filtered path now scans
+  server pages the same way `list_documents`/`list_news` already do,
+  instead of fetching a single bounded page.
 - **`get_work_packages` (batch read) now bounds how many requests it sends
   to OpenProject at once (max 10 concurrent) instead of firing all of them
   simultaneously** — with the full 100-item batch limit, this could
@@ -88,31 +131,10 @@ support.
   page), the same convention every other paginated list tool already uses;
   page with `next_offset` until it is `null`.
 - **`list_relations`, `get_work_package_relations`, `list_notifications`,
-  `list_reminders`, and `get_work_package`'s children/ancestors filtering
-  now resolve their per-item project-allowlist checks concurrently (bounded,
-  max 10 at once) instead of one HTTP request at a time.** Under a
-  restricted `OPENPROJECT_READ_PROJECTS`, these tools previously awaited one
-  work-package lookup per relation/notification/reminder/hierarchy entry in
-  strict sequence; a page or hierarchy with many entries could take
-  proportionally long. Result contents, ordering, and pagination behavior
-  are unchanged.
-- **`list_notifications` (under a restrictive `OPENPROJECT_READ_PROJECTS`)
-  could report `truncated: true`/a `next_offset` on the last page when the
-  number of allowed matches landed exactly on `limit`**, even though no
-  further match actually existed — a follow-up call with that `next_offset`
-  would silently return nothing. Now confirms at least one more allowed
-  match genuinely exists beyond the requested page before reporting
-  truncation, the same lookahead already used by every other paginated
-  list tool.
-
-### Docs
-
-- Added the missing "Notes" section to the Cursor client guide.
-- Documented that `configure` must be run from the same directory your AI
-  client opens as its workspace, so a project-scoped config actually lands
-  where the client looks for it.
-- Clarified that the VS Code/Copilot guide is about VS Code's own MCP host,
-  not a standalone "GitHub MCP server".
+  `list_reminders`, and `get_work_package`'s children/ancestors filtering now
+  resolve their per-item project-allowlist checks concurrently** (bounded,
+  max 10 at once) instead of one at a time — faster under a restricted
+  `OPENPROJECT_READ_PROJECTS` on a page or hierarchy with many entries.
 
 ---
 

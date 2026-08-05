@@ -61,13 +61,13 @@ set -euo pipefail
 #                  Printed, never contributes to the exit code.
 #   - FAIL       — a normative mismatch or an unmet enforced expectation. Contributes to this
 #                  script's final nonzero exit UNLESS validly waived via handbook-baseline.yml's
-#                  exceptions[] list. Every check is waivable by default EXCEPT the fixed 3-item
+#                  exceptions[] list. Every check is waivable by default EXCEPT the fixed 4-item
 #                  NON_WAIVABLE_CHECKS array below — there is no separate "waivable list" to
 #                  maintain, only that one exclusion.
 #   - WARN       — genuinely report-only: the underlying handbook rule doesn't use "must" for this
 #                  particular fact. Printed, but NEVER contributes to the exit code, regardless of
 #                  waiver state (a WARN-kind check has nothing to waive in the first place).
-#   - INDETERMINATE — one of the 5 live/network checks (16-20) could not complete because the
+#   - INDETERMINATE — one of the 5 live/network checks (17-21) could not complete because the
 #                  external API itself was unreachable (a transport/auth failure) — NEVER used by a
 #                  local/offline check for a local parse/read/config problem, which is a FAIL
 #                  instead (see each local check's own logic), and NEVER used for a local
@@ -92,12 +92,12 @@ set -euo pipefail
 #                  OPENPROJECT_API_TOKEN credential in the environment). Printed, never
 #                  contributes to the exit code.
 #
-# --- The 21 checks -------------------------------------------------------------------------------
-# Local/offline (16): profile_resolution (non-waivable), tag_pin, int_present (non-waivable),
+# --- The 22 checks -------------------------------------------------------------------------------
+# Local/offline (17): profile_resolution (non-waivable), tag_pin, int_present (non-waivable),
 # infra_governance_vs_profile, required_root_files, agents_md_symlink, commit_msg_hook
 # (non-waivable), dev_subcommands, handbook_check_wired, gitignore_baseline,
 # baseline_schema_version, stack_folder_shape, mobile_only_consistency, script_self_placement,
-# profile_hash_drift (WARN-only), no_int_content_leak.
+# profile_hash_drift (WARN-only), no_int_content_leak, copied_script_drift (WARN-only).
 # Live/read-only (5), each independently network-guarded so a failure reaching one API never
 # aborts the whole run or blocks any other check: github_issues_vs_tracker (non-waivable),
 # branch_protection (WARN-only), dependabot_readonly, openproject_project_exists (SKIPPED without
@@ -125,15 +125,28 @@ set -euo pipefail
 # never prints secrets, raw API error response bodies, or command traces that could leak a
 # credential — a captured API error is summarized, not echoed verbatim.
 #
-# Usage: ./handbook-check.sh.example [--migrate]
+# Usage: ./handbook-check.sh.example [--migrate | --whats-new [<target-tag>]]
 #   e.g. ./handbook-check.sh.example
 #        ./handbook-check.sh.example --migrate
+#        ./handbook-check.sh.example --whats-new
+#        ./handbook-check.sh.example --whats-new v0.10.2
 #   Run from anywhere inside the code repo (or any of its sibling companion repos) — this script
 #   locates the umbrella directory itself (see locate_umbrella() below) rather than assuming a
 #   specific invocation-time working directory. --migrate additionally updates
 #   handbook-baseline.yml in place for fields this script can safely re-derive on its own (e.g.
 #   profile.source_sha256); it never edits fields that require a human decision (exceptions[],
 #   tracker.project_identifier).
+#   --whats-new prints the CHANGELOG.md section(s) between this project's currently-pinned tag
+#   (handbook-baseline.yml's handbook.pinned_tag) and a target tag (defaults to the latest GitHub
+#   Release if omitted) — meant to answer "what changed since I last synced" BEFORE re-pinning, the
+#   opposite direction from tag_pin/latest_release_vs_pinned below, which assume the pin has
+#   already been updated to match the umbrella clone's own checked-out tag. Runs standalone, does
+#   NOT run the normal check suite, and does not imply any other check passed. It reads historical
+#   file content via `git show <tag>:CHANGELOG.md` in the umbrella's sw_dev_handbook clone, so it
+#   works regardless of what tag that clone currently has checked out. Does not filter by this
+#   project's own Project Profile axes — every changelog entry between the two tags is printed,
+#   including ones that don't apply to this project's stack/shape; profile-axis filtering is a
+#   stated follow-up, not implemented here.
 #
 # NOT wired as a ./dev subcommand by sw_dev_handbook itself — that's a copier-side integration
 # step once this template is copied into a project's own scripts/ folder, per
@@ -152,7 +165,7 @@ set -euo pipefail
 # silently "work" — see github-security-settings.sh.example's own header comment for the full
 # reasoning; the short version is that an invalid placeholder makes every resulting doc link 404
 # loudly until it's actually set, instead of silently resolving to the wrong policy version.
-SW_DEV_HANDBOOK_DOC_REF="${SW_DEV_HANDBOOK_DOC_REF:-v0.10.4}"
+SW_DEV_HANDBOOK_DOC_REF="${SW_DEV_HANDBOOK_DOC_REF:-v0.10.5}"
 
 # Fixed, non-configurable: no exceptions[] entry in handbook-baseline.yml may waive any of these
 # four check IDs, no matter what handbook-baseline.yml itself claims. An exceptions[] entry
@@ -170,13 +183,27 @@ LIVE_CHECK_IDS=(github_issues_vs_tracker branch_protection dependabot_readonly o
 KNOWN_BASELINE_SCHEMA_VERSION=1
 
 migrate=0
+whats_new=0
+whats_new_target_tag=""
 case "${1:-}" in
 --migrate)
+    if [ $# -gt 1 ]; then
+        echo "handbook-check: --migrate takes no further arguments (got: ${*:2}) (usage: ./handbook-check.sh.example [--migrate | --whats-new [<target-tag>]])" >&2
+        exit 1
+    fi
     migrate=1
+    ;;
+--whats-new)
+    if [ $# -gt 2 ]; then
+        echo "handbook-check: --whats-new takes at most one target-tag argument (got: ${*:2}) (usage: ./handbook-check.sh.example [--migrate | --whats-new [<target-tag>]])" >&2
+        exit 1
+    fi
+    whats_new=1
+    whats_new_target_tag="${2:-}"
     ;;
 "") ;;
 *)
-    echo "handbook-check: unknown argument: $1 (usage: ./handbook-check.sh.example [--migrate])" >&2
+    echo "handbook-check: unknown argument: $1 (usage: ./handbook-check.sh.example [--migrate | --whats-new [<target-tag>]])" >&2
     exit 1
     ;;
 esac
@@ -373,6 +400,86 @@ else
     fi
 fi
 
+# --- --whats-new: print CHANGELOG.md between the pinned tag and a target tag, then exit ----------
+# Runs standalone, before the normal check suite — deliberately does not call run_check() for
+# anything, does not touch handbook-baseline.yml, and does not imply any check outcome. See the
+# header comment above for the full usage/scope note.
+if [ "$whats_new" -eq 1 ]; then
+    pinned_tag="$(yq_baseline "$BASELINE_FILE" '.handbook.pinned_tag' 2>/dev/null || true)"
+    if [ -z "$pinned_tag" ] || [ "$pinned_tag" = "null" ]; then
+        echo "handbook-check --whats-new: could not read handbook.pinned_tag from $BASELINE_FILE" >&2
+        exit 1
+    fi
+
+    target_tag="$whats_new_target_tag"
+    if [ -z "$target_tag" ]; then
+        if ! command -v gh >/dev/null 2>&1; then
+            echo "handbook-check --whats-new: no target tag given and gh CLI not found — cannot resolve the latest release" >&2
+            exit 1
+        fi
+        if ! target_tag="$( (cd "$UMBRELLA_DIR/sw_dev_handbook" && gh release view --json tagName -q .tagName) 2>&1)"; then
+            echo "handbook-check --whats-new: could not determine the latest sw_dev_handbook release — network/auth failure, or no releases exist yet" >&2
+            exit 1
+        fi
+    fi
+
+    if [ "$pinned_tag" = "$target_tag" ]; then
+        echo "handbook-check --whats-new: pinned tag ($pinned_tag) is already the target tag — nothing new"
+        exit 0
+    fi
+
+    if ! git -C "$UMBRELLA_DIR/sw_dev_handbook" cat-file -e "$pinned_tag" 2>/dev/null; then
+        echo "handbook-check --whats-new: pinned tag $pinned_tag not found in the umbrella's sw_dev_handbook clone — fetch tags first (git -C $UMBRELLA_DIR/sw_dev_handbook fetch --tags)" >&2
+        exit 1
+    fi
+    if ! git -C "$UMBRELLA_DIR/sw_dev_handbook" cat-file -e "$target_tag" 2>/dev/null; then
+        echo "handbook-check --whats-new: target tag $target_tag not found in the umbrella's sw_dev_handbook clone — fetch tags first (git -C $UMBRELLA_DIR/sw_dev_handbook fetch --tags)" >&2
+        exit 1
+    fi
+
+    new_changelog="$(git -C "$UMBRELLA_DIR/sw_dev_handbook" show "$target_tag:CHANGELOG.md" 2>/dev/null || true)"
+    if [ -z "$new_changelog" ]; then
+        echo "handbook-check --whats-new: could not read CHANGELOG.md at $target_tag" >&2
+        exit 1
+    fi
+
+    # Print every "## [" version-heading section strictly ABOVE pinned_tag's own heading, then
+    # stop at (excluding) that heading — a plain top-down scan (CHANGELOG.md's newest release is
+    # always first), not a git-log-based commit diff, since a commit list doesn't map cleanly onto
+    # changelog entries. CHANGELOG.md's own version headings never carry the tag's leading "v"
+    # (e.g. tag v0.10.4 is heading "## [0.10.4]"), so strip it before matching. Match the FULL
+    # bracketed heading ("## [X.Y.Z]", including the closing bracket) rather than a bare prefix —
+    # a prefix match on "## [1.2" would incorrectly also match "## [1.20.0]", stopping extraction
+    # early and silently omitting every real entry between the two tags. If the pinned heading is
+    # never actually found in target_tag's CHANGELOG.md at all (a target that doesn't descend from
+    # the pinned tag, an unrelated/older explicit target, or a pinned tag whose own release was
+    # squashed out of history), fail loudly rather than silently printing the entire changelog and
+    # claiming it's "between" two tags that may not even have that relationship.
+    pinned_version="${pinned_tag#v}"
+    # set -e would abort the script silently right at this assignment if the pipeline inside
+    # exits non-zero (a failing command substitution assigned to a variable still triggers -e) —
+    # the "|| extract_status=$?" guard is required so the failure is instead caught and reported
+    # explicitly below, not just an unexplained early exit with no message at all.
+    extract_status=0
+    extracted="$(
+        printf '%s\n' "$new_changelog" | awk -v pinned="## [$pinned_version]" '
+            index($0, "## [") == 1 && ($0 == pinned || index($0, pinned " ") == 1) { found = 1; exit }
+            { print }
+            END { exit !found }
+        '
+    )" || extract_status=$?
+    if [ "$extract_status" -ne 0 ]; then
+        echo "handbook-check --whats-new: could not find pinned tag $pinned_tag's own heading (\"## [$pinned_version]\") in $target_tag's CHANGELOG.md — cannot determine what's genuinely new between these two tags; verify $target_tag actually descends from $pinned_tag (e.g. git -C $UMBRELLA_DIR/sw_dev_handbook merge-base --is-ancestor $pinned_tag $target_tag)" >&2
+        exit 1
+    fi
+
+    echo "handbook-check --whats-new: sections in CHANGELOG.md at $target_tag not yet reflected by your pin at $pinned_tag"
+    echo "(every entry between the two tags is shown — this does not filter by your project's own Project Profile axes)"
+    echo
+    printf '%s\n' "$extracted"
+    exit 0
+fi
+
 fail=0
 
 # CHECK_IDS[] is the fixed, ordered registry of every check ID this run may record an outcome
@@ -427,7 +534,7 @@ get_message() {
 }
 
 # ===================================================================================================
-# Local/offline checks (1-15)
+# Local/offline checks (0-16)
 # ===================================================================================================
 
 # 0. profile_resolution — NON-WAIVABLE. Reports the namespaced-vs-legacy resolution computed above
@@ -514,16 +621,16 @@ check_infra_governance_vs_profile() {
 }
 
 # 4. required_root_files — ../../02-bootstrap/project-setup.md#required-root-files' baseline list,
-# plus PRIVACY.md/RUNBOOK.md when the profile declares product_shape: mobile-app (see that same
-# section's mobile-specific addition).
+# plus PRIVACY.md/RUNBOOK.md when the profile declares product_shape: mobile-app or desktop-app
+# (see that same section's mobile-or-desktop-specific addition).
 check_required_root_files() {
     local required=(README.md LICENSE .gitignore CHANGELOG.md .editorconfig SECURITY.md)
     local product_shape
     if ! product_shape="$(yq_front_matter "$PROFILE_FILE" '.product_shape')"; then
-        record_outcome required_root_files FAIL "could not read product_shape from $PROFILE_FILE — cannot determine whether the mobile-app-specific PRIVACY.md/RUNBOOK.md requirement applies"
+        record_outcome required_root_files FAIL "could not read product_shape from $PROFILE_FILE — cannot determine whether the mobile-or-desktop-app-specific PRIVACY.md/RUNBOOK.md requirement applies"
         return
     fi
-    if [ "$product_shape" = "mobile-app" ]; then
+    if [ "$product_shape" = "mobile-app" ] || [ "$product_shape" = "desktop-app" ]; then
         required+=(PRIVACY.md RUNBOOK.md)
     fi
     local missing=()
@@ -909,7 +1016,31 @@ check_profile_hash_drift() {
 # repo's name (see "Known gaps" below) — narrowed in scope rather than downgraded in severity, same
 # convention as stack_folder_shape's own best-effort framing above. This check prevents new/current
 # exposure going forward — it cannot retroactively erase a reference already present in previously
-# published git history or an existing fork.
+# published git history or an existing fork. This check does not distinguish "names the companion
+# repo" from "repeats its actual content" — naming it at all is the exposure this check guards
+# against (see the FAIL message above), by design, not an oversight. A code comment that needs to
+# point at more detail living in the companion repo should describe what the detail is about
+# without naming the companion repo itself — see
+# ../../02-bootstrap/project-setup.md#documentation-companion-repo.
+#
+# Needle-shape trap for a companion repo that ISN'T literally "<project>-int"-shaped: the default
+# needles below are always the fixed compound form "${PROJECT_NAME}-int" etc. — never a bare "int"
+# substring — so a project whose companion repo is instead named something short and generic
+# (e.g. a bare "int", with no "<project>-" prefix, because the project already has its own GitHub
+# org namespace making the prefix redundant) that naively adds a bare-word needle will false-positive
+# constantly (a language's own "int" type, "internal/" packages, "res/" resource paths, "Internal
+# testing" as store terminology, and similar). The safe alternative is a path-shaped anchor pattern
+# (e.g. "(^|[^A-Za-z0-9_])int/", requiring a trailing slash so it only matches path-like references
+# such as "int/adr/..." or "../int/...") — but this git grep call below is invoked with -F
+# (fixed-string matching): a project adopting this pattern must ALSO switch this check's own git
+# grep invocation from -F to -E (or -P) for the customized needle to be treated as a regex at all,
+# not just swap in a new needle string under the existing -F call, which would match the pattern
+# literally, character-for-character, and never match anything real. A needle broadened this way can
+# also end up matching this script's own copy (the generic "${PROJECT_NAME}-*" needles structurally
+# never appear in this script's own source, but a project-specific customized needle like this one
+# might) — self-exclude this script's own path from the git grep scope if so (e.g.
+# "-- . ':!scripts/handbook-check.sh.example'", the same reasoning check_script_self_placement's own
+# comment already applies to this script's own resolved location).
 check_no_int_content_leak() {
     local needles=(
         "${PROJECT_NAME}-int"
@@ -931,8 +1062,165 @@ check_no_int_content_leak() {
     record_outcome no_int_content_leak PASS "no companion-repo reference (${needles[*]}) found anywhere in the code repo's tracked content"
 }
 
+# 16. copied_script_drift — WARN-only, report-only. handbook-check.sh itself, and any of
+# github-security-settings.sh/kmp-commonmain-drift-check.sh that were also copied into this code
+# repo (see ../../02-bootstrap/project-setup.md#where-a-copied-automation-script-lives), can drift
+# from their upstream ../../templates/scripts/*.example the moment the umbrella's sw_dev_handbook
+# pin is bumped without also re-copying the scripts themselves — nothing else in this checker
+# catches that: latest_release_vs_pinned only compares the pinned TAG STRING, never a copied
+# script's actual content, and script_self_placement checks location, not content.
+#
+# handbook-check.sh is always checked, resolved via this script's own $script_path (its actual
+# running location) rather than a guessed filename — project-setup.md's prose and this file's own
+# test fixture disagree on whether a copied template keeps its source ".example" suffix, so
+# resolving from the actual invocation path sidesteps that naming ambiguity for the one script
+# that's always present by construction. github-security-settings.sh and
+# kmp-commonmain-drift-check.sh have no running-instance path to resolve from, so both naming
+# conventions (with and without ".example") are checked explicitly for those two. All three are
+# genuinely optional except handbook-check.sh itself — a project that never copied
+# github-security-settings.sh/kmp-commonmain-drift-check.sh (a non-KMP project has no reason to
+# copy the drift-check script) is out of scope for that one, not a WARN for "missing."
+#
+# A documented divergence (a project's own copy customized for a real, legitimate local reason —
+# see #where-a-copied-automation-script-lives and the needle-shape guidance in
+# check_no_int_content_leak() above) is recorded in a sidecar `<script>.divergence-reason` file
+# next to the copy, holding a `local_sha256_at_documentation: <hash>` and an
+# `upstream_sha256_at_documentation: <hash>` line each (the local copy's own hash AND the upstream
+# template's hash, both captured at the moment the divergence was written down — recording only one
+# of the two makes it impossible to tell whether the OTHER side has since changed). Three outcomes:
+#   - local-current matches local-recorded, upstream-current matches upstream-recorded -> silent,
+#     nothing changed on either side since the divergence was documented.
+#   - local-current matches local-recorded, upstream-current DIFFERS from upstream-recorded -> WARN
+#     that upstream has moved again since this divergence was documented; re-review needed. Diff
+#     the two upstream tags (git show <old-tag>:templates/scripts/<script>.example vs.
+#     <new-tag>:...) and reconcile that diff into the local customized copy, rather than assuming
+#     the original divergence reasoning still covers whatever changed upstream.
+#   - local-current DIFFERS from local-recorded (regardless of upstream) -> the divergence-reason
+#     file's own recorded local hash is now stale, so it no longer vouches for the copy's CURRENT
+#     content — treat as a new, undocumented divergence (WARN as if no divergence-reason file
+#     existed), not as still-covered by the old note.
+#
+# Report-only, matching profile_hash_drift's own precedent: this script never auto-resyncs a
+# diverged copy (unlike sync-commit-msg-hook.sh.example, which only ever cp's a MISSING hook file
+# into place — it also never overwrites an existing, already-diverged hook, just warns, the same
+# report-only shape this check follows). Auto-resync for these three scripts is a possible future
+# enhancement, not implemented here: a project may have made deliberate, accepted local changes,
+# and silently overwriting a conformance-checker script is a much bigger behavior change than
+# refreshing pure boilerplate.
+#
+# Known limitation, stated plainly rather than implied away: a copy of handbook-check.sh predating
+# this check's own introduction does not contain this check at all — bumping pinned_tag in
+# handbook-baseline.yml does not retroactively add detection capability to an already-stale local
+# copy. The stale script needs one manual re-copy from the current template before it can detect
+# its own future staleness — a one-time bootstrap cost per project, not a recurring one. See
+# README.md#using-this-repo-in-another-project for the same note from the consumer side.
+check_copied_script_drift() {
+    local upstream_dir="$UMBRELLA_DIR/sw_dev_handbook/templates/scripts"
+    # handbook-check.sh's own local copy is resolved via $script_path (this script's own actual
+    # resolved invocation path, set at the top of this file) rather than a guessed filename —
+    # project-setup.md's prose and this file's own test fixture disagree on whether the ".example"
+    # suffix is stripped on copy (a pre-existing inconsistency, not resolved here), so $script_path
+    # sidesteps the ambiguity entirely for the one script that's always present by construction.
+    # The two optional scripts have no running-instance path to resolve from, so both naming
+    # conventions are checked explicitly.
+    local warnings=()
+    local name local_path upstream_path local_hash upstream_hash divergence_file
+    local recorded_local recorded_upstream
+
+    name="handbook-check.sh"
+    local_path="$script_path"
+    upstream_path="$upstream_dir/handbook-check.sh.example"
+    if [ ! -f "$upstream_path" ]; then
+        warnings+=("$name: upstream template $upstream_path not found — cannot compare")
+    else
+        local_hash="$(sha256_of "$local_path")"
+        upstream_hash="$(sha256_of "$upstream_path")"
+        if [ "$local_hash" != "$upstream_hash" ]; then
+            divergence_file="${local_path}.divergence-reason"
+            if [ ! -f "$divergence_file" ]; then
+                warnings+=("$name: diverges from $upstream_path and no $divergence_file documents why — re-copy from the current template, or document the divergence (see this check's own header comment)")
+            else
+                recorded_local="$(grep -m1 '^local_sha256_at_documentation:' "$divergence_file" | awk '{print $2}')"
+                recorded_upstream="$(grep -m1 '^upstream_sha256_at_documentation:' "$divergence_file" | awk '{print $2}')"
+                if [ "$local_hash" != "$recorded_local" ]; then
+                    warnings+=("$name: diverges from $upstream_path, and its own current content no longer matches $divergence_file's recorded local_sha256_at_documentation — this is a NEW, undocumented divergence, not still covered by the existing note; update $divergence_file (both hashes) or investigate the unexpected local change")
+                elif [ "$upstream_hash" != "$recorded_upstream" ]; then
+                    warnings+=("$name: a previously-documented divergence exists ($divergence_file), but $upstream_path has changed again since — re-review: diff the two upstream tags and reconcile into this local copy (see ../../02-bootstrap/project-setup.md#where-a-copied-automation-script-lives)")
+                fi
+            fi
+        fi
+    fi
+
+    local scripts=(
+        "github-security-settings.sh:github-security-settings.sh.example"
+        "kmp-commonmain-drift-check.sh:kmp-commonmain-drift-check.sh.example"
+    )
+    local entry upstream_name candidate present_candidates
+    for entry in "${scripts[@]}"; do
+        name="${entry%%:*}"
+        upstream_name="${entry#*:}"
+        upstream_path="$upstream_dir/$upstream_name"
+        # Check both naming conventions this repo's own docs/fixtures actually use (bare name,
+        # e.g. "github-security-settings.sh", and the copy-as-is form retaining the source
+        # template's own ".example" suffix) INDEPENDENTLY, not "first match wins" — a project
+        # could have both present at once (e.g. mid-rename, or an accidental duplicate copy), and
+        # silently checking only the first found would let the second one drift unnoticed.
+        present_candidates=()
+        for candidate in "$CODE_REPO_DIR/scripts/$name" "$CODE_REPO_DIR/scripts/$upstream_name"; do
+            [ -f "$candidate" ] && present_candidates+=("$candidate")
+        done
+        if [ "${#present_candidates[@]}" -eq 0 ]; then
+            continue
+        fi
+        if [ "${#present_candidates[@]}" -gt 1 ]; then
+            warnings+=("$name: both ${present_candidates[*]} exist at once — keep only one copy, the other is stale/confusing regardless of which one matches upstream")
+        fi
+        if [ ! -f "$upstream_path" ]; then
+            warnings+=("$name: upstream template $upstream_path not found — cannot compare")
+            continue
+        fi
+
+        for local_path in "${present_candidates[@]}"; do
+            local local_hash upstream_hash
+            local_hash="$(sha256_of "$local_path")"
+            upstream_hash="$(sha256_of "$upstream_path")"
+            if [ "$local_hash" = "$upstream_hash" ]; then
+                continue
+            fi
+
+            local divergence_file="${local_path}.divergence-reason"
+            if [ ! -f "$divergence_file" ]; then
+                warnings+=("$local_path: diverges from $upstream_path and no $divergence_file documents why — re-copy from the current template, or document the divergence (see this check's own header comment)")
+                continue
+            fi
+
+            local recorded_local recorded_upstream
+            recorded_local="$(grep -m1 '^local_sha256_at_documentation:' "$divergence_file" | awk '{print $2}')"
+            recorded_upstream="$(grep -m1 '^upstream_sha256_at_documentation:' "$divergence_file" | awk '{print $2}')"
+
+            if [ "$local_hash" != "$recorded_local" ]; then
+                warnings+=("$local_path: diverges from $upstream_path, and its own current content no longer matches $divergence_file's recorded local_sha256_at_documentation — this is a NEW, undocumented divergence, not still covered by the existing note; update $divergence_file (both hashes) or investigate the unexpected local change")
+                continue
+            fi
+            if [ "$upstream_hash" != "$recorded_upstream" ]; then
+                warnings+=("$local_path: a previously-documented divergence exists ($divergence_file), but $upstream_path has changed again since — re-review: diff the two upstream tags and reconcile into this local copy (see ../../02-bootstrap/project-setup.md#where-a-copied-automation-script-lives)")
+            fi
+            # else: local and upstream both still match what was recorded at documentation time —
+            # nothing new to reconcile, stay silent.
+        done
+    done
+
+    if [ "${#warnings[@]}" -eq 0 ]; then
+        record_outcome copied_script_drift PASS "every copied template script present in this repo (handbook-check.sh, plus github-security-settings.sh/kmp-commonmain-drift-check.sh if copied) matches its current upstream template, or has an up-to-date documented divergence"
+        return
+    fi
+    local joined
+    joined="$(printf '%s; ' "${warnings[@]}")"
+    record_outcome copied_script_drift WARN "$joined"
+}
+
 # ===================================================================================================
-# Live/read-only checks (16-20) — each independently network-guarded: a failure reaching one API
+# Live/read-only checks (17-21) — each independently network-guarded: a failure reaching one API
 # must never abort the whole script or block any other check, local or live.
 # ===================================================================================================
 
@@ -992,7 +1280,7 @@ gh_api_get() {
     GH_API_BODY="$body"
 }
 
-# 16. github_issues_vs_tracker — NON-WAIVABLE. ../../05-tooling/openproject.md#openproject-as-the-
+# 17. github_issues_vs_tracker — NON-WAIVABLE. ../../05-tooling/openproject.md#openproject-as-the-
 # system-of-record requires OpenProject as the sole tracker; GitHub Issues enabled is only
 # excepted for a project with real external users/contributors (the profile's own axes 3/3b are
 # the "documented exception" this check looks for).
@@ -1040,7 +1328,7 @@ check_github_issues_vs_tracker() {
     esac
 }
 
-# 17. branch_protection — WARN-only, purely informational, same raw-inventory-not-confirmation
+# 18. branch_protection — WARN-only, purely informational, same raw-inventory-not-confirmation
 # framing as github-security-settings.sh.example's own Rulesets check.
 check_branch_protection() {
     if ! command -v gh >/dev/null 2>&1; then
@@ -1076,7 +1364,7 @@ check_branch_protection() {
     esac
 }
 
-# 18. dependabot_readonly — waivable FAIL if disabled (github.md:71 requires both Dependabot
+# 19. dependabot_readonly — waivable FAIL if disabled (github.md:71 requires both Dependabot
 # alerts and security updates enabled unconditionally). READS ONLY — this check never calls the
 # enabling PUT itself (unlike github-security-settings.sh.example, which is the separate ENFORCER
 # tool this check points at on finding either disabled).
@@ -1120,7 +1408,7 @@ check_dependabot_readonly() {
     fi
 }
 
-# 19. openproject_project_exists — SKIPPED with no OPENPROJECT_API_TOKEN credential (naming
+# 20. openproject_project_exists — SKIPPED with no OPENPROJECT_API_TOKEN credential (naming
 # convention confirmed against templates/mcp/config.toml.example). FAIL (waivable) if a credential
 # is present, the API reachable, but the declared tracker.project_identifier isn't a real project.
 # INDETERMINATE (distinct from "reachable but not found") if the API itself is unreachable.
@@ -1166,7 +1454,7 @@ check_openproject_project_exists() {
     esac
 }
 
-# 20. latest_release_vs_pinned — WARN-only, reports "N releases behind" if applicable, never
+# 21. latest_release_vs_pinned — WARN-only, reports "N releases behind" if applicable, never
 # fails.
 check_latest_release_vs_pinned() {
     if ! command -v gh >/dev/null 2>&1; then
@@ -1241,7 +1529,7 @@ apply_waivers() {
 }
 
 # ===================================================================================================
-# Run every check. Each is already internally network-guarded (live checks 16-20 never let a
+# Run every check. Each is already internally network-guarded (live checks 17-21 never let a
 # transport failure propagate as an unhandled error) — but every check is additionally wrapped
 # here so a genuinely unexpected error inside any single check function can never abort the whole
 # run and silently skip every check after it. The fallback outcome for this rare, defensive
@@ -1281,6 +1569,7 @@ for fn in check_profile_resolution check_tag_pin check_int_present check_infra_g
     check_dev_subcommands check_handbook_check_wired check_gitignore_baseline \
     check_baseline_schema_version check_stack_folder_shape check_mobile_only_consistency \
     check_script_self_placement check_profile_hash_drift check_no_int_content_leak \
+    check_copied_script_drift \
     check_github_issues_vs_tracker check_branch_protection check_dependabot_readonly \
     check_openproject_project_exists check_latest_release_vs_pinned; do
     run_check "$fn"
