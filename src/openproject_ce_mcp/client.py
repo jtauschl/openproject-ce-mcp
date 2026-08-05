@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import mimetypes
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass, replace
 from enum import Enum, auto
@@ -175,6 +175,20 @@ WORK_PACKAGE_ANCESTORS_LIMIT = 20
 ACTIVITY_DETAILS_LIMIT = 20
 BATCH_READ_MAX_IDS = 100
 
+# Concurrency bound for _work_package_project_allowed_bulk (OPM-379/F3), shared by
+# every bulk allowlist resolution (Relations, Notifications, Reminders, work-package
+# hierarchy). Bounds burst load from a single page/array's worth of leaf lookups
+# firing at once while still letting the bounded sets involved (server pages of
+# roughly 50-100 raw elements, hierarchy capped at WORK_PACKAGE_CHILDREN_LIMIT +
+# WORK_PACKAGE_ANCESTORS_LIMIT = 70) resolve in only a few waves. Deliberately a
+# SEPARATE instance from _batch_read_semaphore (F6, __init__ below), not the same
+# object reused with "it's already 10 anyway" reasoning: get_work_packages() runs
+# get_work_package() (which nests into _filter_hierarchy_allowlist) under
+# _batch_read_semaphore, so a shared semaphore would deadlock as soon as a full
+# batch of _batch_read_semaphore permits is held by callers that are themselves
+# blocked waiting on the very same semaphore for their nested hierarchy lookups.
+_ALLOWLIST_BULK_CONCURRENCY = 10
+
 # Sentinel for update_work_package: distinguishes "clear the parent" (make the work
 # package top-level via _links.parent = {"href": null}) from "leave unchanged" (None).
 # A dedicated object avoids colliding with numeric ids or the _resolve_work_package_id
@@ -266,6 +280,13 @@ class OpenProjectClient:
         # parallelization introduces, to avoid a deadlock risk if get_work_package
         # (called by fetch_one below) itself performs nested allowlist checks.
         self._batch_read_semaphore = asyncio.Semaphore(10)
+        # Instance-scoped, shared by every _work_package_project_allowed_bulk()
+        # call across all 4 F3 call sites (Relations, Notifications, Reminders,
+        # hierarchy) -- a genuinely SEPARATE object from _batch_read_semaphore
+        # above, see _ALLOWLIST_BULK_CONCURRENCY's module-level comment for why a
+        # shared semaphore would deadlock nested hierarchy lookups inside a
+        # saturated get_work_packages() batch.
+        self._allowlist_semaphore = asyncio.Semaphore(_ALLOWLIST_BULK_CONCURRENCY)
 
         # Wrap transport with retry logic if max_retries > 0
         if settings.max_retries > 0:
@@ -2580,7 +2601,25 @@ class OpenProjectClient:
             return detail
         cache: dict[str, bool] = {}
 
-        async def keep(entries: list[dict[str, str | None]] | None) -> list[dict[str, str | None]] | None:
+        # children + ancestors are both fixed-size (WORK_PACKAGE_CHILDREN_LIMIT=50,
+        # WORK_PACKAGE_ANCESTORS_LIMIT=20), not a paginated server scan -- unlike
+        # the 3 scan sites (Relations/Notifications/Reminders), there is no
+        # early-stopping concern here, so both arrays' hrefs are collected and
+        # resolved together in ONE bulk call rather than page-by-page (OPM-379/F3
+        # plan Korrektur 2). Every entry in both arrays was unconditionally
+        # visited by the old sequential `keep()` too (no short-circuit), so every
+        # outcome here is "sequentially reachable" and a real Exception is always
+        # re-raised, never swallowed.
+        all_hrefs = [
+            href
+            for entries in (detail.children, detail.ancestors)
+            if entries
+            for href in (entry.get("href") for entry in entries)
+            if href
+        ]
+        outcomes = await self._work_package_project_allowed_bulk(all_hrefs, cache)
+
+        def keep(entries: list[dict[str, str | None]] | None) -> list[dict[str, str | None]] | None:
             if not entries:
                 return entries
             filtered = []
@@ -2588,16 +2627,17 @@ class OpenProjectClient:
                 href = entry.get("href")
                 if not href:
                     continue
-                if href not in cache:
-                    cache[href] = await self._work_package_project_allowed(href)
-                if cache[href]:
+                outcome = outcomes[href]
+                if isinstance(outcome, Exception):
+                    raise outcome
+                if outcome:
                     filtered.append(entry)
             return filtered or None
 
         original_children_count = len(detail.children) if detail.children else 0
         original_ancestors_count = len(detail.ancestors) if detail.ancestors else 0
-        children = await keep(detail.children)
-        ancestors = await keep(detail.ancestors)
+        children = keep(detail.children)
+        ancestors = keep(detail.ancestors)
         children_count = len(children) if children else 0
         ancestors_count = len(ancestors) if ancestors else 0
         # _replace_and_restamp, not a bare replace(): normalize_work_package_detail
@@ -3967,11 +4007,15 @@ class OpenProjectClient:
         allowlisted = not _scope_allows_all(self.settings.read_projects)
         wp_allowed: dict[str, bool] = {}
 
-        async def item_allowed(item: dict[str, Any]) -> bool:
-            return not allowlisted or await self._relation_endpoints_allowed(item, wp_allowed)
+        async def item_allowed_bulk(items: list[dict[str, Any]]) -> list[bool | Exception]:
+            if not allowlisted:
+                # Wildcard scope: no allowlist GETs at all, same fastpath the
+                # old sequential `not allowlisted or ...` short-circuit gave.
+                return [True] * len(items)
+            return await self._relation_endpoints_allowed_bulk(items, wp_allowed)
 
         results, truncated = await self._paginate_relations(
-            params_extra={"filters": filters}, item_allowed=item_allowed, offset=offset, limit=effective_limit
+            params_extra={"filters": filters}, item_allowed_bulk=item_allowed_bulk, offset=offset, limit=effective_limit
         )
         return RelationListResult(
             offset=offset,
@@ -4032,7 +4076,8 @@ class OpenProjectClient:
         self,
         path: str,
         *,
-        item_allowed: Callable[[dict[str, Any]], Awaitable[bool]],
+        item_allowed: Callable[[dict[str, Any]], Awaitable[bool]] | None = None,
+        item_allowed_bulk: Callable[[list[dict[str, Any]]], Awaitable[list[bool | Exception]]] | None = None,
         offset: int,
         limit: int,
         params_extra: dict[str, str] | None = None,
@@ -4071,10 +4116,35 @@ class OpenProjectClient:
         `limit + 1`-th allowed item was actually found, not merely inferred
         from "this page happened to have more raw elements than we needed."
 
+        Exactly one of `item_allowed`/`item_allowed_bulk` must be given.
+        `item_allowed` awaits a single item at a time (fine for cheap,
+        non-I/O predicates -- most callers). `item_allowed_bulk` (OPM-379/F3)
+        is the page-batching hook for the 3 callers whose predicate performs
+        a per-item network lookup (Relations, Notifications, Reminders): it
+        receives one whole fetched page of raw items and returns a
+        same-length, same-order list of `bool | Exception` outcomes -- a plain
+        `href -> bool` callback would not fit Relations' two-hrefs-per-item
+        case or exception propagation. Deliberately NOT collecting/resolving
+        across the whole call (that would rescan to server exhaustion on
+        every call, reintroducing the OPM-373/F1/F5 full-scan bug this
+        function's docstring above already explains) -- only ONE page's worth
+        of items is bulk-resolved at a time, immediately followed by the same
+        sequential skip/limit+1-lookahead consumption below as always, so
+        server-side early-stopping is preserved (the final/terminal page can
+        issue a few more allowlist lookups than a strictly sequential
+        immediate-stop would have -- a known, bounded-by-page-size tradeoff).
+        Outcomes are consumed strictly in page order; an item's `Exception` is
+        only raised once the sequential consumption loop actually reaches
+        that item (i.e. it was never skipped and never past the limit+1
+        lookahead cutoff) -- items the old sequential code would never have
+        awaited still never raise here either.
+
         Returns the raw (unnormalized) allowed elements for the requested
         page -- callers normalize/further-filter afterward, since result
         types differ per caller.
         """
+        if (item_allowed is None) == (item_allowed_bulk is None):
+            raise ValueError("_scan_and_paginate requires exactly one of item_allowed/item_allowed_bulk")
         skip_count = (offset - 1) * limit
         skipped = 0
         results: list[dict[str, Any]] = []
@@ -4102,8 +4172,34 @@ class OpenProjectClient:
             is_first_page = False
             seen_ids.update(page_ids)
 
-            allowed = [item for item in raw_elements if await item_allowed(item)]
-            for item in allowed:
+            if item_allowed_bulk is not None:
+                # Pre-resolve the WHOLE page concurrently (bounded by
+                # self._allowlist_semaphore inside the bulk helper each
+                # item_allowed_bulk callback ultimately calls), but still
+                # consume outcomes strictly in page order below -- an item's
+                # Exception outcome is only raised once the loop actually
+                # reaches that item, matching exactly which items the old
+                # fully-sequential `await item_allowed(item)` would have
+                # awaited (i.e. NOT items after the limit+1 lookahead cutoff
+                # already broke the loop, and NOT items a caller's own
+                # short-circuit logic -- e.g. Relations' from-before-to --
+                # would never have reached).
+                page_outcomes = await item_allowed_bulk(raw_elements)
+            else:
+                page_outcomes = None
+                assert item_allowed is not None  # narrowed by the exactly-one check above
+
+            for index, item in enumerate(raw_elements):
+                if page_outcomes is not None:
+                    outcome = page_outcomes[index]
+                    if isinstance(outcome, Exception):
+                        raise outcome
+                    is_allowed = outcome
+                else:
+                    assert item_allowed is not None
+                    is_allowed = await item_allowed(item)
+                if not is_allowed:
+                    continue
                 if skipped < skip_count:
                     skipped += 1
                     continue
@@ -4129,13 +4225,13 @@ class OpenProjectClient:
         self,
         *,
         params_extra: dict[str, str],
-        item_allowed: Callable[[dict[str, Any]], Awaitable[bool]],
+        item_allowed_bulk: Callable[[list[dict[str, Any]]], Awaitable[list[bool | Exception]]],
         offset: int,
         limit: int,
     ) -> tuple[list[RelationSummary], bool]:
         """Relations-specific wrapper around the shared `_scan_and_paginate` scanner."""
         raw_items, truncated = await self._scan_and_paginate(
-            "relations", item_allowed=item_allowed, offset=offset, limit=limit, params_extra=params_extra
+            "relations", item_allowed_bulk=item_allowed_bulk, offset=offset, limit=limit, params_extra=params_extra
         )
         return [self.normalize_relation(item) for item in raw_items], truncated
 
@@ -4280,15 +4376,14 @@ class OpenProjectClient:
         allowlisted = not _scope_allows_all(self.settings.read_projects)
         cache: dict[str, bool] = {}
 
-        async def _reminder_item_allowed(item: dict[str, Any]) -> bool:
+        async def _reminder_page_allowed(items: list[dict[str, Any]]) -> list[bool | Exception]:
             if not allowlisted:
-                return True
-            href = item.get("_links", {}).get("remindable", {}).get("href")
-            if not href:
-                return False  # can't verify -> fail closed
-            if href not in cache:
-                cache[href] = await self._work_package_project_allowed(href)
-            return cache[href]
+                # Wildcard scope: no allowlist GETs at all, same fastpath the
+                # old sequential `if not allowlisted: return True` gave.
+                return [True] * len(items)
+            hrefs = [item.get("_links", {}).get("remindable", {}).get("href") for item in items]
+            outcomes = await self._work_package_project_allowed_bulk([href for href in hrefs if href], cache)
+            return [outcomes[href] if href else False for href in hrefs]  # missing href -> fail closed, no lookup
 
         # Reminders is really offset-paginated server-side, and walking the
         # complete collection on every call (the prior _fetch_all_pages
@@ -4297,7 +4392,7 @@ class OpenProjectClient:
         # Relations (OPM-379/F5, ported from release/0.4.0).
         raw_items, truncated = await self._scan_and_paginate(
             "reminders",
-            item_allowed=_reminder_item_allowed,
+            item_allowed_bulk=_reminder_page_allowed,
             offset=offset,
             limit=effective_limit,
         )
@@ -4736,7 +4831,7 @@ class OpenProjectClient:
                 notification_filters["filters"] = _json_param([{"readIAN": {"operator": "=", "values": ["f"]}}])
             filtered, truncated = await self._scan_and_paginate(
                 "notifications",
-                item_allowed=lambda item: self._notification_payload_allowed(item, wp_cache),
+                item_allowed_bulk=lambda items: self._notification_page_allowed(items, wp_cache),
                 offset=offset,
                 limit=effective_limit,
                 params_extra=notification_filters,
@@ -4788,6 +4883,59 @@ class OpenProjectClient:
                 wp_cache[resource_href] = await self._work_package_project_allowed(resource_href)
             return wp_cache[resource_href]
         return True  # no project link and no work-package resource link: genuinely personal/global
+
+    async def _notification_page_allowed(
+        self, payloads: list[dict[str, Any]], wp_cache: dict[str, bool]
+    ) -> list[bool | Exception]:
+        """Page-batched, concurrent counterpart to `_notification_payload_allowed`.
+
+        Most notifications resolve with no I/O at all (an explicit
+        `project` link, or neither a project link nor a work-package
+        `resource` link -- genuinely personal/global). Only the
+        work-package-resource-link branch needs a network lookup; those
+        hrefs across the whole page are collected and resolved together in
+        ONE bulk call (OPM-379/F3), instead of one `_work_package_project_allowed`
+        await per notification. No lookahead-truncation bug exists on this
+        branch to fix (unlike release/0.4.0's equivalent) -- this file's
+        `_scan_and_paginate` already has the correct `limit + 1` lookahead;
+        only the concurrency of the work-package lookups changes here.
+        """
+        # For each payload, precompute whether it resolves via the cheap
+        # synchronous paths (project link present/absent-and-not-a-work-package)
+        # or needs a work-package href resolved.
+        needs_wp_href: list[str | None] = []
+        for payload in payloads:
+            links = payload.get("_links", {})
+            project_link = links.get("project")
+            if project_link is not None:
+                needs_wp_href.append(None)  # resolved synchronously below, no lookup
+                continue
+            resource_link = links.get("resource")
+            resource_href = resource_link.get("href") if isinstance(resource_link, dict) else None
+            if isinstance(resource_href, str) and "work_packages/" in resource_href:
+                needs_wp_href.append(resource_href)
+            else:
+                needs_wp_href.append(None)  # genuinely personal/global, no lookup
+
+        wp_hrefs = [href for href in needs_wp_href if href]
+        outcomes = await self._work_package_project_allowed_bulk(wp_hrefs, wp_cache)
+
+        results: list[bool | Exception] = []
+        for payload, wp_href in zip(payloads, needs_wp_href, strict=True):
+            links = payload.get("_links", {})
+            project_link = links.get("project")
+            if project_link is not None:
+                try:
+                    self._ensure_project_link_allowed(project_link)
+                    results.append(True)
+                except PermissionDeniedError:
+                    results.append(False)
+                continue
+            if wp_href is not None:
+                results.append(outcomes[wp_href])
+                continue
+            results.append(True)  # no project link and no work-package resource link: genuinely personal/global
+        return results
 
     async def mark_notification_read(self, notification_id: int, *, confirm: bool = False) -> NotificationMarkResult:
         self._ensure_write_enabled("personal")
@@ -5609,11 +5757,15 @@ class OpenProjectClient:
         # between the same work packages doesn't refetch (mitigates N+1).
         wp_allowed: dict[str, bool] = {}
 
-        async def item_allowed(item: dict[str, Any]) -> bool:
-            return not allowlisted or await self._relation_endpoints_allowed(item, wp_allowed)
+        async def item_allowed_bulk(items: list[dict[str, Any]]) -> list[bool | Exception]:
+            if not allowlisted:
+                # Wildcard scope: no allowlist GETs at all, same fastpath the
+                # old sequential `not allowlisted or ...` short-circuit gave.
+                return [True] * len(items)
+            return await self._relation_endpoints_allowed_bulk(items, wp_allowed)
 
         results, truncated = await self._paginate_relations(
-            params_extra=params_extra, item_allowed=item_allowed, offset=offset, limit=effective_limit
+            params_extra=params_extra, item_allowed_bulk=item_allowed_bulk, offset=offset, limit=effective_limit
         )
         return RelationListResult(
             offset=offset,
@@ -5644,6 +5796,59 @@ class OpenProjectClient:
                 return False
         return True
 
+    async def _relation_endpoints_allowed_bulk(
+        self, relations: list[dict[str, Any]], cache: dict[str, bool]
+    ) -> list[bool | Exception]:
+        """Page-batched, concurrent counterpart to `_relation_endpoints_allowed`.
+
+        Collects every from/to href across the whole page and resolves them
+        together via `_work_package_project_allowed_bulk` (one bulk call, not
+        one per relation), then evaluates each relation's own from-before-to
+        short-circuit synchronously against the resolved outcomes -- so the
+        *result* is identical to calling `_relation_endpoints_allowed`
+        sequentially per relation, only the network fan-out is batched.
+
+        Per relation: `from`'s outcome is checked first. If `from` is an
+        Exception, that exception wins (matches the old code's ordering,
+        which awaited `from` before ever looking at `to`). If `from` resolved
+        to `False` (denied), the relation is False regardless of what
+        happened to `to` -- even if `to`'s own outcome was an Exception, it
+        is deliberately swallowed here, because the old sequential
+        `_relation_endpoints_allowed` returned False immediately after `from`
+        failed and never awaited `to` at all (OPM-379/F3 plan Korrektur 3).
+        Only when `from` is `True` does `to`'s outcome (bool or Exception)
+        get to decide/propagate.
+        """
+        hrefs: list[str] = []
+        for relation in relations:
+            links = relation.get("_links", {})
+            for side in ("from", "to"):
+                link = links.get(side)
+                href = link.get("href") if isinstance(link, dict) else None
+                if href:
+                    hrefs.append(href)
+        outcomes = await self._work_package_project_allowed_bulk(hrefs, cache)
+
+        results: list[bool | Exception] = []
+        for relation in relations:
+            links = relation.get("_links", {})
+            from_link = links.get("from")
+            from_href = from_link.get("href") if isinstance(from_link, dict) else None
+            to_link = links.get("to")
+            to_href = to_link.get("href") if isinstance(to_link, dict) else None
+            if not from_href or not to_href:
+                results.append(False)
+                continue
+            from_outcome = outcomes[from_href]
+            if isinstance(from_outcome, Exception):
+                results.append(from_outcome)
+                continue
+            if not from_outcome:
+                results.append(False)
+                continue
+            results.append(outcomes[to_href])
+        return results
+
     async def _work_package_project_allowed(self, href: str) -> bool:
         try:
             work_package = await self._get(self._link_to_api_path(href))
@@ -5656,6 +5861,57 @@ class OpenProjectClient:
             return True
         except PermissionDeniedError:
             return False
+
+    async def _work_package_project_allowed_bulk(
+        self, hrefs: Iterable[str], cache: dict[str, bool]
+    ) -> dict[str, bool | Exception]:
+        """Resolve many hrefs' `_work_package_project_allowed` outcome concurrently.
+
+        Shared bulk-resolution primitive for all 4 OPM-379/F3 call sites
+        (Relations, Notifications, Reminders, work-package hierarchy), replacing
+        their previous sequential per-href awaiting. Callers pass their own
+        per-top-level-call `cache` dict (never shared across calls -- a work
+        package can change project at runtime, so a stale cached "allowed"
+        must not leak across separate list_relations()/list_reminders()/etc
+        invocations, only within one).
+
+        Deduplicates via `dict.fromkeys` (insertion-ordered, NOT `set()` --
+        order must stay deterministic for callers that consume outcomes in a
+        specific sequential priority, e.g. relations' from-before-to
+        short-circuit). Cache hits resolve with no I/O at all. Cache misses run
+        concurrently under `self._allowlist_semaphore`, each wrapped so a
+        regular `Exception` becomes the outcome value instead of propagating
+        out of `gather` -- `asyncio.CancelledError` (and other BaseException
+        subclasses) are NOT caught here and propagate normally, so cancellation
+        still cancels the whole bulk resolution. Only outcomes that resolved to
+        an actual `bool` are written into `cache`; failed hrefs are left
+        uncached so a retry can attempt them again.
+
+        Returns the complete href -> (bool | Exception) map: cache hits, newly
+        resolved hrefs, and failed hrefs alike. Callers decide -- in their own
+        sequential consumption order -- which (if any) exception to re-raise;
+        see _scan_and_paginate's item_allowed_bulk contract and
+        _filter_hierarchy_allowlist for the two shapes of that consumption.
+        """
+        deduped = list(dict.fromkeys(hrefs))
+        outcomes: dict[str, bool | Exception] = {href: cache[href] for href in deduped if href in cache}
+        misses = [href for href in deduped if href not in cache]
+        if not misses:
+            return outcomes
+
+        async def _resolve_one(href: str) -> bool | Exception:
+            async with self._allowlist_semaphore:
+                try:
+                    return await self._work_package_project_allowed(href)
+                except Exception as exc:  # deliberately broad -- deferred to the caller, see docstring
+                    return exc
+
+        resolved = await asyncio.gather(*[_resolve_one(href) for href in misses])
+        for href, outcome in zip(misses, resolved, strict=True):
+            outcomes[href] = outcome
+            if isinstance(outcome, bool):
+                cache[href] = outcome
+        return outcomes
 
     async def update_relation(
         self,

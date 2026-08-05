@@ -11,6 +11,7 @@ import httpx
 import pytest
 
 from openproject_ce_mcp.client import (
+    _ALLOWLIST_BULK_CONCURRENCY,
     CLEAR,
     CLEAR_PARENT,
     CLEAR_VERSION,
@@ -17486,4 +17487,731 @@ async def test_ensure_project_write_link_allowed_if_present_denies_malformed_lin
     client = OpenProjectClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(204)))
     with pytest.raises(PermissionDeniedError):
         client._ensure_project_write_link_allowed_if_present({"title": "Demo"})
+    await client.aclose()
+
+
+# --- OPM-379/F3: parallelized N+1 allowlist checks (Relations, Notifications,
+# Reminders, work-package hierarchy) ---
+
+
+def _wp_handler_factory(wp_projects: dict[int, str], active: dict[str, int] | None = None):
+    """Shared GET /work_packages/{id} mock: returns each id's project from
+    `wp_projects`, optionally tracking concurrent-in-flight count in `active`
+    (via a yield point so overlap is observable)."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if not match:
+            raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+        wp_id = int(match.group(1))
+        if active is not None:
+            active["count"] += 1
+            active["peak"] = max(active["peak"], active["count"])
+        try:
+            if active is not None:
+                await asyncio.sleep(0)
+            project_name = wp_projects[wp_id]
+            return httpx.Response(
+                200,
+                json={"id": wp_id, "_links": {"project": {"href": f"/api/v3/projects/{wp_id}", "title": project_name}}},
+                request=request,
+            )
+        finally:
+            if active is not None:
+                active["count"] -= 1
+
+    return handler
+
+
+async def test_list_relations_bulk_allowlist_resolution_is_concurrent_and_bounded() -> None:
+    """Regression (OPM-379/F3): list_relations used to await each relation's
+    from/to allowlist lookup sequentially (N+1). The new bulk resolution must
+    show genuine overlap (max_active >= 2) while still respecting the shared
+    _allowlist_semaphore's upper bound (max_active <= its configured limit)."""
+    wp_projects = dict.fromkeys(range(1, 41), "demo")  # 20 relations x 2 sides, all allowed
+    active = {"count": 0, "peak": 0}
+
+    def _relation(rel_id: int, from_wp: int, to_wp: int) -> dict:
+        return {
+            "id": rel_id,
+            "type": "relates",
+            "_links": {
+                "from": {"href": f"/api/v3/work_packages/{from_wp}"},
+                "to": {"href": f"/api/v3/work_packages/{to_wp}"},
+            },
+        }
+
+    relations = [_relation(i, 2 * i - 1, 2 * i) for i in range(1, 21)]
+    wp_handler = _wp_handler_factory(wp_projects, active)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations":
+            return httpx.Response(200, json={"total": 20, "_embedded": {"elements": relations}}, request=request)
+        return await wp_handler(request)
+
+    settings = _base_settings(max_page_size=50, read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_relations(limit=20)
+
+    assert result.count == 20
+    assert active["peak"] > 1, "expected genuine overlap, not accidental serialization"
+    assert active["peak"] <= 10, "must respect the F3 semaphore's concurrency bound"
+
+    await client.aclose()
+
+
+async def test_list_reminders_bulk_allowlist_resolution_is_concurrent_and_bounded() -> None:
+    wp_projects = dict.fromkeys(range(1, 21), "demo")
+    active = {"count": 0, "peak": 0}
+
+    def _reminder(reminder_id: int) -> dict:
+        return {
+            "id": reminder_id,
+            "remindAt": "2026-01-01T00:00:00Z",
+            "note": f"Reminder {reminder_id}",
+            "_links": {"remindable": {"href": f"/api/v3/work_packages/{reminder_id}"}},
+        }
+
+    reminders = [_reminder(i) for i in range(1, 21)]
+    wp_handler = _wp_handler_factory(wp_projects, active)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/reminders":
+            return httpx.Response(200, json={"total": 20, "_embedded": {"elements": reminders}}, request=request)
+        return await wp_handler(request)
+
+    settings = _base_settings(max_page_size=50, read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_reminders(limit=20)
+
+    assert result.count == 20
+    assert active["peak"] > 1, "expected genuine overlap, not accidental serialization"
+    assert active["peak"] <= 10, "must respect the F3 semaphore's concurrency bound"
+
+    await client.aclose()
+
+
+async def test_list_notifications_bulk_allowlist_resolution_is_concurrent_and_bounded() -> None:
+    wp_projects = dict.fromkeys(range(1, 21), "demo")
+    active = {"count": 0, "peak": 0}
+
+    def _notification(notification_id: int) -> dict:
+        return {
+            "id": notification_id,
+            "_links": {"resource": {"href": f"/api/v3/work_packages/{notification_id}"}},
+        }
+
+    notifications = [_notification(i) for i in range(1, 21)]
+    wp_handler = _wp_handler_factory(wp_projects, active)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/notifications":
+            return httpx.Response(200, json={"total": 20, "_embedded": {"elements": notifications}}, request=request)
+        return await wp_handler(request)
+
+    settings = _base_settings(max_page_size=50, read_projects=("demo",), enable_personal_read=True)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_notifications(limit=20)
+
+    assert result.count == 20
+    assert active["peak"] > 1, "expected genuine overlap, not accidental serialization"
+    assert active["peak"] <= 10, "must respect the F3 semaphore's concurrency bound"
+
+    await client.aclose()
+
+
+async def test_hierarchy_filter_bulk_allowlist_resolution_is_concurrent_and_bounded() -> None:
+    """children + ancestors combined (OPM-379/F3 Korrektur 2) must resolve
+    concurrently as ONE bulk call, not two sequential keep() passes."""
+    children_raw = [{"href": f"/api/v3/work_packages/{100 + i}", "title": f"Child {i}"} for i in range(10)]
+    ancestors_raw = [{"href": f"/api/v3/work_packages/{200 + i}", "title": f"Ancestor {i}"} for i in range(10)]
+    wp_projects = {100 + i: "demo" for i in range(10)} | {200 + i: "demo" for i in range(10)}
+    active = {"count": 0, "peak": 0}
+    wp_handler = _wp_handler_factory(wp_projects, active)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/1":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "subject": "Anchor",
+                    "_links": {
+                        "project": {"href": "/api/v3/projects/1", "title": "demo"},
+                        "children": children_raw,
+                        "ancestors": ancestors_raw,
+                    },
+                },
+                request=request,
+            )
+        return await wp_handler(request)
+
+    settings = _base_settings(read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    detail = await client.get_work_package(1)
+
+    assert len(detail.children or []) == 10
+    assert len(detail.ancestors or []) == 10
+    assert active["peak"] > 1, "expected children+ancestors resolved concurrently as one bulk call"
+    assert active["peak"] <= 10, "must respect the F3 semaphore's concurrency bound"
+
+    await client.aclose()
+
+
+async def test_allowlist_semaphore_bounds_two_concurrent_call_sites_together() -> None:
+    """The F3 semaphore is a single INSTANCE-wide object shared by all 4 call
+    sites, not one per call -- two simultaneous top-level calls on different
+    sites (list_relations and list_reminders) must still keep their COMBINED
+    peak concurrency at or below the shared limit (2nd Codex review round:
+    testing two calls of the *same* site would not catch a per-call-local
+    semaphore bug)."""
+    active = {"count": 0, "peak": 0}
+    wp_projects = dict.fromkeys(range(1, 41), "demo")
+    wp_handler = _wp_handler_factory(wp_projects, active)
+
+    def _relation(rel_id: int, from_wp: int, to_wp: int) -> dict:
+        return {
+            "id": rel_id,
+            "type": "relates",
+            "_links": {
+                "from": {"href": f"/api/v3/work_packages/{from_wp}"},
+                "to": {"href": f"/api/v3/work_packages/{to_wp}"},
+            },
+        }
+
+    def _reminder(reminder_id: int, wp_id: int) -> dict:
+        return {
+            "id": reminder_id,
+            "remindAt": "2026-01-01T00:00:00Z",
+            "note": f"Reminder {reminder_id}",
+            "_links": {"remindable": {"href": f"/api/v3/work_packages/{wp_id}"}},
+        }
+
+    relations = [_relation(i, 2 * i - 1, 2 * i) for i in range(1, 11)]  # wp 1..20
+    reminders = [_reminder(i, 20 + i) for i in range(1, 21)]  # wp 21..40
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations":
+            return httpx.Response(200, json={"total": 10, "_embedded": {"elements": relations}}, request=request)
+        if request.url.path == "/api/v3/reminders":
+            return httpx.Response(200, json={"total": 20, "_embedded": {"elements": reminders}}, request=request)
+        return await wp_handler(request)
+
+    settings = _base_settings(max_page_size=50, read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    results = await asyncio.gather(
+        client.list_relations(limit=10),
+        client.list_reminders(limit=20),
+    )
+
+    assert results[0].count == 10
+    assert results[1].count == 20
+    assert active["peak"] > 1, "expected genuine overlap across the two concurrent calls"
+    assert active["peak"] <= 10, (
+        "combined concurrency across BOTH simultaneous top-level calls must stay "
+        "within the single shared F3 semaphore's limit"
+    )
+
+    await client.aclose()
+
+
+async def test_f3_and_f6_semaphores_are_structurally_distinct_objects() -> None:
+    """Structural assertion (OPM-379/F3 plan): the new allowlist semaphore must
+    be a genuinely SEPARATE asyncio.Semaphore instance from F6's
+    _batch_read_semaphore, not the same object reused -- a shared semaphore
+    would deadlock get_work_packages(), whose nested get_work_package() ->
+    _filter_hierarchy_allowlist() call would then wait on permits held by its
+    own outer batch-read callers. Same numeric limit (10) on both is fine and
+    expected; being the same OBJECT would not be."""
+    client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(204)))
+    assert isinstance(client._allowlist_semaphore, asyncio.Semaphore)
+    assert isinstance(client._batch_read_semaphore, asyncio.Semaphore)
+    assert client._allowlist_semaphore is not client._batch_read_semaphore
+    await client.aclose()
+
+
+async def test_hierarchy_filter_completes_under_timeout_from_inside_saturated_batch_read() -> None:
+    """Behavioral proof that F3's semaphore is independent of F6's: run
+    get_work_packages() (which holds _batch_read_semaphore permits while
+    each item's get_work_package() nests into _filter_hierarchy_allowlist,
+    itself needing _allowlist_semaphore permits) with a batch large enough to
+    saturate _batch_read_semaphore, each item ALSO having hierarchy entries
+    needing allowlist resolution. If both semaphores were the same object,
+    this would deadlock (every _batch_read_semaphore permit-holder blocked
+    waiting on a nested _allowlist_semaphore permit nobody can release)."""
+    ancestor_href = "/api/v3/work_packages/999"
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if not match:
+            raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+        wp_id = int(match.group(1))
+        if wp_id == 999:
+            return httpx.Response(
+                200,
+                json={"id": 999, "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}}},
+                request=request,
+            )
+        return httpx.Response(
+            200,
+            json={
+                "id": wp_id,
+                "_links": {
+                    "project": {"href": "/api/v3/projects/1", "title": "demo"},
+                    "ancestors": [{"href": ancestor_href, "title": "Ancestor"}],
+                },
+            },
+            request=request,
+        )
+
+    settings = _base_settings(read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await asyncio.wait_for(client.get_work_packages(ids=list(range(1, 31))), timeout=5)
+
+    assert result.succeeded == 30
+    for item in result.results:
+        assert item.work_package is not None
+        assert item.work_package.ancestors is not None
+        assert item.work_package.ancestors[0].get("href") == ancestor_href
+
+    await client.aclose()
+
+
+async def test_list_relations_dedupes_repeated_href_within_and_across_server_pages() -> None:
+    """A repeated href (same work package referenced by multiple relations, on
+    the same page or across different server pages) must trigger only ONE
+    GET for that href per top-level call -- _work_package_project_allowed_bulk's
+    dict.fromkeys dedup, not per-relation refetching."""
+    wp_get_count = {"count": 0}
+
+    def _relation(rel_id: int, from_wp: int, to_wp: int) -> dict:
+        return {
+            "id": rel_id,
+            "type": "relates",
+            "_links": {
+                "from": {"href": f"/api/v3/work_packages/{from_wp}"},
+                "to": {"href": f"/api/v3/work_packages/{to_wp}"},
+            },
+        }
+
+    # All relations reference only wp 1 and wp 2, repeated across 2 server pages
+    # (server pageSize=2, so the 3rd relation -- needed for the limit+1
+    # lookahead at limit=2 -- lands on its own second page).
+    page1 = [_relation(1, 1, 2), _relation(2, 1, 2)]
+    page2 = [_relation(3, 1, 2)]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations":
+            offset = request.url.params["offset"]
+            if offset == "1":
+                return httpx.Response(200, json={"total": 3, "_embedded": {"elements": page1}}, request=request)
+            if offset == "2":
+                return httpx.Response(200, json={"total": 3, "_embedded": {"elements": page2}}, request=request)
+        match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if match:
+            wp_get_count["count"] += 1
+            wp_id = int(match.group(1))
+            return httpx.Response(
+                200,
+                json={"id": wp_id, "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(max_page_size=2, read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_relations(limit=2)
+
+    assert result.count == 2
+    assert wp_get_count["count"] == 2, (
+        f"expected exactly one GET per unique href (wp 1, wp 2), got {wp_get_count['count']}"
+    )
+
+    await client.aclose()
+
+
+async def test_hierarchy_filter_dedupes_href_shared_between_children_and_ancestors() -> None:
+    """The same href appearing in both children and ancestors (combined bulk
+    resolution, OPM-379/F3 Korrektur 2) must be fetched only once."""
+    shared_href = "/api/v3/work_packages/50"
+    wp_get_count = {"count": 0}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/1":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "_links": {
+                        "project": {"href": "/api/v3/projects/1", "title": "demo"},
+                        "children": [{"href": shared_href, "title": "Shared"}],
+                        "ancestors": [{"href": shared_href, "title": "Shared"}],
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/50":
+            wp_get_count["count"] += 1
+            return httpx.Response(
+                200,
+                json={"id": 50, "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    detail = await client.get_work_package(1)
+
+    assert detail.children is not None and len(detail.children) == 1
+    assert detail.ancestors is not None and len(detail.ancestors) == 1
+    assert wp_get_count["count"] == 1, f"expected exactly one GET for the shared href, got {wp_get_count['count']}"
+
+    await client.aclose()
+
+
+async def test_list_relations_separate_top_level_calls_do_not_share_cache() -> None:
+    """Cross-call caching remains explicitly out of scope (OPM-379/F3 plan
+    Korrektur 5): a work package can change project between calls, so each
+    top-level list_relations() call must refetch every href from scratch,
+    even if an earlier call already resolved the same href."""
+    wp_get_count = {"count": 0}
+
+    def _relation(rel_id: int, from_wp: int, to_wp: int) -> dict:
+        return {
+            "id": rel_id,
+            "type": "relates",
+            "_links": {
+                "from": {"href": f"/api/v3/work_packages/{from_wp}"},
+                "to": {"href": f"/api/v3/work_packages/{to_wp}"},
+            },
+        }
+
+    relation = _relation(1, 1, 2)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations":
+            return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [relation]}}, request=request)
+        match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if match:
+            wp_get_count["count"] += 1
+            wp_id = int(match.group(1))
+            return httpx.Response(
+                200,
+                json={"id": wp_id, "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    await client.list_relations()
+    assert wp_get_count["count"] == 2  # wp 1 and wp 2, first call
+
+    await client.list_relations()
+    assert wp_get_count["count"] == 4, "second call must refetch, not reuse the first call's cache"
+
+    await client.aclose()
+
+
+async def test_list_relations_swallows_to_side_failure_when_from_side_already_denied() -> None:
+    """OPM-379/F3 Korrektur 3: a relation's `to` href can now be looked up
+    speculatively (in the same bulk batch as `from`) even in cases the OLD
+    sequential code would never have reached -- specifically, once `from`
+    resolves to False (denied), the old code returned False immediately and
+    never awaited `to` at all. If `to`'s speculative lookup fails (a 500 on a
+    href that would never have been fetched before), that failure must be
+    swallowed, not propagated -- the relation is simply dropped (from-denied),
+    exactly as before."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations":
+            return httpx.Response(
+                200,
+                json={
+                    "total": 1,
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 1,
+                                "type": "relates",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/1"},  # denied
+                                    "to": {"href": "/api/v3/work_packages/2"},  # would 500 if fetched
+                                },
+                            }
+                        ]
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/1":
+            return httpx.Response(
+                200,
+                json={"id": 1, "_links": {"project": {"href": "/api/v3/projects/2", "title": "secret"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/2":
+            return httpx.Response(500, json={"message": "boom"}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",), max_retries=0)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    # Must NOT raise -- the to-side's failure is irrelevant once from is denied.
+    result = await client.list_relations()
+
+    assert result.count == 0
+
+    await client.aclose()
+
+
+async def test_list_relations_propagates_to_side_failure_when_from_side_allowed() -> None:
+    """Counterpart: when `from` resolves to True, `to`'s outcome (including a
+    failure) DOES matter -- the old sequential code would have awaited `to`
+    in this case too, so a genuine 5xx there must still propagate."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations":
+            return httpx.Response(
+                200,
+                json={
+                    "total": 1,
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 1,
+                                "type": "relates",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/1"},  # allowed
+                                    "to": {"href": "/api/v3/work_packages/2"},  # 500s
+                                },
+                            }
+                        ]
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/1":
+            return httpx.Response(
+                200,
+                json={"id": 1, "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/2":
+            return httpx.Response(500, json={"message": "boom"}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",), max_retries=0)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(OpenProjectServerError):
+        await client.list_relations()
+
+    await client.aclose()
+
+
+async def test_list_relations_two_failing_hrefs_same_relation_propagates_from_sides_exception() -> None:
+    """2nd Codex review round: when BOTH from and to fail with GENUINE
+    exceptions (not one side resolving to a plain `False` via a 404, which
+    _work_package_project_allowed_bulk's leaf await catches internally and
+    never surfaces as an Exception outcome at all), the FROM side's
+    exception must win -- it is the first sequentially reachable one -- not
+    whichever coroutine happens to complete first. Made deterministic two
+    ways: (1) `to`'s request completes immediately while `from`'s only
+    resolves after an explicit yield, so a naive first-completed-wins
+    implementation would surface `to`'s error first; (2) the two sides raise
+    DIFFERENT exception types with distinguishable messages -- `from` gets a
+    generic 5xx (OpenProjectServerError, fixed message, no body text
+    surfaced) and `to` gets a 422 (InvalidInputError, whose message DOES
+    include the response body's `message` field) -- so the assertion below
+    can prove by TYPE which one actually won, not just that some exception
+    was raised (a prior version of this test used a 404 for `to`, which
+    resolves to plain `False` rather than an Exception outcome -- it could
+    not actually distinguish "from's exception won" from "to's failure was
+    silently swallowed as denied", a real gap caught by a 2nd Codex review
+    round of the finished implementation, not just the plan)."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations":
+            return httpx.Response(
+                200,
+                json={
+                    "total": 1,
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 1,
+                                "type": "relates",
+                                "_links": {
+                                    "from": {"href": "/api/v3/work_packages/1"},
+                                    "to": {"href": "/api/v3/work_packages/2"},
+                                },
+                            }
+                        ]
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/1":
+            await asyncio.sleep(0)  # resolves AFTER wp 2 below
+            return httpx.Response(500, json={"message": "from-side failure"}, request=request)
+        if request.url.path == "/api/v3/work_packages/2":
+            return httpx.Response(422, json={"message": "to-side failure"}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(read_projects=("demo",), max_retries=0)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    # OpenProjectServerError (from `from`'s 500), NOT InvalidInputError (from
+    # `to`'s 422) -- proves by exception TYPE which side actually won, not
+    # merely that some exception propagated. If `to`'s exception had
+    # incorrectly won instead, this would raise InvalidInputError.
+    with pytest.raises(OpenProjectServerError):
+        await client.list_relations()
+
+    await client.aclose()
+
+
+async def test_list_reminders_failure_beyond_lookahead_cutoff_is_not_raised() -> None:
+    """OPM-379/F3 Korrektur 3: with bulk resolution, a WHOLE page's hrefs are
+    resolved concurrently, including items past the limit+1 lookahead cutoff
+    the sequential consumption loop would stop before ever reaching. If one
+    of those never-reached items' hrefs fails (e.g. a 500), that failure must
+    NOT propagate -- the old fully-sequential code would never have awaited
+    it either."""
+
+    def _reminder(reminder_id: int, wp_id: int) -> dict:
+        return {
+            "id": reminder_id,
+            "remindAt": "2026-01-01T00:00:00Z",
+            "note": f"Reminder {reminder_id}",
+            "_links": {"remindable": {"href": f"/api/v3/work_packages/{wp_id}"}},
+        }
+
+    # limit=2 needs only 3 allowed matches (limit+1 lookahead) to confirm
+    # truncation. wp 4's href always 500s -- it must never be reached.
+    reminders = [_reminder(1, 1), _reminder(2, 2), _reminder(3, 3), _reminder(4, 4)]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/reminders":
+            return httpx.Response(200, json={"total": 4, "_embedded": {"elements": reminders}}, request=request)
+        if request.url.path == "/api/v3/work_packages/4":
+            return httpx.Response(500, json={"message": "must never be fetched"}, request=request)
+        match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if match:
+            return httpx.Response(
+                200,
+                json={
+                    "id": int(match.group(1)),
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(max_page_size=50, read_projects=("demo",), max_retries=0)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_reminders(limit=2)
+
+    assert result.count == 2
+    assert result.truncated is True
+
+    await client.aclose()
+
+
+async def test_list_relations_cancellation_releases_allowlist_semaphore_permits() -> None:
+    """Cancelling an in-flight bulk allowlist resolution must release every
+    permit it was holding (async with guarantees this on any exit, including
+    cancellation) -- verified two ways: (1) the semaphore's internal counter
+    returns to its full, unblocked value; (2) a completely independent
+    follow-up call on the SAME client/semaphore, which would hang forever if
+    a single permit had leaked, completes normally within a timeout."""
+    release_leaf = asyncio.Event()
+    entered_leaf = {"count": 0}
+    unblocked = False
+
+    def _relation(rel_id: int, from_wp: int, to_wp: int) -> dict:
+        return {
+            "id": rel_id,
+            "type": "relates",
+            "_links": {
+                "from": {"href": f"/api/v3/work_packages/{from_wp}"},
+                "to": {"href": f"/api/v3/work_packages/{to_wp}"},
+            },
+        }
+
+    # 20 relations, 40 distinct hrefs -- guarantees the semaphore (limit 10)
+    # is genuinely saturated when cancellation hits.
+    relations = [_relation(i, 2 * i - 1, 2 * i) for i in range(1, 21)]
+    # Second, independent relation batch used only by the follow-up call
+    # below, resolving instantly (no blocking) once release_leaf fires.
+    follow_up_relation = _relation(21, 1000, 1001)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/relations":
+            if "followup" in request.url.params.get("filters", ""):
+                return httpx.Response(
+                    200, json={"total": 1, "_embedded": {"elements": [follow_up_relation]}}, request=request
+                )
+            return httpx.Response(200, json={"total": 20, "_embedded": {"elements": relations}}, request=request)
+        match = re.match(r"^/api/v3/work_packages/(\d+)$", request.url.path)
+        if match:
+            wp_id = int(match.group(1))
+            if wp_id < 1000:
+                entered_leaf["count"] += 1
+                if not unblocked:
+                    await release_leaf.wait()  # block every original-call leaf lookup until released
+            return httpx.Response(
+                200,
+                json={"id": wp_id, "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = _base_settings(max_page_size=50, read_projects=("demo",))
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    task = asyncio.ensure_future(client.list_relations(limit=20))
+    # Let the semaphore saturate: 10 leaf lookups in flight, all blocked on release_leaf.
+    while entered_leaf["count"] < 10:
+        await asyncio.sleep(0)
+    assert client._allowlist_semaphore.locked(), "expected the semaphore to be fully saturated before cancelling"
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # Unblock any leaf lookups that were still awaiting release_leaf at the
+    # moment of cancellation (they may still run briefly before observing
+    # the cancellation, depending on exactly where they were suspended).
+    unblocked = True
+    release_leaf.set()
+    await asyncio.sleep(0)
+
+    assert not client._allowlist_semaphore.locked(), "cancellation must release every held permit"
+    assert client._allowlist_semaphore._value == _ALLOWLIST_BULK_CONCURRENCY, (
+        "expected the semaphore's permit count to return to its full, unblocked value"
+    )
+
+    # Independent proof: a fresh follow-up call on the SAME client (same
+    # semaphore instance) must complete normally -- if even one permit had
+    # leaked, this would hang and the timeout would fire. `relation_type`
+    # routes the mock to a distinct, instantly-resolving response.
+    follow_up = await asyncio.wait_for(
+        client.list_relations(relation_type="followup", limit=1),
+        timeout=5,
+    )
+    assert follow_up.count == 1
+
     await client.aclose()
