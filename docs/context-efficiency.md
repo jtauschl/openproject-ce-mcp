@@ -33,13 +33,13 @@ OpenProject REST API v3 (HAL) call(s):
 
 | Call | Raw API tokens | MCP tokens | vs. raw |
 |---|---:|---:|---:|
-| `list_work_packages` (3 rows) | ~10,139 | ~761 | **−92%** |
+| `list_work_packages` (3 rows) | ~10,139 | ~713 | **−93%** |
 | `list_work_packages` with `select` (5 fields) | ~10,139 | ~144 | **−99%** |
-| `get_work_package` (single read) | ~3,424 | ~469 | **−86%** |
-| `search_work_packages` (7 rows) | ~18,994 | ~1,916 | **−90%** |
-| `update_work_package` (confirmed write) | ~3,425 | ~526 | **−85%** |
-| `bulk_create_work_packages` (×5, vs. 5 raw POSTs) | ~15,612 | ~1,498 | **−90%** |
-| `bulk_update_work_packages` (×5, vs. 5 raw PATCHes) | ~15,617 | ~1,533 | **−90%** |
+| `get_work_package` (single read) | ~3,424 | ~409 | **−88%** |
+| `search_work_packages` (8 rows) | ~21,066 | ~2,067 | **−90%** |
+| `update_work_package` (confirmed write) | ~3,425 | ~461 | **−87%** |
+| `bulk_create_work_packages` (×5, vs. 5 raw POSTs) | ~15,612 | ~1,173 | **−92%** |
+| `bulk_update_work_packages` (×5, vs. 5 raw PATCHes) | ~15,617 | ~1,208 | **−92%** |
 
 The savings are consistent across call shapes — this isn't a one-off number
 for list responses specifically. `select` remains the largest additional,
@@ -47,16 +47,15 @@ opt-in lever on top of the baseline MCP trimming.
 
 ## The cost of null-vs-absent distinguishability
 
-Not every context-shaping change is a saving. A caller needs to be able to
+Not every context-shaping property is a saving. A caller needs to be able to
 tell "this field is unset (`null`)" apart from "this field was never
-returned" — otherwise a missing key is ambiguous. The fix (OPM-373):
-`elide_none`, derived per-tool from whether the tool's own signature accepts
-`select`, controls whether `None`-valued fields are dropped; a field
-requested via `select` is always kept even when its value is `null`; and
-`next_offset` is never dropped, since a caller pages until it comes back
-`null`, not until it's absent. This makes some responses slightly *larger*
-than pure elision would — a deliberate, measured trade-off, not a
-regression.
+returned" — otherwise a missing key is ambiguous. `elide_none`, derived
+per-tool from whether the tool's own signature accepts `select`, controls
+whether `None`-valued fields are dropped; a field requested via `select` is
+always kept even when its value is `null`; and `next_offset` is never
+dropped, since a caller pages until it comes back `null`, not until it's
+absent. This makes some responses slightly *larger* than a maximal-elision
+policy would — a deliberate, measured trade-off, not a regression.
 
 The table below is **not** a before/after of two released versions — no
 version of this MCP ever shipped a policy that eliminated `None` on
@@ -72,7 +71,7 @@ actual cost):
 
 | Scenario | Maximal elision (hypothetical) | Explicit `null` (real behavior) | Cost |
 |---|---:|---:|---:|
-| Full rows, simulating a select-less tool (50 rows) | ~8,683 tokens | ~15,171 tokens | **+75%** |
+| Full rows, simulating a select-less tool (50 rows) | ~7,933 tokens | ~14,421 tokens | **+82%** |
 | `select=[id,subject,responsible]` (50 rows, all 50 with `responsible=None`) | ~793 tokens | ~1,093 tokens | **+38%** |
 
 Reproducible with the same `tools/measure-context.py` script (its "Cost of
