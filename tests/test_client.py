@@ -5012,11 +5012,13 @@ async def test_list_work_package_file_links_denies_anchor_outside_read_allowlist
 
 
 @pytest.mark.asyncio
-async def test_list_work_package_file_links_walks_multiple_server_pages() -> None:
-    """Regression: list_work_package_file_links issued a single unparametrized
-    GET against work_packages/{id}/file_links, relying on OpenProject's own
-    server-side default page size -- any file link beyond that default was
-    silently unreachable. Now walks every server page via _fetch_all_pages."""
+async def test_list_work_package_file_links_walks_multiple_server_pages_when_thinned_by_limit() -> None:
+    """Regression (OPM-379/F5): list_work_package_file_links used to fetch
+    the ENTIRE collection on every call via _fetch_all_pages, with no way to
+    request a smaller page. Now scans just enough server pages via
+    _scan_and_paginate, same fix pattern already applied to
+    list_documents/list_news/etc -- stopping as soon as `limit + 1` matches
+    are found rather than walking the full collection."""
     requested_offsets: list[str] = []
 
     def _file_link(file_link_id: int) -> dict:
@@ -5052,10 +5054,14 @@ async def test_list_work_package_file_links_walks_multiple_server_pages() -> Non
     settings = _base_settings(max_page_size=2, read_projects=("demo",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_work_package_file_links(9)
+    # limit=2 (matching max_page_size) needs the limit+1 lookahead match on
+    # page 2 to confirm truncation -- both server pages get requested.
+    result = await client.list_work_package_file_links(9, limit=2)
 
     assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
-    assert [r.id for r in result.results] == [1, 2, 3]
+    assert [r.id for r in result.results] == [1, 2]
+    assert result.truncated is True
+    assert result.next_offset == 2
 
     await client.aclose()
 
@@ -12538,11 +12544,13 @@ async def test_list_reminders_filters_by_read_projects_via_work_package() -> Non
 
 
 @pytest.mark.asyncio
-async def test_list_reminders_walks_multiple_server_pages() -> None:
-    """Regression: list_reminders issued a single unparametrized GET against
-    /api/v3/reminders, relying on OpenProject's own server-side default page
-    size -- any reminder beyond that default was silently unreachable. Now
-    walks every server page via _fetch_all_pages."""
+async def test_list_reminders_walks_multiple_server_pages_when_thinned_by_limit() -> None:
+    """Regression (OPM-379/F5): list_reminders used to fetch the ENTIRE
+    collection on every call via _fetch_all_pages, with no way to request a
+    smaller page. Now scans just enough server pages via _scan_and_paginate,
+    same fix pattern already applied to list_documents/list_news/etc --
+    stopping as soon as `limit + 1` matches are found rather than walking
+    the full collection."""
     requested_offsets: list[str] = []
 
     def _reminder(reminder_id: int) -> dict:
@@ -12573,10 +12581,14 @@ async def test_list_reminders_walks_multiple_server_pages() -> None:
     settings = _base_settings(max_page_size=2)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_reminders()
+    # limit=2 (matching max_page_size) needs the limit+1 lookahead match on
+    # page 2 to confirm truncation -- both server pages get requested.
+    result = await client.list_reminders(limit=2)
 
     assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
-    assert [r.id for r in result.results] == [1, 2, 3]
+    assert [r.id for r in result.results] == [1, 2]
+    assert result.truncated is True
+    assert result.next_offset == 2
 
     await client.aclose()
 

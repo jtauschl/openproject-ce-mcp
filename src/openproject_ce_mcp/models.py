@@ -906,7 +906,12 @@ class AttachmentSummary:
 
 @dataclass
 class AttachmentListResult:
+    offset: int
+    limit: int
+    total: int
     count: int
+    next_offset: int | None
+    truncated: bool
     results: list[AttachmentSummary]
 
 
@@ -1286,7 +1291,12 @@ class FileLinkSummary:
 
 @dataclass
 class FileLinkListResult:
+    offset: int
+    limit: int
+    total: int
     count: int
+    next_offset: int | None
+    truncated: bool
     results: list[FileLinkSummary]
 
 
@@ -1483,7 +1493,12 @@ class ReminderSummary:
 
 @dataclass
 class ReminderListResult:
+    offset: int
+    limit: int
+    total: int
     count: int
+    next_offset: int | None
+    truncated: bool
     results: list[ReminderSummary]
 
 

@@ -1712,19 +1712,39 @@ class OpenProjectClient:
                 raise NotFoundError("OpenProject category not found in this project.")
         return self.normalize_category(payload, project_id=project_id, project_name=project_name)
 
-    async def list_work_package_attachments(self, work_package_id: int | str) -> AttachmentListResult:
+    async def list_work_package_attachments(
+        self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
+    ) -> AttachmentListResult:
         self._ensure_read_enabled("work_package")
+        effective_limit = self._resolve_limit(limit)
         work_package_id = self._work_package_ref(work_package_id)
         work_package = await self.get_work_package(work_package_id)
-        # Regression found via a bidirectional bugfix audit against
-        # release/0.4.0: a single unparameterized GET only returns the
-        # server's default page size -- walk every page instead.
-        elements = await self._fetch_all_pages(f"work_packages/{work_package_id}/attachments")
-        results = [self.normalize_attachment(item) for item in elements]
-        results = [
-            item for item in results if item.container_type == "WorkPackage" and item.container_id == work_package.id
-        ]
-        return AttachmentListResult(count=len(results), results=results)
+
+        async def _attachment_item_allowed(item: dict[str, Any]) -> bool:
+            normalized = self.normalize_attachment(item)
+            return normalized.container_type == "WorkPackage" and normalized.container_id == work_package.id
+
+        # A single fetch capped at settings.max_results silently hid any
+        # attachment beyond that cap -- scan server pages instead, same
+        # early-stopping pattern already applied to Documents/Views/News
+        # (OPM-379/F5, ported from release/0.4.0).
+        raw_items, truncated = await self._scan_and_paginate(
+            f"work_packages/{work_package_id}/attachments",
+            item_allowed=_attachment_item_allowed,
+            offset=offset,
+            limit=effective_limit,
+        )
+        results = [self.normalize_attachment(item) for item in raw_items]
+        total = len(results)
+        return AttachmentListResult(
+            offset=offset,
+            limit=effective_limit,
+            total=total,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
+            results=results,
+        )
 
     async def get_attachment(self, attachment_id: int) -> AttachmentSummary:
         self._ensure_read_enabled("work_package")
@@ -4249,26 +4269,49 @@ class OpenProjectClient:
             ),
         )
 
-    async def list_reminders(self) -> ReminderListResult:
+    async def list_reminders(self, *, offset: int = 1, limit: int | None = None) -> ReminderListResult:
         self._ensure_read_enabled("work_package")
+        effective_limit = self._resolve_limit(limit)
         if not self.settings.read_projects:
-            return ReminderListResult(count=0, results=[])  # deny-all: skip the network call entirely
-        raw_elements = await self._fetch_all_pages("reminders")
-        elements = [item for item in raw_elements if isinstance(item, dict)]
-        if not _scope_allows_all(self.settings.read_projects):
-            cache: dict[str, bool] = {}
-            filtered = []
-            for item in elements:
-                href = item.get("_links", {}).get("remindable", {}).get("href")
-                if not href:
-                    continue  # can't verify -> fail closed
-                if href not in cache:
-                    cache[href] = await self._work_package_project_allowed(href)
-                if cache[href]:
-                    filtered.append(item)
-            elements = filtered
-        results = [self.normalize_reminder(item) for item in elements]
-        return ReminderListResult(count=len(results), results=results)
+            # deny-all: skip the network call entirely
+            return ReminderListResult(
+                offset=offset, limit=effective_limit, total=0, count=0, next_offset=None, truncated=False, results=[]
+            )
+        allowlisted = not _scope_allows_all(self.settings.read_projects)
+        cache: dict[str, bool] = {}
+
+        async def _reminder_item_allowed(item: dict[str, Any]) -> bool:
+            if not allowlisted:
+                return True
+            href = item.get("_links", {}).get("remindable", {}).get("href")
+            if not href:
+                return False  # can't verify -> fail closed
+            if href not in cache:
+                cache[href] = await self._work_package_project_allowed(href)
+            return cache[href]
+
+        # Reminders is really offset-paginated server-side, and walking the
+        # complete collection on every call (the prior _fetch_all_pages
+        # approach) never reduced server load. Scan just enough pages to
+        # fill the requested window instead, same early-stopping pattern as
+        # Relations (OPM-379/F5, ported from release/0.4.0).
+        raw_items, truncated = await self._scan_and_paginate(
+            "reminders",
+            item_allowed=_reminder_item_allowed,
+            offset=offset,
+            limit=effective_limit,
+        )
+        results = [self.normalize_reminder(item) for item in raw_items]
+        total = len(results)
+        return ReminderListResult(
+            offset=offset,
+            limit=effective_limit,
+            total=total,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
+            results=results,
+        )
 
     async def create_work_package_reminder(
         self,
@@ -5154,14 +5197,39 @@ class OpenProjectClient:
 
     # --- File Links ---
 
-    async def list_work_package_file_links(self, work_package_id: int | str) -> FileLinkListResult:
+    async def list_work_package_file_links(
+        self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
+    ) -> FileLinkListResult:
         self._ensure_read_enabled("work_package")
+        effective_limit = self._resolve_limit(limit)
         # Resolving the id already confirms the anchor work package itself is
         # allowed against OPENPROJECT_READ_PROJECTS before its file links are fetched.
         work_package_id = await self._resolve_work_package_id(work_package_id)
-        elements = await self._fetch_all_pages(f"work_packages/{work_package_id}/file_links")
-        results = [self.normalize_file_link(item) for item in elements if isinstance(item, dict)]
-        return FileLinkListResult(count=len(results), results=results)
+
+        async def _file_link_item_allowed(item: dict[str, Any]) -> bool:
+            return True
+
+        # A single fetch capped at settings.max_results silently hid any
+        # file link beyond that cap -- scan server pages instead, same
+        # early-stopping pattern already applied to Documents/Views/News
+        # (OPM-379/F5, ported from release/0.4.0).
+        raw_items, truncated = await self._scan_and_paginate(
+            f"work_packages/{work_package_id}/file_links",
+            item_allowed=_file_link_item_allowed,
+            offset=offset,
+            limit=effective_limit,
+        )
+        results = [self.normalize_file_link(item) for item in raw_items if isinstance(item, dict)]
+        total = len(results)
+        return FileLinkListResult(
+            offset=offset,
+            limit=effective_limit,
+            total=total,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
+            results=results,
+        )
 
     async def delete_file_link(
         self,
