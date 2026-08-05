@@ -20,15 +20,13 @@ Adapter falls back to `total = len(records)` (this page's own count) when
 the server omits it, the same fallback `httpx_sprint_api.py` uses.
 
 `get_max_attachment_size` is a narrow, single-field lookup against the
-otherwise entirely unmigrated, global Instance Configuration domain -- not
-the same "raw sibling-domain resource" pattern as `EmojiReactionApi.
-get_activity`/`ReminderApi.get_remindable_link` (those fetch a raw payload
-from WITHIN their own domain); this one deliberately reaches into a
-different, unrelated domain for exactly the one field
-(`maximumAttachmentFileSize`) `_validate_attachment_size` needs, so a future
-Instance Configuration migration does not have to happen first. Migrating
-the complete Instance Configuration domain here would be out-of-scope creep
-for an Attachments migration.
+global Instance Configuration domain -- not the same "raw sibling-domain
+resource" pattern as `EmojiReactionApi.get_activity`/`ReminderApi.
+get_remindable_link` (those fetch a raw payload from WITHIN their own
+domain); this one deliberately reaches into a different, unrelated domain
+for exactly the one field (`maximumAttachmentFileSize`)
+`_validate_attachment_size` needs, rather than depending on the full
+Instance Configuration domain for a single value.
 """
 
 from __future__ import annotations

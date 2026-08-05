@@ -25,10 +25,9 @@ LOGGER = logging.getLogger(__name__)
 def raise_for_status(status_code: int, payload: dict[str, Any] | None) -> None:
     """Tier-2 mapper: HTTP status + HAL error payload -> typed exception.
 
-    Verbatim port of client.py's `_raise_for_status` body, reshaped to take
-    (status_code, payload) instead of an httpx.Response so this module stays
-    httpx-free. Callers (HttpxTransport) extract status_code/payload from the
-    real response before calling this.
+    Takes (status_code, payload) rather than an httpx.Response so this module
+    stays httpx-free. Callers (HttpxTransport) extract status_code/payload from
+    the real response before calling this.
     """
     if status_code < 400:
         return

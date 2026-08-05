@@ -20,8 +20,6 @@ from .protocol import TransportResponse
 class HttpxTransport:
     """Wraps the SAME httpx.AsyncClient instance OpenProjectClient.__init__ already
     constructs ("httpx confinement") -- one connection pool, not two.
-    Verbatim behavioral port of client.py's
-    _request/_request_json/_get/_post/_patch/_delete/_raise_for_status.
     """
 
     def __init__(self, client: httpx.AsyncClient) -> None:

@@ -38,8 +38,8 @@ class Transport(Protocol):
 
     async def post_raw_json(self, path: str, *, content: bytes, headers: dict[str, str]) -> dict[str, Any]:
         """POST a raw, non-JSON body (e.g. Content-Type: text/plain) and parse a
-        JSON response -- added for render_text (Extended Metadata domain, 19th
-        migration), the first endpoint to POST raw text rather than a JSON body."""
+        JSON response -- used by render_text, the only endpoint that POSTs raw
+        text rather than a JSON body."""
         ...
 
     async def post_multipart(
@@ -52,10 +52,9 @@ class Transport(Protocol):
         content_type: str,
     ) -> dict[str, Any]:
         """POST a multipart/form-data body (a JSON metadata part plus a file
-        part) and parse a JSON response -- added for Attachments (29th
-        migration), the first endpoint to POST a file upload rather than a
-        JSON or raw-text body. Verbatim of client.py's `_post_multipart`: the
-        metadata part must be a plain form field with no filename in its
+        part) and parse a JSON response -- used by Attachments, the only
+        endpoint that POSTs a file upload rather than a JSON or raw-text body.
+        The metadata part must be a plain form field with no filename in its
         Content-Disposition (a filename makes Rails' multipart parser treat
         it as an uploaded file, not a JSON string, and OpenProject 500s)."""
         ...

@@ -188,8 +188,8 @@ def _trim_text(value: Any, *, limit: int = SUBJECT_LIMIT) -> str | None:
 
 
 # id_from_href is NOT duplicated here -- it lives in app/policies/scope.py
-# (imported below as _id_from_href), unified there once a 3rd identical copy
-# appeared (see project_service.py's own equivalent comment).
+# (imported below as _id_from_href), shared with project_service.py's own
+# equivalent comment.
 
 
 def _bulk_item_result(*, index: int, result: WorkPackageWriteResult) -> BulkWorkPackageItemResult:

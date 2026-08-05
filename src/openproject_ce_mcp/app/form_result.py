@@ -4,12 +4,10 @@ Package-root shared kernel: a frozen dataclass with exactly `payload` and
 `validation_errors` fields, importable from any port module without creating a
 layering violation.
 
-Extracted after a byte-identical `<Domain>FormResult` dataclass (same two
-fields) was found independently duplicated across MembershipFormResult,
+The same two-field shape is needed independently by MembershipFormResult,
 GridFormResult, ProjectFormResult, ProjectCopyFormResult, and
-VersionFormResult (found during the Sprints migration's step-6
-reuse/simplification audit) -- past this project's own "3+ identical copies"
-unification threshold.
+VersionFormResult; sharing one dataclass here avoids re-duplicating it across
+those domains.
 
 Each domain still declares its own `<Domain>FormResult = FormResult` alias in
 its own port module rather than importing `FormResult` directly at call
