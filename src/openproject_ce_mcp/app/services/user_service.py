@@ -51,7 +51,7 @@ from typing import Any
 from ...config import Settings
 from ...models import UserDetail, UserListResult, UserWriteResult, WriteResultState
 from ..pagination import effective_limit as _effective_limit
-from ..pagination import paginate_client, paginate_server
+from ..pagination import paginate_server, scan_records_and_paginate
 from ..policies import access, hidden_fields
 from ..ports.user_api import UserApi
 
@@ -71,27 +71,38 @@ class UserService:
         effective_limit = _effective_limit(limit, settings=self._settings)
 
         if search is not None:
-            records = await self._api.list_users_search(page_size=self._settings.max_results)
             search_key = search.casefold()
-            matches = [
-                record
-                for record in records
-                if search_key in (record.summary.name or "").casefold()
-                or search_key in (record.summary.login or "").casefold()
-                or search_key in (record.summary.email or "").casefold()
-            ]
-            summaries = [self._stamp(record.summary) for record in matches]
-            page, total, next_offset, truncated = paginate_client(
-                offset=offset, limit=effective_limit, results=summaries
+
+            def _record_matches(record: Any) -> bool:
+                return (
+                    search_key in (record.summary.name or "").casefold()
+                    or search_key in (record.summary.login or "").casefold()
+                    or search_key in (record.summary.email or "").casefold()
+                )
+
+            # No server-side name/login/email filter exists for /users, so
+            # scan every server page (Users is genuinely
+            # OffsetPaginatedCollection server-side, verified against
+            # OpenProject's own API implementation) instead of trusting the
+            # server's pre-filter total (OPM-373 Phase 5).
+            raw_items, truncated = await scan_records_and_paginate(
+                lambda o, ps: self._api.list_users(offset=o, page_size=ps),
+                item_allowed=_record_matches,
+                server_page_size=self._settings.max_page_size,
+                offset=offset,
+                limit=effective_limit,
+                key=lambda r: r.summary.id,
             )
+            results = [self._stamp(record.summary) for record in raw_items]
+            total = len(results)
             return UserListResult(
                 offset=offset,
                 limit=effective_limit,
                 total=total,
-                count=len(page),
-                next_offset=next_offset,
+                count=total,
+                next_offset=offset + 1 if truncated else None,
                 truncated=truncated,
-                results=page,
+                results=results,
             )
 
         records, total = await self._api.list_users(offset=offset, page_size=effective_limit)

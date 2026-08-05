@@ -73,50 +73,6 @@ async def test_list_users_falls_back_to_record_count_when_total_missing() -> Non
 
 
 @pytest.mark.asyncio
-async def test_list_users_search_walks_a_single_short_page_to_completion() -> None:
-    async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v3/users"
-        assert request.url.params.get("offset") == "1"
-        assert request.url.params.get("pageSize") == "100"
-        return httpx.Response(200, json={"total": 1, "_embedded": {"elements": [_user_payload()]}}, request=request)
-
-    async with _client(handler) as http_client:
-        api = HttpxUserApi(HttpxTransport(http_client), base_url=BASE_URL)
-        records = await api.list_users_search(page_size=100)
-
-    assert len(records) == 1
-    assert records[0].summary.login == "ada"
-
-
-@pytest.mark.asyncio
-async def test_list_users_search_walks_every_server_page() -> None:
-    """Regression: Users is genuinely OffsetPaginatedCollection server-side
-    (verified against OpenProject's own API implementation) -- a single
-    bounded fetch capped at page_size (this
-    method's prior behavior) silently hid any match beyond that cap once the
-    real user count exceeded it. Two full pages (page_size=2) followed by a
-    short (empty) 3rd page prove the walk continues past the first page."""
-    requested_offsets: list[str | None] = []
-
-    async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v3/users"
-        offset = request.url.params.get("offset")
-        requested_offsets.append(offset)
-        page_users = {
-            "1": [_user_payload(user_id=1, login="alice"), _user_payload(user_id=2, login="bob")],
-            "2": [_user_payload(user_id=3, login="carol")],
-        }.get(offset, [])
-        return httpx.Response(200, json={"total": 3, "_embedded": {"elements": page_users}}, request=request)
-
-    async with _client(handler) as http_client:
-        api = HttpxUserApi(HttpxTransport(http_client), base_url=BASE_URL)
-        records = await api.list_users_search(page_size=2)
-
-    assert requested_offsets == ["1", "2"]
-    assert [r.summary.id for r in records] == [1, 2, 3]
-
-
-@pytest.mark.asyncio
 async def test_get_user_quotes_the_ref() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.raw_path == b"/api/v3/users/ada%40example.com"

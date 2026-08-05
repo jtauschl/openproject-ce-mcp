@@ -62,7 +62,6 @@ class _FakeUserApi:
     def __init__(self, records: list[UserRecord] | None = None) -> None:
         self._records = {r.summary.id: r for r in (records or [_record()])}
         self.list_users_calls: list[tuple[int, int]] = []
-        self.list_users_search_calls: list[int] = []
         self.get_user_calls: list[str] = []
         self.create_form_calls: list[dict] = []
         self.update_form_calls: list[tuple[int, dict]] = []
@@ -75,12 +74,14 @@ class _FakeUserApi:
 
     async def list_users(self, *, offset: int, page_size: int) -> tuple[list[UserRecord], int]:
         self.list_users_calls.append((offset, page_size))
+        # A single-page fake is sufficient for most of these Service-level
+        # tests -- scan_records_and_paginate's own multi-page scanning
+        # behavior is covered by test_app_pagination.py and _PagedFakeUserApi
+        # below.
+        if offset > 1:
+            return [], len(self._records)
         records = list(self._records.values())
         return records, len(records)
-
-    async def list_users_search(self, *, page_size: int) -> list[UserRecord]:
-        self.list_users_search_calls.append(page_size)
-        return list(self._records.values())
 
     async def get_user(self, user_ref: str) -> UserRecord:
         self.get_user_calls.append(user_ref)
@@ -153,7 +154,6 @@ async def test_list_users_returns_stamped_summaries() -> None:
     assert result.results[0].id == 5
     assert result.results[0].login == "ada"
     assert api.list_users_calls == [(1, make_settings().default_page_size)]
-    assert api.list_users_search_calls == []
 
 
 @pytest.mark.asyncio
@@ -166,7 +166,6 @@ async def test_list_users_checks_read_enabled() -> None:
         await service.list_users()
 
     assert api.list_users_calls == []
-    assert api.list_users_search_calls == []
 
 
 @pytest.mark.asyncio
@@ -219,11 +218,13 @@ async def test_list_users_search_overfetches_and_filters_then_paginates() -> Non
     result = await service.list_users(search="ali", limit=1, offset=2)
 
     # 2 survivors match "ali" (alice, alison); page 2 with limit=1 is the 2nd survivor.
-    assert result.total == 2
+    # total is a lower bound (len(results) on this page), not an exact count
+    # of the full search-filtered collection -- OPM-373 Phase 5's
+    # total-contract change.
+    assert result.total == 1
     assert result.count == 1
     assert result.results[0].login == "alison"
-    assert api.list_users_search_calls == [make_settings().max_results]
-    assert api.list_users_calls == []
+    assert api.list_users_calls == [(1, make_settings().max_page_size)]
 
 
 @pytest.mark.asyncio
@@ -235,6 +236,60 @@ async def test_list_users_search_matches_login_and_email_case_insensitively() ->
     result = await service.list_users(search="ada")
 
     assert result.count == 1
+
+
+class _PagedFakeUserApi:
+    """Unlike _FakeUserApi (single-page, offset-blind), this simulates a
+    real multi-page server for exact-limit/truncation regression tests."""
+
+    def __init__(self, pages: dict[int, list[UserRecord]]) -> None:
+        self._pages = pages
+        self.offsets_requested: list[int] = []
+
+    async def list_users(self, *, offset: int, page_size: int) -> tuple[list[UserRecord], int]:
+        self.offsets_requested.append(offset)
+        records = self._pages.get(offset, [])
+        return records, len(records)
+
+    async def get_user(self, user_ref: str) -> UserRecord:
+        raise NotImplementedError
+
+    async def create_form(self, payload: dict) -> UserFormResult:
+        raise NotImplementedError
+
+    async def update_form(self, user_id: int, payload: dict) -> UserFormResult:
+        raise NotImplementedError
+
+    async def commit_create(self, payload: dict) -> UserDetail:
+        raise NotImplementedError
+
+    async def commit_update(self, user_id: int, payload: dict) -> UserDetail:
+        raise NotImplementedError
+
+    async def commit_delete(self, user_id: int) -> None:
+        raise NotImplementedError
+
+    async def commit_lock(self, user_id: int) -> UserDetail:
+        raise NotImplementedError
+
+    async def commit_unlock(self, user_id: int) -> UserDetail:
+        raise NotImplementedError
+
+
+@pytest.mark.asyncio
+async def test_list_users_search_not_truncated_when_exactly_limit_matches_exist() -> None:
+    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    truncated=True as soon as `limit` matches are collected, without
+    checking whether a matching user actually exists beyond that window."""
+    api = _PagedFakeUserApi({1: [_record(user_id=1, login="alice")]})
+    service = _service(api)
+
+    result = await service.list_users(search="ali", limit=1)
+
+    assert api.offsets_requested == [1], f"expected only one (short) page, got {api.offsets_requested}"
+    assert [u.id for u in result.results] == [1]
+    assert result.truncated is False
+    assert result.next_offset is None
 
 
 # --- get_user ------------------------------------------------------------

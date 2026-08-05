@@ -16,7 +16,6 @@ from typing import Any
 from urllib.parse import quote
 
 from ...models import UserDetail, UserSummary
-from ..pagination import paginate_all
 from ..ports.user_api import UserFormResult, UserRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
@@ -134,19 +133,6 @@ class HttpxUserApi:
         records = [self._record(item) for item in elements if isinstance(item, dict)]
         total = int(payload.get("total", len(records)))
         return records, total
-
-    async def list_users_search(self, *, page_size: int) -> list[UserRecord]:
-        # Walk every server page for the caller to filter in-memory -- no
-        # server-side name/login/email filter exists to delegate to. Users is
-        # genuinely OffsetPaginatedCollection server-side (verified against
-        # OpenProject's own API implementation), so a single bounded fetch
-        # capped at page_size (this method's prior behavior) would silently
-        # hide any match beyond that cap once the real user count exceeded it.
-        return await paginate_all(
-            lambda offset, size: self.list_users(offset=offset, page_size=size),
-            page_size=page_size,
-            key=lambda r: r.summary.id,
-        )
 
     async def get_user(self, user_ref: str) -> UserRecord:
         # Verbatim port of client.py's `quote(user_ref, safe="")` -- user_ref

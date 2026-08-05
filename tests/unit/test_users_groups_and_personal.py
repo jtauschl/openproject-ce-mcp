@@ -783,7 +783,7 @@ async def test_list_users_search_overfetches_and_filters_then_paginates() -> Non
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/users" and request.method == "GET":
             assert request.url.params["offset"] == "1"
-            assert request.url.params["pageSize"] == str(make_settings().max_results)
+            assert request.url.params["pageSize"] == str(make_settings().max_page_size)
             return httpx.Response(
                 200,
                 json={
@@ -808,13 +808,16 @@ async def test_list_users_search_overfetches_and_filters_then_paginates() -> Non
 
     # "ali" substring-matches ids 1 (name+login) and 4 (name "Alicente"); 2 and 3 don't match.
     assert {u.id for u in page.results} == {1, 4}
+    # total is a lower bound (len(results) on this page), not an exact count
+    # of the full search-filtered collection -- OPM-373 Phase 5's
+    # total-contract change.
     assert page.total == 2
 
     # Filter-then-paginate ordering: limit=1/offset=2 must return the 2nd filtered
     # survivor (id=4), not slice the raw 4-item page first.
     second_page = await client.list_users(search="ali", limit=1, offset=2)
     assert [u.id for u in second_page.results] == [4]
-    assert second_page.total == 2
+    assert second_page.total == 1
     assert second_page.truncated is False
     assert second_page.next_offset is None
 
