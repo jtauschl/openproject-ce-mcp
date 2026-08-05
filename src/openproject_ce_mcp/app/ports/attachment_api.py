@@ -1,12 +1,10 @@
 """Attachments Domain API port.
 
-Full CRUD minus update (OpenProject's v3 API has no `PATCH /attachments/{id}`
-endpoint -- verbatim of client.py's original shape, which never exposed an
-`update_attachment` method either). No `to_detail`: `AttachmentSummary` is
-the only normalized shape this domain has (no separate Detail model exists in
-models.py, verified against client.py's `normalize_attachment`, which returns
-`AttachmentSummary` for both the list and get paths), so `AttachmentRecord`
-carries no lazy-detail thunk, matching `FileLinkRecord`'s shape.
+Full CRUD minus update: OpenProject's v3 API has no `PATCH /attachments/{id}`
+endpoint. No `to_detail`: `AttachmentSummary` is the only normalized shape
+this domain has (no separate Detail model exists in models.py), so
+`AttachmentRecord` carries no lazy-detail thunk, matching `FileLinkRecord`'s
+shape.
 
 `AttachmentRecord` carries the raw `container_link` dict (not a pre-extracted
 href/int), the same reason `FileLinkRecord` does: the Service needs to
@@ -15,13 +13,11 @@ unparsable," both of which collapse to a fail-closed denial without losing
 that distinction at the Port boundary.
 
 `list_for_work_package` returns one page at a time (`offset`/`page_size` ->
-`(records, total)`), scanned by the Service via `scan_records_and_paginate`
-(OPM-379/F5) -- matching every other migrated list domain's shape. The
-Attachments collection endpoint's response was never confirmed to carry a
-real `total` field in the original client.py code (only `_embedded.elements`
-was ever read), so the Adapter falls back to `total = len(records)` (this
-page's own count) when the server omits it, the same fallback
-`httpx_sprint_api.py` already uses.
+`(records, total)`), scanned by the Service via `scan_records_and_paginate`,
+matching every other list domain's shape. The Attachments collection
+endpoint's response is not guaranteed to carry a real `total` field, so the
+Adapter falls back to `total = len(records)` (this page's own count) when
+the server omits it, the same fallback `httpx_sprint_api.py` uses.
 
 `get_max_attachment_size` is a narrow, single-field lookup against the
 otherwise entirely unmigrated, global Instance Configuration domain -- not

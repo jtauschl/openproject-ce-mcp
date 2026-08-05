@@ -1,30 +1,26 @@
 """Notifications Domain API port.
 
-List-only for reads (no single-item GET exists in client.py's original --
-`normalize_notification` is only ever called from `list_notifications`), plus
-two parameterless write actions with no request body: `mark_read` (one
+List-only for reads (no single-item GET endpoint exists for a notification),
+plus two parameterless write actions with no request body: `mark_read` (one
 notification) and `mark_all_read` (every currently-unread notification).
 
-`NotificationRecord.summary` is a LAZY callable, not an eager field --
-mirroring `ReminderRecord`'s precedent and the same bug class it exists to
-avoid: client.py's original `list_notifications` filters the RAW
-elements by project/work-package allowlist first and normalizes only the
-survivors (`elements = filtered` happens before `self.normalize_notification`
-is ever called). An eager `summary` field would normalize every record up
-front, including ones the Service is about to discard on a project it cannot
-even read, and would raise a spurious `KeyError` on a filtered-out record
-missing an unrelated field.
+`NotificationRecord.summary` is a LAZY callable, not an eager field:
+raw elements are filtered by project/work-package allowlist first, and only
+the survivors are normalized afterward. An eager `summary` field would
+normalize every record up front, including ones the Service is about to
+discard on a project it cannot even read, and would raise a spurious
+`KeyError` on a filtered-out record missing an unrelated field -- mirroring
+`ReminderRecord`'s precedent.
 
 `project_link`/`resource_link` are carried as RAW link dicts, not
 pre-extracted hrefs/ids, because the Service's allowlist check is a
 three-way branch depending on which links are present at all (a project
 link directly; no project link but a work-package resource link, resolved
 via the work package itself; neither, which is genuinely personal/global and
-passes through unchecked) -- matching client.py's original
-`_notification_payload_allowed` exactly. `resource_link` is not narrowed to
-"the work-package case" here, since distinguishing a work-package resource
-link from any other kind is itself part of that branch, not something the
-Port should pre-decide.
+passes through unchecked). `resource_link` is not narrowed to "the
+work-package case" here, since distinguishing a work-package resource link
+from any other kind is itself part of that branch, not something the Port
+should pre-decide.
 
 No `to_detail`: `NotificationSummary` IS the only normalized shape this
 domain has (no separate Detail model exists in models.py), matching every
@@ -49,12 +45,10 @@ class NotificationRecord:
 
 @dataclass(frozen=True)
 class NotificationPage:
-    """`records` plus OpenProject's own reported `total` -- the Service needs
+    """`records` plus OpenProject's own reported `total` -- the Service uses
     the server-reported total (not just `len(records)`) when the scope
-    allows all projects, matching client.py's original
-    `int(payload.get("total", len(elements)))`; under a restrictive scope the
-    Service instead uses its own post-filter count, exactly like the
-    original's `total = len(filtered)`.
+    allows all projects; under a restrictive scope the Service instead uses
+    its own post-filter count.
 
     `exhausted` (False if the server page still had more, unscanned results)
     drives the Service's re-scan-and-skip loop under a restrictive scope --

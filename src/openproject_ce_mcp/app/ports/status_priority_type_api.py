@@ -1,14 +1,11 @@
 """Statuses/Priorities/Types Domain API port.
 
-Three unrelated-but-bundled read-only lookups (client.py places them
-adjacently, grouped as one migration -- same
-bundling rationale as Actions & Capabilities). Each has its
+Three unrelated-but-bundled read-only lookups, grouped under one Service --
+same bundling rationale as Actions & Capabilities. Each has its
 own Record; none carries a project link -- Status/Priority have no project
 concept at all, and Type's project-optional `list()` branch shapes the
-*request* (which endpoint to call), not a per-record link to allowlist-check
-after the fact (verified: client.py's original `list_types` resolves the
-project purely to pick `projects/{id}/types` vs `types`, with no per-record
-scope filtering of the response).
+*request* (which endpoint to call: `projects/{id}/types` vs `types`), not a
+per-record link to allowlist-check after the fact.
 
 No `to_detail` split on any of the three Records: `get_status`/`get_priority`/
 `get_type` are plain single-item fetches through the same normalizer as list
@@ -60,8 +57,8 @@ class StatusPriorityTypeApi(Protocol):
 
     Read-only, unpaginated (plain `CollectionResult` fetch-all, matching
     Categories' shape, not Roles'/Actions' offset/pageSize `PageResult`
-    shape) -- verified against `StatusListResult`/`PriorityListResult`/
-    `TypeListResult` in models.py, all plain `CollectionResult` subclasses.
+    shape): `StatusListResult`/`PriorityListResult`/`TypeListResult` in
+    models.py are all plain `CollectionResult` subclasses, not `PageResult`.
     No create/update/delete for any of the three -- OpenProject's API
     exposes none (admin-UI-only resources, same category as Roles).
     """

@@ -20,17 +20,15 @@ class SprintRecord:
     for eager computation than Views' one-extra-field detail). It is built via
     `httpx_sprint_api.summary_to_detail(summary)` -- a field copy off the
     already-normalized `summary`, mirroring `version_api.summary_to_detail` --
-    not by re-running `normalize_sprint` on the raw payload a second time (the
-    adapter's first version did this and was fixed during this domain's own
-    step-6 efficiency audit, which found the identical bug pre-existing in
-    `httpx_view_api.py` too).
+    not by re-running `normalize_sprint` on the raw payload a second time
+    (re-running the normalizer would waste work and risks the same
+    truncation/field divergence a field copy avoids by construction).
 
     `defining_workspace_link` carries the raw link (mirrors ViewRecord/DocumentRecord/
     MembershipRecord's `project_link`) because the allowlist Policy check needs the
     raw href/id, which neither normalized model carries. Unlike Views' `project_link`,
     this is synthesized by the adapter when only an `_embedded.definingWorkspace`
-    object (no top-level `_links.definingWorkspace`) is present on the raw payload --
-    verbatim port of client.py's `_sprint_workspace_link` fallback.
+    object (no top-level `_links.definingWorkspace`) is present on the raw payload.
 
     `defining_workspace_payload` carries the raw `_embedded.definingWorkspace` object
     when present (None otherwise) -- the Policy layer's embedded-object allowlist
@@ -59,7 +57,7 @@ class SprintApi(Protocol):
     architecture-boundary test).
 
     Read-only: no commit_create/update/delete methods exist on this Protocol --
-    client.py has no write path for sprints (sprint assignment happens via
+    OpenProject has no write path for sprints (sprint assignment happens via
     work-package writes, not here).
 
     Two list methods, not one, unlike every other read-only migrated domain so

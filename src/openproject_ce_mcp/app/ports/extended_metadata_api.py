@@ -1,15 +1,15 @@
 """Extended Metadata Domain API port.
 
 Bundles 5 unrelated-but-adjacent, purely-global, read-only lookups under one
-ticket/Service, following the same rationale as Actions & Capabilities and
-Query Metadata: render_text, Help Texts, Working Days, Non-Working Days,
-Custom Options. Every method shares no project link and no list/detail
-divergence (no `to_detail` split on any Record -- none of these five
-domains has a list endpoint whose row shape differs from its single-item GET
-shape). render_text does not share the "extended" read-enablement gate the
-other four use -- it keeps its pre-existing "work_package" scope, a
-deliberate, verbatim-preserved exception (see ExtendedMetadataService's own
-docstring), not a reason to split it into its own Service.
+Service, following the same rationale as Actions & Capabilities and Query
+Metadata: render_text, Help Texts, Working Days, Non-Working Days, Custom
+Options. Every method shares no project link and no list/detail divergence
+(no `to_detail` split on any Record -- none of these five domains has a
+list endpoint whose row shape differs from its single-item GET shape).
+render_text does not share the "extended" read-enablement gate the other
+four use -- it keeps its own "work_package" scope, a deliberate exception
+(see ExtendedMetadataService's own docstring), not a reason to split it
+into its own Service.
 """
 
 from __future__ import annotations

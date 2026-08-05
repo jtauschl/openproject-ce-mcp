@@ -3,12 +3,11 @@
 Holds only the ProjectApi Protocol and its Result dataclasses (ProjectRecord,
 ProjectPage, ProjectFormResult, ProjectSchemaResult, ProjectCopyFormResult,
 ProjectPhaseRecord). HAL->model normalize_* translation lives in
-HttpxProjectApi (app/adapters/httpx_project_api.py), matching the Versions
-domain's convention: ProjectService never normalizes a raw payload itself;
-it consumes the already-normalized ProjectRecord that
-ProjectResolver.resolve_record() forwards from the adapter (see
-project_resolver.py's module docstring for how a second normalization is
-avoided without a second HTTP round-trip).
+HttpxProjectApi (app/adapters/httpx_project_api.py): ProjectService never
+normalizes a raw payload itself; it consumes the already-normalized
+ProjectRecord that ProjectResolver.resolve_record() forwards from the
+adapter (see project_resolver.py's module docstring for how a second
+normalization is avoided without a second HTTP round-trip).
 """
 
 from __future__ import annotations
@@ -27,8 +26,8 @@ from ...models import (
 )
 from ..form_result import FormResult
 
-# Duplicated from httpx_version_api.py's constant of the same name (a deliberate
-# duplication) -- needed here as the Protocol's default text_limit value.
+# Deliberately duplicated from httpx_version_api.py's constant of the same
+# name -- needed here as the Protocol's default text_limit value.
 FORMATTABLE_LIMIT = 1_200
 
 
@@ -41,17 +40,17 @@ class ProjectRecord:
     not derivable from summary alone; see normalize_project_detail's
     ancestors-from-_links.ancestors logic), plus the unmodified raw HAL
     payload (including ``_links``). The raw payload must be carried, not just
-    the normalized fields, because several still-flat client.py domains
+    the normalized fields, because several callers
     (list_project_memberships, get_my_project_access, ...) read arbitrary raw
-    ``_links``/fields off a resolved project payload today, a contract
-    ProjectResolver.resolve() must keep honoring verbatim.
+    ``_links``/fields off a resolved project payload, a contract
+    ProjectResolver.resolve() must keep honoring.
 
     `to_detail` is a callable, not a precomputed `ProjectDetail` field,
     because most `ProjectRecord` consumers never read it: `ProjectResolver.
-    resolve()`/`resolve_id()` (used by EVERY migrated domain's project-
-    reference resolution, plus every still-flat client.py domain via the
-    `ProjectRefResolver` seam) only ever read `.payload`, and
-    `ProjectService.list()` only ever reads `.summary`. Precomputing detail
+    resolve()`/`resolve_id()` (used by every domain's project-reference
+    resolution, including via the `ProjectRefResolver` seam) only ever read
+    `.payload`, and `ProjectService.list()` only ever reads `.summary`.
+    Precomputing detail
     eagerly on every `_record()` build would run a second, independent
     text-extraction pass over every resolved/listed project's description
     AND status_explanation, plus rebuild its ancestors list, for a value

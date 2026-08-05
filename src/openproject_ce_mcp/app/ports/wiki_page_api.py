@@ -2,10 +2,9 @@
 
 Wiki pages have no collection endpoint in OpenProject v3
 (/api/v3/wiki_pages/{id} exists; no /api/v3/wiki_pages or
-/api/v3/projects/{id}/wiki_pages list) -- confirmed against
-docs/architecture.md's existing "API stubs with no POST/DELETE endpoint"
-table and client.py, which has no list_wiki_pages/create/update/delete
-methods at all. WikiPageApi is therefore get-only.
+/api/v3/projects/{id}/wiki_pages list) and no create/update/delete endpoint
+either -- see docs/architecture.md's "API stubs with no POST/DELETE
+endpoint" table. WikiPageApi is therefore get-only.
 """
 
 from __future__ import annotations

@@ -14,12 +14,12 @@ class BoardRecord:
     """One board as read from the API: `summary`, a precomputed `detail`, and
     the raw `project` HAL link.
 
-    `detail` is precomputed, not a lazy `to_detail` thunk: client.py's own
-    original `normalize_board_detail` already builds `BoardDetail` by copying
-    every field from the already-computed `summary` and adding a handful of
-    detail-only fields (group_by/columns/sort_by/highlighted_attributes/
-    timestamps/filters/timeline_zoom_level/highlighting_mode/created_at/
-    updated_at) extracted from the raw payload once -- there is no divergent
+    `detail` is precomputed, not a lazy `to_detail` thunk: `BoardDetail` is
+    built by copying every field from the already-computed `summary` and
+    adding a handful of detail-only fields (group_by/columns/sort_by/
+    highlighted_attributes/timestamps/filters/timeline_zoom_level/
+    highlighting_mode/created_at/updated_at) extracted from the raw payload
+    once -- there is no divergent
     truncation limit applied to any shared field, so eager computation here
     is SAFE (no crash/masking-correctness risk the way an eager field would
     be for a domain whose list() filters records pre-normalization, e.g.
@@ -63,10 +63,9 @@ class BoardApi(Protocol):
     method for both of `BoardService.list()`'s branches: the
     directly-paginated server-side path (reachable only when no filtering
     is needed at all) calls it once per requested page; the client-side
-    filtering path (OPM-373 Phase 5) scans it via `scan_records_and_paginate`
-    instead of the earlier `list_all(page_size)` single-shot fetch, which
-    never reduced server load for `offset`/`limit` beyond the first
-    `page_size`-capped page.
+    filtering path scans it via `scan_records_and_paginate`, which reduces
+    server load for `offset`/`limit` beyond the first `page_size`-capped
+    page.
     """
 
     async def list_page(self, *, offset: int, limit: int) -> tuple[list[BoardRecord], int]: ...

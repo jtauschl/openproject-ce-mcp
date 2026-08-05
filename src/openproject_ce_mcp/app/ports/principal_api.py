@@ -4,12 +4,10 @@ Read-only list only -- OpenProject exposes no single-item GET for a
 principal (users/groups have their own domain single-item GETs; `principals`
 is a read-only, combined-search collection over both).
 
-Named `principal_api.py`, NOT `principal_ref.py` -- that filename is already
-taken by the pre-existing `PrincipalRefResolver` seam Protocol
-(app/ports/principal_ref.py), a bare-callable seam three already-migrated
+Distinct from `principal_ref.py`, which defines the separate
+`PrincipalRefResolver` seam Protocol -- a bare-callable seam several
 Services depend on (satisfied structurally by the bound method
-`self._resolve_principal_id`, unrelated to this migration and left
-untouched).
+`self._resolve_principal_id`), unrelated to this Domain API port.
 
 `lookup_name`: the raw payload's `name`
 field, independent of `summary.name`. `normalize_principal` falls back to a

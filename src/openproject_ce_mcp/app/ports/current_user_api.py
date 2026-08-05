@@ -3,11 +3,10 @@
 Single global GET, no project link, no list/create/update/delete -- returns
 the token owner's own user record via `/api/v3/users/me`.
 
-Named `current_user_api.py`, NOT `current_user.py` -- that filename is
-already taken by the pre-existing `CurrentUserLookup` seam Protocol
-(app/ports/current_user.py), a bare-callable seam other already-migrated
+Named `current_user_api.py`, distinct from `current_user.py`, which defines
+the separate `CurrentUserLookup` seam Protocol -- a bare-callable seam other
 Services depend on (satisfied structurally by the bound method
-`self.get_current_user`, unrelated to this migration and left untouched).
+`self.get_current_user`), unrelated to this Domain API port.
 """
 
 from __future__ import annotations

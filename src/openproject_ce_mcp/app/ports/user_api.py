@@ -7,22 +7,19 @@ builds a `UserRecord` per row but `UserService.list_users()` never reads
 `.to_detail` on that path (only `get_user()` does), and
 `normalize_user_detail` parses several detail-only fields (`groups`,
 `authSource`, `identityUrl`, `language`) beyond a cheap summary field-copy --
-same rationale as `DocumentRecord`/`NewsRecord`'s lazy thunk, not
-`SprintRecord`'s/`BoardRecord`'s eager `summary_to_detail` (an earlier
-version of this file wrongly reasoned eager was correct here since the
-summary/detail truncation limits match; that only justifies a cheap
-field-copy, not unconditional computation.
+same rationale as `DocumentRecord`/`NewsRecord`'s lazy thunk. Note this is
+NOT the same shape as `SprintRecord`'s/`BoardRecord`'s eager
+`summary_to_detail`: eager computation is only correct when detail reduces
+to a cheap field-copy off summary (matching truncation limits, no extra
+parsing); here detail requires real extra parsing work, so it must stay lazy.
 
-`commit_lock`/`commit_unlock` are the first Domain API methods for a
-non-CRUD write action (see `ProjectApi.set_favorite` for the closest
-existing precedent, a boolean-toggle write with the same no-form shape).
+`commit_lock`/`commit_unlock` are non-CRUD write actions (see
+`ProjectApi.set_favorite` for the closest precedent, a boolean-toggle write
+with the same no-form shape).
 
-`list_users_search` was removed (OPM-373 Phase 5): it was a `paginate_all`
-wrapper around this same `list_users(offset, page_size)` method, walking
-the entire collection before `UserService.list_users()`'s search branch
-ever sliced out the requested `offset`/`limit` window. That branch now
-scans `list_users` directly via `scan_records_and_paginate`, folding the
-search predicate into `item_allowed` instead of a separate over-fetch step.
+`UserService.list_users()`'s search branch scans `list_users` directly via
+`scan_records_and_paginate`, folding the search predicate into
+`item_allowed` rather than over-fetching the entire collection first.
 """
 
 from __future__ import annotations

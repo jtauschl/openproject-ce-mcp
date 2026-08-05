@@ -2,13 +2,11 @@
 
 `fetch_page` returns the raw HAL page dict (not records), matching
 `RelationApi`'s precedent -- `fetch_bounded_and_paginate`'s `item_allowed`
-callable filters the raw `_links.project` link directly (see
-`_time_entry_payload_allowed`/`_link_matches_project_refs` in the
-pre-migration client.py), so no `to_record()` call is needed before
-filtering here: unlike Relations, the filter-relevant link is already
-present on the raw payload, with no lazy-normalization-avoidance rationale
-requiring an intermediate record. `to_record()`/`normalize` is only called
-for elements that already survived the filter.
+callable filters the raw `_links.project` link directly, so no `to_record()`
+call is needed before filtering here: unlike Relations, the filter-relevant
+link is already present on the raw payload, with no lazy-normalization-
+avoidance rationale requiring an intermediate record. `to_record()`/
+`normalize` is only called for elements that already survived the filter.
 
 `get_raw` returns the raw HAL payload (not a record) for the same reason:
 `get_time_entry`/`update_time_entry`/`delete_time_entry` all read
@@ -19,11 +17,8 @@ would require re-deriving the link from an already-normalized summary.
 
 `validate_create`/`validate_update` return OpenProject's raw CreateFormAPI/
 UpdateFormAPI response (`_embedded.payload`/`validationErrors`), evaluated
-inline by the Service's own preview/commit branching -- NOT by the
-`client.py`-private `_finalize_write`, which remains in place for Work
-Packages/Attachments (see the migration plan's finalizer discussion). Time
-Entries is the first domain-specific Service to inline this 3-way branching
-itself rather than sharing a generic wrapper.
+inline by the Service's own preview/commit branching rather than through a
+shared generic finalizer wrapper.
 
 `fetch_activities_for_entity` must let transport/permission/not-found
 errors propagate normally -- it has two call contexts with different error
@@ -41,9 +36,7 @@ Services may not import `app/adapters/` directly (see
 adapter-side normalize function this Service needs is reached only through
 this Protocol -- `to_record`/`to_activity_record` for HAL payloads,
 `parse_form_result` for a validated create/update form's payload +
-validation-errors extraction (mirrors `client.py`'s module-level
-`_normalize_validation_errors`, ported verbatim into the adapter, never
-imported by the Service directly).
+validation-errors extraction.
 """
 
 from __future__ import annotations

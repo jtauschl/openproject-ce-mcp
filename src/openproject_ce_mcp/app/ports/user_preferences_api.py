@@ -2,12 +2,11 @@
 
 Self-scoped, not project-scoped: the `my_preferences` endpoint is a singleton
 keyed to the token owner, with no `_links` block and no project concept at
-all -- verified against client.py's normalize_user_preferences, which reads
-only flat scalar fields off the payload. UserPreferencesRecord therefore
-carries no summary/detail split (no list endpoint means no list-row
-truncation to defer, same reasoning as WikiPageRecord) and no `<parent>_link`
-field (no HAL link exists to carry for an allowlist check -- there is no
-allowlist for a self-scoped resource).
+all -- the payload carries only flat scalar fields. UserPreferencesRecord
+therefore carries no summary/detail split (no list endpoint means no
+list-row truncation to defer, same reasoning as WikiPageRecord) and no
+`<parent>_link` field (no HAL link exists to carry for an allowlist check --
+there is no allowlist for a self-scoped resource).
 
 `get()` takes no id parameter: the resource is implicit in the caller's own
 auth token, unlike every other get-only Domain API port so far.

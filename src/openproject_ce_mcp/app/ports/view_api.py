@@ -19,13 +19,13 @@ class ViewRecord:
     adds exactly one extra field (`links`, a cheap `sorted(dict.keys())` over
     the already-fetched payload) -- there is no second/different truncation
     limit applied to any field, unlike Documents' description, and next to
-    nothing is computed that `list()`'s own callers never read. Provided
-    `detail` is built from `summary`, not by re-running `normalize_view` on
-    the raw payload a second time (an earlier version of the adapter did
-    that), the marginal per-row cost of eager computation here really is
-    close to free -- unlike BoardRecord's otherwise-identical-looking eager
-    `detail` (group_by/columns/sort_by/highlighted_attributes/filters each
-    parse their own HAL link), where "safe" is distinct from "free."
+    nothing is computed that `list()`'s own callers never read. `detail` must
+    be built from `summary`, not by re-running `normalize_view` on the raw
+    payload a second time, for the marginal per-row cost of eager computation
+    here to stay close to free -- unlike BoardRecord's otherwise-identical-
+    looking eager `detail` (group_by/columns/sort_by/highlighted_attributes/
+    filters each parse their own HAL link), where "safe" is distinct from
+    "free."
 
     `project_link` must be carried separately (mirrors DocumentRecord/
     MembershipRecord) because the allowlist Policy check needs the raw link
@@ -45,7 +45,7 @@ class ViewApi(Protocol):
     architecture-boundary test).
 
     Read-only: no commit_create/update/delete methods exist on this
-    Protocol -- client.py has no write path for views.
+    Protocol -- OpenProject has no write path for views.
     """
 
     async def list_all(self, *, offset: int, page_size: int) -> tuple[list[ViewRecord], int]: ...

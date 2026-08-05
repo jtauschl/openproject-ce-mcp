@@ -1,13 +1,11 @@
 """Work Packages Domain API port -- covers the full domain.
 
-Originally read-only (list, search, get, batch-get, list-my-open); this
-Protocol was extended additively with the write-path methods (validate_create,
-validate_update, parse_form, commit_create, commit_update, delete,
-post_comment) once the write-path migration's second sub-step landed, per
-the original module docstring's own stated plan.
+The Protocol covers both the read path (list, search, get, batch-get,
+list-my-open) and the write path (validate_create, validate_update,
+parse_form, commit_create, commit_update, delete, post_comment).
 
-The two form-validation endpoints mirror the flat code's two distinct probe
-sites exactly: `validate_create` POSTs `projects/{project_id}/work_packages/form`
+The two form-validation endpoints mirror two distinct validation sites:
+`validate_create` POSTs `projects/{project_id}/work_packages/form`
 (used by both `create()` and `create_subtask()` -- both need the
 project-scoped form), `validate_update` POSTs `work_packages/{ref}/form` (used
 by `update()`, including a possible SECOND call with a mutated payload for the
@@ -34,7 +32,7 @@ dedicated Resolver class is warranted either: this matching is 100% local to
 one domain's write-payload construction, unlike a Resolver's job of serving
 reference resolution reused across multiple domains.
 
-Comment-posting/normalization deliberately reuses the EXISTING, already-migrated
+Comment-posting/normalization deliberately reuses the EXISTING
 `ActivityApi`/`HttpxActivityApi` (injected separately into `WorkPackageService`)
 rather than duplicating activity normalization onto this Port -- `post_comment`
 below only posts the raw activity; `ActivityApi` handles turning the response
@@ -50,29 +48,25 @@ several other app/ domains via the `WorkPackageIdResolver`/
 Those contracts must not change. `HttpxWorkPackageApi` (the adapter for this
 port) does not delegate to `HttpxWorkPackageLookupApi` internally -- both are
 independent, thin HTTP translators over the same `work_packages/{id}`
-endpoint, deliberately duplicated per the architecture's "a small amount of
-deliberate duplication... rather than an import from the new layer back"
-principle (here applied between two same-domain adapters rather than between
-an adapter and client.py, but for the identical reason: neither should wrap
-the other as an implementation detail). `WorkPackageResolver` itself stays
-unchanged, bound to `WorkPackageLookupApi` as it always has been --
-`WorkPackageService` becomes a ninth consumer of the SAME resolver via the
+endpoint, deliberately duplicated: neither should wrap the other as an
+implementation detail, so a future change to one cannot silently change the
+other's contract. `WorkPackageResolver` stays bound to `WorkPackageLookupApi`;
+`WorkPackageService` is a separate consumer of the same resolver via the
 existing `WorkPackageProjectAllowedCheck` seam for hierarchy-allowlist
-filtering, not a reason to touch the resolver.
+filtering, not a reason to merge the two ports.
 
 Unlike `ProjectApi`, `list()` returns RAW HAL element payloads plus a
 pre-computed `raw_element_count`, not pre-normalized `WorkPackageRecord`s.
-This is a deliberate divergence from the `ProjectApi`/`HttpxProjectApi`
-shape: `client.py`'s original `_build_work_package_list_result` filters raw
-elements against the read allowlist FIRST, and only normalizes the elements
-that survive that filter -- normalizing every raw element unconditionally
-(as `ProjectApi.list()` does) would (a) do wasted normalization work for
-items the caller can never see, and (b) let a malformed/unexpected field on
-an out-of-scope work package raise during normalization before the allowlist
-filter ever gets a chance to drop it. Allowlist filtering is a Service/Policy
-concern (the Adapter stays a dumb HTTP translator with no authorization
-logic of its own); the Service normalizes only the elements
-that pass `work_package_payload_allowed`.
+Raw elements are filtered against the read allowlist FIRST, and only the
+elements that survive that filter are normalized afterward -- never the
+reverse. Normalizing every raw element unconditionally (as `ProjectApi.list()`
+does) would (a) do wasted normalization work for items the caller can never
+see, and (b) let a malformed/unexpected field on an out-of-scope work package
+raise during normalization before the allowlist filter ever gets a chance to
+drop it -- a normalization crash on data the caller was never authorized to
+see. Allowlist filtering is a Service/Policy concern (the Adapter stays a
+dumb HTTP translator with no authorization logic of its own); the Service
+normalizes only the elements that pass `work_package_payload_allowed`.
 """
 
 from __future__ import annotations
@@ -151,9 +145,8 @@ class WorkPackageApi(Protocol):
 
     async def commit_create(self, payload: dict[str, Any], *, text_limit: int | None) -> WorkPackageRecord:
         """POST `work_packages` (the real create). `text_limit` is caller-supplied
-        (the Service passes `FORMATTABLE_LIMIT`, matching the flat write
-        normalizer's default for create/update responses -- NOT the uncapped
-        default `get()` uses for its own single-item path)."""
+        (the Service passes `FORMATTABLE_LIMIT` for create/update responses --
+        NOT the uncapped default `get()` uses for its own single-item path)."""
         ...
 
     async def commit_update(

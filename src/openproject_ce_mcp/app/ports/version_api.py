@@ -8,8 +8,8 @@ from typing import Any, Protocol
 from ...models import VersionDetail, VersionSummary
 from ..form_result import FormResult
 
-# Duplicated from httpx_version_api.py's constant of the same name (a deliberate
-# duplication) -- needed here only as the Protocol's default text_limit.
+# Deliberately duplicated from httpx_version_api.py's constant of the same
+# name -- needed here only as the Protocol's default text_limit.
 FORMATTABLE_LIMIT = 1_200
 
 

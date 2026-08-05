@@ -6,32 +6,29 @@ record is needed) + get_remindable_link (a narrower, raw-payload-only fetch
 used by update()/delete()'s allowlist check) + create + update + delete.
 
 `get_remindable_link` exists as its own method, not folded into `get()`,
-because client.py's original `_ensure_reminder_project_write_allowed` reads
-`_links.remindable` directly off the raw `GET reminders/{id}` payload
-WITHOUT normalizing it into a `ReminderSummary` first -- a payload missing
-other required fields (e.g. `id`) still lets the allowlist check run.
-Routing this through `get()`/`normalize_reminder` would raise a spurious
-KeyError on any payload shape the original never needed to fully parse.
+because the allowlist check on update()/delete() reads `_links.remindable`
+directly off the raw `GET reminders/{id}` payload WITHOUT normalizing it
+into a `ReminderSummary` first -- a payload missing other required fields
+(e.g. `id`) still lets the allowlist check run. Routing this through
+`get()`/`normalize_reminder` would raise a spurious KeyError on any payload
+shape that doesn't need to be fully parsed for this check.
 
 This is not a first-of-its-kind pattern: `app/ports/emoji_reaction_api.py`'s
-`get_activity` already does the identical thing for the same reason
+`get_activity` does the identical thing for the same reason
 (`EmojiReactionService.toggle()` reads an activity's `workPackage` link
 without normalizing the whole activity). A Port offering a raw-`dict`
 method alongside its normalized Record methods, specifically to avoid
-forcing full normalization the original code never needed, is a sanctioned,
-recurring shape (see `docs/architecture.md`).
+forcing full normalization when it isn't needed, is a sanctioned, recurring
+shape (see `docs/architecture.md`).
 
-`ReminderRecord.summary` is a LAZY callable, not an eager field. client.py's original
-`list_reminders` filters the RAW elements by project allowlist first and
-normalizes only the survivors (`elements = filtered` happens before
-`self.normalize_reminder(item)` is ever called); an eager `summary` field
-would normalize every record up front, including ones the Service is about
-to discard, and would raise a spurious `KeyError` on a filtered-out record
-missing an unrelated field (e.g. `id`) -- exactly the bug class
-`get_remindable_link` already exists to avoid, recurring in `list_all()`
-instead of `update()`/`delete()`. Deferring `summary` until the Service has
-finished filtering restores the original's "filter raw, normalize
-survivors" order exactly.
+`ReminderRecord.summary` is a LAZY callable, not an eager field: `list_all()`
+filters the RAW elements by project allowlist first and normalizes only the
+survivors; an eager `summary` field would normalize every record up front,
+including ones the Service is about to discard, and would raise a spurious
+`KeyError` on a filtered-out record missing an unrelated field (e.g. `id`)
+-- the same bug class `get_remindable_link` exists to avoid. Deferring
+`summary` until the Service has finished filtering preserves a strict
+filter-then-normalize order.
 
 No `to_detail`: `ReminderSummary` IS the only normalized shape this domain
 has (no separate Detail model exists in models.py), matching every other
@@ -53,9 +50,8 @@ class ReminderRecord:
     module docstring for why), plus the raw `_links.remindable` link dict.
     `remindable_link` is carried as the RAW link dict, not a pre-extracted
     href/int, because the Service needs to distinguish "no remindable link
-    at all" from "link present but unparsable" -- both collapse to a
-    fail-closed denial, matching client.py's original
-    `_ensure_reminder_project_write_allowed`.
+    at all" from "link present but unparsable" -- both cases resolve to a
+    fail-closed denial.
     """
 
     summary: Callable[[], ReminderSummary]

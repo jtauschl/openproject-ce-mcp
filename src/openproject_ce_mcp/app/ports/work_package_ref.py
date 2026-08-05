@@ -1,20 +1,15 @@
 """Work-package-reference resolution ports.
 
-Two narrow seams onto Work Packages' reference-resolution machinery, analogous
-to how `project_ref.py`'s `ProjectRefResolver` is the seam ~10 existing
-Services depend on today. The concrete values `OpenProjectClient` hands in are
-the bound methods `self._work_package_resolver.resolve_id` /
-`.project_link_allowed` (structural typing, no wrapper class needed) -- see
-`app/resolvers/work_package_resolver.py`. No Service consumes these seams yet
-(this is infrastructure-only, preparing for future migrations of
+Narrow seams onto Work Packages' reference-resolution machinery, analogous
+to how `project_ref.py`'s `ProjectRefResolver` is the seam several Services
+depend on. Bound to `WorkPackageResolver.resolve_id`/`.project_link_allowed`
+(see `app/resolvers/work_package_resolver.py`); consumed by
 Attachments/Time Entries/Reminders/Watchers/Emoji Reactions/Relations/
-Notifications/File Links, which currently depend on client.py's private
-`_resolve_work_package_id`/`_work_package_project_allowed` instead); they are
-declared here ready for those future migrations to wire in.
+Notifications/File Links/Activities/Work Packages Services.
 
-Also holds `work_package_ref()`, the pure, synchronous URL-encoding helper
-extracted from client.py's `_work_package_ref` (no I/O, no scope check). It
-lives here rather than in `app/adapters/_text.py` (its adapters-only home
+Also holds `work_package_ref()`, a pure, synchronous URL-encoding helper
+(no I/O, no scope check). It lives here rather than in `app/adapters/_text.py`
+(its adapters-only home
 would be unreachable from `app/resolvers/`) or inline in
 `work_package_resolver.py` (unreachable from `app/adapters/`) because both
 `HttpxWorkPackageLookupApi` (adapters layer) and `WorkPackageResolver`
@@ -50,10 +45,11 @@ def work_package_ref(ref: int | str) -> str:
     ``reject_path_traversal_segments`` is the adapters-layer twin of this
     check) -- `quote()` never escapes ``.``, so such a value would otherwise pass
     through unchanged and httpx would silently normalize it away when building
-    the request, redirecting to an unrelated endpoint. Duplicated here rather
-    than imported from `_text.py` because `ports/` may import nothing from
-    `adapters/` (see `tests/test_architecture_boundaries.py`'s layer-dependency
-    rules); `app/errors.py` is shared-kernel and safe to import directly.
+    the request, redirecting to an unrelated endpoint. This check is
+    duplicated here, not imported from `_text.py`, because `ports/` may
+    import nothing from `adapters/` (see
+    `tests/test_architecture_boundaries.py`'s layer-dependency rules);
+    `app/errors.py` is shared-kernel and safe to import directly.
     """
     text = str(ref).strip()
     segments = text.split("/")
@@ -75,12 +71,13 @@ class WorkPackageProjectAllowedCheck(Protocol):
 
 
 class WorkPackageProjectAllowedBulkCheck(Protocol):
-    """Narrow seam onto `WorkPackageResolver.project_links_allowed` (OPM-379/F3).
+    """Narrow seam onto `WorkPackageResolver.project_links_allowed`.
 
     Resolves a batch of hrefs concurrently, bounded by a shared instance-scoped
-    semaphore (see `WorkPackageResolver` for its independence from
-    `WorkPackageService._batch_read_semaphore`, OPM-379/F6 — a shared semaphore
-    would deadlock). Returns `bool | Exception` per href rather than plain
+    semaphore that is deliberately independent from
+    `WorkPackageService._batch_read_semaphore` (see `WorkPackageResolver` --
+    sharing one semaphore between the two would deadlock). Returns
+    `bool | Exception` per href rather than plain
     `bool`: a caller resolving hrefs it would not all have reached under the
     old sequential control flow (e.g. a relation's `to` side when `from` is
     already denied) must be able to defer judging which speculative failures

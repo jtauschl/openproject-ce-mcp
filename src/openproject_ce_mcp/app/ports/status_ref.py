@@ -1,13 +1,10 @@
 """Status-reference resolution port.
 
-Narrow seam onto the still-flat Statuses/Priorities/Types domain's existing
-name->id resolution machinery (client.py's `_resolve_status_id`), reused as-is
-rather than routed through `StatusPriorityTypeService` -- that Service only
-exposes a numeric `status_id` lookup (`get_status`), not name resolution, so
-there is no already-migrated equivalent to depend on instead. Mirrors
-`app/ports/principal_ref.py`'s seam shape. The concrete value
-`OpenProjectClient` hands in is the bound method `self._resolve_status_id`
-(structural typing, no wrapper class needed).
+Narrow name->id resolution seam for status references. Not routed through
+`StatusPriorityTypeService` -- that Service only exposes a numeric
+`status_id` lookup (`get_status`), not name resolution, so there is no
+Service-level equivalent to depend on instead. Mirrors
+`app/ports/principal_ref.py`'s seam shape.
 """
 
 from __future__ import annotations

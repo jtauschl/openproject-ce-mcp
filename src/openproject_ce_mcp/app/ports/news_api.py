@@ -24,7 +24,7 @@ class NewsRecord:
     VersionDetail share identical truncation and where the copy is genuinely
     free). Computing it eagerly for every row would re-run a second,
     independent text-extraction pass over every record's description on
-    every list call, for a value NewsService.list() never reads (only
+    every list call, for a value `NewsService.list()` never reads (only
     `get()`/`update()`/`delete()` -- single-item paths -- call `to_detail()`).
     """
 
@@ -38,15 +38,11 @@ class NewsApi(Protocol):
     Protocol, never on HttpxNewsApi concretely (enforced by the
     architecture-boundary test).
 
-    `list_page` replaced the earlier `list_all(page_size) ->
-    list[NewsRecord]` (OPM-373 Phase 5): that method walked the ENTIRE
-    server collection to completion via `paginate_all` before
-    `NewsService.list()` ever sliced out the requested `offset`/`limit`
-    window, so `offset`/`limit` reduced neither server load nor response
-    size. `list_page` follows the same `(offset, page_size) -> (records,
-    total)` shape `SprintApi`/`DocumentApi`/`ViewApi` already use, letting
-    `NewsService.list()` scan only as many server pages as needed via
-    `scan_records_and_paginate`.
+    `list_page` follows the same `(offset, page_size) -> (records, total)`
+    shape `SprintApi`/`DocumentApi`/`ViewApi` use, letting `NewsService.list()`
+    scan only as many server pages as needed via `scan_records_and_paginate`
+    rather than walking the entire server collection before slicing out the
+    requested `offset`/`limit` window.
     """
 
     async def list_page(self, *, offset: int, page_size: int) -> tuple[list[NewsRecord], int]: ...

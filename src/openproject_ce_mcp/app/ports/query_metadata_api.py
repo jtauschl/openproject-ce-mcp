@@ -1,15 +1,14 @@
 """Query Metadata Domain API port.
 
-Five unrelated-but-bundled read-only lookups (client.py places them
-adjacently, grouped as one migration -- same
-bundling rationale as Actions & Capabilities and
-Statuses/Priorities/Types). Each has its own Record; none
+Five unrelated-but-bundled read-only lookups, grouped under one Service --
+same bundling rationale as Actions & Capabilities and
+Statuses/Priorities/Types. Each has its own Record; none
 carries a project link -- these describe OpenProject's *query* schema
 (available filters/columns/operators/sort-bys and per-filter-type instance
 schemas), not project-scoped resources. `list_filter_instance_schemas`'
 optional `project` filter shapes the *request* (which endpoint to call),
 not a per-record allowlist check -- same shape as Type's project-optional
-list branch in the Statuses/Priorities/Types migration.
+list branch in `StatusPriorityTypeApi`.
 
 No `to_detail` split on any of the five Records: every method here is
 either a single-item GET or (for filter instance schemas) a list whose rows
@@ -66,8 +65,8 @@ class QueryMetadataApi(Protocol):
     resource). `list_filter_instance_schemas` is unpaginated (plain
     `CollectionResult` fetch-all, matching Categories'/
     Statuses-Priorities-Types' shape, not Roles'/Actions' offset/pageSize
-    `PageResult` shape) -- verified against `QueryFilterInstanceSchemaListResult`
-    in models.py, a plain `CollectionResult` subclass.
+    `PageResult` shape); `QueryFilterInstanceSchemaListResult` in models.py
+    is a plain `CollectionResult` subclass, not a `PageResult`.
     """
 
     async def get_filter(self, filter_id: str) -> QueryFilterRecord: ...

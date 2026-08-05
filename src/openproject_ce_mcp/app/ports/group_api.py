@@ -9,26 +9,20 @@ reads `.to_detail` on that path (only `get_group()` does), and
 `memberships_url`) beyond a cheap summary field-copy -- same rationale as
 `UserRecord`/`DocumentRecord`/`NewsRecord`'s lazy thunk.
 
-No `create_form`/`update_form`: verified against `client.py`'s
-`create_group`/`update_group`, neither calls a `groups/form` endpoint --
-Groups has no `/form` endpoint at all, unlike Users/Memberships/Versions.
-`commit_create`/`commit_update` return `GroupSummary`, not `GroupDetail`
-(verified: `client.py`'s originals normalize the write response with
-`normalize_group`, summary only).
+No `create_form`/`update_form`: Groups has no `/form` endpoint at all,
+unlike Users/Memberships/Versions. `commit_create`/`commit_update` return
+`GroupSummary`, not `GroupDetail` -- the write response is normalized to
+summary only.
 
-`get_member_ids` exposes the raw `_links.members` href->id extraction
-(client.py's `_id_from_href` over `current_payload["_links"]["members"]`)
-as its own Port method: `GroupDetail.members` only carries display names,
-not ids, so the Service's member-diff arithmetic (`current | add - remove`)
-needs a dedicated raw-id accessor rather than reconstructing ids from the
-normalized detail model.
+`get_member_ids` exposes the raw `_links.members` href->id extraction as its
+own Port method: `GroupDetail.members` only carries display names, not ids,
+so the Service's member-diff arithmetic (`current | add - remove`) needs a
+dedicated raw-id accessor rather than reconstructing ids from the normalized
+detail model.
 
-`list_groups_search` was removed (OPM-373 Phase 5): it was a `paginate_all`
-wrapper around this same `list_groups(offset, page_size)` method, walking
-the entire collection before `GroupService.list_groups()`'s search branch
-ever sliced out the requested `offset`/`limit` window. That branch now
-scans `list_groups` directly via `scan_records_and_paginate`, folding the
-search predicate into `item_allowed` instead of a separate over-fetch step.
+`GroupService.list_groups()`'s search branch scans `list_groups` directly
+via `scan_records_and_paginate`, folding the search predicate into
+`item_allowed` rather than over-fetching the entire collection first.
 """
 
 from __future__ import annotations

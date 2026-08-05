@@ -2,7 +2,7 @@
 
 A single get-only method, no list/create/update/delete counterpart -- job
 statuses are ephemeral background-job progress records (e.g. surfaced by
-`copy_project`'s 302-redirect-follow), not a resource with its own CRUD
+`copy_project`'s redirect-follow), not a resource with its own CRUD
 lifecycle. No `summary`/`detail` split either: there is no list endpoint
 whose rows would need a cheaper truncated shape to diverge from, so the
 Record carries a single `JobStatusDetail` directly (matching the Query

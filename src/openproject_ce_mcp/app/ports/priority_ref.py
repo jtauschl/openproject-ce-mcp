@@ -1,11 +1,8 @@
 """Priority-reference resolution port.
 
-Narrow seam onto the still-flat Statuses/Priorities/Types domain's existing
-name->id resolution machinery (client.py's `_resolve_priority_id`), reused
-as-is -- see `app/ports/status_ref.py`'s module docstring for why this isn't
-routed through `StatusPriorityTypeService` instead. The concrete value
-`OpenProjectClient` hands in is the bound method `self._resolve_priority_id`
-(structural typing, no wrapper class needed).
+Narrow name->id resolution seam for priority references -- see
+`app/ports/status_ref.py`'s module docstring for why this isn't routed
+through `StatusPriorityTypeService` instead.
 """
 
 from __future__ import annotations
