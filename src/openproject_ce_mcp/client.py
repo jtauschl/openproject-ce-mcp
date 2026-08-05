@@ -256,6 +256,16 @@ class OpenProjectClient:
         self._origin = _origin_from_url(settings.base_url)
         self._api_prefix = urlparse(settings.api_base_url).path.rstrip("/") + "/"
         self._project_id_to_identifier: dict[int, str] = {}
+        # Shared across every get_work_packages() call on this client instance
+        # (not constructed per-call), so N genuinely bounds this client's
+        # total concurrent batch-read HTTP traffic -- a per-call semaphore
+        # would only cap ONE call's own fan-out, letting several simultaneous
+        # get_work_packages() calls still produce calls x N concurrent
+        # requests (OPM-379/F6, ported from release/0.4.0). Deliberately
+        # independent from any semaphore F3's hierarchy-allowlist
+        # parallelization introduces, to avoid a deadlock risk if get_work_package
+        # (called by fetch_one below) itself performs nested allowlist checks.
+        self._batch_read_semaphore = asyncio.Semaphore(10)
 
         # Wrap transport with retry logic if max_retries > 0
         if settings.max_retries > 0:
@@ -2615,14 +2625,17 @@ class OpenProjectClient:
                 f"Maximum {BATCH_READ_MAX_IDS} work packages per batch (got {len(ids)}). Split into multiple calls."
             )
 
-        # Create parallel fetch tasks
+        # Create parallel fetch tasks, bounded by the shared batch-read
+        # semaphore (OPM-379/F6) -- `async with` guarantees the permit is
+        # released on every exit path, expected or not.
         async def fetch_one(work_package_ref: int | str) -> tuple[int | str, WorkPackageDetail | None, str | None]:
-            try:
-                work_package = await self.get_work_package(work_package_ref, text_limit=text_limit)
-                return (work_package_ref, work_package, None)
-            except (OpenProjectError, InvalidInputError, httpx.HTTPError) as e:
-                # Catch expected API errors, not system exceptions like CancelledError
-                return (work_package_ref, None, str(e))
+            async with self._batch_read_semaphore:
+                try:
+                    work_package = await self.get_work_package(work_package_ref, text_limit=text_limit)
+                    return (work_package_ref, work_package, None)
+                except (OpenProjectError, InvalidInputError, httpx.HTTPError) as e:
+                    # Catch expected API errors, not system exceptions like CancelledError
+                    return (work_package_ref, None, str(e))
 
         # Execute in parallel
         results = await asyncio.gather(*[fetch_one(work_package_ref) for work_package_ref in ids])

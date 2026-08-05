@@ -4765,6 +4765,86 @@ async def test_get_work_package_rejects_path_traversal_ref() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_work_packages_bounds_concurrent_requests_to_the_semaphore_limit() -> None:
+    """Regression (OPM-379/F6): get_work_packages used to fan out
+    asyncio.gather with no concurrency cap at all -- up to BATCH_READ_MAX_IDS
+    (100) requests could fire simultaneously. The shared, client-level
+    semaphore must keep the observed peak at or below its configured limit."""
+    active = {"count": 0, "peak": 0}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.method != "GET" or not request.url.path.startswith("/api/v3/work_packages/"):
+            raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+        wp_id = request.url.path.rsplit("/", 1)[-1]
+        active["count"] += 1
+        active["peak"] = max(active["peak"], active["count"])
+        try:
+            await asyncio.sleep(0)
+            return httpx.Response(
+                200,
+                json={"id": int(wp_id), "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        finally:
+            active["count"] -= 1
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.get_work_packages(ids=list(range(1, 51)))
+
+    assert result.succeeded == 50
+    assert active["peak"] <= 10
+    assert active["peak"] > 1, "expected genuine overlap between calls, not accidental serialization"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_work_packages_releases_permit_after_expected_error() -> None:
+    """A permit consumed by a work package that fails with an expected,
+    item-local error must still be released -- otherwise the semaphore would
+    leak capacity on every failed item and eventually deadlock the whole
+    batch."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path.startswith("/api/v3/work_packages/"):
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    # If a single permit leaked per failure, a batch larger than the
+    # semaphore size (10) would hang instead of completing.
+    result = await client.get_work_packages(ids=list(range(100, 115)))
+
+    assert result.failed == 15
+    assert result.succeeded == 0
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_work_packages_preserves_input_order_in_results() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path.startswith("/api/v3/work_packages/"):
+            wp_id = request.url.path.rsplit("/", 1)[-1]
+            return httpx.Response(
+                200,
+                json={"id": int(wp_id), "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.get_work_packages(ids=[3, 1, 2])
+
+    assert [item.id for item in result.results] == [3, 1, 2]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_resolve_work_package_id_rejects_path_traversal_ref() -> None:
     """Same fix, applied to _resolve_work_package_id (used by relations/reparent)."""
 

@@ -55,6 +55,10 @@ development baseline.
   server's default result cap.** The client-side-filtered path now scans
   server pages the same way `list_documents`/`list_news` already do,
   instead of fetching a single bounded page.
+- **`get_work_packages` (batch read) now bounds how many requests it sends
+  to OpenProject at once (max 10 concurrent) instead of firing all of them
+  simultaneously** — with the full 100-item batch limit, this could
+  previously mean up to 100 concurrent HTTP requests from a single call.
 
 ## 0.3.5 – 2026-08-02
 
