@@ -300,6 +300,19 @@ class WorkPackageService:
         self._current_user = current_user
         self._work_package_project_allowed = work_package_project_allowed
         self._api_prefix = api_prefix
+        # Shared across every get_batch() call on this Service instance (not
+        # constructed per-call), so N genuinely bounds this Service's total
+        # concurrent batch-read HTTP traffic -- a per-call semaphore would
+        # only cap ONE call's own fan-out, letting several simultaneous
+        # get_batch() calls still produce calls x N concurrent requests
+        # (OPM-379/F6). Deliberately independent from any semaphore F3's
+        # hierarchy-allowlist parallelization introduces: get() (called by
+        # fetch_one below) itself calls _filter_hierarchy_allowlist, so
+        # sharing one semaphore between the two would risk deadlocking under
+        # saturation (a task holding this semaphore's last permit for its
+        # own get() call, while a nested allowlist check waits on the same
+        # semaphore) -- see OPM-379 plan notes.
+        self._batch_read_semaphore = asyncio.Semaphore(10)
 
     def _stamp(self, summary: WorkPackageSummary) -> WorkPackageSummary:
         if hidden_fields.field_hidden("work_package", "description", settings=self._settings):
@@ -711,19 +724,27 @@ class WorkPackageService:
             )
 
         async def fetch_one(work_package_ref: int | str) -> tuple[int | str, WorkPackageDetail | None, str | None]:
-            try:
-                work_package = await self.get(work_package_ref, text_limit=text_limit)
-                return (work_package_ref, work_package, None)
-            except (OpenProjectError, InvalidInputError) as e:
-                # httpx.HTTPError deliberately not caught here (unlike
-                # client.py's original): every httpx.HTTPError/TimeoutException
-                # is already translated to a typed TransportError (an
-                # OpenProjectError subclass) by HttpxTransport before it could
-                # ever reach this Service -- a raw httpx.HTTPError was dead
-                # code in the original, and importing httpx here would violate
-                # the httpx-confinement rule (only the Transport module
-                # may import httpx directly).
-                return (work_package_ref, None, str(e))
+            # The semaphore wraps the ENTIRE get() call (not just the
+            # transport request), matching the scope get_batch() is meant to
+            # bound -- `async with` guarantees the permit is released on
+            # every exit path, expected or not.
+            async with self._batch_read_semaphore:
+                try:
+                    work_package = await self.get(work_package_ref, text_limit=text_limit)
+                    return (work_package_ref, work_package, None)
+                except (OpenProjectError, InvalidInputError) as e:
+                    # httpx.HTTPError deliberately not caught here (unlike
+                    # client.py's original): every httpx.HTTPError/TimeoutException
+                    # is already translated to a typed TransportError (an
+                    # OpenProjectError subclass) by HttpxTransport before it could
+                    # ever reach this Service -- a raw httpx.HTTPError was dead
+                    # code in the original, and importing httpx here would violate
+                    # the httpx-confinement rule (only the Transport module
+                    # may import httpx directly). Any OTHER/unexpected exception
+                    # still propagates out of fetch_one and aborts the whole
+                    # asyncio.gather() below -- unchanged pre-existing behavior,
+                    # the semaphore doesn't alter which exceptions are item-local.
+                    return (work_package_ref, None, str(e))
 
         results = await asyncio.gather(*[fetch_one(ref) for ref in ids])
 

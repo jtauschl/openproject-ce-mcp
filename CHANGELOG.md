@@ -75,6 +75,10 @@ support.
   regardless of `limit`. `total` on these tools is now a lower bound (the
   count returned on this page) rather than an exact count of the full
   matching collection; page with `next_offset` until it is `null`.
+- **`get_work_packages` (batch read) now bounds how many requests it sends
+  to OpenProject at once (max 10 concurrent) instead of firing all of them
+  simultaneously** — with the full 100-item batch limit, this could
+  previously mean up to 100 concurrent HTTP requests from a single call.
 
 ### Docs
 

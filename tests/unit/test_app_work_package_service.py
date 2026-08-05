@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 
 import pytest
@@ -628,6 +629,114 @@ async def test_get_batch_rejects_too_many_ids() -> None:
 
     with pytest.raises(ValueError):
         await service.get_batch(ids=list(range(101)))
+
+
+class _ConcurrencyTrackingWorkPackageApi(_FakeWorkPackageApi):
+    """Records the observed peak of concurrent in-flight `get()` calls.
+
+    Each call increments a counter, yields control (so overlapping calls
+    actually interleave instead of running back-to-back under a single
+    event-loop tick), then decrements -- the same shape a real HTTP call's
+    await point would produce.
+    """
+
+    def __init__(self, *, ids: list[int]) -> None:
+        super().__init__()
+        self._records_by_id = {i: _record(i) for i in ids}
+        self.active = 0
+        self.peak_active = 0
+
+    async def get(self, work_package_ref: str, *, text_limit: int | None = None) -> WorkPackageRecord:
+        self.active += 1
+        self.peak_active = max(self.peak_active, self.active)
+        try:
+            await asyncio.sleep(0)
+            return await super().get(work_package_ref, text_limit=text_limit)
+        finally:
+            self.active -= 1
+
+
+@pytest.mark.asyncio
+async def test_get_batch_bounds_concurrent_requests_to_the_semaphore_limit() -> None:
+    """Regression (OPM-379/F6): get_batch used to fan out asyncio.gather with
+    no concurrency cap at all -- up to BATCH_READ_MAX_IDS (100) requests
+    could fire simultaneously. The shared, Service-level semaphore must keep
+    the observed peak at or below its configured limit."""
+    ids = list(range(1, 51))
+    api = _ConcurrencyTrackingWorkPackageApi(ids=ids)
+    service, _ = _service(api)
+
+    await service.get_batch(ids=ids)
+
+    assert api.peak_active <= 10
+    assert api.peak_active > 1, "expected genuine overlap between calls, not accidental serialization"
+
+
+@pytest.mark.asyncio
+async def test_get_batch_semaphore_is_shared_across_concurrent_calls() -> None:
+    """The semaphore is a Service-level attribute, not created per get_batch()
+    call -- two simultaneous get_batch() calls on the SAME Service instance
+    must share one combined cap, not each get their own independent 10."""
+    api = _ConcurrencyTrackingWorkPackageApi(ids=list(range(1, 51)))
+    service, _ = _service(api)
+
+    await asyncio.gather(
+        service.get_batch(ids=list(range(1, 26))),
+        service.get_batch(ids=list(range(26, 51))),
+    )
+
+    assert api.peak_active <= 10
+
+
+@pytest.mark.asyncio
+async def test_get_batch_releases_permit_after_expected_error() -> None:
+    """A permit consumed by a work package that fails with an expected,
+    item-local error (OpenProjectError/InvalidInputError) must still be
+    released -- otherwise the semaphore would leak capacity on every failed
+    item and eventually deadlock the whole batch."""
+    api = _FakeWorkPackageApi()
+    api._records_by_id = {6: _record(6)}
+    service, _ = _service(api)
+
+    # All of these ids are unknown to the fake API and will fail -- if a
+    # single permit leaked per failure, batches larger than the semaphore
+    # size (10) would hang instead of completing.
+    result = await service.get_batch(ids=list(range(100, 115)))
+
+    assert result.failed == 15
+    assert result.succeeded == 0
+
+
+@pytest.mark.asyncio
+async def test_get_batch_unexpected_exception_still_propagates_and_aborts_batch() -> None:
+    """Pre-existing behavior, unchanged by the new semaphore: fetch_one only
+    catches (OpenProjectError, InvalidInputError) -- any OTHER exception
+    propagates out of asyncio.gather() and aborts the whole batch rather
+    than becoming an item-local failure."""
+
+    class _BoomApi(_FakeWorkPackageApi):
+        async def get(self, work_package_ref: str, *, text_limit: int | None = None) -> WorkPackageRecord:
+            if work_package_ref == "7":
+                raise RuntimeError("boom")
+            return await super().get(work_package_ref, text_limit=text_limit)
+
+    api = _BoomApi()
+    api._records_by_id = {6: _record(6), 7: _record(7)}
+    service, _ = _service(api)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await service.get_batch(ids=[6, 7])
+
+
+@pytest.mark.asyncio
+async def test_get_batch_preserves_input_order_in_results() -> None:
+    api = _FakeWorkPackageApi()
+    api._records_by_id = {i: _record(i) for i in (3, 1, 2)}
+    service, _ = _service(api)
+
+    result = await service.get_batch(ids=[3, 1, 2])
+
+    assert [item.id for item in result.results] == [3, 1, 2]
 
 
 @pytest.mark.asyncio
