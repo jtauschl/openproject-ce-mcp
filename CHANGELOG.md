@@ -50,6 +50,11 @@ development baseline.
   the same fix applies here. `total` on these tools is now a lower bound
   (the count returned on this page) rather than an exact count of the full
   matching collection; page with `next_offset` until it is `null`.
+- **`list_boards` (when filtering by `project`, `search`, or a restricted
+  `OPENPROJECT_READ_PROJECTS`) could silently hide a board beyond the
+  server's default result cap.** The client-side-filtered path now scans
+  server pages the same way `list_documents`/`list_news` already do,
+  instead of fetching a single bounded page.
 
 ## 0.3.5 – 2026-08-02
 

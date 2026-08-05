@@ -7298,6 +7298,60 @@ async def test_list_boards_returns_empty_under_empty_read_projects() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_boards_walks_every_server_page_when_allowlist_thins_first_page() -> None:
+    """Regression (OPM-379/F2, ported from release/0.4.0's OPM-373 Phase 5
+    fix): the client-side-filtered branch used to fetch a single bounded
+    page capped at settings.max_results, silently hiding any board beyond
+    that cap. Now scans server pages via _scan_and_paginate, same fix
+    pattern already applied to list_documents/list_news/etc."""
+    requested_offsets: list[str] = []
+
+    def board_item(item_id: int, allowed: bool) -> dict:
+        title = "Demo" if allowed else "Secret Project"
+        return {
+            "_type": "Query",
+            "id": item_id,
+            "name": f"Board {item_id}",
+            "public": False,
+            "hidden": True,
+            "_links": {"project": {"href": f"/api/v3/projects/{item_id}", "title": title}},
+        }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/queries" and request.method == "GET":
+            page = request.url.params["offset"]
+            requested_offsets.append(page)
+            assert request.url.params["pageSize"] == "2"
+            if page == "1":
+                return httpx.Response(
+                    200,
+                    json={
+                        "_embedded": {
+                            "elements": [board_item(1, allowed=False), board_item(2, allowed=False)],
+                        },
+                    },
+                    request=request,
+                )
+            if page == "2":
+                return httpx.Response(
+                    200,
+                    json={"_embedded": {"elements": [board_item(3, allowed=True)]}},
+                    request=request,
+                )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",), max_page_size=2)
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_boards()
+
+    assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
+    assert [b.id for b in result.results] == [3]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_board_crud_uses_query_form_endpoints_and_project_filtering() -> None:
     def query_payload(
         *,

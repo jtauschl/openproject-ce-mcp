@@ -3699,31 +3699,32 @@ class OpenProjectClient:
                     (_trim_text(project_payload.get("identifier"), limit=SUBJECT_LIMIT) or "").casefold(),
                     (_trim_text(project_payload.get("name"), limit=SUBJECT_LIMIT) or "").casefold(),
                 }
-            payload = await self._get(
-                "queries",
-                params={
-                    "offset": "1",
-                    "pageSize": str(self.settings.max_results),
-                },
+            search_key = search.casefold() if search else None
+
+            async def _board_item_allowed(item: dict[str, Any]) -> bool:
+                if not self._board_payload_allowed(item):
+                    return False
+                normalized = self.normalize_board(item)
+                if project is not None and not self._board_matches_project(normalized, project_candidates):
+                    return False
+                return search_key is None or search_key in (normalized.name or "").casefold()
+
+            # A single fetch capped at settings.max_results silently hid any
+            # board beyond that cap once the endpoint's real result count
+            # exceeded it -- scan server pages instead (ported from
+            # release/0.4.0's OPM-373 Phase 5 fix, OPM-379/F2).
+            raw_items, truncated = await self._scan_and_paginate(
+                "queries", item_allowed=_board_item_allowed, offset=offset, limit=effective_limit
             )
-            raw_queries = payload.get("_embedded", {}).get("elements", [])
-            filtered = [self.normalize_board(item) for item in raw_queries if self._board_payload_allowed(item)]
-            if project is not None:
-                filtered = [item for item in filtered if self._board_matches_project(item, project_candidates)]
-            if search:
-                search_key = search.casefold()
-                filtered = [item for item in filtered if search_key in (item.name or "").casefold()]
-            total = len(filtered)
-            start = (offset - 1) * effective_limit
-            end = start + effective_limit
-            results = filtered[start:end]
+            results = [self.normalize_board(item) for item in raw_items]
+            total = len(results)
             return BoardListResult(
                 offset=offset,
                 limit=effective_limit,
                 total=total,
-                count=len(results),
-                next_offset=offset + 1 if end < total else None,
-                truncated=end < total,
+                count=total,
+                next_offset=offset + 1 if truncated else None,
+                truncated=truncated,
                 results=results,
             )
 
