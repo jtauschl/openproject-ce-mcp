@@ -843,12 +843,14 @@ async def test_get_work_package_relations_paginates_allowed_results() -> None:
     # survivors (not the raw server page), so a restrictive allowlist can't
     # produce a sparse page -- same pattern as list_project_sprints.
     #
-    # The /relations request itself must send an explicit pageSize and walk
-    # every server page (not just rely on the server's default page size and
-    # re-fetch/re-slice the same first page every call), or relations past
-    # the default page would be permanently unreachable. Assert every server
-    # page is actually walked (pageSize=max_page_size), same as
-    # _fetch_bounded_and_paginate.
+    # The /relations request itself must send an explicit pageSize (not just
+    # rely on the server's default page size and re-fetch/re-slice the same
+    # first page every call), or relations past the default page would be
+    # permanently unreachable. This fixture's single short page (3 raw
+    # elements) is enough to confirm limit+1 allowed matches for limit=2, so
+    # fetch_bounded_and_paginate's early-stopping scan never needs a second
+    # server page here -- only pageSize itself is asserted, not a
+    # multi-page walk (see test_bounded_fetch_collector.py for that).
     settings = make_settings()
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -890,7 +892,10 @@ async def test_get_work_package_relations_paginates_allowed_results() -> None:
 
     page1 = await client.get_work_package_relations(10, offset=1, limit=2)
     assert [r.to_id for r in page1.results] == [11, 12]
-    assert page1.total == 3
+    # total is a lower bound (len(results) on this page), not an exact count
+    # of the full ACL-filtered collection -- OPM-373 Phase 5's total-contract
+    # change.
+    assert page1.total == 2
     assert page1.next_offset == 2
     assert page1.truncated is True
 

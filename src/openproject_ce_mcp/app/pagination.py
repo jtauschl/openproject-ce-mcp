@@ -84,26 +84,37 @@ async def fetch_bounded_and_paginate(
     fetch_page: Callable[[int, int], Awaitable[dict[str, Any]]],
     normalize: Callable[[dict[str, Any]], _T],
     item_allowed: Callable[[dict[str, Any]], Awaitable[bool]] | None,
-    post_filter: Callable[[list[_T]], list[_T]] | None,
     server_page_size: int,
     offset: int,
     limit: int,
 ) -> tuple[list[_T], int, int | None, bool]:
-    """Walk every server page, normalize + filter the raw elements, apply an
-    optional post-normalize filter (e.g. project/search predicates), then
-    paginate the survivors in memory via paginate_client.
+    """Scan server pages, normalize + filter the raw elements, and stop as
+    soon as `limit + 1` allowed items are confirmed (or the collection is
+    genuinely exhausted) -- never walks the full collection first.
 
-    Verbatim extraction of client.py's private `_fetch_bounded_and_paginate`
-    (first extracted for the Relations migration) -- the shape is
-    unchanged, only the raw-payload-fetching part is now injected via
-    `fetch_page(server_offset, server_page_size) -> raw HAL page dict` instead
-    of being hardwired to `self._get(path, params=...)`, so this is reusable
-    by any Service, not just OpenProjectClient. client.py's own
-    `_fetch_bounded_and_paginate` (kept for list_time_entries, its one
-    remaining still-flat caller) now delegates here instead of duplicating
-    the loop.
+    Originally a verbatim extraction of client.py's private
+    `_fetch_bounded_and_paginate` (first extracted for the Relations
+    migration), which walked EVERY server page to completion before ever
+    slicing out the requested `offset`/`limit` window -- `offset`/`limit`
+    then reduced neither server load nor response size. Rebuilt here
+    (OPM-373 Phase 5) to early-stop instead, same shape as
+    `scan_and_paginate`/`scan_records_and_paginate`: collect one extra
+    (`limit + 1`) allowed item before deciding `truncated`, so "more
+    matches exist" can be distinguished from "this happened to be the
+    last one" without a false-positive `next_offset` promise.
 
-    item_allowed is async (rather than plain bool) so ACL checks that need
+    `post_filter` was removed (a Codex CLI review caught that TimeEntryService,
+    this helper's other caller besides Relations, was the only user of it,
+    and its post-filter predicates ran on already-normalized-but-not-yet-
+    paginated results -- incompatible with early-stopping, since a
+    normalized-but-later-rejected item must not count toward the `limit + 1`
+    lookahead). TimeEntryService.list_all was migrated in the same change to
+    fold its four post-filter predicates (work_package_id/user/spent_on_from/
+    spent_on_to) into `item_allowed` itself, normalizing each raw item first
+    -- the item_allowed callback now decides ALL acceptance criteria, not
+    just the ACL check, matching every other `scan_*`-helper caller's shape.
+
+    `item_allowed` is async (rather than plain bool) so ACL checks that need
     their own lookups (e.g. relations checking each linked work package's
     project) can use this helper too -- without it, callers needing an async
     filter had to hand-roll their own fetch+params, which is exactly how a
@@ -111,36 +122,56 @@ async def fetch_bounded_and_paginate(
 
     Some project-scoped sub-collection endpoints (verified live: a project's
     versions endpoint) silently ignore both offset and pageSize and always
-    return every element -- without the seen-ids check below,
-    `page_count < server_page_size` never becomes true and this loops
+    return every element -- without the seen-ids check below, the
+    short-page/limit-reached break conditions never trigger and this loops
     forever, re-fetching the same full page. Tracked against the RAW element
     ids (before item_allowed/normalize), so a page that's merely fully
     filtered out doesn't get mistaken for a repeat.
     """
+    skip_count = (offset - 1) * limit
+    skipped = 0
     results: list[_T] = []
     seen_ids: set[Any] = set()
     server_offset = 1
     is_first_page = True
-    while True:
+
+    while len(results) <= limit:
         payload = await fetch_page(server_offset, server_page_size)
-        raw_elements = payload.get("_embedded", {}).get("elements", [])
-        page_ids = {item.get("id") for item in raw_elements if isinstance(item, dict)}
+        raw_elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+        if not raw_elements:
+            break
+        page_ids = {item.get("id") for item in raw_elements}
         if not is_first_page and page_ids and page_ids <= seen_ids:
             break
         is_first_page = False
         seen_ids.update(page_ids)
-        page_count = 0
+
         for item in raw_elements:
-            if isinstance(item, dict):
-                page_count += 1
-                if item_allowed is None or await item_allowed(item):
-                    results.append(normalize(item))
-        if page_count < server_page_size:
+            if item_allowed is not None and not await item_allowed(item):
+                continue
+            if skipped < skip_count:
+                skipped += 1
+                continue
+            results.append(normalize(item))
+            if len(results) > limit:
+                # The (limit + 1)-th allowed item proves at least one more
+                # match exists beyond the requested page -- stop
+                # immediately, without checking the rest of this page or
+                # server exhaustion.
+                break
+
+        if len(results) > limit:
+            break
+        if len(raw_elements) < server_page_size:
             break
         server_offset += 1
-    if post_filter is not None:
-        results = post_filter(results)
-    return paginate_client(offset=offset, limit=limit, results=results)
+
+    truncated = len(results) > limit
+    if truncated:
+        results = results[:limit]
+    total = len(results)
+    next_offset = offset + 1 if truncated else None
+    return results, total, next_offset, truncated
 
 
 async def scan_and_paginate(
@@ -151,18 +182,16 @@ async def scan_and_paginate(
     offset: int,
     limit: int,
 ) -> tuple[list[dict[str, Any]], bool]:
-    """Early-stopping counterpart to `fetch_bounded_and_paginate`/`paginate_all`.
-
-    Both of those walk the ENTIRE server collection (or, for
-    `fetch_bounded_and_paginate`, the entire ACL-filtered collection) before
-    ever slicing out the requested `offset`/`limit` window -- `offset`/`limit`
-    then reduce neither server load nor response size, only what a caller
-    finally sees. This scans just enough server pages to collect `limit + 1`
-    allowed raw elements (one extra, to distinguish "more matches exist" from
-    "this happened to be the last one") and stops, skipping the first
-    `(offset - 1) * limit` already-seen matches along the way. Some redundant
-    server calls on deep pagination (a fresh scan from page 1 on every call,
-    since the two offset spaces -- caller units of `limit`, server units of
+    """Sibling of `fetch_bounded_and_paginate`/`scan_records_and_paginate`,
+    for callers whose raw HAL page dict has no separate `normalize`/`total`
+    concerns of its own (the caller normalizes the returned raw elements
+    itself). All three helpers share the same early-stopping shape: scan
+    just enough server pages to collect `limit + 1` allowed raw elements
+    (one extra, to distinguish "more matches exist" from "this happened to
+    be the last one") and stop, skipping the first `(offset - 1) * limit`
+    already-seen matches along the way. Some redundant server calls on deep
+    pagination (a fresh scan from page 1 on every call, since the two
+    offset spaces -- caller units of `limit`, server units of
     `server_page_size` -- can't be conflated into one server-side offset),
     but bounded work per call instead of a full collection walk.
 
@@ -196,8 +225,9 @@ async def scan_and_paginate(
         is_first_page = False
         seen_ids.update(page_ids)
 
-        allowed = [item for item in raw_elements if await item_allowed(item)]
-        for item in allowed:
+        for item in raw_elements:
+            if not await item_allowed(item):
+                continue
             if skipped < skip_count:
                 skipped += 1
                 continue
@@ -205,7 +235,7 @@ async def scan_and_paginate(
             if len(results) > limit:
                 # The (limit + 1)-th allowed item proves at least one more
                 # match exists beyond the requested page -- stop immediately,
-                # don't bother checking server exhaustion.
+                # without checking the rest of this page or server exhaustion.
                 break
 
         if len(results) > limit:
@@ -234,16 +264,13 @@ async def scan_records_and_paginate(
     e.g. an Adapter's own `list_all(offset, page_size) -> (records, total)`
     method, the same signature `paginate_all` already accepts.
 
-    Same early-stopping shape as `scan_and_paginate` (collects `limit + 1`
-    allowed records before deciding `truncated`, to distinguish "more
-    matches exist" from "this happened to be the last one"), adapted to
-    `paginate_all`'s already-normalized-record contract instead of
-    `fetch_bounded_and_paginate`'s raw-dict-plus-normalize-callback
-    contract -- both walk-then-slice helpers this project's `list_*`
-    pagination-load-reduction fix (OPM-373 Phase 5) needs to replace share
-    the same underlying bug (walk the full collection before any slicing),
-    so both need an early-stopping counterpart, but their different input
-    shapes don't share one helper cleanly.
+    Same early-stopping shape as `scan_and_paginate`/`fetch_bounded_and_paginate`
+    (collects `limit + 1` allowed records before deciding `truncated`, to
+    distinguish "more matches exist" from "this happened to be the last
+    one"), adapted to `paginate_all`'s already-normalized-record contract
+    instead of `fetch_bounded_and_paginate`'s raw-dict-plus-normalize-callback
+    contract -- the two input shapes don't share one helper cleanly, hence
+    three siblings rather than one.
 
     `item_allowed` here is SYNCHRONOUS (unlike `scan_and_paginate`'s async
     version) -- every `paginate_all` caller's own per-item filter
@@ -281,8 +308,9 @@ async def scan_records_and_paginate(
             seen_keys.update(page_keys)
         is_first_page = False
 
-        allowed = [item for item in page_items if item_allowed(item)]
-        for item in allowed:
+        for item in page_items:
+            if not item_allowed(item):
+                continue
             if skipped < skip_count:
                 skipped += 1
                 continue

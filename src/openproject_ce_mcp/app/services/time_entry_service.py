@@ -217,35 +217,32 @@ class TimeEntryService:
             )
             if not allowed:
                 return False
-            if not project_candidates:
-                return True
-            item_candidates = scope_policy.project_candidates(
-                project_id_to_identifier=self._project_id_to_identifier,
-                link=item.get("_links", {}).get("project"),
-            )
-            return not item_candidates.isdisjoint(project_candidates)
-
-        def post_filter(results: list[TimeEntrySummary]) -> list[TimeEntrySummary]:
-            filtered = results
-            if resolved_work_package_id is not None:
-                filtered = [
-                    item
-                    for item in filtered
-                    if item.entity_type == "WorkPackage" and item.entity_id == resolved_work_package_id
-                ]
-            if user_name is not None:
-                filtered = [item for item in filtered if (item.user or "").casefold() == user_name.casefold()]
-            if spent_on_from is not None:
-                filtered = [item for item in filtered if item.spent_on is not None and item.spent_on >= spent_on_from]
-            if spent_on_to is not None:
-                filtered = [item for item in filtered if item.spent_on is not None and item.spent_on <= spent_on_to]
-            return filtered
+            if project_candidates:
+                item_candidates = scope_policy.project_candidates(
+                    project_id_to_identifier=self._project_id_to_identifier,
+                    link=item.get("_links", {}).get("project"),
+                )
+                if item_candidates.isdisjoint(project_candidates):
+                    return False
+            # The remaining filters (work_package_id/user/spent_on) run
+            # against NORMALIZED fields, matching pre-migration behavior
+            # exactly -- normalize once here rather than rebuilding the
+            # comparison against raw payload fields (OPM-373 Phase 5).
+            normalized = self._api.to_record(item, text_limit=self._settings.text_limit).summary()
+            if resolved_work_package_id is not None and not (
+                normalized.entity_type == "WorkPackage" and normalized.entity_id == resolved_work_package_id
+            ):
+                return False
+            if user_name is not None and (normalized.user or "").casefold() != user_name.casefold():
+                return False
+            if spent_on_from is not None and (normalized.spent_on is None or normalized.spent_on < spent_on_from):
+                return False
+            return not (spent_on_to is not None and (normalized.spent_on is None or normalized.spent_on > spent_on_to))
 
         page, total, next_offset, truncated = await fetch_bounded_and_paginate(
             fetch_page=lambda o, ps: self._api.fetch_page(offset=o, page_size=ps),
             normalize=lambda raw: self._stamp(self._api.to_record(raw, text_limit=self._settings.text_limit).summary()),
             item_allowed=item_allowed,
-            post_filter=post_filter,
             server_page_size=self._settings.max_page_size,
             offset=offset,
             limit=resolved_limit,

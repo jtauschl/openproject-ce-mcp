@@ -7,9 +7,9 @@ from openproject_ce_mcp.app.pagination import paginate_all, scan_and_paginate, s
 
 @pytest.mark.asyncio
 async def test_scan_and_paginate_stops_after_limit_plus_one_allowed_matches() -> None:
-    """OPM-373 Phase 5: unlike paginate_all/fetch_bounded_and_paginate, this
-    must NOT walk the entire collection -- only enough pages to confirm
-    limit+1 allowed matches (or genuine exhaustion)."""
+    """OPM-373 Phase 5: unlike paginate_all, this must NOT walk the entire
+    collection -- only enough pages to confirm limit+1 allowed matches (or
+    genuine exhaustion)."""
     calls: list[int] = []
 
     async def fetch_page(offset: int, page_size: int) -> dict:
@@ -55,6 +55,33 @@ async def test_scan_and_paginate_not_truncated_when_exactly_limit_matches_exist(
 
 
 @pytest.mark.asyncio
+async def test_scan_and_paginate_does_not_evaluate_item_allowed_past_the_limit_plus_one_match() -> None:
+    """Efficiency regression: item_allowed must not be called for items
+    AFTER the limit+1-th allowed match is found on a single page -- an
+    earlier draft collected the whole page's allowed subset via a list
+    comprehension before slicing, which called item_allowed on every raw
+    element regardless of where the limit+1 cutoff fell."""
+    checked_ids: list[int] = []
+
+    async def fetch_page(offset: int, page_size: int) -> dict:
+        return {"_embedded": {"elements": [{"id": i} for i in range(1, 6)]}}  # 5 raw elements, one page
+
+    async def item_allowed(item: dict) -> bool:
+        checked_ids.append(item["id"])
+        return True
+
+    results, truncated = await scan_and_paginate(
+        fetch_page=fetch_page, item_allowed=item_allowed, server_page_size=5, offset=1, limit=1
+    )
+
+    assert [r["id"] for r in results] == [1]
+    assert truncated is True
+    # limit+1=2 confirmed matches is enough to stop -- ids 3/4/5 must never
+    # be passed to item_allowed.
+    assert checked_ids == [1, 2]
+
+
+@pytest.mark.asyncio
 async def test_scan_records_and_paginate_stops_after_limit_plus_one_allowed_matches() -> None:
     calls: list[int] = []
 
@@ -85,6 +112,28 @@ async def test_scan_records_and_paginate_not_truncated_when_exactly_limit_matche
 
     assert results == [1]
     assert truncated is False
+
+
+@pytest.mark.asyncio
+async def test_scan_records_and_paginate_does_not_evaluate_item_allowed_past_the_limit_plus_one_match() -> None:
+    """Same efficiency regression as scan_and_paginate's equivalent test,
+    for the already-normalized-record variant."""
+    checked: list[int] = []
+
+    async def fetch_page(offset: int, page_size: int) -> tuple[list[int], int]:
+        return [1, 2, 3, 4, 5], 999  # 5 records, one page
+
+    def item_allowed(item: int) -> bool:
+        checked.append(item)
+        return True
+
+    results, truncated = await scan_records_and_paginate(
+        fetch_page, item_allowed=item_allowed, server_page_size=5, offset=1, limit=1, key=lambda item: item
+    )
+
+    assert results == [1]
+    assert truncated is True
+    assert checked == [1, 2]
 
 
 @pytest.mark.asyncio

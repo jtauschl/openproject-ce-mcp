@@ -140,7 +140,6 @@ class RelationService:
             fetch_page=lambda o, ps: self._api.fetch_page(offset=o, page_size=ps, filters=filters),
             normalize=lambda raw: self._stamp(self._api.to_record(raw).summary()),
             item_allowed=item_allowed,
-            post_filter=None,
             server_page_size=self._settings.max_page_size,
             offset=offset,
             limit=limit,
