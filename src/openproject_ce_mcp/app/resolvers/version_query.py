@@ -180,7 +180,7 @@ async def fetch_version_page(
         return paginate_client(offset=offset, limit=effective_limit, results=results)
 
     access.ensure_read_enabled("version", settings=settings)
-    search_key = search.casefold() if search else None
+    global_search_key = search.casefold() if search else None
 
     def _record_allowed(record: VersionRecord) -> bool:
         if not version_payload_allowed(
@@ -189,9 +189,9 @@ async def fetch_version_page(
             project_id_to_identifier=project_id_to_identifier,
         ):
             return False
-        if search_key is None:
+        if global_search_key is None:
             return True
-        return search_key in (record.summary.name or "").casefold()
+        return global_search_key in (record.summary.name or "").casefold()
 
     raw_items, truncated = await scan_records_and_paginate(
         lambda o, ps: _list_global_page(api, offset=o, page_size=ps, text_limit=text_limit),
