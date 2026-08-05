@@ -19,21 +19,26 @@ target that auto-syncs.
 
 ## Response size
 
-Measured against the same three representative work packages (token ≈
-bytes/4), reproducible with [`tools/measure-context.py`](https://github.com/jtauschl/openproject-ce-mcp/blob/main/tools/measure-context.py)
-against a local Docker test instance. Covers list, single-read, search, a
-confirmed write, and batch operations — not just one call shape — each
-compared against the equivalent raw OpenProject REST API v3 (HAL) call(s):
+Measured against the same three representative work packages, using
+[tiktoken](https://github.com/openai/tiktoken)'s `cl100k_base` encoding (the
+GPT-4-family tokenizer) as a real-tokenizer stand-in — no public tokenizer
+exists for Claude models, so this is a consistent, reproducible
+approximation, not an exact Claude token count. Reproducible with
+[`tools/measure-context.py`](https://github.com/jtauschl/openproject-ce-mcp/blob/main/tools/measure-context.py)
+(`uv sync --extra measure` first) against a local Docker test instance.
+Covers list, single-read, search, a confirmed write, and batch operations —
+not just one call shape — each compared against the equivalent raw
+OpenProject REST API v3 (HAL) call(s):
 
 | Call | Raw API tokens | MCP tokens | vs. raw |
 |---|---:|---:|---:|
-| `list_work_packages` (3 rows) | ~7,950 | ~1,080 | **−86%** |
-| `list_work_packages` with `select` (5 fields) | ~7,950 | ~120 | **−98%** |
-| `get_work_package` (single read) | ~2,670 | ~430 | **−84%** |
-| `search_work_packages` | ~6,520 | ~745 | **−89%** |
-| `update_work_package` (confirmed write) | ~2,670 | ~490 | **−82%** |
-| `bulk_create_work_packages` (×5, vs. 5 raw POSTs) | ~11,585 | ~1,935 | **−83%** |
-| `bulk_update_work_packages` (×5, vs. 5 raw PATCHes) | ~11,580 | ~1,930 | **−83%** |
+| `list_work_packages` (3 rows) | ~10,139 | ~1,100 | **−89%** |
+| `list_work_packages` with `select` (5 fields) | ~10,139 | ~144 | **−99%** |
+| `get_work_package` (single read) | ~3,424 | ~415 | **−88%** |
+| `search_work_packages` (10 rows) | ~29,354 | ~3,839 | **−87%** |
+| `update_work_package` (confirmed write) | ~3,425 | ~473 | **−86%** |
+| `bulk_create_work_packages` (×5, vs. 5 raw POSTs) | ~15,612 | ~1,983 | **−87%** |
+| `bulk_update_work_packages` (×5, vs. 5 raw PATCHes) | ~15,617 | ~1,993 | **−87%** |
 
 The savings are consistent across call shapes — this isn't a one-off number
 for list responses specifically. `select` remains the largest additional,
@@ -44,20 +49,21 @@ opt-in lever on top of the baseline MCP trimming.
 The tool set itself is trimmed too, mainly by not emitting redundant output
 schemas. A fresh, unconfigured install — the actual default state, before
 `OPENPROJECT_READ_PROJECTS`/`OPENPROJECT_WRITE_PROJECTS` are set — registers
-only the read tool set: 58 tools, ~18k tokens. Project-scoped write tools are
+only the read tool set: 58 tools, ~21k tokens. Project-scoped write tools are
 only registered once **both** allowlists are non-empty (an empty
 `OPENPROJECT_WRITE_PROJECTS` alone leaves them unregistered, since a write
 tool that can never pass the project-scope check would just be dead catalog
 weight); once granted, and with every write scope enabled — the worst case —
-the `tools/list` payload is 119 tools, ~32k tokens, down from an unoptimized
-~60k-tool-count-equivalent baseline. Turning on the rarely-used `extended`
-metadata tools (`OPENPROJECT_ENABLE_EXTENDED_READ=true`, see
-[Configuration](configuration.md#tool-groups)) on top of that adds 12 more
-tools, ~34k tokens. Confirmed writes also drop the echoed request `payload`.
+the `tools/list` payload is 121 tools, ~40k tokens. Turning on the
+rarely-used `extended` metadata tools (`OPENPROJECT_ENABLE_EXTENDED_READ=true`,
+see [Configuration](configuration.md#tool-groups)) on top of that adds 12
+more tools, ~42k tokens. Confirmed writes also drop the echoed request
+`payload`.
 
 ## Reproducing these numbers
 
 ```bash
+uv sync --extra measure   # installs tiktoken for real token counts
 python tools/measure-context.py
 ```
 

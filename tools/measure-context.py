@@ -30,9 +30,11 @@ in README.md's "How it works" section). Two parts:
    measurements. It does not delete any of them afterward — the Docker test
    project is disposable by convention; don't point this at a real instance.
 
-Token counts throughout are the same bytes/4 approximation used elsewhere in
-this project's docs — a rough but consistent proxy, not an exact tokenizer
-count.
+Token counts use tiktoken's `cl100k_base` encoding (the GPT-4-family
+tokenizer) as a real-tokenizer stand-in — no public tokenizer for Claude
+models exists, so this is a consistent, reproducible approximation, not an
+exact Claude token count. Requires the `measure` extra (`uv sync --extra
+measure`, or `pip install openproject-ce-mcp[measure]`).
 """
 
 from __future__ import annotations
@@ -45,11 +47,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import tiktoken  # noqa: E402
+
 from openproject_ce_mcp.client import OpenProjectClient  # noqa: E402
 from openproject_ce_mcp.config import Settings  # noqa: E402
 from openproject_ce_mcp.models import SortCriterion  # noqa: E402
 from openproject_ce_mcp.server import create_app  # noqa: E402
 from openproject_ce_mcp.tools import _to_payload  # noqa: E402
+
+_ENCODING = tiktoken.get_encoding("cl100k_base")
+
+
+def _tokens(raw: str) -> int:
+    return len(_ENCODING.encode(raw))
+
 
 WRITE_ENV = {
     "OPENPROJECT_READ_PROJECTS": "*",
@@ -118,15 +129,16 @@ async def measure_tools_list() -> None:
         tools = await app.list_tools()
         payload = [t.model_dump(exclude_none=True, mode="json") for t in tools]
         raw = json.dumps({"tools": payload})
-        print(f"{label}: {len(tools)} tools, {len(raw)} bytes, ~{len(raw) // 4} tokens")
+        print(f"{label}: {len(tools)} tools, {len(raw)} bytes, ~{_tokens(raw)} tokens")
     print()
 
 
-def _report(label: str, raw_bytes: int, mcp_bytes: int) -> None:
-    pct = round((1 - mcp_bytes / raw_bytes) * 100) if raw_bytes else 0
+def _report(label: str, raw_json: str, mcp_json: str) -> None:
+    raw_tokens, mcp_tokens = _tokens(raw_json), _tokens(mcp_json)
+    pct = round((1 - mcp_tokens / raw_tokens) * 100) if raw_tokens else 0
     print(f"{label}:")
-    print(f"  Raw: {raw_bytes} bytes, ~{raw_bytes // 4} tokens")
-    print(f"  MCP: {mcp_bytes} bytes, ~{mcp_bytes // 4} tokens (-{pct}% vs. raw)\n")
+    print(f"  Raw: {len(raw_json)} bytes, ~{raw_tokens} tokens")
+    print(f"  MCP: {len(mcp_json)} bytes, ~{mcp_tokens} tokens (-{pct}% vs. raw)\n")
 
 
 async def measure_response_sizes() -> None:
@@ -176,7 +188,8 @@ async def measure_response_sizes() -> None:
         resp.raise_for_status()
         raw_collection = resp.json()
 
-    raw_bytes = len(json.dumps(raw_collection))
+    raw_json = json.dumps(raw_collection)
+    raw_tokens = _tokens(raw_json)
 
     # Sort by id desc so the work packages just created above are always
     # within the first `limit` rows, regardless of how many other work
@@ -187,20 +200,22 @@ async def measure_response_sizes() -> None:
     if len(rows) != len(created_ids):
         print(f"Warning: expected {len(created_ids)} rows, found {len(rows)} — numbers below are partial.\n")
 
-    full_bytes = len(json.dumps({"results": [_to_payload(r) for r in rows]}))
+    full_json = json.dumps({"results": [_to_payload(r) for r in rows]})
+    full_tokens = _tokens(full_json)
     select_fields = ["id", "display_id", "subject", "status", "assignee"]
-    select_bytes = len(
-        json.dumps({"results": [{k: v for k, v in _to_payload(r).items() if k in select_fields} for r in rows]})
+    select_json = json.dumps(
+        {"results": [{k: v for k, v in _to_payload(r).items() if k in select_fields} for r in rows]}
     )
+    select_tokens = _tokens(select_json)
 
-    print(f"Raw OpenProject REST API v3 (HAL), {len(rows)} rows: {raw_bytes} bytes, ~{raw_bytes // 4} tokens")
+    print(f"Raw OpenProject REST API v3 (HAL), {len(rows)} rows: {len(raw_json)} bytes, ~{raw_tokens} tokens")
     print(
-        f"list_work_packages (MCP), {len(rows)} rows: {full_bytes} bytes, ~{full_bytes // 4} tokens "
-        f"(-{round((1 - full_bytes / raw_bytes) * 100)}% vs. raw)"
+        f"list_work_packages (MCP), {len(rows)} rows: {len(full_json)} bytes, ~{full_tokens} tokens "
+        f"(-{round((1 - full_tokens / raw_tokens) * 100)}% vs. raw)"
     )
     print(
-        f"list_work_packages with select (5 fields): {select_bytes} bytes, ~{select_bytes // 4} tokens "
-        f"(-{round((1 - select_bytes / raw_bytes) * 100)}% vs. raw)"
+        f"list_work_packages with select (5 fields): {len(select_json)} bytes, ~{select_tokens} tokens "
+        f"(-{round((1 - select_tokens / raw_tokens) * 100)}% vs. raw)"
     )
     print(
         f"\nCreated work packages {created_ids} in project '{project}' for this measurement; "
@@ -213,14 +228,14 @@ async def measure_response_sizes() -> None:
         single_id = created_ids[0]
         resp = await http.get(f"/api/v3/work_packages/{single_id}")
         resp.raise_for_status()
-        raw_single_bytes = len(json.dumps(resp.json()))
+        raw_single_json = json.dumps(resp.json())
         lock_version = resp.json()["lockVersion"]
 
         detail = await client.get_work_package(single_id)
         _report(
             "get_work_package (single read)",
-            raw_single_bytes,
-            len(json.dumps(_to_payload(detail))),
+            raw_single_json,
+            json.dumps(_to_payload(detail)),
         )
 
         # --- Search: search_work_packages vs. GET /work_packages?filters=subject_or_id ---
@@ -234,13 +249,13 @@ async def measure_response_sizes() -> None:
         )
         resp = await http.get("/api/v3/work_packages", params={"filters": raw_filters})
         resp.raise_for_status()
-        raw_search_bytes = len(json.dumps(resp.json()))
+        raw_search_json = json.dumps(resp.json())
 
         search_result = await client.search_work_packages(query=query, project=project)
         _report(
             f"search_work_packages ({len(search_result.results)} rows)",
-            raw_search_bytes,
-            len(json.dumps({"results": [_to_payload(r) for r in search_result.results]})),
+            raw_search_json,
+            json.dumps({"results": [_to_payload(r) for r in search_result.results]}),
         )
 
         # --- Confirmed single update: update_work_package vs. PATCH /work_packages/{id} ---
@@ -249,13 +264,13 @@ async def measure_response_sizes() -> None:
             json={"lockVersion": lock_version, "percentageDone": 40},
         )
         resp.raise_for_status()
-        raw_update_bytes = len(json.dumps(resp.json()))
+        raw_update_json = json.dumps(resp.json())
 
         update_result = await client.update_work_package(work_package_id=single_id, percentage_done=60, confirm=True)
         _report(
             "update_work_package (confirmed write)",
-            raw_update_bytes,
-            len(json.dumps(_to_payload(update_result))),
+            raw_update_json,
+            json.dumps(_to_payload(update_result)),
         )
 
         # --- Bulk create ×5: bulk_create_work_packages vs. 5x POST /work_packages ---
@@ -263,14 +278,14 @@ async def measure_response_sizes() -> None:
         # (same type as SAMPLE_WORK_PACKAGES) — avoids a name/id mismatch between the
         # raw and MCP creation paths.
         bulk_items = [{"project": project, "type": "7", "subject": f"Bulk-created sample {i}"} for i in range(1, 6)]
-        raw_bulk_create_bytes = 0
+        raw_bulk_create_parts = []
         for item in bulk_items:
             resp = await http.post(
                 f"/api/v3/projects/{project}/work_packages",
                 json={"subject": item["subject"], "_links": {"type": {"href": "/api/v3/types/7"}}},
             )
             resp.raise_for_status()
-            raw_bulk_create_bytes += len(json.dumps(resp.json()))
+            raw_bulk_create_parts.append(resp.json())
 
         bulk_create_result = await client.bulk_create_work_packages(items=bulk_items, confirm=True)
         created_ids.extend(
@@ -280,13 +295,13 @@ async def measure_response_sizes() -> None:
         )
         _report(
             f"bulk_create_work_packages (x{len(bulk_items)}, vs. {len(bulk_items)} individual raw POSTs)",
-            raw_bulk_create_bytes,
-            len(json.dumps(_to_payload(bulk_create_result))),
+            json.dumps(raw_bulk_create_parts),
+            json.dumps(_to_payload(bulk_create_result)),
         )
 
         # --- Bulk update ×5: bulk_update_work_packages vs. 5x PATCH /work_packages/{id} ---
         bulk_target_ids = created_ids[-len(bulk_items) :]
-        raw_bulk_update_bytes = 0
+        raw_bulk_update_parts = []
         for wp_id in bulk_target_ids:
             resp = await http.get(f"/api/v3/work_packages/{wp_id}")
             resp.raise_for_status()
@@ -295,14 +310,14 @@ async def measure_response_sizes() -> None:
                 f"/api/v3/work_packages/{wp_id}", json={"lockVersion": wp_lock_version, "percentageDone": 20}
             )
             resp.raise_for_status()
-            raw_bulk_update_bytes += len(json.dumps(resp.json()))
+            raw_bulk_update_parts.append(resp.json())
 
         bulk_update_items = [{"work_package_id": wp_id, "percentage_done": 30} for wp_id in bulk_target_ids]
         bulk_update_result = await client.bulk_update_work_packages(items=bulk_update_items, confirm=True)
         _report(
             f"bulk_update_work_packages (x{len(bulk_target_ids)}, vs. {len(bulk_target_ids)} individual raw PATCHes)",
-            raw_bulk_update_bytes,
-            len(json.dumps(_to_payload(bulk_update_result))),
+            json.dumps(raw_bulk_update_parts),
+            json.dumps(_to_payload(bulk_update_result)),
         )
 
     await client.aclose()
