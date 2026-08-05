@@ -1223,12 +1223,14 @@ async def test_views_categories_and_attachments() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_work_package_attachments_walks_every_server_page() -> None:
-    """list_work_package_attachments must send an explicit pageSize and walk
-    every server page, rather than silently relying on OpenProject's own
-    server-side default page size (which would make any attachment beyond
-    that default permanently unreachable). max_page_size=2: page 1 has 2,
-    page 2 has the remaining 1."""
+async def test_list_work_package_attachments_walks_every_server_page_when_allowlist_thins_first_page() -> None:
+    """Regression (OPM-379/F5, ported from OPM-373 Phase 5): a single fetch
+    capped at settings.max_results used to be the ONLY fetch this tool ever
+    made, unconditionally returning every attachment with no pagination
+    contract at all. Now scans server pages via scan_records_and_paginate,
+    same fix pattern already applied to list_documents/list_news/etc --
+    stopping as soon as `limit + 1` allowed matches are found rather than
+    walking the full collection."""
     requested_offsets: list[str] = []
 
     def _attachment(attachment_id: int) -> dict:
@@ -1271,11 +1273,15 @@ async def test_list_work_package_attachments_walks_every_server_page() -> None:
     settings = dataclasses.replace(make_settings(), max_page_size=2, read_projects=("demo",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_work_package_attachments(7)
+    # limit=2 (matching max_page_size) needs the limit+1 lookahead match on
+    # page 2 to confirm truncation -- both server pages get requested.
+    result = await client.list_work_package_attachments(7, limit=2)
 
     assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
-    assert result.count == 3
-    assert {a.id for a in result.results} == {1, 2, 3}
+    assert result.count == 2
+    assert result.truncated is True
+    assert result.next_offset == 2
+    assert {a.id for a in result.results} == {1, 2}
 
     await client.aclose()
 

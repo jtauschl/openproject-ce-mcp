@@ -34,56 +34,46 @@ def _attachment_payload(attachment_id: int = 5, *, container_href: str | None = 
 
 
 @pytest.mark.asyncio
-async def test_list_for_work_package_walks_every_server_page() -> None:
-    pages = {1: [_attachment_payload(1), _attachment_payload(2)], 2: [_attachment_payload(3)]}
+async def test_list_for_work_package_requests_one_page_with_offset_and_page_size() -> None:
+    """OPM-379/F5: the Adapter now returns one page at a time (records, total)
+    -- the Service scans multiple pages via scan_records_and_paginate,
+    matching every other migrated list domain's shape (the Adapter no longer
+    walks the whole collection itself)."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        offset = int(request.url.params["offset"])
+        assert request.url.params["offset"] == "2"
         assert request.url.params["pageSize"] == "2"
-        elements = pages.get(offset, [])
-        return httpx.Response(200, json={"_embedded": {"elements": elements}}, request=request)
+        return httpx.Response(
+            200,
+            json={"_embedded": {"elements": [_attachment_payload(3)]}, "total": 3},
+            request=request,
+        )
 
     async with _client(handler) as http_client:
         api = HttpxAttachmentApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
-        records = await api.list_for_work_package(9, page_size=2)
+        records, total = await api.list_for_work_package(9, offset=2, page_size=2)
 
-    assert [r.summary.id for r in records] == [1, 2, 3]
-
-
-@pytest.mark.asyncio
-async def test_list_for_work_package_stops_on_short_final_page() -> None:
-    async def handler(request: httpx.Request) -> httpx.Response:
-        offset = int(request.url.params["offset"])
-        assert offset == 1
-        return httpx.Response(200, json={"_embedded": {"elements": [_attachment_payload(1)]}}, request=request)
-
-    async with _client(handler) as http_client:
-        api = HttpxAttachmentApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
-        records = await api.list_for_work_package(9, page_size=50)
-
-    assert len(records) == 1
+    assert [r.summary.id for r in records] == [3]
+    assert total == 3
 
 
 @pytest.mark.asyncio
-async def test_list_for_work_package_guards_against_a_server_that_ignores_paging() -> None:
-    """A server ignoring offset/pageSize and always returning the same full
-    page must not loop forever -- the seen_ids/is_first_page guard breaks
-    once a subsequent page's ids are a subset of what's already been seen."""
-    call_count = 0
+async def test_list_for_work_package_falls_back_to_page_length_when_total_is_missing() -> None:
+    """This endpoint's response was never confirmed to carry a real `total`
+    field -- falls back to len(records) (this page's own count), the same
+    unverified-total fallback httpx_sprint_api.py already uses."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal call_count
-        call_count += 1
         return httpx.Response(
             200, json={"_embedded": {"elements": [_attachment_payload(1), _attachment_payload(2)]}}, request=request
         )
 
     async with _client(handler) as http_client:
         api = HttpxAttachmentApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
-        records = await api.list_for_work_package(9, page_size=1)
+        records, total = await api.list_for_work_package(9, offset=1, page_size=50)
 
-    assert [r.summary.id for r in records] == [1, 2]
-    assert call_count == 2
+    assert len(records) == 2
+    assert total == 2
 
 
 @pytest.mark.asyncio

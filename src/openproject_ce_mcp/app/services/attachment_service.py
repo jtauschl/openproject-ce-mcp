@@ -64,6 +64,7 @@ from typing import Any
 from ...config import Settings
 from ...models import AttachmentListResult, AttachmentSummary, AttachmentWriteResult
 from ..errors import InvalidInputError, OpenProjectServerError, PermissionDeniedError
+from ..pagination import clamp_limit, scan_records_and_paginate
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..policies.scope import id_from_href
@@ -113,19 +114,47 @@ class AttachmentService:
     def _stamp(self, summary: AttachmentSummary) -> AttachmentSummary:
         return hidden_fields.apply_hidden_fields("attachment", summary, settings=self._settings)
 
-    async def list_for_work_package(self, work_package_id: int | str) -> AttachmentListResult:
+    async def list_for_work_package(
+        self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
+    ) -> AttachmentListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
+        effective_limit = clamp_limit(
+            limit,
+            default_page_size=self._settings.default_page_size,
+            max_page_size=self._settings.max_page_size,
+            max_results=self._settings.max_results,
+        )
         # Resolving the id already confirms the anchor work package itself is
         # allowed against OPENPROJECT_READ_PROJECTS before its attachments
         # are fetched (verbatim behavior of client.py's original order).
         resolved_id = await self._resolve_work_package_id(work_package_id, write=False)
-        records = await self._api.list_for_work_package(resolved_id, page_size=self._settings.max_page_size)
-        results = [
-            self._stamp(record.summary)
-            for record in records
-            if record.summary.container_type == "WorkPackage" and record.summary.container_id == resolved_id
-        ]
-        return AttachmentListResult(count=len(results), results=results)
+
+        def _record_allowed(record: Any) -> bool:
+            return record.summary.container_type == "WorkPackage" and record.summary.container_id == resolved_id
+
+        # A single fetch capped at settings.max_results silently hid any
+        # attachment beyond that cap -- scan server pages instead, same
+        # early-stopping pattern already applied to Documents/Views/News
+        # (OPM-373 Phase 5, OPM-379/F5).
+        raw_items, truncated = await scan_records_and_paginate(
+            lambda o, ps: self._api.list_for_work_package(resolved_id, offset=o, page_size=ps),
+            item_allowed=_record_allowed,
+            server_page_size=self._settings.max_page_size,
+            offset=offset,
+            limit=effective_limit,
+            key=lambda r: r.summary.id,
+        )
+        results = [self._stamp(record.summary) for record in raw_items]
+        total = len(results)
+        return AttachmentListResult(
+            offset=offset,
+            limit=effective_limit,
+            total=total,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
+            results=results,
+        )
 
     async def get(self, attachment_id: int) -> AttachmentSummary:
         access.ensure_read_enabled("work_package", settings=self._settings)

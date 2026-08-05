@@ -29,45 +29,67 @@ def _record(reminder_id: int = 7, *, remindable_href: str | None = "/api/v3/work
     return ReminderRecord(summary=lambda: summary, remindable_link=remindable_link)
 
 
-def _record_that_crashes_if_normalized(reminder_id: int, *, remindable_href: str | None) -> ReminderRecord:
-    """A record whose .summary() raises -- for proving list_all() never
-    normalizes a record it has already decided to filter out. Mirrors the
-    real HttpxReminderApi's actual failure mode: normalize_reminder crashes
-    with a KeyError on a payload missing "id", not a made-up test-only
-    exception type."""
+def _raw(reminder_id: int, *, remindable_href: str | None) -> dict:
+    """A raw payload standing in for what fetch_page's `_embedded.elements`
+    would contain -- `_FakeReminderApi.to_record` below turns this into a
+    ReminderRecord, mirroring the real Adapter's fetch_page/to_record split
+    (OPM-379/F5)."""
+    links = {"remindable": {"href": remindable_href}} if remindable_href is not None else {}
+    return {"id": reminder_id, "_links": links}
 
-    def _boom() -> ReminderSummary:
-        raise AssertionError(
-            f"summary() must never be called for reminder {reminder_id} once "
-            "it has been filtered out by the allowlist check"
-        )
 
-    remindable_link = {"href": remindable_href} if remindable_href is not None else None
-    return ReminderRecord(summary=_boom, remindable_link=remindable_link)
+def _record_that_crashes_if_normalized(reminder_id: int, *, remindable_href: str | None) -> dict:
+    """A raw payload whose to_record().summary() raises -- for proving
+    list_all() never normalizes a record it has already decided to filter
+    out. Mirrors the real HttpxReminderApi's actual failure mode:
+    normalize_reminder crashes with a KeyError on a payload missing "id",
+    not a made-up test-only exception type."""
+    links = {"remindable": {"href": remindable_href}} if remindable_href is not None else {}
+    return {"id": reminder_id, "_links": links, "_crash_if_normalized": True}
 
 
 class _FakeReminderApi:
-    def __init__(self, records: list[ReminderRecord] | None = None, *, reminder_id: int = 7) -> None:
-        # `_by_id` is keyed by the explicitly-passed `reminder_id`, never by
-        # calling `.summary()` -- doing so would defeat
-        # test_list_all_never_normalizes_a_record_filtered_out_by_the_allowlist's
-        # whole point (a record whose summary() intentionally raises must
-        # never have it called, not even by fake-API bookkeeping). Single-
-        # record fakes (used by get()/get_remindable_link()/update()) pass
-        # `reminder_id` explicitly; multi-record fakes (used by list_all()
-        # only) never call get()/update() and don't need `_by_id` populated.
-        self._list_records = records if records is not None else [_record(reminder_id)]
-        self._by_id = {reminder_id: self._list_records[0]} if len(self._list_records) == 1 else None
-        self.list_all_calls = 0
+    def __init__(
+        self, raw_elements: list[dict] | None = None, *, reminder_id: int = 7, record: ReminderRecord | None = None
+    ) -> None:
+        # Single-record fakes (used by get()/get_remindable_link()/update())
+        # pass `reminder_id` (and optionally an explicit `record`, e.g. with a
+        # malformed/missing remindable link); multi-record fakes (used by
+        # list_all() only) never call get()/update() and don't need `_by_id`
+        # populated.
+        self._raw_elements = (
+            raw_elements
+            if raw_elements is not None
+            else [_raw(reminder_id, remindable_href="/api/v3/work_packages/42")]
+        )
+        self._by_id = {reminder_id: record or _record(reminder_id)} if raw_elements is None else None
+        self.fetch_page_calls = 0
         self.get_calls: list[int] = []
         self.get_remindable_link_calls: list[int] = []
         self.create_calls: list[tuple[int, dict]] = []
         self.update_calls: list[tuple[int, dict]] = []
         self.delete_calls: list[int] = []
 
-    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[ReminderRecord], int]:
-        self.list_all_calls += 1
-        return list(self._list_records), len(self._list_records)
+    async def fetch_page(self, *, offset: int, page_size: int) -> dict:
+        self.fetch_page_calls += 1
+        if offset > 1:
+            return {"_embedded": {"elements": []}}
+        return {"_embedded": {"elements": self._raw_elements}}
+
+    def to_record(self, payload: dict) -> ReminderRecord:
+        remindable_link = payload.get("_links", {}).get("remindable")
+        reminder_id = payload["id"]
+        if payload.get("_crash_if_normalized"):
+
+            def _boom() -> ReminderSummary:
+                raise AssertionError(
+                    f"summary() must never be called for reminder {reminder_id} once "
+                    "it has been filtered out by the allowlist check"
+                )
+
+            return ReminderRecord(summary=_boom, remindable_link=remindable_link)
+        summary = _summary(reminder_id)
+        return ReminderRecord(summary=lambda: summary, remindable_link=remindable_link)
 
     async def get(self, reminder_id: int) -> ReminderRecord:
         self.get_calls.append(reminder_id)
@@ -166,14 +188,14 @@ async def test_list_all_returns_empty_without_a_request_under_empty_read_project
 
     assert result.count == 0
     assert result.results == []
-    assert api.list_all_calls == 0
+    assert api.fetch_page_calls == 0
 
 
 @pytest.mark.asyncio
 async def test_list_all_filters_by_read_projects_via_work_package() -> None:
-    allowed = _record(1, remindable_href="/api/v3/work_packages/1")
-    denied = _record(2, remindable_href="/api/v3/work_packages/2")
-    api = _FakeReminderApi(records=[allowed, denied])
+    allowed = _raw(1, remindable_href="/api/v3/work_packages/1")
+    denied = _raw(2, remindable_href="/api/v3/work_packages/2")
+    api = _FakeReminderApi(raw_elements=[allowed, denied])
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
     check = _work_package_project_allowed_from({"/api/v3/work_packages/1"})
     service = _service(api=api, settings=settings, work_package_project_allowed=check)
@@ -194,9 +216,9 @@ async def test_list_all_never_normalizes_a_record_filtered_out_by_the_allowlist(
     record missing an unrelated field like "id" instead of being silently
     excluded. ReminderRecord.summary is a lazy callable specifically so a
     denied record's summary() is never invoked."""
-    allowed = _record(1, remindable_href="/api/v3/work_packages/1")
+    allowed = _raw(1, remindable_href="/api/v3/work_packages/1")
     denied = _record_that_crashes_if_normalized(2, remindable_href="/api/v3/work_packages/2")
-    api = _FakeReminderApi(records=[allowed, denied])
+    api = _FakeReminderApi(raw_elements=[allowed, denied])
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
     check = _work_package_project_allowed_from({"/api/v3/work_packages/1"})
     service = _service(api=api, settings=settings, work_package_project_allowed=check)
@@ -209,8 +231,8 @@ async def test_list_all_never_normalizes_a_record_filtered_out_by_the_allowlist(
 
 @pytest.mark.asyncio
 async def test_list_all_skips_records_with_no_remindable_link() -> None:
-    no_link = _record(1, remindable_href=None)
-    api = _FakeReminderApi(records=[no_link])
+    no_link = _raw(1, remindable_href=None)
+    api = _FakeReminderApi(raw_elements=[no_link])
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
     check = _work_package_project_allowed_from(set())
     service = _service(api=api, settings=settings, work_package_project_allowed=check)
@@ -353,7 +375,7 @@ async def test_update_requires_a_field() -> None:
 
 @pytest.mark.asyncio
 async def test_update_denies_malformed_remindable_link_even_under_open_scope() -> None:
-    api = _FakeReminderApi(records=[_record(7, remindable_href=None)])
+    api = _FakeReminderApi(record=_record(7, remindable_href=None))
     settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("*",))
     service = _service(api=api, settings=settings)
 
@@ -368,7 +390,7 @@ async def test_delete_denies_malformed_remindable_link_even_under_open_scope() -
     """Mirrors test_update_denies_malformed_remindable_link_even_under_open_scope
     -- delete() shares the identical _ensure_reminder_project_write_allowed
     helper, so this must fail closed the same way, not just update()."""
-    api = _FakeReminderApi(records=[_record(7, remindable_href=None)])
+    api = _FakeReminderApi(record=_record(7, remindable_href=None))
     settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("*",))
     service = _service(api=api, settings=settings)
 

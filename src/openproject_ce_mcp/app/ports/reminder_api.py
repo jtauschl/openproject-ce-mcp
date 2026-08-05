@@ -67,15 +67,26 @@ class ReminderApi(Protocol):
     this Protocol, never on HttpxReminderApi concretely (enforced by the
     architecture-boundary test).
 
-    `list_all(offset, page_size)` takes real pagination parameters -- the
-    collection is genuinely `OffsetPaginatedCollection` server-side (the same
-    real server-side pagination Roles/Memberships already page-walk), so an
-    earlier version of this method that issued a single unparameterized GET
-    was silently returning only the server's default page instead of every
+    `fetch_page(offset, page_size)` returns the raw HAL page dict (not a
+    list of records), because the Service's per-item allowlist check needs
+    an HTTP call per candidate work package (`WorkPackageProjectAllowedCheck`)
+    -- genuine async I/O per item, not a pure-function predicate over already-
+    normalized fields. `fetch_bounded_and_paginate` (app/pagination.py)
+    accepts exactly this raw-page-plus-async-`item_allowed` shape, the same
+    one `RelationApi.fetch_page`/`to_record` already use for the identical
+    reason (Relations' own per-endpoint allowlist check). `to_record`
+    converts one raw element into a `ReminderRecord` -- kept synchronous and
+    separate from `fetch_page` so the Service can filter raw elements BEFORE
+    normalizing (see `ReminderRecord`'s own docstring for why `summary` stays
+    lazy). The collection is genuinely `OffsetPaginatedCollection`
+    server-side (the same real server-side pagination Roles/Memberships
+    already page-walk), so a fixed page size must always be sent -- omitting
+    it silently returns only the server's default page instead of every
     reminder.
     """
 
-    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[ReminderRecord], int]: ...
+    async def fetch_page(self, *, offset: int, page_size: int) -> dict[str, Any]: ...
+    def to_record(self, payload: dict[str, Any]) -> ReminderRecord: ...
     async def get(self, reminder_id: int) -> ReminderRecord: ...
     async def get_remindable_link(self, reminder_id: int) -> dict[str, Any] | None: ...
     async def create(self, work_package_id: int, payload: dict[str, Any]) -> ReminderRecord: ...

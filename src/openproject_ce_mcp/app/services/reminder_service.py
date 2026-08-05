@@ -38,10 +38,12 @@ scope) -- verbatim behavior of client.py's `_ensure_read_enabled`/
 
 from __future__ import annotations
 
+from typing import Any
+
 from ...config import Settings
 from ...models import ReminderListResult, ReminderSummary, ReminderWriteResult
 from ..errors import InvalidInputError, PermissionDeniedError
-from ..pagination import paginate_all
+from ..pagination import clamp_limit, fetch_bounded_and_paginate
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.reminder_api import ReminderApi
@@ -71,40 +73,59 @@ class ReminderService:
     def _stamp(self, summary: ReminderSummary) -> ReminderSummary:
         return hidden_fields.apply_hidden_fields("reminder", summary, settings=self._settings)
 
-    async def list_all(self) -> ReminderListResult:
+    async def list_all(self, *, offset: int = 1, limit: int | None = None) -> ReminderListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
+        effective_limit = clamp_limit(
+            limit,
+            default_page_size=self._settings.default_page_size,
+            max_page_size=self._settings.max_page_size,
+            max_results=self._settings.max_results,
+        )
         if not self._settings.read_projects:
-            return ReminderListResult(count=0, results=[])  # deny-all: skip the network call entirely
+            # deny-all: skip the network call entirely
+            return ReminderListResult(
+                offset=offset, limit=effective_limit, total=0, count=0, next_offset=None, truncated=False, results=[]
+            )
+        allowlisted = not scope_policy.scope_allows_all(self._settings.read_projects)
+        cache = WorkPackageAllowedContext()
+
+        async def item_allowed(raw: dict[str, Any]) -> bool:
+            if not allowlisted:
+                return True
+            record = self._api.to_record(raw)
+            href = record.remindable_link.get("href") if isinstance(record.remindable_link, dict) else None
+            if not href:
+                return False  # can't verify -> fail closed
+            return await self._work_package_project_allowed(href, context=cache)
+
         # Reminders is really offset-paginated server-side (verified against
         # OpenProject's own API implementation: ReminderCollectionRepresenter
         # subclasses OffsetPaginatedCollection) -- a single unparameterized
-        # GET silently returned only the server's default page. Page-walk the
-        # complete set, the same max_page_size-per-round-trip pattern already
-        # used for Roles/Memberships (see app/pagination.paginate_all).
-        records = await paginate_all(
-            lambda offset, page_size: self._api.list_all(offset=offset, page_size=page_size),
-            page_size=self._settings.max_page_size,
-            # ReminderRecord.summary is a LAZY callable (never invoked for a
-            # record the allowlist ends up filtering out) -- keying on the
-            # raw remindable_link href instead of calling summary() avoids
-            # forcing that normalization just to detect a repeated page.
-            key=lambda r: (r.remindable_link or {}).get("href"),
+        # GET silently returned only the server's default page, and walking
+        # the complete collection on every call (the prior paginate_all
+        # approach) never reduced server load. Scan just enough pages to
+        # fill the requested window instead, same early-stopping pattern as
+        # Relations (OPM-373 Phase 5, OPM-379/F5). .summary() (LAZY, see
+        # ReminderRecord's own docstring) is called only AFTER filtering,
+        # inside `normalize`, matching client.py's original "filter raw,
+        # normalize survivors" order.
+        raw_items, total, next_offset, truncated = await fetch_bounded_and_paginate(
+            fetch_page=lambda o, ps: self._api.fetch_page(offset=o, page_size=ps),
+            normalize=lambda raw: self._stamp(self._api.to_record(raw).summary()),
+            item_allowed=item_allowed,
+            server_page_size=self._settings.max_page_size,
+            offset=offset,
+            limit=effective_limit,
         )
-        if not scope_policy.scope_allows_all(self._settings.read_projects):
-            cache = WorkPackageAllowedContext()
-            filtered = []
-            for record in records:
-                href = record.remindable_link.get("href") if isinstance(record.remindable_link, dict) else None
-                if not href:
-                    continue  # can't verify -> fail closed
-                if await self._work_package_project_allowed(href, context=cache):
-                    filtered.append(record)
-            records = filtered
-        # .summary() is called only AFTER filtering -- matching client.py's
-        # original "filter raw, normalize survivors" order (see
-        # ReminderRecord's docstring for why this must stay lazy).
-        results = [self._stamp(record.summary()) for record in records]
-        return ReminderListResult(count=len(results), results=results)
+        return ReminderListResult(
+            offset=offset,
+            limit=effective_limit,
+            total=total,
+            count=total,
+            next_offset=next_offset,
+            truncated=truncated,
+            results=raw_items,
+        )
 
     async def create(
         self,

@@ -100,37 +100,28 @@ class HttpxAttachmentApi:
             container_link=payload.get("_links", {}).get("container"),
         )
 
-    async def list_for_work_package(self, work_package_id: int, *, page_size: int) -> list[AttachmentRecord]:
+    async def list_for_work_package(
+        self, work_package_id: int, *, offset: int, page_size: int
+    ) -> tuple[list[AttachmentRecord], int]:
         # No pageSize was ever sent by the original code, silently relying on
         # OpenProject's own server-side default page size -- any attachment
-        # beyond that default was permanently unreachable. Walk every server
-        # page instead, verbatim of client.py's original guard-loop shape.
-        # page_size comes from the Service (settings.max_page_size), not
-        # hardcoded here -- Adapters hold no Settings dependency.
-        offset = 1
-        results: list[AttachmentRecord] = []
-        seen_ids: set[Any] = set()
-        is_first_page = True
-        while True:
-            payload = await self._transport.get_json(
-                f"work_packages/{work_package_id}/attachments",
-                params={"offset": str(offset), "pageSize": str(page_size)},
-            )
-            elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
-            # Some work-package-scoped sub-collection endpoints may silently
-            # ignore offset/pageSize and always return every element --
-            # without this check, `len(elements) < page_size` never becomes
-            # true and this loops forever, re-fetching the same full page.
-            page_ids = {item.get("id") for item in elements}
-            if not is_first_page and page_ids and page_ids <= seen_ids:
-                break
-            is_first_page = False
-            seen_ids.update(page_ids)
-            results.extend(self._record(item) for item in elements)
-            if len(elements) < page_size:
-                break
-            offset += 1
-        return results
+        # beyond that default was permanently unreachable. Returns one page
+        # at a time now (OPM-379/F5) -- the Service scans pages via
+        # scan_records_and_paginate instead of this Adapter walking the
+        # entire collection itself, matching every other migrated list
+        # domain's shape. This endpoint's response was never confirmed to
+        # carry a real `total` field (only `_embedded.elements` was ever
+        # read in client.py's original) -- `total` falls back to
+        # `len(records)` (this page's own count), the same
+        # unverified-total fallback `httpx_sprint_api.py` already uses.
+        payload = await self._transport.get_json(
+            f"work_packages/{work_package_id}/attachments",
+            params={"offset": str(offset), "pageSize": str(page_size)},
+        )
+        elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+        records = [self._record(item) for item in elements]
+        total = int(payload.get("total", len(records)))
+        return records, total
 
     async def get(self, attachment_id: int) -> AttachmentRecord:
         return self._record(await self._transport.get_json(f"attachments/{attachment_id}"))

@@ -79,6 +79,14 @@ support.
   to OpenProject at once (max 10 concurrent) instead of firing all of them
   simultaneously** — with the full 100-item batch limit, this could
   previously mean up to 100 concurrent HTTP requests from a single call.
+- **Breaking: `list_work_package_attachments`, `list_reminders`, and
+  `list_work_package_file_links` now accept `offset`/`limit` and return a
+  paginated result (`total`/`next_offset`/`truncated`) instead of an
+  unbounded, uncapped collection.** All three used to fetch the entire
+  matching collection on every call with no way to request a smaller page —
+  `total` on these tools is now a lower bound (the count returned on this
+  page), the same convention every other paginated list tool already uses;
+  page with `next_offset` until it is `null`.
 
 ### Docs
 

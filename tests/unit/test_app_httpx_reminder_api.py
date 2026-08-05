@@ -31,7 +31,11 @@ def _reminder_payload(reminder_id: int = 7, *, remindable_href: str | None = "/a
 
 
 @pytest.mark.asyncio
-async def test_list_all_requests_reminders_with_pagination_params() -> None:
+async def test_fetch_page_requests_reminders_with_pagination_params() -> None:
+    """OPM-379/F5: fetch_page returns the raw HAL page (not normalized
+    records) -- the Service scans multiple pages via
+    fetch_bounded_and_paginate + to_record, matching Relations' shape."""
+
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/reminders"
         assert request.url.params["offset"] == "1"
@@ -40,27 +44,27 @@ async def test_list_all_requests_reminders_with_pagination_params() -> None:
 
     async with _client(handler) as http_client:
         api = HttpxReminderApi(HttpxTransport(http_client))
-        records, total = await api.list_all(offset=1, page_size=20)
+        payload = await api.fetch_page(offset=1, page_size=20)
 
-    assert total == 1
-    assert len(records) == 1
-    assert records[0].summary().id == 7
-    assert records[0].summary().work_package_id == 42
-    assert records[0].summary().creator == "Alice"
-    assert records[0].remindable_link == {"href": "/api/v3/work_packages/42"}
+    elements = payload["_embedded"]["elements"]
+    assert len(elements) == 1
+    record = api.to_record(elements[0])
+    assert record.summary().id == 7
+    assert record.summary().work_package_id == 42
+    assert record.summary().creator == "Alice"
+    assert record.remindable_link == {"href": "/api/v3/work_packages/42"}
 
 
 @pytest.mark.asyncio
-async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
+async def test_fetch_page_missing_embedded_elements_returns_empty_payload() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
         api = HttpxReminderApi(HttpxTransport(http_client))
-        records, total = await api.list_all(offset=1, page_size=20)
+        payload = await api.fetch_page(offset=1, page_size=20)
 
-    assert records == []
-    assert total == 0
+    assert payload.get("_embedded", {}).get("elements", []) == []
 
 
 @pytest.mark.asyncio

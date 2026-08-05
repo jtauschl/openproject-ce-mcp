@@ -14,13 +14,14 @@ distinguish "no container link at all" from "container link present but
 unparsable," both of which collapse to a fail-closed denial without losing
 that distinction at the Port boundary.
 
-`list_for_work_package` is a hand-rolled page-walk (`offset`/`page_size`
-params on the Adapter side, not `paginate_all`) because the Attachments
-collection endpoint's response was never confirmed to carry a `total` field
-in the original client.py code (only `_embedded.elements` was ever read) --
-using `paginate_all`'s `(items, total)` contract here would be an unverified,
-speculative behavior change. See `HttpxAttachmentApi.list_for_work_package`'s
-own docstring for the guard-loop detail.
+`list_for_work_package` returns one page at a time (`offset`/`page_size` ->
+`(records, total)`), scanned by the Service via `scan_records_and_paginate`
+(OPM-379/F5) -- matching every other migrated list domain's shape. The
+Attachments collection endpoint's response was never confirmed to carry a
+real `total` field in the original client.py code (only `_embedded.elements`
+was ever read), so the Adapter falls back to `total = len(records)` (this
+page's own count) when the server omits it, the same fallback
+`httpx_sprint_api.py` already uses.
 
 `get_max_attachment_size` is a narrow, single-field lookup against the
 otherwise entirely unmigrated, global Instance Configuration domain -- not
@@ -59,7 +60,9 @@ class AttachmentApi(Protocol):
     architecture-boundary test).
     """
 
-    async def list_for_work_package(self, work_package_id: int, *, page_size: int) -> list[AttachmentRecord]: ...
+    async def list_for_work_package(
+        self, work_package_id: int, *, offset: int, page_size: int
+    ) -> tuple[list[AttachmentRecord], int]: ...
     async def get(self, attachment_id: int) -> AttachmentRecord: ...
     async def create(
         self,

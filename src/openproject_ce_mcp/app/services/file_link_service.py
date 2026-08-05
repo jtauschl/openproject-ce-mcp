@@ -38,7 +38,7 @@ from __future__ import annotations
 
 from ...config import Settings
 from ...models import FileLinkListResult, FileLinkSummary, FileLinkWriteResult
-from ..pagination import paginate_all
+from ..pagination import clamp_limit, scan_records_and_paginate
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..policies.scope import id_from_href
@@ -66,8 +66,16 @@ class FileLinkService:
     def _stamp(self, summary: FileLinkSummary) -> FileLinkSummary:
         return hidden_fields.apply_hidden_fields("file_link", summary, settings=self._settings)
 
-    async def list_for_work_package(self, work_package_id: int | str) -> FileLinkListResult:
+    async def list_for_work_package(
+        self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
+    ) -> FileLinkListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
+        effective_limit = clamp_limit(
+            limit,
+            default_page_size=self._settings.default_page_size,
+            max_page_size=self._settings.max_page_size,
+            max_results=self._settings.max_results,
+        )
         # Resolving the id already confirms the anchor work package itself is
         # allowed against OPENPROJECT_READ_PROJECTS before its file links are
         # fetched (verbatim behavior of client.py's original comment/order).
@@ -75,16 +83,30 @@ class FileLinkService:
         # File Links is really offset-paginated server-side (verified against
         # OpenProject's own API implementation: FileLinkCollectionRepresenter
         # subclasses OffsetPaginatedCollection) -- a single unparameterized
-        # GET silently returned only the server's default page. Page-walk the
-        # complete set for this one work package, the same max_page_size-per-
-        # round-trip pattern already used for Roles/Memberships/Reminders.
-        records = await paginate_all(
-            lambda offset, page_size: self._api.list_for_work_package(resolved_id, offset=offset, page_size=page_size),
-            page_size=self._settings.max_page_size,
+        # GET silently returned only the server's default page, and a single
+        # fetch capped at settings.max_results silently hid any file link
+        # beyond that cap. Scan server pages instead, same early-stopping
+        # pattern already applied to Documents/Views/News (OPM-373 Phase 5,
+        # OPM-379/F5).
+        raw_items, truncated = await scan_records_and_paginate(
+            lambda o, ps: self._api.list_for_work_package(resolved_id, offset=o, page_size=ps),
+            item_allowed=lambda _record: True,
+            server_page_size=self._settings.max_page_size,
+            offset=offset,
+            limit=effective_limit,
             key=lambda r: r.summary.id,
         )
-        results = [self._stamp(record.summary) for record in records]
-        return FileLinkListResult(count=len(results), results=results)
+        results = [self._stamp(record.summary) for record in raw_items]
+        total = len(results)
+        return FileLinkListResult(
+            offset=offset,
+            limit=effective_limit,
+            total=total,
+            count=total,
+            next_offset=offset + 1 if truncated else None,
+            truncated=truncated,
+            results=results,
+        )
 
     async def delete(self, file_link_id: int, *, confirm: bool = False) -> FileLinkWriteResult:
         access.ensure_read_enabled("work_package", settings=self._settings)

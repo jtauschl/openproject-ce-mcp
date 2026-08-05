@@ -58,14 +58,11 @@ class HttpxReminderApi:
             remindable_link=payload.get("_links", {}).get("remindable"),
         )
 
-    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[ReminderRecord], int]:
-        payload = await self._transport.get_json(
-            "reminders", params={"offset": str(offset), "pageSize": str(page_size)}
-        )
-        elements = payload.get("_embedded", {}).get("elements", [])
-        records = [self._record(item) for item in elements if isinstance(item, dict)]
-        total = int(payload.get("total", len(records)))
-        return records, total
+    async def fetch_page(self, *, offset: int, page_size: int) -> dict[str, Any]:
+        return await self._transport.get_json("reminders", params={"offset": str(offset), "pageSize": str(page_size)})
+
+    def to_record(self, payload: dict[str, Any]) -> ReminderRecord:
+        return self._record(payload)
 
     async def _find_raw(self, reminder_id: int) -> dict[str, Any] | None:
         """Find a reminder's raw payload via the collection endpoint.

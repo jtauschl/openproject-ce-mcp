@@ -51,9 +51,12 @@ class _FakeAttachmentApi:
         self.create_calls: list[tuple[int, dict, str, bytes, str]] = []
         self.delete_calls: list[int] = []
 
-    async def list_for_work_package(self, work_package_id: int, *, page_size: int) -> list[AttachmentRecord]:
+    async def list_for_work_package(
+        self, work_package_id: int, *, offset: int, page_size: int
+    ) -> tuple[list[AttachmentRecord], int]:
         self.list_for_work_package_calls.append((work_package_id, page_size))
-        return list(self._records.values())
+        records = list(self._records.values())
+        return records, len(records)
 
     async def get(self, attachment_id: int) -> AttachmentRecord:
         self.get_calls.append(attachment_id)

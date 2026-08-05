@@ -1128,8 +1128,10 @@ class OpenProjectClient:
     async def get_category(self, *, category_id: int, project_ref: str | None = None) -> CategorySummary:
         return await self._category_service.get(category_id=category_id, project_ref=project_ref)
 
-    async def list_work_package_attachments(self, work_package_id: int | str) -> AttachmentListResult:
-        return await self._attachment_service.list_for_work_package(work_package_id)
+    async def list_work_package_attachments(
+        self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
+    ) -> AttachmentListResult:
+        return await self._attachment_service.list_for_work_package(work_package_id, offset=offset, limit=limit)
 
     async def get_attachment(self, attachment_id: int) -> AttachmentSummary:
         return await self._attachment_service.get(attachment_id)
@@ -1858,8 +1860,8 @@ class OpenProjectClient:
 
     # --- Reminders (personal, on work packages) ---
 
-    async def list_reminders(self) -> ReminderListResult:
-        return await self._reminder_service.list_all()
+    async def list_reminders(self, *, offset: int = 1, limit: int | None = None) -> ReminderListResult:
+        return await self._reminder_service.list_all(offset=offset, limit=limit)
 
     async def create_work_package_reminder(
         self,
@@ -2078,8 +2080,10 @@ class OpenProjectClient:
 
     # --- File Links ---
 
-    async def list_work_package_file_links(self, work_package_id: int | str) -> FileLinkListResult:
-        return await self._file_link_service.list_for_work_package(work_package_id)
+    async def list_work_package_file_links(
+        self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
+    ) -> FileLinkListResult:
+        return await self._file_link_service.list_for_work_package(work_package_id, offset=offset, limit=limit)
 
     async def delete_file_link(
         self,

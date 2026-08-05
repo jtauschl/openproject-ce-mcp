@@ -868,7 +868,7 @@ class AttachmentSummary:
 
 
 @dataclass
-class AttachmentListResult(CollectionResult):
+class AttachmentListResult(PageResult):
     results: list[AttachmentSummary]
 
 
@@ -1186,7 +1186,7 @@ class FileLinkSummary:
 
 
 @dataclass
-class FileLinkListResult(CollectionResult):
+class FileLinkListResult(PageResult):
     results: list[FileLinkSummary]
 
 
@@ -1338,7 +1338,7 @@ class ReminderSummary:
 
 
 @dataclass
-class ReminderListResult(CollectionResult):
+class ReminderListResult(PageResult):
     results: list[ReminderSummary]
 
 
