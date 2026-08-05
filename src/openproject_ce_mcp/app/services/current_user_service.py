@@ -6,9 +6,8 @@ self-scoped to the token owner, no project link and no allowlist concept at
 all.
 
 Gates on the `"principal"` read scope, which `config.py` maps to
-`enable_membership_read` -- NOT a dedicated current-user flag. Pre-existing
-quirk of client.py's original get_current_user, preserved exactly rather
-than "fixed" during migration.
+`enable_membership_read` -- NOT a dedicated current-user flag. A deliberate
+quirk, kept as-is rather than "fixed".
 
 `OpenProjectClient.get_current_user` (the one-line delegation this Service
 backs) MUST remain a bindable, zero-argument, `CurrentUser`-returning async

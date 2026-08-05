@@ -7,18 +7,14 @@ zero-Resolver template. No dedicated policy file: nothing here needs
 client-side project-link filtering.
 
 `list_groups()` needs BOTH `pagination.paginate_server` (no-search branch)
-and `pagination.paginate_client` (search branch, over-fetch-then-filter) --
-verbatim port of client.py's `list_groups` dual-branch shape, byte-identical
-to `list_users`'s structure but filtering only on `name` (Groups has no
-login/email fields to search).
+and `pagination.paginate_client` (search branch, over-fetch-then-filter),
+byte-identical to `list_users`'s structure but filtering only on `name`
+(Groups has no login/email fields to search).
 
-`create()`/`update()` have NO form endpoint (verified: client.py's
-`create_group`/`update_group` never call a `groups/form` path) -- modeled
-on `NewsService`'s no-form write shape (build the payload dict directly, no
-validation-errors branch) rather than `UserService`'s form-based flow.
-`GroupWriteResult.result` is typed `GroupSummary`, not `GroupDetail`
-(verified: the original normalizes the write response with
-`normalize_group`, summary only).
+`create()`/`update()` have NO form endpoint -- modeled on `NewsService`'s
+no-form write shape (build the payload dict directly, no validation-errors
+branch) rather than `UserService`'s form-based flow. `GroupWriteResult.result`
+is typed `GroupSummary`, not `GroupDetail`.
 
 `update()`'s member diff (`add_user_ids`/`remove_user_ids`) is a genuine
 behavioral requirement, not incidental structure: the `PATCH groups/{id}`
@@ -27,27 +23,19 @@ add/remove operation exists. This Service fetches the current membership via
 `self._api.get_member_ids()` (a raw href->id extraction the Adapter exposes
 separately from `get_group()`, since `GroupDetail.members` only carries
 display names, not ids), computes `current | add - remove` in Python, and
-builds the full replacement list, exactly like client.py's original.
+builds the full replacement list.
 
 `create()`/`update()`/`delete()` all check `access.ensure_write_enabled(
-"admin", ...)` UNCONDITIONALLY (not gated inside the confirm branch) --
-a deliberate, verified port of client.py's own behavior: none of
-`create_group`/`update_group`/`delete_group` gate the check on `confirm`,
-even though `update_group` has a prior GET (for the member diff) it could
-otherwise gate on the way `NewsService.update()` gates on its own prior GET.
-This means a caller without `OPENPROJECT_ENABLE_ADMIN_WRITE` is rejected
-immediately on `update()`, even for a pure preview, and can never see a
-member-diff preview -- kept as-is to match the verified original rather than
-adopting News' more-permissive-preview pattern.
+"admin", ...)` UNCONDITIONALLY (not gated inside the confirm branch), even
+though `update()` has a prior GET (for the member diff) it could otherwise
+gate on the way `NewsService.update()` gates on its own prior GET. This means
+a caller without `OPENPROJECT_ENABLE_ADMIN_WRITE` is rejected immediately on
+`update()`, even for a pure preview, and can never see a member-diff preview
+-- deliberate, not News' more-permissive-preview pattern.
 
 `create()`/`update()` call `hidden_fields.ensure_field_writable("group",
-<field>, ...)` for every field they write ("name", "members"). This is a
-DELIBERATE HARDENING beyond client.py's original `create_group`/
-`update_group`, which never called the equivalent `_ensure_field_writable`
-at all -- a genuine pre-existing gap (verified: `OPENPROJECT_HIDE_GROUP_FIELDS`
-masked reads but never blocked writes), the same class of gap Users had.
-Fixed here as part of the initial implementation rather than ported
-faithfully, since every other full-CRUD sibling already has this protection.
+<field>, ...)` for every field they write ("name", "members"), matching
+every other full-CRUD sibling's write-hardening.
 """
 
 from __future__ import annotations
@@ -91,7 +79,7 @@ class GroupService:
             # server page (Groups is genuinely OffsetPaginatedCollection
             # server-side, verified against OpenProject's own API
             # implementation) instead of trusting the server's pre-filter
-            # total (OPM-373 Phase 5).
+            # total.
             raw_items, truncated = await scan_records_and_paginate(
                 lambda o, ps: self._api.list_groups(offset=o, page_size=ps),
                 item_allowed=_record_matches,
@@ -131,9 +119,8 @@ class GroupService:
         return self._stamp(record.to_detail())
 
     async def create(self, *, name: str, user_ids: list[int] | None = None, confirm: bool = False) -> GroupWriteResult:
-        # Checked unconditionally -- verbatim port of client.py's
-        # create_group, which has no prior GET to gate an unauthorized
-        # preview request on.
+        # Checked unconditionally -- there is no prior GET to gate an
+        # unauthorized preview request on.
         access.ensure_write_enabled("admin", settings=self._settings)
         hidden_fields.ensure_field_writable("group", "name", settings=self._settings)
         body: dict[str, Any] = {"name": name}
@@ -174,10 +161,9 @@ class GroupService:
         remove_user_ids: list[int] | None = None,
         confirm: bool = False,
     ) -> GroupWriteResult:
-        # Checked unconditionally -- verbatim port of client.py's
-        # update_group, which never gates this on `confirm` even though a
-        # prior GET already happens below for the member diff. See this
-        # module's docstring for the resulting preview-visibility tradeoff.
+        # Checked unconditionally, even though a prior GET already happens
+        # below for the member diff. See this module's docstring for the
+        # resulting preview-visibility tradeoff.
         access.ensure_write_enabled("admin", settings=self._settings)
         body: dict[str, Any] = {}
         if name is not None:
@@ -229,10 +215,10 @@ class GroupService:
         )
 
     async def delete(self, group_id: int, *, confirm: bool = False) -> GroupWriteResult:
-        # Checked unconditionally -- verbatim port of client.py's
-        # delete_group, no prior GET to gate an unauthorized preview request
-        # on. No detail fetched on either branch (matches _finalize_delete's
-        # preview_result=None/commit_result=None call shape).
+        # Checked unconditionally -- no prior GET to gate an unauthorized
+        # preview request on. No detail fetched on either branch (matches
+        # _finalize_delete's preview_result=None/commit_result=None call
+        # shape).
         access.ensure_write_enabled("admin", settings=self._settings)
         payload = {"id": group_id}
         if not confirm:

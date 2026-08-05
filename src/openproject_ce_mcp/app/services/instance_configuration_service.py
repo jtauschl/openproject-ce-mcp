@@ -6,14 +6,12 @@ Policy module: self-scoped to the whole instance, no project link and no
 allowlist concept at all -- same shape as Roles/Extended Metadata.
 
 Gates on the `"project"` read scope, NOT an `"instance_configuration"`-named
-scope -- a pre-existing quirk of client.py's original get_instance_configuration,
-preserved exactly rather than "fixed" during migration.
+scope -- a deliberate quirk, kept as-is rather than "fixed".
 
 Deliberately NOT reused by `HttpxAttachmentApi.get_max_attachment_size()`,
 which independently makes its own raw `GET configuration` call for a single
 field (`maximumAttachmentFileSize`) it needs to validate an upload against --
-a pre-existing, documented narrow exception (see docs/architecture.md), not
-something this migration should "clean up" by rewiring it onto this Service.
+a documented narrow exception (see docs/architecture.md).
 """
 
 from __future__ import annotations

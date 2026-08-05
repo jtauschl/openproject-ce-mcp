@@ -7,40 +7,35 @@ always a numeric value already validated by tools.py.
 Boards have their own dedicated OPENPROJECT_ENABLE_BOARD_READ/_WRITE flags
 (unlike Views/Grids/Categories, which share the generic "project" scope) --
 `access.ensure_read_enabled`/`ensure_write_enabled` are called with
-scope="board" throughout, verbatim behavior of client.py's original
-`_ensure_read_enabled("board")`/write-category flag mapping.
+scope="board" throughout.
 
 List filtering follows Views'/Documents'/News' shape (ProjectRefResolver +
-project_scoped_list.py), not Grids' raw-scope-string shape: client.py's
-`project: str | None` parameter on `list_boards`/`create_board` is a genuine
-project reference needing resolution against a real project payload, unlike
-Grids' `scope` (an arbitrary href/path passed straight through).
+project_scoped_list.py), not Grids' raw-scope-string shape: `project: str |
+None` on `list`/`create` is a genuine project reference needing resolution
+against a real project payload, unlike Grids' `scope` (an arbitrary
+href/path passed straight through).
 
-Client-side vs. server-side list branching is verbatim-ported from
-client.py's `list_boards`: the server-paginated path is reachable only when
-`project is None`, no `search`, and `read_projects` is fully open ("*") --
-NOT simply "no allowed_projects filter needed"; an empty `read_projects`
-tuple must still filter client-side down to zero results (regression pinned
-by `test_list_boards_returns_empty_under_empty_read_projects`).
+Client-side vs. server-side list branching: the server-paginated path is
+reachable only when `project is None`, no `search`, and `read_projects` is
+fully open ("*") -- NOT simply "no allowed_projects filter needed"; an empty
+`read_projects` tuple must still filter client-side down to zero results
+(regression pinned by `test_list_boards_returns_empty_under_empty_read_projects`).
 
-Write-allowlist ordering, verified against client.py's original: `update()`
-calls `ensure_board_write_allowed` before `board_policy.ensure_board_read_allowed`;
-`delete()` calls them in the OPPOSITE order -- both call orderings preserved
-exactly as found in client.py, not unified, since the original is
-inconsistent between the two methods and this migration's contract is
-behavior-preservation, not cleanup. NOTE: net-observable behavior is
-IDENTICAL either way under a doubly-restrictive scope --
-`ensure_board_write_allowed` (= `scope.ensure_project_write_link_allowed`)
-performs its own internal read-check before its write-check, so calling it
-first (as `update()` does) still surfaces a READ_PROJECTS error before
-`update()`'s own separate read-gate call is ever reached, same as `delete()`'s
-literal read-then-write ordering. Pinned by
+Write-allowlist ordering: `update()` calls `ensure_board_write_allowed`
+before `board_policy.ensure_board_read_allowed`; `delete()` calls them in
+the OPPOSITE order. Net-observable behavior is IDENTICAL either way under a
+doubly-restrictive scope -- `ensure_board_write_allowed` (=
+`scope.ensure_project_write_link_allowed`) performs its own internal
+read-check before its write-check, so calling it first (as `update()` does)
+still surfaces a READ_PROJECTS error before `update()`'s own separate
+read-gate call is ever reached, same as `delete()`'s literal read-then-write
+ordering. Pinned by
 `test_update_and_delete_raise_the_same_error_when_both_scopes_restrictive`.
 
 The "global board" rule (an unscoped board write requires BOTH
 read_projects and write_projects fully open) has no per-link allowlist
 check to delegate to -- there is no link at all for an unscoped board -- so
-it is verbatim-ported directly into `create()`, not part of board_policy.py.
+it lives directly in `create()`, not in board_policy.py.
 
 `_write_outcome.py`'s `_finalize_write` is used for create()/update() (2
 write actions sharing the identical form-based preview/commit shape, the
@@ -150,9 +145,9 @@ class BoardService:
                     return False
                 return search_key is None or search_key in (record.summary.name or "").casefold()
 
-            # A single fetch capped at settings.max_results silently hid any
-            # board beyond that cap once the endpoint's real result count
-            # exceeded it -- scan server pages instead (OPM-373 Phase 5).
+            # Scan server pages rather than a single fetch capped at
+            # settings.max_results, which would silently hide any board
+            # beyond that cap once the endpoint's real result count exceeds it.
             raw_items, truncated = await scan_records_and_paginate(
                 lambda o, lim: self._api.list_page(offset=o, limit=lim),
                 item_allowed=_record_allowed,

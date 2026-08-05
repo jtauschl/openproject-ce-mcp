@@ -11,26 +11,25 @@ domain to warrant a Resolver in the ADR sense.
 (unified once a 3rd domain needed the identical state machine).
 
 `_resolve_role_hrefs` depends on `RoleApi` directly instead of an injected
-parameterless `list_roles` callable. `client.py`'s original unpaginated
-`list_roles` always returned the complete role collection in one
-call -- safe for this method's "resolve a role name against ALL roles" need.
+parameterless `list_roles` callable: `RoleApi.list_roles` always returns the
+complete role collection in one call -- safe for this method's "resolve a
+role name against ALL roles" need.
 
-A single direct `RoleApi.list_roles` call, NOT a `paginate_all` page-walk
-(an earlier version of this method used one, which was incorrect):
+A single direct `RoleApi.list_roles` call, NOT a `paginate_all` page-walk:
 `/api/v3/roles`' `RoleCollectionRepresenter` is a real `UnpaginatedCollection`
-(verified against OpenProject's own API implementation), so the
-server ignores `offset`/`pageSize` entirely and always returns the complete
-collection, `total` included, in a single response. `paginate_all` assumes
-a genuinely server-paginated fetcher -- feeding it this always-complete
+(verified against OpenProject's own API implementation), so the server
+ignores `offset`/`pageSize` entirely and always returns the complete
+collection, `total` included, in a single response. `paginate_all` assumes a
+genuinely server-paginated fetcher -- feeding it this always-complete
 response would misread `total > page_size` as "more pages exist", re-request
 an identical "next page" from the server (which ignores the new offset and
 returns the exact same complete collection again), and duplicate every
-record. Latent at today's role count (comfortably under `max_page_size`),
-but a real bug once a deployment's role count exceeds it -- unlike
-`VersionResolver`/`ProjectResolver`'s superficially-similar "resolve a name
-against a paginated list" page-walks, which page-walk a GENUINELY
-server-paginated endpoint and so need `paginate_all`'s multi-request logic;
-Roles does not, and using it here was the mistake.
+record. This stays latent at today's role count (comfortably under
+`max_page_size`), but would become a real bug once a deployment's role count
+exceeds it -- unlike `VersionResolver`/`ProjectResolver`'s superficially
+similar "resolve a name against a paginated list" page-walks, which page-walk
+a GENUINELY server-paginated endpoint and so need `paginate_all`'s
+multi-request logic; Roles does not.
 """
 
 from __future__ import annotations

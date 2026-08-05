@@ -8,9 +8,7 @@ domain to warrant a Resolver in the ADR sense.
 
 Documents shares the "project" read/write scope with Projects/News/Grids --
 there is no dedicated OPENPROJECT_ENABLE_DOCUMENT_* flag, so every
-access.ensure_read_enabled/ensure_write_enabled call here uses scope="project"
-(verbatim behavior of client.py's original _ensure_read_enabled("project")/
-_ensure_write_enabled("project") calls).
+access.ensure_read_enabled/ensure_write_enabled call here uses scope="project".
 
 PATCH-only, no dedicated create/delete: the OpenProject v3 API exposes no
 create/delete endpoint for documents. update() is therefore a single flat
@@ -92,9 +90,9 @@ class DocumentService:
                 return search_key in (record.summary.title or "").casefold()
             return True
 
-        # A single fetch capped at settings.max_results silently hid any
-        # document beyond that cap once the endpoint's real result count
-        # exceeded it -- scan server pages instead (OPM-373 Phase 5).
+        # Scan server pages rather than a single fetch capped at
+        # settings.max_results, which would silently hide any document
+        # beyond that cap once the endpoint's real result count exceeds it.
         raw_items, truncated = await scan_records_and_paginate(
             lambda o, ps: self._api.list_all(offset=o, page_size=ps),
             item_allowed=_record_allowed,

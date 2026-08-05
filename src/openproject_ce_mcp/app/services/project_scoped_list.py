@@ -1,17 +1,11 @@
 """Shared "list all, then filter by resolved project ref" logic.
 
-Extracted after `DocumentService` was found to have verbatim-copied
-`_trim_text`/`_resolve_project_filter_candidates`/
-`_summary_matches_project_candidates` from `NewsService` byte-for-byte
-(differing only in the `NewsSummary`/`DocumentSummary` type annotation) --
-new-domain-copies-newest-sibling duplication, not the documented/sanctioned
-client.py-transition duplication every adapter's module docstring already
-covers. Both domains share the exact "fetch the full collection client-side,
-then filter rows against a resolved project id/identifier/name candidate
-set" shape (as opposed to Memberships/Projects/Versions, which filter
-server-side or via a project-scoped href). A future domain with the same
-shape (e.g. a project-scoped, non-server-filterable list) should depend on
-this module rather than re-copying it a third time.
+`DocumentService` and `NewsService` share the exact "fetch the full
+collection client-side, then filter rows against a resolved project
+id/identifier/name candidate set" shape (as opposed to Memberships/Projects/
+Versions, which filter server-side or via a project-scoped href). A future
+domain with the same shape (e.g. a project-scoped, non-server-filterable
+list) should depend on this module rather than duplicating it.
 """
 
 from __future__ import annotations

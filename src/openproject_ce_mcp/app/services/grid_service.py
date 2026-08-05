@@ -13,18 +13,17 @@ project payload.
 Grids shares the "project" read/write scope with Projects/News/Documents/
 Categories/Views -- no dedicated OPENPROJECT_ENABLE_GRID_* flag exists.
 
-Write-allowlist ordering, verified against client.py's original: the
-grid_policy.ensure_grid_write_allowed check runs UNCONDITIONALLY at the top
-of create()/update()/delete() (during preview AND confirm) -- it is not
-confirm-gated. Only access.ensure_write_enabled (inside _finalize_write's
-confirm branch) is confirm-gated. This mirrors MembershipService's existing
-create()/update() ordering exactly.
+Write-allowlist ordering: the grid_policy.ensure_grid_write_allowed check
+runs UNCONDITIONALLY at the top of create()/update()/delete() (during
+preview AND confirm) -- it is not confirm-gated. Only
+access.ensure_write_enabled (inside _finalize_write's confirm branch) is
+confirm-gated. This mirrors MembershipService's existing create()/update()
+ordering exactly.
 
 _write_outcome.py's _finalize_write is used for create()/update() (2 write
-actions sharing the identical form-based preview/commit shape -- the first
-domain to hit this project's own "3+ write actions" threshold since
-Memberships). delete() has no form step at all, so it stays an inline
-preview/commit method like MembershipService.delete().
+actions sharing the identical form-based preview/commit shape). delete() has
+no form step at all, so it stays an inline preview/commit method like
+MembershipService.delete().
 
 `create()`/`update()` call `hidden_fields.ensure_field_writable("grid",
 <field>, ...)` for every field they write ("name", "scope", "row_count",
@@ -92,9 +91,9 @@ class GridService:
                 record.scope_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
             )
 
-        # A single fetch capped at settings.max_results silently hid any grid
-        # beyond that server-side cap -- scan server pages instead (OPM-373
-        # Phase 5).
+        # Scan server pages rather than a single fetch capped at
+        # settings.max_results, which would silently hide any grid beyond
+        # that server-side cap.
         raw_items, truncated = await scan_records_and_paginate(
             lambda o, ps: self._api.list_page(offset=o, page_size=ps, scope_filter=scope),
             item_allowed=_record_allowed,

@@ -1,5 +1,4 @@
-"""Application Service for the Statuses/Priorities/Types domain (16th migrated
-domain).
+"""Application Service for the Statuses/Priorities/Types domain.
 
 Depends on the StatusPriorityTypeApi Protocol, never HttpxStatusPriorityTypeApi
 concretely (enforced by the architecture-boundary test). No dedicated
@@ -7,10 +6,9 @@ Resolver for any of the three: `status_id`/`priority_id`/`type_id` are always
 numeric values already validated by tools.py.
 
 All three share `access.ensure_read_enabled("work_package", ...)` as their
-gate (verbatim port of client.py's `_ensure_read_enabled("work_package")` for
-all six methods), so one Service bundling all three, rather than three
-separate Services, avoids depending on the exact same seam three times for
-no behavioral difference -- same rationale as Actions & Capabilities bundling
+gate, so one Service bundling all three, rather than three separate
+Services, avoids depending on the exact same seam three times for no
+behavioral difference -- same rationale as Actions & Capabilities bundling
 `list_actions`/`list_capabilities` under one Service.
 
 `list_types(project=...)` takes a `ProjectRefResolver` dependency to resolve
@@ -18,22 +16,16 @@ the optional `project` ref to an id -- this shapes which endpoint the Adapter
 calls (`projects/{id}/types` vs `types`), it is not a per-record allowlist
 filter: read-scope enforcement for the given `project` ref already happens
 inside `ProjectRefResolver` itself (`ensure_project_read_allowed`, called
-from `ProjectResolver._resolve_record_uncached` for `write=False`), verified
-by reading that resolver's own source before writing this Service -- no
-additional Policy/allowlist check belongs here, matching client.py's original
-`list_types` behavior exactly (it never filtered *returned* type rows by
-project link; the `project` ref only picks the request URL).
+from `ProjectResolver._resolve_record_uncached` for `write=False`) -- no
+additional Policy/allowlist check belongs here; `list_types` never filters
+*returned* type rows by project link, the `project` ref only picks the
+request URL.
 
-**Priority hidden-field bugfix (found during this migration, not present in
-client.py's original `normalize_priority`)**: `list_priorities`/`get_priority`
-now call `hidden_fields.apply_hidden_fields("priority", ...)`, matching
-Status/Type. client.py's `normalize_priority` never called
-`_apply_hidden_fields` at all, and `config.py`'s `HIDE_FIELD_ENV_BY_ENTITY`
-had no `"priority"` entry either -- both gaps are fixed together (the config
-map entry lives in `config.py`, this Service supplies the missing call site).
+`list_priorities`/`get_priority` call
+`hidden_fields.apply_hidden_fields("priority", ...)`, matching Status/Type.
 `PriorityRecord`/`PrioritySummary` are structurally near-identical to
-`TypeRecord`/`TypeSummary` (id/name/color/position/is_default), so there was
-no principled reason for the asymmetry; it was simply missing from the start.
+`TypeRecord`/`TypeSummary` (id/name/color/position/is_default), so Priority
+gets the identical masking treatment as its siblings.
 """
 
 from __future__ import annotations

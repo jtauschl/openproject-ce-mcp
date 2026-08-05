@@ -43,12 +43,9 @@ def effective_limit(limit: int | None, *, settings: Any) -> int:
     """`clamp_limit`, but reading `default_page_size`/`max_page_size`/`max_results`
     directly off a `Settings` instance instead of three separate keyword args.
 
-    A byte-identical `_effective_limit(self, limit)` method (each just this one
-    `clamp_limit(...)` call wrapping `self._settings`'s three fields) was
-    duplicated across RoleService, ActionCapabilityService, GroupService, and
-    UserService -- found during the Statuses/Priorities/Types migration's
-    (16th domain) step-6 self-audit, past this project's own "3+ identical
-    copies" unification threshold. `settings` is typed `Any` here, not
+    Shared by every Service that needs this computation, rather than each
+    duplicating its own `_effective_limit(self, limit)` wrapper around the
+    same three `Settings` fields. `settings` is typed `Any` here, not
     `config.Settings`, only to avoid this dependency-free package-root module
     importing from the parent package -- every call site passes a real
     `Settings` instance.
@@ -93,33 +90,17 @@ async def fetch_bounded_and_paginate(
     soon as `limit + 1` allowed items are confirmed (or the collection is
     genuinely exhausted) -- never walks the full collection first.
 
-    Originally a verbatim extraction of client.py's private
-    `_fetch_bounded_and_paginate` (first extracted for the Relations
-    migration), which walked EVERY server page to completion before ever
-    slicing out the requested `offset`/`limit` window -- `offset`/`limit`
-    then reduced neither server load nor response size. Rebuilt here
-    (OPM-373 Phase 5) to early-stop instead, same shape as
-    `scan_and_paginate`/`scan_records_and_paginate`: collect one extra
-    (`limit + 1`) allowed item before deciding `truncated`, so "more
-    matches exist" can be distinguished from "this happened to be the
-    last one" without a false-positive `next_offset` promise.
-
-    `post_filter` was removed (a Codex CLI review caught that TimeEntryService,
-    this helper's other caller besides Relations, was the only user of it,
-    and its post-filter predicates ran on already-normalized-but-not-yet-
-    paginated results -- incompatible with early-stopping, since a
-    normalized-but-later-rejected item must not count toward the `limit + 1`
-    lookahead). TimeEntryService.list_all was migrated in the same change to
-    fold its four post-filter predicates (work_package_id/user/spent_on_from/
-    spent_on_to) into `item_allowed` itself, normalizing each raw item first
-    -- the item_allowed callback now decides ALL acceptance criteria, not
-    just the ACL check, matching every other `scan_*`-helper caller's shape.
+    Collects one extra (`limit + 1`) allowed item before deciding
+    `truncated`, matching the same shape as `scan_and_paginate`/
+    `scan_records_and_paginate`: this confirms "more matches exist" beyond
+    the requested window rather than merely "this happened to be the last
+    one", so `truncated`/`next_offset` are never set on a false positive --
+    a follow-up call using a promised `next_offset` that turned out to be
+    wrong would silently return nothing.
 
     `item_allowed` is async (rather than plain bool) so ACL checks that need
     their own lookups (e.g. relations checking each linked work package's
-    project) can use this helper too -- without it, callers needing an async
-    filter had to hand-roll their own fetch+params, which is exactly how a
-    prior pageSize-omission bug happened.
+    project) can use this helper too.
 
     Some project-scoped sub-collection endpoints (verified live: a project's
     versions endpoint) silently ignore both offset and pageSize and always
@@ -129,27 +110,23 @@ async def fetch_bounded_and_paginate(
     ids (before item_allowed/normalize), so a page that's merely fully
     filtered out doesn't get mistaken for a repeat.
 
-    `item_allowed_bulk` (OPM-379/F3) is a page-batching alternative to
-    `item_allowed`: given ALL of a fetched page's raw elements at once, it
-    resolves whatever concurrent I/O each element's allowlist decision needs
-    (e.g. Relations' from/to hrefs) in one batch, before the sequential
-    skip/limit+1-lookahead consumption loop below runs -- that loop is
-    otherwise UNCHANGED, it just reads a pre-resolved `bool | Exception`
-    outcome per element instead of awaiting `item_allowed(item)` one at a
-    time. Exactly one of `item_allowed`/`item_allowed_bulk` may be given (or
-    neither, for an unfiltered scan) -- callers that don't need concurrent
-    per-item resolution keep using the simpler `item_allowed` path
-    unchanged. Deliberately still resolves a whole PAGE at a time, never the
-    whole call's collection -- resolving speculatively beyond the current
-    page would defeat the early-stopping this helper exists for (see the
-    module-level OPM-379 plan notes: collecting across the whole call would
-    silently reintroduce the full-collection-scan bug OPM-373 Phase 5 fixed).
+    `item_allowed_bulk` is a page-batching alternative to `item_allowed`:
+    given ALL of a fetched page's raw elements at once, it resolves whatever
+    concurrent I/O each element's allowlist decision needs (e.g. Relations'
+    from/to hrefs) in one batch, before the sequential skip/limit+1-lookahead
+    consumption loop below runs -- that loop just reads a pre-resolved
+    `bool | Exception` outcome per element instead of awaiting
+    `item_allowed(item)` one at a time. Exactly one of
+    `item_allowed`/`item_allowed_bulk` may be given (or neither, for an
+    unfiltered scan). Deliberately still resolves a whole PAGE at a time,
+    never the whole call's collection -- resolving speculatively beyond the
+    current page would defeat the early-stopping this helper exists for.
 
     An `Exception` outcome is only raised if the sequential consumption logic
-    would actually have reached that element under the old one-at-a-time
+    would actually have reached that element under the one-at-a-time
     `item_allowed` control flow (i.e. skip-counted or considered for the
     limit+1 lookahead) -- an outcome for an element the loop breaks out of
-    the page before reaching is silently discarded, matching what the old
+    the page before reaching is silently discarded, matching what the
     sequential logic would have done (it would never have awaited that
     element's check at all).
     """
@@ -238,10 +215,9 @@ async def scan_and_paginate(
 
     Returns the raw (unnormalized) allowed elements for the requested page --
     callers normalize/apply any further post-normalize filtering themselves,
-    since result and filter shapes differ per caller. Ported from client.py's
-    `_scan_and_paginate` (release/0.3.6, OPM-373 Phase 5) -- same shape,
-    generalized to accept `fetch_page` as an injected callable like
-    `fetch_bounded_and_paginate` already does, instead of a hardwired path.
+    since result and filter shapes differ per caller. `fetch_page` is an
+    injected callable rather than a hardwired path, matching
+    `fetch_bounded_and_paginate`'s shape.
     """
     skip_count = (offset - 1) * limit
     skipped = 0
@@ -320,16 +296,15 @@ async def scan_records_and_paginate(
     cross-work-package check needs.
 
     Deliberately does NOT use the server-reported `total` from `fetch_page`'s
-    return tuple as an exhaustion signal (an earlier draft did; a Codex CLI
-    review caught the bug before commit): several adapters using this
+    return tuple as an exhaustion signal: several adapters using this
     `(records, total)` contract fall back to `total = len(records)` when the
     server response has no `total` field at all (verified against
     `httpx_sprint_api.py`), which would make `server_offset *
     server_page_size >= total` true on the FIRST full page even when more
     pages genuinely exist -- silently truncating real results. Exhaustion is
-    judged the same way `scan_and_paginate`/`_fetch_all_pages` already do:
-    purely by `len(page_items) < server_page_size` (a short page) plus the
-    repeat-page guard below, never by a reported total.
+    judged the same way `scan_and_paginate` does: purely by
+    `len(page_items) < server_page_size` (a short page) plus the repeat-page
+    guard below, never by a reported total.
     """
     skip_count = (offset - 1) * limit
     skipped = 0

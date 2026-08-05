@@ -46,8 +46,7 @@ class VersionService:
         # 0001) -- apply_hidden_fields only drops the "description" key itself,
         # so without this, a hidden description's length/truncation state would
         # still leak through those two sibling fields. Zero them out here,
-        # mirroring how client.py's hide-aware _visible_formattable_text_with_meta
-        # already does this for Project/WorkPackage/TimeEntry.
+        # mirroring the identical treatment for Project/WorkPackage/TimeEntry.
         if isinstance(value, VersionSummary) and hidden_fields.field_hidden(
             "version", "description", settings=self._settings
         ):
@@ -77,14 +76,13 @@ class VersionService:
             max_results=self._settings.max_results,
         )
         # ADR: each Application Service call creates its own resolution context at
-        # the entry boundary if the caller didn't supply one. Note: after this
-        # migration, VersionResolver calls fetch_version_page() directly (never this
-        # method or the client.py facade), threading its OWN context across its OWN
+        # the entry boundary if the caller didn't supply one. VersionResolver calls
+        # fetch_version_page() directly, threading its OWN context across its OWN
         # page-walk -- so no current internal caller actually passes a context into
-        # list()/list_versions() anymore; this parameter is kept for signature
-        # compatibility and for any future caller that might chain
-        # a list() call into a larger multi-resolution operation. Either way, this
-        # line guarantees list()'s own resolve call is never left uncached-and-unscoped.
+        # this method; the parameter is kept for signature compatibility and for
+        # any future caller that might chain a list() call into a larger
+        # multi-resolution operation. Either way, this line guarantees list()'s own
+        # resolve call is never left uncached-and-unscoped.
         resolution_context = context or ProjectResolutionContext(self._resolve_project_ref)
         page_results, total, next_offset, truncated = await fetch_version_page(
             api=self._api,

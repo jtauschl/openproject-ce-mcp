@@ -1,8 +1,7 @@
 """Application Service for the Work Packages domain.
 
-Covers the full domain: list/search/list_my_open/get/get_batch (the original
-READ-only slice) plus create/create_subtask/update/delete/bulk_create/
-bulk_update/add_comment (the write-path migration's second sub-step). Both
+Covers the full domain: list/search/list_my_open/get/get_batch plus
+create/create_subtask/update/delete/bulk_create/bulk_update/add_comment. Both
 slices live on this one class, not two -- the layered architecture and the
 "one Service per domain" convention every other full-CRUD sibling (Time
 Entries, Versions, Memberships, Projects) already follows.
@@ -31,7 +30,7 @@ not just a name/ref->id resolution) -- `StatusPriorityTypeService` must NOT
 be used here, since it enforces `access.ensure_read_enabled("work_package")`,
 while this internal lookup deliberately bypasses that gate (an instance can
 have work-package writes enabled with reads disabled, and the auto-derivation
-must still work, matching client.py's original comment on this exact point).
+must still work).
 
 `ActivityApi` is injected directly (the same "Service depending on multiple
 Ports" pattern `TimeEntryService` already uses) so `add_comment()` reuses the
@@ -40,14 +39,12 @@ onto `WorkPackageApi` -- see `app/ports/activity_api.py`'s extended module
 docstring.
 
 `search()`/`list()` stay two separate methods (not one parametrized method):
-they have non-overlapping required/exclusive parameters in client.py today
-(`search` is required for `search_work_packages` and has no `type`/`version`/
-`version_status`; `list_work_packages` has no `search`), and `tools.py`
-registers them as two separate MCP tools already -- 1:1 parity with the
-Service layer is the simpler, less surprising mapping. Both call the shared
-private `_list_collection` helper (the 1:1 replacement for client.py's
-`_list_work_package_collection` + `_build_work_package_list_result` +
-`_work_package_collection_page`), so the actual overlap logic (pagination,
+they have non-overlapping required/exclusive parameters (`search` is required
+for `search_work_packages` and has no `type`/`version`/`version_status`;
+`list_work_packages` has no `search`), and `tools.py` registers them as two
+separate MCP tools already -- 1:1 parity with the Service layer is the
+simpler, less surprising mapping. Both call the shared private
+`_list_collection` helper, so the actual overlap logic (pagination,
 total-trust derivation, allowlist filtering) exists exactly once.
 
 `_list_collection` normalizes only allowlist-survivING raw elements (per
@@ -58,16 +55,12 @@ single already-known scope.
 
 Every READ method (`search`/`list`/`list_my_open`/`get`/`get_batch`) calls
 `access.ensure_read_enabled("work_package", ...)` as its FIRST action, before
-any `resolve_*` seam call -- verbatim behavioral port of client.py's
-`search_work_packages`/`list_work_packages`/`list_my_open_work_packages`/
-`get_work_package`, each of which gates before doing any resolution or HTTP
-work. **The WRITE methods (`create`/`create_subtask`/`update`/`delete`/
-`bulk_create`/`bulk_update`/`add_comment`) deliberately do NOT** -- verified
-against client.py's flat originals, none of which ever called
-`_ensure_read_enabled`. This is intentional: an instance can have
-work-package writes enabled with reads entirely disabled, and every write
-method must keep working in that configuration (the same reasoning already
-documented for the auto-derivation's `status_api` bypass below).
+any `resolve_*` seam call or HTTP work. **The WRITE methods
+(`create`/`create_subtask`/`update`/`delete`/`bulk_create`/`bulk_update`/
+`add_comment`) deliberately do NOT.** This is intentional: an instance can
+have work-package writes enabled with reads entirely disabled, and every
+write method must keep working in that configuration (the same reasoning
+already documented for the auto-derivation's `status_api` bypass above).
 
 `_stamp`/`_stamp_detail` zero `description_truncated`/`description_length`
 (plus, for `WorkPackageSummary` only, `has_description`) when the
@@ -76,9 +69,8 @@ documented for the auto-derivation's `status_api` bypass below).
 `comment`-metadata handling. Without this, `apply_hidden_fields` alone would
 drop the `description` text but leave its truncation/length/has_description
 siblings computed from the TRUE, unmasked text, leaking its existence/length
-even though the adapter's own extraction (unlike client.py's original
-`_visible_formattable_text_with_meta`) is not hidden-field-aware by design
-(masking is a Service concern in the migrated architecture).
+even though the adapter's own extraction is not hidden-field-aware by design
+(masking is a Service concern in this layered architecture).
 """
 
 from __future__ import annotations
@@ -136,17 +128,15 @@ LOGGER = logging.getLogger(__name__)
 
 BATCH_READ_MAX_IDS = 100
 
-# Matches the flat write normalizer's default cap for create/update responses
-# and the delete preview -- NOT the uncapped default get()'s own single-item
-# path uses. Verified against client.py's normalize_work_package_detail.
+# Default cap for create/update responses and the delete preview -- NOT the
+# uncapped default get()'s own single-item path uses.
 FORMATTABLE_LIMIT = 1_200
 
 # Sentinel for update(): distinguishes "clear the parent" (make the work
 # package top-level via _links.parent = {"href": null}) from "leave unchanged"
 # (None). A dedicated object avoids colliding with numeric ids or the
 # resolve_work_package_id path, and cannot be confused with any valid parent
-# reference. Canonical home for this domain's sentinels (re-exported
-# unchanged from client.py -- see client.py's own CLEAR_PARENT import).
+# reference.
 CLEAR_PARENT = object()
 
 # Sentinel for create()/update(): distinguishes "clear the version" (unassign
@@ -166,9 +156,9 @@ CLEAR = object()
 def _narrow_cleared(value: Any, *, sentinel: object = None) -> Any:
     """Narrow a value after the caller has already ruled out None and a clear sentinel.
 
-    Verbatim port of client.py's own `_narrow_cleared` (moved here as this
-    domain's canonical home, re-exported unchanged from client.py). See that
-    original's docstring for the full mypy-narrowing rationale.
+    Exists purely to give mypy a checked narrowing point at each call site,
+    rather than repeating an `assert value is not None and value is not
+    sentinel` inline.
     """
     if value is None or value is sentinel:
         raise AssertionError(f"_narrow_cleared: expected a resolved value, got the clear sentinel or None: {value!r}")
@@ -203,18 +193,16 @@ def _trim_text(value: Any, *, limit: int = SUBJECT_LIMIT) -> str | None:
 
 
 def _bulk_item_result(*, index: int, result: WorkPackageWriteResult) -> BulkWorkPackageItemResult:
-    """Verbatim port of client.py's own `_bulk_item_result`. "success" is
-    defined purely by `result.ready` (i.e. no OpenProject validation errors),
-    not by whether the result was already confirmed -- a `confirm=False`
-    preview call that validates cleanly is intentionally reported as
-    `success=True`."""
+    """ "success" is defined purely by `result.ready` (i.e. no OpenProject
+    validation errors), not by whether the result was already confirmed -- a
+    `confirm=False` preview call that validates cleanly is intentionally
+    reported as `success=True`."""
     if not result.ready:
         return BulkWorkPackageItemResult(index=index, success=False, error=result.message, result=result)
     return BulkWorkPackageItemResult(index=index, success=True, error=None, result=result)
 
 
 def _bulk_summary_message(*, confirm: bool, succeeded: int, failed: int, total: int, verb: str, past_tense: str) -> str:
-    """Verbatim port of client.py's own `_bulk_summary_message`."""
     if confirm:
         return (
             f"{succeeded} of {total} work packages {past_tense} successfully."
@@ -233,8 +221,7 @@ def _log_bulk_cancellation(
 ) -> None:
     """Diagnostic logging only -- does not close the gap that the MCP caller
     receives no result on cancellation; must not overclaim whether an
-    in-flight request reached OpenProject. Verbatim port of client.py's own
-    `_log_bulk_cancellation`."""
+    in-flight request reached OpenProject."""
     completed = len(item_results)
     completed_range = f"0-{completed - 1}" if completed else "none"
     if completed < total:
@@ -311,14 +298,13 @@ class WorkPackageService:
         # constructed per-call), so N genuinely bounds this Service's total
         # concurrent batch-read HTTP traffic -- a per-call semaphore would
         # only cap ONE call's own fan-out, letting several simultaneous
-        # get_batch() calls still produce calls x N concurrent requests
-        # (OPM-379/F6). Deliberately independent from any semaphore F3's
-        # hierarchy-allowlist parallelization introduces: get() (called by
-        # fetch_one below) itself calls _filter_hierarchy_allowlist, so
-        # sharing one semaphore between the two would risk deadlocking under
-        # saturation (a task holding this semaphore's last permit for its
-        # own get() call, while a nested allowlist check waits on the same
-        # semaphore) -- see OPM-379 plan notes.
+        # get_batch() calls still produce calls x N concurrent requests.
+        # Deliberately independent from any semaphore the hierarchy-allowlist
+        # parallelization inside get() uses: get() (called by fetch_one
+        # below) itself calls _filter_hierarchy_allowlist, so sharing one
+        # semaphore between the two would risk deadlocking under saturation
+        # (a task holding this semaphore's last permit for its own get()
+        # call, while a nested allowlist check waits on the same semaphore).
         self._batch_read_semaphore = asyncio.Semaphore(10)
 
     def _stamp(self, summary: WorkPackageSummary) -> WorkPackageSummary:
@@ -342,9 +328,7 @@ class WorkPackageService:
         `dataclasses.replace()` rebuilds the instance via the constructor,
         which drops any `_hidden_keys` attribute `apply_hidden_fields`
         previously stamped onto it -- re-stamp so a configured hide-fields
-        entry still takes effect on the replaced instance. Verbatim port of
-        client.py's own `_replace_and_restamp` (already correct there:
-        replace-then-stamp, in that order, in one call).
+        entry still takes effect on the replaced instance.
         """
         return hidden_fields.apply_hidden_fields(entity, dataclasses.replace(value, **changes), settings=self._settings)
 
@@ -372,14 +356,11 @@ class WorkPackageService:
         group_by: str | None,
         total_is_scope_safe: bool,
     ) -> WorkPackageListResult:
-        del project_id  # unused: filters already carry any project_id constraint; kept
-        # for signature symmetry with client.py's original, which also never
-        # read it inside _list_work_package_collection.
+        del project_id  # unused: filters already carry any project_id constraint
         if not self._settings.read_projects:
             # Defense-in-depth: both public callers already guard on this
             # before reaching here, but this must stay correct on its own for
-            # any future caller (verbatim behavioral port of client.py's
-            # _list_work_package_collection).
+            # any future caller.
             return _empty_list_result(offset=offset, limit=limit)
         page = await self._api.list(filters=filters, offset=offset, limit=limit, sort_by=sort_by, group_by=group_by)
         raw_items = [item for item in page.raw_elements if self._payload_allowed(item)]
@@ -558,8 +539,7 @@ class WorkPackageService:
         project_id: int | None = None
         # Bounded to this single call: avoids re-fetching/re-checking the same
         # project when both type and version filters are given alongside
-        # project (verbatim behavioral port of client.py's original
-        # list_work_packages, which built this same per-call context).
+        # project.
         resolution_context = ProjectResolutionContext(self._resolve_project_ref)
         total_is_scope_safe = scope_allows_all(self._settings.read_projects)
         if project is not None:
@@ -643,22 +623,19 @@ class WorkPackageService:
 
     async def _filter_hierarchy_allowlist(self, detail: WorkPackageDetail) -> WorkPackageDetail:
         """Drop children/ancestors entries outside OPENPROJECT_READ_PROJECTS.
-        Verbatim behavioral port of client.py's `_filter_hierarchy_allowlist`,
-        using the existing `WorkPackageProjectAllowedBulkCheck` seam (bound to
-        `self._work_package_resolver.project_links_allowed`, OPM-379/F3)
-        rather than a new resolver -- this Service is one of several
-        consumers of the SAME resolver other app/ domains already share.
+        Uses the `WorkPackageProjectAllowedBulkCheck` seam (bound to
+        `self._work_package_resolver.project_links_allowed`) rather than a
+        new resolver -- this Service is one of several consumers of the SAME
+        resolver other app/ domains already share.
 
         `children`/`ancestors` are combined into ONE deduplicated bulk
-        resolution (not `keep(children)` then sequentially `keep(ancestors)`,
-        the pre-F3 shape) -- both arrays are hard-capped (50/20 entries) by
-        the Adapter, no server pagination involved, so unlike the 3 scan call
-        sites (Relations/Notifications/Reminders) there is no early-stopping
-        concern here that would require page-by-page batching (OPM-379/F3
-        Korrektur 2).
+        resolution (not `keep(children)` then sequentially `keep(ancestors)`)
+        -- both arrays are hard-capped (50/20 entries) by the Adapter, no
+        server pagination involved, so unlike the 3 scan call sites
+        (Relations/Notifications/Reminders) there is no early-stopping
+        concern here that would require page-by-page batching.
 
-        Also re-derives `children_truncated`/`ancestors_truncated` (a
-        pre-existing bug ported from client.py's original, fixed here): the
+        Also re-derives `children_truncated`/`ancestors_truncated`: the
         Adapter computes those flags from the RAW, unfiltered element count
         (server reported more than the adapter's children/ancestors limit),
         before this filter ever runs. If any raw entry gets dropped by the
@@ -667,8 +644,8 @@ class WorkPackageService:
         limit was itself out-of-scope, leaving the flag True after filtering
         down to fewer (or zero) visible entries would disclose the mere
         existence of hierarchy members the caller isn't allowed to see (the
-        same class of leak as the Attachments container-check bug, just for
-        a boolean flag instead of an id).
+        same class of leak as the Attachments container-check, just for a
+        boolean flag instead of an id).
         `truncated` is only kept True when the allowlist filter removed
         NOTHING (every raw entry survived), i.e. the flag still means exactly
         what the caller would derive by counting the visible list alone --
@@ -725,16 +702,17 @@ class WorkPackageService:
             project_id_to_identifier=self._project_id_to_identifier,
         )
         detail = await self._filter_hierarchy_allowlist(record.to_detail())
-        # Hidden-field stamping MUST run after _filter_hierarchy_allowlist, not
-        # before: apply_hidden_fields sets `_hidden_keys` as a dynamic
+        # Hidden-field stamping MUST run after _filter_hierarchy_allowlist,
+        # never before: apply_hidden_fields sets `_hidden_keys` as a dynamic
         # (non-dataclass-field) attribute, and dataclasses.replace() -- which
         # _filter_hierarchy_allowlist calls whenever the scope is restricted --
         # builds a brand-new instance carrying only the declared dataclass
-        # fields, silently dropping `_hidden_keys`. Stamping first meant every
-        # get()/get_batch() call under a restricted (non-"*") read_projects
-        # scope returned an UNMASKED detail, leaking any hidden work_package
-        # field (e.g. description) regardless of whether children/ancestors
-        # were even present on that particular work package.
+        # fields, silently dropping `_hidden_keys`. Stamping first would mean
+        # every get()/get_batch() call under a restricted (non-"*")
+        # read_projects scope returns an UNMASKED detail, leaking any hidden
+        # work_package field (e.g. description) regardless of whether
+        # children/ancestors were even present on that particular work
+        # package.
         return self._stamp_detail(detail)
 
     async def get_batch(
@@ -757,17 +735,16 @@ class WorkPackageService:
                     work_package = await self.get(work_package_ref, text_limit=text_limit)
                     return (work_package_ref, work_package, None)
                 except (OpenProjectError, InvalidInputError) as e:
-                    # httpx.HTTPError deliberately not caught here (unlike
-                    # client.py's original): every httpx.HTTPError/TimeoutException
-                    # is already translated to a typed TransportError (an
-                    # OpenProjectError subclass) by HttpxTransport before it could
-                    # ever reach this Service -- a raw httpx.HTTPError was dead
-                    # code in the original, and importing httpx here would violate
+                    # httpx.HTTPError deliberately not caught here: every
+                    # httpx.HTTPError/TimeoutException is already translated
+                    # to a typed TransportError (an OpenProjectError
+                    # subclass) by HttpxTransport before it could ever reach
+                    # this Service, and importing httpx here would violate
                     # the httpx-confinement rule (only the Transport module
-                    # may import httpx directly). Any OTHER/unexpected exception
-                    # still propagates out of fetch_one and aborts the whole
-                    # asyncio.gather() below -- unchanged pre-existing behavior,
-                    # the semaphore doesn't alter which exceptions are item-local.
+                    # may import httpx directly). Any OTHER/unexpected
+                    # exception still propagates out of fetch_one and aborts
+                    # the whole asyncio.gather() below -- the semaphore
+                    # doesn't alter which exceptions are item-local.
                     return (work_package_ref, None, str(e))
 
         results = await asyncio.gather(*[fetch_one(ref) for ref in ids])
@@ -802,7 +779,7 @@ class WorkPackageService:
         )
 
     # ------------------------------------------------------------------
-    # Write paths (write-path migration).
+    # Write paths.
     # ------------------------------------------------------------------
 
     async def _resolve_wp_ref_id(
@@ -817,8 +794,7 @@ class WorkPackageService:
         """Cache-then-resolve wrapper around resolve_type_id/resolve_version_id/
         resolve_sprint_id. When `cache` is shared across a bulk call's items,
         a repeated name->id lookup for the same (project, kind, ref) is
-        skipped instead of re-querying OpenProject once per item. Verbatim
-        port of client.py's own `_resolve_wp_ref_id`."""
+        skipped instead of re-querying OpenProject once per item."""
         if cache is not None:
             cached = cache.get_id(kind, project, ref)
             if cached is not None:
@@ -839,8 +815,7 @@ class WorkPackageService:
         project_context: ProjectResolutionContext | None,
     ) -> dict[str, Any]:
         """Embedded schema probe (call #1 of up to 3 `/form` POSTs per
-        `update()` -- see `app/ports/work_package_api.py`'s module docstring).
-        Verbatim port of client.py's own `_get_write_schema`."""
+        `update()` -- see `app/ports/work_package_api.py`'s module docstring)."""
         if work_package_id is not None:
             # OpenProject 17.x rejects the work-package form endpoint with a
             # "could not be updated due to conflicting modifications" (409)
@@ -868,7 +843,6 @@ class WorkPackageService:
         return self._api.parse_form(form).schema
 
     def _resolve_schema_option_href(self, schema: dict[str, Any], key: str, raw_value: Any) -> str:
-        """Verbatim port of client.py's own `_resolve_schema_option_href`."""
         field = schema.get(key)
         if not isinstance(field, dict):
             raise InvalidInputError(f"OpenProject schema does not expose field '{key}' for this work package.")
@@ -893,7 +867,6 @@ class WorkPackageService:
         raise InvalidInputError(f"OpenProject value '{raw_value}' is not allowed for field '{key}'.")
 
     def _resolve_custom_field_key(self, schema: dict[str, Any], raw_key: str) -> str:
-        """Verbatim port of client.py's own `_resolve_custom_field_key`."""
         normalized = str(raw_key).strip()
         if not normalized:
             raise InvalidInputError("custom field keys must not be empty.")
@@ -912,7 +885,6 @@ class WorkPackageService:
         raise InvalidInputError(f"OpenProject custom field '{raw_key}' is not available for this work package.")
 
     def _resolve_custom_field_links(self, field: dict[str, Any], raw_value: Any, key: str) -> builtins.list[str]:
-        """Verbatim port of client.py's own `_resolve_custom_field_links`."""
         values = raw_value if isinstance(raw_value, list) else [raw_value]
         hrefs = [self._resolve_schema_option_href({key: field}, key, value) for value in values]
         if not hrefs:
@@ -926,7 +898,6 @@ class WorkPackageService:
         schema: dict[str, Any],
         custom_fields: dict[str, Any],
     ) -> None:
-        """Verbatim port of client.py's own `_apply_custom_fields`."""
         for raw_key, raw_value in custom_fields.items():
             hidden_fields.ensure_custom_field_input_writable(raw_key, settings=self._settings)
             schema_key = self._resolve_custom_field_key(schema, raw_key)
@@ -971,8 +942,7 @@ class WorkPackageService:
         lock_version: int | None = None,
         resolution_context: WorkPackageResolutionContext | None = None,
     ) -> dict[str, Any]:
-        """Build the HAL JSON payload for create()/update(). Verbatim port of
-        client.py's own `_build_write_payload` -- see that method and
+        """Build the HAL JSON payload for create()/update(). See
         `app/ports/work_package_api.py`'s module docstring for the full
         field-by-field / sentinel-handling rationale."""
         project_context = resolution_context.project_context if resolution_context is not None else None
@@ -1136,11 +1106,13 @@ class WorkPackageService:
             # response echoes the same hierarchy links get() would), but
             # running the same allowlist filter here keeps the masking-order
             # contract identical to get()'s, rather than assuming it can
-            # never matter. See get()'s own comment: _filter_hierarchy_allowlist
+            # never matter. As in get(): _filter_hierarchy_allowlist must run
+            # BEFORE _stamp_detail, never after -- _filter_hierarchy_allowlist
             # calls dataclasses.replace() whenever the read scope is
             # restricted, which would silently drop _stamp_detail's
-            # _hidden_keys tag if stamping ran first -- filter first, stamp
-            # last, matching get()'s established ordering exactly.
+            # _hidden_keys tag if stamping ran first, leaking hidden fields
+            # under a restricted scope. Filter first, stamp last, matching
+            # get()'s ordering exactly.
             filtered = await self._filter_hierarchy_allowlist(outcome.detail.to_detail())
             detail = self._stamp_detail(filtered)
         return WorkPackageWriteResult(
@@ -1177,10 +1149,9 @@ class WorkPackageService:
         confirm: bool = False,
         wp_context: WorkPackageResolutionContext | None = None,
     ) -> WorkPackageWriteResult:
-        # Deliberately NO access.ensure_read_enabled gate here -- the flat
-        # create_work_package never gated on read-enablement either (verified
-        # against client.py's original), so an instance can have work-package
-        # writes enabled with reads entirely disabled and this must still work.
+        # Deliberately NO access.ensure_read_enabled gate here -- an instance
+        # can have work-package writes enabled with reads entirely disabled,
+        # and this must still work.
         # When a caller shares a wp_context across a bulk batch, route this
         # resolve through its cache too -- items sharing the same project then
         # only trigger one real project fetch for the whole batch, not one per
@@ -1277,10 +1248,8 @@ class WorkPackageService:
         project_id = _id_from_href(parent_project_link.get("href") if parent_project_link else None)
         if project_id is None:
             # A server-data anomaly (an unexpected/malformed OpenProject
-            # response), not a caller mistake -- OpenProjectServerError,
-            # matching release/0.3.5's still-flat equivalent, not
-            # InvalidInputError (reconciled 2026-08-01 after a cross-branch
-            # parity audit found the two branches disagreed on this).
+            # response), not a caller mistake -- OpenProjectServerError, not
+            # InvalidInputError.
             raise OpenProjectServerError("OpenProject work package is missing a project link.")
         ensure_project_write_link_allowed(
             parent_project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
@@ -1394,8 +1363,7 @@ class WorkPackageService:
         current: dict[str, Any],
     ) -> tuple[int | None, Any]:
         """Returns (auto_percentage, auto_remaining) -- both None if no
-        auto-fill applies. Verbatim port of update_work_package's inline
-        auto-derivation block (client.py:1712-1746).
+        auto-fill applies.
 
         Only attempted when `status` is actually changing, to avoid an extra
         lookup on every plain field update. Resolves the status id already
@@ -1477,10 +1445,8 @@ class WorkPackageService:
         project_id = _id_from_href(current.get("_links", {}).get("project", {}).get("href"))
         if project_id is None:
             # A server-data anomaly (an unexpected/malformed OpenProject
-            # response), not a caller mistake -- OpenProjectServerError,
-            # matching release/0.3.5's still-flat equivalent, not
-            # InvalidInputError (reconciled 2026-08-01 after a cross-branch
-            # parity audit found the two branches disagreed on this).
+            # response), not a caller mistake -- OpenProjectServerError, not
+            # InvalidInputError.
             raise OpenProjectServerError("OpenProject work package is missing a project link.")
         ensure_project_write_link_allowed(
             current.get("_links", {}).get("project"),
@@ -1687,8 +1653,7 @@ class WorkPackageService:
         is swallowed and just logged -- the caller then simply keeps user
         unset. Only attempted when the response carries a usable id and when
         `user` isn't configured hidden for activities anyway, since fetching
-        it would just be discarded. Verbatim port of client.py's own
-        `_fill_missing_activity_user`.
+        it would just be discarded.
         """
         if hidden_fields.field_hidden("activity", "user", settings=self._settings):
             return activity

@@ -30,8 +30,7 @@ exist. `delete()` is a single flat preview/commit method (same shape as
 action.
 
 Read/write scope reuses `"work_package"` (not a dedicated `"file_link"`
-scope) -- verbatim behavior of client.py's `_ensure_read_enabled("work_package")`
-/ `write_scope="work_package"` in the original `_finalize_delete` call.
+scope).
 """
 
 from __future__ import annotations
@@ -78,16 +77,15 @@ class FileLinkService:
         )
         # Resolving the id already confirms the anchor work package itself is
         # allowed against OPENPROJECT_READ_PROJECTS before its file links are
-        # fetched (verbatim behavior of client.py's original comment/order).
+        # fetched.
         resolved_id = await self._resolve_work_package_id(work_package_id, write=False)
-        # File Links is really offset-paginated server-side (verified against
+        # File Links is offset-paginated server-side (verified against
         # OpenProject's own API implementation: FileLinkCollectionRepresenter
         # subclasses OffsetPaginatedCollection) -- a single unparameterized
-        # GET silently returned only the server's default page, and a single
-        # fetch capped at settings.max_results silently hid any file link
+        # GET returns only the server's default page, and a single fetch
+        # capped at settings.max_results would silently hide any file link
         # beyond that cap. Scan server pages instead, same early-stopping
-        # pattern already applied to Documents/Views/News (OPM-373 Phase 5,
-        # OPM-379/F5).
+        # pattern already applied to Documents/Views/News.
         raw_items, truncated = await scan_records_and_paginate(
             lambda o, ps: self._api.list_for_work_package(resolved_id, offset=o, page_size=ps),
             item_allowed=lambda _record: True,

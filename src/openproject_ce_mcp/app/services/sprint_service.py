@@ -8,32 +8,27 @@ is no semantic-reference resolution for this domain to warrant a Resolver
 
 Sprints shares the "project" read scope with Projects/News/Documents/
 Categories/Views/Grids -- no dedicated OPENPROJECT_ENABLE_SPRINT_* flag
-exists, so access.ensure_read_enabled here uses scope="project" (verbatim
-behavior of client.py's original _ensure_read_enabled("project") call in all
-three of its methods).
+exists, so access.ensure_read_enabled here uses scope="project" throughout.
 
 Unlike Views, Sprints DOES need a dedicated Policy module (sprint_policy.py):
 the allowlist check has two branches (embedded-object vs. link), not one.
 
 Two list methods, not one: `list()` hits the global `sprints` endpoint (no
-project filter argument at all in the legacy code -- `list_sprints` never
-took a `project` kwarg); `list_for_project()` hits the project-scoped
+project filter at all); `list_for_project()` hits the project-scoped
 `projects/{id}/sprints` endpoint via a resolved project id, but STILL filters
 client-side afterward -- a sprint shared into a project via Backlogs sharing
-can be *defined* by a different, possibly disallowed project (verified by
-client.py's existing `list_project_sprints` behavior and its own test
-coverage in test_versions_and_sprints.py). Because `SprintSummary`'s
-project-ish fields are named `defining_workspace_id`/`defining_workspace`
-(not `project_id`/`project`), `project_scoped_list.py`'s
-`summary_matches_project_candidates` (whose Protocol requires the latter
-names) is not usable here -- and is not needed anyway, since neither list
-method does client-side project-*candidate* matching (list_for_project
-scopes via the request URL, not by matching a resolved candidate set against
-each row).
+can be *defined* by a different, possibly disallowed project. Because
+`SprintSummary`'s project-ish fields are named
+`defining_workspace_id`/`defining_workspace` (not `project_id`/`project`),
+`project_scoped_list.py`'s `summary_matches_project_candidates` (whose
+Protocol requires the latter names) is not usable here -- and is not needed
+anyway, since neither list method does client-side project-*candidate*
+matching (list_for_project scopes via the request URL, not by matching a
+resolved candidate set against each row).
 
-NotFoundError rewrap (three distinct "Backlogs module" messages, matching
-client.py's originals exactly) happens here, not in the adapter -- mirrors
-the existing ProjectService NotFoundError-rewrap precedent.
+NotFoundError rewrap (three distinct "Backlogs module" messages) happens
+here, not in the adapter -- mirrors the existing ProjectService
+NotFoundError-rewrap precedent.
 """
 
 from __future__ import annotations
@@ -113,9 +108,9 @@ class SprintService:
             max_results=self._settings.max_results,
         )
         try:
-            # A single fetch capped at settings.max_results silently hid any
-            # sprint beyond that cap once the endpoint's real result count
-            # exceeded it -- scan server pages instead (OPM-373 Phase 5).
+            # Scan server pages rather than a single fetch capped at
+            # settings.max_results, which would silently hide any sprint
+            # beyond that cap once the endpoint's real result count exceeds it.
             raw_items, truncated = await scan_records_and_paginate(
                 lambda o, ps: self._api.list_all(offset=o, page_size=ps),
                 item_allowed=lambda record: self._item_allowed(record, search=search),

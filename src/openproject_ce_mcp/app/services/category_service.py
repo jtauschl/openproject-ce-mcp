@@ -8,8 +8,7 @@ Resolver in the ADR sense.
 
 Categories shares the "project" read scope with Projects/News/Documents --
 there is no dedicated OPENPROJECT_ENABLE_CATEGORY_* flag, so
-access.ensure_read_enabled here uses scope="project" (verbatim behavior of
-client.py's original _ensure_read_enabled("project") call).
+access.ensure_read_enabled here uses scope="project".
 
 get() uses OpenProject's real single-category GET. `project_ref` is
 OPTIONAL: the category's own real `project_link` (returned by the GET) is

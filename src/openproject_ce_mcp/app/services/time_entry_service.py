@@ -8,33 +8,25 @@ NOT `WorkPackageProjectAllowedCheck` (unlike Relations): no Time Entries path
 dereferences an already-known work-package link the way Relations' from/to
 sides do. `list_all` only needs `resolve_work_package_id` to resolve a
 caller-supplied reference to a numeric id (used for the post-normalize entity
-match, matching the pre-migration original -- no allowlist check of its own
-here); `create` fetches the work package itself via
+match -- no allowlist check of its own here); `create` fetches the work
+package itself via
 `WorkPackageLookupApi.get(...)` and checks its OWN `_links.project` directly,
 the same pattern `get`/`update`/`delete` use on the time entry's own project
 link.
 
 Uses the shared `app/services/_write_outcome.py` state machine (`_finalize_write`),
 same as `GridService` -- both go through a `<domain>/form` endpoint with an
-identical rejected/preview/committed shape. This is a distinct function from
-client.py's flat, private `_finalize_write` helper, which stays in client.py
-feeding the still-flat Work Package/Attachment methods; `_to_write_result`
-below mirrors `GridService`'s identical mapper.
+identical rejected/preview/committed shape. `_to_write_result` below mirrors
+`GridService`'s identical mapper.
 
 Read/write scope reuses `"work_package"` (not a dedicated `"time_entry"`
-scope) -- verbatim behavior of client.py's `_ensure_read_enabled`/
-`_ensure_write_enabled("work_package")` calls; tools.py's scope tables are
-unchanged by this migration.
+scope).
 
-`normalize_time_entry`/`normalize_time_entry_activity` in the pre-migration
-client.py were NOT settings-free (unlike `normalize_relation`) -- both called
-`self._apply_hidden_fields(...)` on the whole normalized object, and
-`normalize_time_entry` additionally called `self._visible_formattable_text_with_meta(...)`
-(hide-aware) for the `comment` field. `_stamp`/`_stamp_activity` here apply
-that masking AFTER the adapter's pure `normalize_time_entry_raw`/
-`normalize_time_entry_activity_raw` extraction. `_stamp`'s `comment` handling
-nulls `comment`/`comment_truncated`/`comment_length` together when hidden
-(not just `comment`) -- leaving truncation metadata visible would indirectly
+`_stamp`/`_stamp_activity` apply hidden-field masking AFTER the adapter's
+pure `normalize_time_entry_raw`/`normalize_time_entry_activity_raw`
+extraction. `_stamp`'s `comment` handling nulls
+`comment`/`comment_truncated`/`comment_length` together when hidden (not
+just `comment`) -- leaving truncation metadata visible would indirectly
 leak information about a field the caller isn't supposed to see at all.
 
 The `log_own_time`-vs-`log_time` permission-gating asymmetry (GitHub issue
@@ -225,9 +217,8 @@ class TimeEntryService:
                 if item_candidates.isdisjoint(project_candidates):
                     return False
             # The remaining filters (work_package_id/user/spent_on) run
-            # against NORMALIZED fields, matching pre-migration behavior
-            # exactly -- normalize once here rather than rebuilding the
-            # comparison against raw payload fields (OPM-373 Phase 5).
+            # against NORMALIZED fields -- normalize once here rather than
+            # rebuilding the comparison against raw payload fields.
             normalized = self._api.to_record(item, text_limit=self._settings.text_limit).summary()
             if resolved_work_package_id is not None and not (
                 normalized.entity_type == "WorkPackage" and normalized.entity_id == resolved_work_package_id

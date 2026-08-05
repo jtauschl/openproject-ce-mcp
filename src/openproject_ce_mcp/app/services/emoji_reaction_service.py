@@ -5,13 +5,9 @@ concretely -- enforced by the architecture-boundary test), on
 `WorkPackageLookupApi` directly, and on `WorkPackageIdResolver`. Three
 Protocol dependencies -- the same shape as File Links, for the same reason:
 
-- `list_for_work_package()` uses `WorkPackageIdResolver(ref, write=False)`.
-  client.py's original called `self.get_work_package(work_package_id)`
-  purely as an existence+read-allowlist check, discarding the full
-  `WorkPackageDetail` it returned -- `resolve_id` does the identical fetch +
-  allowlist check without the wasted normalization/hierarchy-filtering work
-  `get_work_package` also does, a strictly better fit than the flat code's
-  own choice of helper.
+- `list_for_work_package()` uses `WorkPackageIdResolver(ref, write=False)`,
+  which does a fetch + read-allowlist check without any wasted
+  normalization/hierarchy-filtering work.
 - `toggle()` uses `WorkPackageLookupApi.get()` directly, NOT
   `WorkPackageIdResolver`/`WorkPackageProjectAllowedCheck` -- mirroring File
   Links' `delete()` reasoning exactly: the work-package id here is already a
@@ -30,11 +26,10 @@ against a per-record project-link predicate.
 machine, since this domain has exactly one write action) -- its preview
 cannot predict the resulting add/remove state (OpenProject decides that
 server-side), so the preview names the toggle's nature instead of a real
-result, verbatim behavior of client.py's original.
+result.
 
 Read/write scope reuses `"work_package"` (not a dedicated `"emoji_reaction"`
-scope) -- verbatim behavior of client.py's `_ensure_read_enabled`/
-`_ensure_write_enabled("work_package")` calls.
+scope).
 """
 
 from __future__ import annotations
@@ -49,8 +44,7 @@ from ..ports.emoji_reaction_api import EmojiReactionApi
 from ..ports.work_package_lookup_api import WorkPackageLookupApi
 from ..ports.work_package_ref import WorkPackageIdResolver
 
-#: Valid reactions per the OpenProject API spec, verbatim port of
-#: client.py's EMOJI_REACTIONS tuple.
+#: Valid reactions per the OpenProject API spec.
 EMOJI_REACTIONS = (
     "thumbs_up",
     "thumbs_down",
@@ -96,8 +90,7 @@ class EmojiReactionService:
         # package. Fail closed: if the activity has no resolvable
         # workPackage link, refuse rather than patch an unchecked target.
         # This check always runs, even in preview mode -- it is an
-        # authorization gate, not the mutation itself (verbatim behavior of
-        # client.py's original).
+        # authorization gate, not the mutation itself.
         activity = await self._api.get_activity(activity_id)
         work_package_id = id_from_href(activity.get("_links", {}).get("workPackage", {}).get("href"))
         if not work_package_id:

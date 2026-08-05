@@ -12,8 +12,7 @@ project concept at all in the OpenProject API, so it takes no
 `list_capabilities`, by contrast, IS project-scoped when a `project` ref is
 given (its `context` filter targets a specific project) -- so it depends on
 `ProjectRefResolver`, same seam as Categories/Memberships/Documents. Both
-methods share `access.ensure_read_enabled("membership", ...)` as their gate
-(verbatim port of client.py's `_ensure_read_enabled("membership")` for both),
+methods share `access.ensure_read_enabled("membership", ...)` as their gate,
 so a single Service bundling both, rather than two separate Services, avoids
 depending on the exact same seam twice for no behavioral difference.
 
@@ -21,36 +20,29 @@ depending on the exact same seam twice for no behavioral difference.
 `context` link (via `scope.ensure_project_link_allowed`, same "nullable link,
 no dedicated policy file" shape as `ViewService._allowed` -- Capabilities has
 no dedicated policy file for the same reason Views doesn't), independent of
-whether a `project` filter was supplied server-side. The pre-migration
-client.py only ever allowlist-checked the caller-supplied `project`
-parameter itself (by resolving it through `ProjectRefResolver` before
-building the server-side `context` filter) -- a `capability_id`-only call
-skipped that check entirely, since `project` was never given to resolve.
-Capability records carry a genuine `context.href` (a real
+whether a `project` filter was supplied server-side. This matters because
+capability records carry a genuine `context.href` (a real
 `/api/v3/projects/{id}` link per the OpenProject API docs), not just a
-display title, so a restrictive `OPENPROJECT_READ_PROJECTS` scope was
-leaking capability records (including project names/principals) for
-`capability_id`-only calls. The server-side `context` filter remains a
-narrowing optimization when `project` is given, not the security boundary --
-the per-record check runs regardless.
+display title: a `capability_id`-only call has no `project` parameter to
+resolve/check, so without this per-record check, a restrictive
+`OPENPROJECT_READ_PROJECTS` scope would leak capability records (including
+project names/principals) for `capability_id`-only calls. The server-side
+`context` filter remains a narrowing optimization when `project` is given,
+not the security boundary -- the per-record check runs regardless.
 
 `capability_id` is filtered via the server-side single-item `GET
 /capabilities/{id}` endpoint, not a collection `id` filter -- OpenProject's
 capabilities collection endpoint accepts only `action`/`principal`/`context`
-filters; an earlier version of this code sent an undocumented `{"id": ...}`
-collection filter that had never been re-verified against current API docs.
+filters, with no `id` filter of its own.
 
 The `context` filter's project-scoping value is `p{id}` (project), NOT
-`w{id}` (workspace) -- an earlier version of this code switched from the
-`p{id}` form to `w{id}` on the assumption that workspace syntax was the more
-current/recommended form, which broke `list_capabilities` against
-OpenProject 16.x: `Queries::Capabilities::Filters::ContextFilter#split_values`
+`w{id}` (workspace): `Queries::Capabilities::Filters::ContextFilter#split_values`
 only matches "[gp] followed by digits" on 16.0-16.6 (`w` isn't introduced
 until 17.0, where the regex becomes `[gwp]`, verified across all supported
 versions). `p` remains accepted on every version 16.0-17.6 despite a
 `@deprecated ... for 17.2` comment in the 17.x source that was apparently
 never acted on -- it is the only prefix that works across the whole
-supported version matrix, so this Service reverted to it.
+supported version matrix.
 """
 
 from __future__ import annotations

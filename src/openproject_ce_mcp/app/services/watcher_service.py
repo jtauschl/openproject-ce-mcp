@@ -2,15 +2,13 @@
 
 Depends on the `WatcherApi` Protocol (never `HttpxWatcherApi` concretely --
 enforced by the architecture-boundary test) and on `WorkPackageIdResolver`.
-Unlike File Links (which needed a second Port for `delete()`'s raw-payload
-fetch, because the id there was already a concrete int derived from a
+Unlike File Links (which needs a second Port for `delete()`'s raw-payload
+fetch, because the id there is already a concrete int derived from a
 container link, not a caller-supplied reference), Watchers' `add`/`remove`
 both take a genuine caller-supplied work-package reference that needs
-resolving -- a cleaner fit for `WorkPackageIdResolver(ref, write=True)` than
-File Links had: `resolve_id` already fetches the work package and enforces
-the WRITE allowlist against its project link, replacing client.py's
-hand-rolled `_work_package_ref` + manual `_get` + `_ensure_project_write_link_allowed`
-chain with a single seam call.
+resolving -- a cleaner fit for `WorkPackageIdResolver(ref, write=True)`:
+`resolve_id` already fetches the work package and enforces the WRITE
+allowlist against its project link in a single seam call.
 
 No `to_detail`, no Policy module: `list()`'s scoping is entirely delegated to
 `WorkPackageIdResolver` (read-scoped); `add()`/`remove()`'s scoping is
@@ -24,9 +22,7 @@ preview needs a real `WatcherSummary`, fetched via a user lookup; `remove`'s
 preview has `result=None`), which the generic `_finalize_write` (always
 `detail=None` in preview) doesn't fit.
 
-Read/write scope reuses `"work_package"` (not a dedicated `"watcher"` scope)
--- verbatim behavior of client.py's `_ensure_read_enabled("work_package")` /
-`_ensure_write_enabled("work_package")` calls.
+Read/write scope reuses `"work_package"` (not a dedicated `"watcher"` scope).
 """
 
 from __future__ import annotations
@@ -57,7 +53,7 @@ class WatcherService:
         access.ensure_read_enabled("work_package", settings=self._settings)
         # Resolving the id already confirms the anchor work package itself is
         # allowed against OPENPROJECT_READ_PROJECTS before its watchers are
-        # fetched (verbatim behavior of client.py's original comment/order).
+        # fetched.
         resolved_id = await self._resolve_work_package_id(work_package_id, write=False)
         summaries = await self._api.list_for_work_package(resolved_id)
         results = [self._stamp(summary) for summary in summaries]
@@ -65,10 +61,8 @@ class WatcherService:
 
     async def add(self, work_package_id: int | str, user_id: int, *, confirm: bool = False) -> WatcherWriteResult:
         # write=True enforces OPENPROJECT_WRITE_PROJECTS against the resolved
-        # work package's own project, before any preview or mutation --
-        # verbatim behavior of client.py's original (which fetched the work
-        # package and checked its project link unconditionally, even on a
-        # confirm=False preview call).
+        # work package's own project, before any preview or mutation -- this
+        # check runs unconditionally, even on a confirm=False preview call.
         resolved_id = await self._resolve_work_package_id(work_package_id, write=True)
         if not confirm:
             watcher = self._stamp(await self._api.get_user(user_id))

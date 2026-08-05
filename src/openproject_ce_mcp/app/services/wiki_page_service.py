@@ -8,8 +8,7 @@ for this domain to warrant a Resolver in the ADR sense.
 
 Wiki pages share the "project" read scope with Projects/News/Grids/
 Documents -- there is no dedicated OPENPROJECT_ENABLE_WIKI_* flag, so the
-access.ensure_read_enabled call here uses scope="project" (verbatim
-behavior of client.py's original _ensure_read_enabled("project") call).
+access.ensure_read_enabled call here uses scope="project".
 
 Get-only, no write state machine at all: the OpenProject v3 API exposes no
 create/update/delete endpoint for wiki pages, and there is no list endpoint

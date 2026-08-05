@@ -7,8 +7,7 @@ semantic-reference resolution for this domain to warrant a Resolver.
 
 Views shares the "project" read scope with Projects/News/Documents/
 Categories -- there is no dedicated OPENPROJECT_ENABLE_VIEW_* flag, so
-access.ensure_read_enabled here uses scope="project" (verbatim behavior of
-client.py's original _ensure_read_enabled("project") call).
+access.ensure_read_enabled here uses scope="project".
 
 Read-only, no dedicated policy file: unlike Documents/News/Versions, Views
 needs no <domain>_payload_allowed wrapper around scope.project_link_payload_allowed
@@ -92,9 +91,9 @@ class ViewService:
                 return False
             return search_key is None or search_key in (record.summary.name or "").casefold()
 
-        # A single fetch capped at settings.max_results silently hid any view
-        # beyond that cap once the endpoint's real result count exceeded it --
-        # scan server pages instead (OPM-373 Phase 5).
+        # Scan server pages rather than a single fetch capped at
+        # settings.max_results, which would silently hide any view beyond
+        # that cap once the endpoint's real result count exceeds it.
         raw_items, truncated = await scan_records_and_paginate(
             lambda o, ps: self._api.list_all(offset=o, page_size=ps),
             item_allowed=_record_allowed,

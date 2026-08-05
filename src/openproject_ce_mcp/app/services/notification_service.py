@@ -17,22 +17,15 @@ the Service, matching Reminders' precedent exactly:
 - no project link, but a work-package resource link -> resolve via the work
   package itself, using `WorkPackageProjectAllowedCheck` +
   `WorkPackageAllowedContext` (a request-scoped cache avoiding a redundant
-  fetch if two notifications happen to reference the same work package),
-  verbatim behavior of client.py's original `_notification_payload_allowed`.
+  fetch if two notifications happen to reference the same work package).
 - neither link present -> genuinely personal/global, passes through
-  unchecked (verbatim behavior of client.py's original).
+  unchecked.
 
 `_rescan_and_skip`'s restrictive-scope path resolves each server page's
 work-package hrefs concurrently via `WorkPackageProjectAllowedBulkCheck`
-(`_resolve_page_allowed`, OPM-379/F3) instead of one `WorkPackageProjectAllowedCheck`
+(`_resolve_page_allowed`) instead of one `WorkPackageProjectAllowedCheck`
 call per record -- the skip-counting/`limit + 1`-lookahead consumption logic
-itself is unchanged, it now just reads pre-resolved `bool | Exception`
-outcomes. The same change also fixed an independent bug (OPM-379/F3
-Korrektur 6c): `_rescan_and_skip` previously set `truncated=True` as soon as
-`len(results) >= limit` was reached mid-page, without the `limit + 1`
-lookahead every sibling scan helper already uses to confirm a genuine next
-match exists -- a false positive whenever a page happened to end exactly at
-the limit-th allowed record.
+itself is unchanged, it just reads pre-resolved `bool | Exception` outcomes.
 
 `mark_read()`/`mark_all_read()` each stay a single flat method (not the
 shared `_write_outcome.py` state machine): neither goes through a
@@ -45,19 +38,14 @@ alone is not the criterion the runbook uses (2+ write actions sharing a
 single-flat-method precedent for the same reason.
 
 Read/write scope uses `"personal"` (not `"work_package"` or a dedicated
-`"notification"` scope) -- verbatim behavior of client.py's
-`_ensure_read_enabled`/`_ensure_write_enabled("personal")` calls.
+`"notification"` scope).
 
 `mark_read()`/`mark_all_read()` both call `access.ensure_write_enabled("personal",
 ...)` unconditionally, BEFORE the `if not confirm:` preview return -- not gated
-inside the confirmed branch like Document's update(). Verbatim port of
-client.py's original `mark_notification_read`/`mark_all_notifications_read`
-placement (`self._ensure_write_enabled("personal")` precedes the `if not
-confirm:` check there too, confirmed against pre-migration history) --
-preserved exactly, matching User Preferences' identical documented choice for
-the same reason: a caller without personal-write can't even preview either
-action today, and normalizing this to the Document-style ordering would
-silently loosen that preview-time behavior.
+inside the confirmed branch like Document's update(). Matches User
+Preferences' identical documented choice for the same reason: a caller
+without personal-write can't even preview either action, and gating only the
+confirmed branch would silently loosen that preview-time behavior.
 """
 
 from __future__ import annotations
@@ -112,9 +100,9 @@ class NotificationService:
             records, total, truncated = await self._rescan_and_skip(
                 unread_only=unread_only, offset=offset, limit=resolved_limit
             )
-        # .summary() is called only AFTER filtering -- matching client.py's
-        # original "filter raw, normalize survivors" order (see
-        # NotificationRecord's docstring for why this must stay lazy).
+        # .summary() is called only AFTER filtering -- "filter raw, normalize
+        # survivors" (see NotificationRecord's docstring for why this must
+        # stay lazy).
         results = [self._stamp(record.summary()) for record in records]
         return NotificationListResult(
             count=len(results),
@@ -141,18 +129,16 @@ class NotificationService:
         Collects one extra (`limit + 1`) allowed record before deciding
         `truncated`, matching every sibling scan helper
         (`fetch_bounded_and_paginate`/`scan_and_paginate`/
-        `scan_records_and_paginate`) -- an earlier version of this method
-        stopped and set `truncated=True` as soon as `len(results) >= limit`
-        was reached mid-page, WITHOUT checking whether a genuine next match
-        existed beyond that window (a false-positive `next_offset`/
-        `truncated` promise whenever the page happened to end exactly at the
-        limit-th allowed record). Fixed here in the same change that
-        page-batches the allowlist checks (OPM-379/F3 Korrektur 6c).
+        `scan_records_and_paginate`): this confirms a genuine next match
+        exists beyond the requested window before `truncated`/`next_offset`
+        are set, rather than merely noticing the window filled up -- a
+        follow-up call using a falsely promised `next_offset` would silently
+        return nothing.
 
-        Per-page allowlist resolution is now batched (OPM-379/F3): every raw
-        record's candidate work-package href is collected up front and
-        resolved in one bulk call via `_work_package_project_allowed_bulk`,
-        instead of awaiting `_record_allowed` one record at a time -- the
+        Per-page allowlist resolution is batched: every raw record's
+        candidate work-package href is collected up front and resolved in
+        one bulk call via `_work_package_project_allowed_bulk`, instead of
+        awaiting a per-record check one record at a time -- the
         skip-counting/limit+1-lookahead consumption loop below is otherwise
         structurally unchanged, it just reads pre-resolved outcomes.
         """
@@ -173,17 +159,17 @@ class NotificationService:
             for record, outcome in zip(page.records, outcomes, strict=True):
                 if isinstance(outcome, Exception):
                     # Every record reached by this loop iteration -- skip
-                    # window or not -- WOULD have been awaited by the old
-                    # one-at-a-time control flow too (the skip counter only
-                    # skips already-confirmed ALLOWED records, it does not
-                    # skip the check itself; and the loop only stops once the
+                    # window or not -- is one the sequential control flow
+                    # would genuinely check too (the skip counter only skips
+                    # already-confirmed ALLOWED records, it does not skip the
+                    # check itself; and the loop only stops once the
                     # (limit+1)-th allowed record is actually found and
                     # appended, via the `break` below -- not merely once
                     # `len(results) == limit`). So a speculative failure here
                     # always raises; only outcomes for records the loop never
                     # reaches at all (a later record on this page, once the
                     # break already fired) are silently discarded, same as
-                    # `fetch_bounded_and_paginate`/`_scan_and_paginate`.
+                    # `fetch_bounded_and_paginate`/`scan_and_paginate`.
                     raise outcome
                 if not outcome:
                     continue
@@ -212,14 +198,13 @@ class NotificationService:
     async def _resolve_page_allowed(
         self, records: list[NotificationRecord], *, cache: WorkPackageAllowedContext
     ) -> list[bool | Exception]:
-        """Page-batching allowlist resolution (OPM-379/F3): collect every
-        record's candidate work-package href (records with their own
-        `project_link`, or neither kind of link, need no I/O and are resolved
-        synchronously) and resolve the rest concurrently in one bulk call --
-        same three-way branch client.py's original `_notification_payload_allowed`
-        used (and this Service's own pre-F3 `_record_allowed` verbatim-ported),
-        just resolving a whole page's work-package hrefs together instead of
-        one record at a time.
+        """Page-batching allowlist resolution: collect every record's
+        candidate work-package href (records with their own `project_link`,
+        or neither kind of link, need no I/O and are resolved synchronously)
+        and resolve the rest concurrently in one bulk call, using the same
+        three-way branch described in this module's docstring, just
+        resolving a whole page's work-package hrefs together instead of one
+        record at a time.
         """
         hrefs: list[str] = []
         for record in records:

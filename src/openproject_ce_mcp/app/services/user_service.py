@@ -9,39 +9,28 @@ client-side project-link filtering.
 `list()` needs BOTH `pagination.paginate_server` (no-search branch) and
 `pagination.paginate_client` (search branch, over-fetch-then-filter) --
 unlike Roles, which only ever needed the former since it has no search
-parameter. Verbatim port of client.py's `list_users` dual-branch shape;
-`list_groups` (still flat) shares the identical structure.
+parameter.
 
-`lock()`/`unlock()` are the first Service methods for a non-CRUD write
-action. Modeled on `ProjectService.set_favorite` (the closest existing
-precedent: a no-form, no-prior-GET, preview/confirm/commit toggle) via a
-small shared `_finalize_action` helper local to this Service -- lock/unlock
-share an identical shape with EACH OTHER (not with create/update/delete),
-so a dedicated 2-call-site helper here follows the same "2+ write actions
+`lock()`/`unlock()` are non-CRUD write actions. Modeled on
+`ProjectService.set_favorite` (the closest existing precedent: a no-form,
+no-prior-GET, preview/confirm/commit toggle) via a small shared
+`_finalize_action` helper local to this Service -- lock/unlock share an
+identical shape with EACH OTHER (not with create/update/delete), so a
+dedicated 2-call-site helper here follows the same "2+ write actions
 sharing the same shape" threshold `_write_outcome.py`'s module docstring
 already applies project-wide, without forcing lock/unlock onto the
 form-based `_finalize_write` shape they don't fit.
 
 `delete()`/`lock()`/`unlock()` all check `access.ensure_write_enabled("admin", ...)`
-UNCONDITIONALLY (not gated inside the confirm branch) -- a deliberate,
-verified port of client.py's own asymmetry: `delete_user`/`lock_user`/
-`unlock_user` have no prior GET to piggyback the check on (unlike e.g.
-`MembershipService.delete()`, which checks only inside `if confirm:` because
-it already does a prior GET for the allowlist check). Kept as-is rather than
-silently normalized to the `_write_outcome.py` convention, since the
-underlying reason (nothing else to gate an unauthorized preview request on)
-applies here exactly as it did in the original.
+UNCONDITIONALLY (not gated inside the confirm branch): none of them have a
+prior GET to piggyback the check on (unlike e.g. `MembershipService.delete()`,
+which checks only inside `if confirm:` because it already does a prior GET
+for the allowlist check).
 
 `create()`/`update()`/lock/unlock's `_finalize_action` all call
 `hidden_fields.ensure_field_writable("user", <field>, ...)` for every field
 they write, matching every other full-CRUD Service (News/Board/Document/
-Membership/Project/Version). This is a DELIBERATE HARDENING beyond
-client.py's original `create_user`/`update_user`/`lock_user`/`unlock_user`,
-which never called the equivalent `_ensure_field_writable` at all -- a
-genuine pre-existing gap (verified: `OPENPROJECT_HIDE_USER_FIELDS` masked
-reads but never blocked writes), fixed here rather than faithfully ported,
-since every sibling domain already has this protection and there is no
-reason to preserve an inconsistency once found.
+Membership/Project/Version).
 """
 
 from __future__ import annotations
@@ -84,7 +73,7 @@ class UserService:
             # scan every server page (Users is genuinely
             # OffsetPaginatedCollection server-side, verified against
             # OpenProject's own API implementation) instead of trusting the
-            # server's pre-filter total (OPM-373 Phase 5).
+            # server's pre-filter total.
             raw_items, truncated = await scan_records_and_paginate(
                 lambda o, ps: self._api.list_users(offset=o, page_size=ps),
                 item_allowed=_record_matches,
@@ -267,8 +256,7 @@ class UserService:
 
     async def delete(self, user_id: int, *, confirm: bool = False) -> UserWriteResult:
         # Checked unconditionally (not just on confirm) -- there is no prior
-        # GET to gate an unauthorized preview request on, verbatim port of
-        # client.py's delete_user.
+        # GET to gate an unauthorized preview request on.
         access.ensure_write_enabled("admin", settings=self._settings)
         payload = {"id": user_id}
         if not confirm:

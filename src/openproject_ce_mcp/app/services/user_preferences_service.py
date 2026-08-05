@@ -2,14 +2,14 @@
 
 Depends on the UserPreferencesApi Protocol, never HttpxUserPreferencesApi
 concretely (enforced by the architecture-boundary test). No Resolver, no
-Policy file: this is the first self-scoped (not project-scoped, not
-purely-global-admin-scoped) domain to migrate -- `my_preferences` has no
-project link and no allowlist concept at all, so neither
-app/policies/scope.py's helpers nor a dedicated <domain>_policy.py module
-apply. Constructor shape follows RoleService's purely-global template
-(`api`, `settings` only, no `project_id_to_identifier`), not WikiPageService's
-(which, despite having no list endpoint either, still carries
-`project_id_to_identifier` and a project-link allowlist check).
+Policy file: this is a self-scoped (not project-scoped, not
+purely-global-admin-scoped) domain -- `my_preferences` has no project link
+and no allowlist concept at all, so neither app/policies/scope.py's helpers
+nor a dedicated <domain>_policy.py module apply. Constructor shape follows
+RoleService's purely-global template (`api`, `settings` only, no
+`project_id_to_identifier`), not WikiPageService's (which, despite having no
+list endpoint either, still carries `project_id_to_identifier` and a
+project-link allowlist check).
 
 Exactly one write action (`update`), no list endpoint at all: no shared
 `_WriteOutcome`/`_finalize_write` state machine, matching DocumentService's
@@ -23,16 +23,13 @@ precedent, only as the nearest single-call-site sibling.
 update()'s write-scope gate (access.ensure_write_enabled("personal", ...))
 runs at the TOP of the method, before the preview/confirm branch -- this is
 the OPPOSITE of DocumentService's ordering (gate after the preview return).
-Verbatim port of client.py:3542's placement (self._ensure_write_enabled
-("personal") precedes the `if not confirm:` check there too) -- preserved
-exactly, not normalized to the Document-style ordering, since changing it
-would silently loosen preview-time behavior (today, a caller without
+This is deliberate, not normalized to the Document-style ordering: changing
+it would silently loosen preview-time behavior (a caller without
 personal-write can't even preview a change).
 
 update() performs no prerequisite GET (unlike Document.update(), which
 fetches the current resource for its project_link): there is no project link
-to derive, so the payload is built and PATCHed directly on confirm, exactly
-matching client.py's original.
+to derive, so the payload is built and PATCHed directly on confirm.
 """
 
 from __future__ import annotations
@@ -70,11 +67,10 @@ class UserPreferencesService:
         # Note: there is no "lang" parameter here. OpenProject's real
         # UserPreferenceRepresenter has no "lang" property at all -- language
         # is a User attribute (see UserService's "language" field), not a
-        # preference. A previous version of this method sent {"lang": ...} to
-        # PATCH /api/v3/my_preferences, which the real API silently ignored
-        # (verified live: even a nonsense value returned 200 with no
-        # validation error and no effect), so it always appeared to succeed
-        # while doing nothing.
+        # preference. Sending {"lang": ...} to PATCH /api/v3/my_preferences
+        # is silently ignored by the real API (verified live: even a
+        # nonsense value returns 200 with no validation error and no
+        # effect), so it would always appear to succeed while doing nothing.
         access.ensure_write_enabled("personal", settings=self._settings)
 
         payload: dict[str, Any] = {}

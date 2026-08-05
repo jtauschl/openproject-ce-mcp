@@ -27,11 +27,9 @@ satisfied on paper (both write actions return `AttachmentWriteResult`), but
 `create()` has no such form endpoint at all (a direct multipart POST with a
 hand-built preview), so the shapes are genuinely heterogeneous, not merely
 differently-named. There is also no shared "delete finalizer" anywhere in
-`app/` to reuse for `delete()` either -- verified against
-`FileLinkService.delete()`, which is itself a fully inline preview/confirm
-method, the real precedent this Service's `delete()` follows.
-`client.py`'s own `_finalize_delete` (a client.py-local helper for the
-still-flat GET-then-delete domains) is not reachable from `app/`.
+`app/` to reuse for `delete()` either -- `FileLinkService.delete()` is
+itself a fully inline preview/confirm method, the real precedent this
+Service's `delete()` follows.
 
 Filesystem-access security logic (`_attachment_root`/`_is_sensitive_attachment`/
 `_prepare_attachment_file`/`_validate_attachment_size`) lives HERE as private
@@ -50,8 +48,7 @@ cross-domain dependency (not the "raw sibling-domain resource" pattern
 the complete Instance Configuration domain as a side effect of this one.
 
 Read/write scope reuses `"work_package"` (not a dedicated `"attachment"`
-scope) -- verbatim behavior of client.py's original
-`_ensure_read_enabled("work_package")`/`write_scope="work_package"`.
+scope).
 """
 
 from __future__ import annotations
@@ -126,16 +123,16 @@ class AttachmentService:
         )
         # Resolving the id already confirms the anchor work package itself is
         # allowed against OPENPROJECT_READ_PROJECTS before its attachments
-        # are fetched (verbatim behavior of client.py's original order).
+        # are fetched.
         resolved_id = await self._resolve_work_package_id(work_package_id, write=False)
 
         def _record_allowed(record: Any) -> bool:
             return record.summary.container_type == "WorkPackage" and record.summary.container_id == resolved_id
 
-        # A single fetch capped at settings.max_results silently hid any
-        # attachment beyond that cap -- scan server pages instead, same
-        # early-stopping pattern already applied to Documents/Views/News
-        # (OPM-373 Phase 5, OPM-379/F5).
+        # Scan server pages rather than a single fetch capped at
+        # settings.max_results, which would silently hide any attachment
+        # beyond that cap -- same early-stopping pattern as
+        # Documents/Views/News.
         raw_items, truncated = await scan_records_and_paginate(
             lambda o, ps: self._api.list_for_work_package(resolved_id, offset=o, page_size=ps),
             item_allowed=_record_allowed,
@@ -176,12 +173,10 @@ class AttachmentService:
         hidden_fields.ensure_field_writable("attachment", "file_name", settings=self._settings)
         if description is not None:
             hidden_fields.ensure_field_writable("attachment", "description", settings=self._settings)
-        # Stat and validate the size BEFORE reading file bytes into memory --
-        # the original client.py code read the full file first, then
-        # validated (`include_bytes=confirm` reads unconditionally on a
-        # confirmed call), letting an oversized upload be fully buffered in
-        # memory before being rejected. Fixed here: only read bytes after the
-        # size check passes.
+        # Stat and validate the size BEFORE reading file bytes into memory:
+        # reading bytes unconditionally would let an oversized upload be
+        # fully buffered in memory before being rejected. File bytes are
+        # only read after the size check passes.
         file_info = self._prepare_attachment_file(file_path, include_bytes=False)
         await self._validate_attachment_size(file_info.file_size)
         if not confirm:
@@ -281,11 +276,11 @@ class AttachmentService:
 
         The container-type check matches on the `work_packages/<id>` PATH
         SEGMENT pair (via `_id_from_href`'s own parsing, applied to the
-        second-to-last segment), not a raw substring -- client.py's original
-        `"work_packages/" not in href` check (verbatim ported here at first)
-        would also match an unrelated path merely containing that substring,
-        e.g. `/api/v3/not_work_packages/9`, wrongly treating it as a work
-        package container and authorizing against an unrelated resource."""
+        second-to-last segment), not a raw substring: a plain `"work_packages/"
+        in href` check would also match an unrelated path merely containing
+        that substring, e.g. `/api/v3/not_work_packages/9`, wrongly treating
+        it as a work package container and authorizing against an unrelated
+        resource."""
         href = container_link.get("href") if isinstance(container_link, dict) else None
         if not isinstance(href, str):
             raise InvalidInputError("Only work package attachments are supported.")

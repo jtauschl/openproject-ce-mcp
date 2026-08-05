@@ -9,9 +9,8 @@ directly, on `WorkPackageIdResolver`, and on `WorkPackageProjectAllowedCheck`
   work packages PER RELATION (`from` and `to`, not a single anchor) -- uses
   `WorkPackageProjectAllowedCheck` + a single `WorkPackageAllowedContext`
   (a request-scoped cache, avoiding a redundant fetch when relations share
-  an endpoint work package), verbatim behavior of client.py's original
-  `_relation_endpoints_allowed`. BOTH sides must pass, or a relation to a
-  work package outside the read allowlist would leak that work package's
+  an endpoint work package). BOTH sides must pass, or a relation to a work
+  package outside the read allowlist would leak that work package's
   id/subject through to_id/to_subject even though it isn't independently
   readable.
 - `create()` takes a genuine caller-supplied target reference
@@ -34,17 +33,14 @@ at all, and NONE of the three go through a `<domain>/form` endpoint (relation
 creation POSTs a body directly; there is no schema-validation form step) --
 `_finalize_write`'s own documented precondition ("2+ write actions sharing
 the same preview/commit/reject shape via a <domain>/form endpoint") does not
-hold here. delete() reimplements client.py's original inline preview/commit
-branching directly (no shared cross-layer helper exists for this shape in
-app/services/ yet -- client.py's own `_finalize_delete` stays a client.py-
-private helper shared across still-flat domains).
+hold here. delete() implements its own inline preview/commit branching
+directly (no shared cross-layer helper exists for this shape in
+app/services/ yet).
 
 `create()` validates the source work-package reference (traversal-segment
 rejection) via the shared, pure `work_package_ref()` encoder BEFORE resolving
-the target -- verbatim behavior of client.py's original
-`create_work_package_relation`, which calls `_work_package_ref(work_package_id)`
-synchronously first, so an invalid source reference is rejected before any
-I/O happens against the target. The encoded return value itself is discarded
+the target, so an invalid source reference is rejected before any I/O
+happens against the target. The encoded return value itself is discarded
 here (only the validation side effect matters) -- the raw reference is passed
 through to `RelationApi.create()` unchanged, which re-encodes it itself when
 building the outgoing POST path (see httpx_relation_api.py's module
@@ -60,16 +56,13 @@ onto the instance, and `dataclasses.replace()` builds a brand-new instance
 via the constructor, silently dropping that attribute again if it ran first.
 
 Read/write scope reuses `"work_package"` (not a dedicated `"relation"`
-scope) -- verbatim behavior of client.py's `_ensure_read_enabled`/
-`_ensure_write_enabled("work_package")` calls; tools.py's scope tables are
-unchanged by this migration. Unlike FileLinkService.delete() (this domain's
-nearest template for a manually-built delete preview/commit flow),
-create_work_package_relation/delete_relation's *original* client.py methods
-never call `access.ensure_read_enabled(...)` themselves -- only
-`get_work_package_relations` and (implicitly, via the write gate behind the
-confirm branch) `update_relation` do. Introducing a read-enablement gate at
-the top of create()/update()/delete() here would be a behavior change, not a
-structural port -- deliberately not done.
+scope). Unlike FileLinkService.delete() (this domain's nearest template for
+a manually-built delete preview/commit flow), create()/delete() here
+deliberately do NOT call `access.ensure_read_enabled(...)` themselves --
+only `list_all`/`list_for_work_package` and (implicitly, via the write gate
+behind the confirm branch) `update()` do. Adding a read-enablement gate to
+create()/update()/delete() would be a behavior change -- deliberately not
+done.
 """
 
 from __future__ import annotations
@@ -126,12 +119,11 @@ class RelationService:
     def _relation_endpoints_allowed_sync(self, record: RelationRecord, outcomes: dict[str, bool | Exception]) -> bool:
         """Synchronous, sequential-order evaluation of a single relation's
         from/to outcomes, both already resolved (speculatively, possibly
-        concurrently) by `_bulk_item_allowed` below. Preserves the OLD
-        sequential short-circuit semantics exactly: `from` is checked first,
-        and `to` is never even considered (its outcome -- success OR
-        exception -- is silently discarded) once `from` is missing/denied,
-        since the original one-at-a-time control flow would never have
-        reached `to` in that case either (OPM-379/F3 Korrektur 3)."""
+        concurrently) by `_bulk_item_allowed` below. `from` is checked
+        first, and `to` is never even considered (its outcome -- success OR
+        exception -- is silently discarded) once `from` is missing/denied, so
+        a sequential one-at-a-time evaluation would never reach `to` in that
+        case either."""
         for link in (record.from_link, record.to_link):
             if not isinstance(link, dict) or not link.get("href"):
                 return False
@@ -145,15 +137,15 @@ class RelationService:
     async def _bulk_item_allowed(
         self, raw_elements: list[dict[str, Any]], *, cache: WorkPackageAllowedContext
     ) -> list[bool | Exception]:
-        """Page-batching hook for `fetch_bounded_and_paginate` (OPM-379/F3):
-        collect every from/to href across the whole page, resolve them all
-        concurrently in one bulk call, then evaluate each relation
-        synchronously in original order/short-circuit semantics. `cache` is
-        the SAME `WorkPackageAllowedContext` across every page of one `_list`
-        call (passed in by the caller, not stored on `self`, so two
-        concurrent `_list` calls on the same Service instance never share
-        state) -- repeated hrefs within a page, or across pages of the same
-        top-level call, only trigger one resolution each.
+        """Page-batching hook for `fetch_bounded_and_paginate`: collect every
+        from/to href across the whole page, resolve them all concurrently in
+        one bulk call, then evaluate each relation synchronously in
+        sequential order/short-circuit semantics. `cache` is the SAME
+        `WorkPackageAllowedContext` across every page of one `_list` call
+        (passed in by the caller, not stored on `self`, so two concurrent
+        `_list` calls on the same Service instance never share state) --
+        repeated hrefs within a page, or across pages of the same top-level
+        call, only trigger one resolution each.
         """
         records = [self._api.to_record(raw) for raw in raw_elements]
         hrefs = [
@@ -234,9 +226,9 @@ class RelationService:
         confirm: bool = False,
     ) -> RelationWriteResult:
         # Validate the source reference (traversal-segment rejection) before
-        # any I/O, including the target resolution below -- exact original
-        # ordering. The encoded return value is unused; RelationApi.create()
-        # re-encodes the raw reference itself.
+        # any I/O, including the target resolution below. The encoded
+        # return value is unused; RelationApi.create() re-encodes the raw
+        # reference itself.
         _validate_work_package_ref(work_package_id)
         related_numeric_id = await self._resolve_work_package_id(related_to_work_package_id, write=True)
         work_package = await self._work_package_lookup_api.get(str(work_package_id))

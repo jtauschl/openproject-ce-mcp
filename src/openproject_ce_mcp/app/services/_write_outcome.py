@@ -1,9 +1,8 @@
 """Shared preview/confirm write state machine for Application Services.
 
-Extracted from three byte-identical per-Service copies (Versions, Projects,
-Memberships) once a third domain needed it -- this project's own standing
-"unify at the 3rd identical instance" convention (already applied once
-before, to `document_policy.py`/`news_policy.py`/`version_policy.py`).
+Shared by Versions, Projects, and Memberships -- this project's own standing
+"unify at the 3rd identical instance" convention (also applied to
+`document_policy.py`/`news_policy.py`/`version_policy.py`).
 
 `_finalize_write` performs no I/O itself: `commit` is a port-bound callable
 supplied by the calling Service, since an Application Service must depend

@@ -6,8 +6,7 @@ Resolver for any of the five: filter/column/operator/sort-by/schema ids are
 opaque strings, not semantic references needing lookup.
 
 All five share `access.ensure_read_enabled("board", ...)` as their gate
-(verbatim port of client.py's `_ensure_read_enabled("board")` for all six
-methods -- these describe the query/board schema, not a dedicated
+(these describe the query/board schema, not a dedicated
 OPENPROJECT_ENABLE_QUERY_METADATA_* flag), so one Service bundling all five,
 rather than five separate Services, avoids depending on the exact same seam
 five times for no behavioral difference -- same rationale as Actions &

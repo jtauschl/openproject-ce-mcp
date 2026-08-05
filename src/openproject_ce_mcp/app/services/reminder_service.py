@@ -3,20 +3,17 @@
 Depends on the `ReminderApi` Protocol (never `HttpxReminderApi` concretely --
 enforced by the architecture-boundary test), on `WorkPackageLookupApi`
 directly, on `WorkPackageIdResolver`, and on `WorkPackageProjectAllowedCheck`
--- the widest seam surface of any domain in this migration,
-because each of its four methods scopes differently:
+-- the widest seam surface of any domain, because each of its four methods
+scopes differently:
 
 - `list()` fans out across N *different* work packages (one per reminder,
   not a single anchor) -- uses `WorkPackageProjectAllowedCheck` +
   `WorkPackageAllowedContext` (a request-scoped cache avoiding a redundant
-  fetch if two reminders happen to share a work package), verbatim behavior
-  of client.py's original per-record filter. This does NOT belong in a
-  Policy module (`app/policies/` is documented as pure, no I/O) since the
-  check itself does I/O (a conditional work-package fetch).
+  fetch if two reminders happen to share a work package). This does NOT
+  belong in a Policy module (`app/policies/` is documented as pure, no I/O)
+  since the check itself does I/O (a conditional work-package fetch).
 - `create()` takes a genuine caller-supplied work-package reference -- uses
-  `WorkPackageIdResolver(ref, write=True)`, replacing client.py's hand-rolled
-  `_work_package_ref` + manual `_get` + `_ensure_project_write_link_allowed`
-  chain, the same replacement Watchers' add()/remove() made.
+  `WorkPackageIdResolver(ref, write=True)`.
 - `update()`/`delete()` both need the reminder's OWN `remindable` link first
   (an id already concrete once the reminder is fetched, not a caller-supplied
   reference) -- uses `WorkPackageLookupApi.get_by_href()` + a direct
@@ -32,8 +29,7 @@ POST/PATCH payload construction doesn't have. `delete()` stays its own flat
 method (single write action, no sibling delete-shaped write to share with).
 
 Read/write scope reuses `"work_package"` (not a dedicated `"reminder"`
-scope) -- verbatim behavior of client.py's `_ensure_read_enabled`/
-`_ensure_write_enabled("work_package")` calls.
+scope).
 """
 
 from __future__ import annotations
@@ -96,11 +92,10 @@ class ReminderService:
         cache = WorkPackageAllowedContext()
 
         async def item_allowed_bulk(raw_elements: list[dict[str, Any]]) -> list[bool | Exception]:
-            """Page-batching hook (OPM-379/F3): collect every raw reminder's
-            `remindable` href up front and resolve them all concurrently in
-            one bulk call, then map back per item -- a missing href needs no
-            I/O and fails closed synchronously, same as the old per-item
-            `item_allowed` did."""
+            """Page-batching hook: collect every raw reminder's `remindable`
+            href up front and resolve them all concurrently in one bulk
+            call, then map back per item -- a missing href needs no I/O and
+            fails closed synchronously."""
             hrefs = []
             for raw in raw_elements:
                 record = self._api.to_record(raw)
@@ -119,17 +114,14 @@ class ReminderService:
                 results.append(outcomes[href])
             return results
 
-        # Reminders is really offset-paginated server-side (verified against
+        # Reminders is offset-paginated server-side (verified against
         # OpenProject's own API implementation: ReminderCollectionRepresenter
         # subclasses OffsetPaginatedCollection) -- a single unparameterized
-        # GET silently returned only the server's default page, and walking
-        # the complete collection on every call (the prior paginate_all
-        # approach) never reduced server load. Scan just enough pages to
-        # fill the requested window instead, same early-stopping pattern as
-        # Relations (OPM-373 Phase 5, OPM-379/F5). .summary() (LAZY, see
-        # ReminderRecord's own docstring) is called only AFTER filtering,
-        # inside `normalize`, matching client.py's original "filter raw,
-        # normalize survivors" order.
+        # GET returns only the server's default page. Scan just enough pages
+        # to fill the requested window instead of walking the complete
+        # collection, same early-stopping pattern as Relations. .summary()
+        # (LAZY, see ReminderRecord's own docstring) is called only AFTER
+        # filtering, inside `normalize` -- "filter raw, normalize survivors".
         raw_items, total, next_offset, truncated = await fetch_bounded_and_paginate(
             fetch_page=lambda o, ps: self._api.fetch_page(offset=o, page_size=ps),
             normalize=lambda raw: self._stamp(self._api.to_record(raw).summary()),
@@ -199,8 +191,7 @@ class ReminderService:
         package's own project link.
 
         Fail closed: an unresolvable remindable link must not be bypassed,
-        even under a fully open READ_PROJECTS=*/WRITE_PROJECTS=* scope --
-        verbatim behavior of client.py's original.
+        even under a fully open READ_PROJECTS=*/WRITE_PROJECTS=* scope.
         """
         remindable = await self._api.get_remindable_link(reminder_id)
         href = remindable.get("href") if isinstance(remindable, dict) else None

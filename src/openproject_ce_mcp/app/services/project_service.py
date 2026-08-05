@@ -6,8 +6,8 @@ ProjectAdminService), sharing the same ProjectApi/ProjectResolver dependencies -
 splitting into a second file would mostly relocate, not reduce, complexity.
 
 get_my_project_access and get_project_work_package_context are NOT here: they
-combine Projects with the still-flat Memberships/Work-Package-schema domains, and
-a Service must not depend on another Service. They stay as client.py-level
+combine Projects with the Memberships/Work-Package-schema domains, and a
+Service must not depend on another Service. They stay as top-level
 orchestration that calls into ProjectService/ProjectResolver for the project-
 identity part only.
 
@@ -54,13 +54,11 @@ SUBJECT_LIMIT = 255
 # deliberate duplication) -- Services must not import Adapters. These are
 # generic string/href utilities, not HAL->model mapping (which stays adapter-
 # only), needed here for job-status-URL parsing (copy()), status-href
-# matching (_resolve_status_href), and name trimming (set_favorite()). Unify
-# only once every domain has migrated.
+# matching (_resolve_status_href), and name trimming (set_favorite()).
 #
-# id_from_href is NOT duplicated here -- it now lives in
-# app/policies/scope.py (imported above), since it crossed this project's
-# "3+ identical copies" threshold within app/ itself: this module's own copy,
-# scope.py's own private copy, and file_link_service.py's new copy.
+# id_from_href is NOT duplicated here -- it lives in app/policies/scope.py
+# (imported above) instead, shared by this module, scope.py's own internal
+# use, and file_link_service.py.
 def _trim_text(value: Any, *, limit: int) -> str | None:
     if value is None:
         return None
@@ -98,10 +96,9 @@ def _stamp_project(value: Any, *, settings: Settings) -> Any:
     # apply_hidden_fields only drops the field key itself, so without this, a
     # hidden field's length/truncation state would still leak through its
     # sibling metadata fields. Zero both pairs out here, mirroring
-    # VersionService._stamp and client.py's hide-aware
-    # _visible_formattable_text_with_meta. Shared by ProjectService AND
-    # ProjectAdminService (the embedded ProjectSummary in ProjectAdminContext.project
-    # needs the identical treatment, not just a bare apply_hidden_fields call).
+    # VersionService._stamp. Shared by ProjectService AND ProjectAdminService
+    # (the embedded ProjectSummary in ProjectAdminContext.project needs the
+    # identical treatment, not just a bare apply_hidden_fields call).
     if isinstance(value, ProjectSummary):
         if hidden_fields.field_hidden("project", "description", settings=settings):
             value = replace(value, description_truncated=False, description_length=None)
@@ -134,13 +131,12 @@ class ProjectService:
     def _remember_identifier(self, outcome: _WriteOutcome[ProjectDetail]) -> None:
         """Keep project_id_to_identifier in sync with a just-committed create/update.
 
-        This dict is otherwise populated exactly once, by client.py's
-        initialize() at server startup -- a project created or renamed
-        through this same server afterward was invisible to every
-        link-shaped allowlist check (ensure_project_link_allowed, used by
-        every already-migrated Service plus every still-flat client.py
-        domain that scopes by a work-package-style `_links.project` link,
-        which carries no identifier field) until the process restarted.
+        This dict is otherwise populated exactly once, at server startup --
+        without this, a project created or renamed through this same server
+        would stay invisible to every link-shaped allowlist check
+        (ensure_project_link_allowed, used by every Service that scopes by a
+        work-package-style `_links.project` link, which carries no
+        identifier field) until the process restarted.
         """
         if outcome.state != "confirmed" or outcome.detail is None:
             return
@@ -210,10 +206,9 @@ class ProjectService:
     async def get_phase(self, phase_id: int) -> ProjectPhase:
         access.ensure_read_enabled("project", settings=self._settings)
         record = await self._api.get_phase(phase_id)
-        # Always checked (fail-closed on a missing link too), matching client.py's
-        # unconditional self._ensure_project_link_allowed(payload.get("_links",
-        # {}).get("project")) -- a phase with no project link must not be
-        # readable under a non-wildcard scope, not silently allowed through.
+        # Always checked (fail-closed on a missing link too): a phase with no
+        # project link must not be readable under a non-wildcard scope, not
+        # silently allowed through.
         ensure_project_link_allowed(
             record.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
@@ -604,8 +599,7 @@ class ProjectAdminService:
 
         # Fail closed: a parent-project candidate outside READ_PROJECTS must not
         # leak its name/identifier through this picklist just because it's a
-        # valid parent target (verbatim port of client.py's
-        # `[item for item in elements if self._project_payload_allowed(item)]`).
+        # valid parent target.
         available_parent_projects = [ref for ref in parent_candidates if _parent_ref_allowed(ref)]
         # Non-writable/internal schema entries (id, timestamps, lockVersion, ...)
         # aren't useful to an agent discovering what it can set here.

@@ -8,10 +8,7 @@ the ADR sense.
 
 News shares the "project" read/write scope with Projects/Documents/Grids --
 there is no dedicated OPENPROJECT_ENABLE_NEWS_* flag, so every
-access.ensure_read_enabled/ensure_write_enabled call here uses scope="project"
-(verbatim behavior of client.py's original _ensure_read_enabled("project")/
-_ensure_write_enabled("project") calls in list_news/get_news/create_news/
-update_news/delete_news).
+access.ensure_read_enabled/ensure_write_enabled call here uses scope="project".
 
 Unlike MembershipService, News has no /form endpoint: create_news/update_news
 are hand-rolled POST/PATCH with no server-side validation round-trip, so the
@@ -75,9 +72,7 @@ def _committed(*, action: str, payload: dict[str, Any], result: NewsDetail) -> _
 def _delete_outcome(*, state: WriteResultState, payload: dict[str, Any], detail: NewsDetail) -> _WriteOutcome:
     """delete()'s preview AND commit both carry the SAME (already-fetched,
     already-stamped) `detail` as `result` -- unlike create()/update(), whose
-    preview has no committed value yet. Verified against the original
-    client.py delete_news's _finalize_delete call, which passed
-    preview_result=detail (not None, unlike delete_membership's None)."""
+    preview has no committed value yet."""
     return _WriteOutcome(
         action="delete",
         state=state,
@@ -174,9 +169,9 @@ class NewsService:
                 )
             return True
 
-        # A single fetch capped at settings.max_results silently hid any news
-        # item beyond that cap once the endpoint's real result count exceeded
-        # it -- scan server pages instead (OPM-373 Phase 5).
+        # Scan server pages rather than a single fetch capped at
+        # settings.max_results, which would silently hide any news item
+        # beyond that cap once the endpoint's real result count exceeds it.
         raw_items, truncated = await scan_records_and_paginate(
             lambda o, ps: self._api.list_page(offset=o, page_size=ps),
             item_allowed=_record_allowed,
