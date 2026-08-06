@@ -5,17 +5,15 @@
 keep working; it lives at the package root because `services` needs the same
 same-origin check but cannot import from `adapters`.
 
-This module deliberately excludes most `_normalize_validation_errors`/
-`_extract_formattable_text` variants: several adapters' versions differ
-meaningfully (e.g. `httpx_project_api.py`'s validation-error path calls a
-`_with_meta` variant, `httpx_membership_api.py`'s skips the
-formattable-text-first branch) and are not safe to unify without changing
-behavior -- they stay adapter-local, near-identical-but-not-identical code,
-per this project's standing "don't unify what isn't truly the same"
-principle. `normalize_form_validation_errors` below is the one exception
-that is shared: a three-branch shape (formattable-text extraction, then
-`entry.get("message")`, then a raw trim fallback) used identically by
-`httpx_grid_api.py` and `httpx_time_entry_api.py`.
+`_normalize_validation_errors` has two genuinely different behavioral shapes
+across adapters, not one: Board/Membership/User check `entry.get("message")`
+before falling back to a raw trim of the whole entry; Project/Version/News/
+Document/Grid/Time Entry check formattable-text extraction (`raw`/`html`)
+first, then `message`, then a raw trim fallback -- the latter shape is
+`normalize_form_validation_errors` below, shared. Only Board/Membership/User's
+message-first shape stays adapter-local (not safe to unify with the other
+shape without changing behavior), per this project's standing "don't unify
+what isn't truly the same" principle.
 
 `httpx_board_api.py`'s own `_slug_from_href` stays LOCAL and is not shared
 with `slug_from_href` below: it uses `rsplit` with no `unquote` call, a
@@ -33,6 +31,7 @@ from ..errors import InvalidInputError
 from ..origin import origin_from_url
 
 SUBJECT_LIMIT = 255
+FORMATTABLE_LIMIT = 1_200
 
 
 def reject_path_traversal_segments(value: str, *, field_name: str) -> str:
@@ -111,11 +110,69 @@ def _extract_formattable_text(value: Any, *, limit: int) -> str | None:
     return trim_text(value, limit=limit)
 
 
+def normalize_text(value: Any, *, preserve_newlines: bool) -> str:
+    if not preserve_newlines:
+        return " ".join(str(value).split())
+    lines = str(value).replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    normalized: list[str] = []
+    blank_run = 0
+    for line in lines:
+        stripped = " ".join(line.split())
+        if stripped:
+            blank_run = 0
+            normalized.append(stripped)
+        else:
+            blank_run += 1
+            if blank_run <= 1:
+                normalized.append("")
+    while normalized and normalized[0] == "":
+        normalized.pop(0)
+    while normalized and normalized[-1] == "":
+        normalized.pop()
+    return "\n".join(normalized)
+
+
+def trim_text_with_meta(
+    value: Any, *, limit: int | None, preserve_newlines: bool = False
+) -> tuple[str | None, bool, int | None]:
+    if value is None:
+        return None, False, None
+    text = normalize_text(value, preserve_newlines=preserve_newlines)
+    if not text:
+        return None, False, None
+    full_length = len(text)
+    if limit is None or full_length <= limit:
+        return text, False, full_length
+    return text[: limit - 1].rstrip() + "…", True, full_length
+
+
+def extract_formattable_text_with_meta(
+    value: Any, *, limit: int | None = FORMATTABLE_LIMIT, preserve_newlines: bool = False
+) -> tuple[str | None, bool, int | None]:
+    raw = value.get("raw") or value.get("html") if isinstance(value, dict) else value
+    return trim_text_with_meta(raw, limit=limit, preserve_newlines=preserve_newlines)
+
+
+def has_usable_id(item: Any) -> bool:
+    """True for a dict element whose `id` can become a valid Record id.
+
+    List endpoints skip an element failing this check rather than raising --
+    an unrelated malformed row must not break resolution/listing of every
+    other, well-formed row. Single-item `get_*` calls stay strict: a
+    malformed response to a request for one specific id is a real error,
+    not a row to silently skip.
+    """
+    if not isinstance(item, dict):
+        return False
+    raw_id = item.get("id")
+    return isinstance(raw_id, int | str) and str(raw_id).isdigit()
+
+
 def normalize_form_validation_errors(value: Any, *, limit: int = SUBJECT_LIMIT) -> dict[str, str]:
     """Try formattable-text extraction, then `entry.get("message")`, then a
-    raw trim fallback. Used by Grids' and Time Entries' `create`/`update`
-    form-validation responses, both of which share this exact three-branch
-    shape.
+    raw trim fallback. Used by Grids', Time Entries', Projects', and
+    Versions' `create`/`update` form-validation responses, all of which share
+    this exact three-branch shape.
     """
     if not isinstance(value, dict):
         return {}

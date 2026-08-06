@@ -1,12 +1,12 @@
 """HTTP-backed VersionApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `_trim_text`/
-`_link_title`/`_delimit_user_content`/`SUBJECT_LIMIT` are shared via
-`app/adapters/_text.py`. Still has its own `_extract_formattable_text`/
-`_trim_text_with_meta`/`_extract_formattable_text_with_meta`/
-`_normalize_validation_errors` (+ `FORMATTABLE_LIMIT`) -- these differ
-behaviorally from the other adapters' equivalents (see `_text.py`'s module
-docstring) and are not shared.
+`_link_title`/`_delimit_user_content`/`SUBJECT_LIMIT`/`_trim_text_with_meta`/
+`_extract_formattable_text_with_meta`/`FORMATTABLE_LIMIT`/`_has_usable_id`/
+`_normalize_validation_errors` (as `_normalize_form_validation_errors`) are
+shared via `app/adapters/_text.py`. This adapter's fields never need
+`preserve_newlines=True`, so it relies on the shared helper's `False`
+default.
 """
 
 from __future__ import annotations
@@ -16,56 +16,13 @@ from typing import Any
 from ...models import VersionDetail, VersionSummary
 from ..ports.version_api import VersionFormResult, VersionPage, VersionRecord, summary_to_detail
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import FORMATTABLE_LIMIT, SUBJECT_LIMIT
 from ._text import delimit_user_content as _delimit_user_content
+from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
+from ._text import has_usable_id as _has_usable_id
 from ._text import link_title as _link_title
+from ._text import normalize_form_validation_errors as _normalize_validation_errors
 from ._text import trim_text as _trim_text
-
-FORMATTABLE_LIMIT = 1_200
-
-
-def _extract_formattable_text(value: Any, *, limit: int = FORMATTABLE_LIMIT) -> str | None:
-    if isinstance(value, dict):
-        return _trim_text(value.get("raw") or value.get("html"), limit=limit)
-    return _trim_text(value, limit=limit)
-
-
-def _trim_text_with_meta(value: Any, *, limit: int | None) -> tuple[str | None, bool, int | None]:
-    """Like ``_trim_text`` but reports truncation metadata. ``limit=None`` means
-    no cap. Deliberately skips the ``preserve_newlines`` option (see module
-    docstring): this adapter's fields don't need it.
-    """
-    if value is None:
-        return None, False, None
-    text = " ".join(str(value).split())
-    if not text:
-        return None, False, None
-    full_length = len(text)
-    if limit is None or full_length <= limit:
-        return text, False, full_length
-    return text[: limit - 1].rstrip() + "…", True, full_length
-
-
-def _extract_formattable_text_with_meta(
-    value: Any, *, limit: int | None = FORMATTABLE_LIMIT
-) -> tuple[str | None, bool, int | None]:
-    raw = value.get("raw") or value.get("html") if isinstance(value, dict) else value
-    return _trim_text_with_meta(raw, limit=limit)
-
-
-def _normalize_validation_errors(value: Any) -> dict[str, str]:
-    if not isinstance(value, dict):
-        return {}
-    normalized: dict[str, str] = {}
-    for key, entry in value.items():
-        message = _extract_formattable_text(entry, limit=SUBJECT_LIMIT)
-        if message is None and isinstance(entry, dict):
-            message = _trim_text(entry.get("message"), limit=SUBJECT_LIMIT)
-        if message is None:
-            message = _trim_text(entry, limit=SUBJECT_LIMIT)
-        if message:
-            normalized[str(key)] = message
-    return normalized
 
 
 def normalize_version(payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT) -> VersionSummary:
@@ -100,16 +57,6 @@ def normalize_version(payload: dict[str, Any], *, text_limit: int | None = FORMA
 
 def normalize_version_detail(payload: dict[str, Any], *, text_limit: int | None = FORMATTABLE_LIMIT) -> VersionDetail:
     return summary_to_detail(normalize_version(payload, text_limit=text_limit))
-
-
-def _has_usable_id(item: Any) -> bool:
-    """True for a dict element whose `id` can become a valid Record id --
-    a malformed element among otherwise well-formed ones is skipped, not
-    fatal to the whole page."""
-    if not isinstance(item, dict):
-        return False
-    raw_id = item.get("id")
-    return isinstance(raw_id, int | str) and str(raw_id).isdigit()
 
 
 class HttpxVersionApi:

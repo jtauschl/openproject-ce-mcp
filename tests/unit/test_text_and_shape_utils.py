@@ -7,6 +7,12 @@ import httpx
 import pytest
 from _client_test_helpers import _base_settings, _wp_detail_payload, _write_enabled_settings, make_settings
 
+from openproject_ce_mcp.app.adapters._text import _extract_formattable_text
+from openproject_ce_mcp.app.adapters._text import (
+    extract_formattable_text_with_meta as _extract_formattable_text_with_meta,
+)
+from openproject_ce_mcp.app.adapters._text import normalize_text as _normalize_text
+from openproject_ce_mcp.app.adapters._text import trim_text_with_meta as _trim_text_with_meta
 from openproject_ce_mcp.app.adapters.httpx_activity_api import normalize_activity
 from openproject_ce_mcp.app.adapters.httpx_project_api import (
     PROJECT_ANCESTORS_LIMIT,
@@ -14,14 +20,8 @@ from openproject_ce_mcp.app.adapters.httpx_project_api import (
     normalize_project_detail,
 )
 from openproject_ce_mcp.app.adapters.httpx_user_api import normalize_user_detail
-from openproject_ce_mcp.app.adapters.httpx_version_api import (
-    _extract_formattable_text,
-    normalize_version,
-)
+from openproject_ce_mcp.app.adapters.httpx_version_api import normalize_version
 from openproject_ce_mcp.app.adapters.httpx_work_package_api import (
-    _extract_formattable_text_with_meta,
-    _normalize_text,
-    _trim_text_with_meta,
     normalize_work_package_detail,
     normalize_work_package_summary,
 )
@@ -42,7 +42,7 @@ def test_extract_formattable_text_trims_large_payloads() -> None:
         "html": "<p>ignored</p>",
     }
 
-    trimmed = _extract_formattable_text(value)
+    trimmed = _extract_formattable_text(value, limit=1_200)
 
     assert trimmed is not None
     assert len(trimmed) <= 1200
@@ -119,6 +119,33 @@ def test_extract_formattable_text_with_meta_preserves_newlines_uncapped() -> Non
     assert text == "Para one\n\nPara two"
     assert truncated is False
     assert length == len("Para one\n\nPara two")
+
+
+def test_extract_formattable_text_with_meta_prefers_raw_over_html() -> None:
+    value = {"raw": "raw text", "html": "<p>html text</p>"}
+
+    text, _, _ = _extract_formattable_text_with_meta(value, limit=None)
+
+    assert text == "raw text"
+
+
+def test_extract_formattable_text_with_meta_falls_back_to_html_when_raw_is_empty() -> None:
+    value = {"raw": "", "html": "html fallback"}
+
+    text, _, _ = _extract_formattable_text_with_meta(value, limit=None)
+
+    assert text == "html fallback"
+
+
+def test_extract_formattable_text_with_meta_default_collapses_newlines() -> None:
+    # Default preserve_newlines=False must collapse multi-line raw text --
+    # this is the shape every non-newline-preserving adapter (Project,
+    # Time Entry, Version) relies on after the OPM-376 unification.
+    value = {"raw": "Line one\n\nLine two"}
+
+    text, _, _ = _extract_formattable_text_with_meta(value, limit=None)
+
+    assert text == "Line one Line two"
 
 
 @pytest.mark.asyncio

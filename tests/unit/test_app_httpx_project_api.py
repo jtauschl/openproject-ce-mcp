@@ -157,6 +157,34 @@ async def test_create_form_posts_to_form_endpoint() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_form_validation_errors_prefer_raw_over_message() -> None:
+    """Regression test for the normalize_form_validation_errors unification
+    (OPM-376): this adapter's validation-error shape must still try
+    formattable-text extraction (raw/html) BEFORE falling back to
+    entry["message"] -- pins the behavior against an accidental switch to
+    the other, message-first shape Board/Membership/User use.
+    """
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "_embedded": {
+                    "payload": {},
+                    "validationErrors": {"name": {"raw": "raw error", "message": "message error"}},
+                }
+            },
+            request=request,
+        )
+
+    async with _client(handler) as http_client:
+        api = HttpxProjectApi(HttpxTransport(http_client), base_url=BASE_URL)
+        form = await api.create_form({"name": "Demo"})
+
+    assert form.validation_errors == {"name": "raw error"}
+
+
+@pytest.mark.asyncio
 async def test_commit_create_posts_and_returns_normalized_detail() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/projects"

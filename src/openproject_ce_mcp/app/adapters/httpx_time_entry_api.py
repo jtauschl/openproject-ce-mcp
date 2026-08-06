@@ -2,10 +2,12 @@
 
 No `httpx` import (depends on the `Transport` Protocol only, matching every
 other adapter). `trim_text`/`id_from_href`/`link_title`/`delimit_user_content`/
-`web_url`/`SUBJECT_LIMIT`/`normalize_form_validation_errors` come from
+`web_url`/`SUBJECT_LIMIT`/`normalize_form_validation_errors`/`_normalize_text`/
+`_trim_text_with_meta`/`_extract_formattable_text_with_meta` come from
 `app/adapters/_text.py`. `normalize_form_validation_errors` is the exact
 three-branch shape `create_time_entry`/`update_time_entry` use, shared with
-Grids' identical situation.
+Grids' identical situation. This adapter's `comment` field never needs
+`preserve_newlines=True`, so it relies on the shared helper's `False` default.
 
 Unlike `normalize_relation`, `normalize_time_entry_raw`/
 `normalize_time_entry_activity_raw` here do NOT call a hide-aware,
@@ -38,6 +40,7 @@ from ..ports.time_entry_api import TimeEntryActivityRecord, TimeEntryFormResult,
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
 from ._text import delimit_user_content as _delimit_user_content
+from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import normalize_form_validation_errors as normalize_validation_errors
@@ -73,27 +76,6 @@ def normalize_time_entry_raw(payload: dict[str, Any], *, text_limit: int | None)
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
     )
-
-
-def _normalize_text(value: Any) -> str:
-    return " ".join(str(value).split())
-
-
-def _trim_text_with_meta(value: Any, *, limit: int | None) -> tuple[str | None, bool, int | None]:
-    if value is None:
-        return None, False, None
-    text = _normalize_text(value)
-    if not text:
-        return None, False, None
-    full_length = len(text)
-    if limit is None or full_length <= limit:
-        return text, False, full_length
-    return text[: limit - 1].rstrip() + "…", True, full_length
-
-
-def _extract_formattable_text_with_meta(value: Any, *, limit: int | None) -> tuple[str | None, bool, int | None]:
-    raw = value.get("raw") or value.get("html") if isinstance(value, dict) else value
-    return _trim_text_with_meta(raw, limit=limit)
 
 
 def normalize_time_entry_activity_raw(payload: dict[str, Any]) -> TimeEntryActivitySummary:

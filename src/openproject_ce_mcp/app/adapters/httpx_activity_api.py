@@ -5,10 +5,9 @@ other adapter). `link_title`/`delimit_user_content` come from
 `app/adapters/_text.py`, used by `normalize_activity` for `link_title`
 (user) and `delimit_user_content` (each details-array entry's `raw` text).
 
-`_trim_text_with_meta`/`_extract_formattable_text_with_meta` stay LOCAL
-(deliberately not `_text.py`-shared, per the documented per-adapter
-exception -- see `httpx_time_entry_api.py`'s identical local copy). The
-adapter extracts `comment` unconditionally, without a hide-aware gate;
+`_normalize_text`/`_trim_text_with_meta`/`_extract_formattable_text_with_meta`
+are shared via `app/adapters/_text.py`. The adapter extracts `comment`
+unconditionally, without a hide-aware gate;
 masking is applied once, in the Service, via
 `apply_hidden_fields("activity", ...)` against the same
 entity/field name (`"activity"`/`"comment"`) -- gating in both places would
@@ -28,60 +27,10 @@ from ...models import ActivitySummary
 from ..ports.activity_api import ActivityRecord
 from ..transport.protocol import Transport
 from ._text import delimit_user_content as _delimit_user_content
+from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import link_title as _link_title
 
 ACTIVITY_DETAILS_LIMIT = 20
-FORMATTABLE_LIMIT = 1_200
-
-
-def _normalize_text(value: Any, *, preserve_newlines: bool) -> str:
-    """Default (``preserve_newlines=False``): collapse all whitespace/newlines
-    to single spaces. ``preserve_newlines=True`` (the only mode this adapter
-    actually uses, for `comment`): keep paragraph/list structure -- CRLF->LF,
-    collapse inline whitespace per line, strip trailing whitespace per line,
-    strip leading/trailing blank lines, collapse any run of blank lines to a
-    single blank line.
-    """
-    if not preserve_newlines:
-        return " ".join(str(value).split())
-    lines = str(value).replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    normalized: list[str] = []
-    blank_run = 0
-    for line in lines:
-        stripped = " ".join(line.split())
-        if stripped:
-            blank_run = 0
-            normalized.append(stripped)
-        else:
-            blank_run += 1
-            if blank_run <= 1:
-                normalized.append("")
-    while normalized and normalized[0] == "":
-        normalized.pop(0)
-    while normalized and normalized[-1] == "":
-        normalized.pop()
-    return "\n".join(normalized)
-
-
-def _trim_text_with_meta(
-    value: Any, *, limit: int | None, preserve_newlines: bool = False
-) -> tuple[str | None, bool, int | None]:
-    if value is None:
-        return None, False, None
-    text = _normalize_text(value, preserve_newlines=preserve_newlines)
-    if not text:
-        return None, False, None
-    full_length = len(text)
-    if limit is None or full_length <= limit:
-        return text, False, full_length
-    return text[: limit - 1].rstrip() + "…", True, full_length
-
-
-def _extract_formattable_text_with_meta(
-    value: Any, *, limit: int | None = FORMATTABLE_LIMIT, preserve_newlines: bool = False
-) -> tuple[str | None, bool, int | None]:
-    raw = value.get("raw") or value.get("html") if isinstance(value, dict) else value
-    return _trim_text_with_meta(raw, limit=limit, preserve_newlines=preserve_newlines)
 
 
 def normalize_activity(payload: dict[str, Any], *, text_limit: int | None = None) -> ActivitySummary:

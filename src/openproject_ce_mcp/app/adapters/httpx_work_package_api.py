@@ -23,12 +23,9 @@ survive its own allowlist filter, then call it again for `get()`'s single
 payload.
 
 `_trim_text`/`_link_title`/`_id_from_href`/`_delimit_user_content`/
-`_origin_from_url`/`_reject_path_traversal_segments`/`SUBJECT_LIMIT` are
-shared via `app/adapters/_text.py`. `_normalize_text`/`_trim_text_with_meta`/
-`_extract_formattable_text_with_meta` (+ `FORMATTABLE_LIMIT`) are local,
-matching `httpx_project_api.py`'s own copies -- per `_text.py`'s own module
-docstring, these differ behaviorally across adapters (a genuinely different
-extraction, not just a truncation-limit divergence) and are not unified.
+`_origin_from_url`/`_reject_path_traversal_segments`/`SUBJECT_LIMIT`/
+`_normalize_text`/`_trim_text_with_meta`/`_extract_formattable_text_with_meta`/
+`FORMATTABLE_LIMIT` are shared via `app/adapters/_text.py`.
 `work_package_ref()` (path-safe reference encoding) is imported from
 `app/ports/work_package_ref.py` rather than re-implemented here: adapters may
 import from ports (see `tests/test_architecture_boundaries.py`'s layer rules),
@@ -46,59 +43,16 @@ from ...models import SortCriterion, WorkPackageDetail, WorkPackageSummary
 from ..ports.work_package_api import WorkPackageFormResult, WorkPackagePage, WorkPackageRecord
 from ..ports.work_package_ref import work_package_ref as _work_package_ref_encode
 from ..transport.protocol import Transport
-from ._text import SUBJECT_LIMIT
+from ._text import FORMATTABLE_LIMIT, SUBJECT_LIMIT
 from ._text import delimit_user_content as _delimit_user_content
+from ._text import extract_formattable_text_with_meta as _extract_formattable_text_with_meta
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import normalize_form_validation_errors as _normalize_form_validation_errors
 from ._text import trim_text as _trim_text
 
-FORMATTABLE_LIMIT = 1_200
 WORK_PACKAGE_CHILDREN_LIMIT = 50
 WORK_PACKAGE_ANCESTORS_LIMIT = 20
-
-
-def _normalize_text(value: Any, *, preserve_newlines: bool) -> str:
-    if not preserve_newlines:
-        return " ".join(str(value).split())
-    lines = str(value).replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    normalized: list[str] = []
-    blank_run = 0
-    for line in lines:
-        stripped = " ".join(line.split())
-        if stripped:
-            blank_run = 0
-            normalized.append(stripped)
-        else:
-            blank_run += 1
-            if blank_run <= 1:
-                normalized.append("")
-    while normalized and normalized[0] == "":
-        normalized.pop(0)
-    while normalized and normalized[-1] == "":
-        normalized.pop()
-    return "\n".join(normalized)
-
-
-def _trim_text_with_meta(
-    value: Any, *, limit: int | None, preserve_newlines: bool = False
-) -> tuple[str | None, bool, int | None]:
-    if value is None:
-        return None, False, None
-    text = _normalize_text(value, preserve_newlines=preserve_newlines)
-    if not text:
-        return None, False, None
-    full_length = len(text)
-    if limit is None or full_length <= limit:
-        return text, False, full_length
-    return text[: limit - 1].rstrip() + "…", True, full_length
-
-
-def _extract_formattable_text_with_meta(
-    value: Any, *, limit: int | None = FORMATTABLE_LIMIT, preserve_newlines: bool = False
-) -> tuple[str | None, bool, int | None]:
-    raw = value.get("raw") or value.get("html") if isinstance(value, dict) else value
-    return _trim_text_with_meta(raw, limit=limit, preserve_newlines=preserve_newlines)
 
 
 def _work_package_dates(payload: dict[str, Any]) -> tuple[str | None, str | None]:

@@ -72,6 +72,40 @@ async def test_list_global_hits_unscoped_endpoint_and_has_no_server_total() -> N
 
 
 @pytest.mark.asyncio
+async def test_list_for_project_skips_an_element_with_a_missing_id() -> None:
+    """Regression test for the has_usable_id unification (OPM-376): list_*
+    must not raise on one malformed element among otherwise well-formed
+    ones -- skip it, don't fail every other version."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"_embedded": {"elements": [{"name": "No id here"}, _version_payload(version_id=2)]}},
+            request=request,
+        )
+
+    async with _client(handler) as http_client:
+        api = HttpxVersionApi(HttpxTransport(http_client))
+        page = await api.list_for_project(6, offset=1, page_size=50)
+
+    assert [record.summary.id for record in page.records] == [2]
+
+
+@pytest.mark.asyncio
+async def test_list_global_accepts_a_numeric_string_id() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = _version_payload(version_id=7)
+        payload["id"] = str(payload["id"])
+        return httpx.Response(200, json={"_embedded": {"elements": [payload]}}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxVersionApi(HttpxTransport(http_client))
+        page = await api.list_global(offset=1, page_size=100)
+
+    assert [record.summary.id for record in page.records] == [7]
+
+
+@pytest.mark.asyncio
 async def test_get_fetches_by_id() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/versions/8"
@@ -104,6 +138,34 @@ async def test_create_form_posts_to_form_endpoint_and_reports_validation_errors(
 
     assert form.payload == {"name": "Release 1"}
     assert form.validation_errors == {"name": "too short"}
+
+
+@pytest.mark.asyncio
+async def test_create_form_validation_errors_prefer_raw_over_message() -> None:
+    """Regression test for the normalize_form_validation_errors unification
+    (OPM-376): this adapter's validation-error shape must still try
+    formattable-text extraction (raw/html) BEFORE falling back to
+    entry["message"] -- pins the behavior against an accidental switch to
+    the other, message-first shape Board/Membership/User use.
+    """
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "_embedded": {
+                    "payload": {},
+                    "validationErrors": {"name": {"raw": "raw error", "message": "message error"}},
+                }
+            },
+            request=request,
+        )
+
+    async with _client(handler) as http_client:
+        api = HttpxVersionApi(HttpxTransport(http_client))
+        form = await api.create_form({"name": "Release 1"})
+
+    assert form.validation_errors == {"name": "raw error"}
 
 
 @pytest.mark.asyncio
