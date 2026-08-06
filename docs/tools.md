@@ -33,16 +33,14 @@ A subset of rarely-used metadata tools — the `get_query_*` schema tools, `rend
 | `get_project` | Fetch a compact project summary by id or identifier |
 | `get_project_admin_context` | Return project admin metadata such as lifecycle statuses, parent project options, and writable fields |
 | `get_project_configuration` | Return project-scoped configuration such as internal comment support |
-| `list_sprints` | List Backlogs sprints visible to the current token (requires Backlogs/OpenProject 17.3+), with an optional name search filter |
-| `list_project_sprints` | List Backlogs sprints for a project by id or identifier, with an optional name search filter |
+| `list_sprints` | List Backlogs sprints (requires Backlogs/OpenProject 17.3+), with an optional project filter and name search filter — omit `project` to list every sprint visible to the current token, or pass it to list only that project's sprints |
 | `get_sprint` | Fetch a Backlogs sprint by id |
 | `create_project` | Validate and then create a project; only writes when called again with `confirm=true` |
 | `copy_project` | Validate and then copy an existing project into a new project; only starts the copy job when called again with `confirm=true` |
 | `get_job_status` | Fetch the current status of a background job such as project copy |
 | `update_project` | Validate and then update a project; only writes when called again with `confirm=true` |
 | `delete_project` | Validate and then delete a project; only deletes when called again with `confirm=true` |
-| `add_project_favorite` | Validate and then mark a project as a favorite (OpenProject 17.0+); only writes when called again with `confirm=true` |
-| `remove_project_favorite` | Validate and then remove a project from favorites (OpenProject 17.0+); only writes when called again with `confirm=true` |
+| `set_project_favorite` | Validate and then mark or unmark a project as a favorite (OpenProject 17.0+), based on `favorite`; only writes when called again with `confirm=true` |
 | `get_instance_configuration` | Return instance-level OpenProject configuration and active feature flags |
 
 ## Memberships
@@ -82,8 +80,7 @@ since this is instance-wide PII with no project-scope boundary.
 | `create_user` | Validate and then create a user account; only writes when called again with `confirm=true` (`OPENPROJECT_ENABLE_ADMIN_WRITE`) |
 | `update_user` | Validate and then update a user account; only writes when called again with `confirm=true` (`OPENPROJECT_ENABLE_ADMIN_WRITE`) |
 | `delete_user` | Validate and then delete a user account; only deletes when called again with `confirm=true` (`OPENPROJECT_ENABLE_ADMIN_WRITE`) |
-| `lock_user` | Lock a user account to prevent login (`OPENPROJECT_ENABLE_ADMIN_WRITE`) |
-| `unlock_user` | Unlock a previously locked user account (`OPENPROJECT_ENABLE_ADMIN_WRITE`) |
+| `set_user_locked` | Lock or unlock a user account, based on `locked` (`OPENPROJECT_ENABLE_ADMIN_WRITE`) |
 
 ## Groups
 
@@ -104,8 +101,7 @@ Same gating as [Users](#users) above: reads need
 | Tool | Description |
 |---|---|
 | `list_notifications` | List the current user's unread notifications |
-| `mark_notification_read` | Mark a single notification as read |
-| `mark_all_notifications_read` | Mark all notifications as read |
+| `mark_notifications_read` | Mark a single notification as read (pass `notification_id`), or every unread notification as read (omit it) |
 
 ## Actions & capabilities
 
@@ -208,8 +204,7 @@ Same gating as [Users](#users) above: reads need
 | `delete_reminder` | Validate and then delete a reminder; only deletes when called again with `confirm=true` |
 | `list_my_open_work_packages` | List the current user's open assigned work packages |
 | `list_work_package_watchers` | List watchers on a work package |
-| `add_work_package_watcher` | Add a user as a watcher on a work package |
-| `remove_work_package_watcher` | Remove a user from the watchers of a work package |
+| `set_work_package_watcher` | Add or remove a user as a watcher on a work package, based on `watching` |
 | `list_work_package_file_links` | List Nextcloud file links attached to a work package (Community Edition) |
 | `delete_file_link` | Validate and then delete a Nextcloud file link; only deletes when called again with `confirm=true` |
 

@@ -507,18 +507,6 @@ def _add_work_package_watcher_handler(request: httpx.Request) -> httpx.Response:
     raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
 
-def _remove_work_package_watcher_handler(request: httpx.Request) -> httpx.Response:
-    if request.method == "GET" and request.url.path == "/api/v3/work_packages/42":
-        return httpx.Response(
-            200,
-            json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
-            request=request,
-        )
-    if request.method == "DELETE" and request.url.path == "/api/v3/work_packages/42/watchers/5":
-        return httpx.Response(204, request=request)
-    raise AssertionError(f"Unexpected request: {request.method} {request.url}")
-
-
 def _create_time_entry_handler(request: httpx.Request) -> httpx.Response:
     if request.method == "GET" and request.url.path == "/api/v3/work_packages/42":
         return httpx.Response(
@@ -733,21 +721,18 @@ WORK_PACKAGE_CASES: dict[str, WriteToolCase] = {
         handler=_delete_attachment_handler,
         write_request=("DELETE", "/api/v3/attachments/7"),
     ),
-    "add_work_package_watcher": WriteToolCase(
-        tool="add_work_package_watcher",
-        kwargs={"work_package_id": 42, "user_id": 5},
+    # One WriteToolCase covers the tool's `watching=True` (add) branch, since
+    # this generic registry enforces exactly one case per registered tool.
+    # The `watching=False` (remove) branch's preview/confirm/denial behavior
+    # -- including the asymmetric no-extra-lookup preview -- is covered
+    # separately in test_work_package_tools.py.
+    "set_work_package_watcher": WriteToolCase(
+        tool="set_work_package_watcher",
+        kwargs={"work_package_id": 42, "user_id": 5, "watching": True},
         settings=_SETTINGS,
         write_scope="work_package",
         handler=_add_work_package_watcher_handler,
         write_request=("POST", "/api/v3/work_packages/42/watchers"),
-    ),
-    "remove_work_package_watcher": WriteToolCase(
-        tool="remove_work_package_watcher",
-        kwargs={"work_package_id": 42, "user_id": 5},
-        settings=_SETTINGS,
-        write_scope="work_package",
-        handler=_remove_work_package_watcher_handler,
-        write_request=("DELETE", "/api/v3/work_packages/42/watchers/5"),
     ),
     "create_time_entry": WriteToolCase(
         tool="create_time_entry",

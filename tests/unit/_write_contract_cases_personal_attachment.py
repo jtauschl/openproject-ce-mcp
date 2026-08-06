@@ -70,24 +70,17 @@ def _update_my_preferences_handler(request: httpx.Request) -> httpx.Response:
     raise AssertionError  # unreachable, satisfies type-checkers
 
 
-# --- mark_notification_read / mark_all_notifications_read -----------------
+# --- mark_notifications_read (single-id branch) ----------------------------
 #
-# Both client methods (client.py:4160, client.py:4192) have a real client-side
+# client.mark_notification_read (client.py:4160) has a real client-side
 # preview branch: confirm=False returns a NotificationMarkResult
 # (requires_confirmation=True, ready=True) without issuing any HTTP call, and
-# confirm=True POSTs to notifications/{id}/read_ian or notifications/read_ian
-# respectively. Neither is a rubber-stamp/always-executes tool.
+# confirm=True POSTs to notifications/{id}/read_ian. Not a rubber-stamp/
+# always-executes tool.
 
 
 def _mark_notification_read_handler(request: httpx.Request) -> httpx.Response:
     if request.url.path == "/api/v3/notifications/10/read_ian" and request.method == "POST":
-        return httpx.Response(204, request=request)
-    _unexpected(request)
-    raise AssertionError
-
-
-def _mark_all_notifications_read_handler(request: httpx.Request) -> httpx.Response:
-    if request.url.path == "/api/v3/notifications/read_ian" and request.method == "POST":
         return httpx.Response(204, request=request)
     _unexpected(request)
     raise AssertionError
@@ -185,21 +178,18 @@ PERSONAL_ATTACHMENT_CASES: dict[str, WriteToolCase] = {
         handler=_update_my_preferences_handler,
         write_request=("PATCH", "/api/v3/my_preferences"),
     ),
-    "mark_notification_read": WriteToolCase(
-        tool="mark_notification_read",
+    # One WriteToolCase covers the tool's `notification_id` (mark single)
+    # branch, since this generic registry enforces exactly one case per
+    # registered tool. The default/omitted-id (mark all) branch's
+    # preview/confirm/denial behavior is covered separately in
+    # test_notifications_and_reminders.py.
+    "mark_notifications_read": WriteToolCase(
+        tool="mark_notifications_read",
         kwargs={"notification_id": 10},
         settings=_base_personal_settings(),
         write_scope="personal",
         handler=_mark_notification_read_handler,
         write_request=("POST", "/api/v3/notifications/10/read_ian"),
-    ),
-    "mark_all_notifications_read": WriteToolCase(
-        tool="mark_all_notifications_read",
-        kwargs={},
-        settings=_base_personal_settings(),
-        write_scope="personal",
-        handler=_mark_all_notifications_read_handler,
-        write_request=("POST", "/api/v3/notifications/read_ian"),
     ),
     "create_work_package_attachment": WriteToolCase(
         tool="create_work_package_attachment",

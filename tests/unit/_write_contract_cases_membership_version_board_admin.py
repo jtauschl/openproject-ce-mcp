@@ -317,16 +317,6 @@ def _lock_user_handler(request: httpx.Request) -> httpx.Response:
     return _unexpected(request)
 
 
-def _unlock_user_handler(request: httpx.Request) -> httpx.Response:
-    # OpenProject's user_transition helper (verified against OpenProject's
-    # own API implementation) responds 200 + the full updated
-    # UserRepresenter body for both the POST
-    # and DELETE lock transitions -- no follow-up GET needed or issued.
-    if request.url.path == "/api/v3/users/9/lock" and request.method == "DELETE":
-        return httpx.Response(200, json={"id": 9, "login": "ada", "locked": False, "_links": {}}, request=request)
-    return _unexpected(request)
-
-
 # --- Admin: groups ----------------------------------------------------------
 
 
@@ -447,21 +437,17 @@ MEMBERSHIP_VERSION_BOARD_ADMIN_CASES: dict[str, WriteToolCase] = {
         handler=_delete_user_handler,
         write_request=("DELETE", "/api/v3/users/9"),
     ),
-    "lock_user": WriteToolCase(
-        tool="lock_user",
-        kwargs={"user_id": 9},
+    # One WriteToolCase covers the tool's `locked=True` (lock) branch, since
+    # this generic registry enforces exactly one case per registered tool.
+    # The `locked=False` (unlock) branch's preview/confirm/denial behavior is
+    # covered separately in test_project_and_domain_tools.py.
+    "set_user_locked": WriteToolCase(
+        tool="set_user_locked",
+        kwargs={"user_id": 9, "locked": True},
         settings=_admin_settings(),
         write_scope="admin",
         handler=_lock_user_handler,
         write_request=("POST", "/api/v3/users/9/lock"),
-    ),
-    "unlock_user": WriteToolCase(
-        tool="unlock_user",
-        kwargs={"user_id": 9},
-        settings=_admin_settings(),
-        write_scope="admin",
-        handler=_unlock_user_handler,
-        write_request=("DELETE", "/api/v3/users/9/lock"),
     ),
     "create_group": WriteToolCase(
         tool="create_group",

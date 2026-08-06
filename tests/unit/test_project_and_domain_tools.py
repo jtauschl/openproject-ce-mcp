@@ -9,7 +9,6 @@ from _tools_test_helpers import FakeContext, make_settings
 
 from openproject_ce_mcp.client import CLEAR, OpenProjectClient
 from openproject_ce_mcp.tools import (
-    add_project_favorite,
     copy_project,
     create_board,
     create_grid,
@@ -61,7 +60,6 @@ from openproject_ce_mcp.tools import (
     list_priorities,
     list_project_memberships,
     list_project_phase_definitions,
-    list_project_sprints,
     list_projects,
     list_reminders,
     list_roles,
@@ -74,11 +72,9 @@ from openproject_ce_mcp.tools import (
     list_views,
     list_work_package_attachments,
     list_work_package_file_links,
-    lock_user,
-    mark_all_notifications_read,
-    mark_notification_read,
-    remove_project_favorite,
-    unlock_user,
+    mark_notifications_read,
+    set_project_favorite,
+    set_user_locked,
     update_board,
     update_document,
     update_grid,
@@ -448,7 +444,7 @@ async def test_sprint_tools_pass_expected_arguments() -> None:
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
     listed = await list_sprints(ctx, search="0.4", offset=2, limit=5)
-    project_listed = await list_project_sprints(ctx, project="demo", search="0.4", offset=3, limit=4)
+    project_listed = await list_sprints(ctx, project="demo", search="0.4", offset=3, limit=4)
     detail = await get_sprint(ctx, 7)
 
     assert listed == {"search": "0.4", "offset": 2, "limit": 5}
@@ -881,8 +877,8 @@ async def test_project_favorite_tools_pass_expected_arguments() -> None:
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
-    added = await add_project_favorite(ctx, "demo", confirm=True)
-    removed = await remove_project_favorite(ctx, "demo", confirm=False)
+    added = await set_project_favorite(ctx, "demo", favorite=True, confirm=True)
+    removed = await set_project_favorite(ctx, "demo", favorite=False, confirm=False)
 
     assert added["project"] == "demo"
     assert added["confirm"] is True
@@ -905,8 +901,8 @@ async def test_notification_tools_pass_expected_arguments() -> None:
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
     listed = await list_notifications(ctx, unread_only=True)
-    marked = await mark_notification_read(ctx, 10, confirm=True)
-    marked_all = await mark_all_notifications_read(ctx, confirm=True)
+    marked = await mark_notifications_read(ctx, notification_id=10, confirm=True)
+    marked_all = await mark_notifications_read(ctx, confirm=True)
 
     assert listed["unread_only"] is True
     assert marked["notification_id"] == 10
@@ -940,8 +936,8 @@ async def test_user_crud_tools_pass_expected_arguments() -> None:
     )
     updated = await update_user(ctx, 5, email="new@example.com", confirm=True)
     deleted = await delete_user(ctx, 5, confirm=True)
-    locked = await lock_user(ctx, 5, confirm=True)
-    unlocked = await unlock_user(ctx, 5, confirm=True)
+    locked = await set_user_locked(ctx, 5, locked=True, confirm=True)
+    unlocked = await set_user_locked(ctx, 5, locked=False, confirm=True)
 
     assert created["login"] == "jdoe"
     assert updated["user_id"] == 5

@@ -4,7 +4,7 @@ See `_write_contract_cases_types.py` for the shared
 output is merged with the other scopes.
 
 Covers: create_project, update_project, delete_project, copy_project,
-add_project_favorite, remove_project_favorite, create_news, update_news,
+set_project_favorite, create_news, update_news,
 delete_news, update_document, create_grid, update_grid, delete_grid.
 """
 
@@ -132,22 +132,13 @@ def _copy_project_handler(request: httpx.Request) -> httpx.Response:
 
 
 # --------------------------------------------------------------------------
-# add_project_favorite / remove_project_favorite:
-# GET /api/v3/projects/{ref} (resolve, preview) -> POST|DELETE /api/v3/workspaces/{id}/favorite (write)
+# set_project_favorite(favorite=True):
+# GET /api/v3/projects/{ref} (resolve, preview) -> POST /api/v3/workspaces/{id}/favorite (write)
 # --------------------------------------------------------------------------
 def _add_project_favorite_handler(request: httpx.Request) -> httpx.Response:
     if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
         return httpx.Response(200, json=_project_payload(), request=request)
     if request.url.path == "/api/v3/workspaces/1/favorite" and request.method == "POST":
-        return httpx.Response(204, request=request)
-    _unexpected(request)
-    raise AssertionError  # pragma: no cover
-
-
-def _remove_project_favorite_handler(request: httpx.Request) -> httpx.Response:
-    if request.url.path == "/api/v3/projects/demo" and request.method == "GET":
-        return httpx.Response(200, json=_project_payload(), request=request)
-    if request.url.path == "/api/v3/workspaces/1/favorite" and request.method == "DELETE":
         return httpx.Response(204, request=request)
     _unexpected(request)
     raise AssertionError  # pragma: no cover
@@ -371,21 +362,18 @@ PROJECT_CASES: dict[str, WriteToolCase] = {
         handler=_copy_project_handler,
         write_request=("POST", "/api/v3/projects/1/copy"),
     ),
-    "add_project_favorite": WriteToolCase(
-        tool="add_project_favorite",
-        kwargs={"project": "demo"},
+    # One WriteToolCase covers the tool's `favorite=True` (add) branch, since
+    # this generic registry enforces exactly one case per registered tool
+    # (test_every_registered_write_tool_has_a_contract_case keys off tool
+    # names). The `favorite=False` (remove) branch's preview/confirm/denial
+    # behavior is covered separately in test_project_and_domain_tools.py.
+    "set_project_favorite": WriteToolCase(
+        tool="set_project_favorite",
+        kwargs={"project": "demo", "favorite": True},
         settings=_settings(),
         write_scope="project",
         handler=_add_project_favorite_handler,
         write_request=("POST", "/api/v3/workspaces/1/favorite"),
-    ),
-    "remove_project_favorite": WriteToolCase(
-        tool="remove_project_favorite",
-        kwargs={"project": "demo"},
-        settings=_settings(),
-        write_scope="project",
-        handler=_remove_project_favorite_handler,
-        write_request=("DELETE", "/api/v3/workspaces/1/favorite"),
     ),
     "create_news": WriteToolCase(
         tool="create_news",

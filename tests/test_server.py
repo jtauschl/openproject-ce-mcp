@@ -68,7 +68,6 @@ def test_defaults_contain_read_tools() -> None:
     assert "list_boards" in names
     assert "list_versions" in names
     assert "list_sprints" in names
-    assert "list_project_sprints" in names
     assert "get_sprint" in names
     assert "list_project_memberships" in names
 
@@ -80,7 +79,7 @@ def test_defaults_no_write_tools() -> None:
     assert "update_work_package" not in names
     assert "delete_board" not in names
     assert "create_user" not in names
-    assert "mark_notification_read" not in names
+    assert "mark_notifications_read" not in names
 
 
 def test_update_my_preferences_absent_by_default() -> None:
@@ -98,8 +97,7 @@ def test_update_my_preferences_needs_both_personal_read_and_write() -> None:
     mcp = create_app(make_settings(enable_personal_read=True, enable_personal_write=True))
     names = _tool_names(mcp)
     assert "update_my_preferences" in names
-    assert "mark_notification_read" in names
-    assert "mark_all_notifications_read" in names
+    assert "mark_notifications_read" in names
 
 
 def test_personal_tools_absent_by_default() -> None:
@@ -108,8 +106,7 @@ def test_personal_tools_absent_by_default() -> None:
     assert "get_my_preferences" not in names
     assert "list_notifications" not in names
     assert "update_my_preferences" not in names
-    assert "mark_notification_read" not in names
-    assert "mark_all_notifications_read" not in names
+    assert "mark_notifications_read" not in names
 
 
 def test_personal_read_alone_exposes_only_reads() -> None:
@@ -118,8 +115,7 @@ def test_personal_read_alone_exposes_only_reads() -> None:
     assert "get_my_preferences" in names
     assert "list_notifications" in names
     assert "update_my_preferences" not in names
-    assert "mark_notification_read" not in names
-    assert "mark_all_notifications_read" not in names
+    assert "mark_notifications_read" not in names
 
 
 def test_personal_write_alone_exposes_nothing() -> None:
@@ -128,8 +124,7 @@ def test_personal_write_alone_exposes_nothing() -> None:
     assert "get_my_preferences" not in names
     assert "list_notifications" not in names
     assert "update_my_preferences" not in names
-    assert "mark_notification_read" not in names
-    assert "mark_all_notifications_read" not in names
+    assert "mark_notifications_read" not in names
 
 
 def test_enable_project_read_false_removes_project_tools() -> None:
@@ -141,7 +136,6 @@ def test_enable_project_read_false_removes_project_tools() -> None:
     assert "list_projects" not in names
     assert "get_project" not in names
     assert "list_sprints" not in names
-    assert "list_project_sprints" not in names
     assert "get_sprint" not in names
     # Other scopes remain active
     assert "list_work_packages" in names
@@ -342,8 +336,7 @@ def test_enable_admin_write_adds_user_group_tools() -> None:
     assert "create_user" in names
     assert "update_user" in names
     assert "delete_user" in names
-    assert "lock_user" in names
-    assert "unlock_user" in names
+    assert "set_user_locked" in names
     assert "create_group" in names
     assert "update_group" in names
     assert "delete_group" in names

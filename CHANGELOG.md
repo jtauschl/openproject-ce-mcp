@@ -16,8 +16,8 @@ support.
 
 ### Added
 
-- **`list_documents`, `list_views`, `list_sprints`, and
-  `list_project_sprints` gain a `search` parameter.**
+- **`list_documents`, `list_views`, and `list_sprints` gain a `search`
+  parameter.**
 - **`bulk_update_work_packages` now supports `sprint`.**
 - **`bulk_create_work_packages`/`bulk_update_work_packages` item fields now
   accept `parent`** as well as `parent_work_package_id`.
@@ -60,6 +60,17 @@ support.
   Previously it stayed in the tool catalog even though it could only ever
   return an empty result or a permission error with no project allowlist
   granted; write tools already worked this way.
+- **Breaking: `add_project_favorite`/`remove_project_favorite` merged into
+  `set_project_favorite(favorite: bool)`.**
+- **Breaking: `lock_user`/`unlock_user` merged into
+  `set_user_locked(locked: bool)`.**
+- **Breaking: `add_work_package_watcher`/`remove_work_package_watcher`
+  merged into `set_work_package_watcher(watching: bool)`.**
+- **Breaking: `mark_notification_read`/`mark_all_notifications_read` merged
+  into `mark_notifications_read(notification_id=None)`** — pass an id to
+  mark one notification, omit it to mark every unread notification.
+- **Breaking: `list_project_sprints` merged into `list_sprints(project=None,
+  ...)`** — pass `project` to list only that project's sprints.
 
 ### Docs
 

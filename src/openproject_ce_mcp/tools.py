@@ -222,8 +222,7 @@ RELATION_TYPE_RE = re.compile(
 # call site provides.
 PERSONAL_MUTATION_TOOLS: tuple[str, ...] = (
     "update_my_preferences",
-    "mark_notification_read",
-    "mark_all_notifications_read",
+    "mark_notifications_read",
 )
 
 READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
@@ -233,7 +232,6 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "get_project_admin_context",
         "get_project_configuration",
         "list_sprints",
-        "list_project_sprints",
         "get_sprint",
         "list_documents",
         "get_document",
@@ -317,8 +315,7 @@ ADMIN_WRITE_TOOLS: tuple[str, ...] = (
     "create_user",
     "update_user",
     "delete_user",
-    "lock_user",
-    "unlock_user",
+    "set_user_locked",
     "create_group",
     "update_group",
     "delete_group",
@@ -330,8 +327,7 @@ WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "update_project",
         "delete_project",
         "copy_project",
-        "add_project_favorite",
-        "remove_project_favorite",
+        "set_project_favorite",
         "create_news",
         "update_news",
         "delete_news",
@@ -355,8 +351,7 @@ WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "create_work_package_relation",
         "delete_relation",
         "delete_attachment",
-        "add_work_package_watcher",
-        "remove_work_package_watcher",
+        "set_work_package_watcher",
         "create_time_entry",
         "update_time_entry",
         "create_time_entry_until",
@@ -406,7 +401,6 @@ _PROJECT_SCOPED_READ_TOOLS: frozenset[str] = frozenset(
         "get_project_admin_context",
         "get_project_configuration",
         "list_sprints",
-        "list_project_sprints",
         "get_sprint",
         "list_documents",
         "get_document",
@@ -642,12 +636,17 @@ async def get_project(
 
 async def list_sprints(
     ctx: Context,
+    project: str | None = None,
     search: str | None = None,
     offset: int = 1,
     limit: int | None = None,
     select: list[str] | None = None,
 ) -> SprintListResult:
-    """List Backlogs sprints visible to the current token, optionally filtered by name search.
+    """List Backlogs sprints, optionally filtered by name search.
+
+    project: numeric id (e.g., 7) or identifier (e.g., "my-project"), not display
+    name. Omit it to list every sprint visible to the current token across all
+    projects; pass it to list only sprints for that project.
 
     Requires the OpenProject Backlogs module; unavailable instances return a clear not-found message.
 
@@ -663,32 +662,9 @@ async def list_sprints(
     client = _client_from_context(ctx)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     _validate_select(select, row_type=SprintSummary)
-    return await _run_tool(client.list_sprints(search=safe_search, offset=safe_offset, limit=safe_limit))
-
-
-async def list_project_sprints(
-    ctx: Context,
-    project: str,
-    search: str | None = None,
-    offset: int = 1,
-    limit: int | None = None,
-    select: list[str] | None = None,
-) -> SprintListResult:
-    """List Backlogs sprints for a project by id or identifier, optionally filtered by name search.
-
-    select restricts each result row to the given fields (e.g. ["id", "name"]);
-    an invalid name returns the allowed set.
-
-    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap. total is only
-    the count of allowed sprints returned on THIS page, not a full count of
-    all matches — the search stops as soon as it has enough, so an exact
-    total would need an extra full walk. Page until next_offset is null.
-    """
-    client = _client_from_context(ctx)
+    if project is None:
+        return await _run_tool(client.list_sprints(search=safe_search, offset=safe_offset, limit=safe_limit))
     safe_project = _validate_project_ref(project)
-    safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
-    _validate_select(select, row_type=SprintSummary)
     return await _run_tool(
         client.list_project_sprints(safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
     )
@@ -3472,31 +3448,21 @@ async def delete_reminder(
     return await _run_tool(client.delete_reminder(reminder_id=safe_id, confirm=confirm))
 
 
-async def add_project_favorite(
+async def set_project_favorite(
     ctx: Context,
     project: str,
+    favorite: bool,
     confirm: bool = False,
 ) -> FavoriteWriteResult:
-    """Prepare or mark a project as a favorite; only writes when called again with confirm=true.
+    """Prepare or mark/unmark a project as a favorite; only writes when called again with confirm=true.
 
     project: numeric id (e.g., 7) or identifier (e.g., "my-project"), not display name.
+    favorite=true marks it as a favorite; favorite=false removes it.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
-    return await _run_tool(client.add_project_favorite(project=safe_project, confirm=confirm))
-
-
-async def remove_project_favorite(
-    ctx: Context,
-    project: str,
-    confirm: bool = False,
-) -> FavoriteWriteResult:
-    """Prepare or remove a project from favorites; only writes when called again with confirm=true.
-
-    project: numeric id (e.g., 7) or identifier (e.g., "my-project"), not display name.
-    """
-    client = _client_from_context(ctx)
-    safe_project = _validate_project_ref(project)
+    if favorite:
+        return await _run_tool(client.add_project_favorite(project=safe_project, confirm=confirm))
     return await _run_tool(client.remove_project_favorite(project=safe_project, confirm=confirm))
 
 
@@ -3575,35 +3541,26 @@ async def list_work_package_watchers(
     return await _run_tool(client.list_work_package_watchers(safe_id))
 
 
-async def add_work_package_watcher(
+async def set_work_package_watcher(
     ctx: Context,
     work_package_id: int | str,
     user_id: int,
+    watching: bool,
     confirm: bool = False,
 ) -> WatcherWriteResult:
-    """Prepare or add a watcher to a work package.
+    """Prepare or add/remove a watcher on a work package.
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+    watching=true adds the watcher; watching=false removes it. The two
+    previews are NOT symmetric: watching=true's preview looks up and returns
+    the real watcher's summary (result is populated); watching=false's
+    preview makes no extra lookup and always returns result=null.
     """
     client = _client_from_context(ctx)
     safe_wp_id = _validate_work_package_ref(work_package_id)
     safe_user_id = _validate_positive_int(user_id, field_name="user_id")
-    return await _run_tool(client.add_work_package_watcher(safe_wp_id, safe_user_id, confirm=confirm))
-
-
-async def remove_work_package_watcher(
-    ctx: Context,
-    work_package_id: int | str,
-    user_id: int,
-    confirm: bool = False,
-) -> WatcherWriteResult:
-    """Prepare or remove a watcher from a work package.
-
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
-    """
-    client = _client_from_context(ctx)
-    safe_wp_id = _validate_work_package_ref(work_package_id)
-    safe_user_id = _validate_positive_int(user_id, field_name="user_id")
+    if watching:
+        return await _run_tool(client.add_work_package_watcher(safe_wp_id, safe_user_id, confirm=confirm))
     return await _run_tool(client.remove_work_package_watcher(safe_wp_id, safe_user_id, confirm=confirm))
 
 
@@ -3624,23 +3581,20 @@ async def list_notifications(
     return await _run_tool(client.list_notifications(unread_only=unread_only, limit=safe_limit, offset=safe_offset))
 
 
-async def mark_notification_read(ctx: Context, notification_id: int, confirm: bool = False) -> NotificationMarkResult:
-    """Mark a single notification as read.
+async def mark_notifications_read(
+    ctx: Context, notification_id: int | None = None, confirm: bool = False
+) -> NotificationMarkResult:
+    """Mark a single notification, or all unread notifications, as read.
 
+    notification_id: mark just this notification read. Omit it (default) to
+    mark every currently unread notification read instead.
     Set confirm=true to write, or call without confirm=true first for a preview.
     """
     client = _client_from_context(ctx)
+    if notification_id is None:
+        return await _run_tool(client.mark_all_notifications_read(confirm=confirm))
     safe_id = _validate_positive_int(notification_id, field_name="notification_id")
     return await _run_tool(client.mark_notification_read(safe_id, confirm=confirm))
-
-
-async def mark_all_notifications_read(ctx: Context, confirm: bool = False) -> NotificationMarkResult:
-    """Mark all unread notifications as read.
-
-    Set confirm=true to write, or call without confirm=true first for a preview.
-    """
-    client = _client_from_context(ctx)
-    return await _run_tool(client.mark_all_notifications_read(confirm=confirm))
 
 
 async def create_user(
@@ -3731,25 +3685,21 @@ async def delete_user(
     return await _run_tool(client.delete_user(safe_id, confirm=confirm))
 
 
-async def lock_user(
+async def set_user_locked(
     ctx: Context,
     user_id: int,
+    locked: bool,
     confirm: bool = False,
 ) -> UserWriteResult:
-    """Prepare or lock a user account (admin operation)."""
+    """Prepare or lock/unlock a user account (admin operation).
+
+    locked=true locks the account; locked=false unlocks it. Preview/confirm
+    behavior is identical either way.
+    """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(user_id, field_name="user_id")
-    return await _run_tool(client.lock_user(safe_id, confirm=confirm))
-
-
-async def unlock_user(
-    ctx: Context,
-    user_id: int,
-    confirm: bool = False,
-) -> UserWriteResult:
-    """Prepare or unlock a user account (admin operation)."""
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(user_id, field_name="user_id")
+    if locked:
+        return await _run_tool(client.lock_user(safe_id, confirm=confirm))
     return await _run_tool(client.unlock_user(safe_id, confirm=confirm))
 
 

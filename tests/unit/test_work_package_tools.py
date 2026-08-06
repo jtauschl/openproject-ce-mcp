@@ -8,7 +8,6 @@ from openproject_ce_mcp.client import CLEAR, CLEAR_PARENT, CLEAR_VERSION, OpenPr
 from openproject_ce_mcp.tools import (
     _validate_work_package_ref,
     add_work_package_comment,
-    add_work_package_watcher,
     bulk_create_work_packages,
     bulk_update_work_packages,
     create_subtask,
@@ -21,8 +20,8 @@ from openproject_ce_mcp.tools import (
     list_work_package_reactions,
     list_work_package_watchers,
     list_work_packages,
-    remove_work_package_watcher,
     search_work_packages,
+    set_work_package_watcher,
     toggle_activity_emoji_reaction,
     update_relation,
     update_work_package,
@@ -554,8 +553,8 @@ async def test_watcher_tools_pass_expected_arguments() -> None:
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
     listed = await list_work_package_watchers(ctx, "42")
-    added = await add_work_package_watcher(ctx, "42", 7, confirm=False)
-    removed = await remove_work_package_watcher(ctx, "42", 7, confirm=True)
+    added = await set_work_package_watcher(ctx, "42", 7, watching=True, confirm=False)
+    removed = await set_work_package_watcher(ctx, "42", 7, watching=False, confirm=True)
 
     assert listed["work_package_id"] == "42"
     assert added["user_id"] == 7

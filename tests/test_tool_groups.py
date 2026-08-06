@@ -183,8 +183,7 @@ def test_personal_group_and_write_flag_expose_personal_tools() -> None:
     assert "get_my_preferences" in names
     assert "list_notifications" in names
     assert "update_my_preferences" in names
-    assert "mark_notification_read" in names
-    assert "mark_all_notifications_read" in names
+    assert "mark_notifications_read" in names
 
 
 def test_all_reads_off_removes_every_read_classified_tool() -> None:
@@ -326,8 +325,7 @@ def test_metadata_tools_need_their_additional_read_scopes_too() -> None:
 def test_personal_write_alone_does_not_expose_personal_mutations() -> None:
     names = set(tools.enabled_tool_names(make_settings(**ALL_READ_OFF, enable_personal_write=True)))
     assert "update_my_preferences" not in names
-    assert "mark_notification_read" not in names
-    assert "mark_all_notifications_read" not in names
+    assert "mark_notifications_read" not in names
 
 
 def test_personal_read_alone_exposes_reads_but_not_mutations() -> None:
@@ -336,16 +334,14 @@ def test_personal_read_alone_exposes_reads_but_not_mutations() -> None:
     assert "get_my_preferences" in names
     assert "list_notifications" in names
     assert "update_my_preferences" not in names
-    assert "mark_notification_read" not in names
-    assert "mark_all_notifications_read" not in names
+    assert "mark_notifications_read" not in names
 
 
 def test_work_package_write_no_longer_couples_to_notification_mark_read() -> None:
     baseline = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON)))
     with_wp_write = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON, enable_work_package_write=True)))
     delta = with_wp_write - baseline
-    assert "mark_notification_read" not in delta
-    assert "mark_all_notifications_read" not in delta
+    assert "mark_notifications_read" not in delta
 
 
 # ── attachment-upload AND-gate — same bespoke-branch shape as the
@@ -438,11 +434,11 @@ def _all_five_scope_tools() -> set[str]:
 
 def test_project_scoped_and_global_read_tools_partition_the_five_scopes() -> None:
     all_five_scope_tools = _all_five_scope_tools()
-    assert len(all_five_scope_tools) == 58  # no name overlap between the 5 scopes
+    assert len(all_five_scope_tools) == 57  # no name overlap between the 5 scopes
     assert _EXPECTED_GLOBAL_READ_TOOLS <= all_five_scope_tools
     assert tools._PROJECT_SCOPED_READ_TOOLS == all_five_scope_tools - _EXPECTED_GLOBAL_READ_TOOLS
     assert tools._PROJECT_SCOPED_READ_TOOLS.isdisjoint(_EXPECTED_GLOBAL_READ_TOOLS)
-    assert len(tools._PROJECT_SCOPED_READ_TOOLS) == 46
+    assert len(tools._PROJECT_SCOPED_READ_TOOLS) == 45
 
 
 def test_project_scoped_read_tools_absent_when_read_projects_empty() -> None:
