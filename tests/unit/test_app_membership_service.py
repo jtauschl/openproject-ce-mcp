@@ -481,7 +481,7 @@ async def test_create_with_numeric_role_id_skips_the_role_list_fetch() -> None:
 @pytest.mark.asyncio
 async def test_create_with_mixed_numeric_and_named_roles_still_fetches_once() -> None:
     """A mix of numeric and by-name refs must still trigger exactly one
-    page-walk (for the by-name ref), not skip it entirely."""
+    role-list fetch (for the by-name ref), not skip it entirely."""
     role_api = _FakeRoleApi(records=[RoleRecord(summary=RoleSummary(id=2, name="Member"))])
     api = _FakeMembershipApi()
     service = _service(api, role_api=role_api)

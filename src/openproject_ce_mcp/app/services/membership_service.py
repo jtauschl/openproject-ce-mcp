@@ -38,7 +38,7 @@ from typing import Any
 
 from ...config import Settings
 from ...models import MembershipListResult, MembershipSummary, MembershipWriteResult
-from ..api_href import api_href
+from ..api_href import api_href as _api_href
 from ..errors import InvalidInputError
 from ..pagination import clamp_limit, paginate_server
 from ..policies import access, hidden_fields
@@ -75,9 +75,6 @@ class MembershipService:
 
     def _stamp(self, value: Any) -> Any:
         return hidden_fields.apply_hidden_fields("membership", value, settings=self._settings)
-
-    def _api_href(self, relative_path: str) -> str:
-        return api_href(relative_path, api_prefix=self._api_prefix)
 
     async def list_for_project(
         self,
@@ -144,8 +141,8 @@ class MembershipService:
         role_hrefs = await self._resolve_role_hrefs(roles)
         payload: dict[str, Any] = {
             "_links": {
-                "project": {"href": self._api_href(f"projects/{project_id}")},
-                "principal": {"href": self._api_href(f"users/{principal_id}")},
+                "project": {"href": _api_href(f"projects/{project_id}", api_prefix=self._api_prefix)},
+                "principal": {"href": _api_href(f"users/{principal_id}", api_prefix=self._api_prefix)},
                 "roles": [{"href": href} for href in role_hrefs],
             }
         }
@@ -236,10 +233,11 @@ class MembershipService:
     async def _resolve_role_hrefs(self, roles: list[str]) -> list[str]:
         # Kept as a private Service method (not a resolver) since it operates
         # purely on the complete role set, with no ID resolution against
-        # MembershipApi itself. Page-walks RoleApi directly (rather than going
-        # through RoleService.list_roles) since this internal by-value lookup
-        # needs ALL roles regardless of the caller-facing pagination window,
-        # and has no serialization step to apply hidden-field masking to.
+        # MembershipApi itself. Calls RoleApi directly with a single fetch
+        # (rather than going through RoleService.list_roles) since this
+        # internal by-value lookup needs ALL roles regardless of the
+        # caller-facing pagination window, and has no serialization step to
+        # apply hidden-field masking to.
         access.ensure_read_enabled("role", settings=self._settings)
         normalized_refs = [ref.strip() for ref in roles if ref.strip()]
         # The full role-collection page-walk is only needed to resolve a
@@ -266,7 +264,7 @@ class MembershipService:
         hrefs: list[str] = []
         for normalized in normalized_refs:
             if normalized.isdigit():
-                hrefs.append(self._api_href(f"roles/{normalized}"))
+                hrefs.append(_api_href(f"roles/{normalized}", api_prefix=self._api_prefix))
                 continue
             matches = [
                 record for record in available_roles if (record.summary.name or "").casefold() == normalized.casefold()
@@ -275,7 +273,7 @@ class MembershipService:
                 raise InvalidInputError(f"OpenProject role '{normalized}' was not found.")
             if len(matches) > 1:
                 raise InvalidInputError(f"OpenProject role '{normalized}' is ambiguous. Pass a numeric role id.")
-            hrefs.append(self._api_href(f"roles/{matches[0].summary.id}"))
+            hrefs.append(_api_href(f"roles/{matches[0].summary.id}", api_prefix=self._api_prefix))
         if not hrefs:
             raise InvalidInputError("At least one role is required.")
         return hrefs

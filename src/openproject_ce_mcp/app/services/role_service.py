@@ -22,12 +22,14 @@ as `board_service.py`'s client-filtering branch), and the resulting full list
 is sliced locally via `paginate_client` -- same pattern as `GridService`/
 `ViewService`/`DocumentService`/`NewsService`.
 
-`MembershipService._resolve_role_hrefs` page-walks this Service's `RoleApi`
-directly via `app.pagination.paginate_all`, not through `RoleService.list_roles`.
-`paginate_all` itself still assumes a genuinely server-paginated fetcher;
-against a real `UnpaginatedCollection` it would
-re-fetch and duplicate the same full page if the role count ever exceeded
-`max_page_size` (latent at today's 12 roles -- see membership_service.py).
+`MembershipService._resolve_role_hrefs` calls this Service's `RoleApi`
+directly (a single `list_roles(offset=1, page_size=max_results)` fetch, not
+`paginate_all`), not through `RoleService.list_roles`. `paginate_all` itself
+still assumes a genuinely server-paginated fetcher; against a real
+`UnpaginatedCollection` it would misread `total > page_size` as "more pages
+exist" and re-fetch/duplicate the same full page, which is exactly why
+`_resolve_role_hrefs` deliberately avoids it (see its own comment in
+membership_service.py).
 """
 
 from __future__ import annotations
