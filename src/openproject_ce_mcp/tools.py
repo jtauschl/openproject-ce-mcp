@@ -1542,7 +1542,8 @@ async def get_work_package(
     """Get a work package by id, including its full description.
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"),
-    not UI display number (e.g., 51).
+    not UI display number (e.g., 51) — the same value list_work_packages/
+    search_work_packages return as each row's `id` field.
 
     The description is returned in full by default (single work packages are not
     truncated). Pass ``text_limit`` to cap it at that many characters; when the
