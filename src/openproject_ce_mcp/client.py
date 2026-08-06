@@ -107,6 +107,7 @@ from .app.ports.wiki_page_api import WikiPageApi
 from .app.ports.work_package_api import WorkPackageApi
 from .app.ports.work_package_lookup_api import WorkPackageLookupApi
 from .app.resolvers.assignee_resolver import AssigneeResolver
+from .app.resolvers.current_user_resolver import CurrentUserResolver
 from .app.resolvers.principal_resolver import PrincipalResolver
 from .app.resolvers.project_resolver import ProjectResolver
 from .app.resolvers.sprint_resolver import SprintResolver
@@ -381,13 +382,14 @@ class OpenProjectClient:
 
         self._current_user_api: CurrentUserApi = HttpxCurrentUserApi(HttpxTransport(self._http))
         self._current_user_service = CurrentUserService(api=self._current_user_api, settings=settings)
+        self._current_user_resolver = CurrentUserResolver(api=self._current_user_api, settings=settings)
 
         self._principal_api: PrincipalApi = HttpxPrincipalApi(HttpxTransport(self._http))
         self._principal_service = PrincipalService(api=self._principal_api, settings=settings)
         self._principal_resolver = PrincipalResolver(
-            api=self._principal_api, current_user=self.get_current_user, settings=settings
+            api=self._principal_api, current_user=self._current_user_resolver, settings=settings
         )
-        self._assignee_resolver = AssigneeResolver(current_user=self.get_current_user)
+        self._assignee_resolver = AssigneeResolver(current_user=self._current_user_resolver)
 
         self._user_api: UserApi = HttpxUserApi(HttpxTransport(self._http), base_url=settings.base_url)
         self._user_service = UserService(api=self._user_api, settings=settings)
@@ -568,7 +570,7 @@ class OpenProjectClient:
             resolve_work_package_id=self._work_package_resolver.resolve_id,
             status_api=self._status_priority_type_api,
             activity_api=self._activity_api,
-            current_user=self.get_current_user,
+            current_user=self._current_user_resolver,
             work_package_project_allowed=self._work_package_resolver.project_link_allowed,
             work_package_project_allowed_bulk=self._work_package_resolver.project_links_allowed,
             api_prefix=self._api_prefix,
@@ -643,7 +645,7 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
             resolve_project_id=self._resolve_project_id,
             resolve_principal_id=self._resolve_principal_id,
-            get_current_user=self.get_current_user,
+            get_current_user=self._current_user_resolver,
             api_prefix=self._api_prefix,
         )
 

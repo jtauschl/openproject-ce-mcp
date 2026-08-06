@@ -584,11 +584,14 @@ def test_instance_configuration_service_binds_the_api_param_to_instance_configur
 def test_current_user_service_binds_the_api_param_to_current_user_api_specifically() -> None:
     """Non-generalized regression test for the Current User domain's exact
     guarantee, sibling to the checks above: the api param is CurrentUserApi
-    exactly, not just "some Protocol". No dedicated Resolver exists --
-    get_current_user has no semantic reference to resolve, and no project
-    link/allowlist concept at all. Not to be confused with the pre-existing
-    CurrentUserLookup seam Protocol (app/ports/current_user.py), a different,
-    unrelated bare-callable seam this migration does not touch."""
+    exactly, not just "some Protocol". This Service has no Resolver of its
+    own -- get_current_user has no semantic reference to resolve, and no
+    project link/allowlist concept at all. Not to be confused with the
+    separate CurrentUserLookup seam Protocol (app/ports/current_user.py):
+    that seam is implemented independently by
+    app/resolvers/current_user_resolver.py's CurrentUserResolver (see the
+    type-pins on PrincipalResolver/WorkPackageService/TimeEntryService
+    below), not by this Service (OPM-380/D2)."""
     from openproject_ce_mcp.app.adapters.httpx_current_user_api import HttpxCurrentUserApi
     from openproject_ce_mcp.app.ports.current_user_api import CurrentUserApi
     from openproject_ce_mcp.app.services.current_user_service import CurrentUserService
@@ -621,8 +624,12 @@ def test_principal_service_binds_the_api_param_to_principal_api_specifically() -
 def test_principal_resolver_binds_the_api_param_to_principal_api_specifically() -> None:
     """Sibling check for PrincipalResolver (not a Service, but follows the
     same Port-binding discipline): the api param is PrincipalApi exactly,
-    not just "some Protocol", and not the concrete adapter."""
+    not just "some Protocol", and not the concrete adapter. Also pins its
+    current_user param to the CurrentUserLookup seam (see OPM-380/D2:
+    PrincipalResolver depends on CurrentUserResolver's implementation of
+    this seam, not on client.py's get_current_user bound method)."""
     from openproject_ce_mcp.app.adapters.httpx_principal_api import HttpxPrincipalApi
+    from openproject_ce_mcp.app.ports.current_user import CurrentUserLookup
     from openproject_ce_mcp.app.ports.principal_api import PrincipalApi
     from openproject_ce_mcp.app.resolvers.principal_resolver import PrincipalResolver
 
@@ -630,6 +637,9 @@ def test_principal_resolver_binds_the_api_param_to_principal_api_specifically() 
     assert hints["api"] is PrincipalApi, "PrincipalResolver.__init__'s api param must be typed PrincipalApi"
     assert hints["api"] is not HttpxPrincipalApi, (
         "PrincipalResolver.__init__'s api param must not be the concrete adapter"
+    )
+    assert hints["current_user"] is CurrentUserLookup, (
+        "PrincipalResolver.__init__'s current_user param must be typed CurrentUserLookup"
     )
 
 
@@ -1508,6 +1518,7 @@ def test_work_package_service_binds_the_api_param_to_work_package_api_specifical
     from openproject_ce_mcp.app.adapters.httpx_work_package_api import HttpxWorkPackageApi
     from openproject_ce_mcp.app.ports.activity_api import ActivityApi
     from openproject_ce_mcp.app.ports.assignee_ref import AssigneeRefResolver
+    from openproject_ce_mcp.app.ports.current_user import CurrentUserLookup
     from openproject_ce_mcp.app.ports.principal_ref import PrincipalRefResolver
     from openproject_ce_mcp.app.ports.sprint_ref import SprintIdResolver
     from openproject_ce_mcp.app.ports.status_priority_type_api import StatusPriorityTypeApi
@@ -1578,4 +1589,9 @@ def test_work_package_service_binds_the_api_param_to_work_package_api_specifical
     )
     assert hints["activity_api"] is not HttpxActivityApi, (
         "WorkPackageService.__init__'s activity_api param must not be the concrete adapter"
+    )
+
+    assert hints["current_user"] is CurrentUserLookup, (
+        "WorkPackageService.__init__'s current_user param must be typed CurrentUserLookup (OPM-380/D2: depends on "
+        "CurrentUserResolver's implementation of this seam, not on client.py's get_current_user bound method)"
     )

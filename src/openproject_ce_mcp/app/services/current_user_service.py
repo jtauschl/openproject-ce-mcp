@@ -10,14 +10,15 @@ Gates on the `"principal"` read scope, which `config.py` maps to
 quirk, kept as-is rather than "fixed".
 
 `OpenProjectClient.get_current_user` (the one-line delegation this Service
-backs) MUST remain a bindable, zero-argument, `CurrentUser`-returning async
-method: it is already injected as the bound method `self.get_current_user`
-into the pre-existing `CurrentUserLookup` seam Protocol
-(app/ports/current_user.py), consumed by `WorkPackageService`/
-`TimeEntryService`, and called directly by `_resolve_principal_id`'s "me"
-fast path, `_resolve_assignee_id`, and `get_my_project_access`. None of
-those call sites needed to change -- they still see the same bound method,
-whose body now delegates here instead of doing I/O directly.
+backs) directly backs only the `get_current_user` MCP tool and `client.py`'s
+own `get_my_project_access` orchestrator. The `CurrentUserLookup` seam
+Protocol (`app/ports/current_user.py`) that `PrincipalResolver`/
+`AssigneeResolver`/`WorkPackageService`/`TimeEntryService` depend on is
+implemented separately by `app/resolvers/current_user_resolver.py`'s
+`CurrentUserResolver` -- a second, independent implementation of this same
+gate+mask logic, depending directly on `CurrentUserApi` rather than on this
+Service, so those four don't carry a hidden Service->Service dependency
+through a runtime-bound `client.py` method.
 """
 
 from __future__ import annotations

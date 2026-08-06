@@ -5,8 +5,9 @@ the token owner's own user record via `/api/v3/users/me`.
 
 Named `current_user_api.py`, distinct from `current_user.py`, which defines
 the separate `CurrentUserLookup` seam Protocol -- a bare-callable seam other
-Services depend on (satisfied structurally by the bound method
-`self.get_current_user`), unrelated to this Domain API port.
+Resolvers/Services depend on, implemented by
+`app/resolvers/current_user_resolver.py`'s `CurrentUserResolver` (itself a
+consumer of this Port), unrelated to this Domain API port.
 """
 
 from __future__ import annotations
