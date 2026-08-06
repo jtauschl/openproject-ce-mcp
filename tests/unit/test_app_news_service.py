@@ -363,6 +363,22 @@ async def test_update_checks_project_write_allowlist() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_denies_write_even_with_confirm_true() -> None:
+    """Mirrors test_update_checks_project_write_allowlist: the write-allowlist
+    check must also fire on a confirm=True commit call, not only on the
+    confirm=False preview path -- a confirm=False-only denial test can't
+    distinguish "checked before confirm" from "checked only on preview"."""
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
+    api = _FakeNewsApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await service.update(news_id=1, title="Updated", confirm=True)
+
+    assert api.commit_update_calls == []
+
+
+@pytest.mark.asyncio
 async def test_delete_preview_carries_stamped_detail_not_none() -> None:
     """News differs from Memberships here: the ORIGINAL client.py delete_news
     passed preview_result=detail (not None) to _finalize_delete, so the
@@ -402,5 +418,20 @@ async def test_delete_checks_project_write_allowlist() -> None:
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
         await service.delete(news_id=1, confirm=False)
+
+    assert api.delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_denies_write_even_with_confirm_true() -> None:
+    """Mirrors test_delete_checks_project_write_allowlist: the write-allowlist
+    check must also fire on a confirm=True commit call, not only on the
+    confirm=False preview path."""
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("other",))
+    api = _FakeNewsApi()
+    service = _service(api, settings=settings)
+
+    with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
+        await service.delete(news_id=1, confirm=True)
 
     assert api.delete_calls == []
