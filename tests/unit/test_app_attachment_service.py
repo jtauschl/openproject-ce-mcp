@@ -20,7 +20,7 @@ def _summary(
         id=attachment_id,
         title="report.pdf",
         file_name="report.pdf",
-        file_size=1024,
+        file_size_bytes=1024,
         description=None,
         content_type="application/pdf",
         status="uploaded",
@@ -73,7 +73,7 @@ class _FakeAttachmentApi:
     async def delete(self, attachment_id: int) -> None:
         self.delete_calls.append(attachment_id)
 
-    async def get_max_attachment_size(self) -> int | None:
+    async def get_max_attachment_size_bytes(self) -> int | None:
         return self._max_attachment_size
 
 
@@ -355,20 +355,20 @@ async def test_create_rejects_a_file_that_grows_between_the_stat_and_the_read(tm
 
     # Grow the file only after the confirm=True call has already passed the
     # first (stat-only) size check -- simulated by having the fake API's
-    # get_max_attachment_size grow the file as a side effect of the first
+    # get_max_attachment_size_bytes grow the file as a side effect of the first
     # call the Service makes after that check (its own create() call chain
     # calls _validate_attachment_size twice; growing the file here mid-flow
     # is the simplest way to land squarely inside the real TOCTOU window).
     original_validate = service._validate_attachment_size
     calls = {"count": 0}
 
-    async def grow_then_validate(file_size: int) -> None:
+    async def grow_then_validate(file_size_bytes: int) -> None:
         calls["count"] += 1
         if calls["count"] == 1:
-            await original_validate(file_size)
+            await original_validate(file_size_bytes)
             report.write_bytes(b"x" * 20)
         else:
-            await original_validate(file_size)
+            await original_validate(file_size_bytes)
 
     service._validate_attachment_size = grow_then_validate  # type: ignore[method-assign]
 

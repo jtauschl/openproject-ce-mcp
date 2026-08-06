@@ -176,7 +176,7 @@ tools.py (MCP presentation)
   authorization check's home (`AttachmentService`'s `_prepare_attachment_file`/
   `_is_sensitive_attachment` is the first and, so far, only instance). A Port method may reach into
   an otherwise entirely unmigrated, different domain for exactly one field a write path needs to
-  validate against (`AttachmentApi.get_max_attachment_size()` reads Instance Configuration's
+  validate against (`AttachmentApi.get_max_attachment_size_bytes()` reads Instance Configuration's
   `maximumAttachmentFileSize` without migrating that domain) — a deliberate, narrow exception to
   "a Port covers its own domain," used specifically to avoid an unrelated domain's full migration
   becoming a hidden prerequisite for the one actually being migrated. Hidden-field masking

@@ -8,7 +8,7 @@ allowlist concept at all -- same shape as Roles/Extended Metadata.
 Gates on the `"project"` read scope, NOT an `"instance_configuration"`-named
 scope -- a deliberate quirk, kept as-is rather than "fixed".
 
-Deliberately NOT reused by `HttpxAttachmentApi.get_max_attachment_size()`,
+Deliberately NOT reused by `HttpxAttachmentApi.get_max_attachment_size_bytes()`,
 which independently makes its own raw `GET configuration` call for a single
 field (`maximumAttachmentFileSize`) it needs to validate an upload against --
 a documented narrow exception (see docs/architecture.md).

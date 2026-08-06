@@ -71,6 +71,10 @@ support.
   mark one notification, omit it to mark every unread notification.
 - **Breaking: `list_project_sprints` merged into `list_sprints(project=None,
   ...)`** — pass `project` to list only that project's sprints.
+- **Breaking: `maximum_attachment_file_size`/`file_size` output fields
+  renamed to `maximum_attachment_file_size_bytes`/`file_size_bytes`**
+  (`InstanceConfiguration`, `ProjectConfiguration`, `AttachmentSummary`),
+  to make the byte unit explicit.
 
 ### Docs
 

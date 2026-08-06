@@ -71,7 +71,7 @@ def normalize_attachment(payload: dict[str, Any], *, base_url: str, origin: str)
         title=_trim_text(payload.get("title") or payload.get("fileName"), limit=SUBJECT_LIMIT)
         or f"Attachment {payload['id']}",
         file_name=_trim_text(payload.get("fileName"), limit=SUBJECT_LIMIT),
-        file_size=payload.get("fileSize"),
+        file_size_bytes=payload.get("fileSize"),
         description=_delimit_user_content(_extract_formattable_text(payload.get("description"))),
         content_type=_trim_text(payload.get("contentType"), limit=SUBJECT_LIMIT),
         status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
@@ -138,7 +138,7 @@ class HttpxAttachmentApi:
     async def delete(self, attachment_id: int) -> None:
         await self._transport.delete(f"attachments/{attachment_id}")
 
-    async def get_max_attachment_size(self) -> int | None:
+    async def get_max_attachment_size_bytes(self) -> int | None:
         payload = await self._transport.get_json("configuration")
         maximum = payload.get("maximumAttachmentFileSize")
         return int(maximum) if isinstance(maximum, int | float) else None

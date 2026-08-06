@@ -39,7 +39,7 @@ translation, so it belongs at the same layer every other authorization check
 in this codebase lives at. This is the first Service under `app/` to touch
 the local filesystem at all.
 
-`get_max_attachment_size()` on `AttachmentApi` reaches into the otherwise
+`get_max_attachment_size_bytes()` on `AttachmentApi` reaches into the otherwise
 entirely unmigrated, global Instance Configuration domain for exactly the
 one field `_validate_attachment_size` needs -- a deliberate, narrow
 cross-domain dependency (not the "raw sibling-domain resource" pattern
@@ -87,7 +87,7 @@ _ATTACHMENT_DENY_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
 @dataclass(frozen=True)
 class _PreparedFile:
     file_name: str
-    file_size: int
+    file_size_bytes: int
     file_bytes: bytes | None
     content_type: str
 
@@ -178,7 +178,7 @@ class AttachmentService:
         # fully buffered in memory before being rejected. File bytes are
         # only read after the size check passes.
         file_info = self._prepare_attachment_file(file_path, include_bytes=False)
-        await self._validate_attachment_size(file_info.file_size)
+        await self._validate_attachment_size(file_info.file_size_bytes)
         if not confirm:
             return AttachmentWriteResult(
                 action="create",
@@ -189,7 +189,7 @@ class AttachmentService:
                 work_package_id=resolved_id,
                 payload={
                     "fileName": file_info.file_name,
-                    "fileSize": file_info.file_size,
+                    "fileSize": file_info.file_size_bytes,
                     "description": description,
                 },
                 validation_errors={},
@@ -224,7 +224,7 @@ class AttachmentService:
             work_package_id=resolved_id,
             payload={
                 "fileName": file_info.file_name,
-                "fileSize": file_info.file_size,
+                "fileSize": file_info.file_size_bytes,
                 "description": description,
             },
             validation_errors={},
@@ -240,7 +240,7 @@ class AttachmentService:
             "id": attachment.id,
             "title": attachment.title,
             "fileName": attachment.file_name,
-            "fileSize": attachment.file_size,
+            "fileSize": attachment.file_size_bytes,
         }
         if not confirm:
             return AttachmentWriteResult(
@@ -351,14 +351,16 @@ class AttachmentService:
             )
         if not path.is_file():
             raise InvalidInputError(f"Attachment file '{file_path}' does not exist or is not a file.")
-        file_size = path.stat().st_size
+        file_size_bytes = path.stat().st_size
         file_bytes = path.read_bytes() if include_bytes else None
         content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        return _PreparedFile(file_name=path.name, file_size=file_size, file_bytes=file_bytes, content_type=content_type)
+        return _PreparedFile(
+            file_name=path.name, file_size_bytes=file_size_bytes, file_bytes=file_bytes, content_type=content_type
+        )
 
-    async def _validate_attachment_size(self, file_size: int) -> None:
-        maximum = await self._api.get_max_attachment_size()
-        if maximum is not None and file_size > maximum:
+    async def _validate_attachment_size(self, file_size_bytes: int) -> None:
+        maximum = await self._api.get_max_attachment_size_bytes()
+        if maximum is not None and file_size_bytes > maximum:
             raise InvalidInputError(
                 f"Attachment exceeds the configured OpenProject maximum attachment size of {maximum} bytes."
             )

@@ -19,7 +19,7 @@ endpoint's response is not guaranteed to carry a real `total` field, so the
 Adapter falls back to `total = len(records)` (this page's own count) when
 the server omits it, the same fallback `httpx_sprint_api.py` uses.
 
-`get_max_attachment_size` is a narrow, single-field lookup against the
+`get_max_attachment_size_bytes` is a narrow, single-field lookup against the
 global Instance Configuration domain -- not the same "raw sibling-domain
 resource" pattern as `EmojiReactionApi.get_activity`/`ReminderApi.
 get_remindable_link` (those fetch a raw payload from WITHIN their own
@@ -68,4 +68,4 @@ class AttachmentApi(Protocol):
         content_type: str,
     ) -> AttachmentRecord: ...
     async def delete(self, attachment_id: int) -> None: ...
-    async def get_max_attachment_size(self) -> int | None: ...
+    async def get_max_attachment_size_bytes(self) -> int | None: ...

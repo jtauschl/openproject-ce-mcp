@@ -543,7 +543,7 @@ class ProjectService:
         return ProjectConfiguration(
             project_id=project.id,
             project_name=project.name,
-            maximum_attachment_file_size=payload.get("maximumAttachmentFileSize"),
+            maximum_attachment_file_size_bytes=payload.get("maximumAttachmentFileSize"),
             maximum_api_v3_page_size=payload.get("maximumAPIV3PageSize"),
             per_page_options=[int(item) for item in payload.get("perPageOptions", []) if isinstance(item, int)],
             duration_format=_trim_text(payload.get("durationFormat"), limit=SUBJECT_LIMIT),

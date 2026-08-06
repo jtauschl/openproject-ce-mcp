@@ -236,7 +236,7 @@ async def test_get_configuration_returns_normalized_configuration() -> None:
     config = await service.get_configuration("demo")
 
     assert config.project_id == 6
-    assert config.maximum_attachment_file_size == 100
+    assert config.maximum_attachment_file_size_bytes == 100
 
 
 @pytest.mark.asyncio

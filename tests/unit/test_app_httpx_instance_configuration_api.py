@@ -19,7 +19,7 @@ def test_normalize_instance_configuration_maps_fields() -> None:
         }
     )
     assert config.host_name == "op.example.com"
-    assert config.maximum_attachment_file_size == 1024
+    assert config.maximum_attachment_file_size_bytes == 1024
     assert config.per_page_options == [10, 25, 50]
     assert config.active_feature_flags == ["beta_feature"]
 

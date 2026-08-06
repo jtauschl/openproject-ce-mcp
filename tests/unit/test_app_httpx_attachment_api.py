@@ -125,26 +125,26 @@ async def test_delete_sends_delete_request() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_max_attachment_size_reads_configuration_field() -> None:
+async def test_get_max_attachment_size_bytes_reads_configuration_field() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/configuration"
         return httpx.Response(200, json={"maximumAttachmentFileSize": 5_242_880}, request=request)
 
     async with _client(handler) as http_client:
         api = HttpxAttachmentApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
-        maximum = await api.get_max_attachment_size()
+        maximum = await api.get_max_attachment_size_bytes()
 
     assert maximum == 5_242_880
 
 
 @pytest.mark.asyncio
-async def test_get_max_attachment_size_returns_none_when_absent() -> None:
+async def test_get_max_attachment_size_bytes_returns_none_when_absent() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={}, request=request)
 
     async with _client(handler) as http_client:
         api = HttpxAttachmentApi(HttpxTransport(http_client), base_url=BASE_URL, origin=BASE_URL)
-        maximum = await api.get_max_attachment_size()
+        maximum = await api.get_max_attachment_size_bytes()
 
     assert maximum is None
 

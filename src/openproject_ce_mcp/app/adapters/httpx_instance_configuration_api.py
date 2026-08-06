@@ -28,7 +28,7 @@ def normalize_instance_configuration(payload: dict[str, Any]) -> InstanceConfigu
     """
     return InstanceConfiguration(
         host_name=_trim_text(payload.get("hostName"), limit=SUBJECT_LIMIT),
-        maximum_attachment_file_size=payload.get("maximumAttachmentFileSize"),
+        maximum_attachment_file_size_bytes=payload.get("maximumAttachmentFileSize"),
         maximum_api_v3_page_size=payload.get("maximumAPIV3PageSize"),
         per_page_options=[int(item) for item in payload.get("perPageOptions", []) if isinstance(item, int)],
         duration_format=_trim_text(payload.get("durationFormat"), limit=SUBJECT_LIMIT),

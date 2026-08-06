@@ -381,7 +381,7 @@ class ProjectAdminContext:
 class ProjectConfiguration:
     project_id: int
     project_name: str
-    maximum_attachment_file_size: int | None
+    maximum_attachment_file_size_bytes: int | None
     maximum_api_v3_page_size: int | None
     per_page_options: list[int]
     duration_format: str | None
@@ -856,7 +856,7 @@ class AttachmentSummary:
     id: int
     title: str
     file_name: str | None
-    file_size: int | None
+    file_size_bytes: int | None
     description: str | None
     content_type: str | None
     status: str | None
@@ -884,7 +884,7 @@ class AttachmentWriteResult(ConfirmationHeader):
 @dataclass
 class InstanceConfiguration:
     host_name: str | None
-    maximum_attachment_file_size: int | None
+    maximum_attachment_file_size_bytes: int | None
     maximum_api_v3_page_size: int | None
     per_page_options: list[int]
     duration_format: str | None
