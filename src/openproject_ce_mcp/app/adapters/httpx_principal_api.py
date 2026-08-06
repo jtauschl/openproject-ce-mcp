@@ -1,6 +1,7 @@
 """HTTP-backed PrincipalApi adapter.
 
-No `httpx` import (depends on the `Transport` Protocol only).
+No `httpx` import (depends on the `Transport` Protocol only). `_has_usable_id`
+is shared via `app/adapters/_text.py`.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from ...models import PrincipalSummary
 from ..ports.principal_api import PrincipalRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
+from ._text import has_usable_id as _has_usable_id
 from ._text import trim_text as _trim_text
 
 
@@ -27,16 +29,6 @@ def normalize_principal(payload: dict[str, Any]) -> PrincipalSummary:
         email=_trim_text(payload.get("email"), limit=SUBJECT_LIMIT),
         status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
     )
-
-
-def _has_usable_id(item: Any) -> bool:
-    """True for a dict element whose `id` can become a valid Record id --
-    a malformed element among otherwise well-formed ones is skipped, not
-    fatal to the whole page."""
-    if not isinstance(item, dict):
-        return False
-    raw_id = item.get("id")
-    return isinstance(raw_id, int | str) and str(raw_id).isdigit()
 
 
 class HttpxPrincipalApi:

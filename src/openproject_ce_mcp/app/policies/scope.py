@@ -204,9 +204,10 @@ def project_link_payload_allowed(
     payload: dict[str, Any], *, link_key: str, settings: Settings, project_id_to_identifier: dict[int, str]
 ) -> bool:
     """Shared body for every domain's `<domain>_payload_allowed(payload, ...)`
-    wrapper (`document_policy.py`, `news_policy.py`, `version_policy.py`):
-    each one only differs in which `_links` key carries the project reference
-    (`"project"` for Documents/News, `"definingProject"` for Versions).
+    wrapper (`document_policy.py`, `news_policy.py`, `version_policy.py`,
+    `work_package_policy.py`): each one only differs in which `_links` key
+    carries the project reference (`"project"` for Documents/News/Work
+    Packages, `"definingProject"` for Versions).
     """
     return payload_allowed(
         lambda: ensure_project_link_allowed(

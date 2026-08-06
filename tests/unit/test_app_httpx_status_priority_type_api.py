@@ -250,3 +250,20 @@ async def test_list_types_skips_a_non_dict_element() -> None:
         records = await api.list_types(project_id=None)
 
     assert [record.summary.id for record in records] == [2]
+
+
+@pytest.mark.asyncio
+async def test_list_statuses_accepts_a_numeric_string_id() -> None:
+    """Regression test for the has_usable_id unification (OPM-376): a
+    string-typed numeric id (e.g. "7") is a usable id, not a malformed one."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = _status_payload(7)
+        payload["id"] = str(payload["id"])
+        return httpx.Response(200, json={"_embedded": {"elements": [payload]}}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxStatusPriorityTypeApi(HttpxTransport(http_client))
+        records = await api.list_statuses()
+
+    assert [record.summary.id for record in records] == [7]

@@ -1,7 +1,7 @@
 """HTTP-backed StatusPriorityTypeApi adapter.
 
-No `httpx` import (depends on the `Transport` Protocol only). `trim_text` is
-shared via `app/adapters/_text.py`.
+No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
+`has_usable_id` are shared via `app/adapters/_text.py`.
 
 `normalize_status`/`normalize_priority`/`normalize_type` are pure HAL->model
 translation, no hidden-field awareness (masking is a Service-layer concern,
@@ -24,6 +24,7 @@ from ...models import PrioritySummary, StatusSummary, TypeSummary
 from ..ports.status_priority_type_api import PriorityRecord, StatusRecord, TypeRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
+from ._text import has_usable_id as _has_usable_id
 from ._text import trim_text as _trim_text
 
 
@@ -76,21 +77,6 @@ def _lookup_name(payload: dict[str, Any]) -> str:
     must never accidentally match a caller's literal-string search.
     """
     return str(payload.get("name", ""))
-
-
-def _has_usable_id(item: Any) -> bool:
-    """True for a dict element whose `id` can become a valid Record id.
-
-    List endpoints skip an element failing this check rather than raising --
-    an unrelated malformed row must not break resolution/listing of every
-    other, well-formed row. Single-item `get_*` calls stay strict: a
-    malformed response to a request for one specific id is a real error,
-    not a row to silently skip.
-    """
-    if not isinstance(item, dict):
-        return False
-    raw_id = item.get("id")
-    return isinstance(raw_id, int | str) and str(raw_id).isdigit()
 
 
 class HttpxStatusPriorityTypeApi:

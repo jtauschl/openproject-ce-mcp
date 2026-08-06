@@ -1,8 +1,8 @@
 """HTTP-backed SprintApi adapter.
 
 No `httpx` import (depends on the `Transport` Protocol only). `trim_text`/
-`id_from_href`/`link_title` are shared via `app/adapters/_text.py`, same as
-Views' adapter.
+`id_from_href`/`link_title`/`has_usable_id` are shared via
+`app/adapters/_text.py`, same as Views' adapter.
 
 No web `url` field: OpenProject's Backlogs module has no MVC layer for
 sprints at all (`only: %i[index create update]`, no `show` route or
@@ -23,6 +23,7 @@ from ...models import SprintDetail, SprintSummary
 from ..ports.sprint_api import SprintRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
+from ._text import has_usable_id as _has_usable_id
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import trim_text as _trim_text
@@ -90,16 +91,6 @@ def summary_to_detail(summary: SprintSummary) -> SprintDetail:
         created_at=summary.created_at,
         updated_at=summary.updated_at,
     )
-
-
-def _has_usable_id(item: Any) -> bool:
-    """True for a dict element whose `id` can become a valid Record id --
-    a malformed element among otherwise well-formed ones is skipped, not
-    fatal to the whole page."""
-    if not isinstance(item, dict):
-        return False
-    raw_id = item.get("id")
-    return isinstance(raw_id, int | str) and str(raw_id).isdigit()
 
 
 class HttpxSprintApi:

@@ -73,6 +73,40 @@ async def test_list_all_requests_the_sprints_endpoint() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_all_skips_an_element_with_a_missing_id() -> None:
+    """Regression test for the has_usable_id unification (OPM-376): list_*
+    must not raise on one malformed element among otherwise well-formed
+    ones -- skip it, don't fail every other sprint."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"_embedded": {"elements": [{"_type": "Sprint", "name": "No id here"}, _sprint_payload(2)]}},
+            request=request,
+        )
+
+    async with _client(handler) as http_client:
+        api = HttpxSprintApi(HttpxTransport(http_client))
+        records, _total = await api.list_all(offset=1, page_size=50)
+
+    assert [record.summary.id for record in records] == [2]
+
+
+@pytest.mark.asyncio
+async def test_list_all_accepts_a_numeric_string_id() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = _sprint_payload(7)
+        payload["id"] = str(payload["id"])
+        return httpx.Response(200, json={"_embedded": {"elements": [payload]}}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxSprintApi(HttpxTransport(http_client))
+        records, _total = await api.list_all(offset=1, page_size=50)
+
+    assert [record.summary.id for record in records] == [7]
+
+
+@pytest.mark.asyncio
 async def test_list_all_missing_embedded_elements_returns_empty_list() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={}, request=request)
