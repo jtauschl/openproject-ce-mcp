@@ -44,7 +44,7 @@ from typing import Any
 
 from ...config import Settings
 from ...models import GroupDetail, GroupListResult, GroupSummary, GroupWriteResult, WriteResultState
-from ..api_href import api_href
+from ..api_href import api_href as _api_href
 from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_server, scan_records_and_paginate
 from ..policies import access, hidden_fields
@@ -59,9 +59,6 @@ class GroupService:
 
     def _stamp(self, value: Any) -> Any:
         return hidden_fields.apply_hidden_fields("group", value, settings=self._settings)
-
-    def _api_href(self, relative_path: str) -> str:
-        return api_href(relative_path, api_prefix=self._api_prefix)
 
     async def list_groups(
         self, *, search: str | None = None, offset: int = 1, limit: int | None = None
@@ -126,7 +123,9 @@ class GroupService:
         body: dict[str, Any] = {"name": name}
         if user_ids:
             hidden_fields.ensure_field_writable("group", "members", settings=self._settings)
-            body["_links"] = {"members": [{"href": self._api_href(f"users/{uid}")} for uid in user_ids]}
+            body["_links"] = {
+                "members": [{"href": _api_href(f"users/{uid}", api_prefix=self._api_prefix)} for uid in user_ids]
+            }
         payload_preview: dict[str, Any] = {"name": name, "user_ids": user_ids or []}
 
         if not confirm:
@@ -181,7 +180,9 @@ class GroupService:
                 new_ids.update(add_user_ids)
             if remove_user_ids:
                 new_ids -= set(remove_user_ids)
-            body["_links"] = {"members": [{"href": self._api_href(f"users/{uid}")} for uid in sorted(new_ids)]}
+            body["_links"] = {
+                "members": [{"href": _api_href(f"users/{uid}", api_prefix=self._api_prefix)} for uid in sorted(new_ids)]
+            }
 
         payload_preview: dict[str, Any] = {}
         if name is not None:

@@ -13,7 +13,7 @@ from typing import Any
 
 from ...config import Settings
 from ...models import VersionDetail, VersionListResult, VersionSummary, VersionWriteResult
-from ..api_href import api_href
+from ..api_href import api_href as _api_href
 from ..pagination import clamp_limit
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
@@ -52,9 +52,6 @@ class VersionService:
         ):
             value = replace(value, description_truncated=False, description_length=None)
         return hidden_fields.apply_hidden_fields("version", value, settings=self._settings)
-
-    def _api_href(self, relative_path: str) -> str:
-        return api_href(relative_path, api_prefix=self._api_prefix)
 
     async def list(
         self,
@@ -272,7 +269,7 @@ class VersionService:
             payload["sharing"] = sharing
         if project_id is not None:
             hidden_fields.ensure_field_writable("version", "defining_project", settings=self._settings)
-            links["definingProject"] = {"href": self._api_href(f"projects/{project_id}")}
+            links["definingProject"] = {"href": _api_href(f"projects/{project_id}", api_prefix=self._api_prefix)}
         if links:
             payload["_links"] = links
         return payload

@@ -208,6 +208,28 @@ async def test_create_commits_when_confirmed() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_builds_defining_project_href_from_this_service_s_own_api_prefix() -> None:
+    """Regression test for the _api_href unification (OPM-376): the
+    definingProject link's href must use THIS service's own api_prefix, not
+    a hardcoded "api/v3/" -- a non-default prefix here would silently pass
+    if the prefix argument were ever dropped.
+    """
+    settings = dataclasses.replace(make_settings(), enable_version_write=True)
+    api = _FakeVersionApi()
+    service = VersionService(
+        api=api,
+        settings=settings,
+        project_id_to_identifier={6: "demo"},
+        resolve_project_ref=_resolve_project_ref,
+        api_prefix="custom/v9/",
+    )
+
+    result = await service.create(project="demo", name="Release 1", confirm=False)
+
+    assert result.payload["_links"]["definingProject"]["href"] == "/custom/v9/projects/6"
+
+
+@pytest.mark.asyncio
 async def test_create_rejects_when_validation_errors_present() -> None:
     api = _FakeVersionApi()
     api.validation_errors = {"name": "too short"}

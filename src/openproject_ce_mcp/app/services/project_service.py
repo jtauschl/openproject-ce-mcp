@@ -36,7 +36,7 @@ from ...models import (
     ProjectSummary,
     ProjectWriteResult,
 )
-from ..api_href import api_href
+from ..api_href import api_href as _api_href
 from ..errors import InvalidInputError, NotFoundError
 from ..pagination import clamp_limit
 from ..policies import access, hidden_fields
@@ -508,7 +508,7 @@ class ProjectService:
             # project B they can only read, the same gap update_board's
             # reparent-target fix already closed for boards.
             parent_id = await self._resolver.resolve_id(parent, write=True)
-            links["parent"] = {"href": self._api_href(f"projects/{parent_id}")}
+            links["parent"] = {"href": _api_href(f"projects/{parent_id}", api_prefix=self._api_prefix)}
         if links:
             payload["_links"] = links
         return payload
@@ -526,9 +526,6 @@ class ProjectService:
             if (raw_value.casefold() == (title or "").casefold() or raw_value == item_id) and href:
                 return href
         raise InvalidInputError(f"OpenProject project status '{raw_value}' is not allowed.")
-
-    def _api_href(self, relative_path: str) -> str:
-        return api_href(relative_path, api_prefix=self._api_prefix)
 
     def _to_write_result(self, action: str, outcome: _WriteOutcome[ProjectDetail]) -> ProjectWriteResult:
         return ProjectWriteResult(

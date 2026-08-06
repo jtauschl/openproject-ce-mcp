@@ -623,6 +623,30 @@ async def test_update_allows_reparent_into_a_project_inside_write_allowlist() ->
 
 
 @pytest.mark.asyncio
+async def test_update_builds_parent_href_from_this_service_s_own_api_prefix() -> None:
+    """Regression test for the _api_href unification (OPM-376): the parent
+    link's href must use THIS service's own api_prefix, not a hardcoded
+    "/api/v3/" -- a non-default prefix here would silently pass if the
+    prefix argument were ever dropped.
+    """
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), write_projects=("demo", "root"))
+    api = _FakeProjectApi(records=[_record(project_id=6, identifier="demo"), _record(project_id=1, identifier="root")])
+    resolver = _resolver(api, settings=settings)
+    service = ProjectService(
+        api=api,
+        settings=settings,
+        project_id_to_identifier={},
+        resolver=resolver,
+        base_url=BASE_URL,
+        api_prefix="/custom/v9/",
+    )
+
+    result = await service.update(project_ref="demo", parent="root", confirm=False)
+
+    assert result.payload["_links"]["parent"]["href"] == "/custom/v9/projects/1"
+
+
+@pytest.mark.asyncio
 async def test_create_remembers_new_project_identifier_in_the_shared_cache() -> None:
     """Regression test for the bug where a project created through this server
     was invisible to every link-shaped allowlist check (ensure_project_link_allowed,
