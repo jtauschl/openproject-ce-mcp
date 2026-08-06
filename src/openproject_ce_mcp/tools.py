@@ -2189,6 +2189,9 @@ async def bulk_create_work_packages(
 ) -> BulkWorkPackageWriteResult:
     """Create multiple work packages in one call.
 
+    New items have no identifier field to set (unlike `bulk_update_work_packages`'s
+    `work_package_id`) — each result item is matched back to its input purely by `index`.
+
     Each item in `items` must contain `project`, `type`, and `subject`. Optional fields per item:
     `description`, `version`, `project_phase`, `assignee`, `responsible`, `priority`, `category`,
     `custom_fields`, `parent_work_package_id` (or `parent`, an alias for the same field, matching
@@ -2325,6 +2328,9 @@ async def bulk_update_work_packages(
     confirm: bool = False,
 ) -> BulkWorkPackageWriteResult:
     """Update multiple work packages in one call.
+
+    Each item's identifier field is `work_package_id`, not `id` — e.g.
+    {"work_package_id": 952, "status": "Closed"}.
 
     Each item in `items` must contain `work_package_id`. At least one other field must be present per item.
     Optional fields per item: `subject`, `description`, `type`, `version`, `sprint` (Backlogs sprint
