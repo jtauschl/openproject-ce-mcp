@@ -91,6 +91,7 @@ from ...models import (
     BulkWorkPackageWriteResult,
     SortCriterion,
     WorkPackageDetail,
+    WorkPackageGroupSums,
     WorkPackageListResult,
     WorkPackageSummary,
     WorkPackageWriteResult,
@@ -355,6 +356,7 @@ class WorkPackageService:
         sort_by: list[SortCriterion] | None,
         group_by: str | None,
         total_is_scope_safe: bool,
+        include_sums: bool = False,
     ) -> WorkPackageListResult:
         del project_id  # unused: filters already carry any project_id constraint
         if not self._settings.read_projects:
@@ -362,7 +364,20 @@ class WorkPackageService:
             # before reaching here, but this must stay correct on its own for
             # any future caller.
             return _empty_list_result(offset=offset, limit=limit)
-        page = await self._api.list(filters=filters, offset=offset, limit=limit, sort_by=sort_by, group_by=group_by)
+        # Aggregates are computed by OpenProject over the query's own filter
+        # set, independent of this method's post-fetch per-item allowlist
+        # filtering (raw_items below) -- so groups/sums are only safe to
+        # request/expose when the query itself is proven scope-safe. Never
+        # ask OpenProject for sums we'd have to discard anyway.
+        requested_sums = include_sums and total_is_scope_safe
+        page = await self._api.list(
+            filters=filters,
+            offset=offset,
+            limit=limit,
+            sort_by=sort_by,
+            group_by=group_by,
+            include_sums=requested_sums,
+        )
         raw_items = [item for item in page.raw_elements if self._payload_allowed(item)]
         results = [
             self._stamp(self._api.to_record(item, text_limit=self._settings.text_limit).summary) for item in raw_items
@@ -381,6 +396,15 @@ class WorkPackageService:
             total = len(results)
             next_offset = (offset + 1) if len(page.raw_elements) == limit else None
             truncated = len(page.raw_elements) == limit
+        groups = (
+            [
+                WorkPackageGroupSums(value=g.get("value"), count=g.get("count", 0), sums=g.get("sums"))
+                for g in page.raw_groups
+            ]
+            if requested_sums and page.raw_groups is not None
+            else None
+        )
+        total_sums = page.raw_total_sums if requested_sums else None
         return WorkPackageListResult(
             offset=offset,
             limit=limit,
@@ -389,6 +413,8 @@ class WorkPackageService:
             next_offset=next_offset,
             truncated=truncated,
             results=results,
+            groups=groups,
+            total_sums=total_sums,
         )
 
     def _apply_date_filters(
@@ -462,6 +488,7 @@ class WorkPackageService:
         group_by: str | None = None,
         offset: int = 1,
         limit: int | None = None,
+        include_sums: bool = False,
     ) -> WorkPackageListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
         effective = effective_limit(limit, settings=self._settings)
@@ -506,6 +533,7 @@ class WorkPackageService:
             sort_by=sort_by,
             group_by=group_by,
             total_is_scope_safe=total_is_scope_safe,
+            include_sums=include_sums,
         )
 
     async def list(
@@ -530,6 +558,7 @@ class WorkPackageService:
         group_by: str | None = None,
         offset: int = 1,
         limit: int | None = None,
+        include_sums: bool = False,
     ) -> WorkPackageListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
         effective = effective_limit(limit, settings=self._settings)
@@ -595,6 +624,7 @@ class WorkPackageService:
             sort_by=sort_by,
             group_by=group_by,
             total_is_scope_safe=total_is_scope_safe,
+            include_sums=include_sums,
         )
 
     async def list_my_open(self, *, offset: int = 1, limit: int | None = None) -> WorkPackageListResult:

@@ -1364,6 +1364,7 @@ class OpenProjectClient:
         group_by: str | None = None,
         offset: int = 1,
         limit: int | None = None,
+        include_sums: bool = False,
     ) -> WorkPackageListResult:
         return await self._work_package_service.search(
             search=search,
@@ -1383,6 +1384,7 @@ class OpenProjectClient:
             group_by=group_by,
             offset=offset,
             limit=limit,
+            include_sums=include_sums,
         )
 
     async def list_work_packages(
@@ -1407,6 +1409,7 @@ class OpenProjectClient:
         group_by: str | None = None,
         offset: int = 1,
         limit: int | None = None,
+        include_sums: bool = False,
     ) -> WorkPackageListResult:
         return await self._work_package_service.list(
             project=project,
@@ -1428,6 +1431,7 @@ class OpenProjectClient:
             group_by=group_by,
             offset=offset,
             limit=limit,
+            include_sums=include_sums,
         )
 
     async def get_work_package(self, work_package_id: int | str, *, text_limit: int | None = None) -> WorkPackageDetail:

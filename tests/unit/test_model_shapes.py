@@ -63,7 +63,17 @@ EXPECTED_FIELD_ORDER: dict[str, list[str]] = {
     "ViewListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "WatcherListResult": ["count", "results"],
     "WikiPageListResult": ["count", "total", "results"],
-    "WorkPackageListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
+    "WorkPackageListResult": [
+        "offset",
+        "limit",
+        "total",
+        "count",
+        "next_offset",
+        "truncated",
+        "results",
+        "groups",
+        "total_sums",
+    ],
     "WorkingDayListResult": ["count", "results"],
 }
 

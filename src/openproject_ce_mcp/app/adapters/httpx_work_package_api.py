@@ -247,6 +247,7 @@ class HttpxWorkPackageApi:
         limit: int,
         sort_by: list[SortCriterion] | None,
         group_by: str | None,
+        include_sums: bool = False,
     ) -> WorkPackagePage:
         params: dict[str, str] = {
             "offset": str(offset),
@@ -258,10 +259,23 @@ class HttpxWorkPackageApi:
             params["sortBy"] = json.dumps(sort_criteria, separators=(",", ":"))
         if group_by:
             params["groupBy"] = group_by
+        if include_sums:
+            params["showSums"] = "true"
         payload = await self._transport.get_json("work_packages", params=params)
         raw_elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
         server_total = int(payload.get("total", len(raw_elements)))
-        return WorkPackagePage(raw_elements=raw_elements, server_total=server_total)
+        # `groups`/`totalSums` are TOP-LEVEL response keys, not under
+        # `_embedded` -- verified live against a real 17.x instance. Gated on
+        # the request flag (not response presence) so a caller who didn't
+        # ask for sums never sees populated fields.
+        raw_groups = payload.get("groups") if include_sums else None
+        raw_total_sums = payload.get("totalSums") if include_sums else None
+        return WorkPackagePage(
+            raw_elements=raw_elements,
+            server_total=server_total,
+            raw_groups=raw_groups,
+            raw_total_sums=raw_total_sums,
+        )
 
     async def get(self, work_package_ref: str, *, text_limit: int | None = None) -> WorkPackageRecord:
         safe_ref = _work_package_ref_encode(work_package_ref)

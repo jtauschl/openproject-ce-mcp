@@ -140,6 +140,51 @@ async def test_search_work_packages_tool_passes_status_filter() -> None:
 
 
 @pytest.mark.asyncio
+async def test_search_work_packages_tool_passes_include_sums_flag() -> None:
+    class StubClient:
+        async def search_work_packages(self, **kwargs):
+            return kwargs
+
+    result = await search_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        search="Feature",
+        group_by="status",
+        include_sums=True,
+    )
+
+    assert result["include_sums"] is True
+
+
+@pytest.mark.asyncio
+async def test_search_work_packages_tool_defaults_include_sums_to_false() -> None:
+    class StubClient:
+        async def search_work_packages(self, **kwargs):
+            return kwargs
+
+    result = await search_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        search="Feature",
+    )
+
+    assert result["include_sums"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_tool_passes_include_sums_flag() -> None:
+    class StubClient:
+        async def list_work_packages(self, **kwargs):
+            return kwargs
+
+    result = await list_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        group_by="status",
+        include_sums=True,
+    )
+
+    assert result["include_sums"] is True
+
+
+@pytest.mark.asyncio
 async def test_list_work_packages_returns_version_and_description_flags() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/demo":

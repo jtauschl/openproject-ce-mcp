@@ -559,8 +559,25 @@ class RelationWriteResult(ConfirmationHeader):
 
 
 @dataclass
+class WorkPackageGroupSums:
+    """One `groupBy` bucket's aggregate, as returned by OpenProject's
+    `showSums=true`. `sums` holds OpenProject's own fixed summable-field set
+    (estimatedTime, storyPoints, percentageDone, remainingTime,
+    overallCosts, laborCosts, materialCosts, plus any custom fields) as raw,
+    unparsed server values -- same passthrough convention as
+    WorkPackageSummary.estimated_time.
+    """
+
+    value: str | None
+    count: int
+    sums: dict[str, Any] | None
+
+
+@dataclass
 class WorkPackageListResult(PageResult):
     results: list[WorkPackageSummary]
+    groups: list[WorkPackageGroupSums] | None = None
+    total_sums: dict[str, Any] | None = None
 
 
 @dataclass

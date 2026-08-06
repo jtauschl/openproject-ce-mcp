@@ -19,7 +19,14 @@ from openproject_ce_mcp.app.ports.work_package_api import WorkPackageFormResult,
 from openproject_ce_mcp.app.ports.work_package_resolution import WorkPackageAllowedContext
 from openproject_ce_mcp.app.resolvers.work_package_resolver import WorkPackageResolver
 from openproject_ce_mcp.app.services.work_package_service import WorkPackageService
-from openproject_ce_mcp.models import ActivitySummary, CurrentUser, StatusSummary, WorkPackageDetail, WorkPackageSummary
+from openproject_ce_mcp.models import (
+    ActivitySummary,
+    CurrentUser,
+    StatusSummary,
+    WorkPackageDetail,
+    WorkPackageGroupSums,
+    WorkPackageSummary,
+)
 
 PROJECT_ID_TO_IDENTIFIER = {1: "demo", 20: "other"}
 
@@ -95,9 +102,18 @@ def _record(wp_id: int = 6, *, summary=None, detail=None, payload=None) -> WorkP
 
 
 class _FakeWorkPackageApi:
-    def __init__(self, *, raw_elements: list[dict] | None = None, server_total: int | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        raw_elements: list[dict] | None = None,
+        server_total: int | None = None,
+        raw_groups: list[dict] | None = None,
+        raw_total_sums: dict | None = None,
+    ) -> None:
         self._raw_elements = raw_elements if raw_elements is not None else [_payload()]
         self._server_total = server_total if server_total is not None else len(self._raw_elements)
+        self._raw_groups = raw_groups
+        self._raw_total_sums = raw_total_sums
         self._records_by_id: dict[int, WorkPackageRecord] = {6: _record(6)}
         self.list_calls: list[dict] = []
         self.get_calls: list[str] = []
@@ -113,9 +129,16 @@ class _FakeWorkPackageApi:
         self.validation_errors_queue: list[dict[str, str]] = []
         self.next_schema: dict = {}
 
-    async def list(self, *, filters, offset, limit, sort_by, group_by) -> WorkPackagePage:
-        self.list_calls.append({"filters": filters, "offset": offset, "limit": limit})
-        return WorkPackagePage(raw_elements=self._raw_elements, server_total=self._server_total)
+    async def list(self, *, filters, offset, limit, sort_by, group_by, include_sums: bool = False) -> WorkPackagePage:
+        self.list_calls.append(
+            {"filters": filters, "offset": offset, "limit": limit, "group_by": group_by, "include_sums": include_sums}
+        )
+        return WorkPackagePage(
+            raw_elements=self._raw_elements,
+            server_total=self._server_total,
+            raw_groups=self._raw_groups if include_sums else None,
+            raw_total_sums=self._raw_total_sums if include_sums else None,
+        )
 
     def to_record(self, payload: dict, *, text_limit: int | None) -> WorkPackageRecord:
         wp_id = payload["id"]
@@ -478,6 +501,77 @@ async def test_search_pagination_hints_do_not_leak_untrusted_total() -> None:
     assert result.total == 1  # NOT the server's secret total of 50
     assert result.next_offset is None
     assert result.truncated is False
+
+
+@pytest.mark.asyncio
+async def test_list_include_sums_populates_groups_and_total_sums_under_open_scope() -> None:
+    raw_groups = [{"value": "New", "count": 3, "sums": {"estimatedTime": "P1D"}}]
+    raw_total_sums = {"estimatedTime": "P2D"}
+    api = _FakeWorkPackageApi(raw_groups=raw_groups, raw_total_sums=raw_total_sums)
+    service, _ = _service(api, settings=dataclasses.replace(make_settings(), read_projects=("*",)))
+
+    result = await service.list(group_by="status", include_sums=True)
+
+    assert result.groups == [WorkPackageGroupSums(value="New", count=3, sums={"estimatedTime": "P1D"})]
+    assert result.total_sums == {"estimatedTime": "P2D"}
+    assert api.list_calls[0]["include_sums"] is True
+
+
+@pytest.mark.asyncio
+async def test_list_include_sums_without_group_by_still_populates_total_sums() -> None:
+    """OpenProject computes totalSums over the whole filtered result set even
+    without groupBy -- confirmed live against a real instance. Only `groups`
+    depends on group_by being set; `total_sums` does not."""
+    api = _FakeWorkPackageApi(raw_groups=None, raw_total_sums={"estimatedTime": "P2D"})
+    service, _ = _service(api, settings=dataclasses.replace(make_settings(), read_projects=("*",)))
+
+    result = await service.list(include_sums=True)
+
+    assert result.groups is None
+    assert result.total_sums == {"estimatedTime": "P2D"}
+
+
+@pytest.mark.asyncio
+async def test_list_include_sums_defaults_to_none_when_not_requested() -> None:
+    service, api = _service()
+
+    result = await service.list(group_by="status")
+
+    assert result.groups is None
+    assert result.total_sums is None
+    assert api.list_calls[0]["include_sums"] is False
+
+
+@pytest.mark.asyncio
+async def test_search_include_sums_short_circuits_under_restricted_scope_without_project() -> None:
+    """Regression guard for the scope-leak this feature could otherwise
+    introduce: search() with no explicit project and a restricted
+    OPENPROJECT_READ_PROJECTS never achieves total_is_scope_safe, so
+    include_sums must never reach the adapter -- OpenProject's own groups/
+    totalSums would otherwise be computed over every project the search
+    matched, not just the caller's allowed set."""
+    raw_groups = [{"value": "New", "count": 3, "sums": {}}]
+    api = _FakeWorkPackageApi(raw_groups=raw_groups, raw_total_sums={"estimatedTime": "P1D"})
+    service, _ = _service(api, settings=dataclasses.replace(make_settings(), read_projects=("demo",)))
+
+    result = await service.search(search="foo", group_by="status", include_sums=True)
+
+    assert result.groups is None
+    assert result.total_sums is None
+    assert api.list_calls[0]["include_sums"] is False
+
+
+@pytest.mark.asyncio
+async def test_search_include_sums_populates_when_explicit_project_given() -> None:
+    raw_groups = [{"value": "New", "count": 1, "sums": {}}]
+    api = _FakeWorkPackageApi(raw_groups=raw_groups, raw_total_sums={"estimatedTime": "PT1H"})
+    service, _ = _service(api, settings=dataclasses.replace(make_settings(), read_projects=("demo",)))
+
+    result = await service.search(search="foo", project="demo", group_by="status", include_sums=True)
+
+    assert result.groups == [WorkPackageGroupSums(value="New", count=1, sums={})]
+    assert result.total_sums == {"estimatedTime": "PT1H"}
+    assert api.list_calls[0]["include_sums"] is True
 
 
 @pytest.mark.asyncio

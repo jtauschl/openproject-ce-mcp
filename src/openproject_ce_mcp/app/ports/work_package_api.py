@@ -82,6 +82,8 @@ from ...models import SortCriterion, WorkPackageDetail, WorkPackageSummary
 class WorkPackagePage:
     raw_elements: list[dict[str, Any]]  # UNFILTERED, UNNORMALIZED raw HAL elements
     server_total: int | None
+    raw_groups: list[dict[str, Any]] | None = None  # top-level `groups`, only when include_sums requested
+    raw_total_sums: dict[str, Any] | None = None  # top-level `totalSums`, only when include_sums requested
 
 
 @dataclass(frozen=True)
@@ -109,6 +111,7 @@ class WorkPackageApi(Protocol):
         limit: int,
         sort_by: list[SortCriterion] | None,
         group_by: str | None,
+        include_sums: bool = False,
     ) -> WorkPackagePage: ...
 
     def to_record(self, payload: dict[str, Any], *, text_limit: int | None) -> WorkPackageRecord:

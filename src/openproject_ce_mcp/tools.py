@@ -1532,6 +1532,7 @@ async def search_work_packages(
     offset: int = 1,
     limit: int | None = None,
     select: list[str] | None = None,
+    include_sums: bool = False,
 ) -> WorkPackageListResult:
     """Search work packages by free text, optionally scoped to a project.
 
@@ -1584,6 +1585,20 @@ async def search_work_packages(
     this page came back full rather than the server's own total, so nothing here
     ever reveals how many matches exist in projects you can't see. Page until
     next_offset is null either way.
+
+    include_sums=true adds server-computed aggregates instead of requiring
+    client-side pagination and summation: groups (one entry per group_by
+    value, with count and a sums dict of OpenProject's fixed summable
+    fields — estimated_time, story_points, percentage_done, remaining_time,
+    overall_costs, labor_costs, material_costs, plus any custom fields — as
+    raw server-formatted values, e.g. ISO 8601 durations and currency
+    strings) and total_sums (the same shape, across all matches). groups is
+    only populated when group_by is also set; total_sums is populated
+    either way (a sum over the whole filtered/searched result set even
+    without grouping). Same scope-safety rule as total above: groups/
+    total_sums come back null whenever the query cannot be proven restricted
+    to OPENPROJECT_READ_PROJECTS server-side — never exposes an aggregate
+    computed across projects outside your read scope.
     """
     client = _client_from_context(ctx)
     safe_search = _validate_required_query(search, field_name="search", max_length=120)
@@ -1621,6 +1636,7 @@ async def search_work_packages(
             group_by=safe_group_by,
             offset=safe_offset,
             limit=safe_limit,
+            include_sums=include_sums,
         )
     )
 
@@ -1647,6 +1663,7 @@ async def list_work_packages(
     offset: int = 1,
     limit: int | None = None,
     select: list[str] | None = None,
+    include_sums: bool = False,
 ) -> WorkPackageListResult:
     """List work packages with structured filters and no free-text query requirement.
 
@@ -1700,6 +1717,24 @@ async def list_work_packages(
     came back full rather than the server's own total, so nothing here ever
     reveals how many matches exist in projects you can't see. Page until
     next_offset is null either way.
+
+    include_sums=true adds server-computed aggregates instead of requiring
+    client-side pagination and summation: groups (one entry per group_by
+    value, with count and a sums dict of OpenProject's fixed summable
+    fields — estimated_time, story_points, percentage_done, remaining_time,
+    overall_costs, labor_costs, material_costs, plus any custom fields — as
+    raw server-formatted values, e.g. ISO 8601 durations and currency
+    strings) and total_sums (the same shape, across all matches). groups is
+    only populated when group_by is also set; total_sums is populated
+    either way (a sum over the whole filtered result set even without
+    grouping). Same scope-safety rule as total above: groups/total_sums
+    come back null whenever the query cannot be proven restricted to
+    OPENPROJECT_READ_PROJECTS server-side.
+
+    Version rollup recipe: group_by="status", version="<version id or
+    name>", include_sums=true returns per-status progress/time sums for one
+    version's work packages, replacing manual pagination + client-side
+    summation.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -1743,6 +1778,7 @@ async def list_work_packages(
             group_by=safe_group_by,
             offset=safe_offset,
             limit=safe_limit,
+            include_sums=include_sums,
         )
     )
 

@@ -65,6 +65,79 @@ async def test_list_hits_work_packages_endpoint_with_filters_sort_and_group() ->
     assert page.server_total == 1
     assert len(page.raw_elements) == 1
     assert page.raw_elements[0]["id"] == 6
+    assert page.raw_groups is None
+    assert page.raw_total_sums is None
+
+
+@pytest.mark.asyncio
+async def test_list_sends_show_sums_only_when_include_sums_is_true() -> None:
+    seen_params: list[dict[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen_params.append(dict(request.url.params))
+        return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxWorkPackageApi(HttpxTransport(http_client))
+        await api.list(filters=[], offset=1, limit=10, sort_by=None, group_by="status", include_sums=True)
+        await api.list(filters=[], offset=1, limit=10, sort_by=None, group_by="status", include_sums=False)
+
+    assert seen_params[0]["showSums"] == "true"
+    assert "showSums" not in seen_params[1]
+
+
+@pytest.mark.asyncio
+async def test_list_parses_top_level_groups_and_total_sums_when_include_sums() -> None:
+    group_payload = {
+        "value": "New",
+        "count": 39,
+        "sums": {"estimatedTime": "P6DT4H", "percentageDone": 0},
+    }
+    total_sums_payload = {"estimatedTime": "P23DT2H45M", "percentageDone": 87}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "total": 1,
+                "count": 1,
+                "groups": [group_payload],
+                "totalSums": total_sums_payload,
+                "_embedded": {"elements": [_wp_payload()]},
+            },
+            request=request,
+        )
+
+    async with _client(handler) as http_client:
+        api = HttpxWorkPackageApi(HttpxTransport(http_client))
+        page = await api.list(filters=[], offset=1, limit=10, sort_by=None, group_by="status", include_sums=True)
+
+    assert page.raw_groups == [group_payload]
+    assert page.raw_total_sums == total_sums_payload
+    # Normal row elements stay unaffected by groupBy/sums, per real API behavior.
+    assert len(page.raw_elements) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_ignores_groups_and_total_sums_in_response_when_include_sums_is_false() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "total": 1,
+                "groups": [{"value": "New", "count": 39, "sums": {}}],
+                "totalSums": {"estimatedTime": "P1D"},
+                "_embedded": {"elements": [_wp_payload()]},
+            },
+            request=request,
+        )
+
+    async with _client(handler) as http_client:
+        api = HttpxWorkPackageApi(HttpxTransport(http_client))
+        page = await api.list(filters=[], offset=1, limit=10, sort_by=None, group_by=None, include_sums=False)
+
+    assert page.raw_groups is None
+    assert page.raw_total_sums is None
 
 
 @pytest.mark.asyncio
