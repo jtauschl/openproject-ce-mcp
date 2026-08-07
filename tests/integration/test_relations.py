@@ -196,3 +196,61 @@ async def test_delete_relation_removes_it(client: OpenProjectClient, test_projec
 
     result = await client.list_relations(relation_type="relates")
     assert not any(r.id == relation_id for r in result.results)
+
+
+async def test_list_relations_paginates_beyond_a_single_page(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """Regression: list_relations never sent offset/pageSize to OpenProject
+    at all, so a limit smaller than the total available relations silently
+    returned everything the server happened to include in that first page
+    rather than genuinely paginating. Creates two independent "relates"
+    relations from a shared hub work package (star topology) to guarantee at
+    least 2 results scoped to this single relation_type, regardless of
+    whatever pre-existing relations the instance already has."""
+    hub = await client.create_work_package(
+        project=test_project, type="Task", subject="[integration-test] pagination relation hub", confirm=True
+    )
+    assert hub.ready
+    wp_ids.append(hub.work_package_id)
+
+    leaf_a = await client.create_work_package(
+        project=test_project, type="Task", subject="[integration-test] pagination relation leaf a", confirm=True
+    )
+    assert leaf_a.ready
+    wp_ids.append(leaf_a.work_package_id)
+
+    leaf_b = await client.create_work_package(
+        project=test_project, type="Task", subject="[integration-test] pagination relation leaf b", confirm=True
+    )
+    assert leaf_b.ready
+    wp_ids.append(leaf_b.work_package_id)
+
+    relation_a = await client.create_work_package_relation(
+        work_package_id=hub.work_package_id,
+        related_to_work_package_id=leaf_a.work_package_id,
+        relation_type="relates",
+        confirm=True,
+    )
+    assert relation_a.ready
+
+    relation_b = await client.create_work_package_relation(
+        work_package_id=hub.work_package_id,
+        related_to_work_package_id=leaf_b.work_package_id,
+        relation_type="relates",
+        confirm=True,
+    )
+    assert relation_b.ready
+
+    unfiltered = await client.list_relations(relation_type="relates", limit=100)
+    if unfiltered.total < 2:
+        pytest.skip("Not enough 'relates' relations on this instance to prove pagination")
+
+    first_page = await client.list_relations(relation_type="relates", limit=1)
+    assert first_page.count == 1
+    assert first_page.truncated
+    assert first_page.next_offset == 2
+
+    second_page = await client.list_relations(relation_type="relates", limit=1, offset=2)
+    assert second_page.count == 1
+    assert second_page.results[0].id != first_page.results[0].id

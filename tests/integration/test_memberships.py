@@ -15,14 +15,19 @@ pytestmark = pytest.mark.integration
 
 async def _other_principal_id(client: OpenProjectClient) -> str:
     """Returns a principal id other than the token owner's own, to use as a
-    create_membership principal -- OpenProject auto-adds a project's creator
-    as a "Project admin" member on create_project, so create_membership(
-    principal="me", ...) on a freshly created project always fails with
-    "user already assigned" (a real, pre-existing OpenProject constraint, not
-    a client bug). Picks any other active user already on the instance
-    rather than creating a new one: not every token has the instance-admin
-    rights create_user's password field needs, and that happy path is
-    already covered, Docker-instance-gated, by
+    create_membership principal. Historically documented here as working
+    around an "OpenProject auto-adds the creator as a member on
+    create_project" behavior -- live-verified 2026-08-07 that this is NOT
+    actually true for API-created projects (a fresh project has zero
+    memberships until one is explicitly created; see
+    test_list_project_memberships_paginates_beyond_a_single_page's docstring
+    for the live-verification detail). Kept as the default principal source
+    anyway since most tests here want a *non-admin* principal specifically
+    (the token owner is typically the instance admin), not because "me"
+    would fail. Picks any other active user already on the instance rather
+    than creating a new one: not every token has the instance-admin rights
+    create_user's password field needs, and that happy path is already
+    covered, Docker-instance-gated, by
     test_users.py::test_user_lifecycle_roundtrip -- this fixture only needs
     *a* second principal to assign, not to prove create_user works too."""
     me = await client.get_current_user()
@@ -69,9 +74,9 @@ async def test_create_and_update_membership_in_fresh_project(
     update_membership re-resolves the role list on an existing membership --
     both multi-step, form-then-write paths with no prior live coverage. Uses
     a freshly created, disposable project (not test_project) so this never
-    touches an existing membership's real roles, and a second principal (not
-    "me") since OpenProject auto-adds the project's creator as a member on
-    create_project -- see _other_principal_id's docstring."""
+    touches an existing membership's real roles, and a second, non-admin
+    principal (not "me", since the token owner here is typically the
+    instance admin) -- see _other_principal_id's docstring."""
     unrestricted_settings = dataclasses.replace(client.settings, read_projects=("*",), write_projects=("*",))
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
@@ -184,3 +189,59 @@ async def test_update_membership_denied_outside_write_allowlist(
     # denied_client can read test_project but not write it or other_identifier.
     with pytest.raises(PermissionDeniedError):
         await denied_client.update_membership(membership_id=created.result.id, roles=[role_name], confirm=True)
+
+
+async def test_list_project_memberships_paginates_beyond_a_single_page(
+    client: OpenProjectClient, project_refs: list[str]
+) -> None:
+    """Regression: list_project_memberships never sent offset/pageSize to
+    OpenProject at all, so a limit smaller than the total available
+    memberships silently returned everything the server happened to include
+    in that first page rather than genuinely paginating. Uses a freshly
+    created, disposable project with two explicitly created memberships
+    (the token owner via principal="me", plus one other principal) --
+    unlike test_create_and_update_membership_in_fresh_project's assumption,
+    OpenProject does NOT auto-add the creator as a member on a project
+    created via the API (confirmed live: a fresh API-created project has
+    zero memberships until one is explicitly created), so this cannot rely
+    on an implicit creator membership to reach 2."""
+    unrestricted_settings = dataclasses.replace(client.settings, read_projects=("*",), write_projects=("*",))
+    unrestricted_client = OpenProjectClient(unrestricted_settings)
+    await unrestricted_client.initialize()
+
+    new_identifier = disposable_project_identifier()
+    create_project_result = await unrestricted_client.create_project(
+        name=f"[integration-test] {new_identifier}", identifier=new_identifier, confirm=True
+    )
+    assert create_project_result.ready, create_project_result.validation_errors
+    project_refs.append(new_identifier)
+
+    principal_id = await _other_principal_id(unrestricted_client)
+
+    roles = await unrestricted_client.list_roles()
+    role_name = next((r.name for r in roles.results if r.name == "Member"), None)
+    if role_name is None:
+        pytest.skip("Instance has no 'Member' project role to assign")
+
+    created_self = await unrestricted_client.create_membership(
+        project=new_identifier, principal="me", roles=[role_name], confirm=True
+    )
+    assert created_self.state == "confirmed"
+
+    created_other = await unrestricted_client.create_membership(
+        project=new_identifier, principal=principal_id, roles=[role_name], confirm=True
+    )
+    assert created_other.state == "confirmed"
+
+    unfiltered = await unrestricted_client.list_project_memberships(new_identifier, limit=100)
+    if unfiltered.total < 2:
+        pytest.skip("Not enough memberships in the fresh project to prove pagination")
+
+    first_page = await unrestricted_client.list_project_memberships(new_identifier, limit=1)
+    assert first_page.count == 1
+    assert first_page.truncated
+    assert first_page.next_offset == 2
+
+    second_page = await unrestricted_client.list_project_memberships(new_identifier, limit=1, offset=2)
+    assert second_page.count == 1
+    assert second_page.results[0].id != first_page.results[0].id

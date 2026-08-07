@@ -2,10 +2,24 @@
 
 Sprints has no create/update/delete endpoint in the OpenProject v3 API
 (list x2 + single-item GET only) -- sprint assignment happens via
-work-package writes, not here. get_sprint is exercised against a
-pre-existing sprint sourced via list_sprints -- if the test project/instance
-has none (or the Backlogs module isn't installed), the tests skip rather
-than fail, since there's no API to seed a sprint.
+work-package writes, not here. Confirmed by source (op-sources/full-17.6/
+modules/backlogs/lib/api/v3/sprints/{sprints_api,sprints_by_project_api}.rb):
+both route files mount only Index/Show endpoints, no Create/Update/Delete
+anywhere in the module. get_sprint is exercised against a pre-existing
+sprint sourced via list_sprints -- if the test project/instance has none (or
+the Backlogs module isn't installed), the tests skip rather than fail, since
+there's no API to seed a sprint.
+
+ACCEPTED GAP (OPM-345, 2026-08-07): unlike views/documents/relations/
+memberships, sprints has NO paginate-beyond-a-single-page regression test in
+this file. The Docker test instance (op-17-5) has zero sprints, confirmed
+live via a direct `GET /api/v3/sprints` admin-token call (`total: 0`) --
+with no create API and no pre-existing data on the standard test harness,
+there is no way to construct a >=2-item precondition the way the other
+domains' tests do. Add one if a future seed.rb change ever provisions
+sprints (e.g. via a Backlogs-module Rails-runner seed step), following the
+same `if unfiltered.total < 2: skip` pattern as
+test_list_grids_paginates_beyond_a_single_page.
 """
 
 from __future__ import annotations
