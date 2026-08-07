@@ -11,10 +11,21 @@ from openproject_ce_mcp.client import OpenProjectClient
 pytestmark = pytest.mark.integration
 
 
-async def test_list_news(client: OpenProjectClient, test_project: str) -> None:
+async def test_list_news(client: OpenProjectClient, test_project: str, news_ids: list[int]) -> None:
+    title = f"[integration-test] list {uuid.uuid4().hex[:8]}"
+    create_result = await client.create_news(
+        project=test_project,
+        title=title,
+        summary="Integration test summary for list_news",
+        confirm=True,
+    )
+    assert create_result.ready, create_result.validation_errors
+    news_ids.append(create_result.news_id)
+
     result = await client.list_news(project=test_project)
     assert result is not None
-    assert result.count >= 0
+    assert result.count > 0
+    assert any(item.title == title for item in result.results)
 
 
 async def test_create_get_update_delete_news(client: OpenProjectClient, test_project: str, news_ids: list[int]) -> None:

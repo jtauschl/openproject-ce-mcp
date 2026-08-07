@@ -49,6 +49,8 @@ async def test_get_query_sort_by_resolves_colon_form_id(client: OpenProjectClien
 async def test_list_query_filter_instance_schemas(client: OpenProjectClient) -> None:
     result = await client.list_query_filter_instance_schemas()
     assert result.count > 0
+    assert result.results[0].id
+    assert result.results[0].name
 
 
 async def test_get_query_filter_instance_schema(client: OpenProjectClient) -> None:
@@ -68,6 +70,9 @@ async def test_list_capabilities_context_filter_accepted(client: OpenProjectClie
     whatever version this instance actually is."""
     result = await client.list_capabilities(project=test_project)
     assert result.count >= 0
+    if result.count > 0:
+        assert result.results[0].action_id
+        assert result.results[0].context
 
 
 async def test_list_capabilities_by_id_denies_record_outside_read_allowlist(

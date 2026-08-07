@@ -6,6 +6,24 @@ create-then-cleanup fixture. get_document/update_document are exercised
 against a pre-existing document in the test project, sourced via
 list_documents -- if the test project has none, that test is skipped rather
 than failed, since there's no API to seed one.
+
+KNOWN SERVER BUG (reported upstream, not a client issue): OpenProject's
+`PATCH /api/v3/documents/{id}` (modules/documents/lib/api/v3/documents/
+documents_api.rb) parses the request body itself (`JSON.parse(request.body
+.read)`) and passes the RAW, still-nested `description` hash straight to
+`Documents::UpdateService`, instead of extracting `description.raw` first
+the way every other formattable-property-backed domain does (via
+API::Decorators::FormattableProperty's setter). Every confirmed
+update_document call therefore corrupts the stored description into a
+literal Ruby-hash-shaped string -- confirmed via raw curl (no client
+involved), confirmed this is not an encoding issue (Document#description=
+and JSON.parse both always yield UTF-8 strings on their own; a pure-ASCII
+payload additionally 500s via Commonmarker only as a downstream
+consequence of the corrupted hash-shaped string, not a genuine encoding
+bug), and confirmed identical against Puma directly (bypassing the bundled
+Apache). test_get_and_update_document below therefore cannot assert a
+clean round-trip until this is fixed upstream -- it documents the actual
+(broken) behavior instead of asserting an untrue contract.
 """
 
 from __future__ import annotations
@@ -20,7 +38,10 @@ pytestmark = pytest.mark.integration
 async def test_list_documents(client: OpenProjectClient, test_project: str) -> None:
     result = await client.list_documents(project=test_project)
     assert result is not None
-    assert result.count >= 0
+    # docker/test/seed.rb always seeds two documents (no create_document API
+    # exists to seed one through a test-time call instead).
+    assert result.count > 0
+    assert result.results[0].title
 
 
 async def test_get_and_update_document(client: OpenProjectClient, test_project: str) -> None:
@@ -33,9 +54,43 @@ async def test_get_and_update_document(client: OpenProjectClient, test_project: 
     document = await client.get_document(document_id)
     assert document.id == document_id
 
+    # See module docstring: this MCP server sends a well-formed request
+    # (title-only, no description) here specifically to avoid triggering
+    # the known upstream description-corruption bug -- this still proves
+    # update_document's title path works end to end.
+    new_title = f"{document.title} (updated)"
     update_result = await client.update_document(
         document_id=document_id,
-        description=document.description,
+        title=new_title,
         confirm=True,
     )
     assert update_result.ready, update_result.validation_errors
+    assert update_result.result is not None
+    assert update_result.result.title == new_title
+
+
+@pytest.mark.xfail(
+    reason="Upstream OpenProject bug: PATCH /documents/{id} corrupts description "
+    "into a literal hash-shaped string instead of extracting description.raw "
+    "(see module docstring). Reported upstream; un-xfail once fixed.",
+    strict=True,
+)
+async def test_update_document_description_round_trips(client: OpenProjectClient, test_project: str) -> None:
+    """Documents this MCP server's own client code is correct -- it sends
+    the well-formed {"format": ..., "raw": ...} payload OpenProject's API
+    documents -- the round-trip failure is entirely server-side."""
+    existing = await client.list_documents(project=test_project)
+    if existing.count == 0:
+        pytest.skip("no existing document in the test project to read/update (no create_document API to seed one)")
+
+    document_id = existing.results[0].id
+    new_description = "A plain, unmangled description"
+
+    update_result = await client.update_document(
+        document_id=document_id,
+        description=new_description,
+        confirm=True,
+    )
+    assert update_result.ready, update_result.validation_errors
+    assert update_result.result is not None
+    assert update_result.result.description == new_description

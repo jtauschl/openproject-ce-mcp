@@ -13,18 +13,26 @@ pytestmark = pytest.mark.integration
 
 async def test_get_current_user(client: OpenProjectClient) -> None:
     user = await client.get_current_user()
-    assert user.login
+    # seed.rb always mints the primary integration test token for the admin
+    # user (User.admin.active.first), so login is deterministic here.
+    assert user.login == "admin"
     assert user.id > 0
 
 
 async def test_get_instance_configuration(client: OpenProjectClient) -> None:
     config = await client.get_instance_configuration()
     assert config is not None
+    assert config.host_name
+    assert config.maximum_api_v3_page_size and config.maximum_api_v3_page_size > 0
 
 
 async def test_list_time_entry_activities(client: OpenProjectClient) -> None:
     result = await client.list_time_entry_activities()
-    assert result.count >= 0
+    # A fresh OpenProject instance ships default time entry activities
+    # (Development, Management, ...) -- this is instance-wide config, not
+    # seed data, so it's always non-empty on a real install.
+    assert result.count > 0
+    assert result.results[0].name
 
 
 async def test_render_text(client: OpenProjectClient) -> None:
@@ -38,12 +46,23 @@ async def test_render_text(client: OpenProjectClient) -> None:
 
 async def test_list_working_days(client: OpenProjectClient) -> None:
     result = await client.list_working_days()
+    # A default OpenProject instance's working-day config is Mon-Fri; weekends
+    # are absent. Not asserting a fixed set of specific days here since this
+    # is instance-configurable, but the shape must be non-empty and each
+    # entry must carry a real day identifier.
     assert result.count > 0
+    assert all(day.name for day in result.results)
+    # Default OpenProject config: weekdays working, weekends not.
+    working_by_name = {day.name: day.working for day in result.results}
+    assert working_by_name.get("Saturday") is False
+    assert working_by_name.get("Sunday") is False
+    assert working_by_name.get("Monday") is True
 
 
 async def test_get_my_preferences(client: OpenProjectClient) -> None:
     prefs = await client.get_my_preferences()
     assert prefs is not None
+    assert prefs.time_zone is not None
 
 
 async def test_update_my_preferences_roundtrip(client: OpenProjectClient) -> None:

@@ -14,19 +14,32 @@ from .conftest import disposable_project_identifier
 pytestmark = pytest.mark.integration
 
 
-async def test_list_boards(client: OpenProjectClient, test_project: str) -> None:
+async def test_list_boards(client: OpenProjectClient, test_project: str, board_ids: list[int]) -> None:
+    # Creates its own board rather than relying on another test's leftover --
+    # test execution order within a file is incidental pytest behavior, not
+    # a documented guarantee to depend on.
+    name = f"[integration-test] list {uuid.uuid4().hex[:8]}"
+    create_result = await client.create_board(name=name, project=test_project, public=False, confirm=True)
+    assert create_result.ready, create_result.validation_errors
+    board_ids.append(create_result.board_id)
+
     result = await client.list_boards(project=test_project)
     assert result is not None
-    assert result.count >= 0
+    assert result.count > 0
+    assert any(b.name == name for b in result.results)
 
 
-async def test_get_board(client: OpenProjectClient, test_project: str) -> None:
-    result = await client.list_boards(project=test_project)
-    if result.count == 0:
-        pytest.skip("No boards in test project")
-    board = await client.get_board(result.results[0].id)
-    assert board.id > 0
-    assert board.name
+async def test_get_board(client: OpenProjectClient, test_project: str, board_ids: list[int]) -> None:
+    name = f"[integration-test] get {uuid.uuid4().hex[:8]}"
+    create_result = await client.create_board(name=name, project=test_project, public=False, confirm=True)
+    assert create_result.ready, create_result.validation_errors
+    board_id = create_result.board_id
+    board_ids.append(board_id)
+
+    board = await client.get_board(board_id)
+    assert board.id == board_id
+    assert board.name == name
+    assert board.project  # project name (e.g. "TST Test"), not the identifier
 
 
 async def test_create_get_update_delete_board(

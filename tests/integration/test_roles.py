@@ -21,12 +21,22 @@ async def test_list_roles(client: OpenProjectClient) -> None:
 
 
 async def test_list_roles_paginates(client: OpenProjectClient) -> None:
-    """Verifies whether /api/v3/roles honors offset/pageSize server-side --
-    an open question at migration time (see docs/architecture.md), since
-    roles collections are typically small/admin-managed and the pre-migration
-    client never sent these params at all.
+    """Verifies /api/v3/roles honors offset/pageSize server-side -- an open
+    question at migration time (see docs/architecture.md), since roles
+    collections are typically small/admin-managed and the pre-migration
+    client never sent these params at all. OpenProject ships several
+    default roles out of the box (Member/Reader/...), so a fresh instance
+    should always have enough to prove real pagination.
     """
-    result = await client.list_roles(limit=1)
-    assert result is not None
-    assert result.limit == 1
-    assert len(result.results) <= 1
+    unfiltered = await client.list_roles(limit=100)
+    if unfiltered.total < 2:
+        pytest.skip("Not enough roles on this instance to prove pagination")
+
+    first_page = await client.list_roles(limit=1)
+    assert first_page.count == 1
+    assert first_page.truncated
+    assert first_page.next_offset == 2
+
+    second_page = await client.list_roles(limit=1, offset=2)
+    assert second_page.count == 1
+    assert second_page.results[0].id != first_page.results[0].id

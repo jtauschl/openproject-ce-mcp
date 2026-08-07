@@ -20,7 +20,10 @@ pytestmark = pytest.mark.integration
 async def test_list_categories(client: OpenProjectClient, test_project: str) -> None:
     result = await client.list_categories(test_project)
     assert result is not None
-    assert result.count >= 0
+    # docker/test/seed.rb always seeds one category (no create_category API
+    # exists to seed one through a test-time call instead).
+    assert result.count > 0
+    assert result.results[0].name
 
 
 async def test_get_category(client: OpenProjectClient, test_project: str) -> None:
@@ -32,3 +35,4 @@ async def test_get_category(client: OpenProjectClient, test_project: str) -> Non
 
     category = await client.get_category(project_ref=test_project, category_id=category_id)
     assert category.id == category_id
+    assert category.name == existing.results[0].name

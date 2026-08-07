@@ -23,7 +23,10 @@ pytestmark = pytest.mark.integration
 async def test_list_grids(client: OpenProjectClient) -> None:
     result = await client.list_grids()
     assert result is not None
-    assert result.count >= 0
+    # A project's own overview page is itself a grid -- near-guaranteed
+    # non-empty on any instance with at least one accessible project.
+    assert result.count > 0
+    assert result.results[0].scope
 
 
 async def test_create_get_update_delete_grid(client: OpenProjectClient, grid_ids: list[int]) -> None:

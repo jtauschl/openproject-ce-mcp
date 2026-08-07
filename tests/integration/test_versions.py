@@ -12,10 +12,16 @@ from openproject_ce_mcp.client import OpenProjectClient
 pytestmark = pytest.mark.integration
 
 
-async def test_list_versions(client: OpenProjectClient, test_project: str) -> None:
+async def test_list_versions(client: OpenProjectClient, test_project: str, version_ids: list[int]) -> None:
+    name = f"[integration-test-list] {uuid.uuid4().hex[:8]}"
+    create_result = await client.create_version(project=test_project, name=name, confirm=True)
+    assert create_result.ready, create_result.validation_errors
+    version_ids.append(create_result.version_id)
+
     result = await client.list_versions(project=test_project)
     assert result is not None
-    assert result.count >= 0
+    assert result.count > 0
+    assert any(v.name == name for v in result.results)
 
 
 async def test_list_versions_with_search(client: OpenProjectClient, test_project: str, version_ids: list[int]) -> None:
