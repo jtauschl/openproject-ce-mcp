@@ -47,10 +47,14 @@ async def test_reference_resolution_matches_instance_mode(
         assert by_ref.id == created.work_package_id
 
         activities = await client.get_work_package_activities(display_id)
-        assert activities is not None
+        # The create itself generates at least one activity entry (the
+        # creation journal), so this is genuinely non-empty, not just present.
+        assert activities.count > 0
 
         relations = await client.get_work_package_relations(display_id)
-        assert relations is not None
+        # A freshly created WP has no relations -- proves the ref resolved
+        # and the call succeeded without error, not just "returned something".
+        assert relations.count == 0
     else:
         # Classic instance. On 17.x classic mode display_id is the numeric id as a
         # string; on 16.x (before the displayId field existed, added in 17.4) it is

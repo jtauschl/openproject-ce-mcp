@@ -25,4 +25,6 @@ async def test_list_roles(client: OpenProjectClient) -> None:
     result = await client.list_roles()
     assert result is not None
     assert result.count > 0
-    assert result.results[0].name
+    # "Member" is OpenProject's own built-in default project role, present
+    # on every instance -- more specific than a positional results[0] check.
+    assert any(r.name == "Member" for r in result.results)

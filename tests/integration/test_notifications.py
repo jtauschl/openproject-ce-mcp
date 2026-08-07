@@ -36,12 +36,17 @@ async def test_list_notifications(client: OpenProjectClient) -> None:
     assert result is not None
     assert result.count >= 0
     assert result.total >= 0
+    if result.count > 0:
+        assert result.results[0].subject
 
 
 async def test_list_notifications_unread_only(client: OpenProjectClient) -> None:
     result = await client.list_notifications(unread_only=True)
     assert result is not None
     assert result.count >= 0
+    # Proves the actual filter contract, not just that a call succeeded --
+    # every returned notification must genuinely be unread.
+    assert all(n.read is False for n in result.results)
 
 
 async def test_list_notifications_scoped_by_read_allowlist(client: OpenProjectClient) -> None:

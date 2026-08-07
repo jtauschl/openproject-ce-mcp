@@ -18,7 +18,12 @@ pytestmark = pytest.mark.integration
 async def test_list_statuses(client: OpenProjectClient) -> None:
     result = await client.list_statuses()
     assert result.count > 0
-    assert result.results[0].name
+    # "New" and "Closed" are OpenProject's own built-in default statuses,
+    # present on every instance -- more specific than a positional
+    # results[0] truthy check.
+    names = {s.name for s in result.results}
+    assert "New" in names
+    assert "Closed" in names
 
 
 async def test_get_status(client: OpenProjectClient) -> None:
@@ -34,7 +39,9 @@ async def test_get_status(client: OpenProjectClient) -> None:
 async def test_list_priorities(client: OpenProjectClient) -> None:
     result = await client.list_priorities()
     assert result.count > 0
-    assert result.results[0].name
+    # "Normal" is OpenProject's own built-in default priority, present on
+    # every instance -- more specific than a positional results[0] check.
+    assert any(p.name == "Normal" for p in result.results)
 
 
 async def test_get_priority(client: OpenProjectClient) -> None:
@@ -68,7 +75,9 @@ async def test_list_priorities_stamps_hidden_field_for_masking(client: OpenProje
 async def test_list_types(client: OpenProjectClient) -> None:
     result = await client.list_types()
     assert result.count > 0
-    assert result.results[0].name
+    # "Task" is OpenProject's own built-in default type, present on every
+    # instance -- more specific than a positional results[0] truthy check.
+    assert any(t.name == "Task" for t in result.results)
 
 
 async def test_get_type(client: OpenProjectClient) -> None:

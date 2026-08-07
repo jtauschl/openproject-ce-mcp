@@ -14,25 +14,34 @@ pytestmark = pytest.mark.integration
 
 async def test_get_current_user(client: OpenProjectClient) -> None:
     user = await client.get_current_user()
-    assert user.login
+    # seed.rb always authenticates as the instance's admin user.
+    assert user.login == "admin"
     assert user.id > 0
 
 
 async def test_get_instance_configuration(client: OpenProjectClient) -> None:
     config = await client.get_instance_configuration()
     assert config is not None
+    assert config.host_name
 
 
 async def test_list_statuses(client: OpenProjectClient) -> None:
     result = await client.list_statuses()
     assert result.count > 0
-    assert result.results[0].name
+    # "New" and "Closed" are OpenProject's own built-in default statuses,
+    # present on every instance regardless of custom workflow configuration
+    # -- more specific than a positional results[0] truthy check.
+    names = {s.name for s in result.results}
+    assert "New" in names
+    assert "Closed" in names
 
 
 async def test_list_priorities(client: OpenProjectClient) -> None:
     result = await client.list_priorities()
     assert result.count > 0
-    assert result.results[0].name
+    # "Normal" is OpenProject's own built-in default priority, present on
+    # every instance -- more specific than a positional results[0] check.
+    assert any(p.name == "Normal" for p in result.results)
 
 
 async def test_list_priorities_stamps_hidden_field_for_masking(client: OpenProjectClient) -> None:
@@ -56,18 +65,26 @@ async def test_list_priorities_stamps_hidden_field_for_masking(client: OpenProje
 async def test_list_types(client: OpenProjectClient) -> None:
     result = await client.list_types()
     assert result.count > 0
-    assert result.results[0].name
+    # "Task" is OpenProject's own built-in default type, present on every
+    # instance -- more specific than a positional results[0] truthy check.
+    assert any(t.name == "Task" for t in result.results)
 
 
 async def test_list_roles(client: OpenProjectClient) -> None:
     result = await client.list_roles()
     assert result.count > 0
-    assert result.results[0].name
+    # "Member" is OpenProject's own built-in default project role, present
+    # on every instance -- more specific than a positional results[0] check.
+    assert any(r.name == "Member" for r in result.results)
 
 
 async def test_list_time_entry_activities(client: OpenProjectClient) -> None:
     result = await client.list_time_entry_activities()
-    assert result.count >= 0
+    # Time entry activities are instance-configurable and could genuinely be
+    # empty on a minimal instance without the Costs module enabled.
+    if result.count == 0:
+        pytest.skip("no time entry activities configured on this instance")
+    assert result.results[0].name
 
 
 async def test_render_text(client: OpenProjectClient) -> None:
@@ -87,6 +104,12 @@ async def test_list_working_days(client: OpenProjectClient) -> None:
 async def test_get_my_preferences(client: OpenProjectClient) -> None:
     prefs = await client.get_my_preferences()
     assert prefs is not None
+    # time_zone/lang are legitimately nullable, but these boolean settings
+    # are always present in OpenProject's real UserPreferences response
+    # (verified live) -- a real assertion on normalized field presence.
+    assert prefs.comment_sort_descending is not None
+    assert prefs.warn_on_leaving_unsaved is not None
+    assert prefs.auto_hide_popups is not None
 
 
 async def test_update_my_preferences_roundtrip(client: OpenProjectClient) -> None:

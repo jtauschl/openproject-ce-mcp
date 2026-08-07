@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import uuid
 from types import SimpleNamespace
 
 import pytest
@@ -32,17 +33,44 @@ _SUBJECT_BULK = "[integration-test] bulk WP"
 async def test_list_work_packages(client: OpenProjectClient, test_project: str) -> None:
     result = await client.list_work_packages(project=test_project)
     assert result is not None
-    assert result.count >= 0
+    # docker/test/seed.rb always seeds a work package in the test project.
+    assert result.count > 0
+    assert result.results[0].subject
 
 
-async def test_search_work_packages(client: OpenProjectClient) -> None:
-    result = await client.search_work_packages(query="test")
+async def test_search_work_packages(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
+    # Creates its own uniquely-named WP rather than relying on an incidental
+    # substring match against whatever else happens to exist -- proves the
+    # search actually finds a known, specific work package.
+    subject = f"[integration-test] search {uuid.uuid4().hex[:8]}"
+    created = await client.create_work_package(project=test_project, type="Task", subject=subject, confirm=True)
+    assert created.ready, created.validation_errors
+    wp_ids.append(created.work_package_id)
+
+    result = await client.search_work_packages(query=subject)
     assert result is not None
+    assert result.count > 0
+    assert any(wp.id == created.work_package_id for wp in result.results)
 
 
-async def test_list_my_open_work_packages(client: OpenProjectClient) -> None:
+async def test_list_my_open_work_packages(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
+    # Creates its own WP assigned to the calling user rather than relying on
+    # incidental pre-existing assignments.
+    me = await client.get_current_user()
+    created = await client.create_work_package(
+        project=test_project,
+        type="Task",
+        subject="[integration-test] my open work packages",
+        assignee=str(me.id),
+        confirm=True,
+    )
+    assert created.ready, created.validation_errors
+    wp_ids.append(created.work_package_id)
+
     result = await client.list_my_open_work_packages()
     assert result is not None
+    assert result.count > 0
+    assert any(wp.id == created.work_package_id for wp in result.results)
 
 
 async def test_create_get_update_delete_work_package(
@@ -265,7 +293,12 @@ async def test_add_work_package_comment(client: OpenProjectClient, test_project:
         comment="Integration test comment",
         confirm=True,
     )
-    assert comment is not None
+    assert comment.ready, comment.validation_errors
+    assert comment.result is not None
+    # comment text is wrapped in <user-content> delimiters (prompt-injection
+    # boundary marker for user-supplied text), same as every other free-text
+    # field this server normalizes.
+    assert comment.result.comment == "<user-content>Integration test comment</user-content>"
 
     activities = await client.get_work_package_activities(result.work_package_id)
     assert activities.count > 0
@@ -391,6 +424,11 @@ async def test_list_work_package_watchers(client: OpenProjectClient, test_projec
 
     watchers = await client.list_work_package_watchers(result.work_package_id)
     assert watchers is not None
+    # OpenProject auto-adds the WP's author as a watcher on create -- proves
+    # the call resolved and returned the real watcher list, not just
+    # "returned something".
+    me = await client.get_current_user()
+    assert any(w.id == me.id for w in watchers.results)
 
 
 async def test_list_work_package_watchers_denies_anchor_outside_read_allowlist(

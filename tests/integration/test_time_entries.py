@@ -48,13 +48,42 @@ async def _first_wp_id(client: OpenProjectClient, test_project: str) -> int | No
 
 async def test_list_time_entry_activities(client: OpenProjectClient) -> None:
     result = await client.list_time_entry_activities()
-    assert result.count >= 0
+    # Time entry activities are instance-configurable and could genuinely be
+    # empty on a minimal instance without the Costs module enabled.
+    if result.count == 0:
+        pytest.skip("no time entry activities configured on this instance")
+    assert result.results[0].name
 
 
-async def test_list_time_entries(client: OpenProjectClient, test_project: str) -> None:
-    result = await client.list_time_entries(project=test_project)
-    assert result is not None
-    assert result.count >= 0
+async def test_list_time_entries(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int], time_entry_ids: list[int]
+) -> None:
+    # Creates its own time entry rather than relying on another test's
+    # leftover -- test execution order within a file is incidental pytest
+    # behavior, not a documented guarantee to depend on.
+    activity = await _first_activity_name(client)
+    wp_result = await client.create_work_package(
+        project=test_project, type="Task", subject="Integration test WP for list_time_entries", confirm=True
+    )
+    assert wp_result.ready, wp_result.validation_errors
+    wp_id = wp_result.work_package_id
+    assert wp_id is not None
+    wp_ids.append(wp_id)
+
+    result = await client.create_time_entry(
+        activity=activity,
+        hours="PT1H",
+        spent_on=datetime.date.today().isoformat(),
+        work_package_id=wp_id,
+        confirm=True,
+    )
+    assert result.ready, result.validation_errors
+    time_entry_ids.append(result.time_entry_id)
+
+    listed = await client.list_time_entries(project=test_project)
+    assert listed is not None
+    assert listed.count > 0
+    assert any(te.id == result.time_entry_id for te in listed.results)
 
 
 async def test_create_get_update_delete_time_entry(

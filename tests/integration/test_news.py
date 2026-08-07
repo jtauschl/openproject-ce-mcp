@@ -11,10 +11,21 @@ from openproject_ce_mcp.client import OpenProjectClient
 pytestmark = pytest.mark.integration
 
 
-async def test_list_news(client: OpenProjectClient, test_project: str) -> None:
+async def test_list_news(client: OpenProjectClient, test_project: str, news_ids: list[int]) -> None:
+    # Creates its own news item rather than relying on another test's
+    # leftover -- test execution order within a file is incidental pytest
+    # behavior, not a documented guarantee to depend on.
+    title = f"[integration-test] list {uuid.uuid4().hex[:8]}"
+    create_result = await client.create_news(
+        project=test_project, title=title, summary="Integration test summary", confirm=True
+    )
+    assert create_result.ready, create_result.validation_errors
+    news_ids.append(create_result.news_id)
+
     result = await client.list_news(project=test_project)
     assert result is not None
-    assert result.count >= 0
+    assert result.count > 0
+    assert any(n.title == title for n in result.results)
 
 
 async def test_create_get_update_delete_news(client: OpenProjectClient, test_project: str, news_ids: list[int]) -> None:

@@ -11,7 +11,8 @@
 #     log_time/view_time_entries/manage_members withheld), for tests that need
 #     a REAL OpenProject permission boundary rather than this MCP server's own
 #     allowlist config
-#   - a project with identifier "TST" plus one work package
+#   - a project with identifier "TST" plus one work package, one category, and
+#     two documents
 #   - on 17.5+ only, when SEED_SEMANTIC=1: switches the instance to project-based
 #     (semantic) identifiers so displayId becomes "TST-<n>"
 #
@@ -172,6 +173,33 @@ if project.work_packages.empty?
   log("created work package id=#{wp.id} display_id=#{display}")
 else
   log("project TST already has work packages")
+end
+
+# list_categories/get_category have no create endpoint in this server's API
+# to seed one through -- a pre-existing category is needed here.
+if project.categories.empty?
+  category = Category.create!(project: project, name: "Seed Category")
+  log("created category id=#{category.id} name=#{category.name}")
+else
+  log("project TST already has categories")
+end
+
+# list_documents/get_document/update_document have no create endpoint in
+# this server's API to seed one through -- two pre-existing documents are
+# needed here (two, not one, so a pagination test can exercise a real
+# multi-page walk the same way test_list_versions_search_walks_every_server_page
+# does for versions).
+if project.documents.count < 2
+  (project.documents.count...2).each do |i|
+    document = Document.create!(
+      project: project,
+      title: "Seed Document #{i + 1}",
+      description: "Seeded for integration tests"
+    )
+    log("created document id=#{document.id} title=#{document.title}")
+  end
+else
+  log("project TST already has #{project.documents.count} documents")
 end
 
 # A freshly wiki-module-enabled project has zero wiki pages -- get_wiki_page

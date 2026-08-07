@@ -229,6 +229,17 @@ async def wp_ids(client: OpenProjectClient):
 
 
 @pytest.fixture
+async def board_ids(client: OpenProjectClient):
+    created: list[int] = []
+    yield created
+    for board_id in created:
+        try:
+            await client.delete_board(board_id=board_id, confirm=True)
+        except Exception:
+            pass
+
+
+@pytest.fixture
 async def version_ids(client: OpenProjectClient):
     created: list[int] = []
     yield created

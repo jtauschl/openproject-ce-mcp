@@ -39,7 +39,11 @@ async def test_render_text(client: OpenProjectClient) -> None:
 
 async def test_list_help_texts(client: OpenProjectClient) -> None:
     result = await client.list_help_texts()
-    assert result.count >= 0
+    # Help texts are opt-in, per-attribute annotations -- a fresh instance
+    # can genuinely have none configured, so this can't assert non-empty.
+    if result.count == 0:
+        pytest.skip("no help texts configured on this instance")
+    assert result.results[0].attribute_name
 
 
 async def test_get_help_text(client: OpenProjectClient) -> None:
@@ -60,7 +64,11 @@ async def test_list_working_days(client: OpenProjectClient) -> None:
 
 async def test_list_non_working_days(client: OpenProjectClient) -> None:
     result = await client.list_non_working_days()
-    assert result.count >= 0
+    # A default OpenProject instance may genuinely have zero configured
+    # non-working days (holidays are opt-in, instance-specific config).
+    if result.count == 0:
+        pytest.skip("no non-working days configured on this instance")
+    assert result.results[0].date
 
 
 @pytest.mark.skip(reason="custom option ids are instance-specific; no stable, discoverable id exists to test against")

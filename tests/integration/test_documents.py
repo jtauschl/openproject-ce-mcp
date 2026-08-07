@@ -38,7 +38,10 @@ pytestmark = pytest.mark.integration
 async def test_list_documents(client: OpenProjectClient, test_project: str) -> None:
     result = await client.list_documents(project=test_project)
     assert result is not None
-    assert result.count >= 0
+    # docker/test/seed.rb always seeds two documents (no create_document API
+    # exists to seed one through a test-time call instead).
+    assert result.count > 0
+    assert result.results[0].title
 
 
 async def test_get_and_update_document(client: OpenProjectClient, test_project: str) -> None:
@@ -91,3 +94,23 @@ async def test_update_document_description_round_trips(client: OpenProjectClient
     assert update_result.ready, update_result.validation_errors
     assert update_result.result is not None
     assert update_result.result.description == new_description
+
+
+async def test_list_documents_paginates_beyond_a_single_page(client: OpenProjectClient, test_project: str) -> None:
+    """Regression: list_documents never sent offset/pageSize to OpenProject
+    at all, so a limit smaller than the total available documents silently
+    returned everything the server happened to include in that first page
+    rather than genuinely paginating. Relies on docker/test/seed.rb's two
+    pre-seeded documents (no create_document API exists to seed more here)."""
+    unfiltered = await client.list_documents(project=test_project, limit=100)
+    if unfiltered.total < 2:
+        pytest.skip("Not enough documents in the test project to prove pagination (seed.rb should provide 2)")
+
+    first_page = await client.list_documents(project=test_project, limit=1)
+    assert first_page.count == 1
+    assert first_page.truncated
+    assert first_page.next_offset == 2
+
+    second_page = await client.list_documents(project=test_project, limit=1, offset=2)
+    assert second_page.count == 1
+    assert second_page.results[0].id != first_page.results[0].id

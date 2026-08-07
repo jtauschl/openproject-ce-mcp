@@ -51,6 +51,9 @@ async def test_get_query_sort_by_resolves_colon_form_id(client: OpenProjectClien
 async def test_list_query_filter_instance_schemas(client: OpenProjectClient) -> None:
     result = await client.list_query_filter_instance_schemas()
     assert result.count > 0
+    # "assignee" is a well-known, stable filter id present on every instance
+    # (see the module docstring) -- more specific than a bare count check.
+    assert any(s.id == "assignee" for s in result.results)
 
 
 async def test_get_query_filter_instance_schema(client: OpenProjectClient) -> None:
@@ -69,7 +72,9 @@ async def test_list_capabilities_context_filter_accepted(client: OpenProjectClie
     malformed value"). Confirm the request succeeds (no exception) against
     whatever version this instance actually is."""
     result = await client.list_capabilities(project=test_project)
-    assert result.count >= 0
+    assert result is not None
+    if result.count > 0:
+        assert result.results[0].id
 
 
 async def test_list_capabilities_by_id_denies_record_outside_read_allowlist(

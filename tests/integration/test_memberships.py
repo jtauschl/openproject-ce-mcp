@@ -1,4 +1,18 @@
-"""Integration tests for membership and user read operations."""
+"""Integration tests for membership and user read operations.
+
+ACCEPTED GAP (OPM-345, 2026-08-07): unlike relations/versions/documents/
+views in this same pass, there is no test_list_project_memberships_paginates_
+beyond_a_single_page here. On this branch, list_project_memberships takes no
+offset/limit parameters at all -- it walks every server page internally and
+always returns the complete membership list in one call (see client.py's own
+comment on this method), so there is no caller-controllable page size to
+prove genuine pagination against. Server-side page-walking correctness is
+already implicitly exercised by every test in this file that creates a
+membership and reads it back. Pagination support (offset/limit) for this
+method was added later during the layered-architecture migration (0.4.0+),
+matching the same list_roles API-surface difference already noted in
+test_roles.py.
+"""
 
 from __future__ import annotations
 
@@ -15,14 +29,17 @@ pytestmark = pytest.mark.integration
 
 async def _other_principal_id(client: OpenProjectClient) -> str:
     """Returns a principal id other than the token owner's own, to use as a
-    create_membership principal -- OpenProject auto-adds a project's creator
-    as a "Project admin" member on create_project, so create_membership(
-    principal="me", ...) on a freshly created project always fails with
-    "user already assigned" (a real, pre-existing OpenProject constraint, not
-    a client bug). Picks any other active user already on the instance
-    rather than creating a new one: not every token has the instance-admin
-    rights create_user's password field needs, and that happy path is
-    already covered, Docker-instance-gated, by
+    create_membership principal. Historically documented here as working
+    around an "OpenProject auto-adds the creator as a member on
+    create_project" behavior -- live-verified 2026-08-07 that this is NOT
+    actually true for API-created projects (a fresh project has zero
+    memberships until one is explicitly created). Kept as the default
+    principal source anyway since most tests here want a *non-admin*
+    principal specifically (the token owner is typically the instance
+    admin), not because "me" would fail. Picks any other active user already
+    on the instance rather than creating a new one: not every token has the
+    instance-admin rights create_user's password field needs, and that happy
+    path is already covered, Docker-instance-gated, by
     test_users.py::test_user_lifecycle_roundtrip -- this fixture only needs
     *a* second principal to assign, not to prove create_user works too."""
     me = await client.get_current_user()
@@ -36,7 +53,10 @@ async def _other_principal_id(client: OpenProjectClient) -> str:
 async def test_list_project_memberships(client: OpenProjectClient, test_project: str) -> None:
     result = await client.list_project_memberships(test_project)
     assert result is not None
-    assert result.count >= 0
+    # seed.rb always makes admin a member of test_project with a
+    # work-package-capable role.
+    assert result.count > 0
+    assert result.results[0].id
 
 
 async def test_list_users(client: OpenProjectClient) -> None:
@@ -45,7 +65,8 @@ async def test_list_users(client: OpenProjectClient) -> None:
     except PermissionDeniedError:
         pytest.skip("Instance requires admin rights to list users")
     assert result.count > 0
-    assert result.results[0].login
+    # seed.rb always authenticates as the instance's admin user.
+    assert any(u.login == "admin" for u in result.results)
 
 
 async def test_get_user_me(client: OpenProjectClient) -> None:
@@ -58,12 +79,18 @@ async def test_get_user_me(client: OpenProjectClient) -> None:
 async def test_list_roles(client: OpenProjectClient) -> None:
     result = await client.list_roles()
     assert result.count > 0
+    # "Member" is OpenProject's own built-in default project role, present
+    # on every instance -- more specific than a bare count check.
+    assert any(r.name == "Member" for r in result.results)
 
 
 async def test_list_groups(client: OpenProjectClient) -> None:
     result = await client.list_groups()
     assert result is not None
-    assert result.count >= 0
+    # Groups are opt-in, instance-specific config -- a fresh instance can
+    # genuinely have none.
+    if result.count > 0:
+        assert result.results[0].name
 
 
 async def test_create_and_update_membership_in_fresh_project(
@@ -74,9 +101,9 @@ async def test_create_and_update_membership_in_fresh_project(
     update_membership re-resolves the role list on an existing membership --
     both multi-step, form-then-write paths with no prior live coverage. Uses
     a freshly created, disposable project (not test_project) so this never
-    touches an existing membership's real roles, and a second principal (not
-    "me") since OpenProject auto-adds the project's creator as a member on
-    create_project -- see _other_principal_id's docstring."""
+    touches an existing membership's real roles, and a second, non-admin
+    principal (not "me", since the token owner here is typically the
+    instance admin) -- see _other_principal_id's docstring."""
     unrestricted_settings = dataclasses.replace(client.settings, read_projects=("*",), write_projects=("*",))
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
