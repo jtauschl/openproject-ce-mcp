@@ -187,6 +187,30 @@ async def denied_client():
     return client_instance
 
 
+@pytest.fixture
+async def restricted_client():
+    """A client authenticated as a genuinely permission-restricted OpenProject
+    user (log_own_time granted, log_time/view_time_entries/manage_members
+    withheld -- see docker/test/seed.rb) -- unlike denied_client (which tests
+    only this MCP server's OWN write-allowlist config layer), this exercises
+    a REAL OpenProject role boundary.
+
+    Requires OPENPROJECT_RESTRICTED_API_TOKEN, set by docker/test/up.sh from
+    seed.rb's restricted-user provisioning; skips cleanly if unset.
+    """
+    restricted_token = os.environ.get("OPENPROJECT_RESTRICTED_API_TOKEN")
+    if not restricted_token:
+        pytest.skip("OPENPROJECT_RESTRICTED_API_TOKEN not set")
+    settings = _integration_settings()
+    if settings is None:
+        pytest.skip("OPENPROJECT_BASE_URL / OPENPROJECT_API_TOKEN not set")
+    _resolve_test_project()
+    restricted_settings = dataclasses.replace(settings, api_token=restricted_token)
+    client_instance = OpenProjectClient(restricted_settings)
+    await client_instance.initialize()
+    return client_instance
+
+
 # ---------------------------------------------------------------------------
 # Cleanup helpers for write tests
 # ---------------------------------------------------------------------------
