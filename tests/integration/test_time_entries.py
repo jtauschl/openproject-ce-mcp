@@ -285,3 +285,44 @@ async def test_create_time_entry_with_semantic_work_package_ref(
     # on the live response (unlike the hand-built payloads in the unit tests),
     # so it isn't asserted here.
     assert te.entity_id == wp_id
+
+
+async def test_create_time_entry_succeeds_for_log_own_time_only_role(
+    client: OpenProjectClient,
+    restricted_client: OpenProjectClient,
+    test_project: str,
+    wp_ids: list[int],
+    time_entry_ids: list[int],
+) -> None:
+    """Integration-level regression for GitHub issue #10 (see
+    time_entry_service.py's own docstring): OpenProject's
+    CreateContract#allowed_to_log_own? only validates log_own_time against a
+    concrete WorkPackage/Meeting entity link, never a project-only link -- a
+    caller with ONLY log_own_time (not log_time, not view_time_entries) must
+    still be able to log time against a work package they can see, because
+    create_time_entry sends the work-package entity link whenever a work
+    package id is already known, not the project link. Exercises a REAL
+    OpenProject role boundary via restricted_client (see docker/test/seed.rb),
+    not this MCP server's own allowlist config."""
+    activity = await _first_activity_name(client)
+    spent_on = datetime.date.today().isoformat()
+
+    wp_result = await client.create_work_package(
+        project=test_project, type="Task", subject="Integration test WP for restricted-role time entry", confirm=True
+    )
+    assert wp_result.ready, wp_result.validation_errors
+    wp_id = wp_result.work_package_id
+    assert wp_id is not None
+    wp_ids.append(wp_id)
+
+    result = await restricted_client.create_time_entry(
+        activity=activity,
+        hours="PT1H",
+        spent_on=spent_on,
+        work_package_id=wp_id,
+        confirm=True,
+    )
+    assert result.ready, result.validation_errors
+    te_id = result.time_entry_id
+    assert te_id > 0
+    time_entry_ids.append(te_id)

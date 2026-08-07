@@ -7,6 +7,10 @@
 #   - an API token for the admin user, printing its plaintext to stdout so the
 #     test harness can capture it (the plaintext is only available at creation;
 #     OpenProject stores a hash)
+#   - a restricted-permission role + user + API token (log_own_time granted,
+#     log_time/view_time_entries/manage_members withheld), for tests that need
+#     a REAL OpenProject permission boundary rather than this MCP server's own
+#     allowlist config
 #   - a project with identifier "TST" plus one work package
 #   - on 17.5+ only, when SEED_SEMANTIC=1: switches the instance to project-based
 #     (semantic) identifiers so displayId becomes "TST-<n>"
@@ -24,6 +28,33 @@ raise "no admin user found" unless admin
 # Token::API.create! returns an instance exposing the plaintext via #plain_value.
 token = Token::API.create!(user: admin)
 log("API_TOKEN=#{token.plain_value}")
+
+# --- Restricted-permission role + user -----------------------------------------
+# Grants log_own_time but withholds log_time/view_time_entries/manage_members,
+# reproducing the exact permission-gating asymmetry GitHub issue #10 covers
+# (see app/services/time_entry_service.py's own docstring): OpenProject's
+# CreateContract#allowed_to_log_own? only validates log_own_time against a
+# concrete WorkPackage/Meeting entity link, never a project-only link.
+# Integration tests need a REAL restricted OpenProject role to exercise this --
+# denied_client only tests this MCP server's OWN allowlist config, never an
+# actual OpenProject permission boundary.
+restricted_role = Role.find_by(name: "Integration Test Restricted") || ProjectRole.create!(
+  name: "Integration Test Restricted",
+  permissions: [:view_work_packages, :view_project, :log_own_time]
+  # explicitly NOT granted: :log_time, :view_time_entries, :manage_members
+)
+# Must satisfy the instance's password complexity policy (lower/upper/digit/
+# special) -- SecureRandom.hex alone is lowercase-hex-only and fails it.
+restricted_password = "Aa1!#{SecureRandom.hex(16)}"
+restricted_user = User.find_by(login: "integration-test-restricted") || User.create!(
+  login: "integration-test-restricted",
+  firstname: "Integration",
+  lastname: "Restricted",
+  mail: "integration-test-restricted@example.invalid",
+  password: restricted_password,
+  password_confirmation: restricted_password,
+  status: User.statuses[:active]
+)
 
 # --- Test project + one work package ------------------------------------------
 # Project identifiers are validated as lowercase regardless of the semantic/
@@ -59,6 +90,16 @@ if wp_role
   member.save!
   log("admin is a member of tst with role #{wp_role.name}")
 end
+
+# Restricted user needs project membership too, with the restricted role
+# (not wp_role) -- must happen after the project exists.
+restricted_member = Member.find_or_initialize_by(project: project, principal: restricted_user)
+restricted_member.roles = [restricted_role] if restricted_member.roles.empty?
+restricted_member.save!
+log("integration-test-restricted is a member of tst with role #{restricted_role.name}")
+
+restricted_token = Token::API.create!(user: restricted_user)
+log("RESTRICTED_API_TOKEN=#{restricted_token.plain_value}")
 
 # Instance-wide setting: without this, OpenProject silently discards any
 # `startTime` written to a time entry (TimeEntry.can_track_start_and_end_time?
@@ -131,6 +172,33 @@ if project.work_packages.empty?
   log("created work package id=#{wp.id} display_id=#{display}")
 else
   log("project TST already has work packages")
+end
+
+# list_categories/get_category have no create endpoint in this server's API
+# to seed one through -- a pre-existing category is needed here.
+if project.categories.empty?
+  category = Category.create!(project: project, name: "Seed Category")
+  log("created category id=#{category.id} name=#{category.name}")
+else
+  log("project TST already has categories")
+end
+
+# list_documents/get_document/update_document have no create endpoint in
+# this server's API to seed one through -- two pre-existing documents are
+# needed here (two, not one, so a pagination test can exercise a real
+# multi-page walk the same way test_list_versions_search_walks_every_server_page
+# does for versions).
+if project.documents.count < 2
+  (project.documents.count...2).each do |i|
+    document = Document.create!(
+      project: project,
+      title: "Seed Document #{i + 1}",
+      description: "Seeded for integration tests"
+    )
+    log("created document id=#{document.id} title=#{document.title}")
+  end
+else
+  log("project TST already has #{project.documents.count} documents")
 end
 
 # A freshly wiki-module-enabled project has zero wiki pages -- get_wiki_page

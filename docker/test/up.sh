@@ -86,12 +86,17 @@ for entry in "${SEMANTIC[@]}"; do
     port="$(port_for "$svc")"
     wait_healthy "$svc"
     echo "Seeding $svc (SEED_SEMANTIC=$semantic)…"
-    token="$(docker compose exec -T -e SEED_SEMANTIC="$semantic" "$svc" \
-        bundle exec rails runner - <seed.rb |
-        sed -n 's/^SEED: API_TOKEN=//p' | tail -1)"
+    seed_output="$(docker compose exec -T -e SEED_SEMANTIC="$semantic" "$svc" \
+        bundle exec rails runner - <seed.rb)"
+    echo "$seed_output"
+    token="$(sed -n 's/^SEED: API_TOKEN=//p' <<<"$seed_output" | tail -1)"
+    restricted_token="$(sed -n 's/^SEED: RESTRICTED_API_TOKEN=//p' <<<"$seed_output" | tail -1)"
     if [ -z "$token" ]; then
         echo "WARNING: could not capture API token for $svc — check seed output above." >&2
         continue
+    fi
+    if [ -z "$restricted_token" ]; then
+        echo "WARNING: could not capture restricted API token for $svc — check seed output above." >&2
     fi
     # Project identifier matches seed.rb: uppercase in semantic mode, lowercase otherwise
     test_project="$([ "$semantic" = "1" ] && echo "TST" || echo "tst")"
@@ -100,6 +105,7 @@ for entry in "${SEMANTIC[@]}"; do
 # --- $svc (port $port) -------------------------------------------------
 OPENPROJECT_BASE_URL=http://localhost:$port \\
 OPENPROJECT_API_TOKEN=$token \\
+OPENPROJECT_RESTRICTED_API_TOKEN=$restricted_token \\
 OPENPROJECT_TEST_PROJECT=$test_project \\
 OPENPROJECT_DOCKER_SERVICE=$svc \\
 uv run pytest -m integration -v
