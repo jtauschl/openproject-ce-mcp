@@ -31,7 +31,9 @@ pytestmark = pytest.mark.integration
 async def test_list_views(client: OpenProjectClient, test_project: str) -> None:
     result = await client.list_views(project=test_project)
     assert result is not None
-    assert result.count >= 0
+    if result.count == 0:
+        pytest.skip("no existing view in the test project (no create_view API to seed one)")
+    assert result.results[0].id
 
 
 async def test_get_view(client: OpenProjectClient, test_project: str) -> None:

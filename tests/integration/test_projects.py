@@ -33,6 +33,9 @@ async def test_get_project(client: OpenProjectClient, test_project: str) -> None
 async def test_get_project_admin_context(client: OpenProjectClient, test_project: str) -> None:
     ctx = await client.get_project_admin_context(test_project)
     assert ctx is not None
+    assert ctx.project is not None
+    assert ctx.project.identifier is not None
+    assert ctx.project.identifier.casefold() == test_project.casefold()
 
 
 async def test_get_project_admin_context_filters_parent_candidates_by_read_allowlist(
@@ -79,6 +82,7 @@ async def test_get_project_configuration(client: OpenProjectClient, test_project
     except NotFoundError:
         pytest.skip("project configuration endpoint requires OpenProject 17.4+")
     assert config is not None
+    assert config.project_name
 
 
 async def test_list_types_scoped_to_project(client: OpenProjectClient, test_project: str) -> None:
@@ -89,16 +93,26 @@ async def test_list_types_scoped_to_project(client: OpenProjectClient, test_proj
 async def test_list_categories(client: OpenProjectClient, test_project: str) -> None:
     result = await client.list_categories(test_project)
     assert result is not None
+    if result.count == 0:
+        pytest.skip("no existing category in the test project (no create_category API to seed one)")
+    # docker/test/seed.rb always seeds a "Seed Category" (no create_category
+    # API exists to seed one through a test-time call instead).
+    assert result.results[0].name
 
 
 async def test_get_my_project_access(client: OpenProjectClient, test_project: str) -> None:
     access = await client.get_my_project_access(test_project)
     assert access is not None
+    me = await client.get_current_user()
+    assert access.current_user_id == me.id
 
 
 async def test_list_principals(client: OpenProjectClient) -> None:
     result = await client.list_principals()
-    assert result.count >= 0  # may be empty on minimal instance
+    # may be empty on a minimal instance -- test_project's admin member
+    # (seeded by seed.rb) should normally make this non-empty.
+    if result.count > 0:
+        assert result.results[0].name
 
 
 async def test_add_and_remove_project_favorite(client: OpenProjectClient, test_project: str) -> None:

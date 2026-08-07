@@ -21,13 +21,15 @@ pytestmark = pytest.mark.integration
 async def test_list_actions(client: OpenProjectClient) -> None:
     result = await client.list_actions()
     assert result is not None
-    assert result.count >= 0
+    if result.count > 0:
+        assert result.results[0].id
 
 
 async def test_list_capabilities_for_project(client: OpenProjectClient, test_project: str) -> None:
     result = await client.list_capabilities(project=test_project)
     assert result is not None
-    assert result.count >= 0
+    if result.count > 0:
+        assert result.results[0].id
 
 
 async def test_list_capabilities_by_id_denies_record_outside_read_allowlist(

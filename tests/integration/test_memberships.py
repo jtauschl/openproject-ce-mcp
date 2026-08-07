@@ -41,7 +41,10 @@ async def _other_principal_id(client: OpenProjectClient) -> str:
 async def test_list_project_memberships(client: OpenProjectClient, test_project: str) -> None:
     result = await client.list_project_memberships(test_project)
     assert result is not None
-    assert result.count >= 0
+    # seed.rb always makes admin a member of test_project with a
+    # work-package-capable role.
+    assert result.count > 0
+    assert result.results[0].id
 
 
 async def test_list_users(client: OpenProjectClient) -> None:
@@ -63,7 +66,10 @@ async def test_get_user_me(client: OpenProjectClient) -> None:
 async def test_list_groups(client: OpenProjectClient) -> None:
     result = await client.list_groups()
     assert result is not None
-    assert result.count >= 0
+    # Groups are opt-in, instance-specific config -- a fresh instance can
+    # genuinely have none.
+    if result.count > 0:
+        assert result.results[0].name
 
 
 async def test_create_and_update_membership_in_fresh_project(
