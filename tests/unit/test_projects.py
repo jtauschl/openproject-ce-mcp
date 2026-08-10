@@ -1951,16 +1951,31 @@ async def test_list_projects_cross_call_pagination_with_allowlist_thinning_acros
         return handler
 
     results_by_call: list[tuple[list[str], list[str]]] = []
+    truncated_by_call: list[bool] = []
     for call_offset in (1, 2, 3):
         seen: list[str] = []
         client = OpenProjectClient(settings, transport=httpx.MockTransport(make_handler(seen)))
         result = await client.list_projects(limit=1, offset=call_offset)
         await client.aclose()
         results_by_call.append((seen, [p.identifier for p in result.results]))
+        truncated_by_call.append(result.truncated)
 
-    assert results_by_call[0] == (["1"], ["p1"]), "offset=1 must stop after page 1 with p1"
-    assert results_by_call[1] == (["1", "2"], ["p3"]), "offset=2 must skip p1 on page 1, collect p3 on page 2"
+    # Each call also scans one page past its own last collected result, the
+    # (limit + 1)-lookahead that proves a further match genuinely exists
+    # before reporting truncated=True -- otherwise offset=3's p5 (the actual
+    # last allowed project) would wrongly report truncated=True too, since
+    # nothing would have checked page 3 was exhausted.
+    assert results_by_call[0] == (["1", "2"], ["p1"]), "offset=1 must look ahead to page 2 to confirm p1 isn't last"
+    assert results_by_call[1] == (
+        ["1", "2", "3"],
+        ["p3"],
+    ), "offset=2 must skip p1 on page 1, collect p3 on page 2, look ahead to page 3"
     assert results_by_call[2] == (
         ["1", "2", "3"],
         ["p5"],
-    ), "offset=3 must skip p1+p3 across pages 1-2, collect p5 on page 3"
+    ), "offset=3 must skip p1+p3 across pages 1-2, collect p5 on page 3 (page 3 exhausted, no further lookahead needed)"
+    assert truncated_by_call == [
+        True,
+        True,
+        False,
+    ], "offset=3's p5 is the actual last allowed project -- must not report truncated=True"

@@ -127,6 +127,25 @@ async def test_advances_to_next_server_page_when_not_yet_exhausted() -> None:
 
 
 @pytest.mark.asyncio
+async def test_does_not_report_truncated_when_limit_lands_exactly_on_the_last_result() -> None:
+    # Regression: exactly `limit` allowed records exist in total, and the page
+    # that supplies the last of them is also the server's last/exhausted page.
+    # Reporting truncated=True here (deciding as soon as `limit` was reached,
+    # without checking for a (limit + 1)-th match) would make a follow-up call
+    # on the fabricated next_offset silently return an empty page.
+    page = ProjectPage(records=[_record(1, "Alpha"), _record(2, "Beta")], server_total=2, exhausted=True)
+    api = _FakeProjectApi([page])
+
+    results, total, next_offset, truncated = await fetch_project_page(
+        api=api, settings=make_settings(), project_id_to_identifier={}, search=None, offset=1, limit=2
+    )
+
+    assert [r.id for r in results] == [1, 2]
+    assert truncated is False
+    assert next_offset is None
+
+
+@pytest.mark.asyncio
 async def test_passes_search_through_to_the_port() -> None:
     page = ProjectPage(records=[], server_total=0, exhausted=True)
     api = _FakeProjectApi([page])

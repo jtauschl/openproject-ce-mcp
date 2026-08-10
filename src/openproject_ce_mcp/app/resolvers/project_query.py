@@ -51,14 +51,19 @@ async def fetch_project_page(
     results: list[ProjectSummary] = []
     server_offset = 1
     server_page_size = settings.max_page_size
-    exhausted = False
 
-    while len(results) < effective_limit:
+    # Collects (limit + 1) allowed results before deciding `truncated`, the
+    # same early-stopping shape as scan_and_paginate/scan_records_and_paginate
+    # -- the (limit + 1)-th allowed item is what proves a further match
+    # genuinely exists. Stopping as soon as `limit` is reached (the previous
+    # behavior here) could report truncated=True even when the limit-th
+    # result was the very last match in the whole allowed collection, making
+    # a follow-up call on the reported next_offset silently return nothing.
+    while len(results) <= effective_limit:
         page = await api.list(
             server_offset=server_offset, server_page_size=server_page_size, search=search, text_limit=text_limit
         )
         if not page.records:
-            exhausted = True
             break
 
         # Fail closed: only allowlisted projects are ever collected.
@@ -71,29 +76,23 @@ async def fetch_project_page(
 
         allowed_records = [record for record in page.records if _record_allowed(record)]
 
-        hit_limit_mid_page = False
         for record in allowed_records:
             if skipped < skip_count:
                 skipped += 1
                 continue
             results.append(record.summary)
-            if len(results) >= effective_limit:
-                hit_limit_mid_page = True
+            if len(results) > effective_limit:
                 break
 
-        if hit_limit_mid_page:
-            # This page had more allowed matches than needed -- stop without
-            # checking server exhaustion: we already know there's at least one
-            # more allowed project waiting (the rest of this page), so treating
-            # this as "exhausted" would wrongly hide it from a follow-up call.
+        if len(results) > effective_limit:
             break
-
         if page.exhausted:
-            exhausted = True
             break
         server_offset += 1
 
-    truncated = not exhausted
+    truncated = len(results) > effective_limit
+    if truncated:
+        results = results[:effective_limit]
     total = len(results)
     next_offset = offset + 1 if truncated else None
     return results, total, next_offset, truncated

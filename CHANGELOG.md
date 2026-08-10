@@ -109,6 +109,19 @@ support.
   (`InstanceConfiguration`, `ProjectConfiguration`, `AttachmentSummary`),
   to make the byte unit explicit.
 
+### Fixed
+
+- **`list_projects` no longer reports a false `truncated: true` when the
+  requested `limit` is reached exactly on the server's last page.**
+  `fetch_project_page` decided `truncated` as soon as `limit` allowed
+  results were collected, without checking whether a further match actually
+  exists beyond that page — a follow-up call using the reported
+  `next_offset` could silently return an empty page. Same class of bug as
+  the one fixed release-wide on `release/0.3.6` (see the `0.3.6` entry
+  below), caught separately here because this tree's Projects pagination
+  was rewritten into its own resolver (`fetch_project_page`) rather than
+  reusing the shared `_scan_and_paginate` helper that release ported.
+
 ### Docs
 
 - Added the missing "Notes" section to the Cursor client guide.
@@ -128,7 +141,7 @@ support.
   items in `bulk_create_work_packages` have no identifier field at all and
   are matched back to their input purely by `index`.
 
-## [Unreleased 0.3.6]
+## 0.3.6 – 2026-08-10
 
 ### Changed
 
