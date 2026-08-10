@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from mcp import types
 from mcp.server.fastmcp import FastMCP
-from mcp.types import ContentBlock
+from mcp.types import AnyFunction, ContentBlock, Icon, ToolAnnotations
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +31,7 @@ class StrictFastMCP(FastMCP):
     ``call_tool`` implementation actually runs.
     """
 
-    async def call_tool(
-        self, name: str, arguments: dict[str, Any]
-    ) -> Sequence[ContentBlock] | dict[str, Any]:
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> Sequence[ContentBlock] | dict[str, Any]:
         tool = self._tool_manager.get_tool(name)
         if tool is not None:
             allowed = set(tool.parameters.get("properties", {}).keys())
@@ -45,7 +44,17 @@ class StrictFastMCP(FastMCP):
                 )
         return await super().call_tool(name, arguments)
 
-    def add_tool(self, fn: Any, **kwargs: Any) -> None:
+    def add_tool(
+        self,
+        fn: AnyFunction,
+        name: str | None = None,
+        title: str | None = None,
+        description: str | None = None,
+        annotations: ToolAnnotations | None = None,
+        icons: list[Icon] | None = None,
+        meta: dict[str, Any] | None = None,
+        structured_output: bool | None = None,
+    ) -> None:
         """As FastMCP.add_tool, plus a top-level `additionalProperties: false`
         on the generated schema.
 
@@ -58,9 +67,18 @@ class StrictFastMCP(FastMCP):
         `custom_fields`, `filters` payloads) keep their own, independently
         generated `additionalProperties`, untouched by this.
         """
-        super().add_tool(fn, **kwargs)
-        name = kwargs.get("name") or fn.__name__
-        tool = self._tool_manager.get_tool(name)
+        super().add_tool(
+            fn,
+            name=name,
+            title=title,
+            description=description,
+            annotations=annotations,
+            icons=icons,
+            meta=meta,
+            structured_output=structured_output,
+        )
+        tool_name = name or fn.__name__
+        tool = self._tool_manager.get_tool(tool_name)
         if tool is not None:
             tool.parameters["additionalProperties"] = False
 
@@ -87,17 +105,12 @@ async def verify_strict_dispatch(mcp: StrictFastMCP) -> None:
     try:
         request = types.CallToolRequest(
             method="tools/call",
-            params=types.CallToolRequestParams(
-                name=probe_name, arguments={"known": "x", "__unknown__": "x"}
-            ),
+            params=types.CallToolRequestParams(name=probe_name, arguments={"known": "x", "__unknown__": "x"}),
         )
         handler = mcp._mcp_server.request_handlers[types.CallToolRequest]
         result = await handler(request)
         is_error = getattr(result.root, "isError", False)
-        text = "".join(
-            getattr(block, "text", "")
-            for block in getattr(result.root, "content", [])
-        )
+        text = "".join(getattr(block, "text", "") for block in getattr(result.root, "content", []))
         if not is_error or "[validation_error]" not in text:
             raise RuntimeError(
                 "StrictFastMCP self-test failed: an unknown tool argument was "

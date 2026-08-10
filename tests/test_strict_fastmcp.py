@@ -117,9 +117,7 @@ async def test_unknown_tool_name_keeps_standard_error(strict_mcp: StrictFastMCP)
 async def test_nested_dict_argument_keys_not_rejected(strict_mcp: StrictFastMCP) -> None:
     """Top-level check only — dynamic inner keys of a dict[str, Any]-typed
     parameter (e.g. custom_fields) must pass through untouched."""
-    result = await _dispatch(
-        strict_mcp, "dict_arg_tool", {"custom_fields": {"customField1": "x", "anything_else": 2}}
-    )
+    result = await _dispatch(strict_mcp, "dict_arg_tool", {"custom_fields": {"customField1": "x", "anything_else": 2}})
     assert result.isError is not True
     assert strict_mcp._test_calls == ["dict_arg_tool"]  # type: ignore[attr-defined]
 

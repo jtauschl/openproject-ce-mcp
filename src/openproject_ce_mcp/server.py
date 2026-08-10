@@ -119,7 +119,7 @@ class AppContext:
     client: OpenProjectClient
 
 
-def create_app(settings: Settings) -> FastMCP:
+def create_app(settings: Settings) -> StrictFastMCP:
     @asynccontextmanager
     async def app_lifespan(_: FastMCP) -> AsyncIterator[AppContext]:
         configure_logging(settings.log_level)
