@@ -21,6 +21,23 @@ development baseline.
 
 ### Fixed
 
+- **Every tool now rejects an unknown or misnamed argument with a clear
+  error instead of silently dropping it and running with defaults.**
+  FastMCP's auto-generated per-tool argument model ignores extra keys by
+  default; a caller passing e.g. `filters=[...]` to `list_work_packages`
+  (whose real filter parameters are `version`/`status`/`open_only`/etc.) or
+  `page=` to `list_versions` (whose real parameter is `offset`) previously
+  got back an unfiltered/first-page result with no error at all. A startup
+  self-test now also verifies this enforcement is actually wired into live
+  request dispatch, so a future `mcp` SDK upgrade that changes how tool
+  calls are routed fails loudly instead of silently going dark.
+- **`search_work_packages`'s docstring now states what its free-text
+  `query` actually matches** — only the work package subject and numeric
+  ID (OpenProject's native `subject_or_id` filter), never version,
+  category, description, or other linked fields — and that omitting
+  `project` searches globally across every readable project. Use
+  `list_work_packages(version=..., project=...)` for version-based
+  filtering instead.
 - **`configure`'s generic copy-source for MCP clients without native
   support no longer writes to `.mcp.json`** — it now writes to a dedicated
   `openproject-mcp.example.json` with a placeholder token, so a real API

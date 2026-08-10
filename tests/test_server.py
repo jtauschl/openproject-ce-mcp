@@ -557,6 +557,10 @@ class _StubApp:
         pass
 
 
+async def _noop_verify_strict_dispatch(mcp) -> None:
+    pass
+
+
 def test_run_server_warns_on_legacy_env_var(monkeypatch, capsys) -> None:
     # Unlike doctor (a separate, manually-invoked command), the real server
     # startup path also emits legacy-var warnings, so a project config silently
@@ -565,6 +569,7 @@ def test_run_server_warns_on_legacy_env_var(monkeypatch, capsys) -> None:
     monkeypatch.setenv("OPENPROJECT_API_TOKEN", "tok")
     monkeypatch.setenv("OPENPROJECT_ALLOWED_PROJECTS_READ", "OPM")
     monkeypatch.setattr(server, "create_app", lambda settings: _StubApp())
+    monkeypatch.setattr(server, "verify_strict_dispatch", _noop_verify_strict_dispatch)
 
     server._run_server()
 
@@ -579,6 +584,7 @@ def test_run_server_silent_when_no_legacy_env_vars(monkeypatch, capsys) -> None:
     monkeypatch.setenv("OPENPROJECT_API_TOKEN", "tok")
     monkeypatch.delenv("OPENPROJECT_ALLOWED_PROJECTS_READ", raising=False)
     monkeypatch.setattr(server, "create_app", lambda settings: _StubApp())
+    monkeypatch.setattr(server, "verify_strict_dispatch", _noop_verify_strict_dispatch)
 
     server._run_server()
 
