@@ -1338,6 +1338,15 @@ async def search_work_packages(
 ) -> WorkPackageListResult:
     """Search work packages by free text, optionally scoped to a project.
 
+    query matches only the work package subject and numeric ID (OpenProject's
+    native subject_or_id full-text filter) — it does NOT match version,
+    category, description, or other linked-resource fields. To filter by
+    version, use list_work_packages(version=..., project=...) instead.
+
+    Without project, the search runs globally across every project readable
+    under OPENPROJECT_READ_PROJECTS, not just one project — pass project
+    explicitly to scope results to it.
+
     Set status to restrict results to an exact OpenProject status name or
     numeric ID — not a meta-value like 'open'/'closed'.
     Set open_only=true to return only open (not-closed) work packages.
