@@ -597,6 +597,57 @@ async def test_list_filters_out_disallowed_project_before_normalizing() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_does_not_report_truncated_when_limit_lands_exactly_on_last_allowed_item() -> None:
+    """Regression: under a restricted, non-wildcard OPENPROJECT_READ_PROJECTS
+    (total_is_scope_safe=False), exactly `limit` allowed items exist and
+    nothing else does. Deciding truncated from "the raw page came back
+    exactly `limit` long" (the pre-fix behavior) would report truncated=True
+    here even though these ARE all the matches -- a follow-up call on the
+    fabricated next_offset would then silently return an empty page. The
+    fix requests limit + 1 raw elements so a genuine further match can be
+    told apart from "this happened to be the last one"."""
+    allowed = [_payload(1, project_href="/api/v3/projects/1"), _payload(2, project_href="/api/v3/projects/1")]
+    api = _FakeWorkPackageApi(raw_elements=allowed, server_total=2)
+    service, _ = _service(
+        api,
+        settings=dataclasses.replace(make_settings(), read_projects=("demo",)),
+        project_id_to_identifier={1: "demo"},
+    )
+
+    result = await service.list(limit=2)
+
+    assert [r.id for r in result.results] == [1, 2]
+    assert result.truncated is False
+    assert result.next_offset is None
+    # The adapter must be asked for one extra raw element (limit + 1), not
+    # exactly `limit` -- that extra slot is what proves nothing more exists.
+    assert api.list_calls[0]["limit"] == 3
+
+
+@pytest.mark.asyncio
+async def test_list_reports_truncated_when_a_further_allowed_item_exists_beyond_limit() -> None:
+    """Sibling of the above: a genuine (limit + 1)-th allowed item IS present
+    -- truncated must still correctly report True in that case."""
+    allowed = [
+        _payload(1, project_href="/api/v3/projects/1"),
+        _payload(2, project_href="/api/v3/projects/1"),
+        _payload(3, project_href="/api/v3/projects/1"),
+    ]
+    api = _FakeWorkPackageApi(raw_elements=allowed, server_total=3)
+    service, _ = _service(
+        api,
+        settings=dataclasses.replace(make_settings(), read_projects=("demo",)),
+        project_id_to_identifier={1: "demo"},
+    )
+
+    result = await service.list(limit=2)
+
+    assert [r.id for r in result.results] == [1, 2]
+    assert result.truncated is True
+    assert result.next_offset == 2
+
+
+@pytest.mark.asyncio
 async def test_get_returns_detail_with_full_text() -> None:
     service, _ = _service()
 

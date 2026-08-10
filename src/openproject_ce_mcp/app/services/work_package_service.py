@@ -370,20 +370,29 @@ class WorkPackageService:
         # request/expose when the query itself is proven scope-safe. Never
         # ask OpenProject for sums we'd have to discard anyway.
         requested_sums = include_sums and total_is_scope_safe
+        # Request one extra raw element beyond `limit`. In the untrustworthy-
+        # total branch below, deciding truncated from "the raw page came back
+        # exactly `limit` long" would report truncated=True even when every
+        # one of those `limit` raw elements survived allowlist filtering and
+        # nothing else exists -- the same false-truncated bug already fixed
+        # in fetch_project_page (see project_query.py), just triggered by a
+        # single-page fetch instead of a multi-page scan. The (limit + 1)-th
+        # raw element, if present, proves a genuine unseen candidate exists.
         page = await self._api.list(
             filters=filters,
             offset=offset,
-            limit=limit,
+            limit=limit + 1,
             sort_by=sort_by,
             group_by=group_by,
             include_sums=requested_sums,
         )
-        raw_items = [item for item in page.raw_elements if self._payload_allowed(item)]
+        allowed_items = [item for item in page.raw_elements if self._payload_allowed(item)]
+        raw_items = allowed_items[:limit]
         results = [
             self._stamp(self._api.to_record(item, text_limit=self._settings.text_limit).summary) for item in raw_items
         ]
         server_total = page.server_total if page.server_total is not None else len(results)
-        total_trustworthy = total_is_scope_safe and len(raw_items) == len(page.raw_elements)
+        total_trustworthy = total_is_scope_safe and len(allowed_items) == len(page.raw_elements)
         if total_trustworthy:
             next_offset, truncated = paginate_server(offset=offset, limit=limit, total=server_total)
             total = server_total
@@ -391,11 +400,11 @@ class WorkPackageService:
             # Pagination hints must not be derived from the untrustworthy
             # server total either -- that would leak the existence of
             # disallowed-project matches just as much as exposing the total
-            # itself. "Is there more to page through" is instead based purely
-            # on whether this raw server page came back full.
+            # itself. "Is there more to page through" is instead based on
+            # whether more than `limit` allowlisted items actually came back.
             total = len(results)
-            next_offset = (offset + 1) if len(page.raw_elements) == limit else None
-            truncated = len(page.raw_elements) == limit
+            truncated = len(allowed_items) > limit
+            next_offset = (offset + 1) if truncated else None
         groups = (
             [
                 WorkPackageGroupSums(value=g.get("value"), count=g.get("count", 0), sums=g.get("sums"))

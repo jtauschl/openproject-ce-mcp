@@ -121,6 +121,14 @@ support.
   below), caught separately here because this tree's Projects pagination
   was rewritten into its own resolver (`fetch_project_page`) rather than
   reusing the shared `_scan_and_paginate` helper that release ported.
+- **`list_work_packages`/`search_work_packages` no longer report a false
+  `truncated: true` under a restricted `OPENPROJECT_READ_PROJECTS` scope
+  when exactly `limit` allowed work packages exist and nothing else does.**
+  Same bug class as the `list_projects` fix above, but as a single-page
+  variant: `_list_collection` decided "more exists" from the raw page
+  coming back exactly `limit` elements long, instead of proving it by
+  requesting one extra (`limit + 1`) element from OpenProject and checking
+  how many actually survived allowlist filtering.
 
 ### Docs
 

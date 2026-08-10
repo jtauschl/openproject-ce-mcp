@@ -407,10 +407,60 @@ async def test_search_work_packages_pagination_hints_do_not_leak_untrusted_total
 
 @pytest.mark.asyncio
 async def test_search_work_packages_pagination_continues_with_untrusted_total_when_page_full() -> None:
-    # Same untrusted-total scope, but the raw page came back full (== limit) --
-    # there may be more allowed matches on a later server page, so pagination
+    # Same untrusted-total scope, but a genuine (limit + 1)-th allowed match
+    # exists beyond the requested page (pageSize is requested as limit + 1,
+    # per the (limit + 1)-lookahead fix -- see _list_collection) -- pagination
     # must still continue even though the total itself stays hidden.
     async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["pageSize"] == "3"  # limit=2 requested, +1 lookahead
+        return httpx.Response(
+            200,
+            json={
+                "total": 50,
+                "_embedded": {
+                    "elements": [
+                        {
+                            "id": 1,
+                            "subject": "A",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
+                        {
+                            "id": 2,
+                            "subject": "B",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
+                        {
+                            "id": 3,
+                            "subject": "C",
+                            "_links": {"project": {"href": "/api/v3/projects/1", "title": "demo"}},
+                        },
+                    ]
+                },
+            },
+            request=request,
+        )
+
+    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+    result = await client.search_work_packages(search="A", offset=1, limit=2)
+
+    assert result.total == 2
+    assert [wp.id for wp in result.results] == [1, 2]
+    assert result.next_offset == 2
+    assert result.truncated is True
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_search_work_packages_does_not_report_truncated_when_page_full_but_nothing_further_exists() -> None:
+    # The bug this guards against: the raw page came back exactly `limit`
+    # long, with all `limit` allowed -- reporting truncated=True purely from
+    # "the page was full" (without a (limit + 1)-th match actually proving
+    # more exists) would make a follow-up call on the fabricated next_offset
+    # silently return an empty page. Here the server only ever has 2 matches
+    # total, so the (limit + 1)-lookahead page comes back with just those 2.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["pageSize"] == "3"
         return httpx.Response(
             200,
             json={
@@ -437,8 +487,9 @@ async def test_search_work_packages_pagination_continues_with_untrusted_total_wh
     result = await client.search_work_packages(search="A", offset=1, limit=2)
 
     assert result.total == 2
-    assert result.next_offset == 2
-    assert result.truncated is True
+    assert [wp.id for wp in result.results] == [1, 2]
+    assert result.next_offset is None
+    assert result.truncated is False
 
     await client.aclose()
 
