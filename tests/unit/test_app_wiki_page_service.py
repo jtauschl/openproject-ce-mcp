@@ -35,7 +35,7 @@ class _FakeWikiPageApi:
         self._records = records or {20: _record()}
         self.get_calls: list[int] = []
 
-    async def get(self, wiki_page_id: int) -> WikiPageRecord:
+    async def get(self, wiki_page_id: int, *, text_limit: int | None = None) -> WikiPageRecord:
         self.get_calls.append(wiki_page_id)
         if wiki_page_id not in self._records:
             raise AssertionError(f"no fake record for wiki_page_id {wiki_page_id}")

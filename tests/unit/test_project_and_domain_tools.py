@@ -334,8 +334,8 @@ async def test_job_document_news_and_wiki_tools_pass_arguments() -> None:
         async def list_documents(self, **kwargs):
             return kwargs
 
-        async def get_document(self, document_id):
-            return {"document_id": document_id}
+        async def get_document(self, document_id, **kwargs):
+            return {"document_id": document_id, **kwargs}
 
         async def update_document(self, **kwargs):
             return kwargs
@@ -343,8 +343,8 @@ async def test_job_document_news_and_wiki_tools_pass_arguments() -> None:
         async def list_news(self, **kwargs):
             return kwargs
 
-        async def get_news(self, news_id):
-            return {"news_id": news_id}
+        async def get_news(self, news_id, **kwargs):
+            return {"news_id": news_id, **kwargs}
 
         async def create_news(self, **kwargs):
             return kwargs
@@ -355,8 +355,8 @@ async def test_job_document_news_and_wiki_tools_pass_arguments() -> None:
         async def delete_news(self, **kwargs):
             return kwargs
 
-        async def get_wiki_page(self, wiki_page_id):
-            return {"wiki_page_id": wiki_page_id}
+        async def get_wiki_page(self, wiki_page_id, **kwargs):
+            return {"wiki_page_id": wiki_page_id, **kwargs}
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
@@ -535,8 +535,8 @@ async def test_view_category_and_attachment_tools_pass_expected_arguments(tmp_pa
         async def get_category(self, **kwargs):
             return kwargs
 
-        async def list_work_package_attachments(self, work_package_id):
-            return {"work_package_id": work_package_id}
+        async def list_work_package_attachments(self, work_package_id, **kwargs):
+            return {"work_package_id": work_package_id, **kwargs}
 
         async def get_attachment(self, attachment_id):
             return {"attachment_id": attachment_id}

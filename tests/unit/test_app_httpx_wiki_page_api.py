@@ -99,3 +99,25 @@ async def test_get_content_truncates_at_50000_chars() -> None:
     inner = record.detail.content.removeprefix("<user-content>").removesuffix("</user-content>")
     assert len(inner) == 50_000
     assert inner.endswith("…")
+    assert record.detail.content_truncated is True
+    assert record.detail.content_length == 60_000
+
+
+@pytest.mark.asyncio
+async def test_get_with_explicit_text_limit_caps_content_below_default() -> None:
+    long_text = "x" * 2_000
+    payload = _wiki_page_payload()
+    payload["text"] = {"format": "markdown", "raw": long_text}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxWikiPageApi(HttpxTransport(http_client))
+        record = await api.get(20, text_limit=100)
+
+    assert record.detail.content is not None
+    inner = record.detail.content.removeprefix("<user-content>").removesuffix("</user-content>")
+    assert len(inner) == 100
+    assert record.detail.content_truncated is True
+    assert record.detail.content_length == 2_000

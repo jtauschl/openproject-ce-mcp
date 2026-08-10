@@ -79,6 +79,7 @@ from .models import (
     NonWorkingDayListResult,
     NotificationListResult,
     NotificationMarkResult,
+    NotificationSummary,
     PrincipalListResult,
     PrincipalSummary,
     PriorityListResult,
@@ -597,9 +598,8 @@ async def list_projects(
 ) -> ProjectListResult:
     """List visible projects with optional name or identifier search.
 
-    select restricts each result row to the given fields (e.g. ["id", "name",
-    "identifier"]); an invalid name returns the allowed set. Common fields: id,
-    name, identifier, active, public, status, parent_name, created_at, updated_at.
+    select fields: id, name, identifier, active, public, status, parent_name,
+    created_at, updated_at (see server instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. Under a
@@ -650,8 +650,7 @@ async def list_sprints(
 
     Requires the OpenProject Backlogs module; unavailable instances return a clear not-found message.
 
-    select restricts each result row to the given fields (e.g. ["id", "name"]);
-    an invalid name returns the allowed set.
+    select fields: id, name (see server instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. total is only
@@ -888,10 +887,9 @@ async def list_roles(
 ) -> RoleListResult:
     """List OpenProject roles visible to the current user.
 
-    select restricts each result row to the given fields (e.g. ["id", "name"]);
-    an invalid name returns the allowed set. limit is capped at
-    OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned next_offset as
-    the next call's offset to page past the cap.
+    select fields: id, name (see server instructions for select's general semantics).
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     _validate_select(select, row_type=RoleSummary)
@@ -909,8 +907,7 @@ async def list_principals(
 ) -> PrincipalListResult:
     """List users and groups that can be used for project memberships.
 
-    select restricts each result row to the given fields (e.g. ["id", "name",
-    "type"]); an invalid name returns the allowed set.
+    select fields: id, name, type (see server instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -930,9 +927,8 @@ async def list_users(
 ) -> UserListResult:
     """List users visible to the current token.
 
-    select restricts each result row to the given fields (e.g. ["id", "name",
-    "login"]); an invalid name returns the allowed set. Common fields: id, name,
-    login, email, status, admin, created_at, updated_at.
+    select fields: id, name, login, email, status, admin, created_at, updated_at
+    (see server instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. With search,
@@ -966,8 +962,7 @@ async def list_groups(
 ) -> GroupListResult:
     """List groups visible to the current token.
 
-    select restricts each result row to the given fields (e.g. ["id", "name"]);
-    an invalid name returns the allowed set.
+    select fields: id, name (see server instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. With search,
@@ -1000,8 +995,7 @@ async def list_actions(
 ) -> ActionListResult:
     """List API actions exposed by OpenProject.
 
-    select restricts each result row to the given fields (e.g. ["id", "url"]);
-    an invalid name returns the allowed set.
+    select fields: id, url (see server instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -1023,8 +1017,8 @@ async def list_capabilities(
 ) -> CapabilityListResult:
     """List API capabilities exposed by OpenProject.
 
-    select restricts each result row to the given fields (e.g. ["id",
-    "action_id", "context"]); an invalid name returns the allowed set.
+    select fields: id, action_id, context (see server instructions for
+    select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -1114,8 +1108,8 @@ async def list_project_memberships(
 ) -> MembershipListResult:
     """List memberships for a project, including principal and role names.
 
-    select restricts each result row to the given fields (e.g. ["id",
-    "principal_name", "role_names"]); an invalid name returns the allowed set.
+    select fields: id, principal_name, role_names (see server instructions for
+    select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -1253,8 +1247,7 @@ async def list_views(
 ) -> ViewListResult:
     """List saved OpenProject views, optionally filtered by project, view subtype, or name search.
 
-    select restricts each result row to the given fields (e.g. ["id", "name"]);
-    an invalid name returns the allowed set.
+    select fields: id, name (see server instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. total is only
@@ -1298,8 +1291,7 @@ async def list_documents(
 ) -> DocumentListResult:
     """List documents, optionally filtered to a single project or by title search.
 
-    select restricts each result row to the given fields (e.g. ["id", "title"]);
-    an invalid name returns the allowed set.
+    select fields: id, title (see server instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. total is only
@@ -1319,11 +1311,19 @@ async def list_documents(
 async def get_document(
     ctx: Context,
     document_id: int,
+    text_limit: int | None = None,
 ) -> DocumentDetail:
-    """Get a single document by id."""
+    """Get a single document by id.
+
+    The description is returned in full by default (single documents are not
+    truncated). Pass ``text_limit`` to cap it at that many characters; when the
+    text is cut, ``description_truncated`` is true and ``description_length``
+    reports the real length.
+    """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(document_id, field_name="document_id")
-    return await _run_tool(client.get_document(safe_id))
+    safe_text_limit = _validate_optional_text_limit(text_limit)
+    return await _run_tool(client.get_document(safe_id, text_limit=safe_text_limit))
 
 
 async def update_document(
@@ -1359,8 +1359,7 @@ async def list_news(
 ) -> NewsListResult:
     """List news entries, optionally filtered by project or title/summary search.
 
-    select restricts each result row to the given fields (e.g. ["id", "title"]);
-    an invalid name returns the allowed set.
+    select fields: id, title (see server instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. total is only
@@ -1386,11 +1385,19 @@ async def list_news(
 async def get_news(
     ctx: Context,
     news_id: int,
+    text_limit: int | None = None,
 ) -> NewsDetail:
-    """Get a single news entry by id."""
+    """Get a single news entry by id.
+
+    The description is returned in full by default (single news entries are
+    not truncated). Pass ``text_limit`` to cap it at that many characters;
+    when the text is cut, ``description_truncated`` is true and
+    ``description_length`` reports the real length.
+    """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(news_id, field_name="news_id")
-    return await _run_tool(client.get_news(safe_id))
+    safe_text_limit = _validate_optional_text_limit(text_limit)
+    return await _run_tool(client.get_news(safe_id, text_limit=safe_text_limit))
 
 
 async def create_news(
@@ -1460,11 +1467,20 @@ async def delete_news(
 async def get_wiki_page(
     ctx: Context,
     wiki_page_id: int,
+    text_limit: int | None = 50_000,
 ) -> WikiPageDetail:
-    """Get a single wiki page by id."""
+    """Get a single wiki page by id.
+
+    content is returned in full by default, capped at 50,000 characters (a
+    wiki page's own upper bound). Pass ``text_limit`` to cap it further, or
+    ``None`` for genuinely uncapped content; when the text is cut,
+    ``content_truncated`` is true and ``content_length`` reports the real
+    length.
+    """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(wiki_page_id, field_name="wiki_page_id")
-    return await _run_tool(client.get_wiki_page(safe_id))
+    safe_text_limit = _validate_optional_text_limit(text_limit)
+    return await _run_tool(client.get_wiki_page(safe_id, text_limit=safe_text_limit))
 
 
 async def list_categories(
@@ -1474,8 +1490,7 @@ async def list_categories(
 ) -> CategoryListResult:
     """List work-package categories configured for a project.
 
-    select restricts each result row to the given fields (e.g. ["id", "name"]);
-    an invalid name returns the allowed set.
+    select fields: id, name (see server instructions for select's general semantics).
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
@@ -1554,60 +1569,14 @@ async def search_work_packages(
 
     priority filters by priority name or numeric ID (case-insensitive).
 
-    Date filters accept YYYY-MM-DD format:
-    - created_on/updated_on/due_on: exact date match
-    - created_between/updated_between/due_between: inclusive date range [start, end]
-    Cannot specify both _on and _between for the same field.
-
-    sort_by accepts a list of sort criteria in format "field:direction"
-    (e.g., ["status:desc", "priority:asc"]). Direction defaults to "asc" if omitted.
-    Each field is checked against OpenProject's real sortable work-package
-    columns (id, project, subject, type, status, priority, author, assigned_to,
-    responsible, updated_at, category, version, start_date, due_date,
-    estimated_time, remaining_time, done_ratio, created_at, duration,
-    project_phase, story_points, or a custom field's cf_<id> identifier) —
-    an unknown field raises a ValueError listing the valid set instead of
-    only failing once OpenProject itself rejects the request.
-
-    group_by accepts one field name to group results by (e.g., "status",
-    "assigned_to"), checked the same way against OpenProject's actual
-    groupable columns (a subset of the sortable ones above — notably
-    start_date/due_date/estimated_time/remaining_time/duration/created_at/
-    updated_at sort fine but cannot be grouped by).
-
-    select restricts each result row to the given fields (e.g. ["id", "subject",
-    "status"]); an invalid name returns the allowed set. Common fields: id,
-    display_id, subject, type, status, priority, assignee, project, version,
-    parent_id, parent_display_id, start_date, due_date, estimated_time,
-    spent_time, created_at, updated_at, author, category, description,
-    schedule_manually, derived_start_date, derived_due_date, percentage_done,
-    derived_percentage_done, readonly, ignore_non_working_days.
-    parent_display_id is only populated on OpenProject 17.5+ (semantic mode);
-    it stays null on older/classic instances even when parent_id is set.
-
-    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap. total is the real
-    matching count only when the query is provably restricted to
-    OPENPROJECT_READ_PROJECTS server-side — scope is unrestricted, or an explicit
-    project was given. Otherwise (no project, restricted scope) total falls back
-    to this page's item count, and next_offset/truncated are based on whether
-    this page came back full rather than the server's own total, so nothing here
-    ever reveals how many matches exist in projects you can't see. Page until
-    next_offset is null either way.
-
-    include_sums=true adds server-computed aggregates instead of requiring
-    client-side pagination and summation: groups (one entry per group_by
-    value, with count and a sums dict of OpenProject's fixed summable
-    fields — estimated_time, story_points, percentage_done, remaining_time,
-    overall_costs, labor_costs, material_costs, plus any custom fields — as
-    raw server-formatted values, e.g. ISO 8601 durations and currency
-    strings) and total_sums (the same shape, across all matches). groups is
-    only populated when group_by is also set; total_sums is populated
-    either way (a sum over the whole filtered/searched result set even
-    without grouping). Same scope-safety rule as total above: groups/
-    total_sums come back null whenever the query cannot be proven restricted
-    to OPENPROJECT_READ_PROJECTS server-side — never exposes an aggregate
-    computed across projects outside your read scope.
+    Date filters, sort_by/group_by, select, pagination (offset/limit/total),
+    and include_sums all work exactly as documented on list_work_packages —
+    see that tool's docstring for the full field lists and semantics. One
+    difference: total is the real matching count only when scope is
+    unrestricted or an explicit project was given (list_work_packages's
+    server-side allowed-project filter for the no-project+restricted-scope
+    case does not apply here); otherwise total/groups/total_sums fall back
+    to this page's data, same safety guarantee either way.
     """
     client = _client_from_context(ctx)
     safe_search = _validate_required_query(search, field_name="search", max_length=120)
@@ -2095,12 +2064,8 @@ async def update_work_package(
     On such an instance, explicitly passing percentage_done together with a closing status is rejected
     with a hard validation error (percentageDone is not writable there) rather than silently ignored —
     omit percentage_done and let OpenProject derive it instead.
-    due_date falling on a non-working day (e.g. a weekend) can be silently moved forward to the
-    next working day by OpenProject — compare the request and the returned `result.due_date` if
-    the exact calendar date matters. This server does not expose a way to opt out of that shift
-    (OpenProject's own `ignoreNonWorkingDays` flag is not a write parameter here).
-    A rejected validation preview is not a tool error; inspect `ready` and
-    `validation_errors` in the result rather than the MCP error envelope.
+    due_date's non-working-day shift and the confirm/preview contract work exactly as documented
+    on create_work_package.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -2359,34 +2324,11 @@ async def bulk_update_work_packages(
     percentage_done together with a closing status on the same item is rejected with a hard,
     indexed validation error (percentageDone is not writable there) rather than silently ignored —
     omit percentage_done on that item and let OpenProject derive it instead.
-    due_date falling on a non-working day (e.g. a weekend) can be silently moved forward to the
-    next working day by OpenProject — compare the request and the returned item's
-    `result.result.due_date` if the exact calendar date matters. This server does not expose a
-    way to opt out of that shift (OpenProject's own `ignoreNonWorkingDays` flag is not a write
-    parameter here).
 
-    With confirm=false (default) all items are validated and a preview is returned.
-    With confirm=true all items are updated. Failed items are reported in the result — the operation
-    continues for remaining items regardless of individual failures. A rejected
-    item's validation is not a tool error; inspect each item's `success`,
-    `error`, and nested `result` rather than the MCP error envelope.
-
-    select restricts each item's nested result to the given fields (e.g.
-    ["ready", "work_package_id"]); an invalid name returns the allowed set. The
-    index/success/error fields on each item are always included regardless of
-    select, so you can still tell which items succeeded. For batches with many
-    items or long descriptions, set select proactively — an unconfirmed preview
-    echoes each item's full proposed payload, and an unbounded batch can exceed
-    the tool-result size limit and get redirected to a file.
-
-    A per-item timeout is reported as that item's failure and does not stop
-    the loop. If this call is cancelled outright (e.g. the host cancels the
-    request), items already updated beforehand remain on the server; items not
-    yet attempted are not updated. No result summary is returned in that case
-    (the call ends via cancellation, not a normal return) — use
-    list_work_packages/get_work_package afterward to determine what was
-    actually written. This operation is not atomic; OpenProject CE has no
-    batch/transaction endpoint.
+    due_date's non-working-day shift, the confirm/preview contract, select's item-trimming
+    behavior, and cancellation/atomicity semantics all work exactly as documented on
+    bulk_create_work_packages — only the affected result field differs
+    (`result.result.due_date` here too).
     """
     client = _client_from_context(ctx)
     if not items:
@@ -2631,8 +2573,8 @@ async def list_my_open_work_packages(
 ) -> WorkPackageListResult:
     """List the current user's open assigned work packages.
 
-    select restricts each result row to the given fields (e.g. ["id", "subject",
-    "due_date"]); an invalid name returns the allowed set.
+    select fields: id, subject, due_date (see server instructions for
+    select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. This query has no
@@ -2661,8 +2603,7 @@ async def list_versions(
     """List versions globally or for a specific project, optionally filtered by a
     case-insensitive name substring.
 
-    select restricts each result row to the given fields (e.g. ["id", "name"]);
-    an invalid name returns the allowed set.
+    select fields: id, name (see server instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. Without project,
@@ -2821,8 +2762,7 @@ async def list_boards(
 ) -> BoardListResult:
     """List saved OpenProject boards/queries, optionally scoped to a project.
 
-    select restricts each result row to the given fields (e.g. ["id", "name"]);
-    an invalid name returns the allowed set.
+    select fields: id, name (see server instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. With project,
@@ -3006,14 +2946,26 @@ async def delete_board(
 async def list_work_package_attachments(
     ctx: Context,
     work_package_id: int | str,
+    offset: int = 1,
+    limit: int | None = None,
+    select: list[str] | None = None,
 ) -> AttachmentListResult:
     """List attachments on a work package.
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+
+    select fields: id, title, file_name, description (see server instructions
+    for select's general semantics).
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.list_work_package_attachments(safe_id))
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=AttachmentSummary)
+    return await _run_tool(client.list_work_package_attachments(safe_id, offset=safe_offset, limit=safe_limit))
 
 
 async def get_attachment(
@@ -3077,10 +3029,14 @@ async def list_time_entries(
     spent_on_to: str | None = None,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> TimeEntryListResult:
     """List time entries with optional project, work package, user, and date filters.
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+
+    select fields: id, hours, spent_on, comment, activity, user, work_package_id
+    (see server instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. total is only
@@ -3097,6 +3053,7 @@ async def list_time_entries(
     safe_spent_on_to = _validate_optional_date(spent_on_to, field_name="spent_on_to")
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=TimeEntrySummary)
     return await _run_tool(
         client.list_time_entries(
             project=safe_project,
@@ -3347,8 +3304,7 @@ async def get_work_package_relations(
     is stored as 'follows' with from_id/to_id swapped; see create_work_package_relation). Use from_id/to_id
     together with type, not the request you expect to have made, to determine the actual direction.
 
-    select restricts each result row to the given fields (e.g. ["id", "type",
-    "to_id"]); an invalid name returns the allowed set.
+    select fields: id, type, to_id (see server instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. total is only
@@ -3381,8 +3337,7 @@ async def get_work_package_activities(
     characters; when a comment is cut, ``comment_truncated`` is true and
     ``comment_length`` reports its real length.
 
-    select restricts each result row to the given fields (e.g. ["id", "type",
-    "created_at"]); an invalid name returns the allowed set.
+    select fields: id, type, created_at (see server instructions for select's general semantics).
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -3401,8 +3356,7 @@ async def list_work_package_reactions(
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
 
-    select restricts each result row to the given fields (e.g. ["reaction",
-    "count"]); an invalid name returns the allowed set.
+    select fields: reaction, count (see server instructions for select's general semantics).
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -3432,8 +3386,7 @@ async def toggle_activity_emoji_reaction(
 async def list_reminders(ctx: Context, select: list[str] | None = None) -> ReminderListResult:
     """List the current user's active reminders across all work packages.
 
-    select restricts each result row to the given fields (e.g. ["id",
-    "remind_at"]); an invalid name returns the allowed set.
+    select fields: id, remind_at (see server instructions for select's general semantics).
     """
     client = _client_from_context(ctx)
     _validate_select(select, row_type=ReminderSummary)
@@ -3584,8 +3537,7 @@ async def list_work_package_watchers(
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
 
-    select restricts each result row to the given fields (e.g. ["id", "name"]);
-    an invalid name returns the allowed set.
+    select fields: id, name (see server instructions for select's general semantics).
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -3621,8 +3573,12 @@ async def list_notifications(
     unread_only: bool = False,
     limit: int | None = None,
     offset: int = 1,
+    select: list[str] | None = None,
 ) -> NotificationListResult:
     """List in-app notifications for the current user.
+
+    select fields: id, subject, reason, read, work_package_id (see server
+    instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -3630,6 +3586,7 @@ async def list_notifications(
     client = _client_from_context(ctx)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=NotificationSummary)
     return await _run_tool(client.list_notifications(unread_only=unread_only, limit=safe_limit, offset=safe_offset))
 
 
@@ -3809,8 +3766,7 @@ async def list_work_package_file_links(
 
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
 
-    select restricts each result row to the given fields (e.g. ["id", "title"]);
-    an invalid name returns the allowed set.
+    select fields: id, title (see server instructions for select's general semantics).
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
@@ -3838,8 +3794,8 @@ async def list_grids(
 ) -> GridListResult:
     """List dashboard grids, optionally filtered by scope (page path).
 
-    select restricts each result row to the given fields (e.g. ["id", "scope"]);
-    an invalid name returns the allowed set. limit is capped at
+    select fields: id, scope (see server instructions for select's general
+    semantics). limit is capped at
     OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned next_offset as
     the next call's offset to page past the cap. total is only the count of
     allowed grids returned on THIS page, not a full count of all matches —
@@ -4034,8 +3990,7 @@ async def list_relations(
     Filtering by relation_type matches the stored (canonical) type, not necessarily the type a caller
     originally requested when creating it.
 
-    select restricts each result row to the given fields (e.g. ["id", "type",
-    "to_id"]); an invalid name returns the allowed set.
+    select fields: id, type, to_id (see server instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap. total is only

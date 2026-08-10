@@ -840,6 +840,8 @@ class DocumentSummary:
     created_at: str | None
     attachment_count: int
     can_update: bool
+    description_truncated: bool = False
+    description_length: int | None = None
 
 
 @dataclass
@@ -852,6 +854,8 @@ class DocumentDetail:
     created_at: str | None
     attachment_count: int
     can_update: bool
+    description_truncated: bool = False
+    description_length: int | None = None
 
 
 @dataclass
@@ -1006,6 +1010,8 @@ class RelationSummary:
     from_subject: str | None
     to_id: int | None
     to_subject: str | None
+    description_truncated: bool = False
+    description_length: int | None = None
 
 
 @dataclass
@@ -1044,6 +1050,8 @@ class NewsSummary:
     created_at: str | None
     can_update: bool
     can_delete: bool
+    description_truncated: bool = False
+    description_length: int | None = None
 
 
 @dataclass
@@ -1075,6 +1083,8 @@ class WikiPageDetail:
     project_id: int | None
     project: str | None
     content: str | None
+    content_truncated: bool = False
+    content_length: int | None = None
 
 
 @dataclass

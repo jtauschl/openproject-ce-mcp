@@ -59,7 +59,9 @@ class _FakeNewsApi:
         self.delete_calls: list[int] = []
         self.commit_result_project: str = "Demo Project"
 
-    async def list_page(self, *, offset: int, page_size: int) -> tuple[list[NewsRecord], int]:
+    async def list_page(
+        self, *, offset: int, page_size: int, text_limit: int | None = None
+    ) -> tuple[list[NewsRecord], int]:
         self.list_page_calls.append(page_size)
         # A single-page fake is sufficient for these Service-level tests --
         # scan_records_and_paginate's own multi-page scanning behavior is
@@ -69,7 +71,7 @@ class _FakeNewsApi:
         records = list(self._records.values())
         return records, len(records)
 
-    async def get(self, news_id: int) -> NewsRecord:
+    async def get(self, news_id: int, *, text_limit: int | None = None) -> NewsRecord:
         self.get_calls.append(news_id)
         if news_id not in self._records:
             raise AssertionError(f"no fake record for news_id {news_id}")
@@ -184,12 +186,14 @@ class _PagedFakeNewsApi:
         self._pages = pages
         self.offsets_requested: list[int] = []
 
-    async def list_page(self, *, offset: int, page_size: int) -> tuple[list[NewsRecord], int]:
+    async def list_page(
+        self, *, offset: int, page_size: int, text_limit: int | None = None
+    ) -> tuple[list[NewsRecord], int]:
         self.offsets_requested.append(offset)
         records = self._pages.get(offset, [])
         return records, len(records)
 
-    async def get(self, news_id: int) -> NewsRecord:
+    async def get(self, news_id: int, *, text_limit: int | None = None) -> NewsRecord:
         raise NotImplementedError
 
     async def commit_create(self, payload: dict) -> NewsDetail:

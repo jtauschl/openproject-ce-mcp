@@ -1063,8 +1063,8 @@ class OpenProjectClient:
     ) -> DocumentListResult:
         return await self._document_service.list(project=project, search=search, offset=offset, limit=limit)
 
-    async def get_document(self, document_id: int) -> DocumentDetail:
-        return await self._document_service.get(document_id)
+    async def get_document(self, document_id: int, *, text_limit: int | None = None) -> DocumentDetail:
+        return await self._document_service.get(document_id, text_limit=text_limit)
 
     async def update_document(
         self,
@@ -1088,8 +1088,8 @@ class OpenProjectClient:
     ) -> NewsListResult:
         return await self._news_service.list(project=project, search=search, offset=offset, limit=limit)
 
-    async def get_news(self, news_id: int) -> NewsDetail:
-        return await self._news_service.get(news_id)
+    async def get_news(self, news_id: int, *, text_limit: int | None = None) -> NewsDetail:
+        return await self._news_service.get(news_id, text_limit=text_limit)
 
     async def create_news(
         self,
@@ -1125,8 +1125,8 @@ class OpenProjectClient:
     ) -> NewsWriteResult:
         return await self._news_service.delete(news_id=news_id, confirm=confirm)
 
-    async def get_wiki_page(self, wiki_page_id: int) -> WikiPageDetail:
-        return await self._wiki_page_service.get(wiki_page_id)
+    async def get_wiki_page(self, wiki_page_id: int, *, text_limit: int | None = 50_000) -> WikiPageDetail:
+        return await self._wiki_page_service.get(wiki_page_id, text_limit=text_limit)
 
     async def list_categories(self, project_ref: str) -> CategoryListResult:
         return await self._category_service.list(project_ref)

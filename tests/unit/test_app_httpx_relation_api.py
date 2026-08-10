@@ -187,3 +187,21 @@ def test_normalize_relation_extracts_from_to_ids_and_subjects() -> None:
     assert relation.from_subject == "Task A"
     assert relation.to_id == 2
     assert relation.to_subject == "Task B"
+
+
+def test_normalize_relation_reports_truncation_metadata() -> None:
+    long_text = "x" * 2_000  # longer than SUBJECT_LIMIT (255)
+    relation = normalize_relation(
+        {
+            "id": 5,
+            "type": "relates",
+            "description": long_text,
+            "_links": {
+                "from": {"href": "/api/v3/work_packages/1", "title": "WP 1"},
+                "to": {"href": "/api/v3/work_packages/2", "title": "WP 2"},
+            },
+        }
+    )
+
+    assert relation.description_truncated is True
+    assert relation.description_length == 2_000

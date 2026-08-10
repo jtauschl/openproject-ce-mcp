@@ -39,19 +39,22 @@ from ._text import SUBJECT_LIMIT
 from ._text import delimit_user_content as _delimit_user_content
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
-from ._text import trim_text as _trim_text
+from ._text import trim_text_with_meta as _trim_text_with_meta
 
 
 def normalize_relation(payload: dict[str, Any]) -> RelationSummary:
     links = payload.get("_links", {})
+    description, truncated, length = _trim_text_with_meta(payload.get("description"), limit=SUBJECT_LIMIT)
     return RelationSummary(
         id=int(payload["id"]),
         type=payload.get("type"),
-        description=_delimit_user_content(_trim_text(payload.get("description"), limit=SUBJECT_LIMIT)),
+        description=_delimit_user_content(description),
         from_id=_id_from_href(links.get("from", {}).get("href")),
         from_subject=_link_title(links.get("from")),
         to_id=_id_from_href(links.get("to", {}).get("href")),
         to_subject=_link_title(links.get("to")),
+        description_truncated=truncated,
+        description_length=length,
     )
 
 

@@ -94,7 +94,7 @@ class DocumentService:
         # settings.max_results, which would silently hide any document
         # beyond that cap once the endpoint's real result count exceeds it.
         raw_items, truncated = await scan_records_and_paginate(
-            lambda o, ps: self._api.list_all(offset=o, page_size=ps),
+            lambda o, ps: self._api.list_all(offset=o, page_size=ps, text_limit=self._settings.text_limit),
             item_allowed=_record_allowed,
             server_page_size=self._settings.max_page_size,
             offset=offset,
@@ -113,9 +113,9 @@ class DocumentService:
             results=results,
         )
 
-    async def get(self, document_id: int) -> DocumentDetail:
+    async def get(self, document_id: int, *, text_limit: int | None = None) -> DocumentDetail:
         access.ensure_read_enabled("project", settings=self._settings)
-        record = await self._api.get(document_id)
+        record = await self._api.get(document_id, text_limit=text_limit)
         scope_policy.ensure_project_link_allowed(
             record.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )

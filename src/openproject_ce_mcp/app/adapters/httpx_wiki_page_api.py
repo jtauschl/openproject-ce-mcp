@@ -24,22 +24,28 @@ from ._text import delimit_user_content as _delimit_user_content
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import trim_text as _trim_text
+from ._text import trim_text_with_meta as _trim_text_with_meta
 
 CONTENT_LIMIT = 50_000
 
 
-def normalize_wiki_page(payload: dict[str, Any]) -> WikiPageDetail:
+def normalize_wiki_page(payload: dict[str, Any], *, text_limit: int | None = CONTENT_LIMIT) -> WikiPageDetail:
     """Pure HAL->model translation (ADR: 'lives in the Domain API adapter').
 
     Excludes hidden-field masking -- hidden-field masking of the whole
     WikiPageDetail is a Policy/Service decision applied after this returns
     (same pattern as normalize_document/normalize_news).
+
+    ``text_limit`` defaults to CONTENT_LIMIT (this normalizer's historical
+    cap) so an existing caller that omits it keeps the current truncation
+    point; get_wiki_page's ``text_limit`` tool parameter overrides it,
+    matching get_work_package's equivalent parameter -- pass ``None`` for
+    uncapped content.
     """
     links = payload.get("_links", {})
     text_block = payload.get("text") or payload.get("content")
-    content: str | None = None
-    if isinstance(text_block, dict):
-        content = _trim_text(text_block.get("raw"), limit=CONTENT_LIMIT)
+    raw_content = text_block.get("raw") if isinstance(text_block, dict) else None
+    content, truncated, length = _trim_text_with_meta(raw_content, limit=text_limit)
     content = _delimit_user_content(content)
     return WikiPageDetail(
         id=int(payload["id"]),
@@ -47,6 +53,8 @@ def normalize_wiki_page(payload: dict[str, Any]) -> WikiPageDetail:
         project_id=_id_from_href(links.get("project", {}).get("href")),
         project=_link_title(links.get("project")),
         content=content,
+        content_truncated=truncated,
+        content_length=length,
     )
 
 
@@ -54,9 +62,9 @@ class HttpxWikiPageApi:
     def __init__(self, transport: Transport) -> None:
         self._transport = transport
 
-    async def get(self, wiki_page_id: int) -> WikiPageRecord:
+    async def get(self, wiki_page_id: int, *, text_limit: int | None = CONTENT_LIMIT) -> WikiPageRecord:
         payload = await self._transport.get_json(f"wiki_pages/{wiki_page_id}")
         return WikiPageRecord(
-            detail=normalize_wiki_page(payload),
+            detail=normalize_wiki_page(payload, text_limit=text_limit),
             project_link=payload.get("_links", {}).get("project"),
         )

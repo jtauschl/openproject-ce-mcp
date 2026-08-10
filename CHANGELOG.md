@@ -30,6 +30,20 @@ support.
 - **`get_work_package`, `list_actions`, and `list_capabilities` gain a
   `select` parameter** to restrict the response to specific fields.
 - **`get_project` now returns the project's ancestor chain (`ancestors`).**
+- **`list_time_entries`, `list_notifications`, and `list_work_package_attachments`
+  gain a `select` parameter**, and `list_work_package_attachments` also gains
+  `offset`/`limit` pagination (previously always returned the full,
+  unbounded collection).
+- **`get_document`, `get_news`, and `get_wiki_page` gain a `text_limit`
+  parameter** to cap their long-form text at a given number of characters,
+  matching `get_work_package`'s existing parameter. `list_documents`,
+  `list_news`, `get_work_package_relations`/`list_relations`, and
+  `get_wiki_page` now report `description_truncated`/`description_length`
+  (or `content_truncated`/`content_length` for wiki pages) whenever that
+  field is cut, matching the existing pattern already used elsewhere (e.g.
+  work packages, time entries). `get_document`/`get_news` return their full
+  description by default now (previously silently capped at 1,200
+  characters with no way to request more).
 
 ### Changed
 
@@ -59,6 +73,15 @@ support.
 - CI now runs **Semgrep** as a second SAST pass, and a complete
   shell-script gate across the repo's shell scripts. No end-user-visible
   behavior change.
+- **Tool descriptions are substantially shorter across the whole catalog**:
+  duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
+  `select`, pagination, `include_sums`) between `search_work_packages` and
+  `list_work_packages`, and between the single-item and bulk work-package
+  write tools, now live in one place and are referenced by name instead of
+  restated; the repeated `select` boilerplate sentence across ~30 other tools
+  is now a short field list pointing at one shared explanation in the server's
+  own instructions. No behavior change — this only reduces the fixed
+  per-session token cost of the tool catalog itself.
 - **A project-scoped read tool (e.g. `list_work_packages`, `get_project`)
   is no longer registered when `OPENPROJECT_READ_PROJECTS` is empty.**
   Previously it stayed in the tool catalog even though it could only ever

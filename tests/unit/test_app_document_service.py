@@ -64,12 +64,14 @@ class _FakeDocumentApi:
         self.commit_update_calls: list[tuple[int, dict]] = []
         self.commit_result_project: str = "Demo Project"
 
-    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[DocumentRecord], int]:
+    async def list_all(
+        self, *, offset: int, page_size: int, text_limit: int | None = None
+    ) -> tuple[list[DocumentRecord], int]:
         self.list_all_calls.append(page_size)
         records = list(self._records.values())
         return records, len(records)
 
-    async def get(self, document_id: int) -> DocumentRecord:
+    async def get(self, document_id: int, *, text_limit: int | None = None) -> DocumentRecord:
         self.get_calls.append(document_id)
         if document_id not in self._records:
             raise AssertionError(f"no fake record for document_id {document_id}")
@@ -181,12 +183,14 @@ class _PagedFakeDocumentApi:
         self._pages = pages
         self.offsets_requested: list[int] = []
 
-    async def list_all(self, *, offset: int, page_size: int) -> tuple[list[DocumentRecord], int]:
+    async def list_all(
+        self, *, offset: int, page_size: int, text_limit: int | None = None
+    ) -> tuple[list[DocumentRecord], int]:
         self.offsets_requested.append(offset)
         records = self._pages.get(offset, [])
         return records, len(records)
 
-    async def get(self, document_id: int) -> DocumentRecord:
+    async def get(self, document_id: int, *, text_limit: int | None = None) -> DocumentRecord:
         raise NotImplementedError
 
     async def commit_update(self, document_id: int, payload: dict) -> DocumentDetail:

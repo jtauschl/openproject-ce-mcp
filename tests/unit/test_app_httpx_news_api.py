@@ -106,7 +106,10 @@ async def test_get_builds_record_with_detail_shaped_description_and_raw_project_
 
 @pytest.mark.asyncio
 async def test_get_summary_and_detail_apply_different_truncation_limits_to_same_raw_description() -> None:
-    long_text = "x" * 2_000  # longer than SUBJECT_LIMIT (255) and FORMATTABLE_LIMIT (1200)
+    """get()'s default is uncapped detail text (matching get_work_package's
+    text_limit=None default) -- only the list-row summary stays capped at
+    SUBJECT_LIMIT."""
+    long_text = "x" * 2_000  # longer than SUBJECT_LIMIT (255)
     payload = _news_payload()
     payload["description"] = {"format": "markdown", "raw": long_text}
 
@@ -121,6 +124,29 @@ async def test_get_summary_and_detail_apply_different_truncation_limits_to_same_
     assert record.summary.description is not None
     assert detail.description is not None
     assert len(record.summary.description) < len(detail.description)
+    assert record.summary.description_truncated is True
+    assert record.summary.description_length == 2_000
+    assert detail.description_truncated is False
+    assert detail.description_length == 2_000
+
+
+@pytest.mark.asyncio
+async def test_get_with_explicit_text_limit_caps_detail_description() -> None:
+    long_text = "x" * 2_000
+    payload = _news_payload()
+    payload["description"] = {"format": "markdown", "raw": long_text}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxNewsApi(HttpxTransport(http_client))
+        record = await api.get(1, text_limit=1_200)
+
+    detail = record.to_detail()
+    assert detail.description is not None
+    assert detail.description_truncated is True
+    assert detail.description_length == 2_000
 
 
 @pytest.mark.asyncio
