@@ -88,6 +88,16 @@ support.
   where the client looks for it.
 - Clarified that the VS Code/Copilot guide is about VS Code's own MCP host,
   not a standalone "GitHub MCP server".
+- **`get_work_package`'s docstring now states that `work_package_id` is the
+  same value `list_work_packages`/`search_work_packages` return as each
+  row's `id` field** — a caller could otherwise guess `id` (matching the
+  list output) and hit a validation error before retrying with the correct
+  name.
+- **`bulk_create_work_packages`/`bulk_update_work_packages`'s docstrings now
+  give an explicit example of each item's identifier field** —
+  `bulk_update_work_packages` items use `work_package_id`, not `id`; new
+  items in `bulk_create_work_packages` have no identifier field at all and
+  are matched back to their input purely by `index`.
 
 ## [Unreleased 0.3.6]
 
