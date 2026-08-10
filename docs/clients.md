@@ -86,12 +86,13 @@ client's config to another verbatim:
 
 `.mcp.json` *is* Claude Code's project config, so `configure` writes it once
 and reuses it; for every other client chosen at project scope, `configure`
-also writes a generic `.mcp.json` you can copy values from.
+instead writes a generic `openproject-mcp.example.json` (placeholder token)
+you can copy values from.
 
 To register manually instead of running `configure`, copy the `command` and
-`env` values from the generated `.mcp.json` into the file and format your
-client's guide shows — the values are identical across clients (see
-[`.mcp.json.example`](../.mcp.json.example) and
+`env` values from the generated `openproject-mcp.example.json` into the file
+and format your client's guide shows — the values are identical across
+clients (see [`.mcp.json.example`](../.mcp.json.example) and
 [Configuration](configuration.md) for the full set of `env` keys).
 
 Each client guide shows the project-scoped and/or user-wide config, how to
