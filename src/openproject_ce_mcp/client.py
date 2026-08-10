@@ -985,6 +985,15 @@ class OpenProjectClient:
     ) -> MembershipWriteResult:
         return await self._membership_service.delete(membership_id=membership_id, confirm=confirm)
 
+    # --- Cross-service coordinator -------------------------------------------
+    # get_my_project_access and get_project_work_package_context (further below)
+    # are the ONLY public methods on this class that are not pure one-line
+    # delegations to a single Service. Each combines several already-migrated
+    # Services/policies into one response shape that no single Service owns
+    # (OPM-380/B4). Every other public method here stays a pure
+    # `return await self._x_service.method(...)` delegation -- a new method
+    # needing more than that belongs alongside these two, explicitly, not
+    # silently mixed into the delegation methods around it.
     async def get_my_project_access(self, project_ref: str) -> ProjectAccessSummary:
         self._ensure_read_enabled("project")
         self._ensure_read_enabled("membership")
@@ -1249,6 +1258,8 @@ class OpenProjectClient:
     ) -> TimeEntryWriteResult:
         return await self._time_entry_service.delete(time_entry_id=time_entry_id, confirm=confirm)
 
+    # The other cross-service coordinator -- see get_my_project_access's
+    # header comment above (OPM-380/B4).
     async def get_project_work_package_context(
         self,
         *,

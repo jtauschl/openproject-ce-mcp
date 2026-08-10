@@ -82,6 +82,12 @@ support.
   is now a short field list pointing at one shared explanation in the server's
   own instructions. No behavior change — this only reduces the fixed
   per-session token cost of the tool catalog itself.
+- A new architecture-boundary test now permanently locks in that
+  `OpenProjectClient`'s public methods stay pure one-line delegations to a
+  single Service, except the two explicitly named cross-service coordinators
+  — a regression (a new method silently growing multi-service orchestration
+  logic inline) now fails CI immediately. No end-user-visible behavior
+  change.
 - **A project-scoped read tool (e.g. `list_work_packages`, `get_project`)
   is no longer registered when `OPENPROJECT_READ_PROJECTS` is empty.**
   Previously it stayed in the tool catalog even though it could only ever

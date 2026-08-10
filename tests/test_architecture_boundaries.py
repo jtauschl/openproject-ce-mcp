@@ -31,9 +31,11 @@ import pytest
 SRC = Path(__file__).resolve().parent.parent / "src" / "openproject_ce_mcp"
 APP = SRC / "app"
 
-# Pre-existing httpx importers not migrated to the layered app/ tree: client.py still does raw HTTP
-# for ~50 unmigrated domains; retry_transport.py is wrapped-not-replaced by design;
-# doctor.py/setup_cli.py are named, pre-existing exceptions.
+# Pre-existing httpx importers not migrated to the layered app/ tree: client.py's own httpx import is
+# now only used by its shared _get/_post/_request transport primitives and its two cross-service
+# coordinator methods (get_my_project_access, get_project_work_package_context -- see OPM-380/B4),
+# not by any per-domain logic (every domain method delegates to a Service); retry_transport.py is
+# wrapped-not-replaced by design; doctor.py/setup_cli.py are named, pre-existing exceptions.
 _PRE_EXISTING_HTTPX_IMPORTERS = {"client.py", "retry_transport.py", "doctor.py", "setup_cli.py"}
 _HTTPX_TRANSPORT_FILE = Path("transport") / "httpx_transport.py"
 
@@ -1594,4 +1596,84 @@ def test_work_package_service_binds_the_api_param_to_work_package_api_specifical
     assert hints["current_user"] is CurrentUserLookup, (
         "WorkPackageService.__init__'s current_user param must be typed CurrentUserLookup (OPM-380/D2: depends on "
         "CurrentUserResolver's implementation of this seam, not on client.py's get_current_user bound method)"
+    )
+
+
+# OPM-380/B4: the exact set of OpenProjectClient public methods allowed to contain real logic
+# instead of being a pure one-line delegation to a single Service. Lifecycle (initialize/aclose),
+# create_project/update_project's CLEAR-sentinel translation + identifier-cache sync, and
+# add_project_favorite/remove_project_favorite's shared-private-helper indirection are pre-existing,
+# understood minor deviations -- not orchestration logic, and out of B4's scope. get_my_project_access
+# and get_project_work_package_context are the two ticket-named cross-service coordinators (see the
+# section comment directly above them in client.py). A new method needing more than one Service call
+# must be added here explicitly, not silently left as a growing exception to the delegation pattern.
+_CLIENT_NON_DELEGATING_METHODS = frozenset(
+    {
+        "initialize",
+        "aclose",
+        "create_project",
+        "update_project",
+        "add_project_favorite",
+        "remove_project_favorite",
+        "get_my_project_access",
+        "get_project_work_package_context",
+    }
+)
+
+
+def _is_pure_service_delegation(fn: ast.AsyncFunctionDef) -> bool:
+    """True if fn's body is (optionally, a docstring, then) exactly one
+    `return await self._<x>_service.<method>(...)` statement."""
+    body = fn.body
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+        body = body[1:]
+    if len(body) != 1 or not isinstance(body[0], ast.Return):
+        return False
+    value = body[0].value
+    if not isinstance(value, ast.Await) or not isinstance(value.value, ast.Call):
+        return False
+    func = value.value.func
+    if not isinstance(func, ast.Attribute) or not isinstance(func.value, ast.Attribute):
+        return False
+    obj = func.value
+    return (
+        isinstance(obj.value, ast.Name)
+        and obj.value.id == "self"
+        and obj.attr.startswith("_")
+        and obj.attr.endswith("_service")
+    )
+
+
+def test_client_public_methods_are_pure_delegations_except_named_coordinators() -> None:
+    """Locks in OPM-380/B4's finding: nearly every public method on
+    OpenProjectClient is a pure one-line delegation to a single Service, and
+    the only methods allowed to deviate are the ones explicitly named in
+    _CLIENT_NON_DELEGATING_METHODS above. A new method silently growing
+    multi-Service orchestration logic inline (instead of either staying a
+    pure delegation, or being added to the allowlist with a reason) now
+    fails CI immediately instead of drifting back toward the pre-B4 state
+    where client.py was a second, undocumented orchestration layer."""
+    tree = ast.parse((SRC / "client.py").read_text())
+    class_node = next(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == "OpenProjectClient")
+    public_methods = [n for n in class_node.body if isinstance(n, ast.AsyncFunctionDef) and not n.name.startswith("_")]
+    assert public_methods, "expected OpenProjectClient to declare public async methods"
+
+    unexpected_non_delegating = [
+        m.name
+        for m in public_methods
+        if m.name not in _CLIENT_NON_DELEGATING_METHODS and not _is_pure_service_delegation(m)
+    ]
+    assert not unexpected_non_delegating, (
+        f"OpenProjectClient methods {unexpected_non_delegating} are not pure Service delegations and are not "
+        "in _CLIENT_NON_DELEGATING_METHODS -- either simplify them back to a pure "
+        "`return await self._x_service.method(...)`, or add them to the allowlist above with a reason "
+        "(see OPM-380/B4)."
+    )
+
+    stale_allowlist_entries = [
+        name for name in _CLIENT_NON_DELEGATING_METHODS if name not in {m.name for m in public_methods}
+    ]
+    assert not stale_allowlist_entries, (
+        f"_CLIENT_NON_DELEGATING_METHODS names {stale_allowlist_entries} that no longer exist on "
+        "OpenProjectClient -- remove them from the allowlist."
     )
