@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import os
 import sys
@@ -14,6 +15,7 @@ from mcp.server.fastmcp import FastMCP
 from . import __version__
 from .client import OpenProjectClient
 from .config import ConfigError, Settings, configure_logging, legacy_env_warnings
+from .strict_fastmcp import StrictFastMCP, verify_strict_dispatch
 from .tools import register_tools
 
 # Server instructions surfaced to the connecting agent in the MCP `initialize`
@@ -131,7 +133,10 @@ def create_app(settings: Settings) -> FastMCP:
     # log_level MUST be passed here: FastMCP.__init__ runs configure_logging() with
     # its own default (INFO) and installs a stderr handler, so omitting it lets the
     # SDK win the race and our OPENPROJECT_LOG_LEVEL never takes effect.
-    mcp = FastMCP(
+    #
+    # StrictFastMCP (not plain FastMCP): must be constructed as this exact
+    # class, not swapped in later — see strict_fastmcp.py for why.
+    mcp = StrictFastMCP(
         "OpenProject CE MCP",
         instructions=CE_INSTRUCTIONS,
         json_response=True,
@@ -168,7 +173,12 @@ def _run_server() -> None:
         print(f"[WARN] {warning}", file=sys.stderr)
 
     settings = Settings.from_env()
-    create_app(settings).run(transport="stdio")
+    app = create_app(settings)
+    # Fails loudly at startup if a future `mcp` SDK upgrade changes how
+    # FastMCP.call_tool is wired into request dispatch, instead of silently
+    # letting StrictFastMCP's validation go dark. See strict_fastmcp.py.
+    asyncio.run(verify_strict_dispatch(app))
+    app.run(transport="stdio")
 
 
 def _build_parser() -> argparse.ArgumentParser:

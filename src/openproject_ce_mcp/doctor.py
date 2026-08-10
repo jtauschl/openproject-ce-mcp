@@ -302,6 +302,9 @@ def _check_tool_registration(settings: Settings) -> bool:
     logging.root.setLevel(logging.CRITICAL)
 
     try:
+        # Plain FastMCP, not StrictFastMCP: this preview path only registers
+        # tools and lists them, it never calls call_tool(), so the strict
+        # argument-validation override has nothing to intercept here.
         mcp = FastMCP("doctor-preview", json_response=True, log_level="CRITICAL")
         register_tools(mcp, settings)
         tools = list(mcp._tool_manager.list_tools())
