@@ -13,16 +13,11 @@ documents_api.rb) parses the request body itself (`JSON.parse(request.body
 .read)`) and passes the RAW, still-nested `description` hash straight to
 `Documents::UpdateService`, instead of extracting `description.raw` first
 the way every other formattable-property-backed domain does (via
-API::Decorators::FormattableProperty's setter). Every confirmed
-update_document call therefore corrupts the stored description into a
-literal Ruby-hash-shaped string -- confirmed via raw curl (no client
-involved), confirmed this is not an encoding issue (Document#description=
-and JSON.parse both always yield UTF-8 strings on their own; a pure-ASCII
-payload additionally 500s via Commonmarker only as a downstream
-consequence of the corrupted hash-shaped string, not a genuine encoding
-bug), and confirmed identical against Puma directly (bypassing the bundled
-Apache). test_get_and_update_document below therefore cannot assert a
-clean round-trip until this is fixed upstream -- it documents the actual
+API::Decorators::FormattableProperty's setter). Every update_document call
+therefore corrupts the stored description into a literal Ruby-hash-shaped
+string, independent of the client, encoding, or web server in front of it.
+test_get_and_update_document below therefore cannot assert a clean
+round-trip until this is fixed upstream -- it documents the actual
 (broken) behavior instead of asserting an untrue contract.
 """
 

@@ -1,8 +1,8 @@
 """Integration tests for membership and user read operations.
 
-ACCEPTED GAP (OPM-345, 2026-08-07): unlike relations/versions/documents/
-views in this same pass, there is no test_list_project_memberships_paginates_
-beyond_a_single_page here. On this branch, list_project_memberships takes no
+ACCEPTED GAP: unlike relations/versions/documents/views, there is no
+test_list_project_memberships_paginates_beyond_a_single_page here. On this
+branch, list_project_memberships takes no
 offset/limit parameters at all -- it walks every server page internally and
 always returns the complete membership list in one call (see client.py's own
 comment on this method), so there is no caller-controllable page size to

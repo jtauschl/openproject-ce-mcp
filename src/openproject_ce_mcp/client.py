@@ -175,8 +175,8 @@ WORK_PACKAGE_ANCESTORS_LIMIT = 20
 ACTIVITY_DETAILS_LIMIT = 20
 BATCH_READ_MAX_IDS = 100
 
-# Concurrency bound for _work_package_project_allowed_bulk (OPM-379/F3), shared by
-# every bulk allowlist resolution (Relations, Notifications, Reminders, work-package
+# Concurrency bound for _work_package_project_allowed_bulk, shared by every bulk
+# allowlist resolution (Relations, Notifications, Reminders, work-package
 # hierarchy). Bounds burst load from a single page/array's worth of leaf lookups
 # firing at once while still letting the bounded sets involved (server pages of
 # roughly 50-100 raw elements, hierarchy capped at WORK_PACKAGE_CHILDREN_LIMIT +
@@ -275,10 +275,10 @@ class OpenProjectClient:
         # total concurrent batch-read HTTP traffic -- a per-call semaphore
         # would only cap ONE call's own fan-out, letting several simultaneous
         # get_work_packages() calls still produce calls x N concurrent
-        # requests (OPM-379/F6, ported from release/0.4.0). Deliberately
-        # independent from any semaphore F3's hierarchy-allowlist
-        # parallelization introduces, to avoid a deadlock risk if get_work_package
-        # (called by fetch_one below) itself performs nested allowlist checks.
+        # requests. Deliberately independent from any semaphore the
+        # hierarchy-allowlist parallelization introduces, to avoid a deadlock
+        # risk if get_work_package (called by fetch_one below) itself
+        # performs nested allowlist checks.
         self._batch_read_semaphore = asyncio.Semaphore(10)
         # Instance-scoped, shared by every _work_package_project_allowed_bulk()
         # call across all 4 F3 call sites (Relations, Notifications, Reminders,
@@ -331,7 +331,9 @@ class OpenProjectClient:
             return
         try:
             # Projects is genuinely OffsetPaginatedCollection server-side (verified
-            # against op-sources) -- a single bounded fetch capped at 500 used to
+            # against opf/openproject's lib/api/v3/projects/project_collection_representer.rb,
+            # which extends API::Decorators::OffsetPaginatedCollection) -- a
+            # single bounded fetch capped at 500 used to
             # silently skip caching the identifier of any project beyond that cap,
             # which then failed link-based allowlist matching for that project.
             elements = await self._fetch_all_pages("projects")
@@ -707,9 +709,9 @@ class OpenProjectClient:
 
         Triggered by the presence of the `_links.createdProject` key itself
         (extracted in get_job_status), NOT by `created_resource_type ==
-        "Project"` -- a Codex review caught that OpenProject's real
-        createdProject payload shape carries only href/title, no type
-        field, so that check silently never fired.
+        "Project"` -- OpenProject's real createdProject payload shape
+        carries only href/title, no type field, so that check would
+        silently never fire.
 
         Best-effort: a race (the project was deleted right after the copy
         completed, or scope tightened) must not fail the job-status read
@@ -1747,8 +1749,7 @@ class OpenProjectClient:
 
         # A single fetch capped at settings.max_results silently hid any
         # attachment beyond that cap -- scan server pages instead, same
-        # early-stopping pattern already applied to Documents/Views/News
-        # (OPM-379/F5, ported from release/0.4.0).
+        # early-stopping pattern already applied to Documents/Views/News.
         raw_items, truncated = await self._scan_and_paginate(
             f"work_packages/{work_package_id}/attachments",
             item_allowed=_attachment_item_allowed,
@@ -2605,10 +2606,10 @@ class OpenProjectClient:
         # WORK_PACKAGE_ANCESTORS_LIMIT=20), not a paginated server scan -- unlike
         # the 3 scan sites (Relations/Notifications/Reminders), there is no
         # early-stopping concern here, so both arrays' hrefs are collected and
-        # resolved together in ONE bulk call rather than page-by-page (OPM-379/F3
-        # plan Korrektur 2). Every entry in both arrays was unconditionally
-        # visited by the old sequential `keep()` too (no short-circuit), so every
-        # outcome here is "sequentially reachable" and a real Exception is always
+        # resolved together in ONE bulk call rather than page-by-page. Every
+        # entry in both arrays was unconditionally visited by the old
+        # sequential `keep()` too (no short-circuit), so every outcome here
+        # is "sequentially reachable" and a real Exception is always
         # re-raised, never swallowed.
         all_hrefs = [
             href
@@ -2686,8 +2687,8 @@ class OpenProjectClient:
             )
 
         # Create parallel fetch tasks, bounded by the shared batch-read
-        # semaphore (OPM-379/F6) -- `async with` guarantees the permit is
-        # released on every exit path, expected or not.
+        # semaphore -- `async with` guarantees the permit is released on
+        # every exit path, expected or not.
         async def fetch_one(work_package_ref: int | str) -> tuple[int | str, WorkPackageDetail | None, str | None]:
             async with self._batch_read_semaphore:
                 try:
@@ -3521,7 +3522,7 @@ class OpenProjectClient:
             if search:
                 # search must match the NORMALIZED name (trimmed, with the
                 # "Version {id}" fallback normalize_version applies), not the
-                # raw payload field -- OPM-373 Phase 5 plan review finding.
+                # raw payload field.
                 normalized = self.normalize_version(item)
                 return search.casefold() in (normalized.name or "").casefold()
             return True
@@ -3784,8 +3785,7 @@ class OpenProjectClient:
 
             # A single fetch capped at settings.max_results silently hid any
             # board beyond that cap once the endpoint's real result count
-            # exceeded it -- scan server pages instead (ported from
-            # release/0.4.0's OPM-373 Phase 5 fix, OPM-379/F2).
+            # exceeded it -- scan server pages instead.
             raw_items, truncated = await self._scan_and_paginate(
                 "queries", item_allowed=_board_item_allowed, offset=offset, limit=effective_limit
             )
@@ -4118,16 +4118,16 @@ class OpenProjectClient:
 
         Exactly one of `item_allowed`/`item_allowed_bulk` must be given.
         `item_allowed` awaits a single item at a time (fine for cheap,
-        non-I/O predicates -- most callers). `item_allowed_bulk` (OPM-379/F3)
-        is the page-batching hook for the 3 callers whose predicate performs
+        non-I/O predicates -- most callers). `item_allowed_bulk` is the
+        page-batching hook for the 3 callers whose predicate performs
         a per-item network lookup (Relations, Notifications, Reminders): it
         receives one whole fetched page of raw items and returns a
         same-length, same-order list of `bool | Exception` outcomes -- a plain
         `href -> bool` callback would not fit Relations' two-hrefs-per-item
         case or exception propagation. Deliberately NOT collecting/resolving
         across the whole call (that would rescan to server exhaustion on
-        every call, reintroducing the OPM-373/F1/F5 full-scan bug this
-        function's docstring above already explains) -- only ONE page's worth
+        every call, reintroducing the full-scan bug this function's
+        docstring above already explains) -- only ONE page's worth
         of items is bulk-resolved at a time, immediately followed by the same
         sequential skip/limit+1-lookahead consumption below as always, so
         server-side early-stopping is preserved (the final/terminal page can
@@ -4389,7 +4389,7 @@ class OpenProjectClient:
         # complete collection on every call (the prior _fetch_all_pages
         # approach) never reduced server load. Scan just enough pages to
         # fill the requested window instead, same early-stopping pattern as
-        # Relations (OPM-379/F5, ported from release/0.4.0).
+        # Relations.
         raw_items, truncated = await self._scan_and_paginate(
             "reminders",
             item_allowed_bulk=_reminder_page_allowed,
@@ -4843,7 +4843,7 @@ class OpenProjectClient:
             # in skipped-but-unverified earlier items. Adding
             # `(offset - 1) * effective_limit` here would overstate `total`
             # whenever `offset` lands past the real end of the allowed
-            # collection (OPM-373 Phase 5, caught by Codex review).
+            # collection.
             results = [self.normalize_notification(item) for item in filtered]
             total = len(results)
         return NotificationListResult(
@@ -4894,7 +4894,7 @@ class OpenProjectClient:
         `resource` link -- genuinely personal/global). Only the
         work-package-resource-link branch needs a network lookup; those
         hrefs across the whole page are collected and resolved together in
-        ONE bulk call (OPM-379/F3), instead of one `_work_package_project_allowed`
+        ONE bulk call, instead of one `_work_package_project_allowed`
         await per notification. No lookahead-truncation bug exists on this
         branch to fix (unlike release/0.4.0's equivalent) -- this file's
         `_scan_and_paginate` already has the correct `limit + 1` lookahead;
@@ -5359,8 +5359,7 @@ class OpenProjectClient:
 
         # A single fetch capped at settings.max_results silently hid any
         # file link beyond that cap -- scan server pages instead, same
-        # early-stopping pattern already applied to Documents/Views/News
-        # (OPM-379/F5, ported from release/0.4.0).
+        # early-stopping pattern already applied to Documents/Views/News.
         raw_items, truncated = await self._scan_and_paginate(
             f"work_packages/{work_package_id}/file_links",
             item_allowed=_file_link_item_allowed,
@@ -5815,9 +5814,8 @@ class OpenProjectClient:
         happened to `to` -- even if `to`'s own outcome was an Exception, it
         is deliberately swallowed here, because the old sequential
         `_relation_endpoints_allowed` returned False immediately after `from`
-        failed and never awaited `to` at all (OPM-379/F3 plan Korrektur 3).
-        Only when `from` is `True` does `to`'s outcome (bool or Exception)
-        get to decide/propagate.
+        failed and never awaited `to` at all. Only when `from` is `True`
+        does `to`'s outcome (bool or Exception) get to decide/propagate.
         """
         hrefs: list[str] = []
         for relation in relations:
@@ -5867,8 +5865,8 @@ class OpenProjectClient:
     ) -> dict[str, bool | Exception]:
         """Resolve many hrefs' `_work_package_project_allowed` outcome concurrently.
 
-        Shared bulk-resolution primitive for all 4 OPM-379/F3 call sites
-        (Relations, Notifications, Reminders, work-package hierarchy), replacing
+        Shared bulk-resolution primitive for all 4 call sites (Relations,
+        Notifications, Reminders, work-package hierarchy), replacing
         their previous sequential per-href awaiting. Callers pass their own
         per-top-level-call `cache` dict (never shared across calls -- a work
         package can change project at runtime, so a stale cached "allowed"

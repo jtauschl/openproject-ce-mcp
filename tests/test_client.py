@@ -1626,7 +1626,7 @@ async def test_hidden_group_field_is_rejected_on_update() -> None:
 
 @pytest.mark.asyncio
 async def test_hidden_relation_type_field_is_rejected_on_create() -> None:
-    """Regression test (found via Codex review): create_work_package_relation's
+    """Regression: create_work_package_relation's
     relation_type is a mandatory field written unconditionally, unlike
     description -- it needs its own guard, not just description's."""
 
@@ -1717,7 +1717,7 @@ async def test_hidden_relation_type_field_is_rejected_on_update() -> None:
 
 @pytest.mark.asyncio
 async def test_hidden_attachment_file_name_field_is_rejected_on_write() -> None:
-    """Regression test (found via Codex review): create_work_package_attachment
+    """Regression: create_work_package_attachment
     always writes file_name (a mandatory field), unlike description -- it
     needs its own guard, not just description's."""
 
@@ -4767,7 +4767,7 @@ async def test_get_work_package_rejects_path_traversal_ref() -> None:
 
 @pytest.mark.asyncio
 async def test_get_work_packages_bounds_concurrent_requests_to_the_semaphore_limit() -> None:
-    """Regression (OPM-379/F6): get_work_packages used to fan out
+    """Regression: get_work_packages used to fan out
     asyncio.gather with no concurrency cap at all -- up to BATCH_READ_MAX_IDS
     (100) requests could fire simultaneously. The shared, client-level
     semaphore must keep the observed peak at or below its configured limit."""
@@ -5014,7 +5014,7 @@ async def test_list_work_package_file_links_denies_anchor_outside_read_allowlist
 
 @pytest.mark.asyncio
 async def test_list_work_package_file_links_walks_multiple_server_pages_when_thinned_by_limit() -> None:
-    """Regression (OPM-379/F5): list_work_package_file_links used to fetch
+    """Regression: list_work_package_file_links used to fetch
     the ENTIRE collection on every call via _fetch_all_pages, with no way to
     request a smaller page. Now scans just enough server pages via
     _scan_and_paginate, same fix pattern already applied to
@@ -5550,7 +5550,7 @@ def _time_entry_item(item_id: int, *, project_href: str, project_title: str, spe
 
 @pytest.mark.asyncio
 async def test_list_time_entries_walks_multiple_server_pages_when_allowlist_thins_first_page() -> None:
-    """OPM-373 Phase 5: list_time_entries must scan multiple server pages until
+    """list_time_entries must scan multiple server pages until
     it collects `limit` allowed entries, not stop after a single bounded
     fetch."""
     settings = dataclasses.replace(make_settings(), read_projects=("demo",), max_page_size=2)
@@ -5599,7 +5599,7 @@ async def test_list_time_entries_walks_multiple_server_pages_when_allowlist_thin
 
 @pytest.mark.asyncio
 async def test_list_time_entries_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    """Regression: a naive scan implementation can set
     truncated=True as soon as `limit` allowed items are collected, without
     checking whether a matching time entry actually exists beyond that
     window."""
@@ -6413,7 +6413,7 @@ async def test_list_projects_cross_call_pagination_does_not_skip_or_duplicate() 
 
 @pytest.mark.asyncio
 async def test_list_projects_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): list_projects' old hand-rolled scan-and-skip
+    """Regression: list_projects' old hand-rolled scan-and-skip
     loop set truncated=True as soon as `limit` allowed items were collected,
     without checking whether a matching project actually exists beyond that
     window. Here exactly 1 allowed project exists (limit=1) and nothing follows
@@ -6921,7 +6921,7 @@ def _view_item(item_id: int, *, allowed: bool, view_type: str = "Views::Work") -
 
 @pytest.mark.asyncio
 async def test_list_views_walks_multiple_server_pages_when_allowlist_thins_first_page() -> None:
-    """OPM-373 Phase 5: list_views must scan multiple server pages until it
+    """list_views must scan multiple server pages until it
     collects `limit` allowed views, not stop after a single bounded fetch."""
     settings = dataclasses.replace(make_settings(), read_projects=("demo",), max_page_size=2)
     requested_offsets: list[str] = []
@@ -6956,7 +6956,7 @@ async def test_list_views_walks_multiple_server_pages_when_allowlist_thins_first
 
 @pytest.mark.asyncio
 async def test_list_views_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    """Regression: a naive scan implementation can set
     truncated=True as soon as `limit` allowed items are collected, without
     checking whether a matching view actually exists beyond that window."""
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
@@ -7080,8 +7080,9 @@ async def test_list_views_project_and_type_filters_match_normalized_fields() -> 
 @pytest.mark.asyncio
 async def test_get_category_uses_real_single_item_endpoint() -> None:
     """get_category must call OpenProject's real GET /api/v3/categories/{id}
-    single-item endpoint (verified against op-sources/17.4's categories_api.rb)
-    instead of re-listing every category in the project and filtering in
+    single-item endpoint (verified against opf/openproject's
+    lib/api/v3/categories/categories_api.rb) instead of re-listing every
+    category in the project and filtering in
     Python -- the mock only serves the single-item route, so a fallback to
     list_categories would fail this test with an unmocked-request error."""
 
@@ -7386,8 +7387,7 @@ async def test_list_boards_returns_empty_under_empty_read_projects() -> None:
 
 @pytest.mark.asyncio
 async def test_list_boards_walks_every_server_page_when_allowlist_thins_first_page() -> None:
-    """Regression (OPM-379/F2, ported from release/0.4.0's OPM-373 Phase 5
-    fix): the client-side-filtered branch used to fetch a single bounded
+    """Regression: the client-side-filtered branch used to fetch a single bounded
     page capped at settings.max_results, silently hiding any board beyond
     that cap. Now scans server pages via _scan_and_paginate, same fix
     pattern already applied to list_documents/list_news/etc."""
@@ -9821,7 +9821,7 @@ async def test_list_grids_filters_disallowed_project_scope() -> None:
 async def test_list_grids_paginates_client_side() -> None:
     # Regression test: list_grids previously sent no offset/pageSize at all and
     # returned every matching grid in one unbounded call. Fixed to clamp and
-    # scan-and-paginate like every sibling list_* method (OPM-373 Phase 5).
+    # scan-and-paginate like every sibling list_* method.
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/grids" and request.method == "GET":
             assert request.url.params.get("offset") == "1"
@@ -9846,7 +9846,7 @@ async def test_list_grids_paginates_client_side() -> None:
     assert [g.id for g in result.results] == [1, 2]
     assert result.count == 2
     # total is a lower bound (len(results) on this page), not an exact count of
-    # the full collection -- OPM-373 Phase 5's total-contract change, same
+    # the full collection -- the pagination total-contract change, same
     # convention as list_relations/list_notifications/list_projects/list_sprints.
     assert result.total == 2
     assert result.next_offset == 2
@@ -9857,7 +9857,7 @@ async def test_list_grids_paginates_client_side() -> None:
 
 @pytest.mark.asyncio
 async def test_list_grids_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): a naive walk-then-slice/scan implementation
+    """Regression: a naive walk-then-slice/scan implementation
     can set truncated=True as soon as `limit` allowed items are collected,
     without checking whether a matching grid actually exists beyond that
     window. Here exactly 1 allowed grid exists (limit=1) and nothing follows
@@ -11193,7 +11193,7 @@ async def test_update_work_package_denies_disallowed_parent_project() -> None:
 
 @pytest.mark.asyncio
 async def test_create_work_package_denies_reparent_into_a_readable_but_write_restricted_project() -> None:
-    """Regression test (found via Codex review): reparenting must be
+    """Regression test: reparenting must be
     write-authorized on the NEW parent too, not just on the project the new
     work package is created in. Previously the parent was only
     read-checked, so a caller with write access to "demo" could attach a
@@ -11228,7 +11228,7 @@ async def test_create_work_package_denies_reparent_into_a_readable_but_write_res
 
 @pytest.mark.asyncio
 async def test_update_work_package_denies_reparent_into_a_readable_but_write_restricted_project() -> None:
-    """Regression test (found via Codex review): same gap as the create_work_package
+    """Regression test: same gap as the create_work_package
     counterpart above, for update_work_package's reparent path."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -11277,7 +11277,7 @@ async def test_create_work_package_relation_denies_disallowed_target_project() -
 
 @pytest.mark.asyncio
 async def test_create_work_package_relation_denies_readable_but_write_restricted_target() -> None:
-    """Regression test (found via Codex review): the target's numeric id was
+    """Regression test: the target's numeric id was
     resolved with write=False (a plain reference lookup), so only the SOURCE
     work package's project was ever checked against WRITE_PROJECTS -- a
     caller with write on one project could link it to a work package in any
@@ -12208,7 +12208,7 @@ async def test_list_notifications_rescans_past_a_filtered_empty_first_page() -> 
     notification -- it must still be returned, not silently dropped.
     A third (empty) page is requested too: _scan_and_paginate collects one
     extra (limit + 1) match before deciding `truncated`, so confirming
-    "nothing more exists" costs one extra page fetch (OPM-373 Phase 5)."""
+    "nothing more exists" costs one extra page fetch."""
     requested_offsets: list[str] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -12340,7 +12340,7 @@ async def test_list_notifications_reports_truncated_under_restrictive_scope_when
 
 @pytest.mark.asyncio
 async def test_list_notifications_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): the old _rescan_notifications set
+    """Regression: the old _rescan_notifications set
     truncated=True as soon as `limit` allowed items were collected, without
     checking whether a matching item actually exists beyond that window.
     Here exactly 1 allowed notification exists (limit=1) and nothing follows
@@ -12546,7 +12546,7 @@ async def test_list_reminders_filters_by_read_projects_via_work_package() -> Non
 
 @pytest.mark.asyncio
 async def test_list_reminders_walks_multiple_server_pages_when_thinned_by_limit() -> None:
-    """Regression (OPM-379/F5): list_reminders used to fetch the ENTIRE
+    """Regression: list_reminders used to fetch the ENTIRE
     collection on every call via _fetch_all_pages, with no way to request a
     smaller page. Now scans just enough server pages via _scan_and_paginate,
     same fix pattern already applied to list_documents/list_news/etc --
@@ -12741,9 +12741,7 @@ async def test_update_reminder_denies_malformed_remindable_link_even_under_open_
 async def test_update_reminder_denies_non_string_remindable_href_even_under_open_scope() -> None:
     # A truthy but non-string href (e.g. {"href": 42}) must fail closed the
     # same way a missing href does, not fall through to
-    # _link_to_api_path/urlparse -- found via a Codex review during the
-    # Reminders domain's app/ migration; ported here since this flat
-    # implementation has the identical pre-existing gap.
+    # _link_to_api_path/urlparse.
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/reminders":
             return httpx.Response(
@@ -13629,8 +13627,7 @@ async def test_list_news_walks_every_server_page_when_allowlist_thins_first_page
     (verified against op-sources) and results are filtered client-side against
     the read allowlist -- a single bounded fetch capped at max_results used to
     silently hide any news item beyond that cap. Now scans server pages via
-    _scan_and_paginate, same fix pattern as list_versions' global branch
-    (OPM-373 Phase 5)."""
+    _scan_and_paginate, same fix pattern as list_versions' global branch."""
     requested_offsets: list[str] = []
 
     def news_item(item_id: int, allowed: bool) -> dict:
@@ -13678,7 +13675,7 @@ async def test_list_news_walks_every_server_page_when_allowlist_thins_first_page
 
 @pytest.mark.asyncio
 async def test_list_news_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    """Regression: a naive scan implementation can set
     truncated=True as soon as `limit` allowed items are collected, without
     checking whether a matching news item actually exists beyond that
     window."""
@@ -13971,7 +13968,7 @@ def _document_item(item_id: int, *, allowed: bool) -> dict:
 
 @pytest.mark.asyncio
 async def test_list_documents_walks_multiple_server_pages_when_allowlist_thins_first_page() -> None:
-    """OPM-373 Phase 5: list_documents must scan multiple server pages until it
+    """list_documents must scan multiple server pages until it
     collects `limit` allowed documents, not stop after a single bounded fetch."""
     settings = dataclasses.replace(make_settings(), read_projects=("demo",), max_page_size=2)
     requested_offsets: list[str] = []
@@ -14010,7 +14007,7 @@ async def test_list_documents_walks_multiple_server_pages_when_allowlist_thins_f
 
 @pytest.mark.asyncio
 async def test_list_documents_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    """Regression: a naive scan implementation can set
     truncated=True as soon as `limit` allowed items are collected, without
     checking whether a matching document actually exists beyond that window."""
     settings = dataclasses.replace(make_settings(), read_projects=("demo",))
@@ -15099,7 +15096,7 @@ async def test_list_versions_global_backfills_after_allowlist_filter() -> None:
     assert [v.id for v in page.results] == [2, 4]
     assert page.count == 2
     # total is a lower bound (len(results) on this page), not an exact count of
-    # the full allowlist-filtered collection -- OPM-373 Phase 5's total-contract
+    # the full allowlist-filtered collection -- the pagination total-contract
     # change, same convention as list_relations/list_notifications/list_projects/
     # list_sprints/list_grids.
     assert page.total == 2
@@ -15111,7 +15108,7 @@ async def test_list_versions_global_backfills_after_allowlist_filter() -> None:
 
 @pytest.mark.asyncio
 async def test_list_versions_global_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    """Regression: a naive scan implementation can set
     truncated=True as soon as `limit` allowed items are collected, without
     checking whether a matching version actually exists beyond that window.
     Here exactly 1 allowed version exists (limit=1) and nothing follows it --
@@ -15344,8 +15341,7 @@ async def test_list_users_search_walks_every_server_page_then_filters_and_pagina
     """Regression: Users is genuinely OffsetPaginatedCollection server-side
     (verified against op-sources) -- a single bounded fetch capped at
     max_results used to silently hide any search match beyond that cap. Now
-    scans server pages via _scan_and_paginate before filtering (OPM-373
-    Phase 5)."""
+    scans server pages via _scan_and_paginate before filtering."""
     requested_offsets: list[str] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -15397,7 +15393,7 @@ async def test_list_users_search_walks_every_server_page_then_filters_and_pagina
     second_page = await client.list_users(search="ali", limit=1, offset=2)
     assert [u.id for u in second_page.results] == [4]
     # total is a lower bound (len(results) on this page), not an exact count of
-    # the full search-filtered collection -- OPM-373 Phase 5's total-contract
+    # the full search-filtered collection -- the pagination total-contract
     # change, same convention as list_relations/list_projects/etc.
     assert second_page.total == 1
     assert second_page.truncated is False
@@ -15408,7 +15404,7 @@ async def test_list_users_search_walks_every_server_page_then_filters_and_pagina
 
 @pytest.mark.asyncio
 async def test_list_users_search_not_truncated_when_exactly_limit_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    """Regression: a naive scan implementation can set
     truncated=True as soon as `limit` matches are collected, without checking
     whether a matching user actually exists beyond that window."""
     settings = dataclasses.replace(make_settings(), enable_admin_read=True)
@@ -15483,8 +15479,7 @@ async def test_list_groups_search_walks_every_server_page_then_filters_and_pagin
     """Regression: Groups is genuinely OffsetPaginatedCollection server-side
     (verified against op-sources) -- a single bounded fetch capped at
     max_results used to silently hide any search match beyond that cap. Now
-    scans server pages via _scan_and_paginate before filtering (OPM-373
-    Phase 5)."""
+    scans server pages via _scan_and_paginate before filtering."""
     requested_offsets: list[str] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -15526,7 +15521,7 @@ async def test_list_groups_search_walks_every_server_page_then_filters_and_pagin
     second_page = await client.list_groups(search="alpha", limit=1, offset=2)
     assert [g.id for g in second_page.results] == [4]
     # total is a lower bound (len(results) on this page), not an exact count of
-    # the full search-filtered collection -- OPM-373 Phase 5's total-contract
+    # the full search-filtered collection -- the pagination total-contract
     # change, same convention as list_users/list_projects/etc.
     assert second_page.total == 1
     assert second_page.truncated is False
@@ -15537,7 +15532,7 @@ async def test_list_groups_search_walks_every_server_page_then_filters_and_pagin
 
 @pytest.mark.asyncio
 async def test_list_groups_search_not_truncated_when_exactly_limit_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    """Regression: a naive scan implementation can set
     truncated=True as soon as `limit` matches are collected, without checking
     whether a matching group actually exists beyond that window."""
     settings = dataclasses.replace(make_settings(), enable_admin_read=True)
@@ -15622,7 +15617,7 @@ async def test_list_sprints_backfills_after_allowlist_filter() -> None:
     assert [s.id for s in page.results] == [2, 4]
     assert page.count == 2
     # total is a lower bound (len(results) on this page), not an exact count of
-    # the full allowlist-filtered collection -- OPM-373 Phase 5's total-contract
+    # the full allowlist-filtered collection -- the pagination total-contract
     # change, same convention as list_relations/list_notifications.
     assert page.total == 2
     assert page.truncated is True
@@ -15693,7 +15688,7 @@ async def test_list_project_sprints_backfills_after_allowlist_filter() -> None:
     assert [s.id for s in page.results] == [2, 4]
     assert page.count == 2
     # total is a lower bound (len(results) on this page), not an exact count of
-    # the full allowlist-filtered collection -- OPM-373 Phase 5's total-contract
+    # the full allowlist-filtered collection -- the pagination total-contract
     # change, same convention as list_relations/list_notifications.
     assert page.total == 2
     assert page.truncated is True
@@ -15704,7 +15699,7 @@ async def test_list_project_sprints_backfills_after_allowlist_filter() -> None:
 
 @pytest.mark.asyncio
 async def test_list_sprints_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): the old walk-then-slice implementation set
+    """Regression: the old walk-then-slice implementation set
     truncated based on comparing the slice end against the fully-filtered total,
     which happened to be correct there -- but the new scan-and-paginate helper
     must independently get this right too. Exactly 1 allowed sprint exists
@@ -16874,7 +16869,7 @@ async def test_normalize_work_package_prefers_start_date_due_date_over_milestone
 
 @pytest.mark.asyncio
 async def test_create_time_entry_preview_reflects_openproject_validation_errors() -> None:
-    """Regression test (found via Codex review): create_time_entry used to
+    """Regression test: create_time_entry used to
     hardcode ready=True/validation_errors={} in its preview instead of
     consulting OpenProject's own CreateFormAPI (POST time_entries/form) --
     a payload this server's own field checks accept could still be rejected
@@ -17490,7 +17485,7 @@ async def test_ensure_project_write_link_allowed_if_present_denies_malformed_lin
     await client.aclose()
 
 
-# --- OPM-379/F3: parallelized N+1 allowlist checks (Relations, Notifications,
+# --- Parallelized N+1 allowlist checks (Relations, Notifications,
 # Reminders, work-package hierarchy) ---
 
 
@@ -17524,7 +17519,7 @@ def _wp_handler_factory(wp_projects: dict[int, str], active: dict[str, int] | No
 
 
 async def test_list_relations_bulk_allowlist_resolution_is_concurrent_and_bounded() -> None:
-    """Regression (OPM-379/F3): list_relations used to await each relation's
+    """Regression: list_relations used to await each relation's
     from/to allowlist lookup sequentially (N+1). The new bulk resolution must
     show genuine overlap (max_active >= 2) while still respecting the shared
     _allowlist_semaphore's upper bound (max_active <= its configured limit)."""
@@ -17624,7 +17619,7 @@ async def test_list_notifications_bulk_allowlist_resolution_is_concurrent_and_bo
 
 
 async def test_hierarchy_filter_bulk_allowlist_resolution_is_concurrent_and_bounded() -> None:
-    """children + ancestors combined (OPM-379/F3 Korrektur 2) must resolve
+    """children + ancestors combined must resolve
     concurrently as ONE bulk call, not two sequential keep() passes."""
     children_raw = [{"href": f"/api/v3/work_packages/{100 + i}", "title": f"Child {i}"} for i in range(10)]
     ancestors_raw = [{"href": f"/api/v3/work_packages/{200 + i}", "title": f"Ancestor {i}"} for i in range(10)]
@@ -17663,12 +17658,11 @@ async def test_hierarchy_filter_bulk_allowlist_resolution_is_concurrent_and_boun
 
 
 async def test_allowlist_semaphore_bounds_two_concurrent_call_sites_together() -> None:
-    """The F3 semaphore is a single INSTANCE-wide object shared by all 4 call
+    """The shared semaphore is a single INSTANCE-wide object shared by all 4 call
     sites, not one per call -- two simultaneous top-level calls on different
     sites (list_relations and list_reminders) must still keep their COMBINED
-    peak concurrency at or below the shared limit (2nd Codex review round:
-    testing two calls of the *same* site would not catch a per-call-local
-    semaphore bug)."""
+    peak concurrency at or below the shared limit (testing two calls of the
+    *same* site would not catch a per-call-local semaphore bug)."""
     active = {"count": 0, "peak": 0}
     wp_projects = dict.fromkeys(range(1, 41), "demo")
     wp_handler = _wp_handler_factory(wp_projects, active)
@@ -17721,9 +17715,9 @@ async def test_allowlist_semaphore_bounds_two_concurrent_call_sites_together() -
 
 
 async def test_f3_and_f6_semaphores_are_structurally_distinct_objects() -> None:
-    """Structural assertion (OPM-379/F3 plan): the new allowlist semaphore must
-    be a genuinely SEPARATE asyncio.Semaphore instance from F6's
-    _batch_read_semaphore, not the same object reused -- a shared semaphore
+    """Structural assertion: the new allowlist semaphore must
+    be a genuinely SEPARATE asyncio.Semaphore instance from the batch-read
+    semaphore (_batch_read_semaphore), not the same object reused -- a shared semaphore
     would deadlock get_work_packages(), whose nested get_work_package() ->
     _filter_hierarchy_allowlist() call would then wait on permits held by its
     own outer batch-read callers. Same numeric limit (10) on both is fine and
@@ -17839,7 +17833,7 @@ async def test_list_relations_dedupes_repeated_href_within_and_across_server_pag
 
 async def test_hierarchy_filter_dedupes_href_shared_between_children_and_ancestors() -> None:
     """The same href appearing in both children and ancestors (combined bulk
-    resolution, OPM-379/F3 Korrektur 2) must be fetched only once."""
+    resolution) must be fetched only once."""
     shared_href = "/api/v3/work_packages/50"
     wp_get_count = {"count": 0}
 
@@ -17879,8 +17873,8 @@ async def test_hierarchy_filter_dedupes_href_shared_between_children_and_ancesto
 
 
 async def test_list_relations_separate_top_level_calls_do_not_share_cache() -> None:
-    """Cross-call caching remains explicitly out of scope (OPM-379/F3 plan
-    Korrektur 5): a work package can change project between calls, so each
+    """Cross-call caching remains explicitly out of scope: a work package
+    can change project between calls, so each
     top-level list_relations() call must refetch every href from scratch,
     even if an earlier call already resolved the same href."""
     wp_get_count = {"count": 0}
@@ -17924,7 +17918,7 @@ async def test_list_relations_separate_top_level_calls_do_not_share_cache() -> N
 
 
 async def test_list_relations_swallows_to_side_failure_when_from_side_already_denied() -> None:
-    """OPM-379/F3 Korrektur 3: a relation's `to` href can now be looked up
+    """A relation's `to` href can now be looked up
     speculatively (in the same bulk batch as `from`) even in cases the OLD
     sequential code would never have reached -- specifically, once `from`
     resolves to False (denied), the old code returned False immediately and
@@ -18021,7 +18015,7 @@ async def test_list_relations_propagates_to_side_failure_when_from_side_allowed(
 
 
 async def test_list_relations_two_failing_hrefs_same_relation_propagates_from_sides_exception() -> None:
-    """2nd Codex review round: when BOTH from and to fail with GENUINE
+    """When BOTH from and to fail with GENUINE
     exceptions (not one side resolving to a plain `False` via a 404, which
     _work_package_project_allowed_bulk's leaf await catches internally and
     never surfaces as an Exception outcome at all), the FROM side's
@@ -18038,8 +18032,8 @@ async def test_list_relations_two_failing_hrefs_same_relation_propagates_from_si
     was raised (a prior version of this test used a 404 for `to`, which
     resolves to plain `False` rather than an Exception outcome -- it could
     not actually distinguish "from's exception won" from "to's failure was
-    silently swallowed as denied", a real gap caught by a 2nd Codex review
-    round of the finished implementation, not just the plan)."""
+    silently swallowed as denied", a real gap in the finished implementation,
+    not just the plan)."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/relations":
@@ -18083,7 +18077,7 @@ async def test_list_relations_two_failing_hrefs_same_relation_propagates_from_si
 
 
 async def test_list_reminders_failure_beyond_lookahead_cutoff_is_not_raised() -> None:
-    """OPM-379/F3 Korrektur 3: with bulk resolution, a WHOLE page's hrefs are
+    """With bulk resolution, a WHOLE page's hrefs are
     resolved concurrently, including items past the limit+1 lookahead cutoff
     the sequential consumption loop would stop before ever reaching. If one
     of those never-reached items' hrefs fails (e.g. a 500), that failure must

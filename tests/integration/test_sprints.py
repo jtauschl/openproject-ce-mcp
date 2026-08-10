@@ -7,8 +7,8 @@ pre-existing sprint sourced via list_sprints -- if the test project/instance
 has none (or the Backlogs module isn't installed), the tests skip rather
 than fail, since there's no API to seed a sprint.
 
-ACCEPTED GAP (OPM-345, 2026-08-07): unlike views/documents/relations (this
-branch's list_project_memberships has no offset/limit param at all -- see
+ACCEPTED GAP: unlike views/documents/relations (this branch's
+list_project_memberships has no offset/limit param at all -- see
 test_memberships.py), sprints has NO paginate-beyond-a-single-page
 regression test in this file. The Docker test instance has zero sprints
 (confirmed live via a direct admin-token API call) -- with no create API and

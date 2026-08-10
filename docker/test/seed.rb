@@ -33,7 +33,7 @@ log("API_TOKEN=#{token.plain_value}")
 # --- Restricted-permission role + user -----------------------------------------
 # Grants log_own_time but withholds log_time/view_time_entries/manage_members,
 # reproducing the exact permission-gating asymmetry GitHub issue #10 covers
-# (see app/services/time_entry_service.py's own docstring): OpenProject's
+# (see client.py's _time_entry_activities_from_project): OpenProject's
 # CreateContract#allowed_to_log_own? only validates log_own_time against a
 # concrete WorkPackage/Meeting entity link, never a project-only link.
 # Integration tests need a REAL restricted OpenProject role to exercise this --
