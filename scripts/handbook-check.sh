@@ -125,11 +125,12 @@ set -euo pipefail
 # never prints secrets, raw API error response bodies, or command traces that could leak a
 # credential — a captured API error is summarized, not echoed verbatim.
 #
-# Usage: ./handbook-check.sh.example [--migrate | --whats-new [<target-tag>]]
-#   e.g. ./handbook-check.sh.example
-#        ./handbook-check.sh.example --migrate
-#        ./handbook-check.sh.example --whats-new
-#        ./handbook-check.sh.example --whats-new v0.10.2
+# Usage (as copied into a project's own scripts/ — see ../../02-bootstrap/project-setup.md#where-a-
+# copied-automation-script-lives): ./handbook-check.sh [--migrate | --whats-new [<target-tag>]]
+#   e.g. ./handbook-check.sh
+#        ./handbook-check.sh --migrate
+#        ./handbook-check.sh --whats-new
+#        ./handbook-check.sh --whats-new v0.10.2
 #   Run from anywhere inside the code repo (or any of its sibling companion repos) — this script
 #   locates the umbrella directory itself (see locate_umbrella() below) rather than assuming a
 #   specific invocation-time working directory. --migrate additionally updates
@@ -165,7 +166,7 @@ set -euo pipefail
 # silently "work" — see github-security-settings.sh.example's own header comment for the full
 # reasoning; the short version is that an invalid placeholder makes every resulting doc link 404
 # loudly until it's actually set, instead of silently resolving to the wrong policy version.
-SW_DEV_HANDBOOK_DOC_REF="${SW_DEV_HANDBOOK_DOC_REF:-v0.10.5}"
+SW_DEV_HANDBOOK_DOC_REF="${SW_DEV_HANDBOOK_DOC_REF:-v0.10.9}"
 
 # Fixed, non-configurable: no exceptions[] entry in handbook-baseline.yml may waive any of these
 # four check IDs, no matter what handbook-baseline.yml itself claims. An exceptions[] entry
@@ -182,20 +183,25 @@ LIVE_CHECK_IDS=(github_issues_vs_tracker branch_protection dependabot_readonly o
 
 KNOWN_BASELINE_SCHEMA_VERSION=1
 
+# The name this script was actually invoked as (e.g. "handbook-check.sh" once copied into a
+# project's own scripts/), not a hardcoded guess — every usage message below prints this instead
+# of the upstream template's own "handbook-check.sh.example" name, which no consumer runs.
+script_name="$(basename -- "${BASH_SOURCE[0]}")"
+
 migrate=0
 whats_new=0
 whats_new_target_tag=""
 case "${1:-}" in
 --migrate)
     if [ $# -gt 1 ]; then
-        echo "handbook-check: --migrate takes no further arguments (got: ${*:2}) (usage: ./handbook-check.sh.example [--migrate | --whats-new [<target-tag>]])" >&2
+        echo "handbook-check: --migrate takes no further arguments (got: ${*:2}) (usage: ./$script_name [--migrate | --whats-new [<target-tag>]])" >&2
         exit 1
     fi
     migrate=1
     ;;
 --whats-new)
     if [ $# -gt 2 ]; then
-        echo "handbook-check: --whats-new takes at most one target-tag argument (got: ${*:2}) (usage: ./handbook-check.sh.example [--migrate | --whats-new [<target-tag>]])" >&2
+        echo "handbook-check: --whats-new takes at most one target-tag argument (got: ${*:2}) (usage: ./$script_name [--migrate | --whats-new [<target-tag>]])" >&2
         exit 1
     fi
     whats_new=1
@@ -203,7 +209,7 @@ case "${1:-}" in
     ;;
 "") ;;
 *)
-    echo "handbook-check: unknown argument: $1 (usage: ./handbook-check.sh.example [--migrate | --whats-new [<target-tag>]])" >&2
+    echo "handbook-check: unknown argument: $1 (usage: ./$script_name [--migrate | --whats-new [<target-tag>]])" >&2
     exit 1
     ;;
 esac
@@ -417,7 +423,7 @@ if [ "$whats_new" -eq 1 ]; then
             echo "handbook-check --whats-new: no target tag given and gh CLI not found — cannot resolve the latest release" >&2
             exit 1
         fi
-        if ! target_tag="$( (cd "$UMBRELLA_DIR/sw_dev_handbook" && gh release view --json tagName -q .tagName) 2>&1)"; then
+        if ! target_tag="$( (cd "$UMBRELLA_DIR/sw_dev_handbook" && gh release view --json tagName -q .tagName) 2>/dev/null)"; then
             echo "handbook-check --whats-new: could not determine the latest sw_dev_handbook release — network/auth failure, or no releases exist yet" >&2
             exit 1
         fi
@@ -729,6 +735,36 @@ sha256_of() {
     fi
 }
 
+# semver_compare <a> <b>: echoes "gt" (a>b), "lt" (a<b), "eq", or "unorderable" (either input isn't
+# a plain vMAJOR.MINOR.PATCH tag — e.g. carries a pre-release suffix — so no safe ordering claim is
+# made; the caller falls back to a direction-agnostic message rather than guessing). No `sort -V`:
+# GNU sort's `-V` flag isn't guaranteed present on every macOS `sort` build (see ../../05-tooling/
+# github.md's own reasoning against relying on it for Xcode version selection).
+semver_compare() {
+    local a="${1#v}" b="${2#v}"
+    local a_major a_minor a_patch b_major b_minor b_patch
+    IFS='.' read -r a_major a_minor a_patch <<<"$a"
+    IFS='.' read -r b_major b_minor b_patch <<<"$b"
+    # Each component capped at 18 digits — safely inside bash's signed-64-bit integer range (max
+    # ~19 digits), so the `-gt`/`-ne` comparisons below can never overflow into a wrong "eq" or a
+    # `[: value too great for base` error. No real SemVer tag needs anywhere near this many digits;
+    # this only guards against a malformed or adversarial input.
+    if ! [[ "$a_major" =~ ^[0-9]{1,18}$ && "$a_minor" =~ ^[0-9]{1,18}$ && "$a_patch" =~ ^[0-9]{1,18}$ &&
+        "$b_major" =~ ^[0-9]{1,18}$ && "$b_minor" =~ ^[0-9]{1,18}$ && "$b_patch" =~ ^[0-9]{1,18}$ ]]; then
+        echo "unorderable"
+        return
+    fi
+    if [ "$a_major" -ne "$b_major" ]; then
+        [ "$a_major" -gt "$b_major" ] && echo "gt" || echo "lt"
+    elif [ "$a_minor" -ne "$b_minor" ]; then
+        [ "$a_minor" -gt "$b_minor" ] && echo "gt" || echo "lt"
+    elif [ "$a_patch" -ne "$b_patch" ]; then
+        [ "$a_patch" -gt "$b_patch" ] && echo "gt" || echo "lt"
+    else
+        echo "eq"
+    fi
+}
+
 # permissive_subcommand_check <dev-script> <subcommand>: shared logic for dev_subcommands (#7) and
 # handbook_check_wired (#8) — both need the same "confirm presence without assuming a specific
 # ./dev shape" pattern (../../02-bootstrap/project-setup.md#build-wrapper--dev names the minimum
@@ -743,9 +779,14 @@ permissive_subcommand_check() {
         echo "unknown"
         return
     fi
-    # A `case` branch: a line consisting of (optionally several `|`-separated) bare words
-    # including our subcommand, immediately followed by a `)` — e.g. "lint)" or "lint|check)".
-    if grep -qE "(^|\\|)${subcommand}(\\||\\))" "$dev_script"; then
+    # A `case` branch: a line that, after any leading whitespace (a real-world `case` block is
+    # normally indented, e.g. "  bootstrap) cmd_bootstrap ;;") and optional `|`-separated
+    # alternatives before or after it, has our subcommand immediately followed by a `)` — e.g.
+    # "lint)", "  lint)", or "check|lint)". Anchored to the actual start of the (whitespace-
+    # trimmed) line rather than just "whitespace appears somewhere before it" — the latter would
+    # also match the subcommand appearing after a `#` inside a comment (e.g. "# TODO: wire
+    # handbook-check)"), which isn't a real case branch and must never count as positive evidence.
+    if grep -qE "^[[:space:]]*([A-Za-z0-9_-]+\\|)*${subcommand}(\\|[A-Za-z0-9_-]+)*\\)" "$dev_script"; then
         echo "yes"
         return
     fi
@@ -993,7 +1034,7 @@ check_profile_hash_drift() {
     if [ "$recorded_sha256" = "$actual_sha256" ]; then
         record_outcome profile_hash_drift PASS "handbook-baseline.yml's recorded profile.source_sha256 matches $PROFILE_FILE's current content"
     else
-        record_outcome profile_hash_drift WARN "handbook-baseline.yml's recorded profile.source_sha256 ($recorded_sha256) does not match $PROFILE_FILE's current content ($actual_sha256) — the profile was edited (or never migrated) since the baseline was last reconciled; run ./handbook-check.sh.example --migrate to update the recorded hash (report-only: editing the profile is normal, this is not itself a policy violation)"
+        record_outcome profile_hash_drift WARN "handbook-baseline.yml's recorded profile.source_sha256 ($recorded_sha256) does not match $PROFILE_FILE's current content ($actual_sha256) — the profile was edited (or never migrated) since the baseline was last reconciled; run ./$script_name --migrate to update the recorded hash (report-only: editing the profile is normal, this is not itself a policy violation)"
     fi
 }
 
@@ -1083,11 +1124,17 @@ check_no_int_content_leak() {
 #
 # A documented divergence (a project's own copy customized for a real, legitimate local reason —
 # see #where-a-copied-automation-script-lives and the needle-shape guidance in
-# check_no_int_content_leak() above) is recorded in a sidecar `<script>.divergence-reason` file
+# check_no_int_content_leak() above) is recorded in a sidecar `<script>.divergence-reason.yml` file
 # next to the copy, holding a `local_sha256_at_documentation: <hash>` and an
 # `upstream_sha256_at_documentation: <hash>` line each (the local copy's own hash AND the upstream
 # template's hash, both captured at the moment the divergence was written down — recording only one
-# of the two makes it impossible to tell whether the OTHER side has since changed). Three outcomes:
+# of the two makes it impossible to tell whether the OTHER side has since changed). The `.yml`
+# suffix deliberately distinguishes this structured, two-field sidecar from commit_msg_hook's own
+# unrelated `.divergence-reason` convention (no extension, pure existence check, any content
+# satisfies it) — the two checks used the identical bare filename for conceptually different
+# schemas, which meant a project could create one in the shape of the other and get a confusing
+# false-positive WARN here (silently-empty recorded hashes read as "still diverged, unreconciled").
+# Three outcomes:
 #   - local-current matches local-recorded, upstream-current matches upstream-recorded -> silent,
 #     nothing changed on either side since the divergence was documented.
 #   - local-current matches local-recorded, upstream-current DIFFERS from upstream-recorded -> WARN
@@ -1136,7 +1183,7 @@ check_copied_script_drift() {
         local_hash="$(sha256_of "$local_path")"
         upstream_hash="$(sha256_of "$upstream_path")"
         if [ "$local_hash" != "$upstream_hash" ]; then
-            divergence_file="${local_path}.divergence-reason"
+            divergence_file="${local_path}.divergence-reason.yml"
             if [ ! -f "$divergence_file" ]; then
                 warnings+=("$name: diverges from $upstream_path and no $divergence_file documents why — re-copy from the current template, or document the divergence (see this check's own header comment)")
             else
@@ -1188,7 +1235,7 @@ check_copied_script_drift() {
                 continue
             fi
 
-            local divergence_file="${local_path}.divergence-reason"
+            local divergence_file="${local_path}.divergence-reason.yml"
             if [ ! -f "$divergence_file" ]; then
                 warnings+=("$local_path: diverges from $upstream_path and no $divergence_file documents why — re-copy from the current template, or document the divergence (see this check's own header comment)")
                 continue
@@ -1214,8 +1261,10 @@ check_copied_script_drift() {
         record_outcome copied_script_drift PASS "every copied template script present in this repo (handbook-check.sh, plus github-security-settings.sh/kmp-commonmain-drift-check.sh if copied) matches its current upstream template, or has an up-to-date documented divergence"
         return
     fi
-    local joined
-    joined="$(printf '%s; ' "${warnings[@]}")"
+    local joined="${warnings[0]}" w
+    for w in "${warnings[@]:1}"; do
+        joined="${joined}; ${w}"
+    done
     record_outcome copied_script_drift WARN "$joined"
 }
 
@@ -1464,15 +1513,35 @@ check_latest_release_vs_pinned() {
     local pinned
     pinned="$(yq_baseline "$BASELINE_FILE" '.handbook.pinned_tag' 2>/dev/null || true)"
     local latest
-    if ! latest="$( (cd "$UMBRELLA_DIR/sw_dev_handbook" && gh release view --json tagName -q .tagName) 2>&1)"; then
+    if ! latest="$( (cd "$UMBRELLA_DIR/sw_dev_handbook" && gh release view --json tagName -q .tagName) 2>/dev/null)"; then
         record_outcome latest_release_vs_pinned WARN "could not determine the latest sw_dev_handbook release — network/auth failure, or no releases exist yet"
         return
     fi
     if [ "$pinned" = "$latest" ]; then
         record_outcome latest_release_vs_pinned WARN "pinned tag ($pinned) is the latest release"
-    else
-        record_outcome latest_release_vs_pinned WARN "pinned tag ($pinned) is behind the latest release ($latest) — see ../../02-bootstrap/project-setup.md#repo-topology for the update procedure"
+        return
     fi
+    case "$(semver_compare "$pinned" "$latest")" in
+    gt)
+        record_outcome latest_release_vs_pinned WARN "pinned tag ($pinned) is numerically ahead of what GitHub currently marks as the latest release ($latest) — either this tag hasn't been published as a release yet, or a different release is marked latest; verify manually if unsure"
+        ;;
+    lt)
+        record_outcome latest_release_vs_pinned WARN "pinned tag ($pinned) is behind the latest release ($latest) — see ../../02-bootstrap/project-setup.md#repo-topology for the update procedure"
+        ;;
+    eq)
+        # Numerically equal but not string-identical (the earlier `[ "$pinned" = "$latest" ]`
+        # check above already handled the identical case) — e.g. "v1.2.0" vs "v01.2.0". Still
+        # worth a WARN rather than silence, since a non-canonical tag string is itself unusual.
+        record_outcome latest_release_vs_pinned WARN "pinned tag ($pinned) and the latest release ($latest) are numerically the same version but not written identically — verify this isn't a tag-formatting mistake"
+        ;;
+    unorderable)
+        # Genuinely direction-agnostic, matching semver_compare's own documented contract — a
+        # pinned or latest tag that isn't a plain vMAJOR.MINOR.PATCH (e.g. a pre-release suffix)
+        # can't be safely claimed as ahead or behind, so this must not silently reuse the "behind"
+        # wording above just because they differ.
+        record_outcome latest_release_vs_pinned WARN "pinned tag ($pinned) differs from the latest release ($latest), but at least one of the two isn't a plain vMAJOR.MINOR.PATCH tag, so this check can't determine which is newer — verify manually"
+        ;;
+    esac
 }
 
 # ===================================================================================================
@@ -1614,7 +1683,69 @@ if [ "$migrate" -eq 1 ]; then
         else
             new_source="${rel_up}${profile_basename}"
         fi
-        yq -i ".profile.source_sha256 = \"$new_hash\" | .profile.source = \"$new_source\"" "$BASELINE_FILE"
+        # A targeted text patch, not `yq -i`: yq always re-parses and re-serializes the entire
+        # document, which reformats every line in the file (strips blank lines, collapses flow-
+        # mapping spacing) even though only these two scalars actually change. The `in_profile`
+        # state keeps the match scoped to the top-level `profile:` mapping specifically, since
+        # `source:`/`source_sha256:` alone are too generic to replace unconditionally if the
+        # schema ever gains a same-named key elsewhere. The replacement line is built via
+        # `substr()`-preserved-indent concatenation, not `sub()`'s own replacement-string argument
+        # — that argument treats a literal `&` as "the matched text," which would corrupt a
+        # profile path containing one. Values are passed via ENVIRON, not `awk -v`: `-v` itself
+        # interprets C-style backslash escapes (e.g. `-v x='a\bc'` silently becomes a backspace
+        # byte), which would corrupt a path containing a literal backslash before this script's
+        # own yaml_escape() ever sees it — an environment variable is passed through verbatim.
+        # yaml_escape() itself then escapes both backslash and double-quote so the result is a
+        # valid double-quoted YAML scalar even if the profile's resolved path contains either.
+        # found_source/found_hash guard against a baseline whose profile: block doesn't look
+        # exactly as expected (unexpected formatting, or the keys missing outright) — without
+        # this, such a file would pass through completely unchanged while the script still claims
+        # success below.
+        if ! NEW_BASELINE_SOURCE="$new_source" NEW_BASELINE_SHA256="$new_hash" awk '
+            function yaml_escape(s) {
+                gsub(/\\/, "\\\\", s)
+                gsub(/"/, "\\\"", s)
+                return s
+            }
+            BEGIN {
+                in_profile = 0
+                esc_source = yaml_escape(ENVIRON["NEW_BASELINE_SOURCE"])
+                esc_hash = yaml_escape(ENVIRON["NEW_BASELINE_SHA256"])
+                found_source = 0
+                found_hash = 0
+            }
+            /^profile:[[:space:]]*$/ { in_profile = 1; print; next }
+            in_profile && /^[^[:space:]]/ { in_profile = 0 }
+            in_profile && /^[[:space:]]+source:[[:space:]]/ {
+                match($0, /^[[:space:]]*/)
+                print substr($0, RSTART, RLENGTH) "source: \"" esc_source "\""
+                found_source = 1
+                next
+            }
+            in_profile && /^[[:space:]]+source_sha256:[[:space:]]/ {
+                match($0, /^[[:space:]]*/)
+                print substr($0, RSTART, RLENGTH) "source_sha256: \"" esc_hash "\""
+                found_hash = 1
+                next
+            }
+            { print }
+            END {
+                if (!found_source || !found_hash) {
+                    print "handbook-check --migrate: could not find profile.source and/or profile.source_sha256 under profile: in the expected format — no changes written" > "/dev/stderr"
+                    exit 1
+                }
+            }
+        ' "$BASELINE_FILE" >"${BASELINE_FILE}.tmp"; then
+            rm -f "${BASELINE_FILE}.tmp"
+            echo "handbook-check: --migrate failed to update $BASELINE_FILE — see the message above; the file was left unchanged" >&2
+            exit 1
+        fi
+        # `cp` into the existing file, not `mv` over it: `mv` would replace $BASELINE_FILE's
+        # inode with the freshly-created .tmp file's own mode (whatever the process umask
+        # produced), silently widening (or narrowing) permissions if the original had anything
+        # non-default set. `cp` here writes into the existing inode, preserving its current mode.
+        cp "${BASELINE_FILE}.tmp" "$BASELINE_FILE"
+        rm -f "${BASELINE_FILE}.tmp"
         echo
         echo "handbook-check: --migrate updated profile.source ($new_source) and profile.source_sha256 in $BASELINE_FILE"
     fi
