@@ -108,6 +108,14 @@ support.
   renamed to `maximum_attachment_file_size_bytes`/`file_size_bytes`**
   (`InstanceConfiguration`, `ProjectConfiguration`, `AttachmentSummary`),
   to make the byte unit explicit.
+- **Migrated the `mcp` SDK dependency from 1.x (`FastMCP`) to 2.0.0
+  (`MCPServer`)** — `mcp` jumped from 1.29.0 straight to 2.0.0, a breaking
+  release that removed `mcp.server.fastmcp` entirely. The internal
+  `StrictFastMCP` argument-validation subclass (see the `0.3.6` entry below)
+  is renamed `StrictMCPServer` and ported to the new base class, base
+  constructor, and dispatch internals; the argument-rejection behavior
+  itself is unchanged. `mcp` is now pinned to `>=2,<3`. No MCP tool's
+  public interface changes.
 
 ### Fixed
 
@@ -148,6 +156,10 @@ support.
   `bulk_update_work_packages` items use `work_package_id`, not `id`; new
   items in `bulk_create_work_packages` have no identifier field at all and
   are matched back to their input purely by `index`.
+- **`create_subtask`'s docstring now states that `parent_work_package_id`
+  is the same value `list_work_packages`/`get_work_package` return as each
+  row's `id` field (and as `parent_id`/`parent_display_id` on a child work
+  package)** — same class of clarification as `get_work_package`'s above.
 
 ## 0.3.6 – 2026-08-10
 
