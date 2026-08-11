@@ -6227,6 +6227,87 @@ async def test_list_my_open_work_packages_filters_total_when_all_items_blocked_b
 
 
 @pytest.mark.asyncio
+async def test_list_my_open_work_packages_scans_past_a_page_of_disallowed_matches() -> None:
+    """Regression, reproduced live against a real OpenProject 17.4 instance:
+    a work package genuinely assigned to the caller, in an allowed project,
+    was missing from list_my_open_work_packages() entirely because the
+    single bounded fetch this method used to make landed on server pages
+    whose matches all belonged to disallowed projects -- the allowed match
+    existed on a LATER server page that was never fetched. This query has
+    no server-side project filter at all (unlike list_work_packages), so
+    the allowlist can only be applied client-side, which requires scanning
+    as many server pages as it takes to find it."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/users/me":
+            return httpx.Response(200, json={"id": 5, "name": "Demo User", "login": "demo"}, request=request)
+        if request.url.path == "/api/v3/work_packages":
+            offset = request.url.params["offset"]
+            page_size = request.url.params["pageSize"]
+            assert page_size == "2"  # settings.max_page_size below
+            if offset == "1":
+                elements = [
+                    {
+                        "id": 101,
+                        "subject": "Hidden A",
+                        "_links": {
+                            "type": {"title": "Task"},
+                            "status": {"title": "Open"},
+                            "project": {"href": "/api/v3/projects/7", "title": "Other"},
+                        },
+                    },
+                    {
+                        "id": 102,
+                        "subject": "Hidden B",
+                        "_links": {
+                            "type": {"title": "Task"},
+                            "status": {"title": "Open"},
+                            "project": {"href": "/api/v3/projects/7", "title": "Other"},
+                        },
+                    },
+                ]
+            elif offset == "2":
+                elements = [
+                    {
+                        "id": 200,
+                        "subject": "Assigned to me, allowed",
+                        "_links": {
+                            "type": {"title": "Task"},
+                            "status": {"title": "Open"},
+                            "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                        },
+                    },
+                ]
+            else:
+                elements = []
+            return httpx.Response(200, json={"total": 3, "_embedded": {"elements": elements}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=2,
+        max_results=100,
+        log_level="WARNING",
+        read_projects=("6",),
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.list_my_open_work_packages(limit=20, offset=1)
+
+    assert [wp.id for wp in result.results] == [200]
+    assert result.count == 1
+    assert result.total == 1
+    assert result.truncated is False
+    assert result.next_offset is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_projects_reports_filtered_total_when_allowlist_drops_items() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects":

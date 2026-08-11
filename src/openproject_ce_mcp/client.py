@@ -3419,11 +3419,24 @@ class OpenProjectClient:
                 results=[],
             )
         current_user = await self.get_current_user()
-        payload = await self._get(
+
+        async def _work_package_item_allowed(item: dict[str, Any]) -> bool:
+            return self._work_package_payload_allowed(item)
+
+        # This query has no server-side project filter at all (unlike
+        # list_work_packages, which adds one under a restricted scope), so a
+        # single bounded fetch could silently miss every allowed match when
+        # most of the server's matches belong to disallowed projects --
+        # reproduced live: 33 total server matches, 1 in an allowed project,
+        # that one match landing beyond a single page's worth of results.
+        # Scan server pages the same way list_relations/list_views/etc.
+        # already do, rather than trusting one bounded page.
+        raw_items, truncated = await self._scan_and_paginate(
             "work_packages",
-            params={
-                "offset": str(offset),
-                "pageSize": str(effective_limit),
+            item_allowed=_work_package_item_allowed,
+            offset=offset,
+            limit=effective_limit,
+            params_extra={
                 "filters": _json_param(
                     [
                         {"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}},
@@ -3432,35 +3445,14 @@ class OpenProjectClient:
                 ),
             },
         )
-        raw_elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
-        raw_items = [item for item in raw_elements if self._work_package_payload_allowed(item)]
         results = [self.normalize_work_package_summary(item) for item in raw_items]
-        server_total = int(payload.get("total", len(results)))
-        # This query has no server-side project filter at all, so the server total
-        # counts matches across every project regardless of the allowlist — only
-        # trust it when the scope is unrestricted. A clean current page is NOT
-        # sufficient: a later page could still contain disallowed-project matches
-        # that the total would otherwise leak the existence of.
-        total_is_scope_safe = _scope_allows_all(self.settings.read_projects)
-        total_trustworthy = total_is_scope_safe and len(raw_items) == len(raw_elements)
-        if total_trustworthy:
-            total = server_total
-            next_offset = _next_offset(offset, effective_limit, server_total)
-            truncated = server_total > offset * effective_limit
-        else:
-            # See _list_work_package_collection: pagination hints must not be
-            # derived from the untrustworthy server total either. Base "is there
-            # more to page through" purely on whether this raw server page came
-            # back full.
-            total = len(results)
-            next_offset = (offset + 1) if len(raw_elements) == effective_limit else None
-            truncated = len(raw_elements) == effective_limit
+        total = len(results)
         return WorkPackageListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=len(results),
-            next_offset=next_offset,
+            next_offset=(offset + 1) if truncated else None,
             truncated=truncated,
             results=results,
         )
