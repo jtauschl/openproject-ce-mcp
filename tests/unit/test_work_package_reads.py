@@ -408,11 +408,14 @@ async def test_search_work_packages_pagination_hints_do_not_leak_untrusted_total
 @pytest.mark.asyncio
 async def test_search_work_packages_pagination_continues_with_untrusted_total_when_page_full() -> None:
     # Same untrusted-total scope, but a genuine (limit + 1)-th allowed match
-    # exists beyond the requested page (pageSize is requested as limit + 1,
-    # per the (limit + 1)-lookahead fix -- see _list_collection) -- pagination
-    # must still continue even though the total itself stays hidden.
+    # exists beyond the requested page -- pagination must still continue even
+    # though the total itself stays hidden. search() has no server-side
+    # project_id filter branch (see work_package_service.py's module
+    # docstring), so this goes through the scanned multi-page path, which
+    # requests full server pages (settings.max_page_size), not a single
+    # limit+1-sized request.
     async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.params["pageSize"] == "3"  # limit=2 requested, +1 lookahead
+        assert request.url.params["pageSize"] == "50"
         return httpx.Response(
             200,
             json={
@@ -453,14 +456,15 @@ async def test_search_work_packages_pagination_continues_with_untrusted_total_wh
 
 @pytest.mark.asyncio
 async def test_search_work_packages_does_not_report_truncated_when_page_full_but_nothing_further_exists() -> None:
-    # The bug this guards against: the raw page came back exactly `limit`
-    # long, with all `limit` allowed -- reporting truncated=True purely from
-    # "the page was full" (without a (limit + 1)-th match actually proving
-    # more exists) would make a follow-up call on the fabricated next_offset
-    # silently return an empty page. Here the server only ever has 2 matches
-    # total, so the (limit + 1)-lookahead page comes back with just those 2.
+    # The bug this guards against: reporting truncated=True purely from "the
+    # server's raw page was full" without a (limit + 1)-th allowed match
+    # actually proving more exists would make a follow-up call on the
+    # fabricated next_offset silently return an empty page. Here the server
+    # only ever has 2 matches total, so the scan sees a short final page
+    # (fewer raw elements than the requested server page size) and correctly
+    # recognizes exhaustion.
     async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.params["pageSize"] == "3"
+        assert request.url.params["pageSize"] == "50"
         return httpx.Response(
             200,
             json={

@@ -366,43 +366,79 @@ class WorkPackageService:
             return _empty_list_result(offset=offset, limit=limit)
         # Aggregates are computed by OpenProject over the query's own filter
         # set, independent of this method's post-fetch per-item allowlist
-        # filtering (raw_items below) -- so groups/sums are only safe to
-        # request/expose when the query itself is proven scope-safe. Never
-        # ask OpenProject for sums we'd have to discard anyway.
+        # filtering -- so groups/sums are only safe to request/expose when
+        # the query itself is proven scope-safe. Never ask OpenProject for
+        # sums we'd have to discard anyway.
         requested_sums = include_sums and total_is_scope_safe
-        # Request one extra raw element beyond `limit`. In the untrustworthy-
-        # total branch below, deciding truncated from "the raw page came back
-        # exactly `limit` long" would report truncated=True even when every
-        # one of those `limit` raw elements survived allowlist filtering and
-        # nothing else exists -- the same false-truncated bug already fixed
-        # in fetch_project_page (see project_query.py), just triggered by a
-        # single-page fetch instead of a multi-page scan. The (limit + 1)-th
-        # raw element, if present, proves a genuine unseen candidate exists.
+
+        if total_is_scope_safe:
+            return await self._list_collection_fast_path(
+                filters=filters,
+                offset=offset,
+                limit=limit,
+                sort_by=sort_by,
+                group_by=group_by,
+                requested_sums=requested_sums,
+            )
+        return await self._list_collection_scanned(
+            filters=filters,
+            offset=offset,
+            limit=limit,
+            sort_by=sort_by,
+            group_by=group_by,
+        )
+
+    async def _list_collection_fast_path(
+        self,
+        *,
+        filters: list[dict[str, Any]],
+        offset: int,
+        limit: int,
+        sort_by: list[SortCriterion] | None,
+        group_by: str | None,
+        requested_sums: bool,
+    ) -> WorkPackageListResult:
+        """Single-request path for a scope-safe query -- either genuinely
+        unrestricted (`*`) or already narrowed to allowed projects via a
+        server-side `project_id` filter (see `list()`'s `total_is_scope_safe`
+        derivation) -- where the server's own `total` is trustworthy.
+
+        Still applies the client-side allowlist check as a second,
+        independent line of defense (defense-in-depth: never rely solely on
+        a server-side filter actually being honored) -- but unlike the
+        scanned path, a raw element failing that check here is dropped
+        without re-fetching a replacement page, since `total_is_scope_safe`
+        being true means the server-side filter should have already excluded
+        it, and this case existing at all is the anomaly the check exists to
+        catch, not a normal pagination boundary to page around.
+        """
         page = await self._api.list(
             filters=filters,
             offset=offset,
-            limit=limit + 1,
+            limit=limit,
             sort_by=sort_by,
             group_by=group_by,
             include_sums=requested_sums,
         )
         allowed_items = [item for item in page.raw_elements if self._payload_allowed(item)]
+        # Trim to `limit`: the server is asked for exactly `limit` elements
+        # and expected to honor that, but this is still a hard safety net
+        # against a server (or a misbehaving mock) that returns more.
         raw_items = allowed_items[:limit]
         results = [
             self._stamp(self._api.to_record(item, text_limit=self._settings.text_limit).summary) for item in raw_items
         ]
         server_total = page.server_total if page.server_total is not None else len(results)
-        total_trustworthy = total_is_scope_safe and len(allowed_items) == len(page.raw_elements)
-        if total_trustworthy:
+        # If the allowlist check actually dropped something here, the
+        # server-side filter this path relies on did not fully hold --
+        # server_total (and any pagination hint derived from it) is no
+        # longer trustworthy either, so fall back to what this page actually
+        # proved rather than leak the existence of a disallowed match via
+        # `total`.
+        if len(allowed_items) == len(page.raw_elements):
             next_offset, truncated = paginate_server(offset=offset, limit=limit, total=server_total)
-            total = server_total
         else:
-            # Pagination hints must not be derived from the untrustworthy
-            # server total either -- that would leak the existence of
-            # disallowed-project matches just as much as exposing the total
-            # itself. "Is there more to page through" is instead based on
-            # whether more than `limit` allowlisted items actually came back.
-            total = len(results)
+            server_total = len(results)
             truncated = len(allowed_items) > limit
             next_offset = (offset + 1) if truncated else None
         groups = (
@@ -417,13 +453,99 @@ class WorkPackageService:
         return WorkPackageListResult(
             offset=offset,
             limit=limit,
-            total=total,
+            total=server_total,
             count=len(results),
             next_offset=next_offset,
             truncated=truncated,
             results=results,
             groups=groups,
             total_sums=total_sums,
+        )
+
+    async def _list_collection_scanned(
+        self,
+        *,
+        filters: list[dict[str, Any]],
+        offset: int,
+        limit: int,
+        sort_by: list[SortCriterion] | None,
+        group_by: str | None,
+    ) -> WorkPackageListResult:
+        """Multi-server-page scan for a restricted read scope.
+
+        A single request capped at `limit` raw elements can silently miss
+        every allowed match when most of the server's matches belong to
+        disallowed projects (reproduced live: 33 total server matches, 1 in
+        an allowed project, landing beyond a single limit+1-sized window --
+        list_my_open_work_packages() returned 0 results for a work package
+        that genuinely existed and was assigned to the caller). Scans server
+        pages from the start, same shape as fetch_project_page
+        (project_query.py) and scan_and_paginate (pagination.py): skip the
+        first `(offset - 1) * limit` already-seen allowed matches, then
+        collect up to `limit + 1` allowed matches (the +1st proves a further
+        match exists, rather than assuming it from a full raw page) before
+        stopping, either because enough were found or because the server
+        ran out of raw elements (`len(raw_elements) < server_page_size`,
+        never from `total`, which is not trustworthy under a restricted
+        scope -- server_total below reflects only what this scan collected
+        and observed, not the true global total, matching every other
+        restricted-scope pagination path in this codebase).
+
+        No aggregates here: `include_sums`/`groups` are computed by
+        OpenProject over the whole query, independent of this method's
+        per-page, per-item allowlist filtering -- exposing them here would
+        leak sums that include disallowed-project matches. Callers already
+        gate `requested_sums` on `total_is_scope_safe`, so this path is only
+        reached when sums were never going to be requested from the server.
+        """
+        skip_count = (offset - 1) * limit
+        skipped = 0
+        results: list[WorkPackageSummary] = []
+        server_offset = 1
+        server_page_size = min(self._settings.max_page_size, self._settings.max_results)
+
+        while len(results) <= limit:
+            page = await self._api.list(
+                filters=filters,
+                offset=server_offset,
+                limit=server_page_size,
+                sort_by=sort_by,
+                group_by=group_by,
+                include_sums=False,
+            )
+            if not page.raw_elements:
+                break
+
+            allowed_items = [item for item in page.raw_elements if self._payload_allowed(item)]
+            for item in allowed_items:
+                if skipped < skip_count:
+                    skipped += 1
+                    continue
+                results.append(self._stamp(self._api.to_record(item, text_limit=self._settings.text_limit).summary))
+                if len(results) > limit:
+                    break
+
+            if len(results) > limit:
+                break
+            if len(page.raw_elements) < server_page_size:
+                break
+            server_offset += 1
+
+        truncated = len(results) > limit
+        if truncated:
+            results = results[:limit]
+        total = len(results)
+        next_offset = (offset + 1) if truncated else None
+        return WorkPackageListResult(
+            offset=offset,
+            limit=limit,
+            total=total,
+            count=len(results),
+            next_offset=next_offset,
+            truncated=truncated,
+            results=results,
+            groups=None,
+            total_sums=None,
         )
 
     def _apply_date_filters(
