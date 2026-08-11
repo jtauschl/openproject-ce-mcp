@@ -189,11 +189,16 @@ end
 # multi-page walk the same way test_list_versions_search_walks_every_server_page
 # does for versions).
 if project.documents.count < 2
+  # DocumentCategory (distinct from the WorkPackage Category seeded above) is
+  # a required association on some versions (16.6: NOT NULL/validates
+  # presence; 17.x: optional) -- always pass one so this works on both.
+  document_category = DocumentCategory.first
   (project.documents.count...2).each do |i|
     document = Document.create!(
       project: project,
       title: "Seed Document #{i + 1}",
-      description: "Seeded for integration tests"
+      description: "Seeded for integration tests",
+      category: document_category
     )
     log("created document id=#{document.id} title=#{document.title}")
   end
