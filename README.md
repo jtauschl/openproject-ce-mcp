@@ -1,5 +1,7 @@
 # OpenProject CE MCP
 
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2Fjtauschl%2Fopenproject-ce-mcp.svg)](https://mcptoplist.com/server/glama%2Fjtauschl%2Fopenproject-ce-mcp)
+
 [![PyPI](https://img.shields.io/pypi/v/openproject-ce-mcp.svg)](https://pypi.org/project/openproject-ce-mcp/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/jtauschl/openproject-ce-mcp/blob/main/LICENSE)
