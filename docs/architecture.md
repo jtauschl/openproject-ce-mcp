@@ -20,7 +20,7 @@ src/openproject_ce_mcp/
 ├── retry_transport.py    HTTP retry with backoff for transient failures
 ├── models.py             compact dataclasses returned to MCP clients
 ├── tools.py              validated MCP tool handlers
-├── server.py             FastMCP server bootstrap and lifecycle management
+├── server.py             MCPServer bootstrap and lifecycle management
 ├── setup_cli.py          the interactive `configure` command
 ├── doctor.py             the `doctor` diagnostics command
 └── app/                  layered architecture -- see "Layered architecture" below
@@ -68,7 +68,7 @@ src/openproject_ce_mcp/
 
 ### `server.py`
 
-- Wires FastMCP to the tool set.
+- Wires MCPServer to the tool set.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
@@ -214,7 +214,7 @@ tools.py (MCP presentation)
   must not depend on another Service.
 
 An `ast`-based test (`tests/test_architecture_boundaries.py`) enforces the layer directions above,
-confines `httpx` to `HttpxTransport`, forbids importing `fastmcp` or reading environment variables
+confines `httpx` to `HttpxTransport`, forbids importing the `mcp` SDK or reading environment variables
 directly anywhere under `app/`, and checks that every `app/services/`/`app/resolvers/` class
 depends on a port `Protocol`, never a concrete adapter. These checks are directory-driven, not
 domain-specific. Each domain also has a small, deliberately non-generalized regression test

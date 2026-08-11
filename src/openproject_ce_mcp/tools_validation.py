@@ -36,7 +36,7 @@ def _validate_optional_query(value: str | None, *, field_name: str, max_length: 
     if not isinstance(value, str):
         # Reachable with a non-str JSON scalar (e.g. a bare number or bool) from
         # bulk_update_work_packages' untyped `items: list[dict[str, Any]]` — MCP
-        # tool parameters are str-typed and coerced/rejected by FastMCP before
+        # tool parameters are str-typed and coerced/rejected by the SDK before
         # reaching here, but a dict value has no such guarantee.
         raise ValueError(f"{field_name} must be a string.")
     normalized = " ".join(value.split())

@@ -19,7 +19,7 @@ from dataclasses import fields as dataclass_fields
 from typing import Any
 
 import pytest
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from openproject_ce_mcp import models
 from openproject_ce_mcp.presentation import _to_payload
@@ -446,7 +446,7 @@ async def test_confirmation_header_result_field_keeps_concrete_type_in_mcp_schem
     anyOf/$ref check, not the results.items list check used for PageResult/
     CollectionResult's `results` field).
     """
-    mcp = FastMCP("shape-test")
+    mcp = MCPServer("shape-test")
 
     @mcp.tool()
     def project_write_probe() -> models.ProjectWriteResult:
@@ -458,7 +458,7 @@ async def test_confirmation_header_result_field_keeps_concrete_type_in_mcp_schem
 
     tools = {t.name: t for t in await mcp.list_tools()}
 
-    write_schema = tools["project_write_probe"].outputSchema
+    write_schema = tools["project_write_probe"].output_schema
     assert list(write_schema["properties"]) == EXPECTED_WRITE_RESULT_FIELD_ORDER["ProjectWriteResult"]
     result_field = write_schema["properties"]["result"]
     result_refs = [entry["$ref"] for entry in result_field.get("anyOf", []) if "$ref" in entry]
@@ -466,7 +466,7 @@ async def test_confirmation_header_result_field_keeps_concrete_type_in_mcp_schem
     result_summary_schema = write_schema["$defs"][result_refs[0].rsplit("/", 1)[-1]]
     assert result_summary_schema["title"] == "ProjectSummary"
 
-    favorite_schema = tools["favorite_write_probe"].outputSchema
+    favorite_schema = tools["favorite_write_probe"].output_schema
     assert list(favorite_schema["properties"]) == EXPECTED_WRITE_RESULT_FIELD_ORDER["FavoriteWriteResult"]
 
 
@@ -475,7 +475,7 @@ _RejectedT = typing.TypeVar("_RejectedT")
 
 @dataclasses.dataclass
 class _RejectedGenericPageResult(typing.Generic[_RejectedT]):
-    """Module-level (not function-local) so FastMCP's `eval_str=True` signature
+    """Module-level (not function-local) so the SDK's `eval_str=True` signature
     evaluation can resolve it as a return-type annotation -- reproduces the
     Generic[T]-with-results-on-the-base design rejected during ListResult base-class planning.
     """
@@ -501,7 +501,7 @@ def test_version_detail_and_news_detail_keep_their_own_class_identity() -> None:
 
 @pytest.mark.asyncio
 async def test_version_detail_and_news_detail_schema_title_matches_class_name() -> None:
-    mcp = FastMCP("shape-test")
+    mcp = MCPServer("shape-test")
 
     @mcp.tool()
     def get_version_probe() -> models.VersionDetail:
@@ -512,8 +512,8 @@ async def test_version_detail_and_news_detail_schema_title_matches_class_name() 
         return _dummy_instance(models.NewsDetail)
 
     tools = {t.name: t for t in await mcp.list_tools()}
-    assert tools["get_version_probe"].outputSchema["title"] == "VersionDetail"
-    assert tools["get_news_probe"].outputSchema["title"] == "NewsDetail"
+    assert tools["get_version_probe"].output_schema["title"] == "VersionDetail"
+    assert tools["get_news_probe"].output_schema["title"] == "NewsDetail"
 
 
 @pytest.mark.asyncio
@@ -522,7 +522,7 @@ async def test_page_result_and_collection_result_keep_concrete_element_types() -
     directly, to show what it would have done to the MCP output schema, then
     proves our actual PageResult/CollectionResult bases don't have that problem.
     """
-    mcp = FastMCP("shape-test")
+    mcp = MCPServer("shape-test")
 
     @mcp.tool()
     def rejected_probe() -> _RejectedGenericProjectListResult:
@@ -539,7 +539,7 @@ async def test_page_result_and_collection_result_keep_concrete_element_types() -
     tools = {t.name: t for t in await mcp.list_tools()}
 
     # The rejected design: `results.items` degrades to an untyped `{}`.
-    rejected_items_schema = tools["rejected_probe"].outputSchema["properties"]["results"]["items"]
+    rejected_items_schema = tools["rejected_probe"].output_schema["properties"]["results"]["items"]
     assert rejected_items_schema == {}
 
     # Our actual Group A (PageResult) and Group B (CollectionResult) design:
@@ -548,7 +548,7 @@ async def test_page_result_and_collection_result_keep_concrete_element_types() -
         ("project_list_probe", "ProjectSummary"),
         ("role_list_probe", "RoleSummary"),
     ]:
-        schema = tools[tool_name].outputSchema
+        schema = tools[tool_name].output_schema
         items_schema = schema["properties"]["results"]["items"]
         assert "$ref" in items_schema, f"{tool_name}: expected a concrete $ref, got {items_schema!r}"
         ref_defs = schema.get("$defs", {})
@@ -564,7 +564,7 @@ async def test_project_detail_ancestors_boundary_in_mcp_schema() -> None:
     ProjectSummary) must NOT -- proves the Detail/Summary split actually holds
     at the schema boundary, not just in the dataclass definitions.
     """
-    mcp = FastMCP("shape-test")
+    mcp = MCPServer("shape-test")
 
     @mcp.tool()
     def project_detail_probe() -> models.ProjectDetail:
@@ -580,17 +580,17 @@ async def test_project_detail_ancestors_boundary_in_mcp_schema() -> None:
 
     tools = {t.name: t for t in await mcp.list_tools()}
 
-    detail_schema = tools["project_detail_probe"].outputSchema
+    detail_schema = tools["project_detail_probe"].output_schema
     assert "ancestors" in detail_schema["properties"]
     assert "ancestors_truncated" in detail_schema["properties"]
 
-    list_schema = tools["project_list_probe"].outputSchema
+    list_schema = tools["project_list_probe"].output_schema
     items_ref = list_schema["properties"]["results"]["items"]["$ref"]
     project_summary_schema = list_schema["$defs"][items_ref.rsplit("/", 1)[-1]]
     assert project_summary_schema["title"] == "ProjectSummary"
     assert "ancestors" not in project_summary_schema["properties"]
 
-    write_schema = tools["project_write_probe"].outputSchema
+    write_schema = tools["project_write_probe"].output_schema
     result_field = write_schema["properties"]["result"]
     result_refs = [entry["$ref"] for entry in result_field.get("anyOf", []) if "$ref" in entry]
     assert result_refs, f"expected a $ref among result's anyOf branches, got {result_field!r}"
@@ -609,10 +609,10 @@ async def test_get_project_tolerates_ancestor_without_display_id() -> None:
     ProjectDetail.ancestors rejected that None at the MCP structured-output
     validation boundary (a real 'Input should be a valid string' crash on any
     project with a parent), even though client.py and its unit tests already
-    treated None as the normal shape. Exercise the real FastMCP call_tool path
-    (not just outputSchema shape) so a regression here fails loudly again.
+    treated None as the normal shape. Exercise the real call_tool path
+    (not just output_schema shape) so a regression here fails loudly again.
     """
-    mcp = FastMCP("shape-test")
+    mcp = MCPServer("shape-test")
 
     @mcp.tool()
     def get_project_probe() -> models.ProjectDetail:
@@ -628,7 +628,8 @@ async def test_get_project_tolerates_ancestor_without_display_id() -> None:
         )
 
     result = await mcp.call_tool("get_project_probe", {})
-    structured = result[1] if isinstance(result, tuple) else result
+    structured = result.structured_content
+    assert structured is not None
     assert structured["ancestors"] == [{"href": "/api/v3/projects/1", "title": "Root", "display_id": None}]
 
 
@@ -642,7 +643,7 @@ async def test_get_work_package_tolerates_ancestor_without_display_id() -> None:
     get_project case above. Shipped since v0.3.0 (WorkPackageDetail.ancestors/
     children existed before ProjectDetail.ancestors did), fixed alongside it.
     """
-    mcp = FastMCP("shape-test")
+    mcp = MCPServer("shape-test")
 
     @mcp.tool()
     def get_work_package_probe() -> models.WorkPackageDetail:
@@ -674,6 +675,7 @@ async def test_get_work_package_tolerates_ancestor_without_display_id() -> None:
         )
 
     result = await mcp.call_tool("get_work_package_probe", {})
-    structured = result[1] if isinstance(result, tuple) else result
+    structured = result.structured_content
+    assert structured is not None
     assert structured["ancestors"] == [{"href": "/api/v3/work_packages/1", "title": "Root task", "display_id": None}]
     assert structured["children"] == [{"href": "/api/v3/work_packages/2", "title": "Sub task", "display_id": None}]

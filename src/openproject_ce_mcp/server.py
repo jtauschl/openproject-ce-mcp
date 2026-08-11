@@ -10,12 +10,12 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Literal, cast
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from . import __version__
 from .client import OpenProjectClient
 from .config import ConfigError, Settings, configure_logging, legacy_env_warnings
-from .strict_fastmcp import StrictFastMCP, verify_strict_dispatch
+from .strict_mcpserver import StrictMCPServer, verify_strict_dispatch
 from .tools import register_tools
 
 # Server instructions surfaced to the connecting agent in the MCP `initialize`
@@ -119,9 +119,9 @@ class AppContext:
     client: OpenProjectClient
 
 
-def create_app(settings: Settings) -> StrictFastMCP:
+def create_app(settings: Settings) -> StrictMCPServer:
     @asynccontextmanager
-    async def app_lifespan(_: FastMCP) -> AsyncIterator[AppContext]:
+    async def app_lifespan(_: MCPServer) -> AsyncIterator[AppContext]:
         configure_logging(settings.log_level)
         client = OpenProjectClient(settings)
         await client.initialize()
@@ -130,31 +130,28 @@ def create_app(settings: Settings) -> StrictFastMCP:
         finally:
             await client.aclose()
 
-    # log_level MUST be passed here: FastMCP.__init__ runs configure_logging() with
+    # log_level MUST be passed here: MCPServer.__init__ runs configure_logging() with
     # its own default (INFO) and installs a stderr handler, so omitting it lets the
     # SDK win the race and our OPENPROJECT_LOG_LEVEL never takes effect.
     #
-    # StrictFastMCP (not plain FastMCP): must be constructed as this exact
-    # class, not swapped in later — see strict_fastmcp.py for why.
-    mcp = StrictFastMCP(
+    # StrictMCPServer (not plain MCPServer): instantiated directly as a matter
+    # of discipline — see strict_mcpserver.py for why this isn't strictly
+    # required by the SDK's current dispatch wiring, but is still the safer
+    # and clearer choice.
+    mcp = StrictMCPServer(
         "OpenProject CE MCP",
         instructions=CE_INSTRUCTIONS,
-        json_response=True,
         lifespan=app_lifespan,
+        version=__version__,
         # Settings.log_level is `str`, but runtime-validated against a fixed set
-        # (config._parse_log_level) that's a subset of FastMCP's Literal — mypy
+        # (config._parse_log_level) that's a subset of MCPServer's Literal — mypy
         # can't see through that validation, hence the cast.
         log_level=cast(
             'Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]',
             settings.log_level,
         ),
     )
-    # serverInfo.version (MCP MUST): FastMCP has no `version` constructor kwarg, so
-    # set it on the low-level server. Without this the handshake reports the SDK's
-    # own version instead of ours. Read at `initialize`, so setting it here is early
-    # enough.
-    mcp._mcp_server.version = __version__
-    # Force the root logger level explicitly. basicConfig (used by both FastMCP and
+    # Force the root logger level explicitly. basicConfig (used by both MCPServer and
     # our configure_logging) is a no-op once a handler exists, so an explicit
     # setLevel is what actually holds the configured level regardless of install
     # order.
@@ -175,8 +172,8 @@ def _run_server() -> None:
     settings = Settings.from_env()
     app = create_app(settings)
     # Fails loudly at startup if a future `mcp` SDK upgrade changes how
-    # FastMCP.call_tool is wired into request dispatch, instead of silently
-    # letting StrictFastMCP's validation go dark. See strict_fastmcp.py.
+    # MCPServer.call_tool is wired into request dispatch, instead of silently
+    # letting StrictMCPServer's validation go dark. See strict_mcpserver.py.
     asyncio.run(verify_strict_dispatch(app))
     app.run(transport="stdio")
 

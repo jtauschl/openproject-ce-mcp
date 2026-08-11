@@ -27,8 +27,16 @@ classifiers = [
   "Topic :: Office/Business :: Scheduling",
 ]
 dependencies = [
+  # httpx stays an explicit direct dependency: mcp>=2 pulls in httpx2 as its
+  # own transport, but never httpx itself. httpx/httpx2 objects are not
+  # interchangeable -- this project doesn't pass either across the SDK
+  # boundary, so the two coexist without conflict, but don't hand an
+  # httpx.Response (or similar) to any mcp-SDK-facing interface.
   "httpx>=0.27,<1",
-  "mcp>=1.13,<3",
+  # >=2 (not >=1.13): the code imports mcp.server.mcpserver exclusively,
+  # which does not exist before 2.0.0 -- a caller could otherwise install a
+  # 1.x version that fails to import at all.
+  "mcp>=2,<3",
 ]
 
 [project.optional-dependencies]

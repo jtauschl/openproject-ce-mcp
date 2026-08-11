@@ -393,7 +393,7 @@ def configure_logging(level: str) -> None:
         level=numeric_level,
         format="%(levelname)s %(name)s %(message)s",
     )
-    # basicConfig is a no-op once a handler is already installed (e.g. by FastMCP),
+    # basicConfig is a no-op once a handler is already installed (e.g. by MCPServer),
     # so set the level explicitly to make it actually take effect.
     logging.getLogger().setLevel(numeric_level)
 

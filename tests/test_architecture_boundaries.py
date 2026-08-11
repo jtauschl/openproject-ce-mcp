@@ -12,7 +12,7 @@ Four of the five original checks were already directory-generic (they walk app/
 by layer, not by domain name) and needed no changes; only the Service/Resolver-
 depends-on-the-port-Protocol check named VersionService/VersionResolver/VersionApi/
 HttpxVersionApi directly and has been rewritten to discover classes by directory,
-plus two entirely new static rules (no FastMCP import, no direct env-var reads)
+plus two entirely new static rules (no `mcp` SDK import, no direct env-var reads)
 were added under app/.
 """
 
@@ -874,8 +874,12 @@ def _imports_module_named(path: Path, module_name: str) -> bool:
     return False
 
 
-def test_app_tree_never_imports_fastmcp() -> None:
-    offenders = [p for p in APP.rglob("*.py") if _imports_module_named(p, "fastmcp")]
+def test_app_tree_never_imports_mcp_sdk() -> None:
+    """app/ must have no SDK transport coupling at all -- this used to only
+    check for the top-level module name "fastmcp", which would never have
+    caught `mcp.server.fastmcp` (top-level module name "mcp"). Broadened to
+    the SDK's actual top-level package name."""
+    offenders = [p for p in APP.rglob("*.py") if _imports_module_named(p, "mcp")]
     assert offenders == []
 
 

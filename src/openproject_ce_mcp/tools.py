@@ -9,7 +9,7 @@ from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass
 from typing import Any, cast
 
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
 
 from .client import (
     BATCH_READ_MAX_IDS,
@@ -546,14 +546,14 @@ def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
     return tuple(enabled)
 
 
-def register_tools(mcp: FastMCP, settings: Settings) -> None:
+def register_tools(mcp: MCPServer, settings: Settings) -> None:
     # Register a tool with error-categorization applied, so every failure reaches
     # the agent with a stable [category] prefix.
     #
     # Tools that return a list/write/bulk result are routed through _to_payload for
     # context reduction: payload is dropped on confirmed writes,
     # count/truncated on lists, and `select` trims rows. Those tools are registered
-    # with structured_output=False so FastMCP does not build a fixed dataclass
+    # with structured_output=False so the SDK does not build a fixed dataclass
     # output schema — it serializes the trimmed dict we return verbatim, letting us
     # omit keys. Detection is by the result model's fields, so no per-tool tagging
     # is needed and it cannot drift. Tool bodies are unchanged; they still return
@@ -2435,7 +2435,10 @@ async def create_subtask(
     """Prepare or create a subtask under an existing work package.
 
     The tool validates the payload first. Set confirm=true to write.
-    parent_work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+    parent_work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"),
+    not UI display number (e.g., 51) — the same value list_work_packages/
+    get_work_package return as each row's `id` field (and as `parent_id`/
+    `parent_display_id` on a child work package).
     Concurrent calls to this tool (or create_work_package) do not preserve call order in the resulting IDs;
     use bulk_create_work_packages when order across several new items matters.
     """
