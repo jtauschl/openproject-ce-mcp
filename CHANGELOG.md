@@ -7,6 +7,29 @@ development baseline.
 
 ---
 
+## [Unreleased 0.3.7]
+
+### Fixed
+
+- **`list_my_open_work_packages` could silently return zero or incomplete
+  results even when matching, allowed work packages genuinely existed.**
+  This query has no server-side project filter at all, so under a
+  restricted `OPENPROJECT_READ_PROJECTS` scope a single bounded fetch could
+  land entirely on server pages whose matches belonged to disallowed
+  projects, missing every allowed match beyond that window — reproduced
+  live against a real OpenProject instance: 33 total server matches, only
+  1 in an allowed project, that one match landing past a single page's
+  worth of results. Now scans as many server pages as needed (skipping
+  already-seen allowed matches, stopping once enough are found or the
+  server is exhausted) instead of inspecting only one bounded page —
+  reusing the existing `_scan_and_paginate` helper the same way
+  `list_relations`/`list_views`/etc. already do.
+- **`create_subtask`'s docstring now states that `parent_work_package_id`
+  is the same value `list_work_packages`/`get_work_package` return as each
+  row's `id` field (and as `parent_id`/`parent_display_id` on a child work
+  package)** — same class of clarification as `get_work_package`'s
+  existing docstring note.
+
 ## 0.3.6 – 2026-08-10
 
 ### Changed
