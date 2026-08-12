@@ -1560,6 +1560,13 @@ async def delete_work_package_wiki_link(
     """Prepare or delete a work package's wiki page link; only deletes when
     called again with confirm=true.
 
+    Known OpenProject server bug (confirmed on 16.6/17.6/17.7.1, tracked as
+    OPM-399): this call currently fails with a [server_error] whenever the
+    given link actually exists — the same bug that breaks
+    list_work_package_wiki_links, since this tool verifies link_id actually
+    belongs to work_package_id before deleting (a real authorization check,
+    not optional) by internally listing the work package's links first.
+
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number
     — used to authorize the delete against that work package's project, since
     OpenProject has no single-resource GET for a wiki page link to discover

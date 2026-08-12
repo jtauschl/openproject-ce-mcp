@@ -25,18 +25,28 @@ Attachments' exact pattern:
   has no single-resource GET for a wiki page link (only
   `DELETE wiki_page_links/{id}`), so the Service cannot discover a link's
   parent work package from the link id alone. The caller-supplied
-  `work_package_id` is resolved with `write=True` before the delete is
-  allowed to proceed -- this does NOT independently verify the given
-  `link_id` actually belongs to that work package (OpenProject's own DELETE
-  enforces that; a mismatched id simply 404s there), it only establishes
-  that the caller is authorized to delete links scoped to that work package.
+  `work_package_id` is resolved with `write=True`, but that alone is NOT
+  sufficient authorization for the delete -- OpenProject's own DELETE
+  enforces `manage_wiki_page_links` against the LINK's actual project (via
+  `model.linkable.project`), not against whatever `work_package_id` this
+  MCP was told to check. A caller with write access to an allowed work
+  package could otherwise pass an arbitrary `link_id` belonging to a
+  disallowed project and have it deleted, bypassing `OPENPROJECT_WRITE_
+  PROJECTS` entirely if the underlying API token happens to have broader
+  server-side permissions than the MCP's own allowlist grants. `delete()`
+  therefore scans the resolved work package's own links (reusing
+  `list_for_work_package`'s scan) and fails closed with `NotFoundError` if
+  `link_id` is not actually among them, on both the preview and confirmed
+  paths -- this fixed a real authorization-bypass finding from this
+  domain's step-6.5 review, not a defense-in-depth nicety.
 """
 
 from __future__ import annotations
 
 from ...config import Settings
 from ...models import WikiPageLinkListResult, WikiPageLinkSummary, WikiPageLinkWriteResult
-from ..pagination import clamp_limit, scan_records_and_paginate
+from ..errors import NotFoundError
+from ..pagination import clamp_limit, paginate_all, scan_records_and_paginate
 from ..policies import access, hidden_fields
 from ..ports.current_user import CurrentUserLookup
 from ..ports.wiki_page_link_api import WikiPageLinkApi, WikiPageLinkRecord
@@ -59,6 +69,22 @@ class WikiPageLinkService:
 
     def _stamp(self, record: WikiPageLinkRecord) -> WikiPageLinkSummary:
         return hidden_fields.apply_hidden_fields("wiki_page_link", record.summary, settings=self._settings)
+
+    async def _ensure_link_belongs_to_work_package(self, resolved_work_package_id: int, link_id: int) -> None:
+        """Fail closed unless `link_id` is actually one of `resolved_work_package_id`'s
+        own links -- resolving the work package id alone only proves the caller may
+        delete links scoped to THAT work package, not that the caller-supplied
+        `link_id` is one of them. Without this, a write-allowed anchor work package
+        could be paired with an arbitrary link_id from a disallowed project."""
+        records = await paginate_all(
+            lambda o, ps: self._api.list_for_work_package(resolved_work_package_id, offset=o, page_size=ps),
+            page_size=self._settings.max_page_size,
+            key=lambda r: r.summary.id,
+        )
+        if not any(record.summary.id == link_id for record in records):
+            raise NotFoundError(
+                f"OpenProject wiki page link {link_id} was not found on work package {resolved_work_package_id}."
+            )
 
     async def list_for_work_package(
         self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
@@ -102,6 +128,8 @@ class WikiPageLinkService:
     ) -> WikiPageLinkWriteResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
         resolved_id = await self._resolve_work_package_id(work_package_id, write=True)
+        hidden_fields.ensure_field_writable("wiki_page_link", "identifier", settings=self._settings)
+        hidden_fields.ensure_field_writable("wiki_page_link", "provider", settings=self._settings)
         payload = {"identifier": identifier, "provider": provider}
         if not confirm:
             return WikiPageLinkWriteResult(
@@ -142,6 +170,7 @@ class WikiPageLinkService:
     ) -> WikiPageLinkWriteResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
         resolved_id = await self._resolve_work_package_id(work_package_id, write=True)
+        await self._ensure_link_belongs_to_work_package(resolved_id, link_id)
         payload = {"id": link_id}
         if not confirm:
             return WikiPageLinkWriteResult(

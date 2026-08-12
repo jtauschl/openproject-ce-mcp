@@ -175,8 +175,12 @@ Same gating as [Users](#users) above: reads need
 > **Note:** `list_work_package_wiki_links` returns a `[server_error]` whenever
 > the work package actually has one or more wiki page links — a confirmed
 > OpenProject server bug (16.6/17.6/17.7.1, tracked as OPM-399). Only the
-> empty-list case reliably works. `create_work_package_wiki_link`/
-> `delete_work_package_wiki_link` are unaffected.
+> empty-list case reliably works. `delete_work_package_wiki_link` is affected
+> too: it verifies `link_id` actually belongs to `work_package_id` before
+> deleting (a real authorization check, not skippable) by listing the work
+> package's links internally first, so it hits the same bug whenever the
+> link being deleted actually exists. `create_work_package_wiki_link` is
+> unaffected.
 
 ## Work packages
 

@@ -123,6 +123,22 @@ async def test_execute_denies_when_read_disabled() -> None:
     assert api.execute_calls == []
 
 
+@pytest.mark.asyncio
+async def test_execute_skips_the_round_trip_with_an_empty_read_allowlist() -> None:
+    """Matches WorkPackageService.list()'s own fast path: an empty
+    read_projects allowlist can never allow anything, so there is no reason
+    to call the server at all."""
+    settings = dataclasses.replace(make_settings(), read_projects=())
+    api = _FakeQueryExecutionApi([[_raw_wp(1)]])
+    service = _service(api=api, settings=settings)
+
+    result = await service.execute(7)
+
+    assert result.results == []
+    assert result.total == 0
+    assert api.execute_calls == []
+
+
 # --- allowlist-safe scanning (the security-critical guarantee) ---------------
 
 

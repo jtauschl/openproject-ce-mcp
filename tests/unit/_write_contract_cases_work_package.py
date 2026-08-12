@@ -420,6 +420,24 @@ def _delete_work_package_wiki_link_handler(request: httpx.Request) -> httpx.Resp
             json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
             request=request,
         )
+    if request.method == "GET" and request.url.path == "/api/v3/work_packages/42/wiki_page_links":
+        return httpx.Response(
+            200,
+            json={
+                "total": 1,
+                "_embedded": {
+                    "elements": [
+                        {
+                            "id": 9,
+                            "identifier": "wiki",
+                            "wikiPageLinkType": "urn:openproject-org:api:v3:wikiPageLinks:Relation",
+                            "_links": {"linkable": {"href": "/api/v3/work_packages/42"}},
+                        }
+                    ]
+                },
+            },
+            request=request,
+        )
     if request.method == "DELETE" and request.url.path == "/api/v3/wiki_page_links/9":
         return httpx.Response(204, request=request)
     raise AssertionError(f"Unexpected request: {request.method} {request.url}")

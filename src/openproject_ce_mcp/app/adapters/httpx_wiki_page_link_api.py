@@ -8,6 +8,21 @@ response IS paginated (`PageLinkCollectionRepresenter` inherits OpenProject's
 `OffsetPaginatedCollection`, unlike the Attachments endpoint) -- `total` is
 read directly from the response, no `len(records)` fallback needed.
 
+KNOWN SERVER LIMITATION (tracked as OPM-400, not fixed client-side): the
+work-package-scoped endpoint's own handler (`work_package_wiki_page_links_
+api.rb`) never forwards the request's `offset` param into `page:` when
+constructing `PageLinkCollectionRepresenter` -- only `per_page: params[:
+pageSize]` is passed. `OffsetPaginatedCollection#initialize` defaults `page`
+to 1 whenever it's not explicitly given, so every call to this endpoint
+returns the SAME first page regardless of the `offset` this client sends.
+The Service's `scan_records_and_paginate`/`paginate_all` repeated-page guard
+prevents an infinite loop from this (a second identical page is detected and
+treated as exhaustion), but it also means any links beyond the first server
+page are silently unreachable through this endpoint until fixed upstream --
+not currently independently verifiable since OP-19928 (see
+tests/integration/test_wiki_page_links.py) already 500s the same endpoint
+whenever any link exists at all.
+
 `create` POSTs to the same work-package-scoped path, not the global
 `POST /wiki_page_links`: the scoped endpoint sets `linkable` from the URL
 server-side. The request body is always the bulk `_embedded/elements` shape

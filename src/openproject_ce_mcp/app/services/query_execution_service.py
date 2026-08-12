@@ -60,6 +60,13 @@ class QueryExecutionService:
     async def execute(self, query_id: int, *, offset: int = 1, limit: int | None = None) -> WorkPackageListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
         effective = effective_limit(limit, settings=self._settings)
+        if not self._settings.read_projects:
+            # Nothing can ever be allowed with an empty allowlist -- skip the
+            # round trip entirely, matching WorkPackageService.list()'s own
+            # fast path for the same condition.
+            return WorkPackageListResult(
+                offset=offset, limit=effective, total=0, count=0, next_offset=None, truncated=False, results=[]
+            )
 
         async def _fetch_page(server_offset: int, page_size: int) -> dict:
             page = await self._api.execute(query_id, offset=server_offset, page_size=page_size)

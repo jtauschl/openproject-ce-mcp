@@ -5,7 +5,7 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
-from openproject_ce_mcp.app.errors import PermissionDeniedError
+from openproject_ce_mcp.app.errors import InvalidInputError, NotFoundError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.wiki_page_link_api import WikiPageLinkRecord
 from openproject_ce_mcp.app.services.wiki_page_link_service import WikiPageLinkService
 from openproject_ce_mcp.models import CurrentUser, WikiPageLinkSummary
@@ -155,13 +155,27 @@ async def test_create_commit_with_confirm_calls_api_create() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_masks_hidden_identifier_in_commit_result() -> None:
+async def test_create_rejects_hidden_identifier_field() -> None:
+    api = _FakeWikiPageLinkApi()
     settings = dataclasses.replace(make_settings(), hidden_fields={"wiki_page_link": ("identifier",)})
-    service = _service(settings=settings)
+    service = _service(api=api, settings=settings)
 
-    result = await service.create(42, identifier="Home", provider="internal", confirm=True)
+    with pytest.raises(InvalidInputError, match="identifier"):
+        await service.create(42, identifier="Home", provider="internal", confirm=False)
 
-    assert getattr(result.result, "_hidden_keys", frozenset()) == {"identifier"}
+    assert api.create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_hidden_provider_field() -> None:
+    api = _FakeWikiPageLinkApi()
+    settings = dataclasses.replace(make_settings(), hidden_fields={"wiki_page_link": ("provider",)})
+    service = _service(api=api, settings=settings)
+
+    with pytest.raises(InvalidInputError, match="provider"):
+        await service.create(42, identifier="Home", provider="internal", confirm=False)
+
+    assert api.create_calls == []
 
 
 @pytest.mark.asyncio
@@ -204,6 +218,35 @@ async def test_delete_preview_without_confirm_does_not_call_api_delete() -> None
     assert result.result is None
     assert api.delete_calls == []
     assert resolver.calls == [(42, True)]  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_delete_rejects_link_id_not_belonging_to_the_resolved_work_package() -> None:
+    """Security regression: resolving work_package_id's write-allowlist alone
+    is NOT sufficient authorization to delete an arbitrary link_id.
+    OpenProject's own DELETE enforces manage_wiki_page_links against the
+    LINK's actual project, not whatever work_package_id this MCP was told to
+    check -- without this verification, a caller with write access to an
+    allowed work package could pass a link_id belonging to a disallowed
+    project's link and have it deleted."""
+    api = _FakeWikiPageLinkApi([WikiPageLinkRecord(summary=_summary(link_id=9))])
+    service = _service(api=api)
+
+    with pytest.raises(NotFoundError):
+        await service.delete(42, 999, confirm=True)
+
+    assert api.delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_rejects_foreign_link_id_even_without_confirm() -> None:
+    api = _FakeWikiPageLinkApi([WikiPageLinkRecord(summary=_summary(link_id=9))])
+    service = _service(api=api)
+
+    with pytest.raises(NotFoundError):
+        await service.delete(42, 999, confirm=False)
+
+    assert api.delete_calls == []
 
 
 @pytest.mark.asyncio
