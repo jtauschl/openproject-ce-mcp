@@ -29,6 +29,7 @@ _READ_SCOPE_SETTINGS: dict[str, str] = {
     "board": "enable_board_read",
     "personal": "enable_personal_read",
     "admin": "enable_admin_read",
+    "user_schedule": "enable_user_schedule_read",
     "extended": "enable_metadata_tools",
 }
 _WRITE_SCOPE_SETTINGS: dict[str, str] = {
@@ -39,6 +40,7 @@ _WRITE_SCOPE_SETTINGS: dict[str, str] = {
     "board": "enable_board_write",
     "personal": "enable_personal_write",
     "admin": "enable_admin_write",
+    "user_schedule": "enable_user_schedule_write",
 }
 
 # attr name -> the individual boolean env var that controls it. Single source
@@ -52,6 +54,7 @@ _READ_ATTR_ENV_VAR: dict[str, str] = {
     "enable_board_read": "OPENPROJECT_ENABLE_BOARD_READ",
     "enable_personal_read": "OPENPROJECT_ENABLE_PERSONAL_READ",
     "enable_admin_read": "OPENPROJECT_ENABLE_ADMIN_READ",
+    "enable_user_schedule_read": "OPENPROJECT_ENABLE_USER_SCHEDULE_READ",
     "enable_metadata_tools": "OPENPROJECT_ENABLE_EXTENDED_READ",
 }
 READ_SCOPE_ENV_VAR: dict[str, str] = {scope: _READ_ATTR_ENV_VAR[attr] for scope, attr in _READ_SCOPE_SETTINGS.items()}
@@ -79,6 +82,12 @@ WRITE_GROUP_REQUIREMENTS: tuple[tuple[str, str, str, str], ...] = (
     ("board_write", "board_read", "OPENPROJECT_ENABLE_BOARD_WRITE", "OPENPROJECT_ENABLE_BOARD_READ"),
     ("personal_write", "personal_read", "OPENPROJECT_ENABLE_PERSONAL_WRITE", "OPENPROJECT_ENABLE_PERSONAL_READ"),
     ("admin_write", "admin_read", "OPENPROJECT_ENABLE_ADMIN_WRITE", "OPENPROJECT_ENABLE_ADMIN_READ"),
+    (
+        "user_schedule_write",
+        "user_schedule_read",
+        "OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE",
+        "OPENPROJECT_ENABLE_USER_SCHEDULE_READ",
+    ),
 )
 
 
@@ -201,6 +210,8 @@ HIDE_FIELD_ENV_BY_ENTITY: dict[str, str] = {
     "working_day": "OPENPROJECT_HIDE_WORKING_DAY_FIELDS",
     "non_working_day": "OPENPROJECT_HIDE_NON_WORKING_DAY_FIELDS",
     "custom_option": "OPENPROJECT_HIDE_CUSTOM_OPTION_FIELDS",
+    "user_non_working_time": "OPENPROJECT_HIDE_USER_NON_WORKING_TIME_FIELDS",
+    "user_working_hours": "OPENPROJECT_HIDE_USER_WORKING_HOURS_FIELDS",
 }
 
 
@@ -224,6 +235,7 @@ class Settings:
     enable_board_read: bool = True
     enable_personal_read: bool = False
     enable_admin_read: bool = False
+    enable_user_schedule_read: bool = False
     hide_project_fields: tuple[str, ...] = ()
     hide_work_package_fields: tuple[str, ...] = ()
     hide_activity_fields: tuple[str, ...] = ()
@@ -236,6 +248,7 @@ class Settings:
     enable_board_write: bool = True
     enable_personal_write: bool = False
     enable_admin_write: bool = False
+    enable_user_schedule_write: bool = False
     enable_metadata_tools: bool = False
     attachment_root: str = ""
     max_retries: int = 3
@@ -274,6 +287,7 @@ class Settings:
         enable_board_read = _bool_env(env, "OPENPROJECT_ENABLE_BOARD_READ", default=True)
         enable_personal_read = _bool_env(env, "OPENPROJECT_ENABLE_PERSONAL_READ", default=False)
         enable_admin_read = _bool_env(env, "OPENPROJECT_ENABLE_ADMIN_READ", default=False)
+        enable_user_schedule_read = _bool_env(env, "OPENPROJECT_ENABLE_USER_SCHEDULE_READ", default=False)
         enable_metadata_tools = _bool_env(env, "OPENPROJECT_ENABLE_EXTENDED_READ", default=False)
         hidden_fields = {
             entity: patterns
@@ -291,6 +305,7 @@ class Settings:
         enable_board_write = _bool_env(env, "OPENPROJECT_ENABLE_BOARD_WRITE", default=True)
         enable_personal_write = _bool_env(env, "OPENPROJECT_ENABLE_PERSONAL_WRITE", default=False)
         enable_admin_write = _bool_env(env, "OPENPROJECT_ENABLE_ADMIN_WRITE", default=False)
+        enable_user_schedule_write = _bool_env(env, "OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE", default=False)
         timeout = _float_env(env, "OPENPROJECT_TIMEOUT", default=12.0, minimum=1.0)
         verify_ssl = _bool_env(env, "OPENPROJECT_VERIFY_SSL", default=True)
         default_page_size = _int_env(
@@ -336,6 +351,7 @@ class Settings:
             "board_read": enable_board_read,
             "personal_read": enable_personal_read,
             "admin_read": enable_admin_read,
+            "user_schedule_read": enable_user_schedule_read,
         }
         write_flags = {
             "project_write": enable_project_write,
@@ -345,6 +361,7 @@ class Settings:
             "board_write": enable_board_write,
             "personal_write": enable_personal_write,
             "admin_write": enable_admin_write,
+            "user_schedule_write": enable_user_schedule_write,
         }
         violations = tool_exposure_violations(read_flags, write_flags)
         if violations:
@@ -370,6 +387,7 @@ class Settings:
             enable_board_read=enable_board_read,
             enable_personal_read=enable_personal_read,
             enable_admin_read=enable_admin_read,
+            enable_user_schedule_read=enable_user_schedule_read,
             hide_project_fields=hide_project_fields,
             hide_work_package_fields=hide_work_package_fields,
             hide_activity_fields=hide_activity_fields,
@@ -382,6 +400,7 @@ class Settings:
             enable_board_write=enable_board_write,
             enable_personal_write=enable_personal_write,
             enable_admin_write=enable_admin_write,
+            enable_user_schedule_write=enable_user_schedule_write,
             enable_metadata_tools=enable_metadata_tools,
             attachment_root=attachment_root,
             max_retries=max_retries,

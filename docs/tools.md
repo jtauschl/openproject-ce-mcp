@@ -98,6 +98,37 @@ Same gating as [Users](#users) above: reads need
 | `update_group` | Validate and then update a group; only writes when called again with `confirm=true` |
 | `delete_group` | Validate and then delete a group; only deletes when called again with `confirm=true` |
 
+## User schedule overrides
+
+Per-user schedule overrides (vacation date ranges and recurring weekly
+working-hours schedules) — requires OpenProject 17.3+ (feature-flag-gated
+through 17.6, generally available from 17.7; earlier versions return a
+`[server_error]`, since the underlying route does not exist at all before
+17.3). Gated by its own dedicated flag pair,
+`OPENPROJECT_ENABLE_USER_SCHEDULE_READ`/`_WRITE` (both default `false`) —
+neither [Users](#users)' `OPENPROJECT_ENABLE_ADMIN_READ`/`_WRITE` nor a
+`personal`-style current-user-only scope fits: OpenProject itself always
+lets a caller view/edit their own schedule (`user_ref="me"`) regardless of
+role, so an admin-only gate would incorrectly block ordinary self-service,
+while every tool here also accepts a `user_ref` for another user, which a
+strictly-current-user scope can't express. OpenProject enforces the actual
+authorization at the API level regardless of this flag: viewing/editing
+another user's schedule requires the `manage_working_times` global
+permission, else OpenProject returns 404 (not 403) to avoid confirming that
+user exists.
+
+| Tool | Description |
+|---|---|
+| `list_user_non_working_times` | List a user's non-working-time (vacation) date ranges, with an optional `year` filter |
+| `create_user_non_working_time` | Validate and then create a non-working-time date range for a user; only writes when called again with `confirm=true` |
+| `update_user_non_working_time` | Validate and then update a user's non-working-time date range; only writes when called again with `confirm=true` |
+| `delete_user_non_working_time` | Validate and then delete a user's non-working-time date range; only deletes when called again with `confirm=true` |
+| `list_user_working_hours` | List a user's recurring weekly working-hours schedules, most recent `valid_from` first |
+| `get_user_working_hours` | Fetch a single working-hours schedule entry for a user |
+| `create_user_working_hours` | Validate and then create a new weekly working-hours schedule version for a user; only writes when called again with `confirm=true` |
+| `update_user_working_hours` | Validate and then update a user's working-hours schedule entry; only writes when called again with `confirm=true` |
+| `delete_user_working_hours` | Validate and then delete a user's working-hours schedule entry; only deletes when called again with `confirm=true` |
+
 ## Notifications
 
 | Tool | Description |

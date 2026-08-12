@@ -92,6 +92,7 @@ stays out of the tool set until explicitly requested.
 | `OPENPROJECT_ENABLE_BOARD_READ` | no | `true` | Boards |
 | `OPENPROJECT_ENABLE_PERSONAL_READ` | no | `false` | Your own preferences and notifications (`get_my_preferences`, `list_notifications`) |
 | `OPENPROJECT_ENABLE_ADMIN_READ` | no | `false` | Instance-wide user/group listing (`list_users`, `get_user`, `list_groups`, `get_group`, `list_principals`) — PII (names, logins, emails), not project-scoped |
+| `OPENPROJECT_ENABLE_USER_SCHEDULE_READ` | no | `false` | Per-user schedule overrides — vacation date ranges and working-hours schedules (`list_user_non_working_times`, `list_user_working_hours`, `get_user_working_hours`; requires OpenProject 17.3+). Its own dedicated scope: not bounded by a project allowlist, but also not `_ADMIN_READ` (would block ordinary self-service) or `_PERSONAL_READ` (its tools take no `user_id`) |
 | `OPENPROJECT_ENABLE_EXTENDED_READ` | no | `false` | Rarely-used metadata/reference tools (`get_query_*` schema tools, `render_text`, `get_custom_option`, `list_help_texts`/`get_help_text`, `list_working_days`/`list_non_working_days`) |
 
 Each write flag below requires its matching read boolean to be `true` — e.g.
@@ -114,6 +115,7 @@ safety net for them.
 | `OPENPROJECT_ENABLE_VERSION_WRITE` | no | `true` | Version create/update/delete. has no effect without a non-empty `OPENPROJECT_WRITE_PROJECTS` |
 | `OPENPROJECT_ENABLE_BOARD_WRITE` | no | `true` | Board create/update/delete. has no effect without a non-empty `OPENPROJECT_WRITE_PROJECTS` |
 | `OPENPROJECT_ENABLE_PERSONAL_WRITE` | no | `false` | Personal-data mutations (update your own preferences, mark notifications read). Personal read tools require only `OPENPROJECT_ENABLE_PERSONAL_READ=true`; personal mutations require both the read and write flags together |
+| `OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE` | no | `false` | Create/update/delete a user's non-working times and working-hours schedule (requires `OPENPROJECT_ENABLE_USER_SCHEDULE_READ=true` too, like every other write flag requires its matching read) |
 
 `OPENPROJECT_ENABLE_ADMIN_WRITE` is documented under
 [Security / Privacy](#security--privacy) below.
@@ -127,10 +129,11 @@ OpenProject exclusively through this MCP's tools: they stop an agent's own
 mistakes and prompt-injection attempts from turning into writes or reads the
 operator didn't intend.
 
-`OPENPROJECT_ENABLE_PERSONAL_READ`/`_EXTENDED_READ`/`_ADMIN_READ` are also
-runtime-enforced gates, not cosmetic toggles — they genuinely control what
-data reaches the agent's context, `_ADMIN_READ` in particular keeping the
-instance-wide user/group list (PII) out of context by default. What none of
+`OPENPROJECT_ENABLE_PERSONAL_READ`/`_EXTENDED_READ`/`_ADMIN_READ`/
+`_USER_SCHEDULE_READ` are also runtime-enforced gates, not cosmetic toggles —
+they genuinely control what data reaches the agent's context, `_ADMIN_READ`
+in particular keeping the instance-wide user/group list (PII) out of context
+by default. What none of
 these controls can do is stop someone who independently holds the API token
 and network access to OpenProject — they can call the REST API directly,
 bypassing this MCP entirely. That is the OpenProject role/permission system's

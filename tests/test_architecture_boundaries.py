@@ -482,6 +482,40 @@ def test_wiki_page_link_service_binds_the_api_param_to_wiki_page_link_api_specif
     )
 
 
+def test_user_non_working_time_service_binds_the_api_param_to_user_non_working_time_api_specifically() -> None:
+    """Non-generalized regression test for the User Non-Working Times domain's
+    exact guarantee, sibling to the checks above: the api param is
+    UserNonWorkingTimeApi exactly, not just "some Protocol"."""
+    from openproject_ce_mcp.app.adapters.httpx_user_non_working_time_api import HttpxUserNonWorkingTimeApi
+    from openproject_ce_mcp.app.ports.user_non_working_time_api import UserNonWorkingTimeApi
+    from openproject_ce_mcp.app.services.user_non_working_time_service import UserNonWorkingTimeService
+
+    hints = typing.get_type_hints(UserNonWorkingTimeService.__init__)
+    assert hints["api"] is UserNonWorkingTimeApi, (
+        "UserNonWorkingTimeService.__init__'s api param must be typed UserNonWorkingTimeApi"
+    )
+    assert hints["api"] is not HttpxUserNonWorkingTimeApi, (
+        "UserNonWorkingTimeService.__init__'s api param must not be the concrete adapter"
+    )
+
+
+def test_user_working_hours_service_binds_the_api_param_to_user_working_hours_api_specifically() -> None:
+    """Non-generalized regression test for the User Working Hours domain's
+    exact guarantee, sibling to the checks above: the api param is
+    UserWorkingHoursApi exactly, not just "some Protocol"."""
+    from openproject_ce_mcp.app.adapters.httpx_user_working_hours_api import HttpxUserWorkingHoursApi
+    from openproject_ce_mcp.app.ports.user_working_hours_api import UserWorkingHoursApi
+    from openproject_ce_mcp.app.services.user_working_hours_service import UserWorkingHoursService
+
+    hints = typing.get_type_hints(UserWorkingHoursService.__init__)
+    assert hints["api"] is UserWorkingHoursApi, (
+        "UserWorkingHoursService.__init__'s api param must be typed UserWorkingHoursApi"
+    )
+    assert hints["api"] is not HttpxUserWorkingHoursApi, (
+        "UserWorkingHoursService.__init__'s api param must not be the concrete adapter"
+    )
+
+
 def test_query_execution_service_binds_the_api_param_to_query_execution_api_specifically() -> None:
     """Non-generalized regression test for the Query-execution domain's exact
     guarantee, sibling to the checks above: the api param is

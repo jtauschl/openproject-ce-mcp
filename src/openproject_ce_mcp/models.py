@@ -1439,3 +1439,56 @@ class WikiPageLinkWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: WikiPageLinkSummary | None
+
+
+@dataclass
+class UserNonWorkingTimeSummary:
+    id: int
+    user_id: int | None
+    user_name: str | None
+    start_date: str | None
+    end_date: str | None
+
+
+@dataclass
+class UserNonWorkingTimeListResult(PageResult):
+    results: list[UserNonWorkingTimeSummary]
+
+
+@dataclass
+class UserNonWorkingTimeWriteResult(ConfirmationHeader):
+    non_working_time_id: int | None
+    user_id: int | None
+    payload: dict[str, Any]
+    validation_errors: dict[str, str]
+    result: UserNonWorkingTimeSummary | None
+
+
+@dataclass
+class UserWorkingHoursSummary:
+    id: int
+    user_id: int | None
+    user_name: str | None
+    valid_from: str | None
+    monday_hours: float | None
+    tuesday_hours: float | None
+    wednesday_hours: float | None
+    thursday_hours: float | None
+    friday_hours: float | None
+    saturday_hours: float | None
+    sunday_hours: float | None
+    availability_factor: float | None
+
+
+@dataclass
+class UserWorkingHoursListResult(PageResult):
+    results: list[UserWorkingHoursSummary]
+
+
+@dataclass
+class UserWorkingHoursWriteResult(ConfirmationHeader):
+    working_hours_id: int | None
+    user_id: int | None
+    payload: dict[str, Any]
+    validation_errors: dict[str, str]
+    result: UserWorkingHoursSummary | None

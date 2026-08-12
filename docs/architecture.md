@@ -250,6 +250,34 @@ classification constants (`READ_TOOLS_BY_SCOPE`/`WRITE_TOOLS_BY_SCOPE`/
 always zero; a wholly new domain's tools do not pre-exist there and must be registered as part of
 building it, the same as any new tool name.
 
+The User Non-Working Times / User Working Hours domains (`app/ports/user_non_working_time_api.py`,
+`app/ports/user_working_hours_api.py`) are the first domains gated by neither a project allowlist
+(`OPENPROJECT_READ_PROJECTS`/`WRITE_PROJECTS`) nor the existing `admin`/`personal` scopes: their
+resource (`/api/v3/users/{user_id}/non_working_times`, `/api/v3/users/{user_id}/working_hours`) has
+no project concept at all, and OpenProject's own authorization is a route-level, per-request gate
+(`@user == current_user || current_user.allowed_globally?(:manage_working_times)`, else a 404 rather
+than a 403, to avoid confirming the target user exists) that this MCP cannot usefully duplicate
+client-side. Both Services therefore have no Resolver and no dedicated `<domain>_policy.py` — the
+only access decision left to this codebase is its own dedicated `user_schedule` scope
+(`OPENPROJECT_ENABLE_USER_SCHEDULE_READ`/`_WRITE`, both default `false`), a pure surface-exposure
+opt-in independent of OpenProject's own server-side check, following the established
+one-scope-per-domain pattern (Board, Version, Membership, Project each have their own pair) rather
+than overloading `admin` (which would incorrectly block ordinary self-service) or `personal` (which
+has no `user_id` parameter anywhere in its existing tools).
+
+The two domains also split across this project's two documented no-single-GET/has-single-GET delete
+patterns within one ticket: OpenProject mounts no `GET .../non_working_times/{id}` route at all, so
+`UserNonWorkingTimeService.update()`/`delete()` resolve the target record by scanning
+`list_for_user()`'s full result first (the same shape `WikiPageLinkService.delete()` uses), while
+`GET .../working_hours/{id}` does exist, so `UserWorkingHoursService.get()`/`update()`/`delete()` use
+a real single-resource GET (`BoardService.delete()`'s pattern) instead. Both collections are also
+unpaginated on OpenProject's side (`UserNonWorkingTimeCollectionRepresenter`/
+`UserWorkingHoursCollectionRepresenter` both subclass `UnpaginatedCollection`, verified against
+source) — both Services fetch the whole collection in one call (`offset=1,
+page_size=settings.max_results`) and slice it client-side via `pagination.paginate_client`, the same
+shape `RoleService.list_roles` already established as this codebase's precedent for a genuinely
+unpaginated collection, rather than being force-fit into a server-paginated tool signature.
+
 ## Naming conventions
 
 The code intentionally mirrors OpenProject source names at the API boundary. Do not

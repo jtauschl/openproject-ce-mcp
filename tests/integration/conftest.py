@@ -143,6 +143,8 @@ def _integration_settings() -> Settings | None:
         enable_board_write=True,
         enable_personal_read=True,
         enable_personal_write=True,
+        enable_user_schedule_read=True,
+        enable_user_schedule_write=True,
         enable_metadata_tools=True,
     )
 
@@ -385,6 +387,40 @@ async def second_user_client(client: OpenProjectClient, user_ids: list[int]):
     second_client = OpenProjectClient(second_settings)
     await second_client.initialize()
     return user_id, second_client
+
+
+@pytest.fixture
+async def user_non_working_time_ids(client: OpenProjectClient):
+    """Yields a list to append (user_ref, non_working_time_id) pairs; deletes
+    them all after the test.
+
+    User-scoped, not project-scoped -- same caveat as ``group_ids``/
+    ``user_ids`` above.
+    """
+    created: list[tuple[str, int]] = []
+    yield created
+    for user_ref, non_working_time_id in created:
+        try:
+            await client.delete_user_non_working_time(user_ref, non_working_time_id, confirm=True)
+        except Exception:
+            pass
+
+
+@pytest.fixture
+async def user_working_hours_ids(client: OpenProjectClient):
+    """Yields a list to append (user_ref, working_hours_id) pairs; deletes
+    them all after the test.
+
+    User-scoped, not project-scoped -- same caveat as ``group_ids``/
+    ``user_ids`` above.
+    """
+    created: list[tuple[str, int]] = []
+    yield created
+    for user_ref, working_hours_id in created:
+        try:
+            await client.delete_user_working_hours(user_ref, working_hours_id, confirm=True)
+        except Exception:
+            pass
 
 
 @pytest.fixture

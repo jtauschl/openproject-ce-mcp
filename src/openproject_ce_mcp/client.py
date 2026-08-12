@@ -41,7 +41,9 @@ from .app.adapters.httpx_sprint_api import HttpxSprintApi
 from .app.adapters.httpx_status_priority_type_api import HttpxStatusPriorityTypeApi
 from .app.adapters.httpx_time_entry_api import HttpxTimeEntryApi
 from .app.adapters.httpx_user_api import HttpxUserApi
+from .app.adapters.httpx_user_non_working_time_api import HttpxUserNonWorkingTimeApi
 from .app.adapters.httpx_user_preferences_api import HttpxUserPreferencesApi
+from .app.adapters.httpx_user_working_hours_api import HttpxUserWorkingHoursApi
 from .app.adapters.httpx_version_api import HttpxVersionApi
 from .app.adapters.httpx_view_api import HttpxViewApi
 from .app.adapters.httpx_watcher_api import HttpxWatcherApi
@@ -106,7 +108,9 @@ from .app.ports.sprint_api import SprintApi
 from .app.ports.status_priority_type_api import StatusPriorityTypeApi
 from .app.ports.time_entry_api import TimeEntryApi
 from .app.ports.user_api import UserApi
+from .app.ports.user_non_working_time_api import UserNonWorkingTimeApi
 from .app.ports.user_preferences_api import UserPreferencesApi
+from .app.ports.user_working_hours_api import UserWorkingHoursApi
 from .app.ports.version_api import VersionApi
 from .app.ports.view_api import ViewApi
 from .app.ports.watcher_api import WatcherApi
@@ -153,8 +157,10 @@ from .app.services.role_service import RoleService
 from .app.services.sprint_service import SprintService
 from .app.services.status_priority_type_service import StatusPriorityTypeService
 from .app.services.time_entry_service import TimeEntryService
+from .app.services.user_non_working_time_service import UserNonWorkingTimeService
 from .app.services.user_preferences_service import UserPreferencesService
 from .app.services.user_service import UserService
+from .app.services.user_working_hours_service import UserWorkingHoursService
 from .app.services.version_service import VersionService
 from .app.services.view_service import ViewService
 from .app.services.watcher_service import WatcherService
@@ -265,8 +271,13 @@ from .models import (
     TypeSummary,
     UserDetail,
     UserListResult,
+    UserNonWorkingTimeListResult,
+    UserNonWorkingTimeWriteResult,
     UserPreferences,
     UserPreferencesWriteResult,
+    UserWorkingHoursListResult,
+    UserWorkingHoursSummary,
+    UserWorkingHoursWriteResult,
     UserWriteResult,
     VersionDetail,
     VersionListResult,
@@ -640,6 +651,14 @@ class OpenProjectClient:
             resolve_work_package_id=self._work_package_resolver.resolve_id,
             current_user=self._current_user_resolver,
         )
+
+        self._user_non_working_time_api: UserNonWorkingTimeApi = HttpxUserNonWorkingTimeApi(HttpxTransport(self._http))
+        self._user_non_working_time_service = UserNonWorkingTimeService(
+            api=self._user_non_working_time_api, settings=settings
+        )
+
+        self._user_working_hours_api: UserWorkingHoursApi = HttpxUserWorkingHoursApi(HttpxTransport(self._http))
+        self._user_working_hours_service = UserWorkingHoursService(api=self._user_working_hours_api, settings=settings)
 
         # Depends on self._work_package_api (constructed above) directly, to
         # normalize each raw embedded query result via its to_record() --
@@ -1214,6 +1233,109 @@ class OpenProjectClient:
         self, work_package_id: int | str, link_id: int, *, confirm: bool = False
     ) -> WikiPageLinkWriteResult:
         return await self._wiki_page_link_service.delete(work_package_id, link_id, confirm=confirm)
+
+    async def list_user_non_working_times(
+        self, user_ref: str, *, year: int | None = None, offset: int = 1, limit: int | None = None
+    ) -> UserNonWorkingTimeListResult:
+        return await self._user_non_working_time_service.list_for_user(user_ref, year=year, offset=offset, limit=limit)
+
+    async def create_user_non_working_time(
+        self, user_ref: str, *, start_date: str, end_date: str, confirm: bool = False
+    ) -> UserNonWorkingTimeWriteResult:
+        return await self._user_non_working_time_service.create(
+            user_ref, start_date=start_date, end_date=end_date, confirm=confirm
+        )
+
+    async def update_user_non_working_time(
+        self,
+        user_ref: str,
+        non_working_time_id: int,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        confirm: bool = False,
+    ) -> UserNonWorkingTimeWriteResult:
+        return await self._user_non_working_time_service.update(
+            user_ref, non_working_time_id, start_date=start_date, end_date=end_date, confirm=confirm
+        )
+
+    async def delete_user_non_working_time(
+        self, user_ref: str, non_working_time_id: int, *, confirm: bool = False
+    ) -> UserNonWorkingTimeWriteResult:
+        return await self._user_non_working_time_service.delete(user_ref, non_working_time_id, confirm=confirm)
+
+    async def list_user_working_hours(
+        self, user_ref: str, *, offset: int = 1, limit: int | None = None
+    ) -> UserWorkingHoursListResult:
+        return await self._user_working_hours_service.list_for_user(user_ref, offset=offset, limit=limit)
+
+    async def get_user_working_hours(self, user_ref: str, working_hours_id: int) -> UserWorkingHoursSummary:
+        return await self._user_working_hours_service.get(user_ref, working_hours_id)
+
+    async def create_user_working_hours(
+        self,
+        user_ref: str,
+        *,
+        valid_from: str,
+        monday_hours: float | None = None,
+        tuesday_hours: float | None = None,
+        wednesday_hours: float | None = None,
+        thursday_hours: float | None = None,
+        friday_hours: float | None = None,
+        saturday_hours: float | None = None,
+        sunday_hours: float | None = None,
+        availability_factor: float | None = None,
+        confirm: bool = False,
+    ) -> UserWorkingHoursWriteResult:
+        return await self._user_working_hours_service.create(
+            user_ref,
+            valid_from=valid_from,
+            monday_hours=monday_hours,
+            tuesday_hours=tuesday_hours,
+            wednesday_hours=wednesday_hours,
+            thursday_hours=thursday_hours,
+            friday_hours=friday_hours,
+            saturday_hours=saturday_hours,
+            sunday_hours=sunday_hours,
+            availability_factor=availability_factor,
+            confirm=confirm,
+        )
+
+    async def update_user_working_hours(
+        self,
+        user_ref: str,
+        working_hours_id: int,
+        *,
+        valid_from: str | None = None,
+        monday_hours: float | None = None,
+        tuesday_hours: float | None = None,
+        wednesday_hours: float | None = None,
+        thursday_hours: float | None = None,
+        friday_hours: float | None = None,
+        saturday_hours: float | None = None,
+        sunday_hours: float | None = None,
+        availability_factor: float | None = None,
+        confirm: bool = False,
+    ) -> UserWorkingHoursWriteResult:
+        return await self._user_working_hours_service.update(
+            user_ref,
+            working_hours_id,
+            valid_from=valid_from,
+            monday_hours=monday_hours,
+            tuesday_hours=tuesday_hours,
+            wednesday_hours=wednesday_hours,
+            thursday_hours=thursday_hours,
+            friday_hours=friday_hours,
+            saturday_hours=saturday_hours,
+            sunday_hours=sunday_hours,
+            availability_factor=availability_factor,
+            confirm=confirm,
+        )
+
+    async def delete_user_working_hours(
+        self, user_ref: str, working_hours_id: int, *, confirm: bool = False
+    ) -> UserWorkingHoursWriteResult:
+        return await self._user_working_hours_service.delete(user_ref, working_hours_id, confirm=confirm)
 
     async def execute_query(self, query_id: int, *, offset: int = 1, limit: int | None = None) -> WorkPackageListResult:
         return await self._query_execution_service.execute(query_id, offset=offset, limit=limit)

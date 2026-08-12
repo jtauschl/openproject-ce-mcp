@@ -17,6 +17,7 @@ from _write_contract_cases_membership_version_board_admin import MEMBERSHIP_VERS
 from _write_contract_cases_personal_attachment import PERSONAL_ATTACHMENT_CASES
 from _write_contract_cases_project import PROJECT_CASES
 from _write_contract_cases_types import MaterializedWriteToolCase, WriteToolCase, materialize_case
+from _write_contract_cases_user_schedule import USER_SCHEDULE_CASES
 from _write_contract_cases_work_package import WORK_PACKAGE_CASES
 
 __all__ = [
@@ -31,4 +32,5 @@ WRITE_TOOL_CASES: dict[str, WriteToolCase] = {
     **WORK_PACKAGE_CASES,
     **MEMBERSHIP_VERSION_BOARD_ADMIN_CASES,
     **PERSONAL_ATTACHMENT_CASES,
+    **USER_SCHEDULE_CASES,
 }

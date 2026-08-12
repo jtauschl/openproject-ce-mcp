@@ -289,6 +289,32 @@ def test_admin_write_toggle_is_independent() -> None:
     assert with_admin - without == set(tools.ADMIN_WRITE_TOOLS)
 
 
+def test_user_schedule_read_default_false_hides_user_schedule_tools() -> None:
+    # Own dedicated scope (neither "admin" nor "personal" fits -- see
+    # config.py's scope-decision docstring): off by default, same as admin.
+    names = set(tools.enabled_tool_names(make_settings()))
+    assert set(tools.READ_TOOLS_BY_SCOPE["user_schedule"]).isdisjoint(names)
+
+
+def test_user_schedule_read_true_exposes_user_schedule_tools() -> None:
+    names = set(tools.enabled_tool_names(make_settings(enable_user_schedule_read=True)))
+    assert set(tools.READ_TOOLS_BY_SCOPE["user_schedule"]) <= names
+
+
+def test_user_schedule_write_toggle_is_independent() -> None:
+    # user_schedule_write requires its own user_schedule_read (like every
+    # other write flag requires its matching read) -- pass it explicitly on
+    # both sides so this doesn't codify a combination Settings.from_env would
+    # reject at startup.
+    without = set(tools.enabled_tool_names(make_settings(**ALL_READ_ON, enable_user_schedule_read=True)))
+    with_user_schedule = set(
+        tools.enabled_tool_names(
+            make_settings(**ALL_READ_ON, enable_user_schedule_read=True, enable_user_schedule_write=True)
+        )
+    )
+    assert with_user_schedule - without == set(tools.WRITE_TOOLS_BY_SCOPE["user_schedule"])
+
+
 def test_metadata_tools_need_their_additional_read_scopes_too() -> None:
     extended_tools = tools.READ_TOOLS_BY_SCOPE["extended"]
 
