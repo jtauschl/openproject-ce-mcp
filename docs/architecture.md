@@ -108,6 +108,14 @@ tools.py (MCP presentation)
     original never needed to parse completely (e.g. a payload missing an unrelated required field
     like `id`). Confirmed recurring, not a one-off: `EmojiReactionApi.get_activity` and
     `ReminderApi.get_remindable_link` both exist for this exact reason.
+  - A Port's normalize method may take an extra required keyword argument beyond the raw payload
+    when the wire response itself carries no field identifying something the Service already knows
+    from its own call context — `CostApi.to_costs_by_type_result(payload, *, work_package_id)`
+    stamps the resolved work package id onto `WorkPackageCostsByTypeResult` because OpenProject's
+    `WorkPackageCostsByTypeRepresenter` payload has no field naming the work package it summarizes
+    (only a `self` link an adapter would otherwise have to re-parse for a value the Service already
+    holds). Mirrors `TimeEntryApi.to_record(payload, *, text_limit)`'s existing shape of a second,
+    Service-supplied argument alongside the payload.
   - Small text/href-parsing helpers (`trim_text`, `id_from_href`, `link_title`,
     `delimit_user_content`, `origin_from_url`, `link_to_web_url`, `can_update_from_links`, plus
     `SUBJECT_LIMIT`) are shared via `app/adapters/_text.py`; every adapter imports what it needs

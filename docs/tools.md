@@ -316,6 +316,19 @@ user exists.
 | `update_time_entry_until` | Like `update_time_entry`, but takes `start_time`+`end_time` instead of `hours`, and always completes the entry (`ongoing=false`); only writes when called again with `confirm=true` |
 | `delete_time_entry` | Validate and then delete a time entry; only deletes when called again with `confirm=true` |
 
+## Costs
+
+| Tool | Description |
+|---|---|
+| `get_cost_entry` | Fetch a single cost entry by id |
+| `list_work_package_cost_entries` | List all cost entries recorded against a work package |
+| `get_work_package_costs_by_type` | Get a work package's costs aggregated by cost type |
+| `get_cost_type` | Fetch a cost type by id |
+
+> **Note:** the Costs module is entirely read-only in OpenProject's API —
+> there is no create/update/delete endpoint for cost entries or cost types,
+> and no collection `GET` for cost types (only single-item lookup by id).
+
 ## Grids
 
 | Tool | Description |
