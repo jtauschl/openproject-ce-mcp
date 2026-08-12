@@ -382,6 +382,24 @@ Meetings has its own dedicated `OPENPROJECT_ENABLE_MEETING_READ`/`_WRITE` scope 
 > there is no create/update/delete endpoint for cost entries or cost types,
 > and no collection `GET` for cost types (only single-item lookup by id).
 
+## GitHub / GitLab work-package linkage
+
+| Tool | Description |
+|---|---|
+| `get_github_pull_request` | Fetch a single GitHub pull request by its own id |
+| `list_work_package_github_pull_requests` | List all GitHub pull requests linked to a work package |
+| `list_work_package_gitlab_issues` | List all GitLab issues linked to a work package |
+| `list_work_package_gitlab_merge_requests` | List all GitLab merge requests linked to a work package |
+
+> **Note:** all three resources are read-only mirror rows synced by
+> OpenProject's own GitHub App / GitLab webhook integration — never creatable
+> via this API. An empty result can mean either "nothing linked" or "the
+> integration isn't configured on this instance"; OpenProject's own API
+> doesn't distinguish these cases. No `get_gitlab_issue`/
+> `get_gitlab_merge_request` single-item tools exist because no such endpoint
+> exists upstream for either resource — only `github_pull_requests` has a
+> global single-item route.
+
 ## Grids
 
 | Tool | Description |

@@ -455,6 +455,7 @@ _EXPECTED_GLOBAL_READ_TOOLS = frozenset(
         "get_current_user",
         "list_actions",
         "get_cost_type",
+        "get_github_pull_request",
     }
 )
 
@@ -465,11 +466,11 @@ def _all_five_scope_tools() -> set[str]:
 
 def test_project_scoped_and_global_read_tools_partition_the_five_scopes() -> None:
     all_five_scope_tools = _all_five_scope_tools()
-    assert len(all_five_scope_tools) == 78  # no name overlap between the 6 scopes (Costs + Meetings added)
+    assert len(all_five_scope_tools) == 82  # no name overlap between the 6 scopes (GitHub/GitLab linkage added)
     assert _EXPECTED_GLOBAL_READ_TOOLS <= all_five_scope_tools
     assert tools._PROJECT_SCOPED_READ_TOOLS == all_five_scope_tools - _EXPECTED_GLOBAL_READ_TOOLS
     assert tools._PROJECT_SCOPED_READ_TOOLS.isdisjoint(_EXPECTED_GLOBAL_READ_TOOLS)
-    assert len(tools._PROJECT_SCOPED_READ_TOOLS) == 65
+    assert len(tools._PROJECT_SCOPED_READ_TOOLS) == 68
 
 
 def test_project_scoped_read_tools_absent_when_read_projects_empty() -> None:
