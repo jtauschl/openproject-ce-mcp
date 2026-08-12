@@ -44,6 +44,23 @@ support.
   work packages, time entries). `get_document`/`get_news` return their full
   description by default now (previously silently capped at 1,200
   characters with no way to request more).
+- **New tools: `list_work_package_wiki_links`, `create_work_package_wiki_link`,
+  `delete_work_package_wiki_link`** — full CRUD (no update) for links between
+  a work package and a wiki page, pulled forward from the 0.5.0 backlog.
+  Requires OpenProject **17.6+**; the underlying `wiki_page_links` API has no
+  reachable route on earlier versions. `list_work_package_wiki_links` currently
+  only has integration coverage for the zero-links case: a confirmed upstream
+  OpenProject bug (`Wikis::PageLinkMetadataService#enrich_models`, reported as
+  OP-19928) makes the list endpoint fail with a 500 whenever at least one link
+  actually exists, which also makes `delete_work_package_wiki_link` unusable
+  in that case, since it deliberately re-verifies the link belongs to the
+  given work package before deleting it. `create_work_package_wiki_link` is
+  unaffected and fully functional.
+- **New tool: `execute_query`** — runs a saved OpenProject query
+  (`query_id`, from `get_view`/`list_views`'s `query_id` field, or a board's
+  own `id` since boards are queries) and returns its resolved work packages,
+  paginated and filtered against `OPENPROJECT_READ_PROJECTS` like every other
+  work-package listing tool. Pulled forward from the 0.5.0 backlog.
 
 ### Changed
 
