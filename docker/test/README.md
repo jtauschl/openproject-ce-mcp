@@ -12,6 +12,8 @@ matters to this client (all-in-one images, each bundles PostgreSQL + memcached):
 | `op-16-6`  | 16.6.10 | 8166 | classic baseline (no displayId, no semantic) |
 | `op-17-4`  | 17.4.1  | 8174 | displayId field introduced |
 | `op-17-5`  | 17.5.1  | 8175 | semantic identifiers active + workspaces (favorites) |
+| `op-17-6`  | 17.6.0  | 8176 | same semantic-identifier generation as 17.5 (no client-relevant API change; kept for currency) |
+| `op-17-7`  | 17.7.1  | 8177 | latest release as of this pin; same semantic-identifier generation as 17.5/17.6 |
 
 ## Usage
 
@@ -20,6 +22,8 @@ docker/test/up.sh           # all versions; waits until healthy, seeds, prints e
 docker/test/up.sh 17        # only 17.5.1
 docker/test/up.sh 174       # only 17.4.1
 docker/test/up.sh 16        # only 16.6.10
+docker/test/up.sh 176       # only 17.6.0
+docker/test/up.sh 177       # only 17.7.1
 
 # up.sh prints a ready-to-run block per instance, e.g.:
 OPENPROJECT_BASE_URL=http://localhost:8175 \
@@ -33,10 +37,11 @@ docker/test/down.sh --purge # also drop volumes
 
 **First boot takes several minutes** (migrations + asset precompile). `up.sh`
 waits on the container healthcheck, not a fixed sleep. Each instance needs
-~1–2 GB RAM, so three all-in-one containers at once can exhaust a small Docker
+~1–2 GB RAM, so five all-in-one containers at once can exhaust a small Docker
 VM (a default ~4 GB Colima VM will start marking containers unhealthy). On such
 machines, bring them up and test one at a time — `up.sh 16`, then `up.sh 174`,
-then `up.sh 17` — instead of `up.sh` (all three).
+then `up.sh 17`, then `up.sh 176`, then `up.sh 177` — instead of `up.sh` (all
+five).
 
 ## What seeding does
 
@@ -44,7 +49,7 @@ then `up.sh 17` — instead of `up.sh` (all three).
 token (printed once so `up.sh` can capture it) and a project `tst`. A freshly
 created project is bare, so the seed also: sets `workspace_type`, enables every
 project module, assigns all work-package types, adds the admin as a member with a
-work-package-capable role, creates one work package, and — on 17.5 only —
+work-package-capable role, creates one work package, and — on 17.5+ only —
 switches the instance to semantic identifiers (allocating the `tst-<n>` ids). 16.6
 and 17.4 stay classic on purpose; those are the backwards-compatibility paths.
 
