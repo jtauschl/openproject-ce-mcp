@@ -12,6 +12,7 @@ from . import __version__
 from .app.adapters.httpx_action_capability_api import HttpxActionCapabilityApi
 from .app.adapters.httpx_activity_api import HttpxActivityApi
 from .app.adapters.httpx_attachment_api import HttpxAttachmentApi
+from .app.adapters.httpx_backlog_bucket_api import HttpxBacklogBucketApi
 from .app.adapters.httpx_board_api import HttpxBoardApi
 from .app.adapters.httpx_category_api import HttpxCategoryApi
 from .app.adapters.httpx_current_user_api import HttpxCurrentUserApi
@@ -76,6 +77,7 @@ from .app.policies import scope as _scope_policy
 from .app.ports.action_capability_api import ActionCapabilityApi
 from .app.ports.activity_api import ActivityApi
 from .app.ports.attachment_api import AttachmentApi
+from .app.ports.backlog_bucket_api import BacklogBucketApi
 from .app.ports.board_api import BoardApi
 from .app.ports.category_api import CategoryApi
 from .app.ports.current_user_api import CurrentUserApi
@@ -122,6 +124,7 @@ from .app.resolvers.work_package_resolver import WorkPackageResolver
 from .app.services.action_capability_service import ActionCapabilityService
 from .app.services.activity_service import ActivityService
 from .app.services.attachment_service import AttachmentService
+from .app.services.backlog_bucket_service import BacklogBucketService
 from .app.services.board_service import BoardService
 from .app.services.category_service import CategoryService
 from .app.services.current_user_service import CurrentUserService
@@ -178,6 +181,8 @@ from .models import (
     AttachmentListResult,
     AttachmentSummary,
     AttachmentWriteResult,
+    BacklogBucketDetail,
+    BacklogBucketListResult,
     BatchWorkPackageReadResult,
     BoardDetail,
     BoardListResult,
@@ -472,6 +477,14 @@ class OpenProjectClient:
             resolve_project_ref=self._get_project_payload,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
+        )
+
+        self._backlog_bucket_api: BacklogBucketApi = HttpxBacklogBucketApi(HttpxTransport(self._http))
+        self._backlog_bucket_service = BacklogBucketService(
+            api=self._backlog_bucket_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_project_ref=self._get_project_payload,
         )
 
         self._grid_api: GridApi = HttpxGridApi(HttpxTransport(self._http))
@@ -1765,6 +1778,31 @@ class OpenProjectClient:
 
     async def get_sprint(self, sprint_id: int) -> SprintDetail:
         return await self._sprint_service.get(sprint_id)
+
+    async def list_backlog_buckets(
+        self,
+        *,
+        search: str | None = None,
+        offset: int = 1,
+        limit: int | None = None,
+    ) -> BacklogBucketListResult:
+        return await self._backlog_bucket_service.list(search=search, offset=offset, limit=limit)
+
+    async def list_project_backlog_buckets(
+        self,
+        project: str,
+        *,
+        search: str | None = None,
+        offset: int = 1,
+        limit: int | None = None,
+        context: ProjectResolutionContext | None = None,
+    ) -> BacklogBucketListResult:
+        return await self._backlog_bucket_service.list_for_project(
+            project, search=search, offset=offset, limit=limit, context=context
+        )
+
+    async def get_backlog_bucket(self, backlog_bucket_id: int) -> BacklogBucketDetail:
+        return await self._backlog_bucket_service.get(backlog_bucket_id)
 
     async def create_version(
         self,

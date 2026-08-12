@@ -32,6 +32,7 @@ EXPECTED_FIELD_ORDER: dict[str, list[str]] = {
     "ActionListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "ActivityListResult": ["count", "results"],
     "AttachmentListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
+    "BacklogBucketListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "BoardListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "CapabilityListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "CategoryListResult": ["count", "results"],

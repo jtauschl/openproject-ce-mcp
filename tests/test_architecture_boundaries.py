@@ -561,6 +561,24 @@ def test_sprint_service_binds_the_api_param_to_sprint_api_specifically() -> None
     assert hints["api"] is not HttpxSprintApi, "SprintService.__init__'s api param must not be the concrete adapter"
 
 
+def test_backlog_bucket_service_binds_the_api_param_to_backlog_bucket_api_specifically() -> None:
+    """Non-generalized regression test for the Backlog Buckets domain's exact
+    guarantee, sibling to the Sprints check above: the api param is
+    BacklogBucketApi exactly, not just "some Protocol". No
+    BacklogBucketResolver exists -- backlog_bucket_id is always a numeric
+    value already validated by tools.py, so there is no semantic-reference
+    resolution for this domain to warrant a Resolver."""
+    from openproject_ce_mcp.app.adapters.httpx_backlog_bucket_api import HttpxBacklogBucketApi
+    from openproject_ce_mcp.app.ports.backlog_bucket_api import BacklogBucketApi
+    from openproject_ce_mcp.app.services.backlog_bucket_service import BacklogBucketService
+
+    hints = typing.get_type_hints(BacklogBucketService.__init__)
+    assert hints["api"] is BacklogBucketApi, "BacklogBucketService.__init__'s api param must be typed BacklogBucketApi"
+    assert hints["api"] is not HttpxBacklogBucketApi, (
+        "BacklogBucketService.__init__'s api param must not be the concrete adapter"
+    )
+
+
 def test_board_service_binds_the_api_param_to_board_api_specifically() -> None:
     """Non-generalized regression test for the Boards domain's exact
     guarantee, sibling to the checks above: the api param is BoardApi

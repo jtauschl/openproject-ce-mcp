@@ -668,6 +668,30 @@ class SprintListResult(PageResult):
 
 
 @dataclass
+class BacklogBucketSummary:
+    id: int
+    name: str
+    defining_workspace_id: int | None
+    defining_workspace: str | None
+    created_at: str | None
+    updated_at: str | None
+
+
+@dataclass
+class BacklogBucketDetail(BacklogBucketSummary):
+    """Identical field shape to BacklogBucketSummary today; kept as a
+    distinct subclass (not a bare alias) so __name__/import path/MCP output
+    schema title for get_backlog_bucket stay exactly as they are (mirrors
+    SprintDetail/VersionDetail/NewsDetail).
+    """
+
+
+@dataclass
+class BacklogBucketListResult(PageResult):
+    results: list[BacklogBucketSummary]
+
+
+@dataclass
 class BoardFilter:
     key: str | None
     name: str | None

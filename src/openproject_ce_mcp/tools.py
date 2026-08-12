@@ -35,6 +35,9 @@ from .models import (
     AttachmentListResult,
     AttachmentSummary,
     AttachmentWriteResult,
+    BacklogBucketDetail,
+    BacklogBucketListResult,
+    BacklogBucketSummary,
     BatchWorkPackageReadResult,
     BoardDetail,
     BoardListResult,
@@ -236,6 +239,8 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "get_project_configuration",
         "list_sprints",
         "get_sprint",
+        "list_backlog_buckets",
+        "get_backlog_bucket",
         "list_documents",
         "get_document",
         "list_news",
@@ -409,6 +414,8 @@ _PROJECT_SCOPED_READ_TOOLS: frozenset[str] = frozenset(
         "get_project_configuration",
         "list_sprints",
         "get_sprint",
+        "list_backlog_buckets",
+        "get_backlog_bucket",
         "list_documents",
         "get_document",
         "list_news",
@@ -685,6 +692,54 @@ async def get_sprint(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(sprint_id, field_name="sprint_id")
     return await _run_tool(client.get_sprint(safe_id))
+
+
+async def list_backlog_buckets(
+    ctx: Context,
+    project: str | None = None,
+    search: str | None = None,
+    offset: int = 1,
+    limit: int | None = None,
+    select: list[str] | None = None,
+) -> BacklogBucketListResult:
+    """List Backlogs backlog buckets, optionally filtered by name search.
+
+    project: numeric id (e.g., 7), identifier (e.g., "my-project"), or display
+    name. Omit it to list every backlog bucket visible to the current token
+    across all projects; pass it to list only backlog buckets for that project.
+
+    Requires the OpenProject Backlogs module and OpenProject 17.6 or newer;
+    unavailable instances return a clear not-found message.
+
+    select fields: id, name, defining_workspace_id, defining_workspace,
+    created_at, updated_at (see server instructions for select's general
+    semantics).
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap. total is only
+    the count of allowed backlog buckets returned on THIS page, not a full count
+    of all matches — the search stops as soon as it has enough, so an exact
+    total would need an extra full walk. Page until next_offset is null.
+    """
+    client = _client_from_context(ctx)
+    safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
+    _validate_select(select, row_type=BacklogBucketSummary)
+    if project is None:
+        return await _run_tool(client.list_backlog_buckets(search=safe_search, offset=safe_offset, limit=safe_limit))
+    safe_project = _validate_project_ref(project)
+    return await _run_tool(
+        client.list_project_backlog_buckets(safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
+    )
+
+
+async def get_backlog_bucket(
+    ctx: Context,
+    backlog_bucket_id: int,
+) -> BacklogBucketDetail:
+    """Get a Backlogs backlog bucket by id. Requires OpenProject 17.6 or newer."""
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(backlog_bucket_id, field_name="backlog_bucket_id")
+    return await _run_tool(client.get_backlog_bucket(safe_id))
 
 
 async def get_project_admin_context(
