@@ -27,6 +27,7 @@ from .app.adapters.httpx_job_status_api import HttpxJobStatusApi
 from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_notification_api import HttpxNotificationApi
+from .app.adapters.httpx_post_api import HttpxPostApi
 from .app.adapters.httpx_principal_api import HttpxPrincipalApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
 from .app.adapters.httpx_project_api import normalize_option_value as _normalize_option_value
@@ -92,6 +93,7 @@ from .app.ports.job_status_api import JobStatusApi
 from .app.ports.membership_api import MembershipApi
 from .app.ports.news_api import NewsApi
 from .app.ports.notification_api import NotificationApi
+from .app.ports.post_api import PostApi
 from .app.ports.principal_api import PrincipalApi
 from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
@@ -139,6 +141,7 @@ from .app.services.job_status_service import JobStatusService
 from .app.services.membership_service import MembershipService
 from .app.services.news_service import NewsService
 from .app.services.notification_service import NotificationService
+from .app.services.post_service import PostService
 from .app.services.principal_service import PrincipalService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
@@ -221,6 +224,7 @@ from .models import (
     NotificationListResult,
     NotificationMarkResult,
     OptionValue,
+    PostDetail,
     PrincipalListResult,
     PriorityListResult,
     PrioritySummary,
@@ -445,6 +449,13 @@ class OpenProjectClient:
         self._wiki_page_api: WikiPageApi = HttpxWikiPageApi(HttpxTransport(self._http))
         self._wiki_page_service = WikiPageService(
             api=self._wiki_page_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+        )
+
+        self._post_api: PostApi = HttpxPostApi(HttpxTransport(self._http))
+        self._post_service = PostService(
+            api=self._post_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
         )
@@ -1178,6 +1189,9 @@ class OpenProjectClient:
 
     async def get_wiki_page(self, wiki_page_id: int, *, text_limit: int | None = 50_000) -> WikiPageDetail:
         return await self._wiki_page_service.get(wiki_page_id, text_limit=text_limit)
+
+    async def get_post(self, post_id: int) -> PostDetail:
+        return await self._post_service.get(post_id)
 
     async def list_work_package_wiki_links(
         self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None

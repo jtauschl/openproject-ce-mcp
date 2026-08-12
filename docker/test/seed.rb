@@ -240,6 +240,22 @@ else
   log("project TST already has wiki pages (or no wiki)")
 end
 
+# get_post has no create/list counterpart in this server's API (see
+# app/ports/post_api.py's own comment on this) -- a Message always requires a
+# parent Forum (Message#validates :forum, :subject, :content, presence:
+# true; Forum#validates :name, :description, presence: true -- see
+# app/models/message.rb / app/models/forum.rb), even though nothing in this
+# MCP's API surface ever reads the Forum resource back. The forums module is
+# already enabled unconditionally above (all_modules), so no extra
+# module-enablement step is needed here.
+if Forum.where(project: project).empty?
+  forum = Forum.create!(project: project, name: "Seed Forum", description: "Seeded for integration tests")
+  message = Message.create!(forum: forum, author: admin, subject: "Seed post", content: "Seeded content for integration tests.")
+  log("created forum id=#{forum.id} message id=#{message.id} subject=#{message.subject}")
+else
+  log("project TST already has a forum")
+end
+
 # get_project_phase/get_project_phase_definition have no list/create endpoint
 # in this server's API -- a project has zero Project::Phase rows by default
 # (they're an opt-in "life cycle" concept, not automatically present), so

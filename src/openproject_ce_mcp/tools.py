@@ -83,6 +83,7 @@ from .models import (
     NotificationListResult,
     NotificationMarkResult,
     NotificationSummary,
+    PostDetail,
     PrincipalListResult,
     PrincipalSummary,
     PriorityListResult,
@@ -246,6 +247,7 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "list_news",
         "get_news",
         "get_wiki_page",
+        "get_post",
         "list_views",
         "get_view",
         "list_grids",
@@ -421,6 +423,7 @@ _PROJECT_SCOPED_READ_TOOLS: frozenset[str] = frozenset(
         "list_news",
         "get_news",
         "get_wiki_page",
+        "get_post",
         "list_views",
         "get_view",
         "list_grids",
@@ -1544,6 +1547,24 @@ async def get_wiki_page(
     safe_id = _validate_positive_int(wiki_page_id, field_name="wiki_page_id")
     safe_text_limit = _validate_optional_text_limit(text_limit)
     return await _run_tool(client.get_wiki_page(safe_id, text_limit=safe_text_limit))
+
+
+async def get_post(
+    ctx: Context,
+    post_id: int,
+) -> PostDetail:
+    """Get a single forum post by id.
+
+    OpenProject's API exposes exactly one route for posts:
+    GET /api/v3/posts/{id}. There is no collection/list endpoint for posts or
+    forums at all in OpenProject's REST API -- a post's id must therefore
+    come from elsewhere (e.g. a work package's activity/journal referencing
+    a forum post, or a link copied from the OpenProject web UI). This MCP
+    does not and cannot provide a list_posts or list_forums tool.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(post_id, field_name="post_id")
+    return await _run_tool(client.get_post(safe_id))
 
 
 async def list_work_package_wiki_links(

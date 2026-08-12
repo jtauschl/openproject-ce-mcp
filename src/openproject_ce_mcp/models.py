@@ -1119,6 +1119,14 @@ class WikiPageListResult:
 
 
 @dataclass
+class PostDetail:
+    id: int
+    subject: str
+    project_id: int | None
+    project: str | None
+
+
+@dataclass
 class StatusSummary:
     id: int
     name: str

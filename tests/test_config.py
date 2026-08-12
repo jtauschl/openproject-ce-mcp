@@ -78,6 +78,7 @@ def test_settings_from_env_loads_priority_notification_file_link_emoji_reaction_
             "OPENPROJECT_HIDE_NOTIFICATION_FIELDS": "project_name",
             "OPENPROJECT_HIDE_FILE_LINK_FIELDS": "storage_name",
             "OPENPROJECT_HIDE_EMOJI_REACTION_FIELDS": "users",
+            "OPENPROJECT_HIDE_POST_FIELDS": "subject",
         }
     )
 
@@ -85,6 +86,7 @@ def test_settings_from_env_loads_priority_notification_file_link_emoji_reaction_
     assert settings.hidden_fields["notification"] == ("project_name",)
     assert settings.hidden_fields["file_link"] == ("storage_name",)
     assert settings.hidden_fields["emoji_reaction"] == ("users",)
+    assert settings.hidden_fields["post"] == ("subject",)
 
 
 def test_settings_from_env_rejects_invalid_relationships() -> None:

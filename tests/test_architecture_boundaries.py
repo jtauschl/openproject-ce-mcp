@@ -451,6 +451,22 @@ def test_wiki_page_service_binds_the_api_param_to_wiki_page_api_specifically() -
     assert hints["api"] is not HttpxWikiPageApi, "WikiPageService.__init__'s api param must not be the concrete adapter"
 
 
+def test_post_service_binds_the_api_param_to_post_api_specifically() -> None:
+    """Non-generalized regression test for the Forums Posts domain's exact
+    guarantee, sibling to the checks above: the api param is PostApi
+    exactly, not just "some Protocol". No PostResolver exists (like
+    Memberships/News/Documents/Wiki Pages) -- post_id is always a numeric
+    value already validated by tools.py, so there is no semantic-reference
+    resolution for this domain to warrant a Resolver."""
+    from openproject_ce_mcp.app.adapters.httpx_post_api import HttpxPostApi
+    from openproject_ce_mcp.app.ports.post_api import PostApi
+    from openproject_ce_mcp.app.services.post_service import PostService
+
+    hints = typing.get_type_hints(PostService.__init__)
+    assert hints["api"] is PostApi, "PostService.__init__'s api param must be typed PostApi"
+    assert hints["api"] is not HttpxPostApi, "PostService.__init__'s api param must not be the concrete adapter"
+
+
 def test_wiki_page_link_service_binds_the_api_param_to_wiki_page_link_api_specifically() -> None:
     """Non-generalized regression test for the Wiki Page Links domain's exact
     guarantee, sibling to the checks above: the api param is WikiPageLinkApi

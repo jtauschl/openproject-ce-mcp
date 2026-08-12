@@ -420,6 +420,34 @@ def seed_wiki_page_id(test_project: str) -> int:
 
 
 @pytest.fixture
+def seed_post_id(test_project: str) -> int:
+    """Returns the id of test_project's seeded forum post (Message).
+
+    get_post has no create/list counterpart in OpenProject's own API (see
+    docker/test/seed.rb's own comment on this) -- the seed script creates a
+    Forum + one Message ahead of time, but the message's numeric id depends
+    on the instance's DB history, not a fixed/predictable value, so it must
+    be looked up via the same Rails-runner side channel used elsewhere in
+    this file. Requires OPENPROJECT_DOCKER_SERVICE; skips cleanly if unset,
+    same as seed_wiki_page_id.
+    """
+    service = os.environ.get("OPENPROJECT_DOCKER_SERVICE")
+    if not service:
+        pytest.skip("OPENPROJECT_DOCKER_SERVICE not set (needed to look up the seeded post id)")
+
+    # Same case-insensitivity rationale as seed_wiki_page_id above.
+    script = """
+        project = Project.find_by("LOWER(identifier) = ?", ENV.fetch("PROJECT_IDENTIFIER").downcase)
+        message = project && Forum.where(project: project).first&.messages&.first
+        puts "MESSAGE_ID=#{message&.id}"
+    """
+    value = _run_rails_script(script, result_key="MESSAGE_ID", env={"PROJECT_IDENTIFIER": test_project.strip()})
+    if value == "":
+        pytest.skip(f"test_project {test_project!r} has no forum post (unexpected -- check docker/test/seed.rb ran)")
+    return int(value)
+
+
+@pytest.fixture
 def seed_project_phase_id(test_project: str) -> int:
     """Returns the id of test_project's seeded Project::Phase instance.
 

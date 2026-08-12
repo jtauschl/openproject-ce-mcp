@@ -184,6 +184,19 @@ Same gating as [Users](#users) above: reads need
 > link being deleted actually exists. `create_work_package_wiki_link` is
 > unaffected.
 
+## Forums
+
+| Tool | Description |
+|---|---|
+| `get_post` | Fetch a single forum post by id |
+
+> **Note:** OpenProject API v3 provides exactly one route for forum posts —
+> `GET /api/v3/posts/{id}`. There is no collection endpoint for posts and no
+> separate "forums" resource in the API at all, so `list_posts` cannot be
+> implemented. A post's id must come from elsewhere (e.g. a work package's
+> activity/journal referencing a forum post, or a link from the OpenProject
+> web UI).
+
 ## Work packages
 
 > Single work-package tools accept either a numeric id or a project-prefixed

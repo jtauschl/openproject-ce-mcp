@@ -369,6 +369,7 @@ API stubs with no POST/DELETE endpoint in CE (read/update only, matching OpenPro
 | Documents | GET list, GET single, PATCH update |
 | Wiki pages | GET single only — the collection endpoint (`/api/v3/projects/{id}/wiki_pages`) is not implemented in OpenProject v3; `list_wiki_pages` has been removed |
 | Categories | GET list, GET single |
+| Forums Posts | GET single only — no collection endpoint (`/api/v3/posts`) and no separate "forums" resource exist in the API at all; `list_posts` cannot be implemented |
 
 ## Design tradeoffs
 
