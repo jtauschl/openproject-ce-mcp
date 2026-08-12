@@ -1754,3 +1754,88 @@ class RecurringMeetingOccurrenceWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: MeetingSummary | None
+
+
+# --- GitHub / GitLab work-package linkage (entirely read-only) ---
+
+
+@dataclass
+class GithubPullRequestSummary:
+    id: int
+    number: int | None
+    html_url: str | None
+    state: str | None
+    repository: str | None
+    repository_html_url: str | None
+    github_updated_at: str | None
+    title: str | None
+    body: str | None
+    body_truncated: bool
+    body_length: int | None
+    draft: bool
+    merged: bool
+    merged_at: str | None
+    comments_count: int | None
+    review_comments_count: int | None
+    additions_count: int | None
+    deletions_count: int | None
+    changed_files_count: int | None
+    labels: list[str]
+    author: str | None
+    merged_by: str | None
+    created_at: str | None
+    updated_at: str | None
+
+
+@dataclass
+class GithubPullRequestListResult(CollectionResult):
+    results: list[GithubPullRequestSummary]
+
+
+@dataclass
+class GitlabIssueSummary:
+    id: int
+    number: int | None
+    html_url: str | None
+    state: str | None
+    repository: str | None
+    gitlab_updated_at: str | None
+    title: str | None
+    body: str | None
+    body_truncated: bool
+    body_length: int | None
+    labels: list[str]
+    author: str | None
+    created_at: str | None
+    updated_at: str | None
+
+
+@dataclass
+class GitlabIssueListResult(CollectionResult):
+    results: list[GitlabIssueSummary]
+
+
+@dataclass
+class GitlabMergeRequestSummary:
+    id: int
+    number: int | None
+    html_url: str | None
+    state: str | None
+    repository: str | None
+    gitlab_updated_at: str | None
+    title: str | None
+    body: str | None
+    body_truncated: bool
+    body_length: int | None
+    draft: bool
+    merged: bool
+    labels: list[str]
+    author: str | None
+    merged_by: str | None
+    created_at: str | None
+    updated_at: str | None
+
+
+@dataclass
+class GitlabMergeRequestListResult(CollectionResult):
+    results: list[GitlabMergeRequestSummary]
