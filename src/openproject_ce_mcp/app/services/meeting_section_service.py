@@ -27,6 +27,7 @@ from typing import Any
 from ...config import Settings
 from ...models import MeetingSectionListResult, MeetingSectionSummary, MeetingSectionWriteResult
 from ..api_href import api_href as _api_href
+from ..errors import NotFoundError
 from ..pagination import clamp_limit, paginate_client
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
@@ -91,8 +92,14 @@ class MeetingSectionService:
     async def get(self, section_id: int) -> MeetingSectionSummary:
         access.ensure_read_enabled("meeting", settings=self._settings)
         record = await self._api.get(section_id)
-        if record.summary.meeting_id is not None:
-            await self._ensure_meeting_allowed(record.summary.meeting_id, write=False)
+        meeting_id = record.summary.meeting_id
+        if meeting_id is None:
+            # meeting_id is a mandatory belongs_to upstream and the global
+            # route's own join already excludes orphans, so this should be
+            # unreachable via the live API -- but a None here must never
+            # silently skip the allowlist check (fail closed, not fail open).
+            raise NotFoundError(f"OpenProject meeting section {section_id} has no parent meeting.")
+        await self._ensure_meeting_allowed(meeting_id, write=False)
         return self._stamp(record.summary)
 
     async def create(
@@ -165,8 +172,11 @@ class MeetingSectionService:
         """
         current = await self._api.get(section_id)
         meeting_id = current.summary.meeting_id
-        if meeting_id is not None:
-            await self._ensure_meeting_allowed(meeting_id, write=True)
+        if meeting_id is None:
+            # See get()'s comment: fail closed rather than silently skip the
+            # allowlist check if this were ever None.
+            raise NotFoundError(f"OpenProject meeting section {section_id} has no parent meeting.")
+        await self._ensure_meeting_allowed(meeting_id, write=True)
         payload: dict[str, Any] = {}
         if title is not None:
             hidden_fields.ensure_field_writable("meeting_section", "title", settings=self._settings)
@@ -206,8 +216,11 @@ class MeetingSectionService:
     async def delete(self, *, section_id: int, confirm: bool = False) -> MeetingSectionWriteResult:
         current = await self._api.get(section_id)
         meeting_id = current.summary.meeting_id
-        if meeting_id is not None:
-            await self._ensure_meeting_allowed(meeting_id, write=True)
+        if meeting_id is None:
+            # See get()'s comment: fail closed rather than silently skip the
+            # allowlist check if this were ever None.
+            raise NotFoundError(f"OpenProject meeting section {section_id} has no parent meeting.")
+        await self._ensure_meeting_allowed(meeting_id, write=True)
         section = self._stamp(current.summary)
         payload = {"id": section.id, "title": section.title}
 

@@ -5,7 +5,7 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
-from openproject_ce_mcp.app.errors import PermissionDeniedError
+from openproject_ce_mcp.app.errors import NotFoundError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.meeting_api import MeetingRecord
 from openproject_ce_mcp.app.ports.meeting_section_api import MeetingSectionRecord
 from openproject_ce_mcp.app.services.meeting_section_service import MeetingSectionService
@@ -141,6 +141,21 @@ async def test_get_denies_read_when_fetched_parent_meeting_project_disallowed() 
 
 
 @pytest.mark.asyncio
+async def test_get_fails_closed_when_section_has_no_meeting() -> None:
+    """meeting_id is a mandatory belongs_to upstream, so a None here should be
+    unreachable via the live API -- but must fail closed, not silently skip
+    the allowlist check, if it ever occurs."""
+    api = _FakeMeetingSectionApi([MeetingSectionRecord(summary=_section_summary(meeting_id=None))])
+    meeting_api = _FakeMeetingApi()
+    service = _service(api=api, meeting_api=meeting_api)
+
+    with pytest.raises(NotFoundError):
+        await service.get(41)
+
+    assert meeting_api.get_calls == []
+
+
+@pytest.mark.asyncio
 async def test_create_preview_without_confirm_does_not_call_api_create() -> None:
     api = _FakeMeetingSectionApi()
     service = _service(api=api)
@@ -213,6 +228,17 @@ async def test_update_denies_write_when_fetched_parent_meeting_project_disallowe
 
 
 @pytest.mark.asyncio
+async def test_update_fails_closed_when_section_has_no_meeting() -> None:
+    api = _FakeMeetingSectionApi([MeetingSectionRecord(summary=_section_summary(meeting_id=None))])
+    service = _service(api=api)
+
+    with pytest.raises(NotFoundError):
+        await service.update(section_id=41, title="Updated", confirm=True)
+
+    assert api.update_calls == []
+
+
+@pytest.mark.asyncio
 async def test_delete_preview_without_confirm_does_not_call_api_delete() -> None:
     api = _FakeMeetingSectionApi()
     service = _service(api=api)
@@ -250,5 +276,16 @@ async def test_delete_denies_write_even_without_confirm() -> None:
 
     with pytest.raises(PermissionDeniedError):
         await service.delete(section_id=41, confirm=False)
+
+    assert api.delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_fails_closed_when_section_has_no_meeting() -> None:
+    api = _FakeMeetingSectionApi([MeetingSectionRecord(summary=_section_summary(meeting_id=None))])
+    service = _service(api=api)
+
+    with pytest.raises(NotFoundError):
+        await service.delete(section_id=41, confirm=True)
 
     assert api.delete_calls == []

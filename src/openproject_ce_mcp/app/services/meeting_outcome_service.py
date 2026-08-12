@@ -100,15 +100,22 @@ class MeetingOutcomeService:
             results=page,
         )
 
-    async def _ensure_outcome_allowed(self, meeting_agenda_item_id: int | None, *, write: bool) -> None:
+    async def _ensure_outcome_allowed(
+        self, outcome_id: int, meeting_agenda_item_id: int | None, *, write: bool
+    ) -> None:
         if meeting_agenda_item_id is None:
-            return
+            # meeting_agenda_item_id is a mandatory belongs_to upstream
+            # (validates presence: true) and the global route's own join
+            # already excludes orphans, so this should be unreachable via
+            # the live API -- but a None here must never silently skip the
+            # allowlist check (fail closed, not fail open).
+            raise NotFoundError(f"OpenProject meeting outcome {outcome_id} has no parent agenda item.")
         await self._ensure_via_agenda_item(meeting_agenda_item_id, write=write)
 
     async def get(self, outcome_id: int) -> MeetingOutcomeSummary:
         access.ensure_read_enabled("meeting", settings=self._settings)
         record = await self._api.get(outcome_id)
-        await self._ensure_outcome_allowed(record.summary.meeting_agenda_item_id, write=False)
+        await self._ensure_outcome_allowed(outcome_id, record.summary.meeting_agenda_item_id, write=False)
         return self._stamp(record.summary)
 
     async def _build_write_payload(
@@ -197,7 +204,7 @@ class MeetingOutcomeService:
     ) -> MeetingOutcomeWriteResult:
         current = await self._api.get(outcome_id)
         agenda_item_id = current.summary.meeting_agenda_item_id
-        await self._ensure_outcome_allowed(agenda_item_id, write=True)
+        await self._ensure_outcome_allowed(outcome_id, agenda_item_id, write=True)
         payload = await self._build_write_payload(
             agenda_item_id=None, kind=kind, notes=notes, work_package_id=work_package_id
         )
@@ -232,7 +239,7 @@ class MeetingOutcomeService:
     async def delete(self, *, outcome_id: int, confirm: bool = False) -> MeetingOutcomeWriteResult:
         current = await self._api.get(outcome_id)
         agenda_item_id = current.summary.meeting_agenda_item_id
-        await self._ensure_outcome_allowed(agenda_item_id, write=True)
+        await self._ensure_outcome_allowed(outcome_id, agenda_item_id, write=True)
         outcome = self._stamp(current.summary)
         payload = {"id": outcome.id, "kind": outcome.kind}
 

@@ -35,6 +35,7 @@ from typing import Any
 from ...config import Settings
 from ...models import MeetingAgendaItemListResult, MeetingAgendaItemSummary, MeetingAgendaItemWriteResult
 from ..api_href import api_href as _api_href
+from ..errors import NotFoundError
 from ..pagination import clamp_limit, paginate_client
 from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
@@ -127,8 +128,14 @@ class MeetingAgendaItemService:
         access.ensure_read_enabled("meeting", settings=self._settings)
         record = await self._api.get(agenda_item_id)
         meeting_id = record.summary.meeting_id
-        if meeting_id is not None:
-            await self._ensure_meeting_allowed(meeting_id, write=False)
+        if meeting_id is None:
+            # meeting_id is a mandatory belongs_to upstream (validates
+            # presence: true) and the global route's own join already
+            # excludes orphans, so this should be unreachable via the live
+            # API -- but a None here must never silently skip the allowlist
+            # check (fail closed, not fail open).
+            raise NotFoundError(f"OpenProject meeting agenda item {agenda_item_id} has no parent meeting.")
+        await self._ensure_meeting_allowed(meeting_id, write=False)
         return self._stamp(record.summary)
 
     async def _build_write_payload(
@@ -244,8 +251,11 @@ class MeetingAgendaItemService:
     ) -> MeetingAgendaItemWriteResult:
         current = await self._api.get(agenda_item_id)
         meeting_id = current.summary.meeting_id
-        if meeting_id is not None:
-            await self._ensure_meeting_allowed(meeting_id, write=True)
+        if meeting_id is None:
+            # See get()'s comment: fail closed rather than silently skip the
+            # allowlist check if this were ever None.
+            raise NotFoundError(f"OpenProject meeting agenda item {agenda_item_id} has no parent meeting.")
+        await self._ensure_meeting_allowed(meeting_id, write=True)
         resolved_work_package_id: int | None = None
         if work_package_id is not None:
             resolved_work_package_id = await self._resolve_work_package_id(work_package_id, write=False)
@@ -289,8 +299,11 @@ class MeetingAgendaItemService:
     async def delete(self, *, agenda_item_id: int, confirm: bool = False) -> MeetingAgendaItemWriteResult:
         current = await self._api.get(agenda_item_id)
         meeting_id = current.summary.meeting_id
-        if meeting_id is not None:
-            await self._ensure_meeting_allowed(meeting_id, write=True)
+        if meeting_id is None:
+            # See get()'s comment: fail closed rather than silently skip the
+            # allowlist check if this were ever None.
+            raise NotFoundError(f"OpenProject meeting agenda item {agenda_item_id} has no parent meeting.")
+        await self._ensure_meeting_allowed(meeting_id, write=True)
         item = self._stamp(current.summary)
         payload = {"id": item.id, "title": item.title}
 

@@ -205,6 +205,21 @@ async def test_get_denies_read_when_fetched_outcome_grandparent_meeting_project_
 
 
 @pytest.mark.asyncio
+async def test_get_fails_closed_when_outcome_has_no_agenda_item() -> None:
+    """meeting_agenda_item_id is a mandatory belongs_to upstream, so a None
+    here should be unreachable via the live API -- but must fail closed, not
+    silently skip the allowlist check, if it ever occurs."""
+    api = _FakeMeetingOutcomeApi([MeetingOutcomeRecord(summary=_outcome_summary(meeting_agenda_item_id=None))])
+    agenda_api = _FakeMeetingAgendaItemApi(meeting_id=12)
+    service = _service(api=api, meeting_agenda_item_api=agenda_api)
+
+    with pytest.raises(NotFoundError):
+        await service.get(31)
+
+    assert agenda_api.get_calls == []
+
+
+@pytest.mark.asyncio
 async def test_create_preview_without_confirm_does_not_call_api_create() -> None:
     api = _FakeMeetingOutcomeApi()
     service = _service(api=api)
@@ -268,6 +283,17 @@ async def test_update_denies_write_when_fetched_outcome_chain_project_disallowed
 
 
 @pytest.mark.asyncio
+async def test_update_fails_closed_when_outcome_has_no_agenda_item() -> None:
+    api = _FakeMeetingOutcomeApi([MeetingOutcomeRecord(summary=_outcome_summary(meeting_agenda_item_id=None))])
+    service = _service(api=api)
+
+    with pytest.raises(NotFoundError):
+        await service.update(outcome_id=31, kind="action", confirm=True)
+
+    assert api.update_calls == []
+
+
+@pytest.mark.asyncio
 async def test_delete_preview_without_confirm_does_not_call_api_delete() -> None:
     api = _FakeMeetingOutcomeApi()
     service = _service(api=api)
@@ -305,5 +331,16 @@ async def test_delete_denies_write_even_without_confirm() -> None:
 
     with pytest.raises(PermissionDeniedError):
         await service.delete(outcome_id=31, confirm=False)
+
+    assert api.delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_fails_closed_when_outcome_has_no_agenda_item() -> None:
+    api = _FakeMeetingOutcomeApi([MeetingOutcomeRecord(summary=_outcome_summary(meeting_agenda_item_id=None))])
+    service = _service(api=api)
+
+    with pytest.raises(NotFoundError):
+        await service.delete(outcome_id=31, confirm=True)
 
     assert api.delete_calls == []

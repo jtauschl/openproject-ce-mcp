@@ -5,7 +5,7 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
-from openproject_ce_mcp.app.errors import PermissionDeniedError
+from openproject_ce_mcp.app.errors import NotFoundError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.meeting_agenda_item_api import MeetingAgendaItemRecord
 from openproject_ce_mcp.app.ports.meeting_api import MeetingRecord
 from openproject_ce_mcp.app.services.meeting_agenda_item_service import MeetingAgendaItemService
@@ -219,6 +219,21 @@ async def test_get_denies_read_when_fetched_agenda_item_meeting_project_is_disal
     assert meeting_api.get_calls == [12]
 
 
+@pytest.mark.asyncio
+async def test_get_fails_closed_when_agenda_item_has_no_meeting() -> None:
+    """meeting_id is a mandatory belongs_to upstream, so a None here should be
+    unreachable via the live API -- but must fail closed, not silently skip
+    the allowlist check, if it ever occurs."""
+    api = _FakeMeetingAgendaItemApi([MeetingAgendaItemRecord(summary=_agenda_summary(meeting_id=None))])
+    meeting_api = _FakeMeetingApi()
+    service = _service(api=api, meeting_api=meeting_api)
+
+    with pytest.raises(NotFoundError):
+        await service.get(21)
+
+    assert meeting_api.get_calls == []
+
+
 # --- create ------------------------------------------------------------
 
 
@@ -294,6 +309,17 @@ async def test_update_denies_write_when_fetched_parent_meeting_project_disallowe
     assert api.update_calls == []
 
 
+@pytest.mark.asyncio
+async def test_update_fails_closed_when_agenda_item_has_no_meeting() -> None:
+    api = _FakeMeetingAgendaItemApi([MeetingAgendaItemRecord(summary=_agenda_summary(meeting_id=None))])
+    service = _service(api=api)
+
+    with pytest.raises(NotFoundError):
+        await service.update(agenda_item_id=21, title="Updated", confirm=True)
+
+    assert api.update_calls == []
+
+
 # --- delete ------------------------------------------------------------
 
 
@@ -326,6 +352,17 @@ async def test_delete_denies_write_when_fetched_parent_meeting_project_disallowe
     service = _service(api=api, settings=settings)
 
     with pytest.raises(PermissionDeniedError):
+        await service.delete(agenda_item_id=21, confirm=True)
+
+    assert api.delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_fails_closed_when_agenda_item_has_no_meeting() -> None:
+    api = _FakeMeetingAgendaItemApi([MeetingAgendaItemRecord(summary=_agenda_summary(meeting_id=None))])
+    service = _service(api=api)
+
+    with pytest.raises(NotFoundError):
         await service.delete(agenda_item_id=21, confirm=True)
 
     assert api.delete_calls == []
