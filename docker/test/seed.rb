@@ -189,17 +189,29 @@ end
 # multi-page walk the same way test_list_versions_search_walks_every_server_page
 # does for versions).
 if project.documents.count < 2
-  # DocumentCategory (distinct from the WorkPackage Category seeded above) is
-  # a required association on some versions (16.6: NOT NULL/validates
-  # presence; 17.x: optional) -- always pass one so this works on both.
-  document_category = DocumentCategory.first
+  # Document's classification association was renamed and made optional
+  # between 16.6 and 17.x -- verified directly against source (documents
+  # module's app/models/document.rb on each version):
+  #   16.6: `belongs_to :category, class_name: "DocumentCategory"`,
+  #         `validates_presence_of :category` (required; DocumentCategory
+  #         constant exists).
+  #   17.6/17.7: `belongs_to :type, class_name: "DocumentType", optional:
+  #              true` -- category/DocumentCategory do not exist at all
+  #              (Document.new(category: ...) raises NoMethodError there).
+  # Both branches pass their own version's real attribute key rather than
+  # omitting it and relying on Document's own after_initialize default --
+  # the seed should be explicit about which entity it creates.
+  document_attrs = {
+    project: project,
+    description: "Seeded for integration tests"
+  }
+  if Object.const_defined?(:DocumentCategory)
+    document_attrs[:category] = DocumentCategory.first
+  elsif Object.const_defined?(:DocumentType)
+    document_attrs[:type] = DocumentType.first
+  end
   (project.documents.count...2).each do |i|
-    document = Document.create!(
-      project: project,
-      title: "Seed Document #{i + 1}",
-      description: "Seeded for integration tests",
-      category: document_category
-    )
+    document = Document.create!(document_attrs.merge(title: "Seed Document #{i + 1}"))
     log("created document id=#{document.id} title=#{document.title}")
   end
 else
