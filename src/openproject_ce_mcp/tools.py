@@ -48,6 +48,9 @@ from .models import (
     CapabilitySummary,
     CategoryListResult,
     CategorySummary,
+    CostEntryListResult,
+    CostEntrySummary,
+    CostTypeSummary,
     CurrentUser,
     CustomOptionSummary,
     DocumentDetail,
@@ -153,6 +156,7 @@ from .models import (
     WikiPageLinkListResult,
     WikiPageLinkWriteResult,
     WorkingDayListResult,
+    WorkPackageCostsByTypeResult,
     WorkPackageDetail,
     WorkPackageListResult,
     WorkPackageSummary,
@@ -290,6 +294,10 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "list_time_entry_activities",
         "list_time_entries",
         "get_time_entry",
+        "get_cost_entry",
+        "list_work_package_cost_entries",
+        "get_work_package_costs_by_type",
+        "get_cost_type",
         "list_relations",
         "list_work_package_wiki_links",
         "execute_query",
@@ -468,6 +476,9 @@ _PROJECT_SCOPED_READ_TOOLS: frozenset[str] = frozenset(
         "list_time_entry_activities",
         "list_time_entries",
         "get_time_entry",
+        "get_cost_entry",
+        "list_work_package_cost_entries",
+        "get_work_package_costs_by_type",
         "list_relations",
         "list_project_memberships",
         "get_membership",
@@ -3768,6 +3779,71 @@ async def delete_time_entry(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(time_entry_id, field_name="time_entry_id")
     return await _run_tool(client.delete_time_entry(time_entry_id=safe_id, confirm=confirm))
+
+
+async def get_cost_entry(
+    ctx: Context,
+    cost_entry_id: int,
+) -> CostEntrySummary:
+    """Get a single cost entry by id.
+
+    Cost entries are entirely read-only in OpenProject's API (Community
+    Edition) -- there is no create/update/delete endpoint for this resource.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(cost_entry_id, field_name="cost_entry_id")
+    return await _run_tool(client.get_cost_entry(safe_id))
+
+
+async def list_work_package_cost_entries(
+    ctx: Context,
+    work_package_id: int | str,
+) -> CostEntryListResult:
+    """List all cost entries recorded against a work package.
+
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+
+    Returns every cost entry for the work package in one call -- this endpoint
+    is unpaginated on OpenProject's side (no offset/limit parameters exist).
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_work_package_ref(work_package_id)
+    return await _run_tool(client.list_work_package_cost_entries(safe_id))
+
+
+async def get_work_package_costs_by_type(
+    ctx: Context,
+    work_package_id: int | str,
+) -> WorkPackageCostsByTypeResult:
+    """Get a work package's costs aggregated by cost type.
+
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+
+    count is the number of distinct cost types with recorded spend on this
+    work package, not a monetary total. Each result's spent_units is a
+    quantity in that cost type's own unit (see get_cost_type for the unit
+    name) -- there is no currency conversion or grand total computed here or
+    by OpenProject's own API.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_work_package_ref(work_package_id)
+    return await _run_tool(client.get_work_package_costs_by_type(safe_id))
+
+
+async def get_cost_type(
+    ctx: Context,
+    cost_type_id: int,
+) -> CostTypeSummary:
+    """Get a cost type by id.
+
+    Cost types are entirely read-only in OpenProject's API (Community
+    Edition) -- there is no create/update/delete endpoint, and no collection
+    GET either (no list_cost_types tool exists because the endpoint does not
+    exist upstream).
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(cost_type_id, field_name="cost_type_id")
+    return await _run_tool(client.get_cost_type(safe_id))
 
 
 async def get_work_package_relations(

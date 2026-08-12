@@ -15,6 +15,7 @@ from .app.adapters.httpx_attachment_api import HttpxAttachmentApi
 from .app.adapters.httpx_backlog_bucket_api import HttpxBacklogBucketApi
 from .app.adapters.httpx_board_api import HttpxBoardApi
 from .app.adapters.httpx_category_api import HttpxCategoryApi
+from .app.adapters.httpx_cost_api import HttpxCostApi
 from .app.adapters.httpx_current_user_api import HttpxCurrentUserApi
 from .app.adapters.httpx_document_api import HttpxDocumentApi
 from .app.adapters.httpx_emoji_reaction_api import HttpxEmojiReactionApi
@@ -83,6 +84,7 @@ from .app.ports.attachment_api import AttachmentApi
 from .app.ports.backlog_bucket_api import BacklogBucketApi
 from .app.ports.board_api import BoardApi
 from .app.ports.category_api import CategoryApi
+from .app.ports.cost_api import CostApi
 from .app.ports.current_user_api import CurrentUserApi
 from .app.ports.document_api import DocumentApi
 from .app.ports.emoji_reaction_api import EmojiReactionApi
@@ -133,6 +135,7 @@ from .app.services.attachment_service import AttachmentService
 from .app.services.backlog_bucket_service import BacklogBucketService
 from .app.services.board_service import BoardService
 from .app.services.category_service import CategoryService
+from .app.services.cost_service import CostService
 from .app.services.current_user_service import CurrentUserService
 from .app.services.document_service import DocumentService
 from .app.services.emoji_reaction_service import EmojiReactionService
@@ -200,6 +203,9 @@ from .models import (
     CapabilityListResult,
     CategoryListResult,
     CategorySummary,
+    CostEntryListResult,
+    CostEntrySummary,
+    CostTypeSummary,
     CurrentUser,
     CustomOptionSummary,
     DocumentDetail,
@@ -290,6 +296,7 @@ from .models import (
     WikiPageLinkListResult,
     WikiPageLinkWriteResult,
     WorkingDayListResult,
+    WorkPackageCostsByTypeResult,
     WorkPackageDetail,
     WorkPackageFieldSchema,
     WorkPackageListResult,
@@ -719,6 +726,14 @@ class OpenProjectClient:
             resolve_principal_id=self._resolve_principal_id,
             get_current_user=self._current_user_resolver,
             api_prefix=self._api_prefix,
+        )
+
+        self._cost_api: CostApi = HttpxCostApi(HttpxTransport(self._http))
+        self._cost_service = CostService(
+            api=self._cost_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
         )
 
         self._activity_service = ActivityService(
@@ -1460,6 +1475,18 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> TimeEntryWriteResult:
         return await self._time_entry_service.delete(time_entry_id=time_entry_id, confirm=confirm)
+
+    async def get_cost_entry(self, cost_entry_id: int) -> CostEntrySummary:
+        return await self._cost_service.get_cost_entry(cost_entry_id)
+
+    async def list_work_package_cost_entries(self, work_package_id: int | str) -> CostEntryListResult:
+        return await self._cost_service.list_work_package_cost_entries(work_package_id)
+
+    async def get_work_package_costs_by_type(self, work_package_id: int | str) -> WorkPackageCostsByTypeResult:
+        return await self._cost_service.get_work_package_costs_by_type(work_package_id)
+
+    async def get_cost_type(self, cost_type_id: int) -> CostTypeSummary:
+        return await self._cost_service.get_cost_type(cost_type_id)
 
     # The other cross-service coordinator -- see get_my_project_access's
     # header comment above (OPM-380/B4).
