@@ -9,6 +9,15 @@ development baseline.
 
 ## [Unreleased 0.3.7]
 
+### Security
+
+- **Bumped `cryptography` to 50.0.0** (from 48.0.1), fixing GHSA-79v4-65xg-pq6g
+  (high severity): a Bleichenbacher-style padding oracle in PKCS#7
+  `EnvelopedData` decryption via distinguishable errors/timing. Pulled in
+  transitively through `pyjwt`; not directly exercised by this project's own
+  code, but the vulnerable range (`>=44.0.0,<50.0.0`) covered the previously
+  locked version.
+
 ### Fixed
 
 - **`list_my_open_work_packages` could silently return zero or incomplete
