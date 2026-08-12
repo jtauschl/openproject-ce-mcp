@@ -179,7 +179,17 @@ tools.py (MCP presentation)
   validate against (`AttachmentApi.get_max_attachment_size_bytes()` reads Instance Configuration's
   `maximumAttachmentFileSize` without migrating that domain) — a deliberate, narrow exception to
   "a Port covers its own domain," used specifically to avoid an unrelated domain's full migration
-  becoming a hidden prerequisite for the one actually being migrated. Hidden-field masking
+  becoming a hidden prerequisite for the one actually being migrated. A Service whose raw HAL
+  elements are shaped identically to another domain's own resource (e.g. a saved query's embedded
+  results are literally work-package HAL payloads) depends directly on that other domain's Port —
+  never on its own copy of the normalization logic and never by importing the concrete Adapter's
+  `normalize_*` function, which would violate the Service->Port-only dependency rule. This is the
+  cross-domain-Port-dependency counterpart to the field-reach-in exception above:
+  `QueryExecutionService` depends on `WorkPackageApi` directly and calls its `to_record()` Protocol
+  method (a Port method deliberately exposed as a Protocol method rather than a module-level
+  function specifically to make this kind of reuse safe) to normalize each embedded work package,
+  matching `WorkPackageService`'s own pre-existing precedent of depending on `ActivityApi` directly
+  for `add_comment()`'s reuse of the Activities normalizer. Hidden-field masking
   (`hidden_fields.apply_hidden_fields`) tags its result with a dynamic `_hidden_keys` attribute, not
   a declared dataclass field — `dataclasses.replace(...)` on an already-stamped value builds a
   brand-new instance carrying only the declared fields, silently dropping that tag. Any Service
@@ -225,11 +235,20 @@ behavioral-contract tests (`tests/unit/test_write_confirm_contracts.py`,
 that writes stay preview-only until confirmed, that no mutating call happens before confirmation or
 without the required write scope, and that the previewed and actually-sent payloads match.
 
-Every domain has been migrated through these same `app/` layers — `client.py` is now the thin
-facade described above, plus the two deliberate cross-service-orchestration exceptions. See this
-project's internal engineering-docs companion repository for the step-by-step migration process
-this used and its per-migration history; it is intentionally not duplicated here, since this file
-describes only the current architecture.
+Every domain that started out as flat `client.py` code has been migrated through these same `app/`
+layers — `client.py` is now the thin facade described above, plus the two deliberate
+cross-service-orchestration exceptions. See this project's internal engineering-docs companion
+repository for the step-by-step migration process this used and its per-migration history; it is
+intentionally not duplicated here, since this file describes only the current architecture.
+
+Two domains (Wiki Page Links, Query execution) were added directly against these `app/` layers
+with no flat `client.py` predecessor to migrate from — genuinely new API surface, not a migration.
+For a domain built this way, "`tools.py`'s matching tool gained the same change" above does not
+apply as written: every migrated domain's tools were already registered in `tools.py`'s
+classification constants (`READ_TOOLS_BY_SCOPE`/`WRITE_TOOLS_BY_SCOPE`/
+`_PROJECT_SCOPED_READ_TOOLS`) before its Service existed, so a migration's own `tools.py` diff was
+always zero; a wholly new domain's tools do not pre-exist there and must be registered as part of
+building it, the same as any new tool name.
 
 ## Naming conventions
 
