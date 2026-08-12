@@ -160,6 +160,12 @@ support.
   is the same value `list_work_packages`/`get_work_package` return as each
   row's `id` field (and as `parent_id`/`parent_display_id` on a child work
   package)** — same class of clarification as `get_work_package`'s above.
+- **`list_work_packages`'s docstring now explains that `total` can read 0
+  while `next_offset` is still non-null** under a restrictive
+  `OPENPROJECT_READ_PROJECTS` scope (a full raw server page with every
+  match filtered out by the allowlist) — not an inconsistency, keep paging.
+  `search_work_packages` inherits this via its existing pagination-semantics
+  cross-reference to `list_work_packages`.
 
 ## 0.3.6 – 2026-08-10
 
