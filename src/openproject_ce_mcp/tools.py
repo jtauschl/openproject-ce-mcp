@@ -1386,8 +1386,11 @@ async def search_work_packages(
     project was given. Otherwise (no project, restricted scope) total falls back
     to this page's item count, and next_offset/truncated are based on whether
     this page came back full rather than the server's own total, so nothing here
-    ever reveals how many matches exist in projects you can't see. Page until
-    next_offset is null either way.
+    ever reveals how many matches exist in projects you can't see. Because of
+    this, total can read 0 while next_offset is still non-null (a restrictive
+    scope filtered out every match on this page, but the raw server page was
+    full) — that is not an inconsistency, keep paging via next_offset rather
+    than stopping on a low/zero total. Page until next_offset is null either way.
     """
     client = _client_from_context(ctx)
     safe_query = _validate_required_query(query, field_name="query", max_length=120)
@@ -1494,8 +1497,11 @@ async def list_work_packages(
     the resolved allowed project IDs was sent. Otherwise total falls back to this
     page's item count, and next_offset/truncated are based on whether this page
     came back full rather than the server's own total, so nothing here ever
-    reveals how many matches exist in projects you can't see. Page until
-    next_offset is null either way.
+    reveals how many matches exist in projects you can't see. Because of this,
+    total can read 0 while next_offset is still non-null (a restrictive scope
+    filtered out every match on this page, but the raw server page was full) —
+    that is not an inconsistency, keep paging via next_offset rather than
+    stopping on a low/zero total. Page until next_offset is null either way.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)

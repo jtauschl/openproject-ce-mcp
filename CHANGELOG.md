@@ -29,6 +29,11 @@ development baseline.
   row's `id` field (and as `parent_id`/`parent_display_id` on a child work
   package)** — same class of clarification as `get_work_package`'s
   existing docstring note.
+- **`list_work_packages`/`search_work_packages`'s docstrings now explain
+  that `total` can read 0 while `next_offset` is still non-null** under a
+  restrictive `OPENPROJECT_READ_PROJECTS` scope (a full raw server page
+  with every match filtered out by the allowlist) — not an inconsistency,
+  keep paging.
 
 ## 0.3.6 – 2026-08-10
 
