@@ -1014,6 +1014,48 @@ class TimeEntryWriteResult(ConfirmationHeader):
 
 
 @dataclass
+class CostEntrySummary:
+    id: int
+    project: str | None
+    cost_type: str | None
+    user: str | None
+    entity_id: int | None
+    entity_name: str | None
+    spent_units: str | None
+    spent_on: str | None
+    created_at: str | None
+    updated_at: str | None
+
+
+@dataclass
+class CostEntryListResult(CollectionResult):
+    results: list[CostEntrySummary]
+
+
+@dataclass
+class CostTypeSummary:
+    id: int
+    name: str | None
+    unit: str | None
+    unit_plural: str | None
+    is_default: bool
+
+
+@dataclass
+class WorkPackageCostsByTypeElement:
+    cost_type: str | None
+    cost_type_id: int | None
+    spent_units: str | None
+
+
+@dataclass
+class WorkPackageCostsByTypeResult:
+    work_package_id: int
+    count: int
+    results: list[WorkPackageCostsByTypeElement]
+
+
+@dataclass
 class TimeEntryListResult(PageResult):
     results: list[TimeEntrySummary]
 
