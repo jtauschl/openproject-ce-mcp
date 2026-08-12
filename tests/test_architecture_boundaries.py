@@ -495,6 +495,23 @@ def test_cost_service_binds_the_api_param_to_cost_api_specifically() -> None:
     assert hints["api"] is not HttpxCostApi, "CostService.__init__'s api param must not be the concrete adapter"
 
 
+def test_github_gitlab_link_service_binds_the_api_param_to_github_gitlab_link_api_specifically() -> None:
+    """Non-generalized regression test for the GitHub/GitLab linkage domain's
+    exact guarantee, sibling to the checks above: the api param is
+    GithubGitlabLinkApi exactly, not just "some Protocol"."""
+    from openproject_ce_mcp.app.adapters.httpx_github_gitlab_link_api import HttpxGithubGitlabLinkApi
+    from openproject_ce_mcp.app.ports.github_gitlab_link_api import GithubGitlabLinkApi
+    from openproject_ce_mcp.app.services.github_gitlab_link_service import GithubGitlabLinkService
+
+    hints = typing.get_type_hints(GithubGitlabLinkService.__init__)
+    assert hints["api"] is GithubGitlabLinkApi, (
+        "GithubGitlabLinkService.__init__'s api param must be typed GithubGitlabLinkApi"
+    )
+    assert hints["api"] is not HttpxGithubGitlabLinkApi, (
+        "GithubGitlabLinkService.__init__'s api param must not be the concrete adapter"
+    )
+
+
 def test_user_non_working_time_service_binds_the_api_param_to_user_non_working_time_api_specifically() -> None:
     """Non-generalized regression test for the User Non-Working Times domain's
     exact guarantee, sibling to the checks above: the api param is
