@@ -30,6 +30,7 @@ from .app.adapters.httpx_principal_api import HttpxPrincipalApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
 from .app.adapters.httpx_project_api import normalize_option_value as _normalize_option_value
 from .app.adapters.httpx_project_api import normalize_project as _normalize_project
+from .app.adapters.httpx_query_execution_api import HttpxQueryExecutionApi
 from .app.adapters.httpx_query_metadata_api import HttpxQueryMetadataApi
 from .app.adapters.httpx_relation_api import HttpxRelationApi
 from .app.adapters.httpx_reminder_api import HttpxReminderApi
@@ -43,6 +44,7 @@ from .app.adapters.httpx_version_api import HttpxVersionApi
 from .app.adapters.httpx_view_api import HttpxViewApi
 from .app.adapters.httpx_watcher_api import HttpxWatcherApi
 from .app.adapters.httpx_wiki_page_api import HttpxWikiPageApi
+from .app.adapters.httpx_wiki_page_link_api import HttpxWikiPageLinkApi
 from .app.adapters.httpx_work_package_api import HttpxWorkPackageApi
 from .app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
 
@@ -91,6 +93,7 @@ from .app.ports.notification_api import NotificationApi
 from .app.ports.principal_api import PrincipalApi
 from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
+from .app.ports.query_execution_api import QueryExecutionApi
 from .app.ports.query_metadata_api import QueryMetadataApi
 from .app.ports.relation_api import RelationApi
 from .app.ports.reminder_api import ReminderApi
@@ -104,6 +107,7 @@ from .app.ports.version_api import VersionApi
 from .app.ports.view_api import ViewApi
 from .app.ports.watcher_api import WatcherApi
 from .app.ports.wiki_page_api import WikiPageApi
+from .app.ports.wiki_page_link_api import WikiPageLinkApi
 from .app.ports.work_package_api import WorkPackageApi
 from .app.ports.work_package_lookup_api import WorkPackageLookupApi
 from .app.resolvers.assignee_resolver import AssigneeResolver
@@ -135,6 +139,7 @@ from .app.services.notification_service import NotificationService
 from .app.services.principal_service import PrincipalService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
+from .app.services.query_execution_service import QueryExecutionService
 from .app.services.query_metadata_service import QueryMetadataService
 from .app.services.relation_service import RelationService
 from .app.services.reminder_service import ReminderService
@@ -147,6 +152,7 @@ from .app.services.user_service import UserService
 from .app.services.version_service import VersionService
 from .app.services.view_service import ViewService
 from .app.services.watcher_service import WatcherService
+from .app.services.wiki_page_link_service import WikiPageLinkService
 from .app.services.wiki_page_service import WikiPageService
 
 # CLEAR/CLEAR_VERSION/CLEAR_PARENT are canonically defined in
@@ -261,6 +267,8 @@ from .models import (
     WatcherListResult,
     WatcherWriteResult,
     WikiPageDetail,
+    WikiPageLinkListResult,
+    WikiPageLinkWriteResult,
     WorkingDayListResult,
     WorkPackageDetail,
     WorkPackageFieldSchema,
@@ -599,6 +607,27 @@ class OpenProjectClient:
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
             resolve_work_package_id=self._work_package_resolver.resolve_id,
+        )
+
+        self._wiki_page_link_api: WikiPageLinkApi = HttpxWikiPageLinkApi(HttpxTransport(self._http))
+        self._wiki_page_link_service = WikiPageLinkService(
+            api=self._wiki_page_link_api,
+            settings=settings,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            current_user=self._current_user_resolver,
+        )
+
+        # Depends on self._work_package_api (constructed above) directly, to
+        # normalize each raw embedded query result via its to_record() --
+        # matching WorkPackageService's own precedent of depending on
+        # self._activity_api directly rather than duplicating that domain's
+        # normalization logic.
+        self._query_execution_api: QueryExecutionApi = HttpxQueryExecutionApi(HttpxTransport(self._http))
+        self._query_execution_service = QueryExecutionService(
+            api=self._query_execution_api,
+            work_package_api=self._work_package_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
         )
 
         self._reminder_api: ReminderApi = HttpxReminderApi(HttpxTransport(self._http))
@@ -1136,6 +1165,31 @@ class OpenProjectClient:
 
     async def get_wiki_page(self, wiki_page_id: int, *, text_limit: int | None = 50_000) -> WikiPageDetail:
         return await self._wiki_page_service.get(wiki_page_id, text_limit=text_limit)
+
+    async def list_work_package_wiki_links(
+        self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
+    ) -> WikiPageLinkListResult:
+        return await self._wiki_page_link_service.list_for_work_package(work_package_id, offset=offset, limit=limit)
+
+    async def create_work_package_wiki_link(
+        self,
+        work_package_id: int | str,
+        *,
+        identifier: str,
+        provider: str,
+        confirm: bool = False,
+    ) -> WikiPageLinkWriteResult:
+        return await self._wiki_page_link_service.create(
+            work_package_id, identifier=identifier, provider=provider, confirm=confirm
+        )
+
+    async def delete_work_package_wiki_link(
+        self, work_package_id: int | str, link_id: int, *, confirm: bool = False
+    ) -> WikiPageLinkWriteResult:
+        return await self._wiki_page_link_service.delete(work_package_id, link_id, confirm=confirm)
+
+    async def execute_query(self, query_id: int, *, offset: int = 1, limit: int | None = None) -> WorkPackageListResult:
+        return await self._query_execution_service.execute(query_id, offset=offset, limit=limit)
 
     async def list_categories(self, project_ref: str) -> CategoryListResult:
         return await self._category_service.list(project_ref)

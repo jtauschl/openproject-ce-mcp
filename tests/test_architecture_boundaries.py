@@ -451,6 +451,51 @@ def test_wiki_page_service_binds_the_api_param_to_wiki_page_api_specifically() -
     assert hints["api"] is not HttpxWikiPageApi, "WikiPageService.__init__'s api param must not be the concrete adapter"
 
 
+def test_wiki_page_link_service_binds_the_api_param_to_wiki_page_link_api_specifically() -> None:
+    """Non-generalized regression test for the Wiki Page Links domain's exact
+    guarantee, sibling to the checks above: the api param is WikiPageLinkApi
+    exactly, not just "some Protocol"."""
+    from openproject_ce_mcp.app.adapters.httpx_wiki_page_link_api import HttpxWikiPageLinkApi
+    from openproject_ce_mcp.app.ports.wiki_page_link_api import WikiPageLinkApi
+    from openproject_ce_mcp.app.services.wiki_page_link_service import WikiPageLinkService
+
+    hints = typing.get_type_hints(WikiPageLinkService.__init__)
+    assert hints["api"] is WikiPageLinkApi, "WikiPageLinkService.__init__'s api param must be typed WikiPageLinkApi"
+    assert hints["api"] is not HttpxWikiPageLinkApi, (
+        "WikiPageLinkService.__init__'s api param must not be the concrete adapter"
+    )
+
+
+def test_query_execution_service_binds_the_api_param_to_query_execution_api_specifically() -> None:
+    """Non-generalized regression test for the Query-execution domain's exact
+    guarantee, sibling to the checks above: the api param is
+    QueryExecutionApi exactly, not just "some Protocol". Separately verifies
+    the second, cross-domain dependency (work_package_api) is bound to
+    WorkPackageApi exactly, not HttpxWorkPackageApi -- this Service
+    normalizes via WorkPackageApi.to_record() rather than importing
+    normalize_work_package_summary from httpx_work_package_api.py directly,
+    which would violate the Service->Adapter dependency rule."""
+    from openproject_ce_mcp.app.adapters.httpx_query_execution_api import HttpxQueryExecutionApi
+    from openproject_ce_mcp.app.adapters.httpx_work_package_api import HttpxWorkPackageApi
+    from openproject_ce_mcp.app.ports.query_execution_api import QueryExecutionApi
+    from openproject_ce_mcp.app.ports.work_package_api import WorkPackageApi
+    from openproject_ce_mcp.app.services.query_execution_service import QueryExecutionService
+
+    hints = typing.get_type_hints(QueryExecutionService.__init__)
+    assert hints["api"] is QueryExecutionApi, (
+        "QueryExecutionService.__init__'s api param must be typed QueryExecutionApi"
+    )
+    assert hints["api"] is not HttpxQueryExecutionApi, (
+        "QueryExecutionService.__init__'s api param must not be the concrete adapter"
+    )
+    assert hints["work_package_api"] is WorkPackageApi, (
+        "QueryExecutionService.__init__'s work_package_api param must be typed WorkPackageApi"
+    )
+    assert hints["work_package_api"] is not HttpxWorkPackageApi, (
+        "QueryExecutionService.__init__'s work_package_api param must not be the concrete adapter"
+    )
+
+
 def test_category_service_binds_the_api_param_to_category_api_specifically() -> None:
     """Non-generalized regression test for the Categories domain's exact
     guarantee, sibling to the checks above: the api param is CategoryApi

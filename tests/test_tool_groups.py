@@ -434,11 +434,11 @@ def _all_five_scope_tools() -> set[str]:
 
 def test_project_scoped_and_global_read_tools_partition_the_five_scopes() -> None:
     all_five_scope_tools = _all_five_scope_tools()
-    assert len(all_five_scope_tools) == 57  # no name overlap between the 5 scopes
+    assert len(all_five_scope_tools) == 59  # no name overlap between the 5 scopes
     assert _EXPECTED_GLOBAL_READ_TOOLS <= all_five_scope_tools
     assert tools._PROJECT_SCOPED_READ_TOOLS == all_five_scope_tools - _EXPECTED_GLOBAL_READ_TOOLS
     assert tools._PROJECT_SCOPED_READ_TOOLS.isdisjoint(_EXPECTED_GLOBAL_READ_TOOLS)
-    assert len(tools._PROJECT_SCOPED_READ_TOOLS) == 45
+    assert len(tools._PROJECT_SCOPED_READ_TOOLS) == 47
 
 
 def test_project_scoped_read_tools_absent_when_read_projects_empty() -> None:

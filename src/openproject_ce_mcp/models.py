@@ -1381,3 +1381,29 @@ class ReminderWriteResult(ConfirmationHeader):
 class FavoriteWriteResult(ConfirmationHeader):
     project_id: int | None
     project: str | None
+
+
+@dataclass
+class WikiPageLinkSummary:
+    id: int
+    identifier: str | None
+    link_type: str | None  # "inline" or "relation"
+    provider: str | None
+    work_package_id: int | None
+    author: str | None
+    created_at: str | None
+    updated_at: str | None
+
+
+@dataclass
+class WikiPageLinkListResult(PageResult):
+    results: list[WikiPageLinkSummary]
+
+
+@dataclass
+class WikiPageLinkWriteResult(ConfirmationHeader):
+    link_id: int | None
+    work_package_id: int | None
+    payload: dict[str, Any]
+    validation_errors: dict[str, str]
+    result: WikiPageLinkSummary | None

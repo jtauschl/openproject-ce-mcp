@@ -379,6 +379,52 @@ def _delete_reminder_handler(request: httpx.Request) -> httpx.Response:
     raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
 
+def _create_work_package_wiki_link_handler(request: httpx.Request) -> httpx.Response:
+    if request.method == "GET" and request.url.path == "/api/v3/users/me":
+        return httpx.Response(200, json={"id": 9, "name": "Me", "login": "me"}, request=request)
+    if request.method == "GET" and request.url.path == "/api/v3/work_packages/42":
+        return httpx.Response(
+            200,
+            json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+            request=request,
+        )
+    if request.method == "POST" and request.url.path == "/api/v3/work_packages/42/wiki_page_links":
+        return httpx.Response(
+            201,
+            json={
+                "_embedded": {
+                    "elements": [
+                        {
+                            "id": 9,
+                            "identifier": "Home",
+                            "wikiPageLinkType": "urn:openproject-org:api:v3:wikiPageLinks:Relation",
+                            "createdAt": "2026-08-12T09:00:00Z",
+                            "updatedAt": "2026-08-12T09:00:00Z",
+                            "_links": {
+                                "provider": {"href": "/api/v3/wiki_providers/internal", "title": "Internal Wiki"},
+                                "linkable": {"href": "/api/v3/work_packages/42", "title": "Demo WP"},
+                            },
+                        }
+                    ]
+                }
+            },
+            request=request,
+        )
+    raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+
+def _delete_work_package_wiki_link_handler(request: httpx.Request) -> httpx.Response:
+    if request.method == "GET" and request.url.path == "/api/v3/work_packages/42":
+        return httpx.Response(
+            200,
+            json={"id": 42, "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}}},
+            request=request,
+        )
+    if request.method == "DELETE" and request.url.path == "/api/v3/wiki_page_links/9":
+        return httpx.Response(204, request=request)
+    raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+
 def _create_work_package_relation_handler(request: httpx.Request) -> httpx.Response:
     if request.method == "GET" and request.url.path == "/api/v3/work_packages/43":
         return httpx.Response(
@@ -720,6 +766,22 @@ WORK_PACKAGE_CASES: dict[str, WriteToolCase] = {
         write_scope="work_package",
         handler=_delete_attachment_handler,
         write_request=("DELETE", "/api/v3/attachments/7"),
+    ),
+    "create_work_package_wiki_link": WriteToolCase(
+        tool="create_work_package_wiki_link",
+        kwargs={"work_package_id": 42, "identifier": "Home", "provider": "internal"},
+        settings=_SETTINGS,
+        write_scope="work_package",
+        handler=_create_work_package_wiki_link_handler,
+        write_request=("POST", "/api/v3/work_packages/42/wiki_page_links"),
+    ),
+    "delete_work_package_wiki_link": WriteToolCase(
+        tool="delete_work_package_wiki_link",
+        kwargs={"work_package_id": 42, "link_id": 9},
+        settings=_SETTINGS,
+        write_scope="work_package",
+        handler=_delete_work_package_wiki_link_handler,
+        write_request=("DELETE", "/api/v3/wiki_page_links/9"),
     ),
     # One WriteToolCase covers the tool's `watching=True` (add) branch, since
     # this generic registry enforces exactly one case per registered tool.

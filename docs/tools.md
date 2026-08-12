@@ -135,6 +135,7 @@ Same gating as [Users](#users) above: reads need
 |---|---|
 | `list_views` | List saved OpenProject views, optionally filtered by project, view subtype, or name search |
 | `get_view` | Fetch a single OpenProject view by id |
+| `execute_query` | Execute a saved OpenProject query by id and return its resolved work packages, filtered against `OPENPROJECT_READ_PROJECTS` |
 
 ## Documents
 
@@ -159,10 +160,23 @@ Same gating as [Users](#users) above: reads need
 | Tool | Description |
 |---|---|
 | `get_wiki_page` | Fetch a single wiki page by id |
+| `list_work_package_wiki_links` | List wiki pages linked to a work package (requires OpenProject 17.6+) |
+| `create_work_package_wiki_link` | Validate and then create a link from a work package to a wiki page; only writes when called again with `confirm=true` (requires OpenProject 17.6+) |
+| `delete_work_package_wiki_link` | Validate and then delete a work package's wiki page link; only deletes when called again with `confirm=true` (requires OpenProject 17.6+) |
 
 > **Note:** OpenProject API v3 does not provide a collection endpoint for wiki pages
 > (`GET /api/v3/projects/{id}/wiki_pages` is not implemented). `list_wiki_pages` has
 > therefore been removed. Individual pages can be fetched by id via `get_wiki_page`.
+>
+> **Note:** the `wiki_page_links` endpoint (`list_work_package_wiki_links`/
+> `create_work_package_wiki_link`/`delete_work_package_wiki_link`) requires
+> OpenProject 17.6 or later — earlier versions return a `[server_error]`.
+>
+> **Note:** `list_work_package_wiki_links` returns a `[server_error]` whenever
+> the work package actually has one or more wiki page links — a confirmed
+> OpenProject server bug (16.6/17.6/17.7.1, tracked as OPM-399). Only the
+> empty-list case reliably works. `create_work_package_wiki_link`/
+> `delete_work_package_wiki_link` are unaffected.
 
 ## Work packages
 

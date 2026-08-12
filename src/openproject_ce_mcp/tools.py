@@ -141,6 +141,8 @@ from .models import (
     WatcherSummary,
     WatcherWriteResult,
     WikiPageDetail,
+    WikiPageLinkListResult,
+    WikiPageLinkWriteResult,
     WorkingDayListResult,
     WorkPackageDetail,
     WorkPackageListResult,
@@ -277,6 +279,8 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "list_time_entries",
         "get_time_entry",
         "list_relations",
+        "list_work_package_wiki_links",
+        "execute_query",
     ),
     "membership": (
         "list_project_memberships",
@@ -360,6 +364,8 @@ WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "delete_time_entry",
         "update_relation",
         "delete_file_link",
+        "create_work_package_wiki_link",
+        "delete_work_package_wiki_link",
     ),
     "membership": ("create_membership", "update_membership", "delete_membership"),
     "version": ("create_version", "update_version", "delete_version"),
@@ -442,6 +448,8 @@ _PROJECT_SCOPED_READ_TOOLS: frozenset[str] = frozenset(
         "get_version",
         "list_boards",
         "get_board",
+        "list_work_package_wiki_links",
+        "execute_query",
     }
 )
 
@@ -1481,6 +1489,116 @@ async def get_wiki_page(
     safe_id = _validate_positive_int(wiki_page_id, field_name="wiki_page_id")
     safe_text_limit = _validate_optional_text_limit(text_limit)
     return await _run_tool(client.get_wiki_page(safe_id, text_limit=safe_text_limit))
+
+
+async def list_work_package_wiki_links(
+    ctx: Context,
+    work_package_id: int | str,
+    offset: int = 1,
+    limit: int | None = None,
+) -> WikiPageLinkListResult:
+    """List wiki pages linked to a work package.
+
+    Requires OpenProject 17.6+ — the wiki_page_links endpoint does not exist
+    on earlier versions and returns a [server_error].
+
+    Known OpenProject server bug (confirmed on 16.6/17.6/17.7.1, tracked as
+    OPM-399): this call returns a [server_error] whenever the work package
+    actually has one or more wiki page links — only the empty-list case
+    reliably works. create_work_package_wiki_link/delete_work_package_wiki_link
+    are unaffected and fully functional.
+
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_work_package_ref(work_package_id)
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    return await _run_tool(client.list_work_package_wiki_links(safe_id, offset=safe_offset, limit=safe_limit))
+
+
+async def create_work_package_wiki_link(
+    ctx: Context,
+    work_package_id: int | str,
+    identifier: str,
+    provider: str,
+    confirm: bool = False,
+) -> WikiPageLinkWriteResult:
+    """Prepare or create a link from a work package to a wiki page; only
+    writes when called again with confirm=true.
+
+    Requires OpenProject 17.6+ — the wiki_page_links endpoint does not exist
+    on earlier versions and returns a [server_error].
+
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+    identifier: the target wiki page's provider-specific identifier (not this
+    MCP's own wiki_page_id — OpenProject's wiki-provider abstraction uses its
+    own opaque page identifiers).
+    provider: the wiki provider's universal identifier (e.g. "internal" for
+    OpenProject's built-in wiki).
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_work_package_ref(work_package_id)
+    safe_identifier = _validate_required_query(identifier, field_name="identifier", max_length=255)
+    safe_provider = _validate_required_query(provider, field_name="provider", max_length=255)
+    return await _run_tool(
+        client.create_work_package_wiki_link(
+            safe_id, identifier=safe_identifier, provider=safe_provider, confirm=confirm
+        )
+    )
+
+
+async def delete_work_package_wiki_link(
+    ctx: Context,
+    work_package_id: int | str,
+    link_id: int,
+    confirm: bool = False,
+) -> WikiPageLinkWriteResult:
+    """Prepare or delete a work package's wiki page link; only deletes when
+    called again with confirm=true.
+
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number
+    — used to authorize the delete against that work package's project, since
+    OpenProject has no single-resource GET for a wiki page link to discover
+    its parent work package from link_id alone.
+    link_id: the wiki page link's own id, from list_work_package_wiki_links.
+    """
+    client = _client_from_context(ctx)
+    safe_wp_id = _validate_work_package_ref(work_package_id)
+    safe_link_id = _validate_positive_int(link_id, field_name="link_id")
+    return await _run_tool(client.delete_work_package_wiki_link(safe_wp_id, safe_link_id, confirm=confirm))
+
+
+async def execute_query(
+    ctx: Context,
+    query_id: int,
+    offset: int = 1,
+    limit: int | None = None,
+) -> WorkPackageListResult:
+    """Execute a saved OpenProject query by id and return its resolved work packages.
+
+    query_id: the query's own numeric id — obtain it from get_view/list_views's
+    query_id field, or from list_boards/get_board (a board's id IS its
+    underlying query id, since OpenProject Boards are Query resources).
+
+    Runs the query server-side (OpenProject resolves its stored filters/sort/
+    group_by and returns real work packages, not just the query's
+    definition) — no client-side filter translation happens here. Results are
+    still filtered against this MCP's own OPENPROJECT_READ_PROJECTS allowlist
+    before being returned, since the query itself executes with the API
+    token's full server-side permissions.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
+    client = _client_from_context(ctx)
+    safe_query_id = _validate_positive_int(query_id, field_name="query_id")
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    return await _run_tool(client.execute_query(safe_query_id, offset=safe_offset, limit=safe_limit))
 
 
 async def list_categories(
