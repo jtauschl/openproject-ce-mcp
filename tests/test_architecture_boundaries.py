@@ -482,6 +482,19 @@ def test_wiki_page_link_service_binds_the_api_param_to_wiki_page_link_api_specif
     )
 
 
+def test_cost_service_binds_the_api_param_to_cost_api_specifically() -> None:
+    """Non-generalized regression test for the Costs domain's exact
+    guarantee, sibling to the checks above: the api param is CostApi
+    exactly, not just "some Protocol"."""
+    from openproject_ce_mcp.app.adapters.httpx_cost_api import HttpxCostApi
+    from openproject_ce_mcp.app.ports.cost_api import CostApi
+    from openproject_ce_mcp.app.services.cost_service import CostService
+
+    hints = typing.get_type_hints(CostService.__init__)
+    assert hints["api"] is CostApi, "CostService.__init__'s api param must be typed CostApi"
+    assert hints["api"] is not HttpxCostApi, "CostService.__init__'s api param must not be the concrete adapter"
+
+
 def test_user_non_working_time_service_binds_the_api_param_to_user_non_working_time_api_specifically() -> None:
     """Non-generalized regression test for the User Non-Working Times domain's
     exact guarantee, sibling to the checks above: the api param is
