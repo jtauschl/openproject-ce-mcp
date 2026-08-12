@@ -27,6 +27,7 @@ _READ_SCOPE_SETTINGS: dict[str, str] = {
     "principal": "enable_membership_read",
     "version": "enable_version_read",
     "board": "enable_board_read",
+    "meeting": "enable_meeting_read",
     "personal": "enable_personal_read",
     "admin": "enable_admin_read",
     "user_schedule": "enable_user_schedule_read",
@@ -38,6 +39,7 @@ _WRITE_SCOPE_SETTINGS: dict[str, str] = {
     "membership": "enable_membership_write",
     "version": "enable_version_write",
     "board": "enable_board_write",
+    "meeting": "enable_meeting_write",
     "personal": "enable_personal_write",
     "admin": "enable_admin_write",
     "user_schedule": "enable_user_schedule_write",
@@ -52,6 +54,7 @@ _READ_ATTR_ENV_VAR: dict[str, str] = {
     "enable_membership_read": "OPENPROJECT_ENABLE_MEMBERSHIP_READ",
     "enable_version_read": "OPENPROJECT_ENABLE_VERSION_READ",
     "enable_board_read": "OPENPROJECT_ENABLE_BOARD_READ",
+    "enable_meeting_read": "OPENPROJECT_ENABLE_MEETING_READ",
     "enable_personal_read": "OPENPROJECT_ENABLE_PERSONAL_READ",
     "enable_admin_read": "OPENPROJECT_ENABLE_ADMIN_READ",
     "enable_user_schedule_read": "OPENPROJECT_ENABLE_USER_SCHEDULE_READ",
@@ -80,6 +83,7 @@ WRITE_GROUP_REQUIREMENTS: tuple[tuple[str, str, str, str], ...] = (
     ),
     ("version_write", "version_read", "OPENPROJECT_ENABLE_VERSION_WRITE", "OPENPROJECT_ENABLE_VERSION_READ"),
     ("board_write", "board_read", "OPENPROJECT_ENABLE_BOARD_WRITE", "OPENPROJECT_ENABLE_BOARD_READ"),
+    ("meeting_write", "meeting_read", "OPENPROJECT_ENABLE_MEETING_WRITE", "OPENPROJECT_ENABLE_MEETING_READ"),
     ("personal_write", "personal_read", "OPENPROJECT_ENABLE_PERSONAL_WRITE", "OPENPROJECT_ENABLE_PERSONAL_READ"),
     ("admin_write", "admin_read", "OPENPROJECT_ENABLE_ADMIN_WRITE", "OPENPROJECT_ENABLE_ADMIN_READ"),
     (
@@ -215,6 +219,11 @@ HIDE_FIELD_ENV_BY_ENTITY: dict[str, str] = {
     "custom_option": "OPENPROJECT_HIDE_CUSTOM_OPTION_FIELDS",
     "user_non_working_time": "OPENPROJECT_HIDE_USER_NON_WORKING_TIME_FIELDS",
     "user_working_hours": "OPENPROJECT_HIDE_USER_WORKING_HOURS_FIELDS",
+    "meeting": "OPENPROJECT_HIDE_MEETING_FIELDS",
+    "meeting_agenda_item": "OPENPROJECT_HIDE_MEETING_AGENDA_ITEM_FIELDS",
+    "meeting_outcome": "OPENPROJECT_HIDE_MEETING_OUTCOME_FIELDS",
+    "meeting_section": "OPENPROJECT_HIDE_MEETING_SECTION_FIELDS",
+    "recurring_meeting": "OPENPROJECT_HIDE_RECURRING_MEETING_FIELDS",
 }
 
 
@@ -236,6 +245,7 @@ class Settings:
     enable_membership_read: bool = True
     enable_version_read: bool = True
     enable_board_read: bool = True
+    enable_meeting_read: bool = True
     enable_personal_read: bool = False
     enable_admin_read: bool = False
     enable_user_schedule_read: bool = False
@@ -249,6 +259,7 @@ class Settings:
     enable_membership_write: bool = True
     enable_version_write: bool = True
     enable_board_write: bool = True
+    enable_meeting_write: bool = True
     enable_personal_write: bool = False
     enable_admin_write: bool = False
     enable_user_schedule_write: bool = False
@@ -288,6 +299,7 @@ class Settings:
         enable_membership_read = _bool_env(env, "OPENPROJECT_ENABLE_MEMBERSHIP_READ", default=True)
         enable_version_read = _bool_env(env, "OPENPROJECT_ENABLE_VERSION_READ", default=True)
         enable_board_read = _bool_env(env, "OPENPROJECT_ENABLE_BOARD_READ", default=True)
+        enable_meeting_read = _bool_env(env, "OPENPROJECT_ENABLE_MEETING_READ", default=True)
         enable_personal_read = _bool_env(env, "OPENPROJECT_ENABLE_PERSONAL_READ", default=False)
         enable_admin_read = _bool_env(env, "OPENPROJECT_ENABLE_ADMIN_READ", default=False)
         enable_user_schedule_read = _bool_env(env, "OPENPROJECT_ENABLE_USER_SCHEDULE_READ", default=False)
@@ -306,6 +318,7 @@ class Settings:
         enable_membership_write = _bool_env(env, "OPENPROJECT_ENABLE_MEMBERSHIP_WRITE", default=True)
         enable_version_write = _bool_env(env, "OPENPROJECT_ENABLE_VERSION_WRITE", default=True)
         enable_board_write = _bool_env(env, "OPENPROJECT_ENABLE_BOARD_WRITE", default=True)
+        enable_meeting_write = _bool_env(env, "OPENPROJECT_ENABLE_MEETING_WRITE", default=True)
         enable_personal_write = _bool_env(env, "OPENPROJECT_ENABLE_PERSONAL_WRITE", default=False)
         enable_admin_write = _bool_env(env, "OPENPROJECT_ENABLE_ADMIN_WRITE", default=False)
         enable_user_schedule_write = _bool_env(env, "OPENPROJECT_ENABLE_USER_SCHEDULE_WRITE", default=False)
@@ -352,6 +365,7 @@ class Settings:
             "membership_read": enable_membership_read,
             "version_read": enable_version_read,
             "board_read": enable_board_read,
+            "meeting_read": enable_meeting_read,
             "personal_read": enable_personal_read,
             "admin_read": enable_admin_read,
             "user_schedule_read": enable_user_schedule_read,
@@ -362,6 +376,7 @@ class Settings:
             "membership_write": enable_membership_write,
             "version_write": enable_version_write,
             "board_write": enable_board_write,
+            "meeting_write": enable_meeting_write,
             "personal_write": enable_personal_write,
             "admin_write": enable_admin_write,
             "user_schedule_write": enable_user_schedule_write,
@@ -388,6 +403,7 @@ class Settings:
             enable_membership_read=enable_membership_read,
             enable_version_read=enable_version_read,
             enable_board_read=enable_board_read,
+            enable_meeting_read=enable_meeting_read,
             enable_personal_read=enable_personal_read,
             enable_admin_read=enable_admin_read,
             enable_user_schedule_read=enable_user_schedule_read,
@@ -401,6 +417,7 @@ class Settings:
             enable_membership_write=enable_membership_write,
             enable_version_write=enable_version_write,
             enable_board_write=enable_board_write,
+            enable_meeting_write=enable_meeting_write,
             enable_personal_write=enable_personal_write,
             enable_admin_write=enable_admin_write,
             enable_user_schedule_write=enable_user_schedule_write,

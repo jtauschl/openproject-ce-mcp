@@ -1534,3 +1534,223 @@ class UserWorkingHoursWriteResult(ConfirmationHeader):
     payload: dict[str, Any]
     validation_errors: dict[str, str]
     result: UserWorkingHoursSummary | None
+
+
+# --- Meetings ---
+
+
+@dataclass
+class MeetingParticipantSummary:
+    id: int
+    name: str | None
+
+
+@dataclass
+class MeetingSummary:
+    id: int
+    title: str | None
+    location: str | None
+    lock_version: int
+    start_time: str | None
+    end_time: str | None
+    duration: str | None
+    state: str | None
+    sharing: str | None
+    template: bool
+    notify: bool
+    author: str | None
+    participants: list[MeetingParticipantSummary]
+    project_id: int | None
+    project: str | None
+    recurring_meeting_id: int | None
+    created_at: str | None
+    updated_at: str | None
+
+
+@dataclass
+class MeetingListResult(PageResult):
+    results: list[MeetingSummary]
+
+
+@dataclass
+class MeetingWriteResult(ConfirmationHeader):
+    meeting_id: int | None
+    project: str | None
+    payload: dict[str, Any]
+    validation_errors: dict[str, str]
+    result: MeetingSummary | None
+
+
+# --- Meeting Agenda Items ---
+
+
+@dataclass
+class MeetingAgendaItemSummary:
+    id: int
+    title: str | None
+    notes: str | None
+    notes_truncated: bool
+    notes_length: int | None
+    position: int | None
+    duration_in_minutes: int | None
+    item_type: str | None
+    lock_version: int
+    meeting_id: int | None
+    author: str | None
+    presenter: str | None
+    work_package_id: int | None
+    meeting_section_id: int | None
+    outcome_ids: list[int]
+    created_at: str | None
+    updated_at: str | None
+
+
+@dataclass
+class MeetingAgendaItemListResult(PageResult):
+    results: list[MeetingAgendaItemSummary]
+
+
+@dataclass
+class MeetingAgendaItemWriteResult(ConfirmationHeader):
+    agenda_item_id: int | None
+    meeting_id: int | None
+    payload: dict[str, Any]
+    validation_errors: dict[str, str]
+    result: MeetingAgendaItemSummary | None
+
+
+# --- Meeting Outcomes (OpenProject 17.6+) ---
+
+
+@dataclass
+class MeetingOutcomeSummary:
+    id: int
+    kind: str | None
+    notes: str | None
+    notes_truncated: bool
+    notes_length: int | None
+    author: str | None
+    meeting_agenda_item_id: int | None
+    work_package_id: int | None
+    created_at: str | None
+    updated_at: str | None
+
+
+@dataclass
+class MeetingOutcomeListResult(PageResult):
+    results: list[MeetingOutcomeSummary]
+
+
+@dataclass
+class MeetingOutcomeWriteResult(ConfirmationHeader):
+    outcome_id: int | None
+    meeting_agenda_item_id: int | None
+    payload: dict[str, Any]
+    validation_errors: dict[str, str]
+    result: MeetingOutcomeSummary | None
+
+
+# --- Meeting Sections ---
+
+
+@dataclass
+class MeetingSectionSummary:
+    id: int
+    title: str | None
+    position: int | None
+    backlog: bool
+    meeting_id: int | None
+    created_at: str | None
+    updated_at: str | None
+
+
+@dataclass
+class MeetingSectionListResult(PageResult):
+    results: list[MeetingSectionSummary]
+
+
+@dataclass
+class MeetingSectionWriteResult(ConfirmationHeader):
+    section_id: int | None
+    meeting_id: int | None
+    payload: dict[str, Any]
+    validation_errors: dict[str, str]
+    result: MeetingSectionSummary | None
+
+
+# --- Recurring Meetings ---
+
+
+@dataclass
+class RecurringMeetingSummary:
+    id: int
+    title: str | None
+    frequency: str | None
+    monthly_day: int | None
+    monthly_ordinal: str | None
+    monthly_weekday: str | None
+    interval: int | None
+    end_after: str | None
+    end_date: str | None
+    iterations: int | None
+    time_zone: str | None
+    start_time: str | None
+    location: str | None
+    duration: float | None
+    notify: bool | None
+    author: str | None
+    project_id: int | None
+    project: str | None
+    template_meeting_id: int | None
+    created_at: str | None
+    updated_at: str | None
+
+
+@dataclass
+class RecurringMeetingListResult(PageResult):
+    results: list[RecurringMeetingSummary]
+
+
+@dataclass
+class RecurringMeetingWriteResult(ConfirmationHeader):
+    recurring_meeting_id: int | None
+    project: str | None
+    payload: dict[str, Any]
+    validation_errors: dict[str, str]
+    result: RecurringMeetingSummary | None
+
+
+# --- Recurring Meeting Occurrences (virtual -- init/cancel only) ---
+
+
+@dataclass
+class RecurringMeetingOccurrenceSummary:
+    start_time: str
+    state: str
+    meeting_id: int | None
+
+
+@dataclass
+class RecurringMeetingOccurrenceListResult:
+    """Deliberately NOT a PageResult subclass: none of the four upstream
+    occurrence-list filters (upcoming/past/cancelled/open) carry an
+    offset/pageSize pagination envelope -- upcoming takes only a bare
+    `limit` (server-side capped, no offset param at all); past/cancelled/open
+    take no params whatsoever and return everything. Forcing PageResult's
+    shape here would fabricate offset/next_offset/truncated fields that
+    correspond to nothing real server-side.
+    """
+
+    recurring_meeting_id: int
+    filter: str
+    count: int
+    results: list[RecurringMeetingOccurrenceSummary]
+
+
+@dataclass
+class RecurringMeetingOccurrenceWriteResult(ConfirmationHeader):
+    recurring_meeting_id: int
+    start_time: str
+    payload: dict[str, Any]
+    validation_errors: dict[str, str]
+    result: MeetingSummary | None
