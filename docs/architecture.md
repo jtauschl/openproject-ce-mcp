@@ -213,6 +213,47 @@ tools.py (MCP presentation)
   like the auto-percentage/auto-remaining-time derivation's status-detail fetch, which is why that
   lookup goes through `StatusPriorityTypeApi` directly rather than `StatusPriorityTypeService`) must
   keep working in that configuration.
+- A single MCP-level domain may mix OpenProject's form-based and flat write patterns across its own
+  sub-resources, rather than committing the whole domain to one shape — the Meetings domain (5
+  sub-resources: Meetings, Meeting Agenda Items, Meeting Sections, Meeting Outcomes, Recurring
+  Meetings + virtual Occurrences) is the first to do this. Meetings itself mounts a genuine
+  `POST meetings/form`/`POST meetings/{id}/form` schema-validation step upstream, so `MeetingService`
+  follows the form-based preview/commit shape (`_write_outcome.py`'s `_finalize_write`, matching
+  `BoardService`/`TimeEntryService`); its four sub-resources have no form endpoint at all upstream
+  (verified against source, not assumed), so their Services stay flat inline preview/commit methods
+  (matching `WikiPageLinkService`). A sub-resource whose parent is another sub-resource in the same
+  domain, not a project — Meeting Agenda Items/Sections/Outcomes have no project link of their own,
+  only a parent (or grandparent) Meeting — resolves its allowlist check by depending directly on
+  `MeetingApi` as a cross-domain Port, walking `agenda_item -> meeting -> project` (or
+  `section -> meeting -> project`) as needed, the same cross-domain-Port-dependency pattern as
+  `QueryExecutionService -> WorkPackageApi`/`WorkPackageService -> ActivityApi` above, and
+  `MeetingOutcomeService`'s two-hop walk additionally depends on `MeetingAgendaItemApi` (three
+  Protocol dependencies total, matching `FileLinkService`'s/`EmojiReactionService`'s three-Protocol
+  shape). A resource addressed by its own bare id under a global namespace (not nested under its
+  parent's id in the URL, e.g. `GET meeting_agenda_items/{id}`, `GET meeting_outcomes/{id}`) is safe
+  to fetch-then-check directly — i.e. fetch the record, read its own already-normalized parent-id
+  field, then check the allowlist against that — WITHOUT the Wiki Page Links-style two-argument
+  "verify the fetched record's id actually belongs to a caller-supplied claimed parent" step, when
+  and only when the upstream single-resource route itself performs an authoritative server-side join
+  through to the project (verified per-route against source, e.g.
+  `MeetingAgendaItem.joins(meeting: :project).merge(Meeting.visible).find(id)`) — there is no
+  caller-supplied parent id on such a route to distrust in the first place, unlike
+  `DELETE wiki_page_links/{id}`, which has no such join and must scan the claimed parent's own
+  children to verify a match. Recurring Meetings' virtual Occurrences (no id of their own, addressed
+  by `start_time`) fetch their parent `RecurringMeeting` first, the same shape as any other
+  sub-resource whose parent is a different resource in the same domain — `RecurringMeetingService`
+  reuses `httpx_meeting_api.py`'s `normalize_meeting` (an Adapter importing a pure function from a
+  sibling Adapter module) to normalize `init_occurrence`'s response, which is a full Meeting HAL
+  payload rather than an Occurrence payload — Adapter-to-Adapter reuse of a stateless normalizer is
+  permitted by the layer-dependency rules (which restrict Service→Adapter imports, not
+  Adapter→Adapter), matching how `app/adapters/_text.py`'s helpers are already shared across every
+  adapter in the tree. A list result whose upstream collection carries no `offset`/`pageSize`
+  pagination envelope at all (verified per-route, not assumed from a domain-wide pattern) is modeled
+  with its own bespoke `*ListResult` shape rather than the shared `PageResult` base —
+  `RecurringMeetingOccurrenceListResult` deliberately omits `offset`/`limit`/`next_offset`/`truncated`
+  and carries only `count`/`results` plus its own two identifying fields (`recurring_meeting_id`,
+  `filter`), since fabricating a pagination envelope for a genuinely unpaginated collection would
+  claim capabilities (resumable paging) that don't exist server-side.
 - `HttpxTransport` (`app/transport/httpx_transport.py`) is the only module under `app/` that
   imports `httpx`; `client.py`'s own HTTP calls (used only by the two cross-service-orchestration
   methods described above) and `retry_transport.py` are unaffected and keep importing it directly.

@@ -657,6 +657,130 @@ def test_board_service_binds_the_api_param_to_board_api_specifically() -> None:
     assert hints["api"] is not HttpxBoardApi, "BoardService.__init__'s api param must not be the concrete adapter"
 
 
+def test_meeting_service_binds_the_api_param_to_meeting_api_specifically() -> None:
+    """Non-generalized regression test for the Meetings domain's exact
+    guarantee (OPM-154): the api param is MeetingApi exactly, not just "some
+    Protocol". No MeetingResolver exists -- meeting_id is always a numeric
+    value already validated by tools.py."""
+    from openproject_ce_mcp.app.adapters.httpx_meeting_api import HttpxMeetingApi
+    from openproject_ce_mcp.app.ports.meeting_api import MeetingApi
+    from openproject_ce_mcp.app.services.meeting_service import MeetingService
+
+    hints = typing.get_type_hints(MeetingService.__init__)
+    assert hints["api"] is MeetingApi, "MeetingService.__init__'s api param must be typed MeetingApi"
+    assert hints["api"] is not HttpxMeetingApi, "MeetingService.__init__'s api param must not be the concrete adapter"
+
+
+def test_meeting_agenda_item_service_binds_its_two_dependencies_to_the_right_protocols() -> None:
+    """MeetingAgendaItemService has TWO Protocol dependencies -- its own
+    MeetingAgendaItemApi, plus MeetingApi as a cross-domain Port (the
+    precedent this project already established for
+    WorkPackageService->ActivityApi/FileLinkService->WorkPackageLookupApi):
+    an agenda item has no project of its own, only a parent Meeting, so its
+    allowlist check walks through the parent via MeetingApi.get()."""
+    from openproject_ce_mcp.app.adapters.httpx_meeting_agenda_item_api import HttpxMeetingAgendaItemApi
+    from openproject_ce_mcp.app.adapters.httpx_meeting_api import HttpxMeetingApi
+    from openproject_ce_mcp.app.ports.meeting_agenda_item_api import MeetingAgendaItemApi
+    from openproject_ce_mcp.app.ports.meeting_api import MeetingApi
+    from openproject_ce_mcp.app.services.meeting_agenda_item_service import MeetingAgendaItemService
+
+    hints = typing.get_type_hints(MeetingAgendaItemService.__init__)
+    assert hints["api"] is MeetingAgendaItemApi, (
+        "MeetingAgendaItemService.__init__'s api param must be typed MeetingAgendaItemApi"
+    )
+    assert hints["api"] is not HttpxMeetingAgendaItemApi, (
+        "MeetingAgendaItemService.__init__'s api param must not be the concrete adapter"
+    )
+    assert hints["meeting_api"] is MeetingApi, (
+        "MeetingAgendaItemService.__init__'s meeting_api param must be typed MeetingApi"
+    )
+    assert hints["meeting_api"] is not HttpxMeetingApi, (
+        "MeetingAgendaItemService.__init__'s meeting_api param must not be the concrete adapter"
+    )
+
+
+def test_meeting_section_service_binds_its_two_dependencies_to_the_right_protocols() -> None:
+    """MeetingSectionService has the same two-Protocol shape as
+    MeetingAgendaItemService -- its own MeetingSectionApi, plus MeetingApi as
+    a cross-domain Port (a section has no project of its own, only a parent
+    Meeting)."""
+    from openproject_ce_mcp.app.adapters.httpx_meeting_api import HttpxMeetingApi
+    from openproject_ce_mcp.app.adapters.httpx_meeting_section_api import HttpxMeetingSectionApi
+    from openproject_ce_mcp.app.ports.meeting_api import MeetingApi
+    from openproject_ce_mcp.app.ports.meeting_section_api import MeetingSectionApi
+    from openproject_ce_mcp.app.services.meeting_section_service import MeetingSectionService
+
+    hints = typing.get_type_hints(MeetingSectionService.__init__)
+    assert hints["api"] is MeetingSectionApi, (
+        "MeetingSectionService.__init__'s api param must be typed MeetingSectionApi"
+    )
+    assert hints["api"] is not HttpxMeetingSectionApi, (
+        "MeetingSectionService.__init__'s api param must not be the concrete adapter"
+    )
+    assert hints["meeting_api"] is MeetingApi, (
+        "MeetingSectionService.__init__'s meeting_api param must be typed MeetingApi"
+    )
+    assert hints["meeting_api"] is not HttpxMeetingApi, (
+        "MeetingSectionService.__init__'s meeting_api param must not be the concrete adapter"
+    )
+
+
+def test_meeting_outcome_service_binds_its_three_dependencies_to_the_right_protocols() -> None:
+    """MeetingOutcomeService has THREE Protocol dependencies (matching
+    FileLinkService's/EmojiReactionService's three-Protocol shape) -- its own
+    MeetingOutcomeApi, plus MeetingAgendaItemApi and MeetingApi as two
+    cross-domain Ports: an outcome has no project of its own, only a
+    grandparent Meeting reached via its parent Agenda Item, so it walks
+    agenda_item -> meeting -> project through both injected Ports."""
+    from openproject_ce_mcp.app.adapters.httpx_meeting_agenda_item_api import HttpxMeetingAgendaItemApi
+    from openproject_ce_mcp.app.adapters.httpx_meeting_api import HttpxMeetingApi
+    from openproject_ce_mcp.app.adapters.httpx_meeting_outcome_api import HttpxMeetingOutcomeApi
+    from openproject_ce_mcp.app.ports.meeting_agenda_item_api import MeetingAgendaItemApi
+    from openproject_ce_mcp.app.ports.meeting_api import MeetingApi
+    from openproject_ce_mcp.app.ports.meeting_outcome_api import MeetingOutcomeApi
+    from openproject_ce_mcp.app.services.meeting_outcome_service import MeetingOutcomeService
+
+    hints = typing.get_type_hints(MeetingOutcomeService.__init__)
+    assert hints["api"] is MeetingOutcomeApi, (
+        "MeetingOutcomeService.__init__'s api param must be typed MeetingOutcomeApi"
+    )
+    assert hints["api"] is not HttpxMeetingOutcomeApi, (
+        "MeetingOutcomeService.__init__'s api param must not be the concrete adapter"
+    )
+    assert hints["meeting_agenda_item_api"] is MeetingAgendaItemApi, (
+        "MeetingOutcomeService.__init__'s meeting_agenda_item_api param must be typed MeetingAgendaItemApi"
+    )
+    assert hints["meeting_agenda_item_api"] is not HttpxMeetingAgendaItemApi, (
+        "MeetingOutcomeService.__init__'s meeting_agenda_item_api param must not be the concrete adapter"
+    )
+    assert hints["meeting_api"] is MeetingApi, (
+        "MeetingOutcomeService.__init__'s meeting_api param must be typed MeetingApi"
+    )
+    assert hints["meeting_api"] is not HttpxMeetingApi, (
+        "MeetingOutcomeService.__init__'s meeting_api param must not be the concrete adapter"
+    )
+
+
+def test_recurring_meeting_service_binds_the_api_param_to_recurring_meeting_api_specifically() -> None:
+    """Non-generalized regression test for the Recurring Meetings (+
+    Occurrences) domain's exact guarantee (OPM-154): the api param is
+    RecurringMeetingApi exactly, not just "some Protocol". No dedicated
+    Resolver exists -- recurring_meeting_id is always a numeric value already
+    validated by tools.py, and occurrences are addressed by start_time, not
+    an id."""
+    from openproject_ce_mcp.app.adapters.httpx_recurring_meeting_api import HttpxRecurringMeetingApi
+    from openproject_ce_mcp.app.ports.recurring_meeting_api import RecurringMeetingApi
+    from openproject_ce_mcp.app.services.recurring_meeting_service import RecurringMeetingService
+
+    hints = typing.get_type_hints(RecurringMeetingService.__init__)
+    assert hints["api"] is RecurringMeetingApi, (
+        "RecurringMeetingService.__init__'s api param must be typed RecurringMeetingApi"
+    )
+    assert hints["api"] is not HttpxRecurringMeetingApi, (
+        "RecurringMeetingService.__init__'s api param must not be the concrete adapter"
+    )
+
+
 def test_action_capability_service_binds_the_api_param_to_action_capability_api_specifically() -> None:
     """Non-generalized regression test for the Actions & Capabilities domain's
     exact guarantee, sibling to the checks above: the api param is

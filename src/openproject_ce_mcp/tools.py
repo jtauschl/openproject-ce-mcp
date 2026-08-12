@@ -75,6 +75,18 @@ from .models import (
     HelpTextSummary,
     InstanceConfiguration,
     JobStatusDetail,
+    MeetingAgendaItemListResult,
+    MeetingAgendaItemSummary,
+    MeetingAgendaItemWriteResult,
+    MeetingListResult,
+    MeetingOutcomeListResult,
+    MeetingOutcomeSummary,
+    MeetingOutcomeWriteResult,
+    MeetingSectionListResult,
+    MeetingSectionSummary,
+    MeetingSectionWriteResult,
+    MeetingSummary,
+    MeetingWriteResult,
     MembershipListResult,
     MembershipSummary,
     MembershipWriteResult,
@@ -109,6 +121,11 @@ from .models import (
     QueryFilterSummary,
     QueryOperatorSummary,
     QuerySortBySummary,
+    RecurringMeetingListResult,
+    RecurringMeetingOccurrenceListResult,
+    RecurringMeetingOccurrenceWriteResult,
+    RecurringMeetingSummary,
+    RecurringMeetingWriteResult,
     RelationListResult,
     RelationSummary,
     RelationUpdateResult,
@@ -312,6 +329,20 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
     ),
     "version": ("list_versions", "get_version"),
     "board": ("list_boards", "get_board"),
+    "meeting": (
+        "list_meetings",
+        "get_meeting",
+        "list_meeting_agenda_items",
+        "list_work_package_meeting_agenda_items",
+        "get_meeting_agenda_item",
+        "list_meeting_outcomes",
+        "get_meeting_outcome",
+        "list_meeting_sections",
+        "get_meeting_section",
+        "list_recurring_meetings",
+        "get_recurring_meeting",
+        "list_recurring_meeting_occurrences",
+    ),
     "personal": ("get_my_preferences", "list_notifications"),
     "admin": (
         "list_principals",
@@ -395,6 +426,25 @@ WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
     "membership": ("create_membership", "update_membership", "delete_membership"),
     "version": ("create_version", "update_version", "delete_version"),
     "board": ("create_board", "update_board", "delete_board"),
+    "meeting": (
+        "create_meeting",
+        "update_meeting",
+        "delete_meeting",
+        "create_meeting_agenda_item",
+        "update_meeting_agenda_item",
+        "delete_meeting_agenda_item",
+        "create_meeting_outcome",
+        "update_meeting_outcome",
+        "delete_meeting_outcome",
+        "create_meeting_section",
+        "update_meeting_section",
+        "delete_meeting_section",
+        "create_recurring_meeting",
+        "update_recurring_meeting",
+        "delete_recurring_meeting",
+        "init_recurring_meeting_occurrence",
+        "cancel_recurring_meeting_occurrence",
+    ),
     "admin": ADMIN_WRITE_TOOLS,
     "user_schedule": (
         "create_user_non_working_time",
@@ -413,7 +463,9 @@ WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
 # project is both readable and writable) shouldn't be registered at all. Not
 # "admin" (instance-wide, not gated by either allowlist) and not "personal"
 # (its own bespoke AND-gate below, independent of project scope).
-_PROJECT_SCOPED_WRITE_SCOPES: frozenset[str] = frozenset({"project", "work_package", "membership", "version", "board"})
+_PROJECT_SCOPED_WRITE_SCOPES: frozenset[str] = frozenset(
+    {"project", "work_package", "membership", "version", "board", "meeting"}
+)
 
 # Read-side counterpart, but at TOOL granularity rather than scope granularity:
 # unlike the write side, a read scope's tools are not uniformly project-scoped —
@@ -489,6 +541,18 @@ _PROJECT_SCOPED_READ_TOOLS: frozenset[str] = frozenset(
         "get_board",
         "list_work_package_wiki_links",
         "execute_query",
+        "list_meetings",
+        "get_meeting",
+        "list_meeting_agenda_items",
+        "list_work_package_meeting_agenda_items",
+        "get_meeting_agenda_item",
+        "list_meeting_outcomes",
+        "get_meeting_outcome",
+        "list_meeting_sections",
+        "get_meeting_section",
+        "list_recurring_meetings",
+        "get_recurring_meeting",
+        "list_recurring_meeting_occurrences",
     }
 )
 
@@ -1682,6 +1746,752 @@ async def delete_work_package_wiki_link(
     safe_wp_id = _validate_work_package_ref(work_package_id)
     safe_link_id = _validate_positive_int(link_id, field_name="link_id")
     return await _run_tool(client.delete_work_package_wiki_link(safe_wp_id, safe_link_id, confirm=confirm))
+
+
+# --- Meetings ---
+
+
+async def list_meetings(
+    ctx: Context,
+    project: str | None = None,
+    offset: int = 1,
+    limit: int | None = None,
+) -> MeetingListResult:
+    """List OpenProject meetings, optionally scoped to a project.
+
+    Requires OpenProject 17.4+ — the meetings module's agenda/section/
+    participant shape used here does not exist on 16.6, which only exposes
+    an incompatible legacy "meeting contents" representation.
+
+    project: identifier, name, or numeric id. Omit to list across all
+    readable projects.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the
+    returned next_offset as the next call's offset to page past the cap.
+    """
+    client = _client_from_context(ctx)
+    safe_project = _validate_optional_project_ref(project)
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    return await _run_tool(client.list_meetings(project=safe_project, offset=safe_offset, limit=safe_limit))
+
+
+async def get_meeting(ctx: Context, meeting_id: int) -> MeetingSummary:
+    """Get a single OpenProject meeting by id.
+
+    Requires OpenProject 17.4+.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(meeting_id, field_name="meeting_id")
+    return await _run_tool(client.get_meeting(safe_id))
+
+
+async def create_meeting(
+    ctx: Context,
+    project: str,
+    title: str,
+    location: str | None = None,
+    start_time: str | None = None,
+    duration: str | None = None,
+    state: str | None = None,
+    sharing: str | None = None,
+    notify: bool | None = None,
+    participant_user_refs: list[str] | None = None,
+    confirm: bool = False,
+) -> MeetingWriteResult:
+    """Prepare or create an OpenProject meeting; only writes when called
+    again with confirm=true.
+
+    Requires OpenProject 17.4+.
+
+    project: identifier, name, or numeric id — required, every meeting
+    belongs to exactly one project.
+    duration: an ISO 8601 duration like "PT1H30M" (hours/minutes only).
+    state: meeting state (e.g. "open", "closed") — pass the value as
+    returned by list_meetings/get_meeting.
+    participant_user_refs: list of user references (numeric id, login, or
+    name) to invite as participants.
+    """
+    client = _client_from_context(ctx)
+    safe_project = _validate_project_ref(project)
+    safe_title = _validate_required_text(title, field_name="title", max_length=255)
+    safe_location = _validate_optional_text(location, field_name="location", max_length=255)
+    safe_start = _validate_optional_datetime(start_time, field_name="start_time")
+    safe_duration = _validate_optional_duration(duration, field_name="duration")
+    safe_participants = _validate_participant_refs(participant_user_refs)
+    return await _run_tool(
+        client.create_meeting(
+            project=safe_project,
+            title=safe_title,
+            location=safe_location,
+            start_time=safe_start,
+            duration=safe_duration,
+            state=state,
+            sharing=sharing,
+            notify=notify,
+            participant_user_refs=safe_participants,
+            confirm=confirm,
+        )
+    )
+
+
+async def update_meeting(
+    ctx: Context,
+    meeting_id: int,
+    title: str | None = None,
+    location: str | None = None,
+    start_time: str | None = None,
+    duration: str | None = None,
+    state: str | None = None,
+    sharing: str | None = None,
+    notify: bool | None = None,
+    participant_user_refs: list[str] | None = None,
+    lock_version: int | None = None,
+    confirm: bool = False,
+) -> MeetingWriteResult:
+    """Prepare or update an OpenProject meeting; only writes when called
+    again with confirm=true.
+
+    Requires OpenProject 17.4+.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(meeting_id, field_name="meeting_id")
+    safe_title = _validate_optional_query(title, field_name="title", max_length=255)
+    safe_location = _validate_optional_text(location, field_name="location", max_length=255)
+    safe_start = _validate_optional_datetime(start_time, field_name="start_time")
+    safe_duration = _validate_optional_duration(duration, field_name="duration")
+    safe_participants = _validate_participant_refs(participant_user_refs)
+    _require_at_least_one(
+        safe_title,
+        safe_location,
+        safe_start,
+        safe_duration,
+        state,
+        sharing,
+        notify,
+        safe_participants,
+        lock_version,
+        message="At least one field to update is required.",
+    )
+    return await _run_tool(
+        client.update_meeting(
+            meeting_id=safe_id,
+            title=safe_title,
+            location=safe_location,
+            start_time=safe_start,
+            duration=safe_duration,
+            state=state,
+            sharing=sharing,
+            notify=notify,
+            participant_user_refs=safe_participants,
+            lock_version=lock_version,
+            confirm=confirm,
+        )
+    )
+
+
+async def delete_meeting(ctx: Context, meeting_id: int, confirm: bool = False) -> MeetingWriteResult:
+    """Prepare or delete an OpenProject meeting; only deletes when called
+    again with confirm=true.
+
+    Requires OpenProject 17.4+.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(meeting_id, field_name="meeting_id")
+    return await _run_tool(client.delete_meeting(meeting_id=safe_id, confirm=confirm))
+
+
+async def list_meeting_agenda_items(
+    ctx: Context,
+    meeting_id: int,
+    offset: int = 1,
+    limit: int | None = None,
+) -> MeetingAgendaItemListResult:
+    """List agenda items of an OpenProject meeting.
+
+    Requires OpenProject 17.4+.
+
+    This list is unpaginated server-side (OpenProject returns every agenda
+    item of the meeting in one response) — offset/limit are applied
+    client-side by this MCP.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(meeting_id, field_name="meeting_id")
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    return await _run_tool(client.list_meeting_agenda_items(safe_id, offset=safe_offset, limit=safe_limit))
+
+
+async def list_work_package_meeting_agenda_items(
+    ctx: Context,
+    work_package_id: int | str,
+    offset: int = 1,
+    limit: int | None = None,
+) -> MeetingAgendaItemListResult:
+    """List meeting agenda items linked to a work package.
+
+    Requires OpenProject 17.4+.
+
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+
+    This list is unpaginated server-side — offset/limit are applied
+    client-side by this MCP.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_work_package_ref(work_package_id)
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    return await _run_tool(client.list_work_package_meeting_agenda_items(safe_id, offset=safe_offset, limit=safe_limit))
+
+
+async def get_meeting_agenda_item(ctx: Context, agenda_item_id: int) -> MeetingAgendaItemSummary:
+    """Get a single meeting agenda item by id.
+
+    Requires OpenProject 17.4+.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
+    return await _run_tool(client.get_meeting_agenda_item(safe_id))
+
+
+async def create_meeting_agenda_item(
+    ctx: Context,
+    meeting_id: int,
+    title: str,
+    notes: str | None = None,
+    duration_in_minutes: int | None = None,
+    item_type: str | None = None,
+    work_package_id: int | str | None = None,
+    meeting_section_id: int | None = None,
+    confirm: bool = False,
+) -> MeetingAgendaItemWriteResult:
+    """Prepare or create a meeting agenda item; only writes when called
+    again with confirm=true.
+
+    Requires OpenProject 17.4+.
+
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number; optional.
+    meeting_section_id: an existing section's id (from list_meeting_sections); optional.
+    """
+    client = _client_from_context(ctx)
+    safe_meeting_id = _validate_positive_int(meeting_id, field_name="meeting_id")
+    safe_title = _validate_required_text(title, field_name="title", max_length=255)
+    safe_notes = _validate_optional_text(notes, field_name="notes", max_length=50_000)
+    safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
+    safe_section_id = (
+        _validate_positive_int(meeting_section_id, field_name="meeting_section_id")
+        if meeting_section_id is not None
+        else None
+    )
+    return await _run_tool(
+        client.create_meeting_agenda_item(
+            meeting_id=safe_meeting_id,
+            title=safe_title,
+            notes=safe_notes,
+            duration_in_minutes=duration_in_minutes,
+            item_type=item_type,
+            work_package_id=safe_work_package_id,
+            meeting_section_id=safe_section_id,
+            confirm=confirm,
+        )
+    )
+
+
+async def update_meeting_agenda_item(
+    ctx: Context,
+    agenda_item_id: int,
+    title: str | None = None,
+    notes: str | None = None,
+    duration_in_minutes: int | None = None,
+    item_type: str | None = None,
+    work_package_id: int | str | None = None,
+    meeting_section_id: int | None = None,
+    confirm: bool = False,
+) -> MeetingAgendaItemWriteResult:
+    """Prepare or update a meeting agenda item; only writes when called
+    again with confirm=true.
+
+    Requires OpenProject 17.4+.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
+    safe_title = _validate_optional_query(title, field_name="title", max_length=255)
+    safe_notes = _validate_optional_update_text(notes, field_name="notes", max_length=50_000)
+    safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
+    safe_section_id = (
+        _validate_positive_int(meeting_section_id, field_name="meeting_section_id")
+        if meeting_section_id is not None
+        else None
+    )
+    _require_at_least_one(
+        safe_title,
+        safe_notes,
+        duration_in_minutes,
+        item_type,
+        safe_work_package_id,
+        safe_section_id,
+        message="At least one field to update is required.",
+    )
+    return await _run_tool(
+        client.update_meeting_agenda_item(
+            agenda_item_id=safe_id,
+            title=safe_title,
+            notes=safe_notes,
+            duration_in_minutes=duration_in_minutes,
+            item_type=item_type,
+            work_package_id=safe_work_package_id,
+            meeting_section_id=safe_section_id,
+            confirm=confirm,
+        )
+    )
+
+
+async def delete_meeting_agenda_item(
+    ctx: Context, agenda_item_id: int, confirm: bool = False
+) -> MeetingAgendaItemWriteResult:
+    """Prepare or delete a meeting agenda item; only deletes when called
+    again with confirm=true.
+
+    Requires OpenProject 17.4+.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
+    return await _run_tool(client.delete_meeting_agenda_item(agenda_item_id=safe_id, confirm=confirm))
+
+
+async def list_meeting_outcomes(
+    ctx: Context,
+    agenda_item_id: int,
+    offset: int = 1,
+    limit: int | None = None,
+) -> MeetingOutcomeListResult:
+    """List outcomes of a meeting agenda item.
+
+    Requires OpenProject 17.6+ — the meeting_outcomes endpoint does not exist
+    on 17.4/17.5.
+
+    This list is unpaginated server-side — offset/limit are applied
+    client-side by this MCP.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    return await _run_tool(client.list_meeting_outcomes(safe_id, offset=safe_offset, limit=safe_limit))
+
+
+async def get_meeting_outcome(ctx: Context, outcome_id: int) -> MeetingOutcomeSummary:
+    """Get a single meeting outcome by id.
+
+    Requires OpenProject 17.6+.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(outcome_id, field_name="outcome_id")
+    return await _run_tool(client.get_meeting_outcome(safe_id))
+
+
+async def create_meeting_outcome(
+    ctx: Context,
+    agenda_item_id: int,
+    kind: str,
+    notes: str | None = None,
+    work_package_id: int | str | None = None,
+    confirm: bool = False,
+) -> MeetingOutcomeWriteResult:
+    """Prepare or create a meeting outcome on an agenda item; only writes
+    when called again with confirm=true.
+
+    Requires OpenProject 17.6+.
+
+    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number; optional.
+    """
+    client = _client_from_context(ctx)
+    safe_agenda_item_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
+    safe_kind = _validate_required_text(kind, field_name="kind", max_length=255)
+    safe_notes = _validate_optional_text(notes, field_name="notes", max_length=50_000)
+    safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
+    safe_work_package_numeric_id = (
+        int(safe_work_package_id) if safe_work_package_id is not None and safe_work_package_id.isdigit() else None
+    )
+    return await _run_tool(
+        client.create_meeting_outcome(
+            agenda_item_id=safe_agenda_item_id,
+            kind=safe_kind,
+            notes=safe_notes,
+            work_package_id=safe_work_package_numeric_id,
+            confirm=confirm,
+        )
+    )
+
+
+async def update_meeting_outcome(
+    ctx: Context,
+    outcome_id: int,
+    kind: str | None = None,
+    notes: str | None = None,
+    work_package_id: int | str | None = None,
+    confirm: bool = False,
+) -> MeetingOutcomeWriteResult:
+    """Prepare or update a meeting outcome; only writes when called again
+    with confirm=true.
+
+    Requires OpenProject 17.6+.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(outcome_id, field_name="outcome_id")
+    safe_kind = _validate_optional_query(kind, field_name="kind", max_length=255)
+    safe_notes = _validate_optional_update_text(notes, field_name="notes", max_length=50_000)
+    safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
+    safe_work_package_numeric_id = (
+        int(safe_work_package_id) if safe_work_package_id is not None and safe_work_package_id.isdigit() else None
+    )
+    _require_at_least_one(
+        safe_kind, safe_notes, safe_work_package_numeric_id, message="At least one field to update is required."
+    )
+    return await _run_tool(
+        client.update_meeting_outcome(
+            outcome_id=safe_id,
+            kind=safe_kind,
+            notes=safe_notes,
+            work_package_id=safe_work_package_numeric_id,
+            confirm=confirm,
+        )
+    )
+
+
+async def delete_meeting_outcome(ctx: Context, outcome_id: int, confirm: bool = False) -> MeetingOutcomeWriteResult:
+    """Prepare or delete a meeting outcome; only deletes when called again
+    with confirm=true.
+
+    Requires OpenProject 17.6+.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(outcome_id, field_name="outcome_id")
+    return await _run_tool(client.delete_meeting_outcome(outcome_id=safe_id, confirm=confirm))
+
+
+async def list_meeting_sections(
+    ctx: Context,
+    meeting_id: int,
+    offset: int = 1,
+    limit: int | None = None,
+) -> MeetingSectionListResult:
+    """List sections of an OpenProject meeting.
+
+    Requires OpenProject 17.4+.
+
+    This list is unpaginated server-side — offset/limit are applied
+    client-side by this MCP.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(meeting_id, field_name="meeting_id")
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    return await _run_tool(client.list_meeting_sections(safe_id, offset=safe_offset, limit=safe_limit))
+
+
+async def get_meeting_section(ctx: Context, section_id: int) -> MeetingSectionSummary:
+    """Get a single meeting section by id.
+
+    Requires OpenProject 17.4+.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(section_id, field_name="section_id")
+    return await _run_tool(client.get_meeting_section(safe_id))
+
+
+async def create_meeting_section(
+    ctx: Context,
+    meeting_id: int,
+    title: str,
+    position: int | None = None,
+    backlog: bool | None = None,
+    confirm: bool = False,
+) -> MeetingSectionWriteResult:
+    """Prepare or create a meeting section; only writes when called again
+    with confirm=true.
+
+    Requires OpenProject 17.4+.
+
+    backlog cannot be changed after creation via update_meeting_section —
+    pass it only here, on create.
+    """
+    client = _client_from_context(ctx)
+    safe_meeting_id = _validate_positive_int(meeting_id, field_name="meeting_id")
+    safe_title = _validate_required_text(title, field_name="title", max_length=255)
+    return await _run_tool(
+        client.create_meeting_section(
+            meeting_id=safe_meeting_id, title=safe_title, position=position, backlog=backlog, confirm=confirm
+        )
+    )
+
+
+async def update_meeting_section(
+    ctx: Context,
+    section_id: int,
+    title: str | None = None,
+    position: int | None = None,
+    confirm: bool = False,
+) -> MeetingSectionWriteResult:
+    """Prepare or update a meeting section's title/position; only writes
+    when called again with confirm=true.
+
+    Requires OpenProject 17.4+.
+
+    backlog cannot be changed after creation — this tool does not accept it.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(section_id, field_name="section_id")
+    safe_title = _validate_optional_query(title, field_name="title", max_length=255)
+    _require_at_least_one(safe_title, position, message="At least one field to update is required.")
+    return await _run_tool(
+        client.update_meeting_section(section_id=safe_id, title=safe_title, position=position, confirm=confirm)
+    )
+
+
+async def delete_meeting_section(ctx: Context, section_id: int, confirm: bool = False) -> MeetingSectionWriteResult:
+    """Prepare or delete a meeting section; only deletes when called again
+    with confirm=true.
+
+    Requires OpenProject 17.4+.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(section_id, field_name="section_id")
+    return await _run_tool(client.delete_meeting_section(section_id=safe_id, confirm=confirm))
+
+
+async def list_recurring_meetings(
+    ctx: Context,
+    project: str | None = None,
+    offset: int = 1,
+    limit: int | None = None,
+) -> RecurringMeetingListResult:
+    """List OpenProject recurring meeting series, optionally scoped to a project.
+
+    Requires OpenProject 17.4+.
+
+    project: identifier, name, or numeric id. Omit to list across all
+    readable projects.
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the
+    returned next_offset as the next call's offset to page past the cap.
+    """
+    client = _client_from_context(ctx)
+    safe_project = _validate_optional_project_ref(project)
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    return await _run_tool(client.list_recurring_meetings(project=safe_project, offset=safe_offset, limit=safe_limit))
+
+
+async def get_recurring_meeting(ctx: Context, recurring_meeting_id: int) -> RecurringMeetingSummary:
+    """Get a single OpenProject recurring meeting series by id.
+
+    Requires OpenProject 17.4+.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(recurring_meeting_id, field_name="recurring_meeting_id")
+    return await _run_tool(client.get_recurring_meeting(safe_id))
+
+
+async def create_recurring_meeting(
+    ctx: Context,
+    project: str,
+    title: str,
+    frequency: str,
+    start_time: str,
+    interval: int | None = None,
+    end_after: str | None = None,
+    end_date: str | None = None,
+    iterations: int | None = None,
+    monthly_day: int | None = None,
+    monthly_ordinal: str | None = None,
+    monthly_weekday: str | None = None,
+    confirm: bool = False,
+) -> RecurringMeetingWriteResult:
+    """Prepare or create an OpenProject recurring meeting series; only
+    writes when called again with confirm=true.
+
+    Requires OpenProject 17.4+.
+
+    project: identifier, name, or numeric id — required, every recurring
+    meeting belongs to exactly one project.
+    frequency: e.g. "daily", "weekly", "monthly" — pass the value as
+    returned by list_recurring_meetings/get_recurring_meeting.
+    end_after: e.g. "date", "iterations", "never" — governs which of
+    end_date/iterations is used.
+    """
+    client = _client_from_context(ctx)
+    safe_project = _validate_project_ref(project)
+    safe_title = _validate_required_text(title, field_name="title", max_length=255)
+    safe_frequency = _validate_required_text(frequency, field_name="frequency", max_length=50)
+    safe_start = _validate_required_datetime(start_time, field_name="start_time")
+    safe_end_date = _validate_optional_date(end_date, "end_date")
+    return await _run_tool(
+        client.create_recurring_meeting(
+            project=safe_project,
+            title=safe_title,
+            frequency=safe_frequency,
+            start_time=safe_start,
+            interval=interval,
+            end_after=end_after,
+            end_date=safe_end_date,
+            iterations=iterations,
+            monthly_day=monthly_day,
+            monthly_ordinal=monthly_ordinal,
+            monthly_weekday=monthly_weekday,
+            confirm=confirm,
+        )
+    )
+
+
+async def update_recurring_meeting(
+    ctx: Context,
+    recurring_meeting_id: int,
+    title: str | None = None,
+    frequency: str | None = None,
+    start_time: str | None = None,
+    interval: int | None = None,
+    end_after: str | None = None,
+    end_date: str | None = None,
+    iterations: int | None = None,
+    confirm: bool = False,
+) -> RecurringMeetingWriteResult:
+    """Prepare or update an OpenProject recurring meeting series; only
+    writes when called again with confirm=true.
+
+    Requires OpenProject 17.4+.
+
+    Note: this does not affect meetings already materialized from this
+    series (via init_recurring_meeting_occurrence) — update those directly
+    with update_meeting.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(recurring_meeting_id, field_name="recurring_meeting_id")
+    safe_title = _validate_optional_query(title, field_name="title", max_length=255)
+    safe_frequency = _validate_optional_query(frequency, field_name="frequency", max_length=50)
+    safe_start = _validate_optional_datetime(start_time, field_name="start_time")
+    safe_end_date = _validate_optional_date(end_date, "end_date")
+    _require_at_least_one(
+        safe_title,
+        safe_frequency,
+        safe_start,
+        interval,
+        end_after,
+        safe_end_date,
+        iterations,
+        message="At least one field to update is required.",
+    )
+    return await _run_tool(
+        client.update_recurring_meeting(
+            recurring_meeting_id=safe_id,
+            title=safe_title,
+            frequency=safe_frequency,
+            start_time=safe_start,
+            interval=interval,
+            end_after=end_after,
+            end_date=safe_end_date,
+            iterations=iterations,
+            confirm=confirm,
+        )
+    )
+
+
+async def delete_recurring_meeting(
+    ctx: Context, recurring_meeting_id: int, confirm: bool = False
+) -> RecurringMeetingWriteResult:
+    """Prepare or delete an OpenProject recurring meeting series; only
+    deletes when called again with confirm=true.
+
+    Requires OpenProject 17.4+.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(recurring_meeting_id, field_name="recurring_meeting_id")
+    return await _run_tool(client.delete_recurring_meeting(recurring_meeting_id=safe_id, confirm=confirm))
+
+
+_VALID_OCCURRENCE_FILTERS: set[str] = {"upcoming", "past", "cancelled", "open"}
+
+
+async def list_recurring_meeting_occurrences(
+    ctx: Context,
+    recurring_meeting_id: int,
+    filter: str = "upcoming",
+    limit: int | None = None,
+) -> RecurringMeetingOccurrenceListResult:
+    """List virtual occurrences of a recurring meeting.
+
+    Requires OpenProject 17.4+.
+
+    filter: one of "upcoming", "past", "cancelled", "open".
+    limit: only applies when filter="upcoming" (OpenProject default: 20);
+    ignored for the other three filters, which always return their full set.
+    Occurrences are virtual (synthesized from the recurrence rule) except
+    where a real Meeting has already been materialized via
+    init_recurring_meeting_occurrence — this list has no offset/pagination,
+    unlike list_meetings/list_recurring_meetings.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(recurring_meeting_id, field_name="recurring_meeting_id")
+    safe_filter = _validate_optional_choice(filter, field_name="filter", allowed_values=_VALID_OCCURRENCE_FILTERS)
+    if safe_filter is None:
+        safe_filter = "upcoming"
+    safe_limit = _validate_limit(limit)
+    return await _run_tool(client.list_recurring_meeting_occurrences(safe_id, filter=safe_filter, limit=safe_limit))
+
+
+async def init_recurring_meeting_occurrence(
+    ctx: Context,
+    recurring_meeting_id: int,
+    start_time: str,
+    confirm: bool = False,
+) -> RecurringMeetingOccurrenceWriteResult:
+    """Prepare or materialize a virtual recurring-meeting occurrence into a
+    real, standalone Meeting; only writes when called again with confirm=true.
+
+    Requires OpenProject 17.4+.
+
+    start_time: the occurrence's exact start time (ISO 8601, matching a
+    start_time value from list_recurring_meeting_occurrences) — occurrences
+    have no numeric id, they are addressed by this timestamp.
+    On success, result is a full Meeting (use its id with get_meeting/
+    update_meeting/delete_meeting), not an occurrence.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(recurring_meeting_id, field_name="recurring_meeting_id")
+    safe_start = _validate_required_datetime(start_time, field_name="start_time")
+    return await _run_tool(
+        client.init_recurring_meeting_occurrence(recurring_meeting_id=safe_id, start_time=safe_start, confirm=confirm)
+    )
+
+
+async def cancel_recurring_meeting_occurrence(
+    ctx: Context,
+    recurring_meeting_id: int,
+    start_time: str,
+    confirm: bool = False,
+) -> RecurringMeetingOccurrenceWriteResult:
+    """Prepare or cancel a virtual (not-yet-materialized) recurring-meeting
+    occurrence; only writes when called again with confirm=true.
+
+    Requires OpenProject 17.4+.
+
+    start_time: the occurrence's exact start time (ISO 8601), matching
+    init_recurring_meeting_occurrence's addressing scheme.
+
+    If the occurrence has already been materialized into a real Meeting and
+    is not itself cancelled, this fails with an error (delete_meeting the
+    materialized meeting directly instead). If NOT yet materialized,
+    OpenProject creates a new, PERMANENTLY cancelled Meeting server-side to
+    record the cancellation — this call's result does not report that new
+    meeting's id; list_meetings/list_recurring_meeting_occurrences(filter=
+    "cancelled") can be used to find it afterward if needed.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(recurring_meeting_id, field_name="recurring_meeting_id")
+    safe_start = _validate_required_datetime(start_time, field_name="start_time")
+    return await _run_tool(
+        client.cancel_recurring_meeting_occurrence(recurring_meeting_id=safe_id, start_time=safe_start, confirm=confirm)
+    )
 
 
 async def list_user_non_working_times(
@@ -4951,6 +5761,22 @@ def _validate_optional_user_or_principal_ref(value: str | None) -> str | None:
     if len(normalized) > 255:
         raise ValueError("user must be at most 255 characters.")
     return normalized
+
+
+def _validate_participant_refs(value: list[str] | None) -> list[str] | None:
+    """`_validate_optional_user_or_principal_ref`, but for a list where every
+    element is required (an empty/blank participant reference is a genuine
+    input error, unlike the single-ref case where an empty value means
+    "not provided")."""
+    if value is None:
+        return None
+    validated: list[str] = []
+    for ref in value:
+        safe_ref = _validate_optional_user_or_principal_ref(ref)
+        if safe_ref is None:
+            raise ValueError("participant_user_refs entries must not be empty.")
+        validated.append(safe_ref)
+    return validated
 
 
 def _validate_required_date(value: str, *, field_name: str) -> str:

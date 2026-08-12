@@ -47,9 +47,10 @@ ALL_READ_ON = {
     "enable_membership_read": True,
     "enable_version_read": True,
     "enable_board_read": True,
+    "enable_meeting_read": True,
     "enable_personal_read": True,
 }
-# The 5 project-scoped write flags now default True on the Settings dataclass
+# The 6 project-scoped write flags now default True on the Settings dataclass
 # itself (direct Settings(**kwargs) construction, unlike Settings.from_env,
 # never validates that combination) — write-delta tests need an explicit
 # all-off baseline to observe a real delta.
@@ -59,6 +60,7 @@ ALL_WRITE_OFF = {
     "enable_membership_write": False,
     "enable_version_write": False,
     "enable_board_write": False,
+    "enable_meeting_write": False,
 }
 
 
@@ -407,7 +409,7 @@ def test_work_package_write_and_attachment_root_expose_upload() -> None:
 # runtime, since _ensure_project_write_allowed checks READ_PROJECTS first).
 
 
-@pytest.mark.parametrize("scope", ["project", "work_package", "membership", "version", "board"])
+@pytest.mark.parametrize("scope", ["project", "work_package", "membership", "version", "board", "meeting"])
 def test_project_scoped_write_tools_need_both_allowlists_non_empty(scope: str) -> None:
     write_flag = f"enable_{scope}_write"
 
@@ -430,7 +432,9 @@ def test_project_scoped_write_tools_need_both_allowlists_non_empty(scope: str) -
 # is non-empty; unlike the write side this is gated on read_projects alone,
 # never write_projects (reading is independent of write authorization).
 
-_FIVE_PROJECT_SCOPE_NAMES = ("project", "work_package", "membership", "version", "board")
+# Historically "the five project scopes" -- now six with Meetings added
+# (OPM-154), name kept for continuity with existing test/doc references.
+_FIVE_PROJECT_SCOPE_NAMES = ("project", "work_package", "membership", "version", "board", "meeting")
 
 # Independently hardcoded, NOT derived from tools._PROJECT_SCOPED_READ_TOOLS —
 # per this module's own convention (see module docstring), so a project-scoped
@@ -461,11 +465,11 @@ def _all_five_scope_tools() -> set[str]:
 
 def test_project_scoped_and_global_read_tools_partition_the_five_scopes() -> None:
     all_five_scope_tools = _all_five_scope_tools()
-    assert len(all_five_scope_tools) == 66  # no name overlap between the 5 scopes
+    assert len(all_five_scope_tools) == 74  # no name overlap between the 6 scopes (Meetings added, OPM-154)
     assert _EXPECTED_GLOBAL_READ_TOOLS <= all_five_scope_tools
     assert tools._PROJECT_SCOPED_READ_TOOLS == all_five_scope_tools - _EXPECTED_GLOBAL_READ_TOOLS
     assert tools._PROJECT_SCOPED_READ_TOOLS.isdisjoint(_EXPECTED_GLOBAL_READ_TOOLS)
-    assert len(tools._PROJECT_SCOPED_READ_TOOLS) == 53
+    assert len(tools._PROJECT_SCOPED_READ_TOOLS) == 62
 
 
 def test_project_scoped_read_tools_absent_when_read_projects_empty() -> None:

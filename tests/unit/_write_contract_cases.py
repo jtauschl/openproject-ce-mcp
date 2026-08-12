@@ -13,6 +13,7 @@ convention).
 
 from __future__ import annotations
 
+from _write_contract_cases_meeting import MEETING_CASES
 from _write_contract_cases_membership_version_board_admin import MEMBERSHIP_VERSION_BOARD_ADMIN_CASES
 from _write_contract_cases_personal_attachment import PERSONAL_ATTACHMENT_CASES
 from _write_contract_cases_project import PROJECT_CASES
@@ -33,4 +34,5 @@ WRITE_TOOL_CASES: dict[str, WriteToolCase] = {
     **MEMBERSHIP_VERSION_BOARD_ADMIN_CASES,
     **PERSONAL_ATTACHMENT_CASES,
     **USER_SCHEDULE_CASES,
+    **MEETING_CASES,
 }

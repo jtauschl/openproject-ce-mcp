@@ -303,6 +303,59 @@ user exists.
 | `update_board` | Validate and then update a saved OpenProject board/query; only writes when called again with `confirm=true` |
 | `delete_board` | Validate and then delete a saved OpenProject board/query; only deletes when called again with `confirm=true` |
 
+## Meetings
+
+Meetings has its own dedicated `OPENPROJECT_ENABLE_MEETING_READ`/`_WRITE` scope (default: both `true`, same as Boards), shared by all five sub-resources below. Requires OpenProject 17.4+ for Meetings/Agenda Items/Sections/Recurring Meetings; Meeting Outcomes additionally require 17.6+.
+
+| Tool | Description |
+|---|---|
+| `list_meetings` | List meetings globally or scoped to a project (requires OpenProject 17.4+) |
+| `get_meeting` | Fetch a single meeting by id (requires OpenProject 17.4+) |
+| `create_meeting` | Validate and then create a meeting in a project; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
+| `update_meeting` | Validate and then update a meeting; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
+| `delete_meeting` | Validate and then delete a meeting; only deletes when called again with `confirm=true` (requires OpenProject 17.4+) |
+| `list_meeting_agenda_items` | List a meeting's agenda items (unpaginated server-side; `offset`/`limit` applied client-side) (requires OpenProject 17.4+) |
+| `list_work_package_meeting_agenda_items` | List meeting agenda items linked to a work package (unpaginated server-side; `offset`/`limit` applied client-side) (requires OpenProject 17.4+) |
+| `get_meeting_agenda_item` | Fetch a single meeting agenda item by id (requires OpenProject 17.4+) |
+| `create_meeting_agenda_item` | Validate and then create a meeting agenda item, optionally linked to a work package or a section; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
+| `update_meeting_agenda_item` | Validate and then update a meeting agenda item; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
+| `delete_meeting_agenda_item` | Validate and then delete a meeting agenda item; only deletes when called again with `confirm=true` (requires OpenProject 17.4+) |
+| `list_meeting_outcomes` | List an agenda item's outcomes (unpaginated server-side; `offset`/`limit` applied client-side) (requires OpenProject 17.6+) |
+| `get_meeting_outcome` | Fetch a single meeting outcome by id (requires OpenProject 17.6+) |
+| `create_meeting_outcome` | Validate and then create a meeting outcome on an agenda item; only writes when called again with `confirm=true` (requires OpenProject 17.6+) |
+| `update_meeting_outcome` | Validate and then update a meeting outcome; only writes when called again with `confirm=true` (requires OpenProject 17.6+) |
+| `delete_meeting_outcome` | Validate and then delete a meeting outcome; only deletes when called again with `confirm=true` (requires OpenProject 17.6+) |
+| `list_meeting_sections` | List a meeting's sections (unpaginated server-side; `offset`/`limit` applied client-side) (requires OpenProject 17.4+) |
+| `get_meeting_section` | Fetch a single meeting section by id (requires OpenProject 17.4+) |
+| `create_meeting_section` | Validate and then create a meeting section; `backlog` may only be set here, not via `update_meeting_section`; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
+| `update_meeting_section` | Validate and then update a meeting section's title/position; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
+| `delete_meeting_section` | Validate and then delete a meeting section; only deletes when called again with `confirm=true` (requires OpenProject 17.4+) |
+| `list_recurring_meetings` | List recurring meeting series globally or scoped to a project (requires OpenProject 17.4+) |
+| `get_recurring_meeting` | Fetch a single recurring meeting series by id (requires OpenProject 17.4+) |
+| `create_recurring_meeting` | Validate and then create a recurring meeting series in a project; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
+| `update_recurring_meeting` | Validate and then update a recurring meeting series; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
+| `delete_recurring_meeting` | Validate and then delete a recurring meeting series; only deletes when called again with `confirm=true` (requires OpenProject 17.4+) |
+| `list_recurring_meeting_occurrences` | List a recurring meeting's virtual occurrences by `filter` (`upcoming`/`past`/`cancelled`/`open`); no offset/pagination envelope (requires OpenProject 17.4+) |
+| `init_recurring_meeting_occurrence` | Validate and then materialize a virtual occurrence into a real, standalone meeting (addressed by `start_time`, not an id); only writes when called again with `confirm=true`; result is a full meeting (requires OpenProject 17.4+) |
+| `cancel_recurring_meeting_occurrence` | Validate and then cancel a not-yet-materialized occurrence (addressed by `start_time`); only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
+
+> **Note:** `cancel_recurring_meeting_occurrence` on an occurrence that has NOT
+> yet been materialized creates a new, **permanently cancelled** meeting
+> server-side to record the cancellation — this is a real, permanent
+> data-creation side effect behind what reads like a pure "cancel" call. The
+> response does not report that new meeting's id (OpenProject returns 204
+> with no body); use `list_meetings` or `list_recurring_meeting_occurrences`
+> with `filter="cancelled"` to find it afterward if needed. If the occurrence
+> is already materialized and not itself cancelled, the call fails instead —
+> use `delete_meeting` on the materialized meeting directly.
+>
+> **Note:** Meeting Agenda Items, Meeting Sections, and Meeting Outcomes are
+> addressed by their own bare id (not nested under their parent's id) —
+> OpenProject's global routes for these resources already resolve their
+> parent project server-side via an authoritative join, so this MCP's own
+> project-allowlist check runs against that resolved project on every
+> `get`/`update`/`delete` call.
+
 ## Time entries
 
 | Tool | Description |

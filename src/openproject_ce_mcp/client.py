@@ -25,6 +25,10 @@ from .app.adapters.httpx_grid_api import HttpxGridApi
 from .app.adapters.httpx_group_api import HttpxGroupApi
 from .app.adapters.httpx_instance_configuration_api import HttpxInstanceConfigurationApi
 from .app.adapters.httpx_job_status_api import HttpxJobStatusApi
+from .app.adapters.httpx_meeting_agenda_item_api import HttpxMeetingAgendaItemApi
+from .app.adapters.httpx_meeting_api import HttpxMeetingApi
+from .app.adapters.httpx_meeting_outcome_api import HttpxMeetingOutcomeApi
+from .app.adapters.httpx_meeting_section_api import HttpxMeetingSectionApi
 from .app.adapters.httpx_membership_api import HttpxMembershipApi
 from .app.adapters.httpx_news_api import HttpxNewsApi
 from .app.adapters.httpx_notification_api import HttpxNotificationApi
@@ -35,6 +39,7 @@ from .app.adapters.httpx_project_api import normalize_option_value as _normalize
 from .app.adapters.httpx_project_api import normalize_project as _normalize_project
 from .app.adapters.httpx_query_execution_api import HttpxQueryExecutionApi
 from .app.adapters.httpx_query_metadata_api import HttpxQueryMetadataApi
+from .app.adapters.httpx_recurring_meeting_api import HttpxRecurringMeetingApi
 from .app.adapters.httpx_relation_api import HttpxRelationApi
 from .app.adapters.httpx_reminder_api import HttpxReminderApi
 from .app.adapters.httpx_role_api import HttpxRoleApi
@@ -94,6 +99,10 @@ from .app.ports.grid_api import GridApi
 from .app.ports.group_api import GroupApi
 from .app.ports.instance_configuration_api import InstanceConfigurationApi
 from .app.ports.job_status_api import JobStatusApi
+from .app.ports.meeting_agenda_item_api import MeetingAgendaItemApi
+from .app.ports.meeting_api import MeetingApi
+from .app.ports.meeting_outcome_api import MeetingOutcomeApi
+from .app.ports.meeting_section_api import MeetingSectionApi
 from .app.ports.membership_api import MembershipApi
 from .app.ports.news_api import NewsApi
 from .app.ports.notification_api import NotificationApi
@@ -103,6 +112,7 @@ from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
 from .app.ports.query_execution_api import QueryExecutionApi
 from .app.ports.query_metadata_api import QueryMetadataApi
+from .app.ports.recurring_meeting_api import RecurringMeetingApi
 from .app.ports.relation_api import RelationApi
 from .app.ports.reminder_api import ReminderApi
 from .app.ports.role_api import RoleApi
@@ -145,6 +155,10 @@ from .app.services.grid_service import GridService
 from .app.services.group_service import GroupService
 from .app.services.instance_configuration_service import InstanceConfigurationService
 from .app.services.job_status_service import JobStatusService
+from .app.services.meeting_agenda_item_service import MeetingAgendaItemService
+from .app.services.meeting_outcome_service import MeetingOutcomeService
+from .app.services.meeting_section_service import MeetingSectionService
+from .app.services.meeting_service import MeetingService
 from .app.services.membership_service import MembershipService
 from .app.services.news_service import NewsService
 from .app.services.notification_service import NotificationService
@@ -154,6 +168,7 @@ from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
 from .app.services.query_execution_service import QueryExecutionService
 from .app.services.query_metadata_service import QueryMetadataService
+from .app.services.recurring_meeting_service import RecurringMeetingService
 from .app.services.relation_service import RelationService
 from .app.services.reminder_service import ReminderService
 from .app.services.role_service import RoleService
@@ -226,6 +241,18 @@ from .models import (
     HelpTextSummary,
     InstanceConfiguration,
     JobStatusDetail,
+    MeetingAgendaItemListResult,
+    MeetingAgendaItemSummary,
+    MeetingAgendaItemWriteResult,
+    MeetingListResult,
+    MeetingOutcomeListResult,
+    MeetingOutcomeSummary,
+    MeetingOutcomeWriteResult,
+    MeetingSectionListResult,
+    MeetingSectionSummary,
+    MeetingSectionWriteResult,
+    MeetingSummary,
+    MeetingWriteResult,
     MembershipListResult,
     MembershipSummary,
     MembershipWriteResult,
@@ -257,6 +284,11 @@ from .models import (
     QueryFilterSummary,
     QueryOperatorSummary,
     QuerySortBySummary,
+    RecurringMeetingListResult,
+    RecurringMeetingOccurrenceListResult,
+    RecurringMeetingOccurrenceWriteResult,
+    RecurringMeetingSummary,
+    RecurringMeetingWriteResult,
     RelationListResult,
     RelationUpdateResult,
     RelationWriteResult,
@@ -751,6 +783,65 @@ class OpenProjectClient:
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
             resolve_work_package_id=self._work_package_resolver.resolve_id,
+        )
+
+        # Meetings (5 sub-resources, OPM-154). Meeting is constructed first --
+        # the other four sub-resources have no project of their own and
+        # depend on MeetingApi as a cross-domain Port to resolve their
+        # allowlist check through a parent Meeting (the precedent already
+        # established by WorkPackageService->ActivityApi/
+        # FileLinkService->WorkPackageLookupApi).
+        self._meeting_api: MeetingApi = HttpxMeetingApi(HttpxTransport(self._http))
+        self._meeting_service = MeetingService(
+            api=self._meeting_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_project_ref=self._get_project_payload,
+            resolve_project_id=self._resolve_project_id,
+            resolve_principal_id=self._resolve_principal_id,
+            api_prefix=self._api_prefix,
+        )
+
+        self._meeting_agenda_item_api: MeetingAgendaItemApi = HttpxMeetingAgendaItemApi(
+            HttpxTransport(self._http), text_limit=settings.text_limit
+        )
+        self._meeting_agenda_item_service = MeetingAgendaItemService(
+            api=self._meeting_agenda_item_api,
+            meeting_api=self._meeting_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
+            api_prefix=self._api_prefix,
+        )
+
+        self._meeting_section_api: MeetingSectionApi = HttpxMeetingSectionApi(HttpxTransport(self._http))
+        self._meeting_section_service = MeetingSectionService(
+            api=self._meeting_section_api,
+            meeting_api=self._meeting_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            api_prefix=self._api_prefix,
+        )
+
+        self._meeting_outcome_api: MeetingOutcomeApi = HttpxMeetingOutcomeApi(
+            HttpxTransport(self._http), text_limit=settings.text_limit
+        )
+        self._meeting_outcome_service = MeetingOutcomeService(
+            api=self._meeting_outcome_api,
+            meeting_agenda_item_api=self._meeting_agenda_item_api,
+            meeting_api=self._meeting_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            api_prefix=self._api_prefix,
+        )
+
+        self._recurring_meeting_api: RecurringMeetingApi = HttpxRecurringMeetingApi(HttpxTransport(self._http))
+        self._recurring_meeting_service = RecurringMeetingService(
+            api=self._recurring_meeting_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_project_ref=self._get_project_payload,
+            api_prefix=self._api_prefix,
         )
 
     async def initialize(self) -> None:
@@ -1248,6 +1339,302 @@ class OpenProjectClient:
         self, work_package_id: int | str, link_id: int, *, confirm: bool = False
     ) -> WikiPageLinkWriteResult:
         return await self._wiki_page_link_service.delete(work_package_id, link_id, confirm=confirm)
+
+    # --- Meetings ---
+
+    async def list_meetings(
+        self, *, project: str | None = None, offset: int = 1, limit: int | None = None
+    ) -> MeetingListResult:
+        return await self._meeting_service.list_all(project=project, offset=offset, limit=limit)
+
+    async def get_meeting(self, meeting_id: int) -> MeetingSummary:
+        return await self._meeting_service.get(meeting_id)
+
+    async def create_meeting(
+        self,
+        *,
+        project: str,
+        title: str,
+        location: str | None = None,
+        start_time: str | None = None,
+        duration: str | None = None,
+        state: str | None = None,
+        sharing: str | None = None,
+        notify: bool | None = None,
+        participant_user_refs: list[str] | None = None,
+        confirm: bool = False,
+    ) -> MeetingWriteResult:
+        return await self._meeting_service.create(
+            project=project,
+            title=title,
+            location=location,
+            start_time=start_time,
+            duration=duration,
+            state=state,
+            sharing=sharing,
+            notify=notify,
+            participant_user_refs=participant_user_refs,
+            confirm=confirm,
+        )
+
+    async def update_meeting(
+        self,
+        *,
+        meeting_id: int,
+        title: str | None = None,
+        location: str | None = None,
+        start_time: str | None = None,
+        duration: str | None = None,
+        state: str | None = None,
+        sharing: str | None = None,
+        notify: bool | None = None,
+        participant_user_refs: list[str] | None = None,
+        lock_version: int | None = None,
+        confirm: bool = False,
+    ) -> MeetingWriteResult:
+        return await self._meeting_service.update(
+            meeting_id=meeting_id,
+            title=title,
+            location=location,
+            start_time=start_time,
+            duration=duration,
+            state=state,
+            sharing=sharing,
+            notify=notify,
+            participant_user_refs=participant_user_refs,
+            lock_version=lock_version,
+            confirm=confirm,
+        )
+
+    async def delete_meeting(self, *, meeting_id: int, confirm: bool = False) -> MeetingWriteResult:
+        return await self._meeting_service.delete(meeting_id=meeting_id, confirm=confirm)
+
+    async def list_meeting_agenda_items(
+        self, meeting_id: int, *, offset: int = 1, limit: int | None = None
+    ) -> MeetingAgendaItemListResult:
+        return await self._meeting_agenda_item_service.list_for_meeting(meeting_id, offset=offset, limit=limit)
+
+    async def list_work_package_meeting_agenda_items(
+        self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
+    ) -> MeetingAgendaItemListResult:
+        return await self._meeting_agenda_item_service.list_for_work_package(
+            work_package_id, offset=offset, limit=limit
+        )
+
+    async def get_meeting_agenda_item(self, agenda_item_id: int) -> MeetingAgendaItemSummary:
+        return await self._meeting_agenda_item_service.get(agenda_item_id)
+
+    async def create_meeting_agenda_item(
+        self,
+        *,
+        meeting_id: int,
+        title: str,
+        notes: str | None = None,
+        duration_in_minutes: int | None = None,
+        item_type: str | None = None,
+        work_package_id: int | str | None = None,
+        meeting_section_id: int | None = None,
+        confirm: bool = False,
+    ) -> MeetingAgendaItemWriteResult:
+        return await self._meeting_agenda_item_service.create(
+            meeting_id=meeting_id,
+            title=title,
+            notes=notes,
+            duration_in_minutes=duration_in_minutes,
+            item_type=item_type,
+            work_package_id=work_package_id,
+            meeting_section_id=meeting_section_id,
+            confirm=confirm,
+        )
+
+    async def update_meeting_agenda_item(
+        self,
+        *,
+        agenda_item_id: int,
+        title: str | None = None,
+        notes: str | None = None,
+        duration_in_minutes: int | None = None,
+        item_type: str | None = None,
+        work_package_id: int | str | None = None,
+        meeting_section_id: int | None = None,
+        confirm: bool = False,
+    ) -> MeetingAgendaItemWriteResult:
+        return await self._meeting_agenda_item_service.update(
+            agenda_item_id=agenda_item_id,
+            title=title,
+            notes=notes,
+            duration_in_minutes=duration_in_minutes,
+            item_type=item_type,
+            work_package_id=work_package_id,
+            meeting_section_id=meeting_section_id,
+            confirm=confirm,
+        )
+
+    async def delete_meeting_agenda_item(
+        self, *, agenda_item_id: int, confirm: bool = False
+    ) -> MeetingAgendaItemWriteResult:
+        return await self._meeting_agenda_item_service.delete(agenda_item_id=agenda_item_id, confirm=confirm)
+
+    async def list_meeting_outcomes(
+        self, agenda_item_id: int, *, offset: int = 1, limit: int | None = None
+    ) -> MeetingOutcomeListResult:
+        return await self._meeting_outcome_service.list_for_agenda_item(agenda_item_id, offset=offset, limit=limit)
+
+    async def get_meeting_outcome(self, outcome_id: int) -> MeetingOutcomeSummary:
+        return await self._meeting_outcome_service.get(outcome_id)
+
+    async def create_meeting_outcome(
+        self,
+        *,
+        agenda_item_id: int,
+        kind: str,
+        notes: str | None = None,
+        work_package_id: int | None = None,
+        confirm: bool = False,
+    ) -> MeetingOutcomeWriteResult:
+        return await self._meeting_outcome_service.create(
+            agenda_item_id=agenda_item_id, kind=kind, notes=notes, work_package_id=work_package_id, confirm=confirm
+        )
+
+    async def update_meeting_outcome(
+        self,
+        *,
+        outcome_id: int,
+        kind: str | None = None,
+        notes: str | None = None,
+        work_package_id: int | None = None,
+        confirm: bool = False,
+    ) -> MeetingOutcomeWriteResult:
+        return await self._meeting_outcome_service.update(
+            outcome_id=outcome_id, kind=kind, notes=notes, work_package_id=work_package_id, confirm=confirm
+        )
+
+    async def delete_meeting_outcome(self, *, outcome_id: int, confirm: bool = False) -> MeetingOutcomeWriteResult:
+        return await self._meeting_outcome_service.delete(outcome_id=outcome_id, confirm=confirm)
+
+    async def list_meeting_sections(
+        self, meeting_id: int, *, offset: int = 1, limit: int | None = None
+    ) -> MeetingSectionListResult:
+        return await self._meeting_section_service.list_for_meeting(meeting_id, offset=offset, limit=limit)
+
+    async def get_meeting_section(self, section_id: int) -> MeetingSectionSummary:
+        return await self._meeting_section_service.get(section_id)
+
+    async def create_meeting_section(
+        self,
+        *,
+        meeting_id: int,
+        title: str,
+        position: int | None = None,
+        backlog: bool | None = None,
+        confirm: bool = False,
+    ) -> MeetingSectionWriteResult:
+        return await self._meeting_section_service.create(
+            meeting_id=meeting_id, title=title, position=position, backlog=backlog, confirm=confirm
+        )
+
+    async def update_meeting_section(
+        self,
+        *,
+        section_id: int,
+        title: str | None = None,
+        position: int | None = None,
+        confirm: bool = False,
+    ) -> MeetingSectionWriteResult:
+        return await self._meeting_section_service.update(
+            section_id=section_id, title=title, position=position, confirm=confirm
+        )
+
+    async def delete_meeting_section(self, *, section_id: int, confirm: bool = False) -> MeetingSectionWriteResult:
+        return await self._meeting_section_service.delete(section_id=section_id, confirm=confirm)
+
+    async def list_recurring_meetings(
+        self, *, project: str | None = None, offset: int = 1, limit: int | None = None
+    ) -> RecurringMeetingListResult:
+        return await self._recurring_meeting_service.list_all(project=project, offset=offset, limit=limit)
+
+    async def get_recurring_meeting(self, recurring_meeting_id: int) -> RecurringMeetingSummary:
+        return await self._recurring_meeting_service.get(recurring_meeting_id)
+
+    async def create_recurring_meeting(
+        self,
+        *,
+        project: str,
+        title: str,
+        frequency: str,
+        start_time: str,
+        interval: int | None = None,
+        end_after: str | None = None,
+        end_date: str | None = None,
+        iterations: int | None = None,
+        monthly_day: int | None = None,
+        monthly_ordinal: str | None = None,
+        monthly_weekday: str | None = None,
+        confirm: bool = False,
+    ) -> RecurringMeetingWriteResult:
+        return await self._recurring_meeting_service.create(
+            project=project,
+            title=title,
+            frequency=frequency,
+            start_time=start_time,
+            interval=interval,
+            end_after=end_after,
+            end_date=end_date,
+            iterations=iterations,
+            monthly_day=monthly_day,
+            monthly_ordinal=monthly_ordinal,
+            monthly_weekday=monthly_weekday,
+            confirm=confirm,
+        )
+
+    async def update_recurring_meeting(
+        self,
+        *,
+        recurring_meeting_id: int,
+        title: str | None = None,
+        frequency: str | None = None,
+        start_time: str | None = None,
+        interval: int | None = None,
+        end_after: str | None = None,
+        end_date: str | None = None,
+        iterations: int | None = None,
+        confirm: bool = False,
+    ) -> RecurringMeetingWriteResult:
+        return await self._recurring_meeting_service.update(
+            recurring_meeting_id=recurring_meeting_id,
+            title=title,
+            frequency=frequency,
+            start_time=start_time,
+            interval=interval,
+            end_after=end_after,
+            end_date=end_date,
+            iterations=iterations,
+            confirm=confirm,
+        )
+
+    async def delete_recurring_meeting(
+        self, *, recurring_meeting_id: int, confirm: bool = False
+    ) -> RecurringMeetingWriteResult:
+        return await self._recurring_meeting_service.delete(recurring_meeting_id=recurring_meeting_id, confirm=confirm)
+
+    async def list_recurring_meeting_occurrences(
+        self, recurring_meeting_id: int, *, filter: str = "upcoming", limit: int | None = None
+    ) -> RecurringMeetingOccurrenceListResult:
+        return await self._recurring_meeting_service.list_occurrences(recurring_meeting_id, filter=filter, limit=limit)
+
+    async def init_recurring_meeting_occurrence(
+        self, *, recurring_meeting_id: int, start_time: str, confirm: bool = False
+    ) -> RecurringMeetingOccurrenceWriteResult:
+        return await self._recurring_meeting_service.init_occurrence(
+            recurring_meeting_id=recurring_meeting_id, start_time=start_time, confirm=confirm
+        )
+
+    async def cancel_recurring_meeting_occurrence(
+        self, *, recurring_meeting_id: int, start_time: str, confirm: bool = False
+    ) -> RecurringMeetingOccurrenceWriteResult:
+        return await self._recurring_meeting_service.cancel_occurrence(
+            recurring_meeting_id=recurring_meeting_id, start_time=start_time, confirm=confirm
+        )
 
     async def list_user_non_working_times(
         self, user_ref: str, *, year: int | None = None, offset: int = 1, limit: int | None = None

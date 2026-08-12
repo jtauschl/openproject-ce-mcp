@@ -286,6 +286,39 @@ async def board_ids(client: OpenProjectClient):
 
 
 @pytest.fixture
+async def meeting_ids(client: OpenProjectClient):
+    """Yields a list to append created meeting IDs; deletes them all after
+    the test. Agenda items/sections/outcomes cascade-delete with their
+    parent meeting server-side (standard Rails dependent: :destroy on each
+    association) -- registering only the parent Meeting's id here is
+    sufficient cleanup for those sub-resources too. A meeting materialized
+    from a recurring-meeting occurrence via init_recurring_meeting_occurrence
+    is a real, standalone Meeting -- register its id here as well, not in a
+    separate fixture.
+    """
+    created: list[int] = []
+    yield created
+    for meeting_id in created:
+        try:
+            await client.delete_meeting(meeting_id=meeting_id, confirm=True)
+        except Exception:
+            pass
+
+
+@pytest.fixture
+async def recurring_meeting_ids(client: OpenProjectClient):
+    """Yields a list to append created recurring-meeting-series IDs; deletes
+    them all after the test."""
+    created: list[int] = []
+    yield created
+    for recurring_meeting_id in created:
+        try:
+            await client.delete_recurring_meeting(recurring_meeting_id=recurring_meeting_id, confirm=True)
+        except Exception:
+            pass
+
+
+@pytest.fixture
 async def reminder_ids(client: OpenProjectClient):
     """Yields a list to append created reminder IDs; deletes them all after the test.
 
