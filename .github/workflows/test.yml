@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
   workflow_call:
+  workflow_dispatch:
 
 jobs:
   lint:
@@ -25,12 +26,35 @@ jobs:
       - name: Check formatting
         run: uv run ruff format --check .
 
+  # macos-latest/windows-latest cost roughly 10x/2x a Linux runner-minute — scoped to
+  # release-time confirmation only (the workflow_call from publish.yml's tag push, or a
+  # manual workflow_dispatch), never the per-push/per-PR gate. A job-level `if` can't see
+  # `matrix` (GitHub Actions restriction), and a step-level `if` still provisions the
+  # runner before skipping — so the OS list itself is computed here and fed into test's
+  # matrix via fromJSON, which keeps the non-release path from ever booting a
+  # macos-latest/windows-latest VM in the first place. Every push/PR still gets the full
+  # Python-version matrix on ubuntu-latest, which is cheap.
+  test-matrix-config:
+    runs-on: ubuntu-latest
+    outputs:
+      os: ${{ steps.set.outputs.os }}
+    steps:
+      - name: Determine OS matrix
+        id: set
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_call" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo 'os=["ubuntu-latest", "macos-latest", "windows-latest"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'os=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
+          fi
+
   test:
+    needs: test-matrix-config
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ fromJSON(needs.test-matrix-config.outputs.os) }}
         python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
