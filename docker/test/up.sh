@@ -4,13 +4,16 @@
 # print copy-paste env blocks for running the integration tests.
 #
 # Usage:
-#   docker/test/up.sh            # all three versions (16.6 + 17.4 + 17.5)
+#   docker/test/up.sh            # all five versions (16.6 + 17.4 + 17.5 + 17.6 + 17.7)
 #   docker/test/up.sh 16         # only 16.6
 #   docker/test/up.sh 174        # only 17.4
 #   docker/test/up.sh 17         # only 17.5
+#   docker/test/up.sh 176        # only 17.6
+#   docker/test/up.sh 177        # only 17.7
 #
-# On a small Docker VM (~4 GB) three all-in-one containers can exhaust memory;
-# bring them up one at a time (16, then 174, then 17) if that happens.
+# On a small Docker VM (~4 GB) five all-in-one containers can exhaust memory;
+# bring them up one at a time (16, then 174, then 17, then 176, then 177) if
+# that happens.
 #
 # First boot takes several minutes (migrations + asset precompile). The script
 # waits on the container healthcheck, not a fixed sleep.
@@ -37,12 +40,20 @@ case "${1:-all}" in
     SERVICES=(op-17-5)
     SEMANTIC=("op-17-5:1")
     ;;
+176)
+    SERVICES=(op-17-6)
+    SEMANTIC=("op-17-6:1")
+    ;;
+177)
+    SERVICES=(op-17-7)
+    SEMANTIC=("op-17-7:1")
+    ;;
 all | "")
-    SERVICES=(op-16-6 op-17-4 op-17-5)
-    SEMANTIC=("op-16-6:0" "op-17-4:0" "op-17-5:1")
+    SERVICES=(op-16-6 op-17-4 op-17-5 op-17-6 op-17-7)
+    SEMANTIC=("op-16-6:0" "op-17-4:0" "op-17-5:1" "op-17-6:1" "op-17-7:1")
     ;;
 *)
-    echo "usage: up.sh [16|174|17|all]" >&2
+    echo "usage: up.sh [16|174|17|176|177|all]" >&2
     exit 2
     ;;
 esac
@@ -73,6 +84,8 @@ port_for() {
     op-16-6) echo 8166 ;;
     op-17-4) echo 8174 ;;
     op-17-5) echo 8175 ;;
+    op-17-6) echo 8176 ;;
+    op-17-7) echo 8177 ;;
     *)
         echo "unknown service: $1" >&2
         return 2
