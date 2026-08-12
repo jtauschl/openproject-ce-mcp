@@ -21,6 +21,7 @@ from .app.adapters.httpx_document_api import HttpxDocumentApi
 from .app.adapters.httpx_emoji_reaction_api import HttpxEmojiReactionApi
 from .app.adapters.httpx_extended_metadata_api import HttpxExtendedMetadataApi
 from .app.adapters.httpx_file_link_api import HttpxFileLinkApi
+from .app.adapters.httpx_github_gitlab_link_api import HttpxGithubGitlabLinkApi
 from .app.adapters.httpx_grid_api import HttpxGridApi
 from .app.adapters.httpx_group_api import HttpxGroupApi
 from .app.adapters.httpx_instance_configuration_api import HttpxInstanceConfigurationApi
@@ -95,6 +96,7 @@ from .app.ports.document_api import DocumentApi
 from .app.ports.emoji_reaction_api import EmojiReactionApi
 from .app.ports.extended_metadata_api import ExtendedMetadataApi
 from .app.ports.file_link_api import FileLinkApi
+from .app.ports.github_gitlab_link_api import GithubGitlabLinkApi
 from .app.ports.grid_api import GridApi
 from .app.ports.group_api import GroupApi
 from .app.ports.instance_configuration_api import InstanceConfigurationApi
@@ -151,6 +153,7 @@ from .app.services.document_service import DocumentService
 from .app.services.emoji_reaction_service import EmojiReactionService
 from .app.services.extended_metadata_service import ExtendedMetadataService
 from .app.services.file_link_service import FileLinkService
+from .app.services.github_gitlab_link_service import GithubGitlabLinkService
 from .app.services.grid_service import GridService
 from .app.services.group_service import GroupService
 from .app.services.instance_configuration_service import InstanceConfigurationService
@@ -231,6 +234,10 @@ from .models import (
     FavoriteWriteResult,
     FileLinkListResult,
     FileLinkWriteResult,
+    GithubPullRequestListResult,
+    GithubPullRequestSummary,
+    GitlabIssueListResult,
+    GitlabMergeRequestListResult,
     GridListResult,
     GridSummary,
     GridWriteResult,
@@ -765,6 +772,15 @@ class OpenProjectClient:
             api=self._cost_api,
             settings=settings,
             project_id_to_identifier=self._project_id_to_identifier,
+            resolve_work_package_id=self._work_package_resolver.resolve_id,
+        )
+
+        self._github_gitlab_link_api: GithubGitlabLinkApi = HttpxGithubGitlabLinkApi(
+            HttpxTransport(self._http), text_limit=settings.text_limit
+        )
+        self._github_gitlab_link_service = GithubGitlabLinkService(
+            api=self._github_gitlab_link_api,
+            settings=settings,
             resolve_work_package_id=self._work_package_resolver.resolve_id,
         )
 
@@ -1874,6 +1890,18 @@ class OpenProjectClient:
 
     async def get_cost_type(self, cost_type_id: int) -> CostTypeSummary:
         return await self._cost_service.get_cost_type(cost_type_id)
+
+    async def get_github_pull_request(self, github_pull_request_id: int) -> GithubPullRequestSummary:
+        return await self._github_gitlab_link_service.get_github_pull_request(github_pull_request_id)
+
+    async def list_work_package_github_pull_requests(self, work_package_id: int | str) -> GithubPullRequestListResult:
+        return await self._github_gitlab_link_service.list_work_package_github_pull_requests(work_package_id)
+
+    async def list_work_package_gitlab_issues(self, work_package_id: int | str) -> GitlabIssueListResult:
+        return await self._github_gitlab_link_service.list_work_package_gitlab_issues(work_package_id)
+
+    async def list_work_package_gitlab_merge_requests(self, work_package_id: int | str) -> GitlabMergeRequestListResult:
+        return await self._github_gitlab_link_service.list_work_package_gitlab_merge_requests(work_package_id)
 
     # The other cross-service coordinator -- see get_my_project_access's
     # header comment above (OPM-380/B4).
