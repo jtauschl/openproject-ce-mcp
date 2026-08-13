@@ -51,10 +51,7 @@ jobs:
   # manual workflow_dispatch), never the per-push/per-PR gate. Split into two jobs rather
   # than one matrix job with a job-level `if`, because GitHub Actions job-level `if` can't
   # reference `matrix` at all, and a step-level `if` still provisions (and bills) the
-  # runner before skipping — sw_dev_handbook's expensive_runner_trigger check only
-  # recognizes a job-level `if` matching one of its fixed safe patterns
-  # (github.event_name == 'workflow_dispatch', startsWith(github.ref, 'refs/tags/'), or an
-  # &&/|| combination of those), so test-macos-windows below uses exactly that pattern on
+  # runner before skipping — so test-macos-windows below uses a job-level `if` on
   # a job with a fixed (non-matrix) runs-on per OS instead.
   test-linux:
     runs-on: ubuntu-latest
