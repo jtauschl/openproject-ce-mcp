@@ -38,6 +38,7 @@ from .app.adapters.httpx_principal_api import HttpxPrincipalApi
 from .app.adapters.httpx_project_api import HttpxProjectApi
 from .app.adapters.httpx_project_api import normalize_option_value as _normalize_option_value
 from .app.adapters.httpx_project_api import normalize_project as _normalize_project
+from .app.adapters.httpx_project_storage_api import HttpxProjectStorageApi
 from .app.adapters.httpx_query_execution_api import HttpxQueryExecutionApi
 from .app.adapters.httpx_query_metadata_api import HttpxQueryMetadataApi
 from .app.adapters.httpx_recurring_meeting_api import HttpxRecurringMeetingApi
@@ -46,6 +47,7 @@ from .app.adapters.httpx_reminder_api import HttpxReminderApi
 from .app.adapters.httpx_role_api import HttpxRoleApi
 from .app.adapters.httpx_sprint_api import HttpxSprintApi
 from .app.adapters.httpx_status_priority_type_api import HttpxStatusPriorityTypeApi
+from .app.adapters.httpx_storage_api import HttpxStorageApi
 from .app.adapters.httpx_time_entry_api import HttpxTimeEntryApi
 from .app.adapters.httpx_user_api import HttpxUserApi
 from .app.adapters.httpx_user_non_working_time_api import HttpxUserNonWorkingTimeApi
@@ -112,6 +114,7 @@ from .app.ports.post_api import PostApi
 from .app.ports.principal_api import PrincipalApi
 from .app.ports.project_api import ProjectApi
 from .app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
+from .app.ports.project_storage_api import ProjectStorageApi
 from .app.ports.query_execution_api import QueryExecutionApi
 from .app.ports.query_metadata_api import QueryMetadataApi
 from .app.ports.recurring_meeting_api import RecurringMeetingApi
@@ -120,6 +123,7 @@ from .app.ports.reminder_api import ReminderApi
 from .app.ports.role_api import RoleApi
 from .app.ports.sprint_api import SprintApi
 from .app.ports.status_priority_type_api import StatusPriorityTypeApi
+from .app.ports.storage_api import StorageApi
 from .app.ports.time_entry_api import TimeEntryApi
 from .app.ports.user_api import UserApi
 from .app.ports.user_non_working_time_api import UserNonWorkingTimeApi
@@ -169,6 +173,7 @@ from .app.services.post_service import PostService
 from .app.services.principal_service import PrincipalService
 from .app.services.project_service import CLEAR_PARENT as _PROJECT_CLEAR_PARENT
 from .app.services.project_service import ProjectAdminService, ProjectService
+from .app.services.project_storage_service import ProjectStorageService
 from .app.services.query_execution_service import QueryExecutionService
 from .app.services.query_metadata_service import QueryMetadataService
 from .app.services.recurring_meeting_service import RecurringMeetingService
@@ -177,6 +182,7 @@ from .app.services.reminder_service import ReminderService
 from .app.services.role_service import RoleService
 from .app.services.sprint_service import SprintService
 from .app.services.status_priority_type_service import StatusPriorityTypeService
+from .app.services.storage_service import StorageService
 from .app.services.time_entry_service import TimeEntryService
 from .app.services.user_non_working_time_service import UserNonWorkingTimeService
 from .app.services.user_preferences_service import UserPreferencesService
@@ -283,6 +289,8 @@ from .models import (
     ProjectPhase,
     ProjectPhaseDefinition,
     ProjectPhaseDefinitionListResult,
+    ProjectStorageDetail,
+    ProjectStorageListResult,
     ProjectWorkPackageContext,
     ProjectWriteResult,
     QueryColumnSummary,
@@ -308,6 +316,9 @@ from .models import (
     SprintListResult,
     StatusListResult,
     StatusSummary,
+    StorageDetail,
+    StorageListResult,
+    StorageWriteResult,
     TimeEntryActivityListResult,
     TimeEntryListResult,
     TimeEntrySummary,
@@ -473,6 +484,17 @@ class OpenProjectClient:
 
         self._group_api: GroupApi = HttpxGroupApi(HttpxTransport(self._http))
         self._group_service = GroupService(api=self._group_api, settings=settings, api_prefix=self._api_prefix)
+
+        self._storage_api: StorageApi = HttpxStorageApi(HttpxTransport(self._http))
+        self._storage_service = StorageService(api=self._storage_api, settings=settings)
+
+        self._project_storage_api: ProjectStorageApi = HttpxProjectStorageApi(HttpxTransport(self._http))
+        self._project_storage_service = ProjectStorageService(
+            api=self._project_storage_api,
+            settings=settings,
+            project_id_to_identifier=self._project_id_to_identifier,
+            resolve_project_ref=self._get_project_payload,
+        )
 
         self._membership_api: MembershipApi = HttpxMembershipApi(
             HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
@@ -1091,6 +1113,20 @@ class OpenProjectClient:
 
     async def get_group(self, group_id: int) -> GroupDetail:
         return await self._group_service.get_group(group_id)
+
+    async def list_storages(self, *, offset: int = 1, limit: int | None = None) -> StorageListResult:
+        return await self._storage_service.list_storages(offset=offset, limit=limit)
+
+    async def get_storage(self, storage_id: int) -> StorageDetail:
+        return await self._storage_service.get_storage(storage_id)
+
+    async def list_project_storages(
+        self, *, project: str | None = None, offset: int = 1, limit: int | None = None
+    ) -> ProjectStorageListResult:
+        return await self._project_storage_service.list_project_storages(project=project, offset=offset, limit=limit)
+
+    async def get_project_storage(self, project_storage_id: int) -> ProjectStorageDetail:
+        return await self._project_storage_service.get_project_storage(project_storage_id)
 
     async def list_actions(
         self,
@@ -2772,6 +2808,42 @@ class OpenProjectClient:
         confirm: bool = False,
     ) -> GroupWriteResult:
         return await self._group_service.delete(group_id, confirm=confirm)
+
+    # --- Storage CRUD ---
+
+    async def create_storage(
+        self,
+        *,
+        name: str,
+        provider_type: str,
+        host: str | None = None,
+        authentication_method: str | None = None,
+        tenant_id: str | None = None,
+        drive_id: str | None = None,
+        confirm: bool = False,
+    ) -> StorageWriteResult:
+        return await self._storage_service.create(
+            name=name,
+            provider_type=provider_type,
+            host=host,
+            authentication_method=authentication_method,
+            tenant_id=tenant_id,
+            drive_id=drive_id,
+            confirm=confirm,
+        )
+
+    async def update_storage(
+        self,
+        *,
+        storage_id: int,
+        name: str | None = None,
+        host: str | None = None,
+        confirm: bool = False,
+    ) -> StorageWriteResult:
+        return await self._storage_service.update(storage_id=storage_id, name=name, host=host, confirm=confirm)
+
+    async def delete_storage(self, storage_id: int, *, confirm: bool = False) -> StorageWriteResult:
+        return await self._storage_service.delete(storage_id, confirm=confirm)
 
     # --- File Links ---
 

@@ -116,6 +116,9 @@ from .models import (
     ProjectPhase,
     ProjectPhaseDefinition,
     ProjectPhaseDefinitionListResult,
+    ProjectStorageDetail,
+    ProjectStorageListResult,
+    ProjectStorageSummary,
     ProjectSummary,
     ProjectWorkPackageContext,
     ProjectWriteResult,
@@ -146,6 +149,10 @@ from .models import (
     SprintSummary,
     StatusListResult,
     StatusSummary,
+    StorageDetail,
+    StorageListResult,
+    StorageSummary,
+    StorageWriteResult,
     TimeEntryActivityListResult,
     TimeEntryListResult,
     TimeEntrySummary,
@@ -274,6 +281,8 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "get_backlog_bucket",
         "list_documents",
         "get_document",
+        "list_project_storages",
+        "get_project_storage",
         "list_news",
         "get_news",
         "get_wiki_page",
@@ -358,6 +367,8 @@ READ_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
         "get_user",
         "list_groups",
         "get_group",
+        "list_storages",
+        "get_storage",
     ),
     "user_schedule": (
         "list_user_non_working_times",
@@ -388,6 +399,9 @@ ADMIN_WRITE_TOOLS: tuple[str, ...] = (
     "create_group",
     "update_group",
     "delete_group",
+    "create_storage",
+    "update_storage",
+    "delete_storage",
 )
 
 WRITE_TOOLS_BY_SCOPE: dict[str, tuple[str, ...]] = {
@@ -506,6 +520,8 @@ _PROJECT_SCOPED_READ_TOOLS: frozenset[str] = frozenset(
         "get_backlog_bucket",
         "list_documents",
         "get_document",
+        "list_project_storages",
+        "get_project_storage",
         "list_news",
         "get_news",
         "get_wiki_page",
@@ -1157,6 +1173,37 @@ async def get_group(
     return await _run_tool(client.get_group(safe_group_id))
 
 
+async def list_storages(
+    ctx: Context,
+    select: list[str] | None = None,
+    offset: int = 1,
+    limit: int | None = None,
+) -> StorageListResult:
+    """List configured OpenProject external file storage connections (Nextcloud/OneDrive/Sharepoint).
+
+    select fields: id, name, provider_type, host, configured, created_at, updated_at
+    (see server instructions for select's general semantics).
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
+    client = _client_from_context(ctx)
+    _validate_select(select, row_type=StorageSummary)
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    return await _run_tool(client.list_storages(offset=safe_offset, limit=safe_limit))
+
+
+async def get_storage(
+    ctx: Context,
+    storage_id: int,
+) -> StorageDetail:
+    """Get a single OpenProject external file storage connection by id."""
+    client = _client_from_context(ctx)
+    safe_storage_id = _validate_positive_int(storage_id, field_name="storage_id")
+    return await _run_tool(client.get_storage(safe_storage_id))
+
+
 async def list_actions(
     ctx: Context,
     offset: int = 1,
@@ -1494,6 +1541,43 @@ async def get_document(
     safe_id = _validate_positive_int(document_id, field_name="document_id")
     safe_text_limit = _validate_optional_text_limit(text_limit)
     return await _run_tool(client.get_document(safe_id, text_limit=safe_text_limit))
+
+
+async def list_project_storages(
+    ctx: Context,
+    project: str | None = None,
+    offset: int = 1,
+    limit: int | None = None,
+    select: list[str] | None = None,
+) -> ProjectStorageListResult:
+    """List a project's links to configured external file storages, optionally filtered to one project.
+
+    Read-only in OpenProject's API -- no create/update/delete endpoint exists
+    for this resource; manage the underlying connection with the storages
+    tools instead.
+
+    select fields: id, project, storage_name, project_folder_mode (see server
+    instructions for select's general semantics).
+
+    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
+    next_offset as the next call's offset to page past the cap.
+    """
+    client = _client_from_context(ctx)
+    safe_project = _validate_optional_project_ref(project)
+    safe_offset = _validate_offset(offset)
+    safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=ProjectStorageSummary)
+    return await _run_tool(client.list_project_storages(project=safe_project, offset=safe_offset, limit=safe_limit))
+
+
+async def get_project_storage(
+    ctx: Context,
+    project_storage_id: int,
+) -> ProjectStorageDetail:
+    """Get a single project's link to a configured external file storage by id."""
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(project_storage_id, field_name="project_storage_id")
+    return await _run_tool(client.get_project_storage(safe_id))
 
 
 async def update_document(
@@ -5313,6 +5397,93 @@ async def delete_group(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(group_id, field_name="group_id")
     return await _run_tool(client.delete_group(safe_id, confirm=confirm))
+
+
+async def create_storage(
+    ctx: Context,
+    name: str,
+    provider_type: str,
+    host: str | None = None,
+    authentication_method: str | None = None,
+    tenant_id: str | None = None,
+    drive_id: str | None = None,
+    confirm: bool = False,
+) -> StorageWriteResult:
+    """Prepare or create an external file storage connection (admin operation).
+
+    provider_type must be one of "Nextcloud", "OneDrive", "Sharepoint". Field
+    requirements differ genuinely by provider, per OpenProject's own
+    validation (not pre-checked here beyond provider_type itself):
+    - Nextcloud: host required; authentication_method required, one of
+      "two_way_oauth2" or "oauth2_sso". OpenProject synchronously probes the
+      host for live Nextcloud reachability/setup-completeness at
+      confirm=true -- an unreachable or non-Nextcloud host is rejected there.
+    - OneDrive: host must be omitted; tenant_id required (a GUID, or the
+      literal string "consumers").
+    - Sharepoint: host required, matching "https://<tenant>/sites/<site>";
+      tenant_id required (same format as OneDrive).
+
+    Creating a OneDrive or Sharepoint storage on a Community Edition instance
+    without an Enterprise token is rejected by OpenProject itself at
+    confirm=true with a clear validation error; Nextcloud is unrestricted.
+    """
+    client = _client_from_context(ctx)
+    safe_name = _validate_required_query(name, field_name="name", max_length=255)
+    safe_provider_type = _validate_required_query(provider_type, field_name="provider_type", max_length=100)
+    safe_host = _validate_optional_query(host, field_name="host", max_length=255)
+    safe_authentication_method = _validate_optional_query(
+        authentication_method, field_name="authentication_method", max_length=100
+    )
+    safe_tenant_id = _validate_optional_query(tenant_id, field_name="tenant_id", max_length=100)
+    safe_drive_id = _validate_optional_query(drive_id, field_name="drive_id", max_length=255)
+    return await _run_tool(
+        client.create_storage(
+            name=safe_name,
+            provider_type=safe_provider_type,
+            host=safe_host,
+            authentication_method=safe_authentication_method,
+            tenant_id=safe_tenant_id,
+            drive_id=safe_drive_id,
+            confirm=confirm,
+        )
+    )
+
+
+async def update_storage(
+    ctx: Context,
+    storage_id: int,
+    name: str | None = None,
+    host: str | None = None,
+    confirm: bool = False,
+) -> StorageWriteResult:
+    """Prepare or update an external file storage connection (admin operation).
+
+    Changing host on a Nextcloud storage re-runs OpenProject's live
+    host-reachability/setup-completeness probe at confirm=true.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(storage_id, field_name="storage_id")
+    safe_name = _validate_optional_query(name, field_name="name", max_length=255)
+    safe_host = _validate_optional_query(host, field_name="host", max_length=255)
+    _require_at_least_one(safe_name, safe_host, message="At least one field must be provided to update.")
+    return await _run_tool(client.update_storage(storage_id=safe_id, name=safe_name, host=safe_host, confirm=confirm))
+
+
+async def delete_storage(
+    ctx: Context,
+    storage_id: int,
+    confirm: bool = False,
+) -> StorageWriteResult:
+    """Prepare or delete an external file storage connection (admin operation).
+
+    Deleting a storage cascades: every project's link to it (project_storages)
+    is deleted along with it, and for a storage with automatically-managed
+    project folders, OpenProject may also issue a remote folder-deletion call
+    against the external storage itself.
+    """
+    client = _client_from_context(ctx)
+    safe_id = _validate_positive_int(storage_id, field_name="storage_id")
+    return await _run_tool(client.delete_storage(safe_id, confirm=confirm))
 
 
 async def list_work_package_file_links(
