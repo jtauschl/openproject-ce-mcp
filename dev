@@ -5,7 +5,7 @@ cmd="${1:-}"
 shift || true
 
 usage() {
-    echo "Usage: ./dev {bootstrap|lint|test|build|ci|handbook-check}" >&2
+    echo "Usage: ./dev {bootstrap|lint|test|build|ci}" >&2
     exit 1
 }
 
@@ -14,7 +14,7 @@ bootstrap() {
     ./scripts/sync-commit-msg-hook.sh
 }
 
-shell_scripts=(dev get.sh uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh tools/security-settings/github-security-settings.sh)
+shell_scripts=(dev get.sh uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh)
 
 lint() {
     uv run ruff check .
@@ -26,7 +26,7 @@ lint() {
     shellcheck "${shell_scripts[@]}"
     shfmt -l "${shell_scripts[@]}"
     sh -n get.sh
-    for f in dev uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh tools/security-settings/github-security-settings.sh; do
+    for f in dev uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh; do
         bash -n "$f"
     done
     if ! command -v actionlint >/dev/null 2>&1; then
@@ -47,10 +47,6 @@ build() {
     uvx --from cyclonedx-bom cyclonedx-py requirements requirements.txt --of JSON -o sbom.json
 }
 
-handbook_check() {
-    ./scripts/handbook-check.sh "$@"
-}
-
 case "$cmd" in
 bootstrap) bootstrap ;;
 lint) lint ;;
@@ -61,6 +57,5 @@ ci)
     test_
     build
     ;;
-handbook-check) handbook_check "$@" ;;
 *) usage ;;
 esac
