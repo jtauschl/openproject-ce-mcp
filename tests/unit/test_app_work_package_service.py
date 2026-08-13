@@ -2310,6 +2310,19 @@ async def test_list_custom_field_filters_rejects_invalid_key_shape_at_service_la
 
 
 @pytest.mark.asyncio
+async def test_list_custom_field_filters_rejects_non_dict_spec_at_service_layer() -> None:
+    # Regression guard: a direct caller passing a malformed (non-dict) spec
+    # must get a clean InvalidInputError, not an unhandled AttributeError
+    # from spec.get(...) on a None/non-dict value.
+    service, api = _service()
+
+    with pytest.raises(InvalidInputError, match="must be an object"):
+        await service.list(custom_field_filters={"cf_1": None})  # type: ignore[dict-item]
+
+    assert api.list_calls == []
+
+
+@pytest.mark.asyncio
 async def test_list_no_regression_to_built_in_filters_alongside_custom_field_filters() -> None:
     service, api = _service()
 

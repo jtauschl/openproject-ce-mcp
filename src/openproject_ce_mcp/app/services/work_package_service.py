@@ -206,7 +206,7 @@ CUSTOM_FIELD_FILTER_PROJECT_ONLY_FORMATS = frozenset({"user", "version"})
 # checked -- kept here too so a direct OpenProjectClient/Service caller that
 # bypasses the MCP tool layer entirely still gets a clean InvalidInputError
 # instead of silently building a malformed filter.
-_CF_FILTER_KEY_RE = re.compile(r"^(cf_|customField)([1-9]\d*)$")
+_CF_FILTER_KEY_RE = re.compile(r"^(cf_|customField)([1-9]\d*)$", re.ASCII)
 
 # Sentinel for update(): distinguishes "clear the parent" (make the work
 # package top-level via _links.parent = {"href": null}) from "leave unchanged"
@@ -812,9 +812,17 @@ class WorkPackageService:
         Synchronous and network-free: keys are already normalized to cf_<N>
         by tools.py's _validate_custom_field_filters (or, for a direct
         OpenProjectClient caller bypassing tools.py, re-validated for shape
-        here -- see the isinstance/regex checks below, which reject anything
-        tools.py would also have rejected, so this Service is safe to call
-        directly and not just through the MCP tool layer).
+        here -- see the isinstance/regex/dict checks below, which reject
+        anything tools.py would also have rejected on the axes checked here,
+        so this Service does not crash when called directly and not just
+        through the MCP tool layer. This is a narrower guarantee than "every
+        tools.py rejection is reproduced here": the operator allowlist, the
+        20-entry/100-value/1000-char limits, and duplicate-key (cf_1 +
+        customField1) detection are tools.py-only conveniences, not
+        re-enforced here -- an out-of-range value that skips them still
+        reaches OpenProject and gets its own clean 400, just without the
+        earlier, more specific local error message tools.py would have
+        given.
 
         The check performed here is cheap and local: OPENPROJECT_HIDE_CUSTOM_FIELDS
         rejection (both cf_<N> and the equivalent customField<N> spelling are
@@ -850,6 +858,8 @@ class WorkPackageService:
                     f"OpenProject custom field '{cf_key}' is hidden by OPENPROJECT_HIDE_CUSTOM_FIELDS "
                     "and cannot be filtered."
                 )
+            if not isinstance(spec, dict):
+                raise InvalidInputError(f"custom_field_filters['{raw_key}'] must be an object.")
             operator = spec.get("operator")
             values = spec.get("values")
             if not isinstance(operator, str) or not operator:
@@ -886,6 +896,11 @@ class WorkPackageService:
         if not self._settings.read_projects:
             return _empty_list_result(offset=offset, limit=effective)
         filters: list[dict[str, Any]] = [{"subject_or_id": {"operator": "**", "values": [search]}}]
+        # Applied first, before any network-resolving filter below (project/
+        # status/assignee/priority), so a rejection (hidden field, malformed
+        # spec) fails fast without wasted round-trips -- matches the tool
+        # docstring's "rejected before any network call" claim.
+        self._apply_custom_field_filters(filters, custom_field_filters=custom_field_filters)
         project_id: int | None = None
         total_is_scope_safe = scope_allows_all(self._settings.read_projects)
         if project is not None:
@@ -916,7 +931,6 @@ class WorkPackageService:
             due_on=due_on,
             due_between=due_between,
         )
-        self._apply_custom_field_filters(filters, custom_field_filters=custom_field_filters)
         return await self._list_collection(
             project_id=project_id,
             filters=filters,
@@ -958,6 +972,12 @@ class WorkPackageService:
         if not self._settings.read_projects:
             return _empty_list_result(offset=offset, limit=effective)
         filters: list[dict[str, Any]] = []
+        # Applied first, before any network-resolving filter below (project/
+        # type/version/assignee/status/priority), so a rejection (hidden
+        # field, malformed spec) fails fast without wasted round-trips --
+        # matches the tool docstring's "rejected before any network call"
+        # claim.
+        self._apply_custom_field_filters(filters, custom_field_filters=custom_field_filters)
         project_id: int | None = None
         # Bounded to this single call: avoids re-fetching/re-checking the same
         # project when both type and version filters are given alongside
@@ -1009,7 +1029,6 @@ class WorkPackageService:
             due_on=due_on,
             due_between=due_between,
         )
-        self._apply_custom_field_filters(filters, custom_field_filters=custom_field_filters)
         return await self._list_collection(
             project_id=project_id,
             filters=filters,

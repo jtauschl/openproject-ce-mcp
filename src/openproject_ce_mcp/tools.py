@@ -3094,9 +3094,10 @@ async def list_work_packages(
     calls at their existing single-request cost (no per-call schema probe).
     user/version-format custom-field filters additionally require project to
     be set (OpenProject only considers project-scoped custom fields of these
-    two formats filterable at all; a global, no-project user/version CF
-    filter is rejected locally with a clear error rather than left to fail
-    ambiguously server-side).
+    two formats filterable at all; this is not checked locally -- a global,
+    no-project user/version CF filter fails server-side with an unhelpful
+    "filter not available" error, see docs/filters.md's "Global (no-project)
+    filtering constraint" section).
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -5862,7 +5863,7 @@ def _validate_custom_field_value(value: Any) -> Any:
 # (OpenProject's own CustomField ids start at 1; "cf_0"/"cf_01" cannot refer
 # to a real field, and left-padding could otherwise let "cf_01" and "cf_1"
 # collide silently after normalization).
-_CF_FILTER_KEY_PATTERN = re.compile(r"^(cf_|customField)([1-9]\d*)$")
+_CF_FILTER_KEY_PATTERN = re.compile(r"^(cf_|customField)([1-9]\d*)$", re.ASCII)
 
 # Union of every operator symbol legal for AT LEAST ONE CE-realistic custom
 # field format (see docs/filters.md's "Custom-Field Filters" section for the
