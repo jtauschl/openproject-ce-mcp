@@ -340,6 +340,81 @@ def _delete_group_handler(request: httpx.Request) -> httpx.Response:
     return _unexpected(request)
 
 
+# --- Admin: storages ----------------------------------------------------------
+
+
+def _create_storage_handler(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/api/v3/storages" and request.method == "POST":
+        body = json.loads(request.content)
+        return httpx.Response(
+            201,
+            json={
+                "id": 7,
+                "name": body.get("name"),
+                "configured": False,
+                "_links": {
+                    "type": {"href": "urn:openproject-org:api:v3:storages:Nextcloud", "title": "Nextcloud"},
+                    "origin": {"href": body.get("_links", {}).get("origin", {}).get("href")},
+                },
+            },
+            request=request,
+        )
+    return _unexpected(request)
+
+
+def _update_storage_handler(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/api/v3/storages/7" and request.method == "GET":
+        return httpx.Response(
+            200,
+            json={
+                "id": 7,
+                "name": "Seed Storage",
+                "configured": False,
+                "_links": {
+                    "type": {"href": "urn:openproject-org:api:v3:storages:Nextcloud", "title": "Nextcloud"},
+                    "origin": {"href": "http://nextcloud.example.com/"},
+                },
+            },
+            request=request,
+        )
+    if request.url.path == "/api/v3/storages/7" and request.method == "PATCH":
+        body = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "id": 7,
+                "name": body.get("name", "Seed Storage"),
+                "configured": False,
+                "_links": {
+                    "type": {"href": "urn:openproject-org:api:v3:storages:Nextcloud", "title": "Nextcloud"},
+                    "origin": {"href": "http://nextcloud.example.com/"},
+                },
+            },
+            request=request,
+        )
+    return _unexpected(request)
+
+
+def _delete_storage_handler(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/api/v3/storages/7" and request.method == "GET":
+        return httpx.Response(
+            200,
+            json={
+                "id": 7,
+                "name": "Seed Storage",
+                "configured": False,
+                "_links": {
+                    "type": {"href": "urn:openproject-org:api:v3:storages:Nextcloud", "title": "Nextcloud"},
+                    "origin": {"href": "http://nextcloud.example.com/"},
+                },
+            },
+            request=request,
+        )
+    if request.url.path == "/api/v3/storages/7" and request.method == "DELETE":
+        return httpx.Response(204, request=request)
+    return _unexpected(request)
+
+
 MEMBERSHIP_VERSION_BOARD_ADMIN_CASES: dict[str, WriteToolCase] = {
     "create_membership": WriteToolCase(
         tool="create_membership",
@@ -472,5 +547,29 @@ MEMBERSHIP_VERSION_BOARD_ADMIN_CASES: dict[str, WriteToolCase] = {
         write_scope="admin",
         handler=_delete_group_handler,
         write_request=("DELETE", "/api/v3/groups/3"),
+    ),
+    "create_storage": WriteToolCase(
+        tool="create_storage",
+        kwargs={"name": "New Storage", "provider_type": "Nextcloud", "host": "http://nextcloud.example.com/"},
+        settings=_admin_settings(),
+        write_scope="admin",
+        handler=_create_storage_handler,
+        write_request=("POST", "/api/v3/storages"),
+    ),
+    "update_storage": WriteToolCase(
+        tool="update_storage",
+        kwargs={"storage_id": 7, "name": "Renamed Storage"},
+        settings=_admin_settings(),
+        write_scope="admin",
+        handler=_update_storage_handler,
+        write_request=("PATCH", "/api/v3/storages/7"),
+    ),
+    "delete_storage": WriteToolCase(
+        tool="delete_storage",
+        kwargs={"storage_id": 7},
+        settings=_admin_settings(),
+        write_scope="admin",
+        handler=_delete_storage_handler,
+        write_request=("DELETE", "/api/v3/storages/7"),
     ),
 }

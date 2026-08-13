@@ -466,11 +466,11 @@ def _all_five_scope_tools() -> set[str]:
 
 def test_project_scoped_and_global_read_tools_partition_the_five_scopes() -> None:
     all_five_scope_tools = _all_five_scope_tools()
-    assert len(all_five_scope_tools) == 82  # no name overlap between the 6 scopes (GitHub/GitLab linkage added)
+    assert len(all_five_scope_tools) == 84  # list_project_storages/get_project_storage added (OPM-179)
     assert _EXPECTED_GLOBAL_READ_TOOLS <= all_five_scope_tools
     assert tools._PROJECT_SCOPED_READ_TOOLS == all_five_scope_tools - _EXPECTED_GLOBAL_READ_TOOLS
     assert tools._PROJECT_SCOPED_READ_TOOLS.isdisjoint(_EXPECTED_GLOBAL_READ_TOOLS)
-    assert len(tools._PROJECT_SCOPED_READ_TOOLS) == 68
+    assert len(tools._PROJECT_SCOPED_READ_TOOLS) == 70
 
 
 def test_project_scoped_read_tools_absent_when_read_projects_empty() -> None:
