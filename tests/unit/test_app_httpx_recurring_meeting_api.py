@@ -195,7 +195,14 @@ async def test_list_occurrences_never_sends_limit_for_non_upcoming_filters() -> 
 
 @pytest.mark.asyncio
 async def test_init_occurrence_returns_full_meeting_summary_normalized_via_normalize_meeting() -> None:
+    requests: list[httpx.Request] = []
+
     async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/api/v3/recurring_meetings/51":
+            return httpx.Response(200, json=_recurring_meeting_payload(), request=request)
+        if request.url.path == "/api/v3/meetings/50":
+            return httpx.Response(200, json={"id": 50, "lockVersion": 0, "state": "open"}, request=request)
         assert request.url.path == "/api/v3/recurring_meetings/51/occurrences/2026-09-08T09:00:00Z/init"
         assert request.method == "POST"
         return httpx.Response(
@@ -224,6 +231,52 @@ async def test_init_occurrence_returns_full_meeting_summary_normalized_via_norma
 
     assert summary.id == 13
     assert summary.title == "Weekly Standup"
+    # Template already open -> no PATCH issued, only the two GET lookups plus init.
+    assert [r.method for r in requests] == ["GET", "GET", "POST"]
+
+
+@pytest.mark.asyncio
+async def test_init_occurrence_clears_draft_template_state_before_init() -> None:
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/api/v3/recurring_meetings/51" and request.method == "GET":
+            return httpx.Response(200, json=_recurring_meeting_payload(), request=request)
+        if request.url.path == "/api/v3/meetings/50" and request.method == "GET":
+            return httpx.Response(200, json={"id": 50, "lockVersion": 2, "state": "draft"}, request=request)
+        if request.url.path == "/api/v3/meetings/50" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body == {"state": "open", "lockVersion": 2}
+            return httpx.Response(200, json={"id": 50, "lockVersion": 3, "state": "open"}, request=request)
+        assert request.url.path == "/api/v3/recurring_meetings/51/occurrences/2026-09-08T09:00:00Z/init"
+        assert request.method == "POST"
+        return httpx.Response(
+            201,
+            json={
+                "id": 13,
+                "title": "Weekly Standup",
+                "location": None,
+                "lockVersion": 0,
+                "startTime": "2026-09-08T09:00:00Z",
+                "endTime": None,
+                "duration": "PT30M",
+                "state": "open",
+                "sharing": "invited",
+                "template": False,
+                "notify": True,
+                "_links": {"project": {"href": "/api/v3/projects/6", "title": "Demo"}},
+                "_embedded": {"participants": []},
+            },
+            request=request,
+        )
+
+    async with _client(handler) as http_client:
+        api = HttpxRecurringMeetingApi(HttpxTransport(http_client))
+        summary = await api.init_occurrence(51, start_time="2026-09-08T09:00:00Z")
+
+    assert summary.id == 13
+    assert [r.method for r in requests] == ["GET", "GET", "PATCH", "POST"]
 
 
 @pytest.mark.asyncio
