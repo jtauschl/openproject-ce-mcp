@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import pytest
 
-from openproject_ce_mcp.client import OpenProjectClient
+from openproject_ce_mcp.client import OpenProjectClient, PermissionDeniedError
 
 pytestmark = pytest.mark.integration
 
@@ -67,6 +67,18 @@ async def test_get_and_update_document(client: OpenProjectClient, test_project: 
     assert update_result.ready, update_result.validation_errors
     assert update_result.result is not None
     assert update_result.result.title == new_title
+
+
+async def test_update_document_denied_outside_write_allowlist(
+    denied_client: OpenProjectClient, client: OpenProjectClient, test_project: str
+) -> None:
+    existing = await client.list_documents(project=test_project)
+    if existing.count == 0:
+        pytest.skip("no existing document in the test project to attempt a denied update against")
+
+    document_id = existing.results[0].id
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.update_document(document_id=document_id, title="denied update", confirm=True)
 
 
 @pytest.mark.xfail(
