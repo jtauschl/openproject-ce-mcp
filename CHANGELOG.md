@@ -21,7 +21,8 @@ support.
   PKCS#7 `EnvelopedData` decryption via distinguishable errors/timing.
   Transitive dependency; this project never calls the affected
   `pkcs7_decrypt_*` functions directly. `astral-sh/setup-uv` also bumped
-  v7 → v9.0.0 (SHA-pinned) in the same pass.
+  v7 → v9.0.0 (SHA-pinned) in the same pass. *(This is a different
+  `cryptography` CVE than the one fixed on `0.3.7` — see that entry below.)*
 
 ### Added
 
@@ -163,19 +164,6 @@ support.
   coming back exactly `limit` elements long, instead of proving it by
   requesting one extra (`limit + 1`) element from OpenProject and checking
   how many actually survived allowlist filtering.
-- **`list_my_open_work_packages` could silently return zero or incomplete
-  results even when matching, allowed work packages genuinely existed.**
-  This query has no server-side project filter at all, so under a
-  restricted `OPENPROJECT_READ_PROJECTS` scope a single bounded fetch could
-  land entirely on server pages whose matches belonged to disallowed
-  projects, missing every allowed match beyond that window — reproduced
-  live against a real OpenProject instance: 33 total server matches, only
-  1 in an allowed project, that one match landing past a single page's
-  worth of results. `WorkPackageService`'s list path now scans as many
-  server pages as needed (skipping already-seen allowed matches, stopping
-  once enough are found or the server is exhausted) instead of inspecting
-  only one bounded page, the same allowlist-safe-scanning pattern used
-  elsewhere in this layer.
 
 ### Docs
 
@@ -195,16 +183,45 @@ support.
   `bulk_update_work_packages` items use `work_package_id`, not `id`; new
   items in `bulk_create_work_packages` have no identifier field at all and
   are matched back to their input purely by `index`.
+
+## [0.3.7] - Unreleased
+
+### Security
+
+- **Bumped `cryptography` to 50.0.0** (from 48.0.1), fixing GHSA-79v4-65xg-pq6g
+  (high severity): a Bleichenbacher-style padding oracle in PKCS#7
+  `EnvelopedData` decryption via distinguishable errors/timing. Pulled in
+  transitively through `pyjwt`; not directly exercised by this project's own
+  code, but the vulnerable range (`>=44.0.0,<50.0.0`) covered the previously
+  locked version. *(This tree separately also fixes GHSA-g6cj-pr64-35w5 /
+  CVE-2026-69247, a different `cryptography` CVE only affecting `>=44.0.0,
+  <50.0.0` via a distinct code path — see the `0.4.0` entry above.)*
+
+### Fixed
+
+- **`list_my_open_work_packages` could silently return zero or incomplete
+  results even when matching, allowed work packages genuinely existed.**
+  This query has no server-side project filter at all, so under a
+  restricted `OPENPROJECT_READ_PROJECTS` scope a single bounded fetch could
+  land entirely on server pages whose matches belonged to disallowed
+  projects, missing every allowed match beyond that window — reproduced
+  live against a real OpenProject instance: 33 total server matches, only
+  1 in an allowed project, that one match landing past a single page's
+  worth of results. Now scans as many server pages as needed (skipping
+  already-seen allowed matches, stopping once enough are found or the
+  server is exhausted) instead of inspecting only one bounded page —
+  reusing the existing `_scan_and_paginate` helper the same way
+  `list_relations`/`list_views`/etc. already do.
 - **`create_subtask`'s docstring now states that `parent_work_package_id`
   is the same value `list_work_packages`/`get_work_package` return as each
   row's `id` field (and as `parent_id`/`parent_display_id` on a child work
-  package)** — same class of clarification as `get_work_package`'s above.
-- **`list_work_packages`'s docstring now explains that `total` can read 0
-  while `next_offset` is still non-null** under a restrictive
-  `OPENPROJECT_READ_PROJECTS` scope (a full raw server page with every
-  match filtered out by the allowlist) — not an inconsistency, keep paging.
-  `search_work_packages` inherits this via its existing pagination-semantics
-  cross-reference to `list_work_packages`.
+  package)** — same class of clarification as `get_work_package`'s
+  existing docstring note.
+- **`list_work_packages`/`search_work_packages`'s docstrings now explain
+  that `total` can read 0 while `next_offset` is still non-null** under a
+  restrictive `OPENPROJECT_READ_PROJECTS` scope (a full raw server page
+  with every match filtered out by the allowlist) — not an inconsistency,
+  keep paging.
 
 ## 0.3.6 – 2026-08-10
 
