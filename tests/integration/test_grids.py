@@ -128,6 +128,73 @@ async def test_create_grid_rejects_hidden_name_field(client: OpenProjectClient, 
         )
 
 
+async def test_create_update_delete_grid_denied_outside_write_allowlist(
+    client: OpenProjectClient, project_refs: list[str]
+) -> None:
+    """Must use a project-scoped grid, not /my/page -- ensure_grid_write_allowed
+    (grid_policy.py) deliberately bypasses the allowlist entirely for
+    /my/page, so a /my/page grid would prove nothing about allowlist
+    enforcement here.
+
+    Also must NOT reuse the shared denied_client fixture directly: creating
+    the grid in a freshly created, disposable project (required because
+    OpenProject only allows one grid per scope, and test_project's own
+    dashboard grid already occupies that scope) means the target project is
+    outside denied_client's READ scope too (only test_project is readable),
+    and ensure_project_write_link_allowed (scope.py) runs the READ-allowlist
+    check first -- so a denied_client-based test would raise
+    PermissionDeniedError from the wrong (read) gate before ever reaching
+    the write-allowlist check this test is meant to exercise. This
+    purpose-built client keeps read wide open (`*`) while restricting only
+    the write allowlist to a non-matching identifier, so the denial reliably
+    comes from the write gate.
+    """
+    write_denied_settings = dataclasses.replace(
+        client.settings,
+        read_projects=("*",),
+        write_projects=("no-such-project-for-integration-tests",),
+    )
+    write_denied_client = OpenProjectClient(write_denied_settings)
+    await write_denied_client.initialize()
+
+    unrestricted_settings = dataclasses.replace(client.settings, read_projects=("*",), write_projects=("*",))
+    unrestricted_client = OpenProjectClient(unrestricted_settings)
+    await unrestricted_client.initialize()
+
+    new_identifier = disposable_project_identifier()
+    create_project_result = await unrestricted_client.create_project(
+        name=f"[integration-test] {new_identifier}", identifier=new_identifier, confirm=True
+    )
+    assert create_project_result.ready, create_project_result.validation_errors
+    project_refs.append(new_identifier)
+
+    with pytest.raises(PermissionDeniedError):
+        await write_denied_client.create_grid(
+            name=f"[integration-test] {new_identifier}",
+            scope=f"/projects/{new_identifier}",
+            row_count=4,
+            column_count=3,
+            confirm=True,
+        )
+
+    created = await unrestricted_client.create_grid(
+        name=f"[integration-test] {new_identifier} existing",
+        scope=f"/projects/{new_identifier}",
+        row_count=4,
+        column_count=3,
+        confirm=True,
+    )
+    assert created.ready, created.validation_errors
+    grid_id = created.grid_id
+    assert grid_id is not None
+
+    with pytest.raises(PermissionDeniedError):
+        await write_denied_client.update_grid(grid_id=grid_id, row_count=5, confirm=True)
+
+    with pytest.raises(PermissionDeniedError):
+        await write_denied_client.delete_grid(grid_id=grid_id, confirm=True)
+
+
 async def test_list_grids_paginates_beyond_a_single_page(client: OpenProjectClient) -> None:
     """Regression: list_grids never sent offset/pageSize to OpenProject at
     all (always requesting the server's own default page), so a limit
