@@ -366,4 +366,50 @@ else
   log("semantic mode not requested (classic identifiers)")
 end
 
+# --- Nextcloud storage fixture (opt-in, for OPM-179 storages/project_storages
+# read-tool tests) -------------------------------------------------------------
+# Creates a Storages::NextcloudStorage + Storages::ProjectStorage row directly,
+# bypassing the live host-reachability/app-installed contract validation
+# (NextcloudCompatibleHostValidator probes the host for the Nextcloud-side
+# "OpenProject Integration" app on every contract-path save, which this
+# fixture doesn't attempt to satisfy). This is NOT a live-connected, browsable
+# storage -- no OAuth handshake happens, storage_files browsing does not work
+# against it. It exists only so GET /api/v3/storages and
+# GET /api/v3/project_storages have a real row to return, for the read-only
+# OPM-179 MCP tools' integration tests. See docker/test/README.md.
+if ENV["SEED_NEXTCLOUD_STORAGE"] == "1"
+  if defined?(Storages::NextcloudStorage)
+    storage = Storages::NextcloudStorage.find_by(name: "Seed Nextcloud Storage")
+    if storage.nil?
+      storage = Storages::NextcloudStorage.new(
+        name: "Seed Nextcloud Storage",
+        host: "http://nextcloud/",
+        creator: admin
+      )
+      storage.save(validate: false)
+      log("created nextcloud storage id=#{storage.id} host=#{storage.host}")
+    else
+      log("nextcloud storage already present (id=#{storage.id})")
+    end
+
+    project_storage = Storages::ProjectStorage.find_by(project: project, storage: storage)
+    if project_storage.nil?
+      project_storage = Storages::ProjectStorage.new(
+        project: project,
+        storage: storage,
+        creator: admin,
+        project_folder_mode: "inactive"
+      )
+      project_storage.save(validate: false)
+      log("created project_storage id=#{project_storage.id} project=#{project.identifier} storage=#{storage.id}")
+    else
+      log("project_storage already present (id=#{project_storage.id})")
+    end
+  else
+    log("Storages::NextcloudStorage not defined on this version -- skipping nextcloud storage seed")
+  end
+else
+  log("nextcloud storage seed not requested (SEED_NEXTCLOUD_STORAGE unset)")
+end
+
 log("done")

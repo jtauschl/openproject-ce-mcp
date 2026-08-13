@@ -24,6 +24,7 @@ docker/test/up.sh 174       # only 17.4.1
 docker/test/up.sh 16        # only 16.6.10
 docker/test/up.sh 176       # only 17.6.0
 docker/test/up.sh 177       # only 17.7.1
+docker/test/up.sh 177nc     # 17.7.1 + the Nextcloud storage fixture (see below)
 
 # up.sh prints a ready-to-run block per instance, e.g.:
 OPENPROJECT_BASE_URL=http://localhost:8175 \
@@ -34,6 +35,36 @@ uv run pytest -m integration -v
 docker/test/down.sh         # stop, keep volumes (fast re-up)
 docker/test/down.sh --purge # also drop volumes
 ```
+
+## Nextcloud storage fixture (`up.sh 177nc`)
+
+For the `storages`/`project_storages` MCP tools (OPM-179), `up.sh 177nc` also
+brings up a `nextcloud` service (plain `nextcloud:30-apache` image, SQLite
+backend, non-interactive install via `NEXTCLOUD_ADMIN_USER`/
+`NEXTCLOUD_ADMIN_PASSWORD` env vars — the password is generated once into the
+same gitignored `.env` as `SECRET_KEY_BASE`) alongside `op-17-7`.
+
+`seed.rb` then creates a `Storages::NextcloudStorage` row (host
+`http://nextcloud/`, reachable via Compose's default service-name DNS) and a
+`Storages::ProjectStorage` row linking it to the `TST` project with
+`project_folder_mode: "inactive"`, via `save(validate: false)` — this
+deliberately bypasses OpenProject's live host-reachability/
+`integration_openproject`-app-installed probe
+(`NextcloudCompatibleHostValidator`), so the fixture is deterministic and
+does not depend on the Nextcloud container actually finishing its own setup.
+
+**What this fixture supports**: `GET /api/v3/storages`,
+`GET /api/v3/storages/{id}`, `GET /api/v3/project_storages`,
+`GET /api/v3/project_storages/{id}` all return a real row.
+
+**What this fixture deliberately does NOT support** (out of scope for
+OPM-179's read-only tools): a live, OAuth-authenticated "connected" storage —
+no browser-driven OAuth handshake happens, so `configured?` stays false and
+`storage_files` browsing does not work against it. If deeper write/browsing
+testing is ever wanted, that needs a real interactive OAuth round-trip
+(installing the "OpenProject Integration" app inside the Nextcloud container
+via its admin UI or `occ`, then completing the OAuth exchange through a
+browser) — treated as a known, explicitly out-of-scope gap, not a bug.
 
 **First boot takes several minutes** (migrations + asset precompile). `up.sh`
 waits on the container healthcheck, not a fixed sleep. Each instance needs

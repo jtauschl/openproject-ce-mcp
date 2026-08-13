@@ -108,6 +108,38 @@ services:
       retries: 40
       start_period: 120s
 
+  # Nextcloud fixture for the OPM-179 (storages/project_storages) read-tool
+  # tests. SQLite-backed, one-container, non-interactive install via env vars
+  # (confirmed against the image's own /entrypoint.sh). Only ever brought up
+  # alongside a single OpenProject instance (op-17-7), never with all five —
+  # see README.md's resource-constraint note.
+  #
+  # This container gives OpenProject something real to reach at the network
+  # level (service-name DNS: http://nextcloud/). It intentionally does NOT
+  # get a live, browser-driven OAuth handshake with OpenProject — seed.rb
+  # creates the OpenProject-side Storage/ProjectStorage rows directly via
+  # `save(validate: false)`, bypassing the live host-reachability/app-
+  # installed probe. This is sufficient for storages/project_storages
+  # read-tool tests; it is NOT a "connected, browsable" storage (no
+  # storage_files browsing — out of scope, see docker/test/README.md).
+  nextcloud:
+    image: nextcloud:30-apache
+    ports:
+      - "8080:80"
+    environment:
+      NEXTCLOUD_ADMIN_USER: admin
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD:?set via up.sh / .env}
+      SQLITE_DATABASE: nextcloud
+      NEXTCLOUD_TRUSTED_DOMAINS: "nextcloud localhost"
+    volumes:
+      - nextcloud_data:/var/www/html
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/status.php"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 90s
+
 volumes:
   op166_pgdata:
   op166_assets:
@@ -119,3 +151,4 @@ volumes:
   op176_assets:
   op177_pgdata:
   op177_assets:
+  nextcloud_data:

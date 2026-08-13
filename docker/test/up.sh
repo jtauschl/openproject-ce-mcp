@@ -10,6 +10,7 @@
 #   docker/test/up.sh 17         # only 17.5
 #   docker/test/up.sh 176        # only 17.6
 #   docker/test/up.sh 177        # only 17.7
+#   docker/test/up.sh 177nc      # 17.7 + the Nextcloud storage fixture
 #
 # On a small Docker VM (~4 GB) five all-in-one containers can exhaust memory;
 # bring them up one at a time (16, then 174, then 17, then 176, then 177) if
@@ -23,10 +24,14 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 # Stable secret across restarts, generated once into a gitignored .env.
 if [ ! -f .env ]; then
-    echo "SECRET_KEY_BASE=$(openssl rand -hex 64)" >.env
+    {
+        echo "SECRET_KEY_BASE=$(openssl rand -hex 64)"
+        echo "NEXTCLOUD_ADMIN_PASSWORD=$(openssl rand -hex 24)"
+    } >.env
     echo "generated docker/test/.env"
 fi
 
+WITH_NEXTCLOUD=0
 case "${1:-all}" in
 16)
     SERVICES=(op-16-6)
@@ -48,18 +53,40 @@ case "${1:-all}" in
     SERVICES=(op-17-7)
     SEMANTIC=("op-17-7:1")
     ;;
+177nc)
+    SERVICES=(op-17-7 nextcloud)
+    SEMANTIC=("op-17-7:1")
+    WITH_NEXTCLOUD=1
+    ;;
 all | "")
     SERVICES=(op-16-6 op-17-4 op-17-5 op-17-6 op-17-7)
     SEMANTIC=("op-16-6:0" "op-17-4:0" "op-17-5:1" "op-17-6:1" "op-17-7:1")
     ;;
 *)
-    echo "usage: up.sh [16|174|17|176|177|all]" >&2
+    echo "usage: up.sh [16|174|17|176|177|177nc|all]" >&2
     exit 2
     ;;
 esac
 
 echo "Starting: ${SERVICES[*]} (first boot can take >5 min)…"
 docker compose up -d "${SERVICES[@]}"
+
+if [ "$WITH_NEXTCLOUD" = "1" ]; then
+    echo -n "Waiting for nextcloud to become healthy"
+    nc_cid="$(docker compose ps -q nextcloud)"
+    nc_healthy=0
+    for _ in $(seq 1 60); do
+        nc_state="$(docker inspect -f '{{.State.Health.Status}}' "$nc_cid" 2>/dev/null || echo starting)"
+        if [ "$nc_state" = "healthy" ]; then
+            echo " ok"
+            nc_healthy=1
+            break
+        fi
+        echo -n "."
+        sleep 10
+    done
+    [ "$nc_healthy" = "1" ] || echo " TIMEOUT (continuing — seed.rb's storage fixture does not require a live connection)"
+fi
 
 wait_healthy() {
     local svc="$1" cid
@@ -98,8 +125,10 @@ for entry in "${SEMANTIC[@]}"; do
     semantic="${entry#*:}"
     port="$(port_for "$svc")"
     wait_healthy "$svc"
-    echo "Seeding $svc (SEED_SEMANTIC=$semantic)…"
-    seed_output="$(docker compose exec -T -e SEED_SEMANTIC="$semantic" "$svc" \
+    seed_nextcloud=0
+    [ "$WITH_NEXTCLOUD" = "1" ] && [ "$svc" = "op-17-7" ] && seed_nextcloud=1
+    echo "Seeding $svc (SEED_SEMANTIC=$semantic, SEED_NEXTCLOUD_STORAGE=$seed_nextcloud)…"
+    seed_output="$(docker compose exec -T -e SEED_SEMANTIC="$semantic" -e SEED_NEXTCLOUD_STORAGE="$seed_nextcloud" "$svc" \
         bundle exec rails runner - <seed.rb)"
     echo "$seed_output"
     token="$(sed -n 's/^SEED: API_TOKEN=//p' <<<"$seed_output" | tail -1)"
