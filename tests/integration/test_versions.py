@@ -7,7 +7,7 @@ import uuid
 
 import pytest
 
-from openproject_ce_mcp.client import OpenProjectClient
+from openproject_ce_mcp.client import OpenProjectClient, PermissionDeniedError
 
 pytestmark = pytest.mark.integration
 
@@ -118,3 +118,20 @@ async def test_create_get_update_delete_version(
     delete_result = await client.delete_version(version_id=version_id, confirm=True)
     assert delete_result.ready and delete_result.state == "confirmed"
     version_ids.remove(version_id)
+
+
+async def test_update_and_delete_version_denied_outside_write_allowlist(
+    denied_client: OpenProjectClient, client: OpenProjectClient, test_project: str, version_ids: list[int]
+) -> None:
+    result = await client.create_version(
+        project=test_project, name=f"[integration-test] denial {uuid.uuid4().hex[:8]}", confirm=True
+    )
+    assert result.ready, result.validation_errors
+    version_id = result.version_id
+    version_ids.append(version_id)
+
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.update_version(version_id=version_id, name="denied update", confirm=True)
+
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.delete_version(version_id=version_id, confirm=True)
