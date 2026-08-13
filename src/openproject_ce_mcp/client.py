@@ -2021,6 +2021,7 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
         include_sums: bool = False,
+        custom_field_filters: dict[str, dict[str, Any]] | None = None,
     ) -> WorkPackageListResult:
         return await self._work_package_service.search(
             search=search,
@@ -2041,6 +2042,7 @@ class OpenProjectClient:
             offset=offset,
             limit=limit,
             include_sums=include_sums,
+            custom_field_filters=custom_field_filters,
         )
 
     async def list_work_packages(
@@ -2066,6 +2068,7 @@ class OpenProjectClient:
         offset: int = 1,
         limit: int | None = None,
         include_sums: bool = False,
+        custom_field_filters: dict[str, dict[str, Any]] | None = None,
     ) -> WorkPackageListResult:
         return await self._work_package_service.list(
             project=project,
@@ -2088,6 +2091,7 @@ class OpenProjectClient:
             offset=offset,
             limit=limit,
             include_sums=include_sums,
+            custom_field_filters=custom_field_filters,
         )
 
     async def get_work_package(self, work_package_id: int | str, *, text_limit: int | None = None) -> WorkPackageDetail:

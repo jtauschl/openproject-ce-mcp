@@ -1133,6 +1133,51 @@ async def test_search_work_packages_date_filters() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_work_packages_custom_field_filters_builds_cf_filter_end_to_end() -> None:
+    """OPM-109: end-to-end through the real OpenProjectClient/Service/httpx
+    adapter (not just a fake) -- confirms the actual wire payload sent to
+    GET /api/v3/work_packages contains a cf_<N>-keyed filter fragment."""
+    captured: dict[str, str] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages" and request.method == "GET":
+            captured["filters"] = request.url.params.get("filters", "")
+            return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    await client.list_work_packages(custom_field_filters={"cf_12": {"operator": "=", "values": ["42"]}})
+
+    filters = json.loads(captured["filters"])
+    cf_filter = next(f for f in filters if "cf_12" in f)
+    assert cf_filter["cf_12"]["operator"] == "="
+    assert cf_filter["cf_12"]["values"] == ["42"]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_search_work_packages_custom_field_filters_builds_cf_filter_end_to_end() -> None:
+    captured: dict[str, str] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages" and request.method == "GET":
+            captured["filters"] = request.url.params.get("filters", "")
+            return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    await client.search_work_packages(search="foo", custom_field_filters={"cf_7": {"operator": "!~", "values": ["x"]}})
+
+    filters = json.loads(captured["filters"])
+    cf_filter = next(f for f in filters if "cf_7" in f)
+    assert cf_filter["cf_7"]["operator"] == "!~"
+    assert cf_filter["cf_7"]["values"] == ["x"]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_list_work_packages_type_filter_uses_correct_key() -> None:
     """Verify type filter uses type_id key per source definition.
 

@@ -2117,3 +2117,207 @@ async def test_add_comment_works_with_read_disabled() -> None:
     result = await service.add_comment(work_package_id=6, comment="Hello", confirm=False)
 
     assert result.state == "preview"
+
+
+# --- OPM-109: custom_field_filters -----------------------------------------
+#
+# Per-format representative coverage: one entry per CE-realistic custom-field
+# format (string, text, link, int, float, date, bool, list, user, version --
+# ten total, see docs/filters.md's "Custom-Field Filters" section), verifying
+# only that the filter fragment this Service builds is correctly shaped and
+# reaches the fake API's `filters` list unchanged -- per-field operator/format
+# legality is intentionally NOT locally validated (see
+# CUSTOM_FIELD_FILTER_OPERATORS's module docstring in work_package_service.py)
+# so these tests do not (and cannot) exercise format-specific rejection; they
+# only confirm the key-normalization/filter-append plumbing is correct for
+# each format's real operator vocabulary.
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_plain_value_int_format() -> None:
+    # "Plain-value" representative per the ticket's acceptance criterion.
+    service, api = _service()
+
+    await service.list(custom_field_filters={"cf_12": {"operator": "=", "values": ["42"]}})
+
+    assert {"cf_12": {"operator": "=", "values": ["42"]}} in api.list_calls[0]["filters"]
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_link_based_user_format_with_me() -> None:
+    # "Link-based" representative per the ticket's acceptance criterion --
+    # user-format CFs accept the literal "me" value, resolved server-side.
+    service, api = _service()
+
+    await service.list(project="demo", custom_field_filters={"cf_3": {"operator": "=", "values": ["me"]}})
+
+    assert {"cf_3": {"operator": "=", "values": ["me"]}} in api.list_calls[0]["filters"]
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_string_format() -> None:
+    service, api = _service()
+    await service.list(custom_field_filters={"cf_1": {"operator": "~", "values": ["Acme"]}})
+    assert {"cf_1": {"operator": "~", "values": ["Acme"]}} in api.list_calls[0]["filters"]
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_text_format() -> None:
+    service, api = _service()
+    await service.list(custom_field_filters={"cf_2": {"operator": "!~", "values": ["draft"]}})
+    assert {"cf_2": {"operator": "!~", "values": ["draft"]}} in api.list_calls[0]["filters"]
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_link_format() -> None:
+    # link-format CFs have no dedicated filter strategy server-side and fall
+    # through to plain :string (verified against custom_field_filter.rb /
+    # custom_fields/base.rb's `type` case, both lacking a "link" branch).
+    service, api = _service()
+    await service.list(custom_field_filters={"cf_4": {"operator": "=", "values": ["https://example.com"]}})
+    assert {"cf_4": {"operator": "=", "values": ["https://example.com"]}} in api.list_calls[0]["filters"]
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_float_format() -> None:
+    service, api = _service()
+    await service.list(custom_field_filters={"cf_5": {"operator": ">=", "values": ["3.14"]}})
+    assert {"cf_5": {"operator": ">=", "values": ["3.14"]}} in api.list_calls[0]["filters"]
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_date_format() -> None:
+    service, api = _service()
+    await service.list(custom_field_filters={"cf_6": {"operator": "=d", "values": ["2026-01-01"]}})
+    assert {"cf_6": {"operator": "=d", "values": ["2026-01-01"]}} in api.list_calls[0]["filters"]
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_bool_format() -> None:
+    # Bool CF values are the literal wire strings "t"/"f", not JSON true/false.
+    service, api = _service()
+    await service.list(custom_field_filters={"cf_7": {"operator": "=", "values": ["t"]}})
+    assert {"cf_7": {"operator": "=", "values": ["t"]}} in api.list_calls[0]["filters"]
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_list_format_contains_all() -> None:
+    # "&=" (EqualsAll / contains-all) is a CF-only operator with no built-in
+    # :list_optional equivalent -- confirming it passes through untouched.
+    service, api = _service()
+    await service.list(project="demo", custom_field_filters={"cf_8": {"operator": "&=", "values": ["1", "2"]}})
+    assert {"cf_8": {"operator": "&=", "values": ["1", "2"]}} in api.list_calls[0]["filters"]
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_version_format() -> None:
+    service, api = _service()
+    await service.list(project="demo", custom_field_filters={"cf_9": {"operator": "=", "values": ["10"]}})
+    assert {"cf_9": {"operator": "=", "values": ["10"]}} in api.list_calls[0]["filters"]
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_normalizes_customfield_key() -> None:
+    service, api = _service()
+    await service.list(custom_field_filters={"customField12": {"operator": "=", "values": ["42"]}})
+    assert {"cf_12": {"operator": "=", "values": ["42"]}} in api.list_calls[0]["filters"]
+
+
+@pytest.mark.asyncio
+async def test_search_custom_field_filters_plain_value_representative() -> None:
+    service, api = _service()
+
+    await service.search(search="foo", custom_field_filters={"cf_12": {"operator": "=", "values": ["42"]}})
+
+    assert {"cf_12": {"operator": "=", "values": ["42"]}} in api.list_calls[0]["filters"]
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_none_or_empty_appends_nothing() -> None:
+    service, api = _service()
+
+    await service.list(custom_field_filters=None)
+    filters_a = api.list_calls[0]["filters"]
+
+    await service.list(custom_field_filters={})
+    filters_b = api.list_calls[1]["filters"]
+
+    assert not any(key.startswith("cf_") for f in filters_a for key in f)
+    assert not any(key.startswith("cf_") for f in filters_b for key in f)
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_rejects_hidden_field_by_cf_key() -> None:
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("cf_12",))
+    service, api = _service(settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden"):
+        await service.list(custom_field_filters={"cf_12": {"operator": "=", "values": ["42"]}})
+
+    # Rejected before any request reaches the fake API.
+    assert api.list_calls == []
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_rejects_hidden_field_by_customfield_key() -> None:
+    # A hide pattern configured using the customField<N> spelling must also
+    # reject a cf_<N>-keyed filter for the same field -- both canonical
+    # spellings of the field's own key are checked explicitly (see
+    # _apply_custom_field_filters's docstring), since normalize_hide_token
+    # does not itself translate between the two forms.
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("customField12",))
+    service, api = _service(settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden"):
+        await service.list(custom_field_filters={"cf_12": {"operator": "=", "values": ["42"]}})
+
+    assert api.list_calls == []
+
+
+@pytest.mark.asyncio
+async def test_search_custom_field_filters_rejects_hidden_field() -> None:
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("cf_12",))
+    service, api = _service(settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden"):
+        await service.search(search="foo", custom_field_filters={"cf_12": {"operator": "=", "values": ["42"]}})
+
+    assert api.list_calls == []
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_wildcard_hide_pattern_matches() -> None:
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("cf_1*",))
+    service, api = _service(settings=settings)
+
+    with pytest.raises(InvalidInputError, match="hidden"):
+        await service.list(custom_field_filters={"cf_12": {"operator": "=", "values": ["42"]}})
+
+    assert api.list_calls == []
+
+
+@pytest.mark.asyncio
+async def test_list_custom_field_filters_rejects_invalid_key_shape_at_service_layer() -> None:
+    # Defense-in-depth: a direct OpenProjectClient/Service caller bypassing
+    # tools.py's _validate_custom_field_filters must still get a clean
+    # InvalidInputError, not a malformed filter silently sent upstream.
+    service, api = _service()
+
+    with pytest.raises(InvalidInputError, match="must be of the form"):
+        await service.list(custom_field_filters={"story_points": {"operator": "=", "values": ["1"]}})
+
+    assert api.list_calls == []
+
+
+@pytest.mark.asyncio
+async def test_list_no_regression_to_built_in_filters_alongside_custom_field_filters() -> None:
+    service, api = _service()
+
+    await service.list(
+        status="Open status ref",
+        custom_field_filters={"cf_12": {"operator": "=", "values": ["42"]}},
+    )
+
+    filters = api.list_calls[0]["filters"]
+    assert {"status_id": {"operator": "=", "values": ["5"]}} in filters
+    assert {"cf_12": {"operator": "=", "values": ["42"]}} in filters

@@ -2856,6 +2856,7 @@ async def search_work_packages(
     limit: int | None = None,
     select: list[str] | None = None,
     include_sums: bool = False,
+    custom_field_filters: dict[str, dict[str, Any]] | None = None,
 ) -> WorkPackageListResult:
     """Search work packages by free text, optionally scoped to a project.
 
@@ -2887,6 +2888,10 @@ async def search_work_packages(
     server-side allowed-project filter for the no-project+restricted-scope
     case does not apply here); otherwise total/groups/total_sums fall back
     to this page's data, same safety guarantee either way.
+
+    custom_field_filters filters by custom field value(s); see
+    list_work_packages's docstring for the full parameter documentation
+    (identical shape and semantics on both tools).
     """
     client = _client_from_context(ctx)
     safe_search = _validate_required_query(search, field_name="search", max_length=120)
@@ -2905,6 +2910,7 @@ async def search_work_packages(
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=WorkPackageSummary)
+    safe_custom_field_filters = _validate_custom_field_filters(custom_field_filters)
     return await _run_tool(
         client.search_work_packages(
             search=safe_search,
@@ -2925,6 +2931,7 @@ async def search_work_packages(
             offset=safe_offset,
             limit=safe_limit,
             include_sums=include_sums,
+            custom_field_filters=safe_custom_field_filters,
         )
     )
 
@@ -2952,6 +2959,7 @@ async def list_work_packages(
     limit: int | None = None,
     select: list[str] | None = None,
     include_sums: bool = False,
+    custom_field_filters: dict[str, dict[str, Any]] | None = None,
 ) -> WorkPackageListResult:
     """List work packages with structured filters and no free-text query requirement.
 
@@ -3055,6 +3063,40 @@ async def list_work_packages(
     matching ONLY the raw key/wildcard (e.g. "customField12", "customField*")
     -- unlike the write path, which also accepts the custom field's friendly
     name, a read-side hide pattern written as a friendly name has no effect.
+
+    custom_field_filters filters results by custom field value(s) -- a dict
+    keyed by "cf_<N>" or "customField<N>" (both forms accepted transparently
+    and always normalized to "cf_<N>" on the wire; "cf_<N>" is
+    CustomField#column_name, the actual OpenProject filter key, distinct from
+    "customField<N>" which is the JSON/PATCH key used by custom_fields
+    above -- do not confuse the two). Each entry's value is
+    {"operator": "<symbol>", "values": [...]}, e.g.
+    {"cf_12": {"operator": "=", "values": ["42"]}}. Learn a field's cf_<N> id
+    from any prior get_work_package call's custom_fields dict keys (strip the
+    "customField" prefix). Only raw cf_<N>/customField<N> keys are accepted --
+    friendly-name resolution is not supported (a list/search call has no
+    single project+type context to resolve a name against safely; a friendly
+    name is only meaningful for the write path's per-call project+type
+    schema probe). At most 20 custom-field filters per call, at most 100
+    values per filter, each value at most 1000 characters.
+
+    Legal operators depend on the field's format on this instance -- see
+    docs/filters.md's "Custom-Field Filters" section for the full
+    format-to-operator matrix, verified against OpenProject CE source. This
+    tool validates the key shape and the operator symbol locally (a
+    recognized custom-field operator, not necessarily legal for this
+    specific field's format) and rejects hidden fields
+    (OPENPROJECT_HIDE_CUSTOM_FIELDS) before any network call; an
+    operator/value that is syntactically valid but illegal for the field's
+    actual format is rejected by OpenProject itself with a clear error
+    (surfaced as a ValueError here, not a raw HTTP passthrough) rather than
+    validated client-side against a live schema -- this keeps list/search
+    calls at their existing single-request cost (no per-call schema probe).
+    user/version-format custom-field filters additionally require project to
+    be set (OpenProject only considers project-scoped custom fields of these
+    two formats filterable at all; a global, no-project user/version CF
+    filter is rejected locally with a clear error rather than left to fail
+    ambiguously server-side).
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -3077,6 +3119,7 @@ async def list_work_packages(
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=WorkPackageSummary)
+    safe_custom_field_filters = _validate_custom_field_filters(custom_field_filters)
     return await _run_tool(
         client.list_work_packages(
             project=safe_project,
@@ -3099,6 +3142,7 @@ async def list_work_packages(
             offset=safe_offset,
             limit=safe_limit,
             include_sums=include_sums,
+            custom_field_filters=safe_custom_field_filters,
         )
     )
 
@@ -5807,6 +5851,135 @@ def _validate_custom_field_value(value: Any) -> Any:
     if isinstance(value, list):
         return [_validate_custom_field_value(item) for item in value]
     raise ValueError("custom_fields values must be strings, numbers, booleans, null, or lists of those values.")
+
+
+# Matches either "cf_<N>" (CustomField#column_name, the actual OpenProject
+# filter key) or "customField<N>" (CustomField#attribute_name(:camel_case),
+# the JSON/PATCH key used by the read/write value paths) -- OPM-109 accepts
+# both forms transparently and always normalizes to "cf_<N>" on the wire, so
+# callers never need to know the two are different strings for the same
+# field. The id itself must be a positive integer with no leading zero
+# (OpenProject's own CustomField ids start at 1; "cf_0"/"cf_01" cannot refer
+# to a real field, and left-padding could otherwise let "cf_01" and "cf_1"
+# collide silently after normalization).
+_CF_FILTER_KEY_PATTERN = re.compile(r"^(cf_|customField)([1-9]\d*)$")
+
+# Union of every operator symbol legal for AT LEAST ONE CE-realistic custom
+# field format (see docs/filters.md's "Custom-Field Filters" section for the
+# full per-format breakdown and source citations). This is intentionally the
+# union, not a per-format set -- tools.py validators are Settings-free and
+# have no network access to look up a given cf_<N>'s actual field_format, so
+# a symbol outside this union is rejected here (cheap, unambiguous), while an
+# operator that IS in the union but illegal for the specific field's format
+# is left to OpenProject's own validation (a clean 400, mapped to
+# InvalidInputError by app/transport/errors.py) -- see work_package_service.py's
+# _apply_custom_field_filters for the format-aware part of this split.
+_CF_FILTER_OPERATOR_SYMBOLS = frozenset(
+    {
+        "=",
+        "~",
+        "!",
+        "!~",
+        ">=",
+        "<=",
+        "&=",
+        "*",
+        "!*",
+        "<t+",
+        ">t+",
+        "t+",
+        "t",
+        "w",
+        ">t-",
+        "<t-",
+        "t-",
+        "=d",
+        "<>d",
+    }
+)
+
+_CF_FILTER_MAX_ENTRIES = 20
+_CF_FILTER_MAX_VALUES = 100
+_CF_FILTER_MAX_VALUE_LENGTH = 1_000
+
+
+def _validate_custom_field_filters(
+    value: dict[str, dict[str, Any]] | None,
+) -> dict[str, dict[str, Any]] | None:
+    """Validate custom_field_filters shape and normalize keys to cf_<N>.
+
+    Accepts "cf_<N>" or "customField<N>" keys (both forms always accepted
+    transparently) and rejects any other key shape immediately, before any
+    network call. Each value must be {"operator": str, "values": list[str]},
+    with the operator drawn from the union of all legal CE custom-field
+    filter operators (see _CF_FILTER_OPERATOR_SYMBOLS above).
+
+    This is deliberately syntax-only, matching every other tools.py validator
+    in this module (see _validate_optional_custom_fields): per-field
+    format/operator legality and OPENPROJECT_HIDE_CUSTOM_FIELDS rejection
+    both require Settings and/or format knowledge this layer does not have,
+    and happen in work_package_service.py's _apply_custom_field_filters
+    instead.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError(
+            "custom_field_filters must be an object mapping 'cf_<N>'/'customField<N>' keys to filter specs."
+        )
+    if len(value) > _CF_FILTER_MAX_ENTRIES:
+        raise ValueError(f"custom_field_filters must contain at most {_CF_FILTER_MAX_ENTRIES} entries.")
+    normalized: dict[str, dict[str, Any]] = {}
+    for raw_key, spec in value.items():
+        if not isinstance(raw_key, str):
+            raise ValueError(f"custom_field_filters keys must be strings, got {type(raw_key).__name__}.")
+        match = _CF_FILTER_KEY_PATTERN.match(raw_key)
+        if not match:
+            raise ValueError(
+                f"custom_field_filters key '{raw_key}' must be of the form 'cf_<N>' or 'customField<N>' "
+                "(N a positive integer, no leading zero)."
+            )
+        cf_key = f"cf_{match.group(2)}"
+        if cf_key in normalized:
+            raise ValueError(
+                f"custom_field_filters has two keys that both resolve to '{cf_key}' "
+                "(cf_<N> and customField<N> forms cannot be combined for the same field)."
+            )
+        if not isinstance(spec, dict):
+            raise ValueError(f"custom_field_filters['{raw_key}'] must be an object with 'operator' and 'values'.")
+        extra_keys = set(spec) - {"operator", "values"}
+        if extra_keys:
+            raise ValueError(
+                f"custom_field_filters['{raw_key}'] has unsupported key(s): {sorted(extra_keys)}. "
+                "Only 'operator' and 'values' are accepted."
+            )
+        if "operator" not in spec or "values" not in spec:
+            raise ValueError(f"custom_field_filters['{raw_key}'] must be an object with 'operator' and 'values'.")
+        operator = spec["operator"]
+        values = spec["values"]
+        if not isinstance(operator, str) or not operator:
+            raise ValueError(f"custom_field_filters['{raw_key}'].operator must be a non-empty string.")
+        if operator not in _CF_FILTER_OPERATOR_SYMBOLS:
+            raise ValueError(
+                f"custom_field_filters['{raw_key}'].operator '{operator}' is not a recognized "
+                f"custom-field filter operator. Valid operators: {sorted(_CF_FILTER_OPERATOR_SYMBOLS)}."
+            )
+        if not isinstance(values, list):
+            raise ValueError(f"custom_field_filters['{raw_key}'].values must be a list of strings.")
+        if len(values) > _CF_FILTER_MAX_VALUES:
+            raise ValueError(
+                f"custom_field_filters['{raw_key}'].values must contain at most {_CF_FILTER_MAX_VALUES} items."
+            )
+        for item in values:
+            if not isinstance(item, str):
+                raise ValueError(f"custom_field_filters['{raw_key}'].values must be a list of strings.")
+            if len(item) > _CF_FILTER_MAX_VALUE_LENGTH:
+                raise ValueError(
+                    f"custom_field_filters['{raw_key}'].values items must be at most "
+                    f"{_CF_FILTER_MAX_VALUE_LENGTH} characters."
+                )
+        normalized[cf_key] = {"operator": operator, "values": list(values)}
+    return normalized
 
 
 def _validate_required_query(value: str, *, field_name: str, max_length: int) -> str:

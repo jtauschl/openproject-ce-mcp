@@ -71,6 +71,19 @@ drop the `description` text but leave its truncation/length/has_description
 siblings computed from the TRUE, unmasked text, leaking its existence/length
 even though the adapter's own extraction is not hidden-field-aware by design
 (masking is a Service concern in this layered architecture).
+
+`search()`/`list()`'s `custom_field_filters` parameter (OPM-109) is applied
+by `_apply_custom_field_filters`, a synchronous, network-free helper: it
+normalizes `cf_<N>`/`customField<N>` keys, rejects hidden fields, and appends
+the resulting filter fragments -- deliberately WITHOUT probing a live schema
+to validate operator legality against a specific field's actual format (see
+`CUSTOM_FIELD_FILTER_OPERATORS`'s module-level docstring for the full
+rationale: no single project+type context exists for an unscoped list/search
+call the way there is for the write path's per-call schema probe). An
+operator/format mismatch surfaces as OpenProject's own clean 400
+(`InvalidQuery`), already mapped to `InvalidInputError` by
+`app/transport/errors.py` -- this is a deliberate scope decision for this
+ticket, not an oversight.
 """
 
 from __future__ import annotations
@@ -80,6 +93,7 @@ import builtins
 import dataclasses
 import datetime
 import logging
+import re
 from typing import Any
 
 from ...config import Settings
@@ -132,6 +146,67 @@ BATCH_READ_MAX_IDS = 100
 # Default cap for create/update responses and the delete preview -- NOT the
 # uncapped default get()'s own single-item path uses.
 FORMATTABLE_LIMIT = 1_200
+
+# Per-CE-realistic-format legal filter operator sets for OPM-109's
+# custom_field_filters, verified against OpenProject CE source
+# (op-sources/full-17.6): app/models/queries/filters/shared/custom_field_filter.rb
+# (format -> subfilter_class dispatch), custom_fields/base.rb (type dispatch +
+# strategies override table), custom_fields/{list_optional,user,bool}.rb, and
+# strategies/{string,text,date,cf_integer,cf_float,cf_list_optional,
+# boolean_list}.rb. This dict is used ONLY as documentation-in-code plus a
+# defensive fallback (see _apply_custom_field_filters) -- this Service has no
+# cheap, network-free way to learn a given cf_<N>'s actual field_format (the
+# write path's per-project+type schema probe does not apply to list/search,
+# which have no such single-context guarantee -- see the module docstring
+# addition below), so per-field operator legality is NOT enforced here.
+# OpenProject's own 400 (InvalidQuery, already mapped to InvalidInputError by
+# app/transport/errors.py) is the actual enforcement point for an
+# operator/format mismatch -- this dict exists so the mapping is documented
+# in one place close to the code, not because it gates anything at runtime.
+CUSTOM_FIELD_FILTER_OPERATORS: dict[str, frozenset[str]] = {
+    "string": frozenset({"=", "~", "!", "!~"}),
+    "text": frozenset({"~", "!~"}),
+    "link": frozenset({"=", "~", "!", "!~"}),  # no dedicated "link" strategy exists server-side; same as string
+    "int": frozenset({"=", "!", ">=", "<=", "!*", "*"}),
+    "float": frozenset({"=", "!", ">=", "<=", "!*", "*"}),
+    "date": frozenset({"<t+", ">t+", "t+", "t", "w", ">t-", "<t-", "t-", "=d", "<>d", "!*"}),
+    "bool": frozenset({"=", "!"}),
+    "list": frozenset({"=", "&=", "!", "*", "!*"}),
+    "user": frozenset({"=", "&=", "!", "*", "!*"}),
+    "version": frozenset({"=", "&=", "!", "*", "!*"}),
+}
+
+# Custom-field formats that this Community Edition MCP does not support
+# filtering on -- both are Enterprise-gated (config/initializers/
+# custom_field_format.rb's `enterprise_feature:` tag) so a caller cannot
+# legitimately have one configured on a CE instance in the first place, and
+# a third format, "calculated_value", is excluded from this set: it is
+# ALSO Enterprise-gated AND registered `only: %w(Project)`
+# (config/initializers/custom_field_format.rb), meaning it cannot exist as a
+# WorkPackage custom field's format at all -- no cf_<N> filter on
+# list_work_packages/search_work_packages could ever resolve to it, so there
+# is nothing to reject here.
+CUSTOM_FIELD_FILTER_UNSUPPORTED_FORMATS = frozenset({"hierarchy", "weighted_item_list"})
+
+# Custom-field formats that OpenProject only considers filterable when a
+# project is given -- Queries::WorkPackages::Filter::CustomFieldContext
+# .custom_fields(context) excludes "user"/"version"-format fields entirely
+# from the global (no-project) filter set (`.where.not(field_format: %w(user
+# version))`), so a global custom_field_filters entry referencing one of
+# these formats would fail server-side with an ambiguous "filter not
+# available" error. Rejected locally instead, with a clear message, when no
+# project is given. This Service cannot know a given cf_<N>'s actual format
+# without a schema probe (see CUSTOM_FIELD_FILTER_OPERATORS's docstring), so
+# this check is necessarily best-effort and cannot itself be enforced here
+# either -- documented as a known constraint, callers should pass project
+# whenever filtering on a user/version-format custom field.
+CUSTOM_FIELD_FILTER_PROJECT_ONLY_FORMATS = frozenset({"user", "version"})
+
+# Re-validates the key shape tools.py's _validate_custom_field_filters already
+# checked -- kept here too so a direct OpenProjectClient/Service caller that
+# bypasses the MCP tool layer entirely still gets a clean InvalidInputError
+# instead of silently building a malformed filter.
+_CF_FILTER_KEY_RE = re.compile(r"^(cf_|customField)([1-9]\d*)$")
 
 # Sentinel for update(): distinguishes "clear the parent" (make the work
 # package top-level via _links.parent = {"href": null}) from "leave unchanged"
@@ -726,6 +801,63 @@ class WorkPackageService:
         if due_between:
             filters.append({"due_date": {"operator": "<>d", "values": _validate_range(due_between, "due_between")}})
 
+    def _apply_custom_field_filters(
+        self,
+        filters: list[dict[str, Any]],
+        *,
+        custom_field_filters: dict[str, dict[str, Any]] | None,
+    ) -> None:
+        """Append cf_<N> filter fragments for OPM-109's custom_field_filters.
+
+        Synchronous and network-free: keys are already normalized to cf_<N>
+        by tools.py's _validate_custom_field_filters (or, for a direct
+        OpenProjectClient caller bypassing tools.py, re-validated for shape
+        here -- see the isinstance/regex checks below, which reject anything
+        tools.py would also have rejected, so this Service is safe to call
+        directly and not just through the MCP tool layer).
+
+        The check performed here is cheap and local: OPENPROJECT_HIDE_CUSTOM_FIELDS
+        rejection (both cf_<N> and the equivalent customField<N> spelling are
+        checked, since a hide pattern might have been configured using
+        either form -- unlike hidden_fields.custom_field_hidden's normal
+        dual-match against a resolved schema name plus the raw key, there is
+        no schema name available here without a network call, so both of the
+        field's own two canonical spellings are checked explicitly instead).
+
+        Per-field operator/format legality, and the user/version-format
+        project-only constraint (see CUSTOM_FIELD_FILTER_PROJECT_ONLY_FORMATS's
+        module-level docstring), are deliberately NOT validated here: this
+        Service has no cheap, network-free way to learn a given cf_<N>'s
+        actual field_format, so neither can be checked precisely without a
+        schema probe this ticket deliberately does not add (see module-level
+        constant docstrings for the full rationale). Both surface as
+        OpenProject's own clean 400 (InvalidQuery), mapped to
+        InvalidInputError by app/transport/errors.py, when they occur.
+        """
+        if not custom_field_filters:
+            return
+        for raw_key, spec in custom_field_filters.items():
+            match = _CF_FILTER_KEY_RE.match(str(raw_key))
+            if not match:
+                raise InvalidInputError(
+                    f"custom_field_filters key '{raw_key}' must be of the form 'cf_<N>' or 'customField<N>'."
+                )
+            cf_id = match.group(2)
+            cf_key = f"cf_{cf_id}"
+            camel_key = f"customField{cf_id}"
+            if hidden_fields.custom_field_hidden(cf_key, camel_key, settings=self._settings):
+                raise InvalidInputError(
+                    f"OpenProject custom field '{cf_key}' is hidden by OPENPROJECT_HIDE_CUSTOM_FIELDS "
+                    "and cannot be filtered."
+                )
+            operator = spec.get("operator")
+            values = spec.get("values")
+            if not isinstance(operator, str) or not operator:
+                raise InvalidInputError(f"custom_field_filters['{raw_key}'].operator must be a non-empty string.")
+            if not isinstance(values, list):
+                raise InvalidInputError(f"custom_field_filters['{raw_key}'].values must be a list.")
+            filters.append({cf_key: {"operator": operator, "values": list(values)}})
+
     async def search(
         self,
         *,
@@ -747,6 +879,7 @@ class WorkPackageService:
         offset: int = 1,
         limit: int | None = None,
         include_sums: bool = False,
+        custom_field_filters: dict[str, dict[str, Any]] | None = None,
     ) -> WorkPackageListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
         effective = effective_limit(limit, settings=self._settings)
@@ -783,6 +916,7 @@ class WorkPackageService:
             due_on=due_on,
             due_between=due_between,
         )
+        self._apply_custom_field_filters(filters, custom_field_filters=custom_field_filters)
         return await self._list_collection(
             project_id=project_id,
             filters=filters,
@@ -817,6 +951,7 @@ class WorkPackageService:
         offset: int = 1,
         limit: int | None = None,
         include_sums: bool = False,
+        custom_field_filters: dict[str, dict[str, Any]] | None = None,
     ) -> WorkPackageListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
         effective = effective_limit(limit, settings=self._settings)
@@ -874,6 +1009,7 @@ class WorkPackageService:
             due_on=due_on,
             due_between=due_between,
         )
+        self._apply_custom_field_filters(filters, custom_field_filters=custom_field_filters)
         return await self._list_collection(
             project_id=project_id,
             filters=filters,

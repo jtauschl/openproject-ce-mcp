@@ -11,6 +11,7 @@ from openproject_ce_mcp.tools import (
     ISO8601_DURATION_RE,
     _duration_between,
     _pad_fractional_seconds,
+    _validate_custom_field_filters,
     _validate_group_by,
     _validate_optional_duration,
     _validate_optional_non_negative_int,
@@ -646,3 +647,99 @@ def test_validate_group_by_rejects_sortable_but_not_groupable_field() -> None:
         _validate_group_by("due_date")
     with pytest.raises(ValueError, match="unknown field 'estimated_time'"):
         _validate_group_by("estimated_time")
+
+
+# --- OPM-109: _validate_custom_field_filters -------------------------------
+
+
+def test_validate_custom_field_filters_none_passes_through() -> None:
+    assert _validate_custom_field_filters(None) is None
+
+
+def test_validate_custom_field_filters_accepts_cf_key_unchanged() -> None:
+    result = _validate_custom_field_filters({"cf_12": {"operator": "=", "values": ["42"]}})
+    assert result == {"cf_12": {"operator": "=", "values": ["42"]}}
+
+
+def test_validate_custom_field_filters_normalizes_customfield_key() -> None:
+    # customField<N> is CustomField#attribute_name(:camel_case), the JSON/PATCH
+    # key -- cf_<N> is CustomField#column_name, the real OpenProject filter
+    # key. Both are accepted transparently and always normalized to cf_<N>.
+    result = _validate_custom_field_filters({"customField7": {"operator": "~", "values": ["Acme"]}})
+    assert result == {"cf_7": {"operator": "~", "values": ["Acme"]}}
+
+
+@pytest.mark.parametrize(
+    "bad_key",
+    ["story_points", "cf_abc", "CustomField7", "cf_0", "cf_01", "customfield7", "cf_-1", ""],
+)
+def test_validate_custom_field_filters_rejects_invalid_key_shape(bad_key: str) -> None:
+    with pytest.raises(ValueError, match="must be of the form"):
+        _validate_custom_field_filters({bad_key: {"operator": "=", "values": ["1"]}})
+
+
+def test_validate_custom_field_filters_rejects_cf_and_customfield_collision() -> None:
+    with pytest.raises(ValueError, match="both resolve to 'cf_5'"):
+        _validate_custom_field_filters(
+            {
+                "cf_5": {"operator": "=", "values": ["1"]},
+                "customField5": {"operator": "=", "values": ["2"]},
+            }
+        )
+
+
+def test_validate_custom_field_filters_rejects_non_dict_value() -> None:
+    with pytest.raises(ValueError, match="must be an object with 'operator' and 'values'"):
+        _validate_custom_field_filters({"cf_1": "not-a-dict"})  # type: ignore[dict-item]
+
+
+def test_validate_custom_field_filters_rejects_missing_operator_or_values() -> None:
+    with pytest.raises(ValueError, match="must be an object with 'operator' and 'values'"):
+        _validate_custom_field_filters({"cf_1": {"operator": "="}})
+    with pytest.raises(ValueError, match="must be an object with 'operator' and 'values'"):
+        _validate_custom_field_filters({"cf_1": {"values": ["1"]}})
+
+
+def test_validate_custom_field_filters_rejects_unsupported_extra_keys() -> None:
+    with pytest.raises(ValueError, match="unsupported key"):
+        _validate_custom_field_filters({"cf_1": {"operator": "=", "values": ["1"], "extra": True}})
+
+
+def test_validate_custom_field_filters_rejects_unknown_operator() -> None:
+    with pytest.raises(ValueError, match="not a recognized custom-field filter operator"):
+        _validate_custom_field_filters({"cf_1": {"operator": "LIKE", "values": ["1"]}})
+
+
+def test_validate_custom_field_filters_rejects_non_string_values_list() -> None:
+    with pytest.raises(ValueError, match="values must be a list of strings"):
+        _validate_custom_field_filters({"cf_1": {"operator": "=", "values": [1, 2]}})
+    with pytest.raises(ValueError, match="values must be a list of strings"):
+        _validate_custom_field_filters({"cf_1": {"operator": "=", "values": "not-a-list"}})
+
+
+def test_validate_custom_field_filters_operator_with_no_values_allowed() -> None:
+    # "*"/"!*" operators take no values (e.g. AllAndNonBlank/NoneOrBlank) --
+    # an empty list must be accepted, not rejected as "missing".
+    result = _validate_custom_field_filters({"cf_9": {"operator": "!*", "values": []}})
+    assert result == {"cf_9": {"operator": "!*", "values": []}}
+
+
+def test_validate_custom_field_filters_rejects_too_many_entries() -> None:
+    too_many = {f"cf_{i}": {"operator": "=", "values": ["1"]} for i in range(1, 22)}
+    with pytest.raises(ValueError, match="at most 20 entries"):
+        _validate_custom_field_filters(too_many)
+
+
+def test_validate_custom_field_filters_rejects_too_many_values() -> None:
+    with pytest.raises(ValueError, match="at most 100 items"):
+        _validate_custom_field_filters({"cf_1": {"operator": "=", "values": [str(i) for i in range(101)]}})
+
+
+def test_validate_custom_field_filters_rejects_overlong_value() -> None:
+    with pytest.raises(ValueError, match="at most 1000 characters"):
+        _validate_custom_field_filters({"cf_1": {"operator": "=", "values": ["x" * 1001]}})
+
+
+def test_validate_custom_field_filters_rejects_not_a_dict() -> None:
+    with pytest.raises(ValueError, match="must be an object mapping"):
+        _validate_custom_field_filters([1, 2, 3])  # type: ignore[arg-type]

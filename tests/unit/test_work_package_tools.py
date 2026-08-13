@@ -185,6 +185,64 @@ async def test_list_work_packages_tool_passes_include_sums_flag() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_work_packages_tool_passes_custom_field_filters_to_client() -> None:
+    # OPM-109: confirms the tool actually forwards the validated/normalized
+    # custom_field_filters through to OpenProjectClient.list_work_packages --
+    # a gap where the tool signature could silently drop the parameter before
+    # it reaches client.py would otherwise go undetected by the Service-layer
+    # tests alone.
+    class StubClient:
+        async def list_work_packages(self, **kwargs):
+            return kwargs
+
+    result = await list_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        custom_field_filters={"customField12": {"operator": "=", "values": ["42"]}},
+    )
+
+    assert result["custom_field_filters"] == {"cf_12": {"operator": "=", "values": ["42"]}}
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_tool_defaults_custom_field_filters_to_none() -> None:
+    class StubClient:
+        async def list_work_packages(self, **kwargs):
+            return kwargs
+
+    result = await list_work_packages(FakeContext(StubClient()))  # type: ignore[arg-type]
+
+    assert result["custom_field_filters"] is None
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_tool_rejects_invalid_custom_field_filter_key() -> None:
+    class StubClient:
+        async def list_work_packages(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match="must be of the form"):
+        await list_work_packages(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            custom_field_filters={"story_points": {"operator": "=", "values": ["1"]}},
+        )
+
+
+@pytest.mark.asyncio
+async def test_search_work_packages_tool_passes_custom_field_filters_to_client() -> None:
+    class StubClient:
+        async def search_work_packages(self, **kwargs):
+            return kwargs
+
+    result = await search_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        search="Feature",
+        custom_field_filters={"cf_5": {"operator": "~", "values": ["Acme"]}},
+    )
+
+    assert result["custom_field_filters"] == {"cf_5": {"operator": "~", "values": ["Acme"]}}
+
+
+@pytest.mark.asyncio
 async def test_list_work_packages_returns_version_and_description_flags() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/demo":
