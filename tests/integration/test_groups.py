@@ -13,7 +13,7 @@ import uuid
 
 import pytest
 
-from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient
+from openproject_ce_mcp.client import InvalidInputError, NotFoundError, OpenProjectClient, PermissionDeniedError
 
 pytestmark = pytest.mark.integration
 
@@ -81,6 +81,36 @@ async def test_update_group_renames_and_manages_members(client: OpenProjectClien
     assert added_back.state == "confirmed"
     assert added_back.result is not None
     assert added_back.result.member_count == 1
+
+
+async def test_delete_group_removes_it(client: OpenProjectClient) -> None:
+    """Direct assertion for delete_group's own success path -- previously
+    only ever exercised indirectly via the group_ids cleanup fixture."""
+    name = f"[integration-test] {uuid.uuid4().hex[:8]}"
+    created = await client.create_group(name=name, confirm=True)
+    assert created.ready, created.validation_errors
+    group_id = created.group_id
+    assert group_id is not None
+
+    deleted = await client.delete_group(group_id, confirm=True)
+    assert deleted.ready and deleted.state == "confirmed"
+
+    with pytest.raises(NotFoundError):
+        await client.get_group(group_id)
+
+
+async def test_create_and_delete_group_denied_when_admin_write_disabled(
+    admin_write_disabled_client: OpenProjectClient,
+) -> None:
+    with pytest.raises(PermissionDeniedError):
+        await admin_write_disabled_client.create_group(
+            name=f"[integration-test] denied {uuid.uuid4().hex[:8]}", confirm=True
+        )
+
+    with pytest.raises(PermissionDeniedError):
+        # delete_group checks admin-write unconditionally before any lookup,
+        # so a non-existent id is fine here.
+        await admin_write_disabled_client.delete_group(999999999, confirm=True)
 
 
 async def test_create_group_rejects_hidden_name_field(client: OpenProjectClient) -> None:
