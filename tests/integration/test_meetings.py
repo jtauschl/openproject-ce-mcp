@@ -326,8 +326,19 @@ async def test_create_get_update_delete_meeting_outcome(
     assert agenda_result.ready, agenda_result.validation_errors
     agenda_item_id = agenda_result.agenda_item_id
 
+    # MeetingOutcome#editable? requires meeting.in_progress? (verified against
+    # op-sources: modules/meeting/app/models/meeting_outcome.rb and the
+    # module's own request specs, which build their outcome fixtures with
+    # state: :in_progress) -- a freshly created meeting defaults to "open"
+    # and outcome writes are rejected with "This outcome is not editable
+    # anymore." until the meeting is moved to in_progress.
+    state_result = await client.update_meeting(meeting_id=meeting_id, state="in_progress", confirm=True)
+    assert state_result.ready, state_result.validation_errors
+
     try:
-        create_result = await client.create_meeting_outcome(agenda_item_id=agenda_item_id, kind="info", confirm=True)
+        create_result = await client.create_meeting_outcome(
+            agenda_item_id=agenda_item_id, kind="information", notes="integration test note", confirm=True
+        )
     except NotFoundError:
         pytest.skip("meeting_outcomes endpoint not available (requires OpenProject 17.6+)")
     assert create_result.ready, create_result.validation_errors
@@ -341,11 +352,11 @@ async def test_create_get_update_delete_meeting_outcome(
     listed = await client.list_meeting_outcomes(agenda_item_id)
     assert any(o.id == outcome_id for o in listed.results)
 
-    update_result = await client.update_meeting_outcome(outcome_id=outcome_id, kind="action", confirm=True)
+    update_result = await client.update_meeting_outcome(outcome_id=outcome_id, kind="decision", confirm=True)
     assert update_result.ready, update_result.validation_errors
 
     updated = await client.get_meeting_outcome(outcome_id)
-    assert updated.kind == "action"
+    assert updated.kind == "decision"
 
     delete_result = await client.delete_meeting_outcome(outcome_id=outcome_id, confirm=True)
     assert delete_result.ready and delete_result.state == "confirmed"
@@ -377,18 +388,26 @@ async def test_create_update_delete_meeting_outcome_denied_outside_write_allowli
     assert agenda_result.ready
     agenda_item_id = agenda_result.agenda_item_id
 
+    # See test_create_get_update_delete_meeting_outcome's own comment: a
+    # freshly created meeting defaults to state "open", but
+    # MeetingOutcome#editable? requires "in_progress".
+    state_result = await client.update_meeting(meeting_id=meeting_id, state="in_progress", confirm=True)
+    assert state_result.ready, state_result.validation_errors
+
     with pytest.raises(PermissionDeniedError):
-        await denied_client.create_meeting_outcome(agenda_item_id=agenda_item_id, kind="info", confirm=True)
+        await denied_client.create_meeting_outcome(agenda_item_id=agenda_item_id, kind="information", confirm=True)
 
     try:
-        existing = await client.create_meeting_outcome(agenda_item_id=agenda_item_id, kind="info", confirm=True)
+        existing = await client.create_meeting_outcome(
+            agenda_item_id=agenda_item_id, kind="information", notes="integration test note", confirm=True
+        )
     except NotFoundError:
         pytest.skip("meeting_outcomes endpoint not available (requires OpenProject 17.6+)")
     assert existing.ready
     outcome_id = existing.outcome_id
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.update_meeting_outcome(outcome_id=outcome_id, kind="action", confirm=True)
+        await denied_client.update_meeting_outcome(outcome_id=outcome_id, kind="decision", confirm=True)
 
     with pytest.raises(PermissionDeniedError):
         await denied_client.delete_meeting_outcome(outcome_id=outcome_id, confirm=True)

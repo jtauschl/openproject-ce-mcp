@@ -2198,11 +2198,17 @@ async def create_meeting_outcome(
 
     Requires OpenProject 17.6+.
 
+    kind must be one of "information", "decision", "work_package" (OpenProject's
+    real enum values — not e.g. "info" or "action", which OpenProject rejects
+    with an internal server error rather than a clean validation error).
+    "information"-kind outcomes require notes; "work_package"-kind outcomes
+    require work_package_id.
+
     work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number; optional.
     """
     client = _client_from_context(ctx)
     safe_agenda_item_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
-    safe_kind = _validate_required_text(kind, field_name="kind", max_length=255)
+    safe_kind = _validate_choice(kind, field_name="kind", allowed_values=_MEETING_OUTCOME_KINDS)
     safe_notes = _validate_optional_text(notes, field_name="notes", max_length=50_000)
     safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
     safe_work_package_numeric_id = (
@@ -2231,10 +2237,15 @@ async def update_meeting_outcome(
     with confirm=true.
 
     Requires OpenProject 17.6+.
+
+    kind, if given, must be one of "information", "decision", "work_package"
+    (OpenProject's real enum values — not e.g. "info" or "action", which
+    OpenProject rejects with an internal server error rather than a clean
+    validation error).
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(outcome_id, field_name="outcome_id")
-    safe_kind = _validate_optional_query(kind, field_name="kind", max_length=255)
+    safe_kind = _validate_optional_choice(kind, field_name="kind", allowed_values=_MEETING_OUTCOME_KINDS)
     safe_notes = _validate_optional_update_text(notes, field_name="notes", max_length=50_000)
     safe_work_package_id = _validate_optional_work_package_ref(work_package_id)
     safe_work_package_numeric_id = (
@@ -6695,6 +6706,26 @@ def _validate_optional_choice(
         allowed = ", ".join(sorted(allowed_values))
         raise ValueError(f"{field_name} must be one of: {allowed}.")
     return normalized
+
+
+def _validate_choice(
+    value: str,
+    *,
+    field_name: str,
+    allowed_values: set[str],
+) -> str:
+    normalized = _validate_required_text(value, field_name=field_name, max_length=100)
+    if normalized not in allowed_values:
+        allowed = ", ".join(sorted(allowed_values))
+        raise ValueError(f"{field_name} must be one of: {allowed}.")
+    return normalized
+
+
+# Real enum values from MeetingOutcome (op-sources: modules/meeting/app/models/
+# meeting_outcome.rb) -- OpenProject itself rejects any other value with an
+# internal server error (500), not a clean 422, so this must be checked
+# client-side rather than left to the server's own validation.
+_MEETING_OUTCOME_KINDS = {"information", "decision", "work_package"}
 
 
 # Resolves every classified tool name to its actual function object.

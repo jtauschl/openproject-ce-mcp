@@ -145,7 +145,7 @@ def _delete_meeting_agenda_item_handler(request: httpx.Request) -> httpx.Respons
 # --- Meeting Outcomes -------------------------------------------------------
 
 
-def _outcome_payload(*, outcome_id: int = 31, kind: str = "info") -> dict:
+def _outcome_payload(*, outcome_id: int = 31, kind: str = "information") -> dict:
     return {
         "id": outcome_id,
         "kind": kind,
@@ -175,7 +175,7 @@ def _update_meeting_outcome_handler(request: httpx.Request) -> httpx.Response:
     if request.url.path == "/api/v3/meetings/12" and request.method == "GET":
         return httpx.Response(200, json=_meeting_payload(), request=request)
     if request.url.path == "/api/v3/meeting_outcomes/31" and request.method == "PATCH":
-        return httpx.Response(200, json=_outcome_payload(kind="action"), request=request)
+        return httpx.Response(200, json=_outcome_payload(kind="decision"), request=request)
     return _unexpected(request)
 
 
@@ -358,7 +358,7 @@ MEETING_CASES: dict[str, WriteToolCase] = {
     ),
     "create_meeting_outcome": WriteToolCase(
         tool="create_meeting_outcome",
-        kwargs={"agenda_item_id": 21, "kind": "info"},
+        kwargs={"agenda_item_id": 21, "kind": "information", "notes": "Discuss roadmap"},
         settings=_settings(),
         write_scope="meeting",
         handler=_create_meeting_outcome_handler,
@@ -366,7 +366,7 @@ MEETING_CASES: dict[str, WriteToolCase] = {
     ),
     "update_meeting_outcome": WriteToolCase(
         tool="update_meeting_outcome",
-        kwargs={"outcome_id": 31, "kind": "action"},
+        kwargs={"outcome_id": 31, "kind": "decision"},
         settings=_settings(),
         write_scope="meeting",
         handler=_update_meeting_outcome_handler,
