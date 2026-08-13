@@ -74,7 +74,7 @@ support.
 - **`list_work_packages`/`search_work_packages`/`get_work_package`/
   `get_work_packages`/`list_my_open_work_packages` now expose custom field
   values** via new `custom_fields`/`custom_fields_truncated`/
-  `custom_comments`/`custom_comments_truncated` fields (OPM-94). Keyed by
+  `custom_comments`/`custom_comments_truncated` fields. Keyed by
   the raw `customField<N>` key (never a friendly name); values are
   normalized by shape (link-typed formats become title-only, matching every
   other link field; the multi-paragraph "text" format is capped like
@@ -89,9 +89,9 @@ support.
   `calculated_value`) and selecting individual custom-field keys via
   `select` remain out of scope.
 - **`list_work_packages`/`search_work_packages` gain a `custom_field_filters`
-  parameter** to filter by custom field value (OPM-109, a follow-up to
-  OPM-94 per OPM-90's design decision to keep filtering separate from value
-  exposure). A dict keyed by `cf_<N>` or `customField<N>` (both accepted
+  parameter** to filter by custom field value — deliberately kept as its own
+  addition, separate from reading custom field values (above). A dict keyed
+  by `cf_<N>` or `customField<N>` (both accepted
   transparently, normalized to `cf_<N>` — the actual OpenProject filter key,
   distinct from `customField<N>`'s JSON/PATCH-key role on the read/write
   paths); each entry is `{"operator": "<symbol>", "values": [...]}`. Covers
