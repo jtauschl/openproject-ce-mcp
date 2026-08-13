@@ -20,7 +20,7 @@ import uuid
 
 import pytest
 
-from openproject_ce_mcp.client import InvalidInputError, NotFoundError, OpenProjectClient
+from openproject_ce_mcp.client import InvalidInputError, NotFoundError, OpenProjectClient, PermissionDeniedError
 
 pytestmark = pytest.mark.integration
 
@@ -53,6 +53,26 @@ async def test_lock_user_rejects_hidden_locked_field(client: OpenProjectClient) 
 
     with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_USER_FIELDS"):
         await hidden_client.lock_user(user_id=me.id, confirm=False)
+
+
+async def test_create_and_delete_user_denied_when_admin_write_disabled(
+    admin_write_disabled_client: OpenProjectClient,
+) -> None:
+    with pytest.raises(PermissionDeniedError):
+        await admin_write_disabled_client.create_user(
+            login=f"integration-test-denied-{uuid.uuid4().hex[:8]}",
+            email="integration-test-denied@example.invalid",
+            firstname="Integration",
+            lastname="Denied",
+            password="Aa1!" + uuid.uuid4().hex,
+            confirm=True,
+        )
+
+    with pytest.raises(PermissionDeniedError):
+        # delete_user checks admin-write unconditionally before any lookup,
+        # so a non-existent id is fine here -- the denial fires before the
+        # API would ever be reached.
+        await admin_write_disabled_client.delete_user(999999999, confirm=True)
 
 
 async def test_user_lifecycle_roundtrip(client: OpenProjectClient, user_ids: list[int]) -> None:
