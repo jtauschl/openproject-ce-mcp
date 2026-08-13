@@ -144,10 +144,43 @@ class HttpxRecurringMeetingApi:
         elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
         return [RecurringMeetingOccurrenceRecord(summary=normalize_occurrence(item)) for item in elements]
 
+    async def _ensure_template_not_draft(self, recurring_meeting_id: int) -> None:
+        # Meetings::SetAttributesService#set_default_attributes forces every
+        # RecurringMeeting's template Meeting into state="draft" at creation
+        # time (`model.state = "draft" if !model.recurring? || model.
+        # template?`), but InitOccurrenceService#draft_template_failure
+        # rejects `init` against a draft template with a bare
+        # ServiceResult.failure(message: ...) -- no `errors:` -- which then
+        # crashes MultipleErrors.create_if_many([]) into an opaque 500
+        # ("expected at least one error"), verified live against a real
+        # 17.7.1 instance. The draft-forcing only fires on `new_record?`
+        # (`set_attributes_service.rb`), so a one-time PATCH to state="open"
+        # sticks permanently and is safe to repeat on every call.
+        recurring_meeting = await self._transport.get_json(f"recurring_meetings/{recurring_meeting_id}")
+        template_link = recurring_meeting.get("_links", {}).get("template")
+        template_id = _id_from_href(template_link.get("href")) if isinstance(template_link, dict) else None
+        if template_id is None:
+            return
+        template = await self._transport.get_json(f"meetings/{template_id}")
+        if template.get("state") != "draft":
+            return
+        await self._transport.patch_json(
+            f"meetings/{template_id}",
+            json_body={"state": "open", "lockVersion": template.get("lockVersion", 0)},
+        )
+
     async def init_occurrence(self, recurring_meeting_id: int, *, start_time: str) -> MeetingSummary:
+        # OpenProject's own occurrences_by_recurring_meeting_api.rb `init`
+        # route declares no request-body params (only reads start_time from
+        # the URL) -- but Grape's own middleware still rejects a POST with
+        # no Content-Type header at all with a 406 ("Missing content-type
+        # header"), verified live against a real 17.7.1 instance. An empty
+        # JSON body (rather than no body) makes httpx set that header while
+        # still sending nothing the endpoint would reject.
+        await self._ensure_template_not_draft(recurring_meeting_id)
         encoded_start_time = quote(start_time, safe="")
         response = await self._transport.post_json(
-            f"recurring_meetings/{recurring_meeting_id}/occurrences/{encoded_start_time}/init"
+            f"recurring_meetings/{recurring_meeting_id}/occurrences/{encoded_start_time}/init", json_body={}
         )
         return normalize_meeting(response)
 
