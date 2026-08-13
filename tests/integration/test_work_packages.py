@@ -790,3 +790,35 @@ async def test_get_work_package_hierarchy_filters_ancestors_and_children_outside
     unrestricted_wp = await unrestricted_client.get_work_package(child.work_package_id)
     assert unrestricted_wp.ancestors
     assert any(a.get("href", "").endswith(outside_href_fragment) for a in unrestricted_wp.ancestors)
+
+
+async def test_get_work_package_exposes_seeded_custom_field_value(client: OpenProjectClient, test_project: str) -> None:
+    """OPM-94: real write-then-read round trip against a live instance.
+
+    docker/test/seed.rb (extended for OPM-94) creates a real, activated
+    "Seed Text Field" (string-format) work-package custom field, attached to
+    every type enabled on the test project, and sets a known value on the
+    project's seeded work package -- this test finds that seeded work
+    package and its custom field value the same way any other consumer of
+    list_work_packages would, without hardcoding the field's numeric id
+    (which depends on the instance's own auto-increment history, not
+    something this test can predict).
+    """
+    result = await client.list_work_packages(project=test_project)
+    assert result.count > 0
+    # docker/test/seed.rb always seeds exactly one plain "Seed work package"
+    # subject -- find it rather than assuming index 0 (bulk/search tests in
+    # this file create other work packages in the same project).
+    seed_wp_summary = next((wp for wp in result.results if wp.subject == "Seed work package"), None)
+    assert seed_wp_summary is not None, "docker/test/seed.rb's seed work package was not found via list_work_packages"
+
+    wp = await client.get_work_package(seed_wp_summary.id)
+    assert wp.custom_fields, "expected at least one custom_fields entry from the seeded 'Seed Text Field' CF"
+
+    # The raw key is unknown ahead of time (depends on the instance's custom
+    # field auto-increment id) -- find the entry by its known seeded value
+    # instead. The value is wrapped in <user-content> delimiting (every
+    # string-format CF value is, per OPM-94 -- untrusted user content).
+    matching_values = [v for v in wp.custom_fields.values() if v and "Seeded custom field value" in str(v)]
+    assert matching_values, f"no custom_fields entry contained the seeded value; got: {wp.custom_fields}"
+    assert matching_values[0] == "<user-content>Seeded custom field value</user-content>"

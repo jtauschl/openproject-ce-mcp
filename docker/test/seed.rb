@@ -256,6 +256,61 @@ else
   log("project TST already has a forum")
 end
 
+# get_work_package/list_work_packages custom_fields (OPM-94) need at least
+# one real, activated CE-compatible custom field on the TST project's work
+# packages -- a fresh instance has none. Create one simple "string"-format
+# field (is_for_all: true so it applies without a per-type
+# custom_fields_projects/custom_fields_types join row).
+#
+# NOT has_comment: true -- verified live against a real 17.7.1 instance
+# (ActiveRecord::RecordInvalid: "Add a comment text field must be blank"):
+# CustomField#can_have_comment? delegates to
+# `customized_class.can_have_custom_comments?`, which reads
+# `acts_as_customizable`'s per-MODEL `comments:` option -- and
+# app/models/work_package.rb's own `acts_as_customizable
+# validate_on: :saving_custom_fields` call never passes `comments: true`
+# (only app/models/project.rb does: `comments: true, admin_only_allowed:
+# true`). So customComment<N> is Project-only, structurally impossible on a
+# WorkPackage on this codebase, regardless of OpenProject version -- not
+# merely gated to 17.2+ as OPM-94's original plan assumed from
+# CustomFieldInjector#inject_comment_value alone (that method is generic
+# over any customizable resource; it never fires for WorkPackage because
+# has_comment? is always false there). custom_comments/
+# custom_comments_truncated on WorkPackageSummary/WorkPackageDetail are kept
+# regardless (harmless, forward-compatible if a future OpenProject version
+# ever changes this), but will always be None in practice for this
+# resource -- see this project's own docs/field-hiding.md and the OPM-94
+# implementation report for this finding.
+custom_field = WorkPackageCustomField.find_by(name: "Seed Text Field") || WorkPackageCustomField.create!(
+  name: "Seed Text Field",
+  field_format: "string",
+  is_for_all: true,
+  is_required: false
+)
+log("custom field '#{custom_field.name}' present (id=#{custom_field.id}, format=#{custom_field.field_format})")
+
+# is_for_all only auto-applies a custom field to every PROJECT; it must also
+# be attached to the relevant work-package TYPE(s) for
+# available_custom_fields (what CustomFieldInjector actually renders) to
+# include it -- attach it to every type already enabled on TST above.
+missing_types = project.types.reject { |t| t.custom_fields.include?(custom_field) }
+unless missing_types.empty?
+  custom_field.types << missing_types
+  log("attached custom field '#{custom_field.name}' to types: #{missing_types.map(&:name).join(', ')}")
+end
+
+# Give the seed work package an actual value for the new custom field so a
+# read-path integration test has something real to assert on, not just
+# "the key exists but is nil".
+seed_wp = project.work_packages.first
+if seed_wp && seed_wp.custom_value_for(custom_field)&.value.to_s.empty?
+  seed_wp.custom_field_values = { custom_field.id => "Seeded custom field value" }
+  seed_wp.save!
+  log("set custom field '#{custom_field.name}' value on work package id=#{seed_wp.id}")
+else
+  log("seed work package already has a value for custom field '#{custom_field.name}' (or no seed work package yet)")
+end
+
 # get_project_phase/get_project_phase_definition have no list/create endpoint
 # in this server's API -- a project has zero Project::Phase rows by default
 # (they're an opt-in "life cycle" concept, not automatically present), so
