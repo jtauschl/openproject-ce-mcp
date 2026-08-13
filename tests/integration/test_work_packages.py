@@ -333,6 +333,34 @@ async def test_create_and_update_work_package_deny_reparent_into_write_restricte
         )
 
 
+async def test_create_update_delete_work_package_denied_outside_write_allowlist(
+    denied_client: OpenProjectClient, client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """Baseline denial: a plain create/update/delete against test_project
+    itself must be rejected when test_project is outside the caller's own
+    write allowlist -- distinct from the reparent-target-specific denial
+    tested above, which only proves a DIFFERENT project's write scope is
+    checked on reparent, not that a baseline write to test_project itself is."""
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.create_work_package(
+            project=test_project, type="Task", subject=f"{_SUBJECT} baseline create denied", confirm=True
+        )
+
+    existing = await client.create_work_package(
+        project=test_project, type="Task", subject=f"{_SUBJECT} baseline update/delete denied", confirm=True
+    )
+    assert existing.ready
+    wp_ids.append(existing.work_package_id)
+
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.update_work_package(
+            work_package_id=existing.work_package_id, subject="denied update", confirm=True
+        )
+
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.delete_work_package(work_package_id=existing.work_package_id, confirm=True)
+
+
 async def test_create_reparent_and_unparent_work_package(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
