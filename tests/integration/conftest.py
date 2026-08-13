@@ -369,6 +369,22 @@ async def group_ids(client: OpenProjectClient):
 
 
 @pytest.fixture
+async def storage_ids(client: OpenProjectClient):
+    """Yields a list to append created storage IDs; deletes them all after the test.
+
+    Storages are instance-wide, not project-scoped — the same caveat as
+    ``group_ids`` above.
+    """
+    created: list[int] = []
+    yield created
+    for storage_id in created:
+        try:
+            await client.delete_storage(storage_id, confirm=True)
+        except Exception:
+            pass
+
+
+@pytest.fixture
 async def user_ids(client: OpenProjectClient):
     """Yields a list to append created user IDs; deletes them all after the test.
 

@@ -1,0 +1,179 @@
+"""Integration tests for storages/project_storages (OPM-179).
+
+Requires the Nextcloud Docker fixture: `docker/test/up.sh 177nc` (sets
+SEED_NEXTCLOUD_STORAGE=1, which seeds a Storages::NextcloudStorage +
+Storages::ProjectStorage row via save(validate: false) -- bypassing
+OpenProject's live host-reachability/setup-completeness probe. See
+docker/test/README.md and docker/test/seed.rb.
+
+Admin write is instance-wide, like Groups/Users -- never run against a real,
+actively-used OpenProject instance.
+
+Write-path note (verified against real source before writing these tests,
+not assumed): `Storages::NextcloudStorage`'s own provider contract
+(GeneralInformationContract) runs a SYNCHRONOUS live HTTP probe
+(NextcloudCompatibleHostValidator) against `{host}/ocs/v2.php/cloud/capabilities`
+and `{host}/index.php/apps/integration_openproject/check-config` whenever the
+`host` attribute changes on create/update -- this is not a hypothetical, it
+is exactly what the seed fixture's own `save(validate: false)` bypasses (see
+the fixture commit's message). This means:
+- Creating a NEW Nextcloud storage against an unreachable/non-Nextcloud host
+  is EXPECTED to fail this probe (InvalidInputError, 422) -- tested below as
+  the actual, realistic outcome, not as a workaround.
+- OneDrive/Sharepoint have NO such host-reachability validator in their own
+  provider contracts (OneDriveContract/SharepointContract only validate
+  field presence/format, no live HTTP calls) -- their write-path tests do
+  not have this complication, and the Enterprise-gate rejection test below
+  sends OneDrive-shaped payload with a valid tenant_id and no host (per
+  OneDriveContract's `validates :host, absence: true`) specifically so the
+  Enterprise-gate error is the ONLY validation error (avoiding OpenProject's
+  MultipleErrors wrapper, which would otherwise obscure the message text
+  this test asserts on).
+- update_storage's `name`-only rename (no `host` change) does NOT re-trigger
+  the host validator (`NextcloudCompatibleHostValidator#validate_each` only
+  fires `if host_changed`) -- safe to exercise against the seeded storage.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+import pytest
+
+from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient
+
+pytestmark = pytest.mark.integration
+
+
+# --- Read path: against the seeded Nextcloud storage/project_storage --------
+
+
+async def test_list_storages_finds_seed_nextcloud_storage(client: OpenProjectClient) -> None:
+    listed = await client.list_storages()
+    matches = [s for s in listed.results if s.name == "Seed Nextcloud Storage"]
+    assert len(matches) == 1
+    storage = matches[0]
+    assert storage.provider_type == "Nextcloud"
+    # The fixture deliberately bypasses live OAuth/setup validation, so the
+    # storage stays unconfigured.
+    assert storage.configured is False
+
+
+async def test_get_storage_returns_nextcloud_fields(client: OpenProjectClient) -> None:
+    listed = await client.list_storages()
+    seed = next(s for s in listed.results if s.name == "Seed Nextcloud Storage")
+
+    detail = await client.get_storage(seed.id)
+
+    assert detail.provider_type == "Nextcloud"
+    assert detail.has_application_password is False
+    assert detail.forbidden_file_name_characters == '<>:"\\/|?*'
+    assert detail.tenant_id is None
+    assert detail.drive_id is None
+
+
+async def test_list_project_storages_finds_seed_link(client: OpenProjectClient) -> None:
+    listed = await client.list_project_storages()
+    matches = [ps for ps in listed.results if ps.storage_name == "Seed Nextcloud Storage"]
+    assert len(matches) == 1
+    project_storage = matches[0]
+    assert project_storage.project_folder_mode == "inactive"
+    assert project_storage.project is not None
+
+
+async def test_get_project_storage_returns_creator(client: OpenProjectClient) -> None:
+    listed = await client.list_project_storages()
+    seed = next(ps for ps in listed.results if ps.storage_name == "Seed Nextcloud Storage")
+
+    detail = await client.get_project_storage(seed.id)
+
+    assert detail.creator is not None
+    assert detail.storage_name == "Seed Nextcloud Storage"
+
+
+# --- Write path: update against the seeded storage (name-only, no host change) --
+
+
+async def test_update_storage_renames_without_triggering_host_probe(client: OpenProjectClient) -> None:
+    listed = await client.list_storages()
+    seed = next(s for s in listed.results if s.name == "Seed Nextcloud Storage")
+
+    new_name = f"Seed Nextcloud Storage [{uuid.uuid4().hex[:8]}]"
+    try:
+        updated = await client.update_storage(storage_id=seed.id, name=new_name, confirm=True)
+        assert updated.state == "confirmed"
+        assert updated.result is not None
+        assert updated.result.name == new_name
+    finally:
+        # Restore the original name so other tests/fixture re-runs relying on
+        # "Seed Nextcloud Storage" keep working.
+        await client.update_storage(storage_id=seed.id, name="Seed Nextcloud Storage", confirm=True)
+
+
+# --- Write path: create/delete a NEW storage ---------------------------------
+
+
+async def test_create_storage_one_drive_rejected_without_enterprise_token(
+    client: OpenProjectClient, storage_ids: list[int]
+) -> None:
+    """Exercises the REAL OpenProject contract validation end-to-end (not a
+    mock): OneDriveStorage overrides allowed_by_enterprise_token? to check
+    EnterpriseToken.allows_to?(:one_drive_sharepoint_file_storage), which a
+    Community Edition instance never satisfies. No `host` is sent (OneDrive's
+    own contract requires host to be ABSENT) and tenant_id is a
+    syntactically valid GUID, so this is the single validation error on the
+    request -- OpenProject's MultipleErrors wrapper does not fire, and the
+    real Enterprise-gate message text propagates untouched.
+    """
+    name = f"[integration-test] OneDrive {uuid.uuid4().hex[:8]}"
+
+    with pytest.raises(InvalidInputError, match="[Ee]nterprise"):
+        await client.create_storage(
+            name=name,
+            provider_type="OneDrive",
+            tenant_id="11111111-1111-1111-1111-111111111111",
+            confirm=True,
+        )
+
+    # No storage should have been created -- nothing to register for cleanup,
+    # but assert list_storages doesn't show it either, as defense in depth.
+    listed = await client.list_storages()
+    assert not any(s.name == name for s in listed.results)
+
+
+async def test_create_storage_rejects_unknown_provider_type_before_any_http_call(
+    client: OpenProjectClient,
+) -> None:
+    """provider_type is validated client-side against a fixed URN map before
+    any request is made -- exercised here against the real server too (in
+    case the client-side pre-check has a bug and the request went out, real
+    defense in depth, not merely a mock assertion)."""
+    with pytest.raises(InvalidInputError, match="provider_type"):
+        await client.create_storage(name="Should Not Be Created", provider_type="Dropbox", confirm=True)
+
+
+async def test_create_storage_nextcloud_unreachable_host_rejected_by_live_probe(
+    client: OpenProjectClient, storage_ids: list[int]
+) -> None:
+    """A new Nextcloud storage's `host` is synchronously probed for live
+    Nextcloud reachability/setup-completeness on create
+    (NextcloudCompatibleHostValidator) -- an unreachable host is genuinely
+    rejected by OpenProject itself, not by this MCP. This is the realistic
+    outcome for a create_storage call against a host with no real Nextcloud
+    + "OpenProject Integration" app behind it (the seeded fixture's own
+    `http://nextcloud/` bypasses this via save(validate: false) specifically
+    because a real contract-validated create would hit this same check --
+    see this file's module docstring)."""
+    name = f"[integration-test] Nextcloud {uuid.uuid4().hex[:8]}"
+
+    with pytest.raises(InvalidInputError):
+        await client.create_storage(
+            name=name,
+            provider_type="Nextcloud",
+            host="http://nextcloud-integration-test-unreachable.invalid/",
+            authentication_method="two_way_oauth2",
+            confirm=True,
+        )
+
+    listed = await client.list_storages()
+    assert not any(s.name == name for s in listed.results)
