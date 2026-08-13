@@ -822,3 +822,76 @@ async def test_get_work_package_exposes_seeded_custom_field_value(client: OpenPr
     matching_values = [v for v in wp.custom_fields.values() if v and "Seeded custom field value" in str(v)]
     assert matching_values, f"no custom_fields entry contained the seeded value; got: {wp.custom_fields}"
     assert matching_values[0] == "<user-content>Seeded custom field value</user-content>"
+
+
+async def test_list_work_packages_filters_by_seeded_custom_field(client: OpenProjectClient, test_project: str) -> None:
+    """OPM-109: real custom_field_filters round trip against a live instance.
+
+    Reuses OPM-94's seeded "Seed Text Field" custom field the same way --
+    discover its cf_<N> filter key from a prior get_work_package call's
+    customField<N> keys (never hardcode the numeric id) -- then confirms
+    list_work_packages(custom_field_filters={cf_<N>: ...}) actually narrows
+    the result set to the seeded work package.
+    """
+    result = await client.list_work_packages(project=test_project)
+    seed_wp_summary = next((wp for wp in result.results if wp.subject == "Seed work package"), None)
+    assert seed_wp_summary is not None, "docker/test/seed.rb's seed work package was not found via list_work_packages"
+
+    wp = await client.get_work_package(seed_wp_summary.id)
+    assert wp.custom_fields
+    cf_key = next(
+        (key for key, value in wp.custom_fields.items() if value and "Seeded custom field value" in str(value)),
+        None,
+    )
+    assert cf_key is not None and cf_key.startswith("customField"), (
+        f"expected a customField<N>-keyed entry holding the seeded value; got: {wp.custom_fields}"
+    )
+    cf_id = cf_key[len("customField") :]
+
+    filtered = await client.list_work_packages(
+        project=test_project,
+        custom_field_filters={f"cf_{cf_id}": {"operator": "~", "values": ["Seeded custom field value"]}},
+    )
+    assert filtered.count > 0
+    assert any(item.id == seed_wp_summary.id for item in filtered.results)
+
+    non_matching = await client.list_work_packages(
+        project=test_project,
+        custom_field_filters={f"cf_{cf_id}": {"operator": "~", "values": ["no-such-value-xyz"]}},
+    )
+    assert all(item.id != seed_wp_summary.id for item in non_matching.results)
+
+
+async def test_list_work_packages_rejects_invalid_operator_for_custom_field(
+    client: OpenProjectClient, test_project: str
+) -> None:
+    """OPM-109: an operator that is syntactically a recognized custom-field
+    filter operator but illegal for this specific field's format (a
+    string-format field does not support ">=") must surface a clean error
+    from OpenProject's own validation (mapped to InvalidInputError), not a
+    raw/opaque failure."""
+    result = await client.list_work_packages(project=test_project)
+    seed_wp_summary = next((wp for wp in result.results if wp.subject == "Seed work package"), None)
+    assert seed_wp_summary is not None
+    wp = await client.get_work_package(seed_wp_summary.id)
+    cf_key = next((key for key in wp.custom_fields if key.startswith("customField")), None)
+    assert cf_key is not None
+    cf_id = cf_key[len("customField") :]
+
+    with pytest.raises(InvalidInputError):
+        await client.list_work_packages(
+            project=test_project,
+            custom_field_filters={f"cf_{cf_id}": {"operator": ">=", "values": ["1"]}},
+        )
+
+
+async def test_list_work_packages_rejects_hidden_custom_field_filter(
+    hide_custom_fields_client: OpenProjectClient, test_project: str
+) -> None:
+    """OPM-109: a custom field matched by OPENPROJECT_HIDE_CUSTOM_FIELDS must
+    be rejected as a filter target, not silently ignored."""
+    with pytest.raises(InvalidInputError, match="hidden"):
+        await hide_custom_fields_client.list_work_packages(
+            project=test_project,
+            custom_field_filters={"cf_1": {"operator": "=", "values": ["x"]}},
+        )

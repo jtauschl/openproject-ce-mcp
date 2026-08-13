@@ -190,6 +190,22 @@ async def denied_client():
 
 
 @pytest.fixture
+async def hide_custom_fields_client():
+    """A client with every custom field hidden (OPENPROJECT_HIDE_CUSTOM_FIELDS
+    equivalent, via a `cf_*` glob), for OPM-109's hidden-custom-field-filter
+    rejection test -- read/write scope stays identical to the default
+    integration client, only hide_custom_fields differs."""
+    settings = _integration_settings()
+    if settings is None:
+        pytest.skip("OPENPROJECT_BASE_URL / OPENPROJECT_API_TOKEN not set")
+    _resolve_test_project()
+    hidden_settings = dataclasses.replace(settings, hide_custom_fields=("cf_*",))
+    client_instance = OpenProjectClient(hidden_settings)
+    await client_instance.initialize()
+    return client_instance
+
+
+@pytest.fixture
 async def restricted_client():
     """A client authenticated as a genuinely permission-restricted OpenProject
     user (log_own_time granted, log_time/view_time_entries/manage_members
