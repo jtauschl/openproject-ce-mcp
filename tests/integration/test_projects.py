@@ -109,10 +109,28 @@ async def test_get_my_project_access(client: OpenProjectClient, test_project: st
 
 async def test_list_principals(client: OpenProjectClient) -> None:
     result = await client.list_principals()
-    # may be empty on a minimal instance -- test_project's admin member
-    # (seeded by seed.rb) should normally make this non-empty.
-    if result.count > 0:
-        assert result.results[0].name
+    # test_project's admin member is seeded by docker/test/seed.rb and is a
+    # Principal (a User) itself, so this must reliably be non-empty -- the
+    # prior conditional check asserted nothing when the collection happened
+    # to be empty.
+    assert result.count > 0
+    me = await client.get_current_user()
+    assert any(p.name == me.name for p in result.results)
+
+
+async def test_list_principals_paginates_beyond_a_single_page(client: OpenProjectClient) -> None:
+    unfiltered = await client.list_principals(limit=100)
+    if unfiltered.total < 2:
+        pytest.skip("Not enough principals on this instance to prove pagination")
+
+    first_page = await client.list_principals(limit=1)
+    assert first_page.count == 1
+    assert first_page.truncated
+    assert first_page.next_offset == 2
+
+    second_page = await client.list_principals(limit=1, offset=2)
+    assert second_page.count == 1
+    assert second_page.results[0].id != first_page.results[0].id
 
 
 async def test_add_and_remove_project_favorite(client: OpenProjectClient, test_project: str) -> None:
