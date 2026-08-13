@@ -50,6 +50,7 @@ from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import normalize_form_validation_errors as _normalize_form_validation_errors
 from ._text import trim_text as _trim_text
+from ._text import trim_text_with_meta as _trim_text_with_meta
 
 WORK_PACKAGE_CHILDREN_LIMIT = 50
 WORK_PACKAGE_ANCESTORS_LIMIT = 20
@@ -85,6 +86,21 @@ CUSTOM_FIELD_LIST_ITEM_LIMIT = 20
 # custom_fields, plus a separate, independently-capped custom_comments dict
 # of at most 50 entries * 255 chars =~ 12,750 chars (~12 KB). Both dicts are
 # finite and bounded regardless of what the server returns.
+
+
+def _link_title_with_meta(link: dict[str, Any]) -> tuple[str | None, bool]:
+    """Like `_link_title`, but also reports whether the title was cut.
+
+    `_link_title` (`_text.link_title`) is shared by every other WP link
+    field (assignee/status/version/etc.), none of which need a truncation
+    signal, so it stays a plain `str | None` return there. Custom fields DO
+    need the signal, to correctly fold it into `custom_fields_truncated`
+    (see `_normalize_custom_field_entry`) -- this local wrapper reuses the
+    same `SUBJECT_LIMIT` cap via `trim_text_with_meta` instead of
+    duplicating `_link_title`'s own logic.
+    """
+    title, truncated, _length = _trim_text_with_meta(link.get("title"), limit=SUBJECT_LIMIT)
+    return title, truncated
 
 
 def _is_custom_field_key(key: str) -> bool:
@@ -181,10 +197,14 @@ def _normalize_custom_field_entry(raw: Any, *, text_limit: int | None) -> tuple[
         if "raw" in raw or "html" in raw:
             text, truncated, _length = _extract_formattable_text_with_meta(raw, limit=text_limit)
             return _delimit_user_content(text), truncated
-        return _link_title(raw), False
+        title, title_truncated = _link_title_with_meta(raw)
+        return title, title_truncated
     if isinstance(raw, list):
-        titles = [title for item in raw if isinstance(item, dict) and (title := _link_title(item)) is not None]
-        truncated = len(titles) > CUSTOM_FIELD_LIST_ITEM_LIMIT
+        title_results = [_link_title_with_meta(item) for item in raw if isinstance(item, dict)]
+        kept_results = [(title, t) for title, t in title_results if title is not None]
+        titles = [title for title, _truncated in kept_results]
+        any_kept_title_truncated = any(t for _title, t in kept_results[:CUSTOM_FIELD_LIST_ITEM_LIMIT])
+        truncated = len(titles) > CUSTOM_FIELD_LIST_ITEM_LIMIT or any_kept_title_truncated
         return titles[:CUSTOM_FIELD_LIST_ITEM_LIMIT], truncated
     if isinstance(raw, str):
         text = _trim_text(raw, limit=CUSTOM_FIELD_SCALAR_LIMIT)
@@ -292,6 +312,19 @@ def _extract_custom_comments(payload: dict[str, Any]) -> tuple[dict[str, str] | 
         considered += 1
         raw_value = raw_entries[key]
         if raw_value is None:
+            # A null customComment<N> is omitted, not kept as an explicit
+            # None value -- unlike _normalize_custom_field_entry's
+            # custom_fields handling (None -> passthrough, since a missing
+            # CF value is itself meaningful information). This is a
+            # deliberate asymmetry: custom_comments' model type is
+            # `dict[str, str]` (models.py), not `dict[str, str | None]`, so
+            # there is no None-safe slot to put this value in without
+            # widening that type -- a change not worth making for a shape
+            # that is currently unreachable on a real WorkPackage (see this
+            # function's own docstring). If OpenProject ever does emit a
+            # null customComment<N> here, it is dropped, matching how any
+            # other unusable/empty value in this dict is dropped rather than
+            # widening the type for a still-theoretical case.
             continue
         text = _trim_text(raw_value, limit=CUSTOM_FIELD_SCALAR_LIMIT)
         if text is None:

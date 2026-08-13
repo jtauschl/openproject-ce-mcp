@@ -194,7 +194,7 @@ def _trim_text(value: Any, *, limit: int = SUBJECT_LIMIT) -> str | None:
 
 
 def _mask_custom_field_keys(values: dict[str, Any] | None, *, settings: Settings) -> dict[str, Any] | None:
-    """Key-only hide-on-read for a `custom_fields`/`custom_comments` dict.
+    """Key-only hide-on-read for a `custom_fields` dict.
 
     Per OPM-90's approved strategy, hide-on-read matches ONLY the raw
     `customField<N>` key/wildcard against `OPENPROJECT_HIDE_CUSTOM_FIELDS`,
@@ -206,12 +206,6 @@ def _mask_custom_field_keys(values: dict[str, Any] | None, *, settings: Settings
     with the SAME raw key as both its `field_name` and `key` arguments
     (matching `ensure_custom_field_input_writable`'s own key-only-context
     call shape) so only a pattern actually matching the raw key can hide it.
-
-    A hidden `customField<N>` also hides its `customComment<N>` counterpart
-    -- callers pass the SAME dict of customField<N> keys for both
-    `custom_fields` and `custom_comments` masking (the comment logically
-    belongs to the same field, so there is no separate
-    OPENPROJECT_HIDE_CUSTOM_FIELDS match against a `customComment<N>` key).
 
     Returns the original object unchanged (same identity) when nothing was
     actually removed -- including when `values` is empty/None -- rather than
@@ -228,6 +222,39 @@ def _mask_custom_field_keys(values: dict[str, Any] | None, *, settings: Settings
     }
     if len(filtered) == len(values):
         return values
+    return filtered or None
+
+
+def _mask_custom_comments_by_hidden_field_ids(
+    comments: dict[str, str] | None,
+    *,
+    custom_fields: dict[str, Any] | None,
+    masked_custom_fields: dict[str, Any] | None,
+) -> dict[str, str] | None:
+    """Hide a `customComment<N>` entry whenever its matching `customField<N>`
+    entry was just removed by `_mask_custom_field_keys` above.
+
+    `custom_comments` is keyed `customComment<N>`, never `customField<N>` --
+    `hidden_fields.custom_field_hidden` patterns are written against the
+    `customField<N>` form (per docs/field-hiding.md), so matching a
+    `customComment<N>` key against them directly would never hide anything.
+    Instead, derive which numeric ids were actually removed from
+    `custom_fields` (comparing before/after) and drop the corresponding
+    `customComment<N>` entries -- this is what "a hidden customField<N> also
+    hides its customComment<N> counterpart" actually requires.
+    """
+    if not comments:
+        return comments
+    if custom_fields is masked_custom_fields:
+        return comments
+    before_ids = {key[len("customField") :] for key in (custom_fields or {})}
+    after_ids = {key[len("customField") :] for key in (masked_custom_fields or {})}
+    removed_ids = before_ids - after_ids
+    if not removed_ids:
+        return comments
+    filtered = {key: value for key, value in comments.items() if key[len("customComment") :] not in removed_ids}
+    if len(filtered) == len(comments):
+        return comments
     return filtered or None
 
 
@@ -365,6 +392,15 @@ class WorkPackageService:
         shared by `_stamp`/`_stamp_detail` (both `WorkPackageSummary` and
         `WorkPackageDetail` carry the same three fields, see models.py).
 
+        `custom_fields` is masked directly against `OPENPROJECT_HIDE_CUSTOM_FIELDS`
+        (its keys ARE `customField<N>`). `custom_comments` is keyed
+        `customComment<N>` instead, so it cannot be matched against the same
+        hide patterns directly -- it is masked by deriving which
+        `customField<N>` ids were actually removed above and dropping the
+        matching `customComment<N>` entries (see
+        `_mask_custom_comments_by_hidden_field_ids`), which is what "a hidden
+        customField<N> also hides its customComment<N> counterpart" requires.
+
         Also fixes a hidden-field-metadata leak: when the WHOLE `custom_fields`
         field is hidden via `OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS=custom_fields`
         (checked separately from the key-only OPENPROJECT_HIDE_CUSTOM_FIELDS
@@ -387,7 +423,9 @@ class WorkPackageService:
         new from a truncated flag computed before that redaction.
         """
         custom_fields = _mask_custom_field_keys(value.custom_fields, settings=self._settings)
-        custom_comments = _mask_custom_field_keys(value.custom_comments, settings=self._settings)
+        custom_comments = _mask_custom_comments_by_hidden_field_ids(
+            value.custom_comments, custom_fields=value.custom_fields, masked_custom_fields=custom_fields
+        )
         custom_fields_truncated = value.custom_fields_truncated
         custom_comments_truncated = value.custom_comments_truncated
         if hidden_fields.field_hidden("work_package", "custom_fields", settings=self._settings):

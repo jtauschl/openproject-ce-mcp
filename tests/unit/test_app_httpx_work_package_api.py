@@ -588,6 +588,20 @@ def test_custom_field_errors_and_custom_comment_not_captured_by_custom_field_sca
     assert summary.custom_comments == {"customComment1": "<user-content>a comment</user-content>"}
 
 
+def test_custom_comments_null_value_is_omitted_not_kept() -> None:
+    """A null customComment<N> is dropped, not kept as an explicit None
+    value -- an asymmetry vs. custom_fields' None handling, since
+    custom_comments' model type (dict[str, str]) has no None-safe slot for
+    it. Structurally unreachable on a real WorkPackage today (see
+    _extract_custom_comments' docstring), but pinned as documented,
+    deliberate behavior rather than an accident."""
+    payload = _wp_payload(customComment1=None, customComment2="kept")
+
+    summary = normalize_work_package_summary(payload, text_limit=None)
+
+    assert summary.custom_comments == {"customComment2": "<user-content>kept</user-content>"}
+
+
 def test_custom_field_raw_entries_tolerates_malformed_links_container() -> None:
     """A null/malformed `_links` must not crash the customField<N> scan --
     guarded with an isinstance(..., dict) check, independent of the rest of
@@ -640,6 +654,47 @@ def test_custom_fields_scalar_string_cap_applies_even_when_text_limit_is_none() 
     normalized = summary.custom_fields["customField1"]
     assert normalized is not None
     assert len(normalized) < len(long_value)
+    assert summary.custom_fields_truncated is True
+
+
+def test_custom_fields_single_value_link_title_truncation_sets_flag() -> None:
+    """A single-value link/user/version-format CF whose title exceeds
+    SUBJECT_LIMIT (255 chars) is truncated by _link_title -- and that
+    truncation must propagate to custom_fields_truncated (regression guard:
+    an earlier draft hardcoded this branch's truncated flag to False,
+    silently losing the signal even though the title itself was cut)."""
+    long_title = "x" * (CUSTOM_FIELD_SCALAR_LIMIT + 50)
+    payload = _wp_payload()
+    payload["_links"]["customField1"] = {"href": "/api/v3/custom_options/1", "title": long_title}
+
+    summary = normalize_work_package_summary(payload, text_limit=None)
+
+    assert summary.custom_fields is not None
+    normalized = summary.custom_fields["customField1"]
+    assert normalized is not None
+    assert len(normalized) < len(long_title)
+    assert summary.custom_fields_truncated is True
+
+
+def test_custom_fields_multi_value_list_title_truncation_sets_flag() -> None:
+    """Same as the single-value case above, but for one title within a
+    multi-value list/user/version-format CF, well under
+    CUSTOM_FIELD_LIST_ITEM_LIMIT -- the item-count cap must not be the only
+    thing feeding custom_fields_truncated."""
+    long_title = "y" * (CUSTOM_FIELD_SCALAR_LIMIT + 50)
+    payload = _wp_payload()
+    payload["_links"]["customField1"] = [
+        {"href": "/api/v3/custom_options/1", "title": "short"},
+        {"href": "/api/v3/custom_options/2", "title": long_title},
+    ]
+
+    summary = normalize_work_package_summary(payload, text_limit=None)
+
+    assert summary.custom_fields is not None
+    titles = summary.custom_fields["customField1"]
+    assert titles is not None
+    assert len(titles) == 2
+    assert len(titles[1]) < len(long_title)
     assert summary.custom_fields_truncated is True
 
 

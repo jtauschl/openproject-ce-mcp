@@ -737,7 +737,7 @@ async def test_get_hides_custom_field_matched_by_raw_key() -> None:
     detail_with_cf = dataclasses.replace(
         _detail(6),
         custom_fields={"customField1": "Acme Corp", "customField2": 42},
-        custom_comments={"customField1": "a note"},
+        custom_comments={"customComment1": "a note", "customComment2": "kept"},
     )
     api = _FakeWorkPackageApi()
     api._records_by_id[6] = _record(6, detail=detail_with_cf)
@@ -747,8 +747,10 @@ async def test_get_hides_custom_field_matched_by_raw_key() -> None:
     detail = await service.get(6)
 
     assert detail.custom_fields == {"customField2": 42}
-    # Hiding customField1 also hides its matching customComment1 counterpart.
-    assert detail.custom_comments is None
+    # Hiding customField1 also hides its matching customComment1 counterpart
+    # (derived from the removed customField<N> id, not matched directly --
+    # customComment<N> keys never match a customField<N> hide pattern).
+    assert detail.custom_comments == {"customComment2": "kept"}
 
 
 @pytest.mark.asyncio
@@ -821,7 +823,7 @@ async def test_get_all_custom_fields_hidden_via_whole_field_hide_resets_truncate
 @pytest.mark.asyncio
 async def test_get_all_custom_comments_hidden_via_whole_field_hide_resets_truncated_flag() -> None:
     detail_with_cc = dataclasses.replace(
-        _detail(6), custom_comments={"customField1": "note"}, custom_comments_truncated=True
+        _detail(6), custom_comments={"customComment1": "note"}, custom_comments_truncated=True
     )
     api = _FakeWorkPackageApi()
     api._records_by_id[6] = _record(6, detail=detail_with_cc)
