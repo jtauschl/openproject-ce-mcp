@@ -88,6 +88,26 @@ support.
   Enterprise-gated custom-field formats (`hierarchy`, `weighted_item_list`,
   `calculated_value`) and selecting individual custom-field keys via
   `select` remain out of scope.
+- **`list_work_packages`/`search_work_packages` gain a `custom_field_filters`
+  parameter** to filter by custom field value (OPM-109, a follow-up to
+  OPM-94 per OPM-90's design decision to keep filtering separate from value
+  exposure). A dict keyed by `cf_<N>` or `customField<N>` (both accepted
+  transparently, normalized to `cf_<N>` — the actual OpenProject filter key,
+  distinct from `customField<N>`'s JSON/PATCH-key role on the read/write
+  paths); each entry is `{"operator": "<symbol>", "values": [...]}`. Covers
+  all ten CE-realistic custom-field formats (string, text, link, int, float,
+  date, bool, list, user, version) with their real, format-specific
+  operator sets — see [Custom-Field
+  Filters](docs/filters.md#custom-field-filters) for the full matrix and
+  source verification. `OPENPROJECT_HIDE_CUSTOM_FIELDS` now also blocks
+  filtering (rejected with a clear error, not silently dropped — a
+  deliberately different UX than the read-side masking above). Friendly-name
+  resolution and per-field live schema/operator validation are out of scope
+  for this pass (documented, not silently omitted) — only raw
+  `cf_<N>`/`customField<N>` keys are accepted, and an operator that is
+  syntactically valid but illegal for a specific field's format surfaces as
+  OpenProject's own clean error rather than a pre-validated one, to avoid an
+  added network round trip on every filtered list/search call.
 
 ### Changed
 
