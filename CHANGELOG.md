@@ -14,6 +14,15 @@ business logic out of a single flat file into focused Services, Ports, and
 Adapters, so the codebase scales past what a monolithic client.py can
 support.
 
+### Security
+
+- **Bumped `cryptography` to 50.0.0** (from 48.0.1), fixing GHSA-g6cj-pr64-35w5
+  (CVE-2026-69247, high severity): a Bleichenbacher-style padding oracle in
+  PKCS#7 `EnvelopedData` decryption via distinguishable errors/timing.
+  Transitive dependency; this project never calls the affected
+  `pkcs7_decrypt_*` functions directly. `astral-sh/setup-uv` also bumped
+  v7 → v9.0.0 (SHA-pinned) in the same pass.
+
 ### Added
 
 - **`list_work_packages`/`search_work_packages` gain an `include_sums`
@@ -154,6 +163,19 @@ support.
   coming back exactly `limit` elements long, instead of proving it by
   requesting one extra (`limit + 1`) element from OpenProject and checking
   how many actually survived allowlist filtering.
+- **`list_my_open_work_packages` could silently return zero or incomplete
+  results even when matching, allowed work packages genuinely existed.**
+  This query has no server-side project filter at all, so under a
+  restricted `OPENPROJECT_READ_PROJECTS` scope a single bounded fetch could
+  land entirely on server pages whose matches belonged to disallowed
+  projects, missing every allowed match beyond that window — reproduced
+  live against a real OpenProject instance: 33 total server matches, only
+  1 in an allowed project, that one match landing past a single page's
+  worth of results. `WorkPackageService`'s list path now scans as many
+  server pages as needed (skipping already-seen allowed matches, stopping
+  once enough are found or the server is exhausted) instead of inspecting
+  only one bounded page, the same allowlist-safe-scanning pattern used
+  elsewhere in this layer.
 
 ### Docs
 
