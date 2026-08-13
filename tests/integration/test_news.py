@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from openproject_ce_mcp.client import OpenProjectClient
+from openproject_ce_mcp.client import OpenProjectClient, PermissionDeniedError
 
 pytestmark = pytest.mark.integration
 
@@ -57,9 +57,30 @@ async def test_create_get_update_delete_news(client: OpenProjectClient, test_pro
     assert update_result.ready, update_result.validation_errors
 
     updated = await client.get_news(news_id)
-    assert "updated" in updated.title
+    assert updated.title == f"{title} updated"
 
     # Delete
     delete_result = await client.delete_news(news_id=news_id, confirm=True)
     assert delete_result.ready and delete_result.state == "confirmed"
     news_ids.remove(news_id)
+
+
+async def test_create_update_delete_news_denied_outside_write_allowlist(
+    denied_client: OpenProjectClient, client: OpenProjectClient, test_project: str, news_ids: list[int]
+) -> None:
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.create_news(
+            project=test_project, title=f"[integration-test] denied {uuid.uuid4().hex[:8]}", confirm=True
+        )
+
+    existing = await client.create_news(
+        project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
+    )
+    assert existing.ready
+    news_ids.append(existing.news_id)
+
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.update_news(news_id=existing.news_id, title="denied update", confirm=True)
+
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.delete_news(news_id=existing.news_id, confirm=True)
