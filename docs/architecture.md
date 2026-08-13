@@ -407,6 +407,7 @@ Important properties of the current model:
 - hidden fields are masked on reads and rejected on writes
 - destructive operations still use the same project-scope checks as non-destructive writes
 - instance-global admin operations (list/view users and groups, plus user/group management) are gated behind `OPENPROJECT_ENABLE_ADMIN_READ`/`OPENPROJECT_ENABLE_ADMIN_WRITE` — an ordinary read/write pair like every other scope, but neither is bounded by project-scoped write flags, and both default off since the data (instance-wide PII) has no project-scope safety net
+- external file storage connections (Nextcloud/OneDrive/Sharepoint) share the same `OPENPROJECT_ENABLE_ADMIN_READ`/`_WRITE` gate as Users/Groups — a genuine admin-only operation in OpenProject's own API. Each project's link to a configured storage (`project_storages`) is instead a normal project-scoped read (`OPENPROJECT_ENABLE_PROJECT_READ` plus `OPENPROJECT_READ_PROJECTS`, same as Documents) — OpenProject's own API gates it per-project, not admin-only, and there is no write endpoint for it at all
 - most metadata tools (statuses, types, priorities, notifications, …) are always available and not gated by any read flag; a rarely-used subset (query schema tools, `render_text`, `get_custom_option`, help texts, working days) is off by default behind `OPENPROJECT_ENABLE_EXTENDED_READ` to save context
 - `list_notifications` filters by `OPENPROJECT_READ_PROJECTS`, but under a restricted (non-empty, non-`*`) scope this only filters the current server-side page — an empty filtered page does not guarantee no further allowed notifications exist on later pages, since the notifications endpoint has no server-side project filter to paginate against
 
@@ -420,6 +421,7 @@ The MCP targets OpenProject **Community Edition** only. The following feature ar
 - Backlogs sprints (read, plus assigning/unassigning a work package's sprint; requires the Backlogs module)
 - News, documents (read/update only), wiki pages (single-page fetch only — no list endpoint in OpenProject v3)
 - Time entries, Nextcloud file links (CE feature, degrades gracefully)
+- External file storage connections (Nextcloud/OneDrive/Sharepoint, admin-only; OneDrive/Sharepoint creation is rejected by OpenProject itself on a Community Edition instance without an Enterprise token) and each project's link to a configured storage (read-only)
 - Users, groups, user preferences, notifications
 - Grids, help texts, working days, custom options, text rendering
 - Project lifecycle phases (read only, degrades gracefully if unavailable)
@@ -438,6 +440,7 @@ The following are intentionally **not supported** and have been removed from the
 | Custom actions (execute) | Enterprise Edition only |
 | Baseline comparisons | Enterprise Edition only |
 | OpenID Connect / SAML SSO management | Enterprise Edition only |
+| Storage file browsing (`storage_files`) / `prepare_upload` | Distinct, more complex domain; upload is Enterprise-gated for OneDrive/Sharepoint even where implemented — out of scope beyond the storage connection/link management already covered |
 
 API stubs with no POST/DELETE endpoint in CE (read/update only, matching OpenProject v3 API reality):
 
@@ -447,6 +450,7 @@ API stubs with no POST/DELETE endpoint in CE (read/update only, matching OpenPro
 | Wiki pages | GET single only — the collection endpoint (`/api/v3/projects/{id}/wiki_pages`) is not implemented in OpenProject v3; `list_wiki_pages` has been removed |
 | Categories | GET list, GET single |
 | Forums Posts | GET single only — no collection endpoint (`/api/v3/posts`) and no separate "forums" resource exist in the API at all; `list_posts` cannot be implemented |
+| Project storages | GET list, GET single — no POST/PATCH/DELETE endpoint exists in the API at all for this resource; manage the underlying storage connection instead |
 
 ## Design tradeoffs
 

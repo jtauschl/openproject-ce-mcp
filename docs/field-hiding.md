@@ -58,7 +58,7 @@ Supported entities for `OPENPROJECT_HIDE_<ENTITY>_FIELDS`: `project`,
 `watcher`, `notification`, `file_link`, `emoji_reaction`, `wiki_page_link`,
 `user_preferences`, `rendered_text`, `help_text`, `working_day`,
 `non_working_day`, `custom_option`, `user_non_working_time`,
-`user_working_hours`.
+`user_working_hours`, `storage`, `project_storage`.
 
 See [Configuration](configuration.md) for the two variables' required/default
 values.

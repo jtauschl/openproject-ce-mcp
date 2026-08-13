@@ -98,6 +98,33 @@ Same gating as [Users](#users) above: reads need
 | `update_group` | Validate and then update a group; only writes when called again with `confirm=true` |
 | `delete_group` | Validate and then delete a group; only deletes when called again with `confirm=true` |
 
+## Storages
+
+External file storage connections (Nextcloud/OneDrive/Sharepoint) and each
+project's link to a configured storage (Community Edition). Same gating as
+[Users](#users) above: `list_storages`/`get_storage`/`create_storage`/
+`update_storage`/`delete_storage` need `OPENPROJECT_ENABLE_ADMIN_READ=true`
+(reads) / `OPENPROJECT_ENABLE_ADMIN_WRITE=true` (writes) — genuine admin-only
+operations in OpenProject's own API. `list_project_storages`/
+`get_project_storage` are project-scoped instead (`OPENPROJECT_ENABLE_PROJECT_READ`
+plus `OPENPROJECT_READ_PROJECTS`), matching [Documents](#documents): OpenProject's
+own API gates this resource per-project (`view_file_links`), not admin-only.
+`create_storage` targeting OneDrive/Sharepoint on a Community Edition instance
+is rejected by OpenProject itself at `confirm=true` with a clear validation
+error (Enterprise-only providers); Nextcloud is unrestricted. Project storages
+are read-only in OpenProject's API — no create/update/delete endpoint exists
+for that resource.
+
+| Tool | Description |
+|---|---|
+| `list_storages` | List configured external file storage connections (`OPENPROJECT_ENABLE_ADMIN_READ`) |
+| `get_storage` | Fetch a single storage connection by id (`OPENPROJECT_ENABLE_ADMIN_READ`) |
+| `create_storage` | Validate and then create a storage connection; only writes when called again with `confirm=true` (`OPENPROJECT_ENABLE_ADMIN_WRITE`) |
+| `update_storage` | Validate and then update a storage connection; only writes when called again with `confirm=true` (`OPENPROJECT_ENABLE_ADMIN_WRITE`) |
+| `delete_storage` | Validate and then delete a storage connection; only deletes when called again with `confirm=true` (`OPENPROJECT_ENABLE_ADMIN_WRITE`) |
+| `list_project_storages` | List a project's links to configured external storages, optionally filtered to one project |
+| `get_project_storage` | Fetch a single project-storage link by id |
+
 ## User schedule overrides
 
 Per-user schedule overrides (vacation date ranges and recurring weekly

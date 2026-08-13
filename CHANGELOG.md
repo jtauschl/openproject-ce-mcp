@@ -108,6 +108,20 @@ support.
   syntactically valid but illegal for a specific field's format surfaces as
   OpenProject's own clean error rather than a pre-validated one, to avoid an
   added network round trip on every filtered list/search call.
+- **New tools: `list_storages`, `get_storage`, `create_storage`,
+  `update_storage`, `delete_storage`** — manage OpenProject external file
+  storage connections (Nextcloud/OneDrive/Sharepoint), admin-gated
+  (`OPENPROJECT_ENABLE_ADMIN_READ`/`_WRITE`, same as Users/Groups).
+  `create_storage` targeting OneDrive/Sharepoint on a Community Edition
+  instance is rejected by OpenProject itself with a clear validation error
+  (Enterprise-only providers, no Enterprise token available); Nextcloud is
+  unrestricted, though a live host-reachability/setup-completeness check
+  still applies. Pulled forward from the 0.5.0 backlog.
+- **New tools: `list_project_storages`, `get_project_storage`** — read a
+  project's links to configured external storages, project-scoped
+  (`OPENPROJECT_ENABLE_PROJECT_READ` plus `OPENPROJECT_READ_PROJECTS`, same
+  as Documents). Read-only in OpenProject's own API — no create/update/delete
+  endpoint exists for this resource. Pulled forward from the 0.5.0 backlog.
 
 ### Changed
 

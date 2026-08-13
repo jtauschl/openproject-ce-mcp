@@ -85,13 +85,13 @@ stays out of the tool set until explicitly requested.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `OPENPROJECT_ENABLE_PROJECT_READ` | no | `true` | Projects, favorites, admin/work-package context, phases |
+| `OPENPROJECT_ENABLE_PROJECT_READ` | no | `true` | Projects, favorites, admin/work-package context, phases, documents, project storages (project's link to a configured external file storage) |
 | `OPENPROJECT_ENABLE_WORK_PACKAGE_READ` | no | `true` | Work packages, search, relations, attachments, watchers, reactions, sprints |
 | `OPENPROJECT_ENABLE_MEMBERSHIP_READ` | no | `true` | Project memberships, roles, current user, actions, capabilities |
 | `OPENPROJECT_ENABLE_VERSION_READ` | no | `true` | Versions |
 | `OPENPROJECT_ENABLE_BOARD_READ` | no | `true` | Boards |
 | `OPENPROJECT_ENABLE_PERSONAL_READ` | no | `false` | Your own preferences and notifications (`get_my_preferences`, `list_notifications`) |
-| `OPENPROJECT_ENABLE_ADMIN_READ` | no | `false` | Instance-wide user/group listing (`list_users`, `get_user`, `list_groups`, `get_group`, `list_principals`) — PII (names, logins, emails), not project-scoped |
+| `OPENPROJECT_ENABLE_ADMIN_READ` | no | `false` | Instance-wide user/group listing (`list_users`, `get_user`, `list_groups`, `get_group`, `list_principals`) plus external file storage connections (`list_storages`, `get_storage`) — PII / admin-only, not project-scoped. `list_project_storages`/`get_project_storage` are NOT gated here — they are project-scoped, see `OPENPROJECT_ENABLE_PROJECT_READ` |
 | `OPENPROJECT_ENABLE_USER_SCHEDULE_READ` | no | `false` | Per-user schedule overrides — vacation date ranges and working-hours schedules (`list_user_non_working_times`, `list_user_working_hours`, `get_user_working_hours`; requires OpenProject 17.3+). Its own dedicated scope: not bounded by a project allowlist, but also not `_ADMIN_READ` (would block ordinary self-service) or `_PERSONAL_READ` (its tools take no `user_id`) |
 | `OPENPROJECT_ENABLE_EXTENDED_READ` | no | `false` | Rarely-used metadata/reference tools (`get_query_*` schema tools, `render_text`, `get_custom_option`, `list_help_texts`/`get_help_text`, `list_working_days`/`list_non_working_days`) |
 
@@ -155,7 +155,7 @@ job, not this server's: combine both layers for real defense in depth.
 | `OPENPROJECT_HIDE_<ENTITY>_FIELDS` | no | empty | Comma-separated fields to omit from reads and reject on writes for a given entity; `*` wildcards supported. See [Field hiding](field-hiding.md) for the full list of supported entities and the matching syntax — this variable exists once per entity, so it is not repeated here in full |
 | `OPENPROJECT_HIDE_CUSTOM_FIELDS` | no | empty | Custom field names or keys to omit; `*` wildcards supported. Read/write asymmetry: on writes, a pattern matches either the raw key (`customField12`) or the field's friendly name; on reads (the `custom_fields`/`custom_comments` response fields), a pattern matches ONLY the raw key/wildcard — a friendly-name-only pattern hides nothing from reads. See [Field hiding](field-hiding.md#custom-fields-a-readwrite-asymmetry) for the full explanation |
 | `OPENPROJECT_ATTACHMENT_ROOT` | no | disabled (no uploads) | Absolute directory that local attachment uploads are confined to. Unset/empty disables `create_work_package_attachment` entirely — there is no current-working-directory fallback. Files outside the configured root are refused, and credential/config files (`.mcp.json`, `.env`, `*.pem`, keys) are refused even inside it, so a tool call cannot exfiltrate local secrets |
-| `OPENPROJECT_ENABLE_ADMIN_WRITE` | no | `false` | User and group management (create/update/delete/lock users, create/update/delete groups). Must be set explicitly and is not activated by any project-scoped write flag |
+| `OPENPROJECT_ENABLE_ADMIN_WRITE` | no | `false` | User and group management (create/update/delete/lock users, create/update/delete groups) plus external file storage connection management (create/update/delete storages). Must be set explicitly and is not activated by any project-scoped write flag. Creating a OneDrive/Sharepoint storage on a Community Edition instance is rejected by OpenProject itself with a validation error (Enterprise-only providers); Nextcloud is unrestricted |
 
 ## Network / Runtime
 
