@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+from typing import Any
 
 import httpx
 import pytest
@@ -7704,6 +7705,215 @@ async def test_create_grid_uses_form_endpoint_and_project_scope() -> None:
     assert created.grid_id == 55
     assert created.result is not None
     assert created.result.scope == "/projects/demo"
+
+    await client.aclose()
+
+
+def _linked_user_field(name: str, href: str) -> dict[str, Any]:
+    """A User-typed schema field as OpenProject really returns it: allowedValues is a
+    link to a filtered principals collection, never an embedded list."""
+    return {
+        "name": name,
+        "type": "User",
+        "required": True,
+        "writable": True,
+        "hasDefault": False,
+        "location": "_links",
+        "_links": {"allowedValues": {"href": href}},
+    }
+
+
+@pytest.mark.asyncio
+async def test_create_work_package_resolves_user_fields_from_linked_allowed_values() -> None:
+    """User-typed fields (responsible, user reference custom fields) expose their
+    candidates only as a link. Resolve by display name and by numeric id alike."""
+    form_calls = 0
+    principals_calls = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal form_calls, principals_calls
+        if request.url.path in ("/api/v3/projects/demo", "/api/v3/projects/1"):
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo"},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": "Epic"}]}}, request=request)
+        if request.url.path == "/api/v3/principals":
+            principals_calls += 1
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {"id": 15, "name": "Stefania Iran", "_links": {"self": {"href": "/api/v3/users/15"}}},
+                            {"id": 31, "name": "Michal Jakubiak", "_links": {"self": {"href": "/api/v3/users/31"}}},
+                        ]
+                    }
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/work_packages/form":
+            form_calls += 1
+            body = json.loads(request.content)
+            if form_calls == 1:
+                return httpx.Response(
+                    200,
+                    json={
+                        "_type": "Form",
+                        "_embedded": {
+                            "schema": {
+                                "responsible": _linked_user_field("Accountable", "/api/v3/principals?filters=x"),
+                                "customField1": _linked_user_field("Business Owner", "/api/v3/principals?filters=x"),
+                                "customField5": _linked_user_field("Tech Owner", "/api/v3/principals?filters=x"),
+                            }
+                        },
+                    },
+                    request=request,
+                )
+            # Resolved by name, by numeric id, and by the customFieldN key form.
+            assert body["_links"]["responsible"]["href"] == "/api/v3/users/31"
+            assert body["_links"]["customField1"]["href"] == "/api/v3/users/15"
+            assert body["_links"]["customField5"]["href"] == "/api/v3/users/31"
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    result = await client.create_work_package(
+        project="demo",
+        type="Epic",
+        subject="Linked allowed values",
+        responsible="Michal Jakubiak",
+        custom_fields={"Business Owner": "Stefania Iran", "customField5": "31"},
+        confirm=False,
+    )
+
+    assert result.ready is True
+    assert result.payload["_links"]["customField1"]["href"] == "/api/v3/users/15"
+    assert principals_calls > 0, "the linked allowedValues collection was never fetched"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_linked_allowed_values_refuse_ambiguous_display_name() -> None:
+    """Two principals can share a display name; picking one silently would assign the
+    wrong person, so an ambiguous name must be rejected rather than guessed."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path in ("/api/v3/projects/demo", "/api/v3/projects/1"):
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo"},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": "Epic"}]}}, request=request)
+        if request.url.path == "/api/v3/principals":
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {"id": 15, "name": "Alex Kim", "_links": {"self": {"href": "/api/v3/users/15"}}},
+                            {"id": 31, "name": "Alex Kim", "_links": {"self": {"href": "/api/v3/users/31"}}},
+                        ]
+                    }
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/work_packages/form":
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Form",
+                    "_embedded": {
+                        "schema": {"customField1": _linked_user_field("Business Owner", "/api/v3/principals?filters=x")}
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    with pytest.raises(InvalidInputError, match="ambiguous"):
+        await client.create_work_package(
+            project="demo",
+            type="Epic",
+            subject="Ambiguous owner",
+            custom_fields={"Business Owner": "Alex Kim"},
+            confirm=False,
+        )
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_embedded_allowed_values_are_not_dereferenced() -> None:
+    """Small option sets embed their candidates and also carry an inline _links list.
+    Those must keep resolving locally — no extra request, first match wins."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path in ("/api/v3/projects/demo", "/api/v3/projects/1"):
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "name": "Demo", "identifier": "demo"},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(200, json={"_embedded": {"elements": [{"id": 7, "name": "Epic"}]}}, request=request)
+        if request.url.path == "/api/v3/projects/1/work_packages/form":
+            body = json.loads(request.content)
+            if "_links" not in body or "priority" not in body.get("_links", {}):
+                return httpx.Response(
+                    200,
+                    json={
+                        "_type": "Form",
+                        "_embedded": {
+                            "schema": {
+                                "priority": {
+                                    "name": "Priority",
+                                    "type": "Priority",
+                                    "required": True,
+                                    "writable": True,
+                                    "hasDefault": True,
+                                    "location": "_links",
+                                    "_embedded": {
+                                        "allowedValues": [
+                                            {
+                                                "id": 9,
+                                                "name": "High",
+                                                "_links": {"self": {"href": "/api/v3/priorities/9"}},
+                                            }
+                                        ]
+                                    },
+                                    # Inline list form, must not be dereferenced.
+                                    "_links": {"allowedValues": [{"href": "/api/v3/priorities/9", "title": "High"}]},
+                                }
+                            }
+                        },
+                    },
+                    request=request,
+                )
+            assert body["_links"]["priority"]["href"] == "/api/v3/priorities/9"
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"payload": body, "validationErrors": {}}},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+    result = await client.create_work_package(
+        project="demo", type="Epic", subject="Embedded priority", priority="High", confirm=False
+    )
+
+    assert result.payload["_links"]["priority"]["href"] == "/api/v3/priorities/9"
 
     await client.aclose()
 
