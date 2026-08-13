@@ -48,35 +48,20 @@ jobs:
 
   # macos-latest/windows-latest cost roughly 10x/2x a Linux runner-minute — scoped to
   # release-time confirmation only (the workflow_call from publish.yml's tag push, or a
-  # manual workflow_dispatch), never the per-push/per-PR gate. A job-level `if` can't see
-  # `matrix` (GitHub Actions restriction), and a step-level `if` still provisions the
-  # runner before skipping — so the OS list itself is computed here and fed into test's
-  # matrix via fromJSON, which keeps the non-release path from ever booting a
-  # macos-latest/windows-latest VM in the first place. Every push/PR still gets the full
-  # Python-version matrix on ubuntu-latest, which is cheap.
-  test-matrix-config:
+  # manual workflow_dispatch), never the per-push/per-PR gate. Split into two jobs rather
+  # than one matrix job with a job-level `if`, because GitHub Actions job-level `if` can't
+  # reference `matrix` at all, and a step-level `if` still provisions (and bills) the
+  # runner before skipping — sw_dev_handbook's expensive_runner_trigger check only
+  # recognizes a job-level `if` matching one of its fixed safe patterns
+  # (github.event_name == 'workflow_dispatch', startsWith(github.ref, 'refs/tags/'), or an
+  # &&/|| combination of those), so test-macos-windows below uses exactly that pattern on
+  # a job with a fixed (non-matrix) runs-on per OS instead.
+  test-linux:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      os: ${{ steps.set.outputs.os }}
-    steps:
-      - name: Determine OS matrix
-        id: set
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_call" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo 'os=["ubuntu-latest", "macos-latest", "windows-latest"]' >> "$GITHUB_OUTPUT"
-          else
-            echo 'os=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
-          fi
-
-  test:
-    needs: test-matrix-config
-    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(needs.test-matrix-config.outputs.os) }}
         python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
@@ -90,12 +75,35 @@ jobs:
         run: uv sync --dev
 
       - name: Run tests
-        if: matrix.os != 'ubuntu-latest' || matrix.python-version != '3.12'
+        if: matrix.python-version != '3.12'
         run: uv run pytest
 
       - name: Run tests with coverage gate
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        if: matrix.python-version == '3.12'
         run: uv run pytest --cov=src/openproject_ce_mcp --cov-report=term-missing
+
+  test-macos-windows:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run tests
+        run: uv run pytest
 
   build:
     runs-on: ubuntu-latest
