@@ -17,6 +17,35 @@ Both are plain comma-separated lists. Field names and patterns are normalized
 case-insensitively before glob matching; `-`, `_`, and spaces are treated
 consistently. There is no JSON or `entity:field` syntax to quote or escape.
 
+## Custom fields: a read/write asymmetry
+
+`OPENPROJECT_HIDE_CUSTOM_FIELDS` behaves differently on reads than on writes:
+
+- **On writes** (`create_work_package`/`update_work_package`'s `custom_fields`
+  input), a pattern matches EITHER the raw key (e.g. `customField12`) OR the
+  custom field's resolved friendly name (e.g. `Story points`) — whichever the
+  caller happened to supply is checked against the pattern.
+- **On reads** (`list_work_packages`/`search_work_packages`/`get_work_package`/
+  `get_work_packages`/`list_my_open_work_packages`'s `custom_fields`/
+  `custom_comments` response fields), a pattern matches ONLY the raw
+  `customField<N>` key/wildcard — never a friendly name. Response keys are
+  always the raw key (`custom_fields` never exposes friendly names), so a
+  hide pattern written as a friendly name has no effect on what is hidden
+  from reads, even though the identical pattern successfully blocks a write
+  using that same friendly name.
+
+Hiding a `customField<N>` entry also hides its matching `customComment<N>`
+entry in `custom_comments` (the comment logically belongs to the same
+field) — there is no separate pattern match against the comment key itself.
+In practice `custom_comments` is always empty for work packages on stock
+OpenProject CE: only Projects opt into per-custom-field comments, work
+packages do not (verified against `acts_as_customizable`'s per-model
+`comments:` option) — the field exists for forward compatibility only.
+
+To hide a custom field from both reads and writes reliably, use its raw key
+(e.g. `OPENPROJECT_HIDE_CUSTOM_FIELDS=customField12`) rather than its
+friendly name.
+
 Supported entities for `OPENPROJECT_HIDE_<ENTITY>_FIELDS`: `project`,
 `membership`, `role`, `principal`, `user`, `group`, `project_access`,
 `project_admin_context`, `project_configuration`, `action`, `capability`,

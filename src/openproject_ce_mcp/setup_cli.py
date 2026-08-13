@@ -1590,6 +1590,10 @@ def _collect_credentials(
             hide_project = _prompt("Hidden project fields (comma-separated)", hide_project)
             hide_wp = _prompt("Hidden work-package fields (comma-separated)", hide_wp)
             hide_activity = _prompt("Hidden activity fields (comma-separated)", hide_activity)
+            print(
+                "Note: on reads (custom_fields/custom_comments), only the raw key/wildcard "
+                "(e.g. customField12) is matched — a friendly field name only takes effect on writes."
+            )
             hide_custom = _prompt("Hidden custom fields (comma-separated)", hide_custom)
 
             print()

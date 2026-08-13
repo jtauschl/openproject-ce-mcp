@@ -193,6 +193,44 @@ def _trim_text(value: Any, *, limit: int = SUBJECT_LIMIT) -> str | None:
 # equivalent comment.
 
 
+def _mask_custom_field_keys(values: dict[str, Any] | None, *, settings: Settings) -> dict[str, Any] | None:
+    """Key-only hide-on-read for a `custom_fields`/`custom_comments` dict.
+
+    Per OPM-90's approved strategy, hide-on-read matches ONLY the raw
+    `customField<N>` key/wildcard against `OPENPROJECT_HIDE_CUSTOM_FIELDS`,
+    NEVER the friendly name -- unlike the write path's
+    `ensure_custom_field_writable`, which matches both the resolved schema
+    field name AND the key (a friendly-name-only hide pattern configured for
+    writes has no effect on reads; this is a deliberate, documented
+    asymmetry -- see docs/field-hiding.md). `custom_field_hidden` is called
+    with the SAME raw key as both its `field_name` and `key` arguments
+    (matching `ensure_custom_field_input_writable`'s own key-only-context
+    call shape) so only a pattern actually matching the raw key can hide it.
+
+    A hidden `customField<N>` also hides its `customComment<N>` counterpart
+    -- callers pass the SAME dict of customField<N> keys for both
+    `custom_fields` and `custom_comments` masking (the comment logically
+    belongs to the same field, so there is no separate
+    OPENPROJECT_HIDE_CUSTOM_FIELDS match against a `customComment<N>` key).
+
+    Returns the original object unchanged (same identity) when nothing was
+    actually removed -- including when `values` is empty/None -- rather than
+    always rebuilding a new dict; only a genuine removal allocates.
+    """
+    if not values:
+        return values
+    if not settings.hide_custom_fields:
+        return values
+    filtered = {
+        key: value
+        for key, value in values.items()
+        if not hidden_fields.custom_field_hidden(key, key, settings=settings)
+    }
+    if len(filtered) == len(values):
+        return values
+    return filtered or None
+
+
 def _bulk_item_result(*, index: int, result: WorkPackageWriteResult) -> BulkWorkPackageItemResult:
     """ "success" is defined purely by `result.ready` (i.e. no OpenProject
     validation errors), not by whether the result was already confirmed -- a
@@ -313,12 +351,63 @@ class WorkPackageService:
             summary = dataclasses.replace(
                 summary, description_truncated=False, description_length=None, has_description=False
             )
+        summary = self._mask_custom_field_values(summary)
         return hidden_fields.apply_hidden_fields("work_package", summary, settings=self._settings)
 
     def _stamp_detail(self, detail: WorkPackageDetail) -> WorkPackageDetail:
         if hidden_fields.field_hidden("work_package", "description", settings=self._settings):
             detail = dataclasses.replace(detail, description_truncated=False, description_length=None)
+        detail = self._mask_custom_field_values(detail)
         return hidden_fields.apply_hidden_fields("work_package", detail, settings=self._settings)
+
+    def _mask_custom_field_values(self, value: Any) -> Any:
+        """Key-only hide-on-read masking for `custom_fields`/`custom_comments`,
+        shared by `_stamp`/`_stamp_detail` (both `WorkPackageSummary` and
+        `WorkPackageDetail` carry the same three fields, see models.py).
+
+        Also fixes a hidden-field-metadata leak: when the WHOLE `custom_fields`
+        field is hidden via `OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS=custom_fields`
+        (checked separately from the key-only OPENPROJECT_HIDE_CUSTOM_FIELDS
+        match above), `custom_fields_truncated` must also reset to False --
+        mirroring how this method's caller already resets
+        description_truncated/description_length/has_description when
+        `description` itself is hidden (see docstring above); leaving a
+        truncation flag dangling once the field itself is masked would leak
+        metadata about hidden data. Same treatment for
+        custom_comments/custom_comments_truncated. When only SOME keys are
+        masked via the key-only custom-field hide (not the whole field), the
+        truncated flags are left as originally computed (the raw-payload
+        pre-mask truncation signal) -- unlike `_filter_hierarchy_allowlist`'s
+        children_truncated/ancestors_truncated re-derivation (a scope-allowlist
+        visibility concern: leaving that flag stale could disclose the mere
+        existence of hierarchy members outside the caller's project scope),
+        the custom-field key-only hide is a configured field-name redaction,
+        not a scope/visibility signal -- a caller who already knows some
+        custom fields exist (they configured the hide list) learns nothing
+        new from a truncated flag computed before that redaction.
+        """
+        custom_fields = _mask_custom_field_keys(value.custom_fields, settings=self._settings)
+        custom_comments = _mask_custom_field_keys(value.custom_comments, settings=self._settings)
+        custom_fields_truncated = value.custom_fields_truncated
+        custom_comments_truncated = value.custom_comments_truncated
+        if hidden_fields.field_hidden("work_package", "custom_fields", settings=self._settings):
+            custom_fields_truncated = False
+        if hidden_fields.field_hidden("work_package", "custom_comments", settings=self._settings):
+            custom_comments_truncated = False
+        if (
+            custom_fields is value.custom_fields
+            and custom_comments is value.custom_comments
+            and custom_fields_truncated == value.custom_fields_truncated
+            and custom_comments_truncated == value.custom_comments_truncated
+        ):
+            return value
+        return dataclasses.replace(
+            value,
+            custom_fields=custom_fields,
+            custom_comments=custom_comments,
+            custom_fields_truncated=custom_fields_truncated,
+            custom_comments_truncated=custom_comments_truncated,
+        )
 
     def _stamp_activity(self, summary: Any) -> Any:
         return hidden_fields.apply_hidden_fields("activity", summary, settings=self._settings)

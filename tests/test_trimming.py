@@ -329,6 +329,44 @@ def test_validate_select_rejects_unknown_field_for_work_package_detail() -> None
         _validate_select(["bogus"], row_type=m.WorkPackageDetail)
 
 
+# ── OPM-94: select=["custom_fields"] round-trip ───────────────────────────────
+
+
+def test_select_custom_fields_keeps_only_that_field_on_list_row() -> None:
+    """custom_fields is selectable/hideable only as a whole field, like every
+    other WorkPackageSummary field -- confirmed automatic via
+    dataclasses.fields(), no special-casing needed in _validate_select."""
+    row = _wp_summary(custom_fields={"customField1": "Acme Corp"}, custom_comments={"customField1": "note"})
+
+    out = _to_payload(_wp_list(results=[row]), select=frozenset({"id", "custom_fields"}))
+
+    assert sorted(out["results"][0]) == ["custom_fields", "id"]
+    assert out["results"][0]["custom_fields"] == {"customField1": "Acme Corp"}
+
+
+def test_select_none_returns_custom_fields_and_custom_comments_by_default() -> None:
+    row = _wp_summary(custom_fields={"customField1": "Acme Corp"}, custom_comments={"customField1": "note"})
+
+    out = _to_payload(_wp_list(results=[row]))
+
+    assert out["results"][0]["custom_fields"] == {"customField1": "Acme Corp"}
+    assert out["results"][0]["custom_comments"] == {"customField1": "note"}
+
+
+def test_select_custom_fields_round_trips_through_batch_nested_work_package() -> None:
+    """get_work_packages'/list_my_open_work_packages' batch shape wraps each
+    WorkPackageDetail in a list that trimming recurses through -- select
+    must reach custom_fields there too, the same as any other field."""
+    detail = _wp_detail(custom_fields={"customField1": "Acme Corp"}, custom_comments={"customField1": "note"})
+    items = [m.BatchWorkPackageReadItemResult(id=5, success=True, work_package=detail, error=None)]
+
+    out = _to_payload(_batch_read(items=items), select=frozenset({"id", "custom_fields"}))
+
+    row = out["results"][0]["work_package"]
+    assert sorted(row) == ["custom_fields", "id"]
+    assert row["custom_fields"] == {"customField1": "Acme Corp"}
+
+
 def test_returns_trimmable_true_for_batch_read() -> None:
     assert _returns_trimmable(get_work_packages) is True
 

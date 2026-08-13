@@ -153,7 +153,7 @@ job, not this server's: combine both layers for real defense in depth.
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `OPENPROJECT_HIDE_<ENTITY>_FIELDS` | no | empty | Comma-separated fields to omit from reads and reject on writes for a given entity; `*` wildcards supported. See [Field hiding](field-hiding.md) for the full list of supported entities and the matching syntax — this variable exists once per entity, so it is not repeated here in full |
-| `OPENPROJECT_HIDE_CUSTOM_FIELDS` | no | empty | Custom field names or keys to omit; `*` wildcards supported |
+| `OPENPROJECT_HIDE_CUSTOM_FIELDS` | no | empty | Custom field names or keys to omit; `*` wildcards supported. Read/write asymmetry: on writes, a pattern matches either the raw key (`customField12`) or the field's friendly name; on reads (the `custom_fields`/`custom_comments` response fields), a pattern matches ONLY the raw key/wildcard — a friendly-name-only pattern hides nothing from reads. See [Field hiding](field-hiding.md#custom-fields-a-readwrite-asymmetry) for the full explanation |
 | `OPENPROJECT_ATTACHMENT_ROOT` | no | disabled (no uploads) | Absolute directory that local attachment uploads are confined to. Unset/empty disables `create_work_package_attachment` entirely — there is no current-working-directory fallback. Files outside the configured root are refused, and credential/config files (`.mcp.json`, `.env`, `*.pem`, keys) are refused even inside it, so a tool call cannot exfiltrate local secrets |
 | `OPENPROJECT_ENABLE_ADMIN_WRITE` | no | `false` | User and group management (create/update/delete/lock users, create/update/delete groups). Must be set explicitly and is not activated by any project-scoped write flag |
 

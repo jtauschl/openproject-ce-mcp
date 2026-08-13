@@ -462,6 +462,10 @@ class WorkPackageSummary:
     percentage_done: int | None = None
     derived_percentage_done: int | None = None
     readonly: bool | None = None
+    custom_fields: dict[str, Any] | None = None
+    custom_fields_truncated: bool = False
+    custom_comments: dict[str, str] | None = None
+    custom_comments_truncated: bool = False
 
 
 @dataclass
@@ -507,6 +511,10 @@ class WorkPackageDetail:
     percentage_done: int | None = None
     derived_percentage_done: int | None = None
     readonly: bool | None = None
+    custom_fields: dict[str, Any] | None = None
+    custom_fields_truncated: bool = False
+    custom_comments: dict[str, str] | None = None
+    custom_comments_truncated: bool = False
 
 
 @dataclass

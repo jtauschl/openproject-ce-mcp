@@ -71,6 +71,23 @@ support.
   own `id` since boards are queries) and returns its resolved work packages,
   paginated and filtered against `OPENPROJECT_READ_PROJECTS` like every other
   work-package listing tool. Pulled forward from the 0.5.0 backlog.
+- **`list_work_packages`/`search_work_packages`/`get_work_package`/
+  `get_work_packages`/`list_my_open_work_packages` now expose custom field
+  values** via new `custom_fields`/`custom_fields_truncated`/
+  `custom_comments`/`custom_comments_truncated` fields (OPM-94). Keyed by
+  the raw `customField<N>` key (never a friendly name); values are
+  normalized by shape (link-typed formats become title-only, matching every
+  other link field; the multi-paragraph "text" format is capped like
+  `description`; a scalar string/link/date value is independently capped at
+  ~255 characters), with the response bounded to at most 50 entries and a
+  concrete worst-case size regardless of how many custom fields exist.
+  `OPENPROJECT_HIDE_CUSTOM_FIELDS` now also applies on reads, matching ONLY
+  the raw key/wildcard — a read/write asymmetry from the write path, which
+  also accepts the friendly name; see
+  [Field hiding](docs/field-hiding.md#custom-fields-a-readwrite-asymmetry).
+  Enterprise-gated custom-field formats (`hierarchy`, `weighted_item_list`,
+  `calculated_value`) and selecting individual custom-field keys via
+  `select` remain out of scope.
 
 ### Changed
 

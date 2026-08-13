@@ -54,6 +54,257 @@ from ._text import trim_text as _trim_text
 WORK_PACKAGE_CHILDREN_LIMIT = 50
 WORK_PACKAGE_ANCESTORS_LIMIT = 20
 
+# Caps the NUMBER of distinct customField<N> entries kept in custom_fields
+# (and, independently, the number of customComment<N> entries kept in
+# custom_comments -- see _extract_custom_comments). Per OPM-94.
+CUSTOM_FIELD_VALUE_LIMIT = 50
+
+# Scalar-string length cap for string/link/date-format CF values and for
+# custom_comments' plain string values. Mirrors SUBJECT_LIMIT (255, the
+# established cap for a single-line/short-scalar OpenProject field in this
+# codebase -- see _text.py) rather than FORMATTABLE_LIMIT (1200), which is
+# for the multi-paragraph "text" format specifically, not a short scalar.
+CUSTOM_FIELD_SCALAR_LIMIT = SUBJECT_LIMIT
+
+# Per-entry item cap for a multi-value list/user/version-format CF (these
+# formats can have unboundedly many linked titles). Deliberately smaller
+# than CUSTOM_FIELD_VALUE_LIMIT (which caps the number of CF *entries*, not
+# titles within one entry) and the same order of magnitude as
+# WORK_PACKAGE_ANCESTORS_LIMIT above -- a single multi-value custom field
+# with more than 20 titles is already an edge case not worth budgeting
+# further context for.
+CUSTOM_FIELD_LIST_ITEM_LIMIT = 20
+
+# Combined worst-case bound on custom_fields' contribution to a response,
+# given the caps above: at most CUSTOM_FIELD_VALUE_LIMIT (50) entries, each
+# either a scalar capped at CUSTOM_FIELD_SCALAR_LIMIT (255) chars, a
+# Formattable text capped at the caller's text_limit (FORMATTABLE_LIMIT=1200
+# by default), or a list of at most CUSTOM_FIELD_LIST_ITEM_LIMIT (20) titles
+# each capped at SUBJECT_LIMIT (255) chars -- so worst case is roughly
+# 50 * max(1200, 20 * 255) = 50 * 5100 =~ 255,000 chars (~250 KB) for
+# custom_fields, plus a separate, independently-capped custom_comments dict
+# of at most 50 entries * 255 chars =~ 12,750 chars (~12 KB). Both dicts are
+# finite and bounded regardless of what the server returns.
+
+
+def _is_custom_field_key(key: str) -> bool:
+    """True for a raw `customField<N>` key -- and ONLY that shape.
+
+    Deliberately excludes `customField<N>_errors` (a calculated_value-format
+    sibling property, out of CE scope) and `customComment<N>` (handled
+    separately by `_extract_custom_comments`): `key[11:]` is the remainder
+    after the 11-character `"customField"` prefix, and `.isdigit()` rejects
+    both `_errors` (non-digit suffix) and `Comment<N>` (wrong prefix
+    entirely, never reaches this check). Verified against
+    custom_field_injector.rb: `inject_property_value`/`inject_link_value` use
+    `custom_field.attribute_name` (-> `customField<N>`), while
+    `inject_comment_value` uses the distinct `comment_attribute_name` (->
+    `customComment<N>`).
+    """
+    return key.startswith("customField") and key[11:].isdigit()
+
+
+def _custom_field_raw_entries(payload: dict[str, Any], links: dict[str, Any]) -> dict[str, Any]:
+    """Collect every raw `customField<N>` entry, top-level AND `_links`.
+
+    Custom field values are split across TWO locations depending on format
+    (verified against custom_field_injector.rb, both the `LINK_FORMATS`
+    constant and the `inject_property_value`/`inject_link_value` methods):
+    the 7 CE-realistic PLAIN-VALUE formats (string, text, link, int, float,
+    date, bool) are injected as plain top-level `@class.property` entries;
+    the 3 CE-realistic HAL-LINK formats (list, user, version -- `hierarchy`/
+    `weighted_item_list` are Enterprise-gated and out of CE scope) are
+    injected via `@class.resource`/`@class.resources`, which the
+    `LinkedResource` DSL always renders under `_links`, never at the top
+    level. Scanning only the top level would silently drop every
+    list/user/version-format CF with no error. The two key-spaces do not
+    overlap (each CF id has exactly one format), so a plain dict update is a
+    safe merge.
+    """
+    entries: dict[str, Any] = {key: value for key, value in payload.items() if _is_custom_field_key(key)}
+    if isinstance(links, dict):
+        for key, value in links.items():
+            if _is_custom_field_key(key) and key not in entries:
+                entries[key] = value
+    return entries
+
+
+def _normalize_custom_field_entry(raw: Any, *, text_limit: int | None) -> tuple[Any, bool] | None:
+    """Shape-detect and normalize one raw customField<N> value.
+
+    Returns `(normalized_value, truncated)`, or `None` to omit the key
+    entirely (malformed/unusable shape). Detection is schema-free, by
+    payload shape (the adapter has no custom-field-definition/schema access
+    at read time):
+    - Formattable dict (has a `raw` or `html` key) -> text extraction via the
+      existing `_extract_formattable_text_with_meta` machinery, using the
+      SAME `text_limit` the caller applies to `description` in that same
+      normalization context (`settings.text_limit` in
+      `normalize_work_package_summary`; the caller's own `text_limit`
+      parameter, default FORMATTABLE_LIMIT, in `normalize_work_package_detail`)
+      -- not a hardcoded FORMATTABLE_LIMIT, so a CF text value is exactly as
+      capped/uncapped as `description` is for that same read.
+    - other dict -> single-value link title via `_link_title` (list/user/
+      version, single-value; also covers an empty `{href: null, title:
+      null}` link, which normalizes to `_link_title`'s own None).
+    - list -> multi-value link titles (list/user/version, multi-value),
+      capped at CUSTOM_FIELD_LIST_ITEM_LIMIT titles; a list whose title
+      extraction yields zero usable titles still normalizes to `[]` and is
+      KEPT (not omitted) -- an empty multi-value link is a real, meaningful
+      value ("no titles resolved"), not a malformed entry; only a raw shape
+      that cannot be interpreted at all (see below) is omitted.
+    - bare scalar (str/int/float/bool) -> passthrough, with the scalar
+      string cap applied to `str` values only (int/float/bool are not
+      length-capped -- they cannot carry unbounded text). This cap is
+      INDEPENDENT of `text_limit`: even when the caller passes
+      `text_limit=None` (get_work_package's documented "single work
+      packages are not truncated" default), a scalar string-format CF is
+      still capped at CUSTOM_FIELD_SCALAR_LIMIT -- `text_limit=None` only
+      removes the Formattable/text-format branch's cap above, not this one.
+    - None -> passthrough (a legitimate "field has no value" signal, per
+      `render_nil: true` on the property injector).
+    - anything else (unrecognized shape) -> omitted (returns None).
+
+    A `str` scalar (string/link/date-format CF, indistinguishable from one
+    another at the shape level -- link is a plain string URL, not a HAL
+    link, per custom_field_injector.rb's `inject_property_value`) and a
+    Formattable text-format value are both exactly as user-controlled as
+    `description`, so both get `_delimit_user_content()` wrapping (matching
+    `description`'s existing untrusted-content handling) -- link-title
+    values (from `_link_title`, single or multi-value) are NOT delimited,
+    matching every other WP link field in this codebase (type/status/
+    assignee/etc.), none of which delimit their titles either.
+    """
+    if raw is None:
+        return None, False
+    if isinstance(raw, dict):
+        if "raw" in raw or "html" in raw:
+            text, truncated, _length = _extract_formattable_text_with_meta(raw, limit=text_limit)
+            return _delimit_user_content(text), truncated
+        return _link_title(raw), False
+    if isinstance(raw, list):
+        titles = [title for item in raw if isinstance(item, dict) and (title := _link_title(item)) is not None]
+        truncated = len(titles) > CUSTOM_FIELD_LIST_ITEM_LIMIT
+        return titles[:CUSTOM_FIELD_LIST_ITEM_LIMIT], truncated
+    if isinstance(raw, str):
+        text = _trim_text(raw, limit=CUSTOM_FIELD_SCALAR_LIMIT)
+        return _delimit_user_content(text), len(raw) > CUSTOM_FIELD_SCALAR_LIMIT
+    if isinstance(raw, int | float | bool):
+        return raw, False
+    return None
+
+
+def _extract_custom_fields(
+    payload: dict[str, Any], links: dict[str, Any], *, text_limit: int | None
+) -> tuple[dict[str, Any] | None, bool]:
+    """Build the `custom_fields` dict, applying every cap from OPM-94 §4/§5.
+
+    ``text_limit`` is threaded through to the Formattable/text-format branch
+    of `_normalize_custom_field_entry` -- the SAME value the caller applies
+    to `description` in this normalization context, per OPM-94 §1.
+
+    Normalize-first, THEN cap (fixes a blocking bug from an earlier draft):
+    up to CUSTOM_FIELD_VALUE_LIMIT raw keys are normalized in ascending
+    numeric-id order; a raw key whose value normalizes to `None` above (i.e.
+    "omit this entry" -- an unrecognized/malformed shape, not a legitimate
+    None value, since a legitimate None is returned as `(None, False)`, not
+    bare `None`) is skipped WITHOUT consuming one of the 50 slots, so
+    malformed entries can never crowd out later valid ones. `truncated` is
+    True if either (a) more raw customField<N> keys existed than could be
+    normalized+kept, or (b) any KEPT entry was itself internally truncated
+    (Formattable text over the effective text_limit, a scalar string over
+    CUSTOM_FIELD_SCALAR_LIMIT, or a multi-value list over
+    CUSTOM_FIELD_LIST_ITEM_LIMIT) -- aggregating both signals into one flag
+    (also fixing a second earlier bug, where a per-entry truncation flag was
+    computed but silently discarded).
+    """
+    raw_entries = _custom_field_raw_entries(payload, links)
+    if not raw_entries:
+        return None, False
+
+    def _numeric_key(key: str) -> int:
+        return int(key[11:])
+
+    kept: dict[str, Any] = {}
+    any_entry_truncated = False
+    considered = 0
+    for key in sorted(raw_entries, key=_numeric_key):
+        if len(kept) >= CUSTOM_FIELD_VALUE_LIMIT:
+            break
+        considered += 1
+        normalized = _normalize_custom_field_entry(raw_entries[key], text_limit=text_limit)
+        if normalized is None:
+            continue
+        value, entry_truncated = normalized
+        kept[key] = value
+        any_entry_truncated = any_entry_truncated or entry_truncated
+
+    # truncated: True if any raw key beyond what was considered still
+    # remains (count-capped), OR any kept entry's own value was internally
+    # truncated.
+    count_capped = considered < len(raw_entries)
+    truncated = count_capped or any_entry_truncated
+    return (kept or None), truncated
+
+
+def _extract_custom_comments(payload: dict[str, Any]) -> tuple[dict[str, str] | None, bool]:
+    """Build the `custom_comments` dict from raw `customComment<N>` keys.
+
+    `customComment<N>` is a plain top-level string-or-null property (never
+    under `_links`; verified against `inject_comment_value`'s
+    `@class.property ... render_nil: true`), gated on the customized model's
+    OWN `acts_as_customizable comments:` option (`CustomField#can_have_comment?`
+    delegates to `customized_class.can_have_custom_comments?`).
+
+    IMPORTANT, verified live against a real 17.7.1 instance (not merely read
+    from source): `app/models/work_package.rb`'s `acts_as_customizable
+    validate_on: :saving_custom_fields` call never passes `comments: true` --
+    only `app/models/project.rb` does (`comments: true, admin_only_allowed:
+    true`). Attempting to set `has_comment: true` on a WorkPackageCustomField
+    raises `ActiveRecord::RecordInvalid: "Add a comment text field must be
+    blank"`. So `customComment<N>` is structurally IMPOSSIBLE on a
+    WorkPackage on this codebase, on every OpenProject version -- this is
+    NOT merely gated to 17.2+ as originally assumed from
+    `inject_comment_schema`/`inject_comment_value`'s mere presence in the
+    17.7 injector alone (that generic machinery never fires for WorkPackage
+    because `custom_field.has_comment?` can never be true there). This scan
+    is kept anyway (harmless, forward-compatible should a future OpenProject
+    version ever add `comments: true` to WorkPackage) but will return
+    `(None, False)` for every real WorkPackage payload today -- see
+    docker/test/seed.rb's OPM-94 custom-field seed block and this project's
+    OPM-94 implementation report for the full finding.
+    """
+    raw_entries = {
+        key: value for key, value in payload.items() if key.startswith("customComment") and key[13:].isdigit()
+    }
+    if not raw_entries:
+        return None, False
+
+    def _numeric_key(key: str) -> int:
+        return int(key[13:])
+
+    kept: dict[str, str] = {}
+    any_entry_truncated = False
+    considered = 0
+    for key in sorted(raw_entries, key=_numeric_key):
+        if len(kept) >= CUSTOM_FIELD_VALUE_LIMIT:
+            break
+        considered += 1
+        raw_value = raw_entries[key]
+        if raw_value is None:
+            continue
+        text = _trim_text(raw_value, limit=CUSTOM_FIELD_SCALAR_LIMIT)
+        if text is None:
+            continue
+        delimited = _delimit_user_content(text)
+        assert delimited is not None  # _trim_text returned non-None above, so this cannot be None
+        kept[key] = delimited
+        any_entry_truncated = any_entry_truncated or len(str(raw_value)) > CUSTOM_FIELD_SCALAR_LIMIT
+
+    count_capped = considered < len(raw_entries)
+    truncated = count_capped or any_entry_truncated
+    return (kept or None), truncated
+
 
 def _work_package_dates(payload: dict[str, Any]) -> tuple[str | None, str | None]:
     """(start_date, due_date) for a work package, accounting for milestones.
@@ -89,6 +340,8 @@ def normalize_work_package_summary(payload: dict[str, Any], *, text_limit: int |
     links = payload.get("_links", {})
     description, truncated, length = _extract_formattable_text_with_meta(payload.get("description"), limit=text_limit)
     start_date, due_date = _work_package_dates(payload)
+    custom_fields, custom_fields_truncated = _extract_custom_fields(payload, links, text_limit=text_limit)
+    custom_comments, custom_comments_truncated = _extract_custom_comments(payload)
     return WorkPackageSummary(
         id=int(payload["id"]),
         display_id=payload.get("displayId"),
@@ -130,6 +383,10 @@ def normalize_work_package_summary(payload: dict[str, Any], *, text_limit: int |
         percentage_done=payload.get("percentageDone"),
         derived_percentage_done=payload.get("derivedPercentageDone"),
         readonly=payload.get("readonly"),
+        custom_fields=custom_fields,
+        custom_fields_truncated=custom_fields_truncated,
+        custom_comments=custom_comments,
+        custom_comments_truncated=custom_comments_truncated,
     )
 
 
@@ -150,6 +407,19 @@ def normalize_work_package_detail(
     `description` is still independently re-extracted regardless
     (`preserve_newlines=True`, a genuinely different extraction than the
     summary's, not just a different truncation limit).
+
+    `custom_fields`/`custom_fields_truncated`/`custom_comments`/
+    `custom_comments_truncated` are NOT independently re-extracted here --
+    unlike `description`, they are read straight off `summary` (computed
+    with the SAME `text_limit` this function received, whether `summary`
+    was passed in or computed above). Deliberate choice, not an oversight:
+    CF text-format values do not get `preserve_newlines=True` in the Detail
+    context (they stay single-line-collapsed like the Summary's own
+    treatment) -- structured custom-field text is typically short/single-
+    purpose data, not multi-paragraph prose like `description`, and
+    re-scanning every customField<N>/customComment<N> key a second time per
+    Detail call for a rarely-relevant newline distinction was judged not
+    worth the doubled shape-detection cost.
     """
     if summary is None:
         summary = normalize_work_package_summary(payload, text_limit=text_limit)
@@ -221,6 +491,10 @@ def normalize_work_package_detail(
         percentage_done=summary.percentage_done,
         derived_percentage_done=summary.derived_percentage_done,
         readonly=summary.readonly,
+        custom_fields=summary.custom_fields,
+        custom_fields_truncated=summary.custom_fields_truncated,
+        custom_comments=summary.custom_comments,
+        custom_comments_truncated=summary.custom_comments_truncated,
     )
 
 

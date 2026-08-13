@@ -2878,8 +2878,10 @@ async def search_work_packages(
     priority filters by priority name or numeric ID (case-insensitive).
 
     Date filters, sort_by/group_by, select, pagination (offset/limit/total),
-    and include_sums all work exactly as documented on list_work_packages —
-    see that tool's docstring for the full field lists and semantics. One
+    include_sums, and each result's custom_fields/custom_comments (raw-key
+    custom-field values/comments, capped and hide-matched exactly as
+    documented) all work exactly as documented on list_work_packages — see
+    that tool's docstring for the full field lists and semantics. One
     difference: total is the real matching count only when scope is
     unrestricted or an explicit project was given (list_work_packages's
     server-side allowed-project filter for the no-project+restricted-scope
@@ -2989,7 +2991,11 @@ async def list_work_packages(
     parent_id, parent_display_id, start_date, due_date, estimated_time,
     spent_time, created_at, updated_at, author, category, description,
     schedule_manually, derived_start_date, derived_due_date, percentage_done,
-    derived_percentage_done, readonly, ignore_non_working_days.
+    derived_percentage_done, readonly, ignore_non_working_days, custom_fields,
+    custom_fields_truncated, custom_comments, custom_comments_truncated.
+    custom_fields/custom_comments are selectable/hideable only as a whole
+    field, not by individual custom-field key (per-key filtering is
+    OPENPROJECT_HIDE_CUSTOM_FIELDS' concern, not select's).
     parent_display_id is only populated on OpenProject 17.5+ (semantic mode);
     it stays null on older/classic instances even when parent_id is set.
 
@@ -3024,6 +3030,31 @@ async def list_work_packages(
     name>", include_sums=true returns per-status progress/time sums for one
     version's work packages, replacing manual pagination + client-side
     summation.
+
+    custom_fields is a dict keyed by the RAW OpenProject key (e.g.
+    "customField12") -- never a friendly name -- with values normalized by
+    shape: plain scalars pass through; link-typed values (list/user/version
+    format) become title-only strings (or a list of titles for a multi-value
+    field), matching every other link field in this response; multi-
+    paragraph "text"-format values are capped like description (this call's
+    effective text_limit); a scalar string/link/date-format value is
+    independently capped at ~255 characters. custom_fields_truncated is true
+    when the dict was capped at 50 entries and/or any individual entry's
+    value was itself capped. custom_comments (keyed the same way, holding a
+    field's freeform comment text) and custom_comments_truncated follow the
+    identical shape and caps, independently -- in practice custom_comments
+    is always empty/null for work packages on OpenProject's stock CE
+    behavior: only Projects opt into per-custom-field comments, work
+    packages do not, so this field is present for forward compatibility
+    only. Combined worst case is roughly 250 KB for custom_fields per work
+    package, always finite regardless of how many custom fields exist or
+    how large their values are. get_work_packages (batch) and
+    list_my_open_work_packages return the same custom_fields/custom_comments
+    shape and caps, since they reuse this same normalization.
+    OPENPROJECT_HIDE_CUSTOM_FIELDS hides individual custom_fields entries by
+    matching ONLY the raw key/wildcard (e.g. "customField12", "customField*")
+    -- unlike the write path, which also accepts the custom field's friendly
+    name, a read-side hide pattern written as a friendly name has no effect.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -3087,7 +3118,14 @@ async def get_work_package(
     The description is returned in full by default (single work packages are not
     truncated). Pass ``text_limit`` to cap it at that many characters; when the
     text is cut, ``description_truncated`` is true and ``description_length``
-    reports the real length.
+    reports the real length. This same ``text_limit`` also caps any
+    "text"-format custom field value in ``custom_fields`` (see
+    list_work_packages's docstring for the full custom_fields/custom_comments
+    shape and hide-matching rules) -- but a scalar string/link/date-format
+    custom field value is capped independently at ~255 characters regardless
+    of ``text_limit``, including when ``text_limit=None`` (the default here):
+    "single work packages are not truncated" applies to description and CF
+    text-format values, not to that separate, always-on scalar cap.
 
     select restricts the response to the given fields (e.g. ["id", "subject",
     "status"]); an invalid name returns the allowed set.
@@ -3122,6 +3160,13 @@ async def get_work_packages(
     For batches with many full-detail items, set text_limit and/or select
     proactively — an unbounded batch of large work packages can exceed the
     tool-result size limit and get redirected to a file.
+
+    Each item's work_package carries the same custom_fields/custom_comments
+    shape and caps as get_work_package — see list_work_packages's docstring
+    for the full details (raw-key values, per-field caps, and the
+    OPENPROJECT_HIDE_CUSTOM_FIELDS key-only hide-matching asymmetry). With
+    many items, an unbounded custom_fields/custom_comments per item adds to
+    the same size-limit risk text_limit/select address above.
     """
     client = _client_from_context(ctx)
 
@@ -3898,6 +3943,12 @@ async def list_my_open_work_packages(
     are based on whether this page came back full rather than the server's own
     total, so nothing here ever reveals how many matches exist in projects you
     can't see. Page until next_offset is null either way.
+
+    Each result row also carries custom_fields/custom_comments (not listed
+    under "select fields" above since they are selectable/hideable only as a
+    whole field, like every other field) with the same shape, caps, and
+    OPENPROJECT_HIDE_CUSTOM_FIELDS key-only hide-matching as
+    list_work_packages -- see that tool's docstring for the full details.
     """
     client = _client_from_context(ctx)
     safe_offset = _validate_offset(offset)

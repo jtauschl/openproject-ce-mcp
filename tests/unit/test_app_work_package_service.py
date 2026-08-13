@@ -425,6 +425,23 @@ async def test_list_my_open_checks_read_enabled_before_current_user_lookup() -> 
 
 
 @pytest.mark.asyncio
+async def test_list_my_open_exposes_custom_fields_via_same_normalize_path() -> None:
+    """Smoke-level regression guard (OPM-94 §4): list_my_open_work_packages
+    reuses the same normalize_work_package_summary/WorkPackageService._stamp
+    path as list()/search() -- custom_fields must appear automatically, with
+    no list_my_open-specific production code required."""
+    summary_with_cf = dataclasses.replace(_summary(6), custom_fields={"customField1": "Acme Corp"})
+    payload = _payload(6)
+    api = _FakeWorkPackageApi(raw_elements=[payload])
+    api._records_by_id[6] = _record(6, summary=summary_with_cf, payload=payload)
+    service, _ = _service(api)
+
+    result = await service.list_my_open()
+
+    assert result.results[0].custom_fields == {"customField1": "Acme Corp"}
+
+
+@pytest.mark.asyncio
 async def test_get_checks_read_enabled_before_fetching() -> None:
     settings = dataclasses.replace(make_settings(), enable_work_package_read=False)
     service, api = _service(settings=settings)
@@ -710,6 +727,151 @@ async def test_list_stamps_hidden_description_and_zeroes_summary_metadata() -> N
     assert summary.has_description is False
 
 
+# ---------------------------------------------------------------------------
+# OPM-94: custom_fields/custom_comments hide-on-read (key-only match)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_hides_custom_field_matched_by_raw_key() -> None:
+    detail_with_cf = dataclasses.replace(
+        _detail(6),
+        custom_fields={"customField1": "Acme Corp", "customField2": 42},
+        custom_comments={"customField1": "a note"},
+    )
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, detail=detail_with_cf)
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("customField1",))
+    service, _ = _service(api, settings=settings)
+
+    detail = await service.get(6)
+
+    assert detail.custom_fields == {"customField2": 42}
+    # Hiding customField1 also hides its matching customComment1 counterpart.
+    assert detail.custom_comments is None
+
+
+@pytest.mark.asyncio
+async def test_get_does_not_hide_custom_field_matched_only_by_friendly_name() -> None:
+    """Read-side hide-on-read is KEY-ONLY (per OPM-90's approved strategy) --
+    a pattern written as the custom field's friendly name (e.g. "Story
+    points") has no effect on custom_fields, unlike the write path's
+    ensure_custom_field_writable, which matches both the schema name and the
+    key. This is the read/write asymmetry documented in field-hiding.md."""
+    detail_with_cf = dataclasses.replace(_detail(6), custom_fields={"customField1": 8})
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, detail=detail_with_cf)
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("Story points",))
+    service, _ = _service(api, settings=settings)
+
+    detail = await service.get(6)
+
+    assert detail.custom_fields == {"customField1": 8}
+
+
+@pytest.mark.asyncio
+async def test_get_hide_custom_fields_wildcard_matches_raw_key() -> None:
+    detail_with_cf = dataclasses.replace(
+        _detail(6), custom_fields={"customField1": "a", "customField2": "b", "customField30": "c"}
+    )
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, detail=detail_with_cf)
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("customField*",))
+    service, _ = _service(api, settings=settings)
+
+    detail = await service.get(6)
+
+    assert detail.custom_fields is None
+
+
+@pytest.mark.asyncio
+async def test_list_hides_custom_field_matched_by_raw_key_on_summary() -> None:
+    summary_with_cf = _summary(6)
+    summary_with_cf = dataclasses.replace(summary_with_cf, custom_fields={"customField1": "a", "customField2": "b"})
+    payload = _payload(6)
+    api = _FakeWorkPackageApi(raw_elements=[payload])
+    api._records_by_id[6] = _record(6, summary=summary_with_cf, payload=payload)
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("customField2",))
+    service, _ = _service(api, settings=settings)
+
+    result = await service.list()
+
+    assert result.results[0].custom_fields == {"customField1": "a"}
+
+
+@pytest.mark.asyncio
+async def test_get_all_custom_fields_hidden_via_whole_field_hide_resets_truncated_flag() -> None:
+    """Hiding the WHOLE custom_fields field (OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS
+    =custom_fields) must also reset custom_fields_truncated to False --
+    otherwise a truncation flag would leak metadata about hidden data, even
+    though custom_fields itself is dropped by apply_hidden_fields. Mirrors
+    the existing description_truncated/description_length reset above."""
+    detail_with_cf = dataclasses.replace(_detail(6), custom_fields={"customField1": "a"}, custom_fields_truncated=True)
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, detail=detail_with_cf)
+    settings = dataclasses.replace(make_settings(), hidden_fields={"work_package": ("custom_fields",)})
+    service, _ = _service(api, settings=settings)
+
+    detail = await service.get(6)
+
+    assert "custom_fields" in detail._hidden_keys  # type: ignore[attr-defined]
+    assert detail.custom_fields_truncated is False
+
+
+@pytest.mark.asyncio
+async def test_get_all_custom_comments_hidden_via_whole_field_hide_resets_truncated_flag() -> None:
+    detail_with_cc = dataclasses.replace(
+        _detail(6), custom_comments={"customField1": "note"}, custom_comments_truncated=True
+    )
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, detail=detail_with_cc)
+    settings = dataclasses.replace(make_settings(), hidden_fields={"work_package": ("custom_comments",)})
+    service, _ = _service(api, settings=settings)
+
+    detail = await service.get(6)
+
+    assert "custom_comments" in detail._hidden_keys  # type: ignore[attr-defined]
+    assert detail.custom_comments_truncated is False
+
+
+@pytest.mark.asyncio
+async def test_get_partial_key_only_hide_leaves_truncated_flag_as_originally_computed() -> None:
+    """When only SOME keys are masked via the key-only custom-field hide
+    (not the whole field), custom_fields_truncated is left as originally
+    computed (the raw-payload pre-mask truncation signal) -- a documented
+    choice, distinct from _filter_hierarchy_allowlist's scope-allowlist
+    re-derivation (a different class of leak; see _mask_custom_field_values'
+    docstring)."""
+    detail_with_cf = dataclasses.replace(
+        _detail(6), custom_fields={"customField1": "a", "customField2": "b"}, custom_fields_truncated=True
+    )
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, detail=detail_with_cf)
+    settings = dataclasses.replace(make_settings(), hide_custom_fields=("customField1",))
+    service, _ = _service(api, settings=settings)
+
+    detail = await service.get(6)
+
+    assert detail.custom_fields == {"customField2": "b"}
+    assert detail.custom_fields_truncated is True
+
+
+@pytest.mark.asyncio
+async def test_get_no_hide_custom_fields_configured_leaves_dict_identity_unchanged() -> None:
+    """No OPENPROJECT_HIDE_CUSTOM_FIELDS configured -> _mask_custom_field_keys
+    returns the original dict object unchanged (no rebuild), per the
+    documented no-op-avoidance in _mask_custom_field_keys."""
+    original = {"customField1": "a"}
+    detail_with_cf = dataclasses.replace(_detail(6), custom_fields=original)
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, detail=detail_with_cf)
+    service, _ = _service(api, settings=make_settings())
+
+    detail = await service.get(6)
+
+    assert detail.custom_fields is original
+
+
 @pytest.mark.asyncio
 async def test_get_field_hidden_by_work_package_scope_not_a_sibling_scope() -> None:
     """Entity-scope regression: hiding 'description' under a DIFFERENT
@@ -828,6 +990,25 @@ async def test_get_batch_partial_failure() -> None:
     assert ok_item.success is True
     failed_item = next(item for item in result.results if item.id == 999)
     assert failed_item.success is False
+
+
+@pytest.mark.asyncio
+async def test_get_batch_exposes_custom_fields_via_same_normalize_path() -> None:
+    """Smoke-level regression guard (OPM-94 §4): get_work_packages (batch)
+    reuses the same normalize_work_package_detail/WorkPackageService._stamp
+    path as get() -- custom_fields/custom_comments must appear automatically,
+    with no batch-specific production code required."""
+    detail_with_cf = dataclasses.replace(_detail(6), custom_fields={"customField1": "Acme Corp"})
+    api = _FakeWorkPackageApi()
+    api._records_by_id[6] = _record(6, detail=detail_with_cf)
+    service, _ = _service(api)
+
+    result = await service.get_batch(ids=[6])
+
+    item = result.results[0]
+    assert item.success is True
+    assert item.work_package is not None
+    assert item.work_package.custom_fields == {"customField1": "Acme Corp"}
 
 
 @pytest.mark.asyncio
