@@ -119,11 +119,24 @@ async def test_create_storage_one_drive_rejected_without_enterprise_token(
     """Exercises the REAL OpenProject contract validation end-to-end (not a
     mock): OneDriveStorage overrides allowed_by_enterprise_token? to check
     EnterpriseToken.allows_to?(:one_drive_sharepoint_file_storage), which a
-    Community Edition instance never satisfies. No `host` is sent (OneDrive's
-    own contract requires host to be ABSENT) and tenant_id is a
-    syntactically valid GUID, so this is the single validation error on the
-    request -- OpenProject's MultipleErrors wrapper does not fire, and the
-    real Enterprise-gate message text propagates untouched.
+    Community Edition instance never satisfies.
+
+    Live-verified against a real 17.7.1 instance (2026-08-13, during a
+    5-Docker-version integration sweep): even a syntactically valid GUID
+    tenant_id (matching OneDriveContract's own
+    /\\A(?:[a-f0-9]{8}-...|consumers)\\z/i regex, confirmed against source)
+    still triggers a SECOND validation error alongside the Enterprise-gate
+    one ("Directory (tenant) ID is invalid.", root cause not identified --
+    not OneDriveContract's own format validator, which this tenant value
+    satisfies) -- OpenProject's own MultipleErrors wrapper DOES fire here.
+    This is exactly the scenario that surfaced a real client-side bug:
+    raise_for_status previously only read the top-level `message` ("Multiple
+    field constraints have been violated."), silently discarding
+    `_embedded.errors[]`'s real per-field detail -- fixed the same session
+    (see _combined_message in app/transport/errors.py), so the Enterprise
+    text now reliably appears in the raised error's message even when
+    other, unrelated validation errors are also present. No `host` is sent
+    (OneDrive's own contract requires host to be ABSENT).
     """
     name = f"[integration-test] OneDrive {uuid.uuid4().hex[:8]}"
 

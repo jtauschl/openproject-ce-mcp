@@ -65,3 +65,52 @@ def test_raise_for_status_5xx_raises_server_error() -> None:
 def test_raise_for_status_unmapped_4xx_raises_server_error_with_status_code() -> None:
     with pytest.raises(OpenProjectServerError, match="418"):
         raise_for_status(418, {"message": "I'm a teapot"})
+
+
+def test_raise_for_status_multiple_errors_surfaces_embedded_detail_messages() -> None:
+    """Live-verified regression guard (2026-08-13, real 17.7.1 instance): a
+    MultipleErrors HAL payload's top-level `message` alone
+    ("Multiple field constraints have been violated.") is useless -- the real
+    per-field detail lives in `_embedded.errors[]`. Without this, a caller
+    could not tell an Enterprise-gate rejection apart from any other
+    combination of simultaneous validation failures."""
+    payload = {
+        "message": "Multiple field constraints have been violated.",
+        "_embedded": {
+            "errors": [
+                {"message": "Directory (tenant) ID is invalid."},
+                {"message": "The request can not be handled due to invalid or missing Enterprise token."},
+            ]
+        },
+    }
+    with pytest.raises(InvalidInputError) as exc_info:
+        raise_for_status(422, payload)
+
+    text = str(exc_info.value)
+    assert "Multiple field constraints have been violated." in text
+    assert "Directory (tenant) ID is invalid." in text
+    assert "Enterprise token" in text
+
+
+def test_raise_for_status_single_error_payload_unaffected_by_embedded_handling() -> None:
+    """No _embedded.errors at all (the common case) must still work exactly
+    as before -- this change must not alter single-error message handling."""
+    with pytest.raises(InvalidInputError, match="^Filters Context malformed value$"):
+        raise_for_status(422, {"message": "Filters Context malformed value"})
+
+
+def test_raise_for_status_multiple_errors_with_no_message_field_falls_back_to_details() -> None:
+    payload = {
+        "_embedded": {
+            "errors": [
+                {"message": "First problem."},
+                {"message": "Second problem."},
+            ]
+        },
+    }
+    with pytest.raises(InvalidInputError) as exc_info:
+        raise_for_status(422, payload)
+
+    text = str(exc_info.value)
+    assert "First problem." in text
+    assert "Second problem." in text

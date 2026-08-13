@@ -255,15 +255,21 @@ async def test_create_update_delete_time_entry_denied_outside_write_allowlist(
     test_create_time_entry_succeeds_for_log_own_time_only_role exercises via
     restricted_client above."""
     activity = await _first_activity_name(client)
+    wp_id = await _first_wp_id(client, test_project)
     spent_on = datetime.date.today().isoformat()
 
     with pytest.raises(PermissionDeniedError):
         await denied_client.create_time_entry(
-            project=test_project, activity=activity, hours="PT1H", spent_on=spent_on, confirm=True
+            project=test_project,
+            work_package_id=wp_id,
+            activity=activity,
+            hours="PT1H",
+            spent_on=spent_on,
+            confirm=True,
         )
 
     existing = await client.create_time_entry(
-        project=test_project, activity=activity, hours="PT1H", spent_on=spent_on, confirm=True
+        project=test_project, work_package_id=wp_id, activity=activity, hours="PT1H", spent_on=spent_on, confirm=True
     )
     assert existing.ready, existing.validation_errors
     te_id = existing.time_entry_id
