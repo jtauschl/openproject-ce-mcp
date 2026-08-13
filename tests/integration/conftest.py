@@ -190,6 +190,30 @@ async def denied_client():
 
 
 @pytest.fixture
+async def admin_write_disabled_client():
+    """A client with OPENPROJECT_ENABLE_ADMIN_WRITE off, everything else
+    (including enable_admin_read and both project allowlists) identical to
+    the normal integration client -- for the Users/Groups admin-write-disabled
+    denial tests. Users/Groups are gated by this dedicated opt-in flag
+    (config.py's `enable_admin_write` field, mapped from
+    OPENPROJECT_ENABLE_ADMIN_WRITE via access.py's _WRITE_SCOPE_ENV_VAR["admin"]),
+    not the per-project write allowlist denied_client exercises -- keeping
+    read access and the write allowlist unchanged from the normal client
+    ensures PermissionDeniedError comes from the admin-write flag check
+    (access.ensure_write_enabled("admin", ...)) the test is actually meant
+    to exercise, not an unrelated read or allowlist gate.
+    """
+    settings = _integration_settings()
+    if settings is None:
+        pytest.skip("OPENPROJECT_BASE_URL / OPENPROJECT_API_TOKEN not set")
+    _resolve_test_project()
+    disabled_settings = dataclasses.replace(settings, enable_admin_write=False)
+    client_instance = OpenProjectClient(disabled_settings)
+    await client_instance.initialize()
+    return client_instance
+
+
+@pytest.fixture
 async def hide_custom_fields_client():
     """A client with every custom field hidden (OPENPROJECT_HIDE_CUSTOM_FIELDS
     equivalent, via a `cf_*` glob), for OPM-109's hidden-custom-field-filter
