@@ -27,6 +27,8 @@ htmlcov/
 .vscode/
 .cursor/
 .DS_Store
+Thumbs.db
+Desktop.ini
 CONTINUE.md
 
 # Local backups
