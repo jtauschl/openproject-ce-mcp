@@ -104,6 +104,18 @@ _PROVIDER_TYPE_URN = {
     "Sharepoint": "urn:openproject-org:api:v3:storages:Sharepoint",
 }
 
+# authenticationMethod is a `link_without_resource` on StorageRepresenter
+# (op-sources/full-17.6/.../storage_representer.rb), not a plain top-level
+# JSON property -- its setter reads ONLY `_links.authenticationMethod.href`
+# (a full URN) via `AUTHENTICATION_METHOD_MAP.fetch(href)`, breaking on
+# (silently ignoring) any other shape, including a bare top-level string.
+# Reverse of the adapter's own _AUTHENTICATION_METHOD_MAP
+# (httpx_storage_api.py), which decodes the URN suffix on read.
+_AUTHENTICATION_METHOD_URN = {
+    "two_way_oauth2": "urn:openproject-org:api:v3:storages:authenticationMethod:TwoWayOAuth2",
+    "oauth2_sso": "urn:openproject-org:api:v3:storages:authenticationMethod:OAuth2SSO",
+}
+
 
 class StorageService:
     def __init__(self, *, api: StorageApi, settings: Settings) -> None:
@@ -167,10 +179,15 @@ class StorageService:
             payload_preview["host"] = host
         if authentication_method is not None:
             hidden_fields.ensure_field_writable("storage", "authentication_method", settings=self._settings)
+            auth_urn = _AUTHENTICATION_METHOD_URN.get(authentication_method)
+            if auth_urn is None:
+                raise InvalidInputError(
+                    "OpenProject storage authentication_method must be one of "
+                    f"{sorted(_AUTHENTICATION_METHOD_URN)}, got {authentication_method!r}."
+                )
+            links["authenticationMethod"] = {"href": auth_urn}
             payload_preview["authentication_method"] = authentication_method
         body: dict[str, Any] = {"name": name, "_links": links}
-        if authentication_method is not None:
-            body["authentication_method"] = authentication_method
         if tenant_id is not None:
             hidden_fields.ensure_field_writable("storage", "tenant_id", settings=self._settings)
             body["tenant_id"] = tenant_id
@@ -219,7 +236,6 @@ class StorageService:
         confirm: bool = False,
     ) -> StorageWriteResult:
         access.ensure_write_enabled("admin", settings=self._settings)
-        current = await self._api.get(storage_id)
         body: dict[str, Any] = {}
         links: dict[str, Any] = {}
         if name is not None:
@@ -237,6 +253,9 @@ class StorageService:
             payload_preview["host"] = host
 
         if not confirm:
+            # Fetched only on the preview branch -- the confirmed branch never
+            # references it (its own PATCH result comes from commit_update).
+            current = await self._api.get(storage_id)
             return self._write_result(
                 action="update",
                 state="preview",
@@ -266,9 +285,11 @@ class StorageService:
 
     async def delete(self, storage_id: int, *, confirm: bool = False) -> StorageWriteResult:
         access.ensure_write_enabled("admin", settings=self._settings)
-        current = await self._api.get(storage_id)
         payload = {"id": storage_id}
         if not confirm:
+            # Fetched only on the preview branch -- the confirmed branch never
+            # references it (commit_delete needs only the id).
+            current = await self._api.get(storage_id)
             return self._write_result(
                 action="delete",
                 state="preview",

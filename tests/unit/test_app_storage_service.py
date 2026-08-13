@@ -260,14 +260,21 @@ async def test_create_commits_nextcloud_when_confirmed() -> None:
     )
 
     assert result.state == "confirmed"
+    # authenticationMethod is a link (link_without_resource on
+    # StorageRepresenter, op-sources), never a top-level property -- its
+    # setter reads ONLY _links.authenticationMethod.href (a full URN), so it
+    # must be nested under _links, not sent as a bare "authentication_method"
+    # key (which the real representer silently drops).
     assert api.commit_create_calls == [
         {
             "name": "New Storage",
             "_links": {
                 "type": {"href": "urn:openproject-org:api:v3:storages:Nextcloud"},
                 "origin": {"href": "http://nc.example.com/"},
+                "authenticationMethod": {
+                    "href": "urn:openproject-org:api:v3:storages:authenticationMethod:TwoWayOAuth2"
+                },
             },
-            "authentication_method": "two_way_oauth2",
         }
     ]
 
@@ -299,6 +306,17 @@ async def test_create_rejects_unknown_provider_type_before_any_api_call() -> Non
 
     with pytest.raises(InvalidInputError, match="provider_type"):
         await service.create(name="X", provider_type="Dropbox", confirm=True)
+
+    assert api.commit_create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_unknown_authentication_method_before_any_api_call() -> None:
+    api = _FakeStorageApi()
+    service = _service(api, settings=_admin_write_settings())
+
+    with pytest.raises(InvalidInputError, match="authentication_method"):
+        await service.create(name="X", provider_type="Nextcloud", authentication_method="password", confirm=True)
 
     assert api.commit_create_calls == []
 
@@ -368,7 +386,10 @@ async def test_update_commits_when_confirmed() -> None:
     assert result.state == "confirmed"
     assert result.storage_id == 3
     assert api.commit_update_calls == [(3, {"name": "Renamed"})]
-    assert api.get_calls == [3]
+    # The confirmed branch never references the fetched detail (its result
+    # comes from commit_update), so no prior GET should happen -- only the
+    # preview branch (test_update_preview_shows_current_state) needs one.
+    assert api.get_calls == []
 
 
 @pytest.mark.asyncio
@@ -447,3 +468,6 @@ async def test_delete_commits_when_confirmed_with_no_result() -> None:
     assert result.storage_id == 3
     assert result.result is None
     assert api.commit_delete_calls == [3]
+    # The confirmed branch never needs the current detail (commit_delete
+    # only needs the id) -- only the preview branch fetches it.
+    assert api.get_calls == []
