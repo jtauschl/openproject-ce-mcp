@@ -1284,6 +1284,116 @@ class GroupWriteResult(ConfirmationHeader):
     result: GroupSummary | None
 
 
+# --- Storages (provider-polymorphic; discriminator = provider_type) --------
+#
+# provider_type is a plain string discriminator ("Nextcloud" | "OneDrive" |
+# "Sharepoint", matching the API's own `type` link title -- the last segment
+# of the URN, e.g. "urn:openproject-org:api:v3:storages:Nextcloud") rather
+# than a nested tagged-union type, matching this codebase's flat-dataclass
+# convention: every other domain uses flat optional fields, never a
+# Union/sum-type model. Fields that only apply to one provider default to
+# None for every other provider, mirroring GroupDetail's flat-optional-field
+# style.
+#
+# No can_update/can_delete fields: StorageRepresenter (OpenProject's Ruby
+# representer for this resource) declares no `link :update`/`link :delete`
+# at all -- verified directly against source -- so there is no HAL signal to
+# derive them from. Adding always-False fields would be actively misleading
+# rather than merely unused.
+
+
+@dataclass
+class StorageSummary:
+    id: int
+    name: str
+    provider_type: str
+    host: str | None
+    configured: bool
+    created_at: str | None
+    updated_at: str | None
+    # Nextcloud-only (None for every other provider)
+    has_application_password: bool | None = None
+    forbidden_file_name_characters: str | None = None
+    # OneDrive-only (None for every other provider)
+    tenant_id: str | None = None
+    drive_id: str | None = None
+
+
+@dataclass
+class StorageDetail:
+    id: int
+    name: str
+    provider_type: str
+    host: str | None
+    configured: bool
+    # "connected" | "not_connected" | "failed_authorization" | "error" --
+    # normalized from the authorizationState link's URN (PascalCase suffix,
+    # e.g. "FailedAuthorization") to snake_case for consistency with every
+    # other enum-shaped field in this codebase.
+    authorization_state: str | None
+    # Nextcloud only: "two_way_oauth2" | "oauth2_sso"; None for every other
+    # provider (the authenticationMethod link is only rendered for Nextcloud).
+    authentication_method: str | None
+    created_at: str | None
+    updated_at: str | None
+    has_application_password: bool | None = None
+    forbidden_file_name_characters: str | None = None
+    tenant_id: str | None = None
+    drive_id: str | None = None
+
+
+@dataclass
+class StorageListResult(PageResult):
+    results: list[StorageSummary]
+
+
+@dataclass
+class StorageWriteResult(ConfirmationHeader):
+    storage_id: int | None
+    payload: dict
+    validation_errors: dict
+    result: StorageDetail | None
+
+
+# --- Project Storages (read-only, project-scoped) ---------------------------
+#
+# No write model: OpenProject's v3 API mounts only GET (Index/Show) for
+# project_storages -- no create/update/delete endpoint exists at all
+# (confirmed against modules/storages/lib/api/v3/project_storages/
+# project_storages_api.rb: only `get` verbs are grape-mounted).
+
+
+@dataclass
+class ProjectStorageSummary:
+    id: int
+    project_id: int | None
+    project: str | None
+    storage_id: int | None
+    storage_name: str | None
+    project_folder_mode: str | None
+    created_at: str | None
+    updated_at: str | None
+
+
+@dataclass
+class ProjectStorageDetail:
+    id: int
+    project_id: int | None
+    project: str | None
+    storage_id: int | None
+    storage_name: str | None
+    project_folder_mode: str | None
+    creator_id: int | None
+    creator: str | None
+    created_at: str | None
+    updated_at: str | None
+
+
+@dataclass
+class ProjectStorageListResult(PageResult):
+    results: list[ProjectStorageSummary]
+
+
 @dataclass
 class FileLinkSummary:
     id: int
