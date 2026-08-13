@@ -262,6 +262,39 @@ class TransportError(OpenProjectError):
     """The request could not reach OpenProject safely."""
 
 
+def _combined_error_message(payload: dict[str, Any]) -> str:
+    """The top-level `message` alone is a generic, useless summary
+    ("Multiple field constraints have been violated.") when OpenProject
+    wraps several validation failures in a `MultipleErrors` HAL error --
+    the real per-field detail lives in `_embedded.errors[]`, each itself a
+    full Error payload with its own `message`. Verified live against a real
+    17.7.1 instance (2026-08-13): a two-provider storage create with an
+    Enterprise-gate violation AND an unrelated field error returns exactly
+    this shape, and without this, InvalidInputError only ever surfaced
+    "Multiple field constraints have been violated." with no way for a
+    caller (or a test asserting on the message) to see which fields, or
+    that the Enterprise gate was even involved.
+
+    Falls back to the top-level message alone (or "" if absent) when there
+    is no `_embedded.errors` list, or it's empty -- the common single-error
+    case is unaffected by this change.
+    """
+    message = str(payload.get("message") or "").strip()
+    embedded = payload.get("_embedded")
+    errors = embedded.get("errors") if isinstance(embedded, dict) else None
+    if not isinstance(errors, list) or not errors:
+        return message
+    detail_messages = [
+        str(err.get("message")).strip()
+        for err in errors
+        if isinstance(err, dict) and str(err.get("message") or "").strip()
+    ]
+    if not detail_messages:
+        return message
+    details = "; ".join(detail_messages)
+    return f"{message} ({details})" if message else details
+
+
 class OpenProjectClient:
     """Small OpenProject API client with optional guarded write support."""
 
@@ -6064,7 +6097,7 @@ class OpenProjectClient:
         except ValueError:
             payload = {}
 
-        message = str(payload.get("message") or "").strip()
+        message = _combined_error_message(payload)
         status_code = response.status_code
         if status_code == 401:
             raise AuthenticationError("OpenProject authentication failed.")
