@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from openproject_ce_mcp import tools
-from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient
+from openproject_ce_mcp.client import InvalidInputError, OpenProjectClient, PermissionDeniedError
 
 pytestmark = pytest.mark.integration
 
@@ -245,6 +245,35 @@ async def test_create_time_entry_rejects_hidden_start_time_field(client: OpenPro
             start_time="09:00",
             confirm=False,
         )
+
+
+async def test_create_update_delete_time_entry_denied_outside_write_allowlist(
+    denied_client: OpenProjectClient, client: OpenProjectClient, test_project: str, time_entry_ids: list[int]
+) -> None:
+    """This MCP's own OPENPROJECT_WRITE_PROJECTS allowlist, distinct from the
+    OpenProject role-permission boundary
+    test_create_time_entry_succeeds_for_log_own_time_only_role exercises via
+    restricted_client above."""
+    activity = await _first_activity_name(client)
+    spent_on = datetime.date.today().isoformat()
+
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.create_time_entry(
+            project=test_project, activity=activity, hours="PT1H", spent_on=spent_on, confirm=True
+        )
+
+    existing = await client.create_time_entry(
+        project=test_project, activity=activity, hours="PT1H", spent_on=spent_on, confirm=True
+    )
+    assert existing.ready, existing.validation_errors
+    te_id = existing.time_entry_id
+    time_entry_ids.append(te_id)
+
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.update_time_entry(time_entry_id=te_id, hours="PT2H", confirm=True)
+
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.delete_time_entry(time_entry_id=te_id, confirm=True)
 
 
 async def test_create_time_entry_preview_surfaces_openproject_validation_error(
