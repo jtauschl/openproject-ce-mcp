@@ -101,17 +101,21 @@ async def test_list_meetings(client: OpenProjectClient, test_project: str, meeti
 async def test_create_and_update_meeting_denied_outside_write_allowlist(
     denied_client: OpenProjectClient, client: OpenProjectClient, test_project: str, meeting_ids: list[int]
 ) -> None:
+    # denied_client's call can only ever raise PermissionDeniedError (the
+    # write-allowlist check runs before the meetings endpoint is reached) --
+    # the real NotFoundError risk ("Meetings module not installed/enabled,
+    # or OpenProject < 17.4") is on the unrestricted client's own call below.
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.create_meeting(
+            project=test_project, title=f"[integration-test] denied {uuid.uuid4().hex[:8]}", confirm=True
+        )
+
     try:
-        with pytest.raises(PermissionDeniedError):
-            await denied_client.create_meeting(
-                project=test_project, title=f"[integration-test] denied {uuid.uuid4().hex[:8]}", confirm=True
-            )
+        existing = await client.create_meeting(
+            project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
+        )
     except NotFoundError:
         pytest.skip("Meetings module not installed/enabled, or OpenProject < 17.4, on this instance")
-
-    existing = await client.create_meeting(
-        project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
-    )
     assert existing.ready, existing.validation_errors
     meeting_id = existing.meeting_id
     meeting_ids.append(meeting_id)
@@ -460,25 +464,30 @@ async def test_create_update_delete_recurring_meeting_and_init_occurrence_denied
     _ensure_recurring_meeting_write_allowed helper (recurring_meeting_service.py),
     so exercising init alone is sufficient to prove that shared code path's
     allowlist enforcement."""
+    # denied_client's call can only ever raise PermissionDeniedError (the
+    # write-allowlist check runs before the recurring-meetings endpoint is
+    # reached) -- the real NotFoundError risk ("Recurring meetings not
+    # available, or OpenProject < 17.4") is on the unrestricted client's own
+    # call below.
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.create_recurring_meeting(
+            project=test_project,
+            title=f"[integration-test] denied {uuid.uuid4().hex[:8]}",
+            frequency="weekly",
+            start_time="2030-05-06T09:00:00Z",
+            confirm=True,
+        )
+
     try:
-        with pytest.raises(PermissionDeniedError):
-            await denied_client.create_recurring_meeting(
-                project=test_project,
-                title=f"[integration-test] denied {uuid.uuid4().hex[:8]}",
-                frequency="weekly",
-                start_time="2030-05-06T09:00:00Z",
-                confirm=True,
-            )
+        existing = await client.create_recurring_meeting(
+            project=test_project,
+            title=f"[integration-test] {uuid.uuid4().hex[:8]}",
+            frequency="weekly",
+            start_time="2030-06-03T09:00:00Z",
+            confirm=True,
+        )
     except NotFoundError:
         pytest.skip("Recurring meetings not available, or OpenProject < 17.4, on this instance")
-
-    existing = await client.create_recurring_meeting(
-        project=test_project,
-        title=f"[integration-test] {uuid.uuid4().hex[:8]}",
-        frequency="weekly",
-        start_time="2030-06-03T09:00:00Z",
-        confirm=True,
-    )
     assert existing.ready, existing.validation_errors
     recurring_meeting_id = existing.recurring_meeting_id
     recurring_meeting_ids.append(recurring_meeting_id)
@@ -488,13 +497,20 @@ async def test_create_update_delete_recurring_meeting_and_init_occurrence_denied
             recurring_meeting_id=recurring_meeting_id, title="denied update", confirm=True
         )
 
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.delete_recurring_meeting(recurring_meeting_id=recurring_meeting_id, confirm=True)
+
+    # Occurrence denial checked last, after delete's own denial is already
+    # confirmed -- an empty upcoming-occurrence result skips only this final
+    # portion, not the CRUD denial assertions already run above.
     upcoming = await client.list_recurring_meeting_occurrences(recurring_meeting_id, filter="upcoming", limit=1)
-    if upcoming.results:
-        target = upcoming.results[0]
-        with pytest.raises(PermissionDeniedError):
-            await denied_client.init_recurring_meeting_occurrence(
-                recurring_meeting_id=recurring_meeting_id, start_time=target.start_time, confirm=True
-            )
+    if not upcoming.results:
+        pytest.skip("No upcoming occurrence available to exercise init_recurring_meeting_occurrence's denial path")
+    target = upcoming.results[0]
+    with pytest.raises(PermissionDeniedError):
+        await denied_client.init_recurring_meeting_occurrence(
+            recurring_meeting_id=recurring_meeting_id, start_time=target.start_time, confirm=True
+        )
 
     with pytest.raises(PermissionDeniedError):
         await denied_client.delete_recurring_meeting(recurring_meeting_id=recurring_meeting_id, confirm=True)

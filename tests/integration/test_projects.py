@@ -115,7 +115,7 @@ async def test_list_principals(client: OpenProjectClient) -> None:
     # to be empty.
     assert result.count > 0
     me = await client.get_current_user()
-    assert any(p.name == me.name for p in result.results)
+    assert any(p.id == me.id for p in result.results)
 
 
 async def test_list_principals_paginates_beyond_a_single_page(client: OpenProjectClient) -> None:
