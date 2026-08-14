@@ -58,14 +58,7 @@ support.
   `delete_work_package_wiki_link`** — full CRUD (no update) for links between
   a work package and a wiki page, pulled forward from the 0.5.0 backlog.
   Requires OpenProject **17.6+**; the underlying `wiki_page_links` API has no
-  reachable route on earlier versions. `list_work_package_wiki_links` currently
-  only has integration coverage for the zero-links case: a confirmed upstream
-  OpenProject bug (`Wikis::PageLinkMetadataService#enrich_models`, reported as
-  OP-19928) makes the list endpoint fail with a 500 whenever at least one link
-  actually exists, which also makes `delete_work_package_wiki_link` unusable
-  in that case, since it deliberately re-verifies the link belongs to the
-  given work package before deleting it. `create_work_package_wiki_link` is
-  unaffected and fully functional.
+  reachable route on earlier versions.
 - **New tool: `execute_query`** — runs a saved OpenProject query
   (`query_id`, from `get_view`/`list_views`'s `query_id` field, or a board's
   own `id` since boards are queries) and returns its resolved work packages,
@@ -197,6 +190,31 @@ support.
 
 ### Fixed
 
+- **`list_work_package_wiki_links` failed whenever at least one link
+  existed on a work package**, an OpenProject server bug this MCP cannot
+  work around client-side; a fix has been submitted upstream
+  ([opf/openproject#24770](https://github.com/opf/openproject/pull/24770)).
+  A separate pagination bug on the same endpoint (results never advancing
+  past the first page) is also upstream-only
+  ([#24774](https://github.com/opf/openproject/pull/24774)).
+- **Some write rejections showed a generic message instead of the actual
+  reason** (e.g. a rejected storage connection on Community Edition showed
+  "Multiple field constraints have been violated" instead of the real
+  "requires an Enterprise token"). The specific reason is now surfaced.
+- **`create_meeting_outcome`/`update_meeting_outcome` rejected the correct
+  `kind` values (`"info"`/`"action"` were accepted instead of the real
+  `information`/`decision`/`work_package`)**, and could fail with "This
+  outcome is not editable anymore" against a freshly created meeting.
+- **`init_recurring_meeting_occurrence` failed on every call.** A fix for
+  the underlying server bug has been submitted upstream
+  ([#24772](https://github.com/opf/openproject/pull/24772)).
+- **`update_user_non_working_time`/`delete_user_non_working_time` could
+  falsely report "not found" for a record that genuinely exists**, if that
+  record's date range fell outside the current calendar year.
+- **`create_user_working_hours` failed with an opaque server error whenever
+  any weekday was left unspecified**, instead of treating it as "not a
+  working day". A fix for the underlying server bug has been submitted
+  upstream ([#24773](https://github.com/opf/openproject/pull/24773)).
 - **`list_projects` no longer reports a false `truncated: true` when the
   requested `limit` is reached exactly on the server's last page.**
   `fetch_project_page` decided `truncated` as soon as `limit` allowed
