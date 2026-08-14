@@ -16,6 +16,11 @@
 - [ ] All tests pass: `uv run pytest tests/ -v` or `.venv/bin/python -m pytest tests/ -v`
 - [ ] `docs/tools.md` updated if tools were added/removed/renamed
 - [ ] `README.md` tool count updated if changed
+- [ ] Manual testing done, if applicable
+
+## Release notes
+
+<!-- User-visible change, if any — what would go in CHANGELOG.md. "None" if internal-only. -->
 
 ## Related
 
