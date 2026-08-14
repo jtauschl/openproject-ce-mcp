@@ -97,6 +97,13 @@ markers = [
     "allow_feature_flag_fetch: opt out of the offline feature-flag stub in conftest",
 ]
 
+[tool.coverage.run]
+source = ["src/openproject_ce_mcp"]
+
+[tool.coverage.report]
+fail_under = 87
+show_missing = true
+
 [tool.ruff]
 line-length = 120
 target-version = "py310"

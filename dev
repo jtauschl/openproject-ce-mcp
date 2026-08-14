@@ -23,7 +23,7 @@ lint() {
 }
 
 test_() {
-    uv run pytest "$@"
+    uv run pytest --cov=src/openproject_ce_mcp --cov-report=term-missing "$@"
 }
 
 build() {

@@ -63,7 +63,12 @@ jobs:
         run: uv sync --dev
 
       - name: Run tests
+        if: matrix.python-version != '3.12'
         run: uv run pytest
+
+      - name: Run tests with coverage gate
+        if: matrix.python-version == '3.12'
+        run: uv run pytest --cov=src/openproject_ce_mcp --cov-report=term-missing
 
   test-macos-windows:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
