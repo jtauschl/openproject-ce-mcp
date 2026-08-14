@@ -128,12 +128,12 @@ select = [
   "SIM", # flake8-simplify
 ]
 ignore = [
-  "E501",   # line too long — wird von formatter gehandhabt
-  "SIM108", # ternary statt if/else — oft schwerer lesbar
+  "E501",   # line too long — handled by the formatter
+  "SIM108", # ternary instead of if/else — often less readable
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["SIM"]  # Testcode darf ausführlicher sein
+"tests/**" = ["SIM"]  # test code may be more verbose
 
 [tool.mypy]
 python_version = "3.10"
