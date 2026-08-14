@@ -2774,7 +2774,10 @@ async def create_user_working_hours(
 
     user_ref: "me" for the current user, a numeric user id, or a login.
     valid_from: ISO 8601 date (YYYY-MM-DD) this schedule version takes effect.
-    *_hours: hours worked on that weekday; omit any you don't want to set.
+    *_hours: hours worked on that weekday; a weekday you omit is treated as
+    0 (not a working day) -- OpenProject requires every weekday to have a
+    value on create, so this MCP fills in 0 for you rather than sending an
+    incomplete schedule.
     availability_factor: fractional working-time factor (e.g. 0.5 for
     half-time), independent of the per-day hour values.
     """
