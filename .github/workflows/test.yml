@@ -37,6 +37,15 @@ jobs:
       - name: Run mypy
         run: uv run mypy
 
+      - name: Run bandit (SAST)
+        run: uvx bandit -r src/openproject_ce_mcp -ll
+
+      - name: Run semgrep (SAST)
+        run: uvx semgrep --config auto --error src/openproject_ce_mcp
+
+      - name: Check dependency licenses
+        run: uvx pip-licenses --python .venv/bin/python3 --partial-match --fail-on="GPL;LGPL;AGPL"
+
   # macos-latest/windows-latest cost roughly 10x/2x a Linux runner-minute — scoped to
   # release-time confirmation only (the workflow_call from publish.yml's tag push, or a
   # manual workflow_dispatch), never the per-push/per-PR gate. Split into two jobs rather

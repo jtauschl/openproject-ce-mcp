@@ -3721,6 +3721,8 @@ def _return_model(fn: Any) -> type | None:
     we resolve it against this module's namespace (where the models are imported).
     """
     ann = fn.__annotations__.get("return")
+    # ann is the function's own return-type annotation (source-defined), never attacker-controlled input.
+    # nosemgrep: python.lang.security.dangerous-globals-use.dangerous-globals-use
     model = globals().get(ann) if isinstance(ann, str) else ann
     return model if isinstance(model, type) and is_dataclass(model) else None
 
@@ -4493,6 +4495,8 @@ def _validate_positive_int(value: int, *, field_name: str) -> int:
 # renamed tool name raises KeyError here at import time instead of a tool
 # silently vanishing from registration.
 _TOOL_FUNCTIONS: dict[str, Callable] = {
+    # name comes from this module's own tool-classification constants below, never attacker-controlled input.
+    # nosemgrep: python.lang.security.dangerous-globals-use.dangerous-globals-use
     name: globals()[name]
     for name in (
         *PERSONAL_MUTATION_TOOLS,
