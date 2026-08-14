@@ -13,6 +13,8 @@ bootstrap() {
     uv sync --dev
 }
 
+shell_scripts=(dev get.sh uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh)
+
 lint() {
     uv run ruff check .
     uv run ruff format --check .
@@ -20,9 +22,12 @@ lint() {
     uvx bandit -r src/openproject_ce_mcp -ll
     uvx semgrep --config auto --error src/openproject_ce_mcp
     uvx pip-licenses --python .venv/bin/python3 --partial-match --fail-on="GPL;LGPL;AGPL"
+    shellcheck "${shell_scripts[@]}"
+    shfmt -l "${shell_scripts[@]}"
     sh -n get.sh
-    bash -n dev
-    bash -n uninstall.sh
+    for f in dev uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh; do
+        bash -n "$f"
+    done
 }
 
 test_() {

@@ -8,9 +8,9 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 if [ "${1:-}" = "--purge" ]; then
-  docker compose down -v
-  echo "Containers and volumes removed."
+    docker compose down -v
+    echo "Containers and volumes removed."
 else
-  docker compose down
-  echo "Containers stopped; volumes kept. Use --purge to remove them."
+    docker compose down
+    echo "Containers stopped; volumes kept. Use --purge to remove them."
 fi
