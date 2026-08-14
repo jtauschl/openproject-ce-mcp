@@ -40,6 +40,8 @@ class _FakeUserNonWorkingTimeApi:
 
     async def update(self, user_ref, non_working_time_id, *, payload):
         self.update_calls.append((user_ref, non_working_time_id, payload))
+        if non_working_time_id == 999:
+            raise NotFoundError(f"OpenProject non-working time {non_working_time_id} was not found.")
         return UserNonWorkingTimeRecord(
             summary=_summary(
                 record_id=non_working_time_id,
@@ -50,6 +52,8 @@ class _FakeUserNonWorkingTimeApi:
 
     async def delete(self, user_ref, non_working_time_id):
         self.delete_calls.append((user_ref, non_working_time_id))
+        if non_working_time_id == 999:
+            raise NotFoundError(f"OpenProject non-working time {non_working_time_id} was not found.")
 
 
 def _service(api: _FakeUserNonWorkingTimeApi | None = None, *, settings=None) -> UserNonWorkingTimeService:
@@ -192,12 +196,16 @@ async def test_create_denies_hidden_field() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_raises_not_found_when_id_absent_from_list() -> None:
-    api = _FakeUserNonWorkingTimeApi(records=[])
+async def test_update_confirmed_raises_not_found_for_unknown_id() -> None:
+    # No prior list scan: PATCH is called directly and OpenProject's own
+    # 404 (mapped to NotFoundError by the transport) surfaces as-is.
+    api = _FakeUserNonWorkingTimeApi()
     service = _service(api)
 
     with pytest.raises(NotFoundError):
-        await service.update("me", 999, end_date="2026-08-15", confirm=False)
+        await service.update("me", 999, end_date="2026-08-15", confirm=True)
+
+    assert api.update_calls == [("me", 999, {"endDate": "2026-08-15"})]
 
 
 @pytest.mark.asyncio
@@ -209,7 +217,9 @@ async def test_update_preview_does_not_write() -> None:
 
     assert result.state == "preview"
     assert result.payload == {"endDate": "2026-08-15"}
+    assert result.user_id is None
     assert api.update_calls == []
+    assert api.list_calls == []
 
 
 @pytest.mark.asyncio
@@ -227,14 +237,16 @@ async def test_update_confirmed_writes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_raises_not_found_when_id_absent_from_list() -> None:
-    api = _FakeUserNonWorkingTimeApi(records=[])
+async def test_delete_confirmed_raises_not_found_for_unknown_id() -> None:
+    # No prior list scan: DELETE is called directly and OpenProject's own
+    # 404 (mapped to NotFoundError by the transport) surfaces as-is.
+    api = _FakeUserNonWorkingTimeApi()
     service = _service(api)
 
     with pytest.raises(NotFoundError):
-        await service.delete("me", 999, confirm=False)
+        await service.delete("me", 999, confirm=True)
 
-    assert api.delete_calls == []
+    assert api.delete_calls == [("me", 999)]
 
 
 @pytest.mark.asyncio
@@ -245,7 +257,9 @@ async def test_delete_preview_does_not_delete() -> None:
     result = await service.delete("me", 5, confirm=False)
 
     assert result.state == "preview"
+    assert result.user_id is None
     assert api.delete_calls == []
+    assert api.list_calls == []
 
 
 @pytest.mark.asyncio

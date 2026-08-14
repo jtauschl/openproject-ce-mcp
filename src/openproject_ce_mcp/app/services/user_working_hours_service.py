@@ -16,6 +16,21 @@ all).
 
 `list_for_user` paginates client-side via `pagination.paginate_client`, same
 `UnpaginatedCollection` precedent as `UserNonWorkingTimeService`/`RoleService`.
+
+`create()` normalizes every unset weekday-hours param to `0.0` before
+building the payload (rather than omitting it, as every other optional field
+in this codebase does). OpenProject's `UserWorkingHours` model requires
+`presence: true` on all 7 weekday columns with no DB default, but a POST
+that omits any of them crashes the SERVER with a raw 500 (`undefined method
+'/' for nil` -- the model's own `#{day}_hours` getter divides the still-nil
+minutes column when rendering the response) instead of a clean 422; found
+live, verified against a real 17.7.1 instance and against
+`app/models/user_working_hours.rb`'s source. Sending all 7 fields (including
+0 for a non-working day) always succeeds. `update()` is NOT given the same
+treatment -- a PATCH targets an existing record whose 7 columns are already
+non-null from `create()`, so a partial payload never re-introduces a nil
+column, and defaulting unset days to 0.0 there would silently wipe the rest
+of an existing weekly schedule instead of leaving it untouched.
 """
 
 from __future__ import annotations
@@ -93,6 +108,19 @@ class UserWorkingHoursService:
     ) -> UserWorkingHoursWriteResult:
         access.ensure_read_enabled("user_schedule", settings=self._settings)
         hidden_fields.ensure_field_writable("user_working_hours", "valid_from", settings=self._settings)
+        # Every weekday-hours column is presence:true with no DB default on
+        # OpenProject's side; a create() that omits any of them crashes the
+        # server with a raw 500 instead of a clean 422 (see this Service's
+        # own docstring). Normalize unset days to 0.0 here -- before the
+        # preview payload is built -- so preview and the actual write always
+        # agree on what will be sent.
+        monday_hours = 0.0 if monday_hours is None else monday_hours
+        tuesday_hours = 0.0 if tuesday_hours is None else tuesday_hours
+        wednesday_hours = 0.0 if wednesday_hours is None else wednesday_hours
+        thursday_hours = 0.0 if thursday_hours is None else thursday_hours
+        friday_hours = 0.0 if friday_hours is None else friday_hours
+        saturday_hours = 0.0 if saturday_hours is None else saturday_hours
+        sunday_hours = 0.0 if sunday_hours is None else sunday_hours
         supplied = {
             "monday_hours": monday_hours,
             "tuesday_hours": tuesday_hours,

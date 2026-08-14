@@ -12,11 +12,15 @@ the version facts for operator awareness only.
 
 Full CRUD minus a single-item GET: list, create, update, delete -- OpenProject
 mounts no `GET .../non_working_times/{id}` route at all (verified against
-`non_working_times_by_user_api.rb`, only `patch`/`delete` exist under
-`route_param :non_working_time_id`). `update`/`delete` therefore need the
-Service to already know the record belongs to the target user (from a prior
-`list_for_user` scan), the same no-single-GET shape `WikiPageLinkApi.delete`
-documents.
+`non_working_times_by_user_api.rb`), but `update`/`delete` do NOT need a
+prior `list_for_user` scan to compensate: `route_param :non_working_time_id`
+scopes both `patch`/`delete` server-side by `.visible(current_user).
+for_user(@user).find(non_working_time_id)` with no year filter, so a bad id
+already 404s on its own. (An earlier version of the Service pre-fetched via
+`list_for_user` for this purpose -- unlike WikiPageLinkApi.delete's genuinely
+unscoped DELETE, this domain's routes were already self-scoping, and the
+scan's default `year` silently missed non-current-year records, found live
+against a real 17.7.1 instance.)
 
 Collection is UNPAGINATED (`UserNonWorkingTimeCollectionRepresenter` subclasses
 `::API::Decorators::UnpaginatedCollection`, verified against source) --

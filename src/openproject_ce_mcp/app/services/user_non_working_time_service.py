@@ -23,28 +23,29 @@ matching RoleService's exact precedent: the collection is
 page_size=settings.max_results` (fetch the whole requested year) and the
 result is sliced locally.
 
-`update()`/`delete()` both require a prior `list_for_user` scan to find the
-target record (there is no single-resource GET on OpenProject's side for
-this domain at all -- see the Port's docstring) and, for `delete()`, to
-confirm the id genuinely belongs to this `user_ref` before calling DELETE.
-This mirrors `WikiPageLinkService.delete()`'s `_ensure_link_belongs_to_
-work_package` shape, but for a materially different reason: OpenProject's own
-DELETE/PATCH here already scope by `.for_user(@user).find(...)` server-side
-(a mismatched id already 404s -- verified against
-`non_working_times_by_user_api.rb`'s `after_validation` block), so this is
-not an authorization-bypass fix the way WikiPageLink's was (that domain's
-DELETE endpoint has no comparable per-parent scoping). It exists here purely
-so a wrong id produces this MCP's own clear `NotFoundError` instead of an
-`OpenProjectServerError` propagated from a raw 404, and so `update`/`delete`
-can report the record's own `user_id` in their result even when the
-caller-supplied `user_ref` was `"me"` or a login rather than a numeric id.
+`update()`/`delete()` call OpenProject's PATCH/DELETE directly, with NO prior
+list scan. An earlier version of this Service pre-fetched the record via
+`list_for_user` to obtain its `user_id` and to turn a bad id into a clean
+`NotFoundError` -- but that scan defaults to filtering by the CURRENT
+calendar year server-side (verified against source: `non_working_times_by_
+user_api.rb`'s `get` route, `year = params[:year] || Date.current.year`),
+NOT "every year", so it 404'd on a genuinely existing record whenever its
+date range fell in a different year (found live against a real 17.7.1
+instance). OpenProject's PATCH/DELETE routes never needed that scan in the
+first place: both scope directly by `.visible(current_user).for_user(@user).
+find(non_working_time_id)` (`route_param :non_working_time_id`'s
+`after_validation` block) with no year filter at all, and the transport's
+own `raise_for_status` already turns a raw 404 into this MCP's
+`NotFoundError`. `update()` reads the confirmed record's `user_id` back off
+PATCH's own response (`_links.user`); `delete()`'s response carries no body,
+so its preview reports `user_id=None`, honestly reflecting that this MCP
+cannot know it without the round trip this design deliberately avoids.
 """
 
 from __future__ import annotations
 
 from ...config import Settings
 from ...models import UserNonWorkingTimeListResult, UserNonWorkingTimeSummary, UserNonWorkingTimeWriteResult
-from ..errors import NotFoundError
 from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_client
 from ..policies import access, hidden_fields
@@ -83,15 +84,6 @@ class UserNonWorkingTimeService:
             truncated=truncated,
             results=page,
         )
-
-    async def _find_or_404(self, user_ref: str, non_working_time_id: int) -> UserNonWorkingTimeSummary:
-        records, _total = await self._api.list_for_user(
-            user_ref, year=None, offset=1, page_size=self._settings.max_results
-        )
-        for record in records:
-            if record.summary.id == non_working_time_id:
-                return record.summary
-        raise NotFoundError(f"OpenProject non-working time {non_working_time_id} was not found for user {user_ref}.")
 
     async def create(
         self, user_ref: str, *, start_date: str, end_date: str, confirm: bool = False
@@ -140,7 +132,6 @@ class UserNonWorkingTimeService:
         confirm: bool = False,
     ) -> UserNonWorkingTimeWriteResult:
         access.ensure_read_enabled("user_schedule", settings=self._settings)
-        current = await self._find_or_404(user_ref, non_working_time_id)
         payload: dict[str, object] = {}
         if start_date is not None:
             hidden_fields.ensure_field_writable("user_non_working_time", "start_date", settings=self._settings)
@@ -155,7 +146,7 @@ class UserNonWorkingTimeService:
                 ready=True,
                 message="Ask for confirmation, then call again with confirm=true to write it.",
                 non_working_time_id=non_working_time_id,
-                user_id=current.user_id,
+                user_id=None,
                 payload=payload,
                 validation_errors={},
                 result=None,
@@ -179,7 +170,6 @@ class UserNonWorkingTimeService:
         self, user_ref: str, non_working_time_id: int, *, confirm: bool = False
     ) -> UserNonWorkingTimeWriteResult:
         access.ensure_read_enabled("user_schedule", settings=self._settings)
-        current = await self._find_or_404(user_ref, non_working_time_id)
         payload = {"id": non_working_time_id}
         if not confirm:
             return UserNonWorkingTimeWriteResult(
@@ -188,7 +178,7 @@ class UserNonWorkingTimeService:
                 ready=True,
                 message="Ask for confirmation, then call again with confirm=true to delete it.",
                 non_working_time_id=non_working_time_id,
-                user_id=current.user_id,
+                user_id=None,
                 payload=payload,
                 validation_errors={},
                 result=None,
@@ -201,7 +191,7 @@ class UserNonWorkingTimeService:
             ready=True,
             message="Non-working time deleted successfully.",
             non_working_time_id=non_working_time_id,
-            user_id=current.user_id,
+            user_id=None,
             payload=payload,
             validation_errors={},
             result=None,

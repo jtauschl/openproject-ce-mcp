@@ -101,11 +101,24 @@ async def test_create_user_non_working_time_preview_without_confirm_does_not_wri
     assert all(item.start_date != "2077-02-01" for item in listed.results)
 
 
+async def test_update_user_non_working_time_preview_does_not_probe_id(client: OpenProjectClient) -> None:
+    # update()/delete() no longer pre-scan the user's list to validate the id
+    # (see UserNonWorkingTimeService's own docstring for why -- OpenProject's
+    # PATCH/DELETE routes already self-scope and 404 on their own) -- so a
+    # preview call never touches the network and cannot fail even for a
+    # nonsensical id; only the confirmed write can.
+    preview_result = await client.update_user_non_working_time(
+        _USER_REF, 2**31 - 1, end_date="2077-03-01", confirm=False
+    )
+    assert preview_result.state == "preview"
+    assert preview_result.user_id is None
+
+
 async def test_update_user_non_working_time_raises_not_found_for_unknown_id(client: OpenProjectClient) -> None:
     from openproject_ce_mcp.client import NotFoundError
 
     with pytest.raises(NotFoundError):
-        await client.update_user_non_working_time(_USER_REF, 2**31 - 1, end_date="2077-03-01", confirm=False)
+        await client.update_user_non_working_time(_USER_REF, 2**31 - 1, end_date="2077-03-01", confirm=True)
 
 
 # --- User Working Hours ---------------------------------------------------

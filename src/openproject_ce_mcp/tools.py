@@ -2673,9 +2673,9 @@ async def update_user_non_working_time(
 
     Requires OpenProject 17.3+. Same authorization as
     list_user_non_working_times. No single-item GET exists on OpenProject's
-    side for this resource — this call resolves the record by scanning the
-    user's full list first, failing with a not-found error if the id isn't
-    among them.
+    side for this resource, but the update itself is addressed directly by
+    id (no year or other date filter involved) — a non-existent id fails
+    with a not-found error.
     """
     client = _client_from_context(ctx)
     safe_user = _validate_required_query(user_ref, field_name="user_ref", max_length=100)

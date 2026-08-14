@@ -163,7 +163,60 @@ async def test_create_preview_does_not_write() -> None:
     assert result.state == "preview"
     assert result.result is None
     assert api.create_calls == []
-    assert result.payload == {"validFrom": "2026-08-01", "mondayHours": 8.0}
+    # Every unset weekday is normalized to 0.0 (not omitted) -- see the
+    # Service's own docstring: OpenProject's create route 500s on a payload
+    # missing any of the 7 weekday columns, so preview must show exactly
+    # what the confirmed write will actually send.
+    assert result.payload == {
+        "validFrom": "2026-08-01",
+        "mondayHours": 8.0,
+        "tuesdayHours": 0.0,
+        "wednesdayHours": 0.0,
+        "thursdayHours": 0.0,
+        "fridayHours": 0.0,
+        "saturdayHours": 0.0,
+        "sundayHours": 0.0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_create_preview_with_no_days_specified_defaults_all_to_zero() -> None:
+    api = _FakeUserWorkingHoursApi()
+    service = _service(api)
+
+    result = await service.create("me", valid_from="2026-08-01", confirm=False)
+
+    assert result.payload == {
+        "validFrom": "2026-08-01",
+        "mondayHours": 0.0,
+        "tuesdayHours": 0.0,
+        "wednesdayHours": 0.0,
+        "thursdayHours": 0.0,
+        "fridayHours": 0.0,
+        "saturdayHours": 0.0,
+        "sundayHours": 0.0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_create_confirmed_sends_all_seven_weekdays_to_the_api() -> None:
+    api = _FakeUserWorkingHoursApi()
+    service = _service(api)
+
+    await service.create("me", valid_from="2026-08-01", monday_hours=8.0, friday_hours=4.0, confirm=True)
+
+    assert len(api.create_calls) == 1
+    _user_ref, _valid_from, kwargs = api.create_calls[0]
+    assert kwargs == {
+        "monday_hours": 8.0,
+        "tuesday_hours": 0.0,
+        "wednesday_hours": 0.0,
+        "thursday_hours": 0.0,
+        "friday_hours": 4.0,
+        "saturday_hours": 0.0,
+        "sunday_hours": 0.0,
+        "availability_factor": None,
+    }
 
 
 @pytest.mark.asyncio
