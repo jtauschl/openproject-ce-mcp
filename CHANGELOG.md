@@ -7,7 +7,7 @@ development baseline.
 
 ---
 
-## [Unreleased 0.3.7]
+## [0.3.7] - Unreleased
 
 ### Security
 
