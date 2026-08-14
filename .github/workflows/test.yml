@@ -118,6 +118,16 @@ jobs:
       - name: Check package metadata
         run: uvx twine check dist/*
 
+      - name: Generate SBOM
+        run: |
+          uv export --no-dev --format requirements-txt --no-hashes -o requirements.txt
+          uvx --from cyclonedx-bom cyclonedx-py requirements requirements.txt --of JSON -o sbom.json
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom
+          path: sbom.json
+
   launchers:
     runs-on: ubuntu-latest
     timeout-minutes: 10
