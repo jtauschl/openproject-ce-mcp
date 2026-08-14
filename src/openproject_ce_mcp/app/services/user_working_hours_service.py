@@ -22,10 +22,11 @@ building the payload (rather than omitting it, as every other optional field
 in this codebase does). OpenProject's `UserWorkingHours` model requires
 `presence: true` on all 7 weekday columns with no DB default, but a POST
 that omits any of them crashes the SERVER with a raw 500 (`undefined method
-'/' for nil` -- the model's own `#{day}_hours` getter divides the still-nil
-minutes column when rendering the response) instead of a clean 422; found
-live, verified against a real 17.7.1 instance and against
-`app/models/user_working_hours.rb`'s source. Sending all 7 fields (including
+'/' for nil` -- the presence/numericality validator itself calls the
+model's own `#{day}_hours` getter, which divides the still-nil minutes
+column) instead of a clean 422; found live, verified against a real 17.7.1
+instance and against `app/models/user_working_hours.rb`'s source. Sending
+all 7 fields (including
 0 for a non-working day) always succeeds. `update()` is NOT given the same
 treatment -- a PATCH targets an existing record whose 7 columns are already
 non-null from `create()`, so a partial payload never re-introduces a nil
