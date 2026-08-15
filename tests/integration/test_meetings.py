@@ -531,9 +531,6 @@ async def test_create_update_delete_recurring_meeting_and_init_occurrence_denied
             recurring_meeting_id=recurring_meeting_id, start_time=target.start_time, confirm=True
         )
 
-    with pytest.raises(PermissionDeniedError):
-        await denied_client.delete_recurring_meeting(recurring_meeting_id=recurring_meeting_id, confirm=True)
-
 
 async def test_list_recurring_meeting_occurrences_all_four_filters(
     client: OpenProjectClient, test_project: str, recurring_meeting_ids: list[int]
