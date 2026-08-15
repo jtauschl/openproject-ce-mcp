@@ -201,6 +201,12 @@ support.
   reason** (e.g. a rejected storage connection on Community Edition showed
   "Multiple field constraints have been violated" instead of the real
   "requires an Enterprise token"). The specific reason is now surfaced.
+- **A permission-denied response could be misreported as an authentication
+  failure** if OpenProject's rejection bundled an unrelated detail message
+  mentioning "token" or "authenticate" (e.g. an Enterprise-gate rejection
+  alongside a genuine permission denial) — a side effect of the surfaced-
+  detail fix directly above. The actual error type is now classified
+  correctly again.
 - **`create_meeting_outcome`/`update_meeting_outcome` rejected the correct
   `kind` values (`"info"`/`"action"` were accepted instead of the real
   `information`/`decision`/`work_package`)**, and could fail with "This
