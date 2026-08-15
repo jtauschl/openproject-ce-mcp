@@ -27,6 +27,12 @@ development baseline.
   violated.") gave no way to tell which fields, or whether an Enterprise-
   only feature was involved — the real detail lives in `_embedded.errors[]`
   and is now surfaced alongside it.
+- **A permission-denied response could be misreported as an authentication
+  failure** if OpenProject's rejection bundled an unrelated detail message
+  mentioning "token" or "authenticate" (e.g. an Enterprise-gate rejection
+  alongside a genuine permission denial) — a side effect of the surfaced-
+  detail fix directly above. The actual error type is now classified
+  correctly again.
 - **`list_my_open_work_packages` could silently return zero or incomplete
   results even when matching, allowed work packages genuinely existed.**
   This query has no server-side project filter at all, so under a
