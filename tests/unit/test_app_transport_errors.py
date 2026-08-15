@@ -67,6 +67,25 @@ def test_raise_for_status_unmapped_4xx_raises_server_error_with_status_code() ->
         raise_for_status(418, {"message": "I'm a teapot"})
 
 
+def test_raise_for_status_403_embedded_token_mention_does_not_misclassify() -> None:
+    """A 403 whose _embedded.errors[] happens to mention "token"/"authenticate"
+    in an unrelated sub-error must still raise PermissionDeniedError, not
+    AuthenticationError -- classification is based on the top-level message
+    alone, never the combined detail text that includes embedded errors."""
+    payload = {
+        "message": "You are not authorized to access this resource.",
+        "_embedded": {
+            "errors": [
+                {"message": "The request can not be handled due to invalid or missing Enterprise token."},
+            ]
+        },
+    }
+    with pytest.raises(PermissionDeniedError) as exc_info:
+        raise_for_status(403, payload)
+
+    assert "Enterprise token" in str(exc_info.value)
+
+
 def test_raise_for_status_multiple_errors_surfaces_embedded_detail_messages() -> None:
     """Live-verified regression guard (2026-08-13, real 17.7.1 instance): a
     MultipleErrors HAL payload's top-level `message` alone

@@ -70,8 +70,12 @@ def raise_for_status(status_code: int, payload: dict[str, Any] | None) -> None:
     if status_code == 401:
         raise AuthenticationError("OpenProject authentication failed.")
     if status_code == 403:
-        lowered = message.lower()
-        if "token" in lowered or "authenticate" in lowered:
+        # Classify on the top-level message alone, not the combined one: an
+        # embedded sub-error unrelated to auth (e.g. an Enterprise-gate message
+        # that happens to mention "token") could otherwise misclassify a real
+        # PermissionDeniedError as AuthenticationError.
+        top_level_message = str(payload.get("message") or "").strip().lower()
+        if "token" in top_level_message or "authenticate" in top_level_message:
             raise AuthenticationError("OpenProject authentication failed.")
         detail = f" ({message})" if message else ""
         raise PermissionDeniedError(f"OpenProject denied access to this resource.{detail}")
