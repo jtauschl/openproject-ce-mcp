@@ -20,6 +20,13 @@ development baseline.
 
 ### Fixed
 
+- **A rejected write's error message now includes the actual per-field
+  reason instead of a generic summary.** OpenProject wraps multiple
+  simultaneous validation failures in a `MultipleErrors` HAL response whose
+  top-level message alone ("Multiple field constraints have been
+  violated.") gave no way to tell which fields, or whether an Enterprise-
+  only feature was involved — the real detail lives in `_embedded.errors[]`
+  and is now surfaced alongside it.
 - **`list_my_open_work_packages` could silently return zero or incomplete
   results even when matching, allowed work packages genuinely existed.**
   This query has no server-side project filter at all, so under a

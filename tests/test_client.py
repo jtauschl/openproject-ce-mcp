@@ -5972,6 +5972,36 @@ async def test_raise_for_status_403_without_a_message_has_no_dangling_parens() -
     await client.aclose()
 
 
+async def test_raise_for_status_403_embedded_token_mention_does_not_misclassify() -> None:
+    """A 403 whose _embedded.errors[] happens to mention "token"/"authenticate"
+    in an unrelated sub-error must still raise PermissionDeniedError, not
+    AuthenticationError -- classification is based on the top-level message
+    alone, never the combined detail text that includes embedded errors."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            403,
+            json={
+                "message": "You are not authorized to access this resource.",
+                "_embedded": {
+                    "errors": [
+                        {"message": "The request can not be handled due to invalid or missing Enterprise token."},
+                    ]
+                },
+            },
+            request=request,
+        )
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermissionDeniedError) as exc_info:
+        await client.get_current_user()
+
+    assert "Enterprise token" in str(exc_info.value)
+
+    await client.aclose()
+
+
 async def test_raise_for_status_multiple_errors_surfaces_embedded_detail_messages() -> None:
     """Live-verified regression guard (2026-08-13, real 17.7.1 instance): a
     MultipleErrors HAL payload's top-level `message` alone
