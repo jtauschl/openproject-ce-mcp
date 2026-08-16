@@ -220,9 +220,9 @@ user exists.
 | Tool | Description |
 |---|---|
 | `get_wiki_page` | Fetch a single wiki page by id |
-| `list_work_package_wiki_links` | List wiki pages linked to a work package (requires OpenProject 17.6+) |
-| `create_work_package_wiki_link` | Validate and then create a link from a work package to a wiki page; only writes when called again with `confirm=true` (requires OpenProject 17.6+) |
-| `delete_work_package_wiki_link` | Validate and then delete a work package's wiki page link; only deletes when called again with `confirm=true` (requires OpenProject 17.6+) |
+| `list_work_package_wiki_links` | List wiki pages linked to a work package (requires OpenProject 17.6+; the collection endpoint exists from 17.6, but see the pagination note below) |
+| `create_work_package_wiki_link` | Validate and then create a link from a work package to a wiki page; only writes when called again with `confirm=true` (requires OpenProject 17.7+ — the server's `POST work_packages/{id}/wiki_page_links` handler does not exist at all on 17.6 or earlier, confirmed against the running server source, not just observed behavior) |
+| `delete_work_package_wiki_link` | Validate and then delete a work package's wiki page link; only deletes when called again with `confirm=true` (requires OpenProject 17.7+, for the same reason as `create_work_package_wiki_link` above) |
 
 > **Note:** OpenProject API v3 does not provide a collection endpoint for wiki pages
 > (`GET /api/v3/projects/{id}/wiki_pages` is not implemented). `list_wiki_pages` has
@@ -332,7 +332,7 @@ user exists.
 
 ## Meetings
 
-Meetings has its own dedicated `OPENPROJECT_ENABLE_MEETING_READ`/`_WRITE` scope (default: both `true`, same as Boards), shared by all five sub-resources below. Requires OpenProject 17.4+ for Meetings/Agenda Items/Sections/Recurring Meetings; Meeting Outcomes additionally require 17.6+.
+Meetings has its own dedicated `OPENPROJECT_ENABLE_MEETING_READ`/`_WRITE` scope (default: both `true`, same as Boards), shared by all five sub-resources below. Requires OpenProject 17.4+ for Meetings and Recurring Meetings. Agenda Items and Sections are both split the same way: the meeting-nested list routes (`GET meetings/{id}/agenda_items`, `GET meetings/{id}/sections`) work from 17.4+, but every other operation (get/create/update/delete, all addressed via a top-level `meeting_agenda_items`/`meeting_sections` route) does not exist server-side before 17.6. `list_work_package_meeting_agenda_items` needs its own, later floor of 17.7+ (a third route, `GET work_packages/{id}/meeting_agenda_items`, added later still). Meeting Outcomes require 17.6+ throughout. All of the above confirmed against the running server source on 17.4/17.5/17.6/17.7, not just observed behavior.
 
 | Tool | Description |
 |---|---|
@@ -341,22 +341,22 @@ Meetings has its own dedicated `OPENPROJECT_ENABLE_MEETING_READ`/`_WRITE` scope 
 | `create_meeting` | Validate and then create a meeting in a project; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
 | `update_meeting` | Validate and then update a meeting; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
 | `delete_meeting` | Validate and then delete a meeting; only deletes when called again with `confirm=true` (requires OpenProject 17.4+) |
-| `list_meeting_agenda_items` | List a meeting's agenda items (unpaginated server-side; `offset`/`limit` applied client-side) (requires OpenProject 17.4+) |
-| `list_work_package_meeting_agenda_items` | List meeting agenda items linked to a work package (unpaginated server-side; `offset`/`limit` applied client-side) (requires OpenProject 17.4+) |
-| `get_meeting_agenda_item` | Fetch a single meeting agenda item by id (requires OpenProject 17.4+) |
-| `create_meeting_agenda_item` | Validate and then create a meeting agenda item, optionally linked to a work package or a section; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
-| `update_meeting_agenda_item` | Validate and then update a meeting agenda item; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
-| `delete_meeting_agenda_item` | Validate and then delete a meeting agenda item; only deletes when called again with `confirm=true` (requires OpenProject 17.4+) |
+| `list_meeting_agenda_items` | List a meeting's agenda items (unpaginated server-side; `offset`/`limit` applied client-side) (requires OpenProject 17.4+ — uses the meeting-nested `GET meetings/{id}/agenda_items` route) |
+| `list_work_package_meeting_agenda_items` | List meeting agenda items linked to a work package (unpaginated server-side; `offset`/`limit` applied client-side) (requires OpenProject 17.7+ — the `GET work_packages/{id}/meeting_agenda_items` route does not exist server-side before 17.7, confirmed against the running server source) |
+| `get_meeting_agenda_item` | Fetch a single meeting agenda item by id (requires OpenProject 17.6+ — uses the top-level `meeting_agenda_items/{id}` route, which does not exist before 17.6) |
+| `create_meeting_agenda_item` | Validate and then create a meeting agenda item, optionally linked to a work package or a section; only writes when called again with `confirm=true` (requires OpenProject 17.6+, for the same reason as `get_meeting_agenda_item` above) |
+| `update_meeting_agenda_item` | Validate and then update a meeting agenda item; only writes when called again with `confirm=true` (requires OpenProject 17.6+, for the same reason as `get_meeting_agenda_item` above) |
+| `delete_meeting_agenda_item` | Validate and then delete a meeting agenda item; only deletes when called again with `confirm=true` (requires OpenProject 17.6+, for the same reason as `get_meeting_agenda_item` above) |
 | `list_meeting_outcomes` | List an agenda item's outcomes (unpaginated server-side; `offset`/`limit` applied client-side) (requires OpenProject 17.6+) |
 | `get_meeting_outcome` | Fetch a single meeting outcome by id (requires OpenProject 17.6+) |
 | `create_meeting_outcome` | Validate and then create a meeting outcome on an agenda item; only writes when called again with `confirm=true` (requires OpenProject 17.6+) |
 | `update_meeting_outcome` | Validate and then update a meeting outcome; only writes when called again with `confirm=true` (requires OpenProject 17.6+) |
 | `delete_meeting_outcome` | Validate and then delete a meeting outcome; only deletes when called again with `confirm=true` (requires OpenProject 17.6+) |
 | `list_meeting_sections` | List a meeting's sections (unpaginated server-side; `offset`/`limit` applied client-side) (requires OpenProject 17.4+) |
-| `get_meeting_section` | Fetch a single meeting section by id (requires OpenProject 17.4+) |
-| `create_meeting_section` | Validate and then create a meeting section; `backlog` may only be set here, not via `update_meeting_section`; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
-| `update_meeting_section` | Validate and then update a meeting section's title/position; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
-| `delete_meeting_section` | Validate and then delete a meeting section; only deletes when called again with `confirm=true` (requires OpenProject 17.4+) |
+| `get_meeting_section` | Fetch a single meeting section by id (requires OpenProject 17.6+) |
+| `create_meeting_section` | Validate and then create a meeting section; `backlog` may only be set here, not via `update_meeting_section`; only writes when called again with `confirm=true` (requires OpenProject 17.6+) |
+| `update_meeting_section` | Validate and then update a meeting section's title/position; only writes when called again with `confirm=true` (requires OpenProject 17.6+) |
+| `delete_meeting_section` | Validate and then delete a meeting section; only deletes when called again with `confirm=true` (requires OpenProject 17.6+) |
 | `list_recurring_meetings` | List recurring meeting series globally or scoped to a project (requires OpenProject 17.4+) |
 | `get_recurring_meeting` | Fetch a single recurring meeting series by id (requires OpenProject 17.4+) |
 | `create_recurring_meeting` | Validate and then create a recurring meeting series in a project; only writes when called again with `confirm=true` (requires OpenProject 17.4+) |
