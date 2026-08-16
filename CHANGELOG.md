@@ -115,6 +115,45 @@ support.
   (`OPENPROJECT_ENABLE_PROJECT_READ` plus `OPENPROJECT_READ_PROJECTS`, same
   as Documents). Read-only in OpenProject's own API — no create/update/delete
   endpoint exists for this resource. Pulled forward from the 0.5.0 backlog.
+- **New Meetings domain**: `list_meetings`/`get_meeting`/`create_meeting`/
+  `update_meeting`/`delete_meeting`, plus Agenda Items, Sections, Outcomes,
+  and Recurring Meetings (with virtual-occurrence materialization via
+  `init_recurring_meeting_occurrence`). Its own dedicated
+  `OPENPROJECT_ENABLE_MEETING_READ`/`_WRITE` scope, on by default. Requires
+  OpenProject 17.4+ at minimum; several sub-resources need 17.6+ or 17.7+ —
+  see [Meetings](docs/tools.md#meetings) for the exact floor per tool.
+  Pulled forward from the 0.5.0 backlog.
+- **New tools: `get_cost_entry`, `list_work_package_cost_entries`,
+  `get_work_package_costs_by_type`, `get_cost_type`** — read the Costs
+  module's cost entries and cost types. Read-only in OpenProject's own API.
+  Pulled forward from the 0.5.0 backlog.
+- **New tools: `get_github_pull_request`, `list_work_package_github_pull_requests`,
+  `list_work_package_gitlab_issues`, `list_work_package_gitlab_merge_requests`**
+  — read GitHub pull requests and GitLab issues/merge requests linked to a
+  work package by OpenProject's own GitHub App / GitLab webhook integration.
+  Read-only mirror rows; never creatable via this API. Pulled forward from
+  the 0.5.0 backlog.
+- **New tool: `get_post`** — fetch a single forum post by id. OpenProject's
+  API exposes no collection endpoint for posts, so a post's id must come
+  from elsewhere (e.g. a work package's activity/journal). Pulled forward
+  from the 0.5.0 backlog.
+- **New tools: `list_backlog_buckets`, `get_backlog_bucket`** — list/fetch
+  Backlogs backlog buckets, alongside the existing Backlogs sprint tools.
+  Requires Backlogs/OpenProject 17.6+.
+- **New per-user schedule override tools**: `list_user_non_working_times`/
+  `create_user_non_working_time`/`update_user_non_working_time`/
+  `delete_user_non_working_time` and `list_user_working_hours`/
+  `get_user_working_hours`/`create_user_working_hours`/
+  `update_user_working_hours`/`delete_user_working_hours` — manage a user's
+  vacation date ranges and recurring weekly working-hours schedules. Its own
+  dedicated `OPENPROJECT_ENABLE_USER_SCHEDULE_READ`/`_WRITE` scope (both
+  default `false`); every tool accepts `user_ref="me"` for self-service
+  regardless of role, or another user's id/login for a caller holding
+  OpenProject's `manage_working_times` permission. Requires OpenProject
+  17.3+, feature-flag-gated off by default through 17.6 and generally
+  available from 17.7 — see [User schedule
+  overrides](docs/tools.md#user-schedule-overrides) for detail. Pulled
+  forward from the 0.5.0 backlog.
 
 ### Changed
 
@@ -258,6 +297,15 @@ support.
   `bulk_update_work_packages` items use `work_package_id`, not `id`; new
   items in `bulk_create_work_packages` have no identifier field at all and
   are matched back to their input purely by `index`.
+- **Corrected the documented OpenProject version floors for several Meetings
+  and wiki-link tools.** `get_meeting_section`/`create_meeting_section`/
+  `update_meeting_section`/`delete_meeting_section` and
+  `get_meeting_agenda_item`/`create_meeting_agenda_item`/
+  `update_meeting_agenda_item`/`delete_meeting_agenda_item` need 17.6+, not
+  17.4+ — only their meeting-nested list tools work from 17.4+.
+  `list_work_package_meeting_agenda_items` needs 17.7+.
+  `create_work_package_wiki_link`/`delete_work_package_wiki_link` need
+  17.7+, not 17.6+.
 
 ## [0.3.7] - Unreleased
 
