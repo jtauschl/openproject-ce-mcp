@@ -342,6 +342,33 @@ async def test_list_for_work_package_populates_predecessor_successor_only_for_fo
 
 
 @pytest.mark.asyncio
+async def test_list_for_work_package_treats_a_stored_precedes_type_as_unmapped() -> None:
+    """OpenProject's before_validation reverse_if_needed always rewrites a
+    "precedes" write into a stored "follows" (with from_id/to_id swapped) --
+    "precedes" itself never actually appears as a stored type in practice
+    (see create_work_package_relation's own docstring). This client's
+    mapping table therefore only has "follows" as a key, not "precedes" --
+    if a stored "precedes" ever did appear (a future OpenProject behavior
+    change this client doesn't know about yet), effective_type falls back to
+    the raw type unchanged on both sides, and predecessor_id/successor_id
+    stay None, rather than guessing a direction this client has never
+    verified for that literal stored type (OPM-214)."""
+    record = _record(1, summary=_summary(1, relation_type="precedes", from_id=10, to_id=11))
+    api = _FakeRelationApi(records=[record])
+    resolve = _resolve_work_package_id_ok(10)
+    settings = dataclasses.replace(make_settings(), read_projects=("*",))
+    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+
+    result = await service.list_for_work_package("PROJ-10")
+
+    perspective = result.results[0].queried_perspective
+    assert perspective is not None
+    assert perspective.effective_type == "precedes"
+    assert perspective.predecessor_id is None
+    assert perspective.successor_id is None
+
+
+@pytest.mark.asyncio
 async def test_list_for_work_package_leaves_perspective_none_when_anchor_is_neither_side() -> None:
     """Defensive: a relation whose from_id/to_id don't actually involve the
     queried anchor (shouldn't happen via the real `involved` server filter,
