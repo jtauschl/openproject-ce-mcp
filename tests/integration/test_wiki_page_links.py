@@ -147,8 +147,12 @@ async def test_create_wiki_page_link_denies_work_package_outside_write_allowlist
     reason="Upstream OpenProject bug: Wikis::PageLinkMetadataService#enrich_models "
     "raises a Postgres syntax error whenever at least one wiki page link exists "
     "for the queried work package (see module docstring). Reported upstream; "
-    "un-xfail once fixed.",
-    strict=True,
+    "un-xfail once fixed. strict=False (2026-08-15): observed passing against a "
+    "locally-pulled 17.7.1 image after being live-verified broken on 17.7.1 "
+    "earlier -- the 17.7.1 tag itself appears mutable upstream, so this can flip "
+    "either way per-pull until the fix's actual release is confirmed via the "
+    "monitored PR (opf/openproject#24770 / OP-19928).",
+    strict=False,
 )
 async def test_list_work_package_wiki_links_finds_created_link(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
