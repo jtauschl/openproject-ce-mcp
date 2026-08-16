@@ -30,20 +30,26 @@ VERSIONS=(
     "17.4:v17.4.1"
     "17.5:v17.5.1"
     "17.6:v17.6.0"
+    "17.7:v17.7.1"
 )
 
 # Subtrees that hold the API v3 definitions, representers and query filters,
-# plus the models/representers that define the enums and payload field names the
-# constant check (check_api.py --constants) verifies.
+# plus the models/contracts that define the enums, payload field names, and
+# server-side validation constraints the constant check (check_api.py
+# --constants) and manual verification passes (e.g. OPM-309) rely on.
+# app/models and app/contracts are taken whole (not just work_package/queries)
+# so a model like Document/News/WikiPage is available without extending this
+# list again per future check -- these are still small subtrees relative to
+# the ~3.6G a full clone costs.
 SPARSE_PATHS=(
     "lib/api"
-    "app/models/queries"
-    "app/models/work_package"
+    "app/models"
+    "app/contracts"
     "/config/routes.rb"
-    "/app/models/emoji_reaction.rb"            # EMOJI_MAP enum values
-    "/app/models/version.rb"                   # VERSION_STATUSES
     "modules/*/lib/api/v3"                     # every module's API subtree (Backlogs, Meetings, etc.)
     "modules/*/lib/open_project/*/patches/api" # module patches to core representers (e.g. Backlogs' sprint link on work packages)
+    "modules/*/app/models"                     # module-specific models (e.g. Meetings' MeetingSection, Storages)
+    "modules/*/app/contracts"                  # module-specific validation contracts
 )
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
