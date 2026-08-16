@@ -203,7 +203,7 @@ user exists.
 |---|---|
 | `list_documents` | List documents globally or filtered to a specific project, with an optional title search filter |
 | `get_document` | Fetch a single document by id |
-| `update_document` | Validate and then update a document title or description; only writes when called again with `confirm=true` |
+| `update_document` | Validate and then update a document title or description; only writes when called again with `confirm=true`. On OpenProject 16.6, the server rejects every update with a generic permission error unless the instance's "Block note editor" experimental feature flag is enabled (`/admin/settings/experimental`) — this flag is on by default from 17.x onward, so this only affects older instances. |
 
 ## News
 

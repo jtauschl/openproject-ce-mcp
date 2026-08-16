@@ -59,11 +59,22 @@ async def test_get_and_update_document(client: OpenProjectClient, test_project: 
     # the known upstream description-corruption bug -- this still proves
     # update_document's title path works end to end.
     new_title = f"{document.title} (updated)"
-    update_result = await client.update_document(
-        document_id=document_id,
-        title=new_title,
-        confirm=True,
-    )
+    try:
+        update_result = await client.update_document(
+            document_id=document_id,
+            title=new_title,
+            confirm=True,
+        )
+    except PermissionDeniedError:
+        # OpenProject 16.6 gates PATCH /documents/{id} entirely behind the
+        # "Block note editor" experimental feature flag, off by default
+        # (on by default from 17.x onward, where the gate was removed) --
+        # confirmed by reproducing with a bare curl PATCH (no client
+        # involved) and toggling Setting.feature_block_note_editor_active.
+        pytest.skip(
+            "update_document is gated behind the 'Block note editor' feature flag on this "
+            "OpenProject version, and it's off by default -- not a client-side permission gap"
+        )
     assert update_result.ready, update_result.validation_errors
     assert update_result.result is not None
     assert update_result.result.title == new_title
