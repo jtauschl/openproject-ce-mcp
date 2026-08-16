@@ -30,6 +30,20 @@ from urllib.parse import unquote, urljoin, urlparse
 from ..errors import InvalidInputError
 from ..origin import origin_from_url
 
+# This project's own client-side response-truncation limits, applied when
+# normalizing an OpenProject response for context-token economy -- not a
+# mirror of any OpenProject server-side validation, and never applied to a
+# write payload (only to text read back from a response). Verified against
+# OpenProject's own source across every supported minor (16.1-17.7):
+# server-side "subject"-shaped field limits vary independently of 255 (e.g.
+# WorkPackage.subject and Project.name validate at exactly 255, Version.name
+# and WikiPage.title/Meeting.title have no length constraint at all, and
+# Document.title's real limit is 60 on 16.6 but 255 from 17.0 onward) --
+# none of that matters here since SUBJECT_LIMIT never gates what this client
+# writes, only how much of an already-accepted value it echoes back.
+# "Formattable"-shaped fields (description/content-type rich text) have no
+# length validation anywhere in OpenProject's source at any version checked;
+# FORMATTABLE_LIMIT is purely this project's own token-budget choice.
 SUBJECT_LIMIT = 255
 FORMATTABLE_LIMIT = 1_200
 
