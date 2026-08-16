@@ -9,7 +9,7 @@ from _client_test_helpers import _base_settings
 from openproject_ce_mcp.app.adapters.httpx_activity_api import normalize_activity
 from openproject_ce_mcp.app.adapters.httpx_membership_api import normalize_membership
 from openproject_ce_mcp.app.adapters.httpx_principal_api import normalize_principal
-from openproject_ce_mcp.app.adapters.httpx_project_api import normalize_project
+from openproject_ce_mcp.app.adapters.httpx_project_api import normalize_project, normalize_project_detail
 from openproject_ce_mcp.app.adapters.httpx_sprint_api import normalize_sprint
 from openproject_ce_mcp.app.adapters.httpx_status_priority_type_api import normalize_status, normalize_type
 from openproject_ce_mcp.app.adapters.httpx_user_api import normalize_user
@@ -108,6 +108,35 @@ async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
     assert hidden_description_wp.description == "<user-content>hidden</user-content>"  # preserved on the dataclass
     assert "description" not in _to_payload(hidden_description_wp)
     assert "comment" in activity._hidden_keys
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hidden_project_ancestors_field_is_tagged_and_dropped_from_payload() -> None:
+    settings = _base_settings(hide_project_fields=("ancestors",))
+    client = OpenProjectClient(
+        settings, transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request))
+    )
+
+    detail = hidden_fields.apply_hidden_fields(
+        "project",
+        normalize_project_detail(
+            {
+                "id": 1,
+                "name": "Demo",
+                "identifier": "demo",
+                "_links": {
+                    "ancestors": [{"href": "/api/v3/projects/1", "title": "Root"}],
+                },
+            }
+        ),
+        settings=settings,
+    )
+
+    assert "ancestors" in detail._hidden_keys
+    assert detail.ancestors == [{"href": "/api/v3/projects/1", "title": "Root", "display_id": None}]  # preserved
+    assert "ancestors" not in _to_payload(detail)
 
     await client.aclose()
 
