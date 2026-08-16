@@ -170,7 +170,17 @@ class RelationService:
     def _stamp(self, summary: RelationSummary, *, queried_work_package_id: int | None = None) -> RelationSummary:
         if hidden_fields.field_hidden("work_package", "subject", settings=self._settings):
             summary = dataclasses.replace(summary, from_subject=None, to_subject=None)
-        if queried_work_package_id is not None:
+        # queried_perspective embeds from_id/to_id (as predecessor_id/
+        # successor_id and via direction) -- apply_hidden_fields below only
+        # drops a top-level field key, it cannot see into this nested
+        # dataclass, so a caller hiding "from_id"/"to_id" would otherwise
+        # still leak the identical id back out through the nested field.
+        # Skip computing queried_perspective at all when either raw id is
+        # hidden, mirroring the from_subject/to_subject zeroing above.
+        ids_hidden = hidden_fields.field_hidden(
+            "relation", "from_id", settings=self._settings
+        ) or hidden_fields.field_hidden("relation", "to_id", settings=self._settings)
+        if queried_work_package_id is not None and not ids_hidden:
             perspective = _queried_relation_perspective(
                 queried_work_package_id=queried_work_package_id,
                 relation_type=summary.type,

@@ -1088,7 +1088,7 @@ class QueriedRelationPerspective:
 
     effective_type mirrors OpenProject's own label_for(work_package) logic
     (relation.rb): the stored type read from queried_work_package_id's side
-    -- e.g. a stored "blocks" (from_id blocks to_id) reads as "blocked_by"
+    -- e.g. a stored "blocks" (from_id blocks to_id) reads as "blocked"
     when queried from to_id's side. direction says which raw id
     (queried_work_package_id) equals: "from" or "to".
 
@@ -1098,6 +1098,13 @@ class QueriedRelationPerspective:
     a defined temporal-scheduling direction upstream (lag, soonest-start
     computation); every other type has no equivalent first/second concept,
     so both stay None there rather than guessing one.
+
+    Never populated at all when either raw from_id/to_id is hidden via
+    OPENPROJECT_HIDE_RELATION_FIELDS -- direction and predecessor_id/
+    successor_id both embed one of those two raw ids, and the top-level
+    hidden-fields mechanism (apply_hidden_fields) only drops a field by
+    name, it cannot see into this nested dataclass to redact just the id
+    inside it. See RelationService._stamp.
     """
 
     queried_work_package_id: int

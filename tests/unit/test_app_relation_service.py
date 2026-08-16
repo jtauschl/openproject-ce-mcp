@@ -369,6 +369,52 @@ async def test_list_for_work_package_treats_a_stored_precedes_type_as_unmapped()
 
 
 @pytest.mark.asyncio
+async def test_list_for_work_package_omits_perspective_when_from_id_or_to_id_hidden() -> None:
+    """queried_perspective embeds from_id/to_id (as direction and
+    predecessor_id/successor_id) -- apply_hidden_fields only drops a
+    top-level field key and cannot see into this nested dataclass, so
+    hiding "from_id"/"to_id" via OPENPROJECT_HIDE_RELATION_FIELDS must
+    suppress queried_perspective entirely, not just the top-level
+    from_id/to_id fields, or the hidden id would leak back out through the
+    nested field (OPM-214 follow-up: found by independent review)."""
+    record = _record(1, summary=_summary(1, relation_type="follows", from_id=10, to_id=11))
+    api = _FakeRelationApi(records=[record])
+    resolve = _resolve_work_package_id_ok(10)
+    settings = dataclasses.replace(
+        make_settings(),
+        read_projects=("*",),
+        hidden_fields={"relation": ("from_id", "to_id")},
+    )
+    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+
+    result = await service.list_for_work_package("PROJ-10")
+
+    relation = result.results[0]
+    assert relation.queried_perspective is None
+    assert relation._hidden_keys == frozenset({"from_id", "to_id"})
+
+
+@pytest.mark.asyncio
+async def test_list_for_work_package_omits_perspective_when_only_to_id_hidden() -> None:
+    """Hiding only ONE of the pair must also suppress queried_perspective --
+    to_id alone hidden still leaks it via predecessor_id/successor_id if
+    queried_perspective were computed regardless."""
+    record = _record(1, summary=_summary(1, relation_type="follows", from_id=10, to_id=11))
+    api = _FakeRelationApi(records=[record])
+    resolve = _resolve_work_package_id_ok(10)
+    settings = dataclasses.replace(
+        make_settings(),
+        read_projects=("*",),
+        hidden_fields={"relation": ("to_id",)},
+    )
+    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+
+    result = await service.list_for_work_package("PROJ-10")
+
+    assert result.results[0].queried_perspective is None
+
+
+@pytest.mark.asyncio
 async def test_list_for_work_package_leaves_perspective_none_when_anchor_is_neither_side() -> None:
     """Defensive: a relation whose from_id/to_id don't actually involve the
     queried anchor (shouldn't happen via the real `involved` server filter,
