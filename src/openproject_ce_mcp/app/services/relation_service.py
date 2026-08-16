@@ -72,7 +72,13 @@ import json
 from typing import Any
 
 from ...config import Settings
-from ...models import RelationListResult, RelationSummary, RelationUpdateResult, RelationWriteResult
+from ...models import (
+    QueriedRelationPerspective,
+    RelationListResult,
+    RelationSummary,
+    RelationUpdateResult,
+    RelationWriteResult,
+)
 from ..api_href import api_href as _api_href
 from ..errors import OpenProjectServerError
 from ..pagination import effective_limit, fetch_bounded_and_paginate
@@ -87,6 +93,56 @@ from ..ports.work_package_ref import (
 )
 from ..ports.work_package_ref import work_package_ref as _validate_work_package_ref
 from ..ports.work_package_resolution import WorkPackageAllowedContext
+
+# Mirrors OpenProject's own Relation::TYPES hash (app/models/relation.rb):
+# for a relation stored with this type, "from"-side is read as the type
+# itself; "to"-side is read as the paired reverse label. Non-directional
+# "relates" maps to itself on both sides. Only the canonical types that
+# actually get persisted appear as keys (OpenProject's before_validation
+# reverse_if_needed rewrites e.g. "precedes" to "follows" at creation time,
+# swapping from_id/to_id, so a stored relation's type is always one of
+# these six) -- an unrecognized type (a future OpenProject addition this
+# client doesn't know about yet) falls back to leaving effective_type as
+# the raw type unchanged on both sides, rather than guessing.
+_RELATION_TYPE_FROM_TO_LABELS: dict[str, tuple[str, str]] = {
+    "relates": ("relates", "relates"),
+    "follows": ("follows", "precedes"),
+    "blocks": ("blocks", "blocked"),
+    "duplicates": ("duplicates", "duplicated"),
+    "includes": ("includes", "partof"),
+    "requires": ("requires", "required"),
+}
+
+
+def _queried_relation_perspective(
+    *, queried_work_package_id: int, relation_type: str | None, from_id: int | None, to_id: int | None
+) -> QueriedRelationPerspective | None:
+    if from_id is None or to_id is None:
+        return None
+    if queried_work_package_id == from_id:
+        direction = "from"
+    elif queried_work_package_id == to_id:
+        direction = "to"
+    else:
+        # The queried work package is neither end -- can't happen for a
+        # relation returned by list_for_work_package's own `involved` filter,
+        # but list_all() can pass an id that isn't actually involved in a
+        # given RelationSummary if a caller builds one directly; stay safe.
+        return None
+    labels = _RELATION_TYPE_FROM_TO_LABELS.get(relation_type or "")
+    effective_type = (labels[0] if direction == "from" else labels[1]) if labels else relation_type
+    predecessor_id: int | None = None
+    successor_id: int | None = None
+    if relation_type == "follows":
+        predecessor_id = to_id
+        successor_id = from_id
+    return QueriedRelationPerspective(
+        queried_work_package_id=queried_work_package_id,
+        direction=direction,
+        effective_type=effective_type,
+        predecessor_id=predecessor_id,
+        successor_id=successor_id,
+    )
 
 
 class RelationService:
@@ -111,9 +167,17 @@ class RelationService:
         self._work_package_project_allowed_bulk = work_package_project_allowed_bulk
         self._api_prefix = api_prefix
 
-    def _stamp(self, summary: RelationSummary) -> RelationSummary:
+    def _stamp(self, summary: RelationSummary, *, queried_work_package_id: int | None = None) -> RelationSummary:
         if hidden_fields.field_hidden("work_package", "subject", settings=self._settings):
             summary = dataclasses.replace(summary, from_subject=None, to_subject=None)
+        if queried_work_package_id is not None:
+            perspective = _queried_relation_perspective(
+                queried_work_package_id=queried_work_package_id,
+                relation_type=summary.type,
+                from_id=summary.from_id,
+                to_id=summary.to_id,
+            )
+            summary = dataclasses.replace(summary, queried_perspective=perspective)
         return hidden_fields.apply_hidden_fields("relation", summary, settings=self._settings)
 
     def _relation_endpoints_allowed_sync(self, record: RelationRecord, outcomes: dict[str, bool | Exception]) -> bool:
@@ -163,7 +227,9 @@ class RelationService:
                 results.append(exc)
         return results
 
-    async def _list(self, *, filters: str | None, offset: int, limit: int) -> RelationListResult:
+    async def _list(
+        self, *, filters: str | None, offset: int, limit: int, queried_work_package_id: int | None = None
+    ) -> RelationListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
         allowlisted = not scope_policy.scope_allows_all(self._settings.read_projects)
         cache = WorkPackageAllowedContext()
@@ -172,7 +238,9 @@ class RelationService:
 
         page, total, next_offset, truncated = await fetch_bounded_and_paginate(
             fetch_page=lambda o, ps: self._api.fetch_page(offset=o, page_size=ps, filters=filters),
-            normalize=lambda raw: self._stamp(self._api.to_record(raw).summary()),
+            normalize=lambda raw: self._stamp(
+                self._api.to_record(raw).summary(), queried_work_package_id=queried_work_package_id
+            ),
             item_allowed=None,
             item_allowed_bulk=item_allowed_bulk,
             server_page_size=self._settings.max_page_size,
@@ -208,7 +276,9 @@ class RelationService:
         resolved_limit = effective_limit(limit, settings=self._settings)
         resolved_id = await self._resolve_work_package_id(work_package_id)
         filters = json.dumps([{"involved": {"operator": "=", "values": [str(resolved_id)]}}])
-        return await self._list(filters=filters, offset=offset, limit=resolved_limit)
+        return await self._list(
+            filters=filters, offset=offset, limit=resolved_limit, queried_work_package_id=resolved_id
+        )
 
     async def _fetch_source_work_package(self, from_link: dict[str, Any] | None) -> dict[str, Any]:
         if not isinstance(from_link, dict) or not from_link.get("href"):

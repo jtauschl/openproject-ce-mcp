@@ -164,6 +164,68 @@ async def test_update_relation_changes_description_and_type(
         await client.delete_relation(relation_id=relation_id, confirm=True)
 
 
+async def test_get_work_package_relations_stamps_queried_perspective_from_both_sides(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """OPM-214: a "follows" relation read from get_work_package_relations
+    must carry a caller-relative queried_perspective alongside the raw,
+    unchanged type/from_id/to_id -- from BOTH involved work packages'
+    perspectives, not just the one the relation happened to be created
+    from."""
+    source = await client.create_work_package(
+        project=test_project, type="Task", subject="[integration-test] perspective source", confirm=True
+    )
+    assert source.ready
+    wp_ids.append(source.work_package_id)
+    target = await client.create_work_package(
+        project=test_project, type="Task", subject="[integration-test] perspective target", confirm=True
+    )
+    assert target.ready
+    wp_ids.append(target.work_package_id)
+
+    created = await client.create_work_package_relation(
+        work_package_id=source.work_package_id,
+        related_to_work_package_id=target.work_package_id,
+        relation_type="follows",
+        confirm=True,
+    )
+    assert created.ready
+    relation_id = created.result.id
+
+    try:
+        from_side = await client.get_work_package_relations(source.work_package_id)
+        from_side_relation = next(r for r in from_side.results if r.id == relation_id)
+        assert from_side_relation.type == "follows"
+        assert from_side_relation.from_id == source.work_package_id
+        assert from_side_relation.to_id == target.work_package_id
+        perspective = from_side_relation.queried_perspective
+        assert perspective is not None
+        assert perspective.queried_work_package_id == source.work_package_id
+        assert perspective.direction == "from"
+        assert perspective.effective_type == "follows"
+        # Mirrors OpenProject's own Relation#predecessor_id/successor_id:
+        # predecessor = to, successor = from.
+        assert perspective.predecessor_id == target.work_package_id
+        assert perspective.successor_id == source.work_package_id
+
+        to_side = await client.get_work_package_relations(target.work_package_id)
+        to_side_relation = next(r for r in to_side.results if r.id == relation_id)
+        # Raw fields are perspective-stable: identical regardless of which
+        # work package's relations were queried (OPM-193).
+        assert to_side_relation.type == "follows"
+        assert to_side_relation.from_id == source.work_package_id
+        assert to_side_relation.to_id == target.work_package_id
+        to_perspective = to_side_relation.queried_perspective
+        assert to_perspective is not None
+        assert to_perspective.queried_work_package_id == target.work_package_id
+        assert to_perspective.direction == "to"
+        assert to_perspective.effective_type == "precedes"
+        assert to_perspective.predecessor_id == target.work_package_id
+        assert to_perspective.successor_id == source.work_package_id
+    finally:
+        await client.delete_relation(relation_id=relation_id, confirm=True)
+
+
 async def test_delete_relation_removes_it(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
     """Round-trips delete_relation against the real DELETE relations/{id}
     endpoint: create a relation, delete it, then confirm it no longer shows

@@ -1076,6 +1076,38 @@ class CurrentUser:
 
 
 @dataclass
+class QueriedRelationPerspective:
+    """Caller-relative reading of a relation's stored type/from_id/to_id,
+    from the point of view of one specific work package (the one a caller
+    queried relations FOR). Purely derived, additive: never changes type/
+    from_id/to_id, which stay OpenProject's raw, perspective-stable values
+    (OPM-193). Only present when a query anchor exists (list_for_work_package/
+    get_work_package_relations); absent (None on the summary) for a global,
+    unanchored list_all() result, where no single work package is "the one
+    being queried" to read the relation relative to.
+
+    effective_type mirrors OpenProject's own label_for(work_package) logic
+    (relation.rb): the stored type read from queried_work_package_id's side
+    -- e.g. a stored "blocks" (from_id blocks to_id) reads as "blocked_by"
+    when queried from to_id's side. direction says which raw id
+    (queried_work_package_id) equals: "from" or "to".
+
+    predecessor_id/successor_id are populated ONLY for the "precedes"/
+    "follows" type pair, mirroring OpenProject's own Relation#predecessor_id/
+    successor_id (relation.rb) -- these are the only two relation types with
+    a defined temporal-scheduling direction upstream (lag, soonest-start
+    computation); every other type has no equivalent first/second concept,
+    so both stay None there rather than guessing one.
+    """
+
+    queried_work_package_id: int
+    direction: str
+    effective_type: str | None
+    predecessor_id: int | None
+    successor_id: int | None
+
+
+@dataclass
 class RelationSummary:
     id: int
     type: str | None
@@ -1086,6 +1118,7 @@ class RelationSummary:
     to_subject: str | None
     description_truncated: bool = False
     description_length: int | None = None
+    queried_perspective: QueriedRelationPerspective | None = None
 
 
 @dataclass

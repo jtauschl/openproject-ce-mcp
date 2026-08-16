@@ -262,6 +262,102 @@ async def test_list_for_work_package_resolves_anchor_and_sends_involved_filter()
 
 
 @pytest.mark.asyncio
+async def test_list_all_never_populates_queried_perspective() -> None:
+    """No single anchor work package exists for an instance-wide listing --
+    queried_perspective must stay None rather than guess one side (OPM-214)."""
+    api = _FakeRelationApi()
+    settings = dataclasses.replace(make_settings(), read_projects=("*",))
+    service = _service(api=api, settings=settings)
+
+    result = await service.list_all()
+
+    assert result.results[0].queried_perspective is None
+
+
+@pytest.mark.asyncio
+async def test_list_for_work_package_stamps_perspective_from_the_from_side() -> None:
+    """Anchor == from_id: direction is "from", effective_type equals the
+    stored type unchanged (OPM-214)."""
+    record = _record(1, summary=_summary(1, relation_type="blocks", from_id=10, to_id=11))
+    api = _FakeRelationApi(records=[record])
+    resolve = _resolve_work_package_id_ok(10)
+    settings = dataclasses.replace(make_settings(), read_projects=("*",))
+    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+
+    result = await service.list_for_work_package("PROJ-10")
+
+    perspective = result.results[0].queried_perspective
+    assert perspective is not None
+    assert perspective.queried_work_package_id == 10
+    assert perspective.direction == "from"
+    assert perspective.effective_type == "blocks"
+    assert perspective.predecessor_id is None
+    assert perspective.successor_id is None
+
+
+@pytest.mark.asyncio
+async def test_list_for_work_package_stamps_perspective_from_the_to_side() -> None:
+    """Anchor == to_id: direction is "to", effective_type flips to the
+    stored type's reverse label ("blocks" read from the blocked side reads
+    as "blocked") (OPM-214)."""
+    record = _record(1, summary=_summary(1, relation_type="blocks", from_id=10, to_id=11))
+    api = _FakeRelationApi(records=[record])
+    resolve = _resolve_work_package_id_ok(11)
+    settings = dataclasses.replace(make_settings(), read_projects=("*",))
+    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+
+    result = await service.list_for_work_package("PROJ-11")
+
+    perspective = result.results[0].queried_perspective
+    assert perspective is not None
+    assert perspective.queried_work_package_id == 11
+    assert perspective.direction == "to"
+    assert perspective.effective_type == "blocked"
+    assert perspective.predecessor_id is None
+    assert perspective.successor_id is None
+
+
+@pytest.mark.asyncio
+async def test_list_for_work_package_populates_predecessor_successor_only_for_follows() -> None:
+    """precedes/follows is OpenProject's only relation-type pair with a
+    genuine temporal-scheduling direction (Relation#predecessor_id/
+    successor_id upstream) -- predecessor_id/successor_id must be populated
+    for a stored "follows" relation and stay None for every other type
+    (OPM-214)."""
+    record = _record(1, summary=_summary(1, relation_type="follows", from_id=10, to_id=11))
+    api = _FakeRelationApi(records=[record])
+    resolve = _resolve_work_package_id_ok(10)
+    settings = dataclasses.replace(make_settings(), read_projects=("*",))
+    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+
+    result = await service.list_for_work_package("PROJ-10")
+
+    perspective = result.results[0].queried_perspective
+    assert perspective is not None
+    assert perspective.effective_type == "follows"
+    # Mirrors OpenProject's own Relation#predecessor_id/successor_id
+    # (relation.rb): predecessor = to, successor = from.
+    assert perspective.predecessor_id == 11
+    assert perspective.successor_id == 10
+
+
+@pytest.mark.asyncio
+async def test_list_for_work_package_leaves_perspective_none_when_anchor_is_neither_side() -> None:
+    """Defensive: a relation whose from_id/to_id don't actually involve the
+    queried anchor (shouldn't happen via the real `involved` server filter,
+    but stay safe rather than mislabel a direction) (OPM-214)."""
+    record = _record(1, summary=_summary(1, relation_type="blocks", from_id=10, to_id=11))
+    api = _FakeRelationApi(records=[record])
+    resolve = _resolve_work_package_id_ok(99)
+    settings = dataclasses.replace(make_settings(), read_projects=("*",))
+    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+
+    result = await service.list_for_work_package("PROJ-99")
+
+    assert result.results[0].queried_perspective is None
+
+
+@pytest.mark.asyncio
 async def test_list_all_checks_both_hrefs_and_reuses_one_cache() -> None:
     """Asserts the call-list on work_package_project_allowed_bulk, not just
     the filtered outcome -- a bug that swapped from_link/to_link or checked

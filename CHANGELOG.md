@@ -40,6 +40,12 @@ support.
 - **`get_work_package`, `list_actions`, and `list_capabilities` gain a
   `select` parameter** to restrict the response to specific fields.
 - **`get_project` now returns the project's ancestor chain (`ancestors`).**
+- **`get_work_package_relations` results now carry `queried_perspective`**,
+  a caller-relative reading of the relation from the queried work package's
+  own side (`direction`, `effective_type`, and — only for the precedes/follows
+  pair — `predecessor_id`/`successor_id`), alongside the unchanged raw
+  `type`/`from_id`/`to_id`. `list_relations` (instance-wide, no single
+  anchor work package) always returns `queried_perspective: null`.
 - **`list_time_entries`, `list_notifications`, and `list_work_package_attachments`
   gain a `select` parameter**, and `list_work_package_attachments` also gains
   `offset`/`limit` pagination (previously always returned the full,

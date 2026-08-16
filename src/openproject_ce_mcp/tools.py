@@ -4960,6 +4960,15 @@ async def get_work_package_relations(
     is stored as 'follows' with from_id/to_id swapped; see create_work_package_relation). Use from_id/to_id
     together with type, not the request you expect to have made, to determine the actual direction.
 
+    Each result additionally carries queried_perspective, a caller-relative reading of the same relation
+    from work_package_id's own side — never a replacement for type/from_id/to_id, which stay unchanged.
+    queried_perspective.direction is "from" or "to" (which raw id equals work_package_id);
+    queried_perspective.effective_type is the type as read FROM work_package_id's side (e.g. a stored
+    "blocks" relation reads as effective_type="blocked" when work_package_id is the to_id side, "blocks"
+    when it's the from_id side). queried_perspective.predecessor_id/successor_id are populated only for
+    the precedes/follows type pair (OpenProject's own scheduling-relevant relation types); both stay null
+    for every other type, since no other type has an equivalent first/second concept.
+
     select fields: id, type, to_id (see server instructions for select's general semantics).
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
@@ -5732,6 +5741,10 @@ async def list_relations(
     as 'precedes' is stored as 'follows' with from_id/to_id swapped; see create_work_package_relation).
     Filtering by relation_type matches the stored (canonical) type, not necessarily the type a caller
     originally requested when creating it.
+
+    Each result's queried_perspective field is always null here — a caller-relative reading needs one
+    anchor work package to read the relation FROM, and this instance-wide listing has none. Use
+    get_work_package_relations instead when you need queried_perspective populated.
 
     select fields: id, type, to_id (see server instructions for select's general semantics).
 
