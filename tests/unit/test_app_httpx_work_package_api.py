@@ -421,7 +421,7 @@ async def test_parse_form_dereferences_linked_allowed_values() -> None:
         },
     }
 
-    result = await api.parse_form(form)
+    result = await api.parse_form(form, resolve_links=True)
 
     assert result.schema["responsible"]["_embedded"]["allowedValues"] == [
         {"id": 15, "name": "Stefania Iran", "_links": {"self": {"href": "/api/v3/users/15"}}}
@@ -429,6 +429,39 @@ async def test_parse_form_dereferences_linked_allowed_values() -> None:
     # Already-embedded fields (priority) must not trigger any request.
     assert requested_paths == ["/api/v3/principals"]
     assert result.schema["priority"]["_embedded"]["allowedValues"] == [{"id": 9, "name": "High"}]
+    # The input form's schema is untouched -- parse_form must not mutate in place.
+    assert "_embedded" not in form["_embedded"]["schema"]["responsible"]
+
+    await http_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_parse_form_skips_link_dereference_by_default() -> None:
+    """Most call sites only ever read .payload/.validationErrors, or .schema
+    for plain writable flags -- never allowedValues. Dereferencing there
+    would be pure waste (parse_form runs up to 3x per update()), so
+    resolve_links defaults to False and must trigger zero extra requests."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    http_client = _client(handler)
+    api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+    form = {
+        "_embedded": {
+            "payload": {},
+            "validationErrors": {},
+            "schema": {
+                "responsible": {
+                    "_links": {"allowedValues": {"href": "/api/v3/principals?filters=x"}},
+                }
+            },
+        }
+    }
+
+    result = await api.parse_form(form)
+
+    assert "_embedded" not in result.schema["responsible"]
 
     await http_client.aclose()
 

@@ -128,6 +128,7 @@ class _FakeWorkPackageApi:
         # a rejection on a specific call without affecting others.
         self.validation_errors_queue: list[dict[str, str]] = []
         self.next_schema: dict = {}
+        self.parse_form_resolve_links_calls: list[bool] = []
 
     async def list(self, *, filters, offset, limit, sort_by, group_by, include_sums: bool = False) -> WorkPackagePage:
         self.list_calls.append(
@@ -176,7 +177,8 @@ class _FakeWorkPackageApi:
             }
         }
 
-    async def parse_form(self, form: dict) -> WorkPackageFormResult:
+    async def parse_form(self, form: dict, *, resolve_links: bool = False) -> WorkPackageFormResult:
+        self.parse_form_resolve_links_calls.append(resolve_links)
         embedded = form.get("_embedded", {})
         return WorkPackageFormResult(
             payload=embedded.get("payload", {}),
@@ -1428,6 +1430,11 @@ async def test_create_custom_field_resolved_via_schema() -> None:
 
     assert result.ready is True
     assert result.payload["customField10"] == 8
+    # Regression guard (N+1 fix): custom_fields triggers _get_write_schema's
+    # dedicated schema probe, which is the ONE call site that needs linked
+    # allowedValues resolved. create()'s own final parse_form (after the real
+    # validate_create) never needs .schema, so it must stay resolve_links=False.
+    assert api.parse_form_resolve_links_calls == [True, False]
 
 
 @pytest.mark.asyncio
@@ -1729,6 +1736,14 @@ async def test_update_autofills_percentage_and_remaining_when_closing_without_es
     _, second_payload = api.validate_update_calls[-1]
     assert second_payload["percentageDone"] == 100
     assert second_payload["remainingTime"] is None  # CLEAR-derived: no existing estimate
+    # Regression guard (N+1 fix): the auto-derive probe and the final parse
+    # only ever read .schema for plain writable flags (or don't read .schema
+    # at all) -- never allowedValues -- so parse_form must never be asked to
+    # resolve links on this path. A status-close update with no
+    # responsible/priority/category/project_phase/custom_fields in the
+    # payload means _get_write_schema's resolve_links=True probe is skipped
+    # entirely too.
+    assert api.parse_form_resolve_links_calls == [False, False]
 
 
 @pytest.mark.asyncio

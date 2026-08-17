@@ -186,15 +186,29 @@ class HttpxTimeEntryApi:
         form = await self._transport.post_json("time_entries/form", json_body={"_links": links})
         # A project that restricts its available activities can make OpenProject
         # link a filtered collection instead of embedding it -- mirrors
-        # HttpxWorkPackageApi.parse_form's identical dereference for allowedValues.
+        # HttpxWorkPackageApi._resolve_linked_allowed_values's identical
+        # dereference-if-not-embedded shape for allowedValues.
         # _activities_from_form (the Service's pure consumer of this dict) stays
         # unchanged: it only ever reads _embedded.allowedValues, which is now
-        # always populated by the time it sees this response.
-        activity_field = form.get("_embedded", {}).get("schema", {}).get("activity", {})
-        if isinstance(activity_field, dict) and activity_field.get("_embedded", {}).get("allowedValues") is None:
-            link = activity_field.get("_links", {}).get("allowedValues")
-            href = link.get("href") if isinstance(link, dict) else None
-            if isinstance(href, str) and href:
-                collection = await self._transport.get_json(self._link_to_api_path(href))
-                activity_field["_embedded"] = {"allowedValues": collection.get("_embedded", {}).get("elements", [])}
-        return form
+        # always populated by the time it sees this response. Never mutates the
+        # input `form` in place -- returns a new dict, mirroring parse_form.
+        schema = (form.get("_embedded") or {}).get("schema") or {}
+        activity_field = schema.get("activity")
+        if (
+            not isinstance(activity_field, dict)
+            or (activity_field.get("_embedded") or {}).get("allowedValues") is not None
+        ):
+            return form
+        link = (activity_field.get("_links") or {}).get("allowedValues")
+        href = link.get("href") if isinstance(link, dict) else None
+        if not isinstance(href, str) or not href:
+            return form
+        collection = await self._transport.get_json(self._link_to_api_path(href))
+        elements = (collection.get("_embedded") or {}).get("elements", [])
+        resolved_activity = {
+            **activity_field,
+            "_embedded": {**(activity_field.get("_embedded") or {}), "allowedValues": elements},
+        }
+        resolved_schema = {**schema, "activity": resolved_activity}
+        resolved_embedded = {**(form.get("_embedded") or {}), "schema": resolved_schema}
+        return {**form, "_embedded": resolved_embedded}

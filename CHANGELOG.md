@@ -293,13 +293,12 @@ support.
   resolution only ever read `schema[field]._embedded.allowedValues`, but
   fields whose candidate set is unbounded (any `User` field) never embed
   that list; OpenProject links a pre-filtered collection under
-  `schema[field]._links.allowedValues.href` instead. `parse_form` now
-  dereferences that link in the adapter before the schema reaches
-  `WorkPackageService`, so its option-matching logic keeps resolving locally
-  with no extra request for already-embedded sets (status, priority, type),
-  and always sees an embedded list either way — mirroring
-  `list_available_parent_projects`'s existing link-dereference shape for the
-  `parent` field.
+  `schema[field]._links.allowedValues.href` instead. The adapter now
+  dereferences that link before the schema reaches `WorkPackageService`, so
+  its option-matching logic keeps resolving locally with no extra request
+  for already-embedded sets (status, priority, type), and always sees an
+  embedded list either way — mirroring `list_available_parent_projects`'s
+  existing link-dereference shape for the `parent` field.
 - **Time entry `activity` resolution now also handles a linked (rather than
   embedded) allowed-values list**, the same underlying OpenProject response
   shape as the fix directly above. A project that restricts its available

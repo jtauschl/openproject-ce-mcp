@@ -33,11 +33,13 @@ one domain's write-payload construction, unlike a Resolver's job of serving
 reference resolution reused across multiple domains. The ONE piece of I/O
 this purity depends on -- dereferencing a field's linked-only `allowedValues`
 (unbounded candidate sets, e.g. any `User`-typed field, never embed the list)
--- is done by `parse_form` in the Adapter, BEFORE the schema reaches the
-Service, so `_embedded.allowedValues` is always populated by the time the
-Service's matching logic sees it. Same shape as
+-- is done by `parse_form(form, resolve_links=True)` in the Adapter, BEFORE
+the schema reaches the Service, so `_embedded.allowedValues` is always
+populated by the time the Service's matching logic sees it. Same shape as
 `ProjectApi.list_available_parent_projects` dereferencing the `parent`
-field's link.
+field's link. `resolve_links` defaults to False and most `parse_form` call
+sites never pass True -- see that method's own docstring for why only the
+dedicated schema probe needs the dereferenced form.
 
 Comment-posting/normalization deliberately reuses the EXISTING
 `ActivityApi`/`HttpxActivityApi` (injected separately into `WorkPackageService`)
@@ -147,15 +149,26 @@ class WorkPackageApi(Protocol):
         applies -- side-effect-free, safe to call more than once."""
         ...
 
-    async def parse_form(self, form: dict[str, Any]) -> WorkPackageFormResult:
+    async def parse_form(self, form: dict[str, Any], *, resolve_links: bool = False) -> WorkPackageFormResult:
         """Unwrap of `_embedded.payload`/`.validationErrors`/`.schema` from a
         raw form response returned by `validate_create`/`validate_update`.
-        Async because a schema field with an unbounded candidate set (e.g. a
-        `User`-typed field) is dereferenced from `_links.allowedValues.href`
-        into `_embedded.allowedValues` here -- see the module docstring's
-        "Schema-option-resolution" note: this I/O is the adapter's job so the
-        Service's matching logic can stay pure and always see an embedded
-        list."""
+        Async because, when `resolve_links=True`, a schema field with an
+        unbounded candidate set (e.g. a `User`-typed field) is dereferenced
+        from `_links.allowedValues.href` into `_embedded.allowedValues` here
+        -- see the module docstring's "Schema-option-resolution" note: this
+        I/O is the adapter's job so the Service's matching logic can stay
+        pure and always see an embedded list.
+
+        `resolve_links` defaults to False: `update()`'s auto-percentage/
+        auto-remaining-time probe and every call site's final parse only
+        ever read `.payload`/`.validationErrors`, or `.schema` for `writable`
+        flags -- never `allowedValues` -- so dereferencing there would be
+        pure waste. Only `_get_write_schema`'s dedicated schema probe (the
+        one call site that resolves `responsible`/`priority`/`category`/
+        `project_phase`/custom-field options) passes `resolve_links=True`.
+        Never mutates the input `form`'s schema in place -- returns a new
+        schema dict, so a caller holding a reference to the original `form`
+        sees it unchanged."""
         ...
 
     async def commit_create(self, payload: dict[str, Any], *, text_limit: int | None) -> WorkPackageRecord:

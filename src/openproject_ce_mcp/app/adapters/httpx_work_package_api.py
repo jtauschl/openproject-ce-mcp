@@ -8,15 +8,21 @@ auto-percentage/auto-remaining-time derivation) lives here; all of that is a
 `WorkPackageService` concern (see `app/ports/work_package_api.py`'s module
 docstring).
 
-`parse_form` is the one exception with actual I/O: fields whose candidate set
-is unbounded (any `User`-typed field, e.g. `responsible`, or a user/version
-reference custom field) never embed `allowedValues` -- OpenProject links a
-pre-filtered collection instead (`schema[field]._links.allowedValues.href`).
-`parse_form` dereferences that link into `_embedded.allowedValues` before
-handing the schema to the Service, so `WorkPackageService`'s option-matching
-stays pure/no-I/O as documented, always seeing an embedded list. Mirrors
+`parse_form` is the one exception with actual I/O, and only when called with
+`resolve_links=True`: fields whose candidate set is unbounded (any
+`User`-typed field, e.g. `responsible`, or a user/version reference custom
+field) never embed `allowedValues` -- OpenProject links a pre-filtered
+collection instead (`schema[field]._links.allowedValues.href`). With
+`resolve_links=True`, `parse_form` dereferences that link into
+`_embedded.allowedValues` (via `_resolve_linked_allowed_values`, which
+returns a new schema dict rather than mutating the input) before handing the
+schema to the Service, so `WorkPackageService`'s option-matching stays
+pure/no-I/O as documented, always seeing an embedded list. Mirrors
 `HttpxProjectApi.list_available_parent_projects`'s identical link-dereference
-shape for the `parent` field.
+shape for the `parent` field. Defaults to `resolve_links=False` (no I/O,
+matching every call site except the dedicated schema probe) -- see
+`app/ports/work_package_api.py`'s `parse_form` docstring for which call
+sites need which.
 
 No `httpx` import (depends on the `Transport` Protocol only). Owns the pure
 normalize_* HAL->model translation functions, matching the Projects/Versions
@@ -630,27 +636,38 @@ class HttpxWorkPackageApi:
         safe_ref = _work_package_ref_encode(work_package_ref)
         return await self._transport.post_json(f"work_packages/{safe_ref}/form", json_body=payload)
 
-    async def parse_form(self, form: dict[str, Any]) -> WorkPackageFormResult:
-        embedded = form.get("_embedded", {})
-        schema = embedded.get("schema", {})
-        for field in schema.values():
-            if not isinstance(field, dict) or field.get("_embedded", {}).get("allowedValues") is not None:
+    async def parse_form(self, form: dict[str, Any], *, resolve_links: bool = False) -> WorkPackageFormResult:
+        embedded = form.get("_embedded") or {}
+        schema = embedded.get("schema") or {}
+        if resolve_links:
+            schema = await self._resolve_linked_allowed_values(schema)
+        return WorkPackageFormResult(
+            payload=embedded.get("payload", {}),
+            validation_errors=_normalize_form_validation_errors(embedded.get("validationErrors")),
+            schema=schema,
+        )
+
+    async def _resolve_linked_allowed_values(self, schema: dict[str, Any]) -> dict[str, Any]:
+        """Dereference every schema field's `_links.allowedValues.href` that
+        isn't already embedded, returning a new schema dict -- the input is
+        never mutated in place, so a caller holding a reference to the
+        original `form`/schema sees it unchanged."""
+        resolved: dict[str, Any] = dict(schema)
+        for key, field in schema.items():
+            if not isinstance(field, dict) or (field.get("_embedded") or {}).get("allowedValues") is not None:
                 # Either not a field dict, or already carries an embedded
                 # allowedValues list -- both cases resolve locally, no I/O.
                 continue
-            link = field.get("_links", {}).get("allowedValues")
+            link = (field.get("_links") or {}).get("allowedValues")
             if not isinstance(link, dict):
                 continue
             href = link.get("href")
             if not isinstance(href, str) or not href:
                 continue
             payload = await self._transport.get_json(self._link_to_api_path(href))
-            field["_embedded"] = {"allowedValues": payload.get("_embedded", {}).get("elements", [])}
-        return WorkPackageFormResult(
-            payload=embedded.get("payload", {}),
-            validation_errors=_normalize_form_validation_errors(embedded.get("validationErrors")),
-            schema=schema,
-        )
+            elements = (payload.get("_embedded") or {}).get("elements", [])
+            resolved[key] = {**field, "_embedded": {**(field.get("_embedded") or {}), "allowedValues": elements}}
+        return resolved
 
     async def commit_create(self, payload: dict[str, Any], *, text_limit: int | None) -> WorkPackageRecord:
         response = await self._transport.post_json("work_packages", json_body=payload)

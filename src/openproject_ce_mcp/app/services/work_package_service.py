@@ -1268,7 +1268,7 @@ class WorkPackageService:
             if lock_version is not None:
                 schema_body["lockVersion"] = lock_version
             form = await self._api.validate_update(str(work_package_id), schema_body)
-            return (await self._api.parse_form(form)).schema
+            return (await self._api.parse_form(form, resolve_links=True)).schema
 
         schema_payload = dict(draft_payload)
         schema_links = dict(schema_payload.get("_links", {}))
@@ -1283,7 +1283,7 @@ class WorkPackageService:
         if schema_links:
             schema_payload["_links"] = schema_links
         form = await self._api.validate_create(project, schema_payload)
-        return (await self._api.parse_form(form)).schema
+        return (await self._api.parse_form(form, resolve_links=True)).schema
 
     def _resolve_schema_option_href(self, schema: dict[str, Any], key: str, raw_value: Any) -> str:
         field = schema.get(key)
