@@ -4,10 +4,21 @@
   <img src="img/development.jpg" alt="A Python development pipeline passing source modules through tests and containers into a verified package." width="960">
 </p>
 
+## Where to send a pull request
+
+`main` is not the active development branch — it stays frozen at the last
+finalized release. Active work happens on two parallel release branches:
+`release/0.3.7` (the original flat-`client.py` architecture, maintenance
+only) and `release/0.4.0` (the layered `app/` architecture, active
+development). Clone and base your PR on whichever of these matches the code
+you're touching, not `main` — a checkout of `main` (or a PR against it)
+leaves you on a frozen snapshot and needing manual re-application onto the
+correct release branch.
+
 ## Set up
 
 ```bash
-git clone https://github.com/jtauschl/openproject-ce-mcp.git
+git clone -b release/0.4.0 https://github.com/jtauschl/openproject-ce-mcp.git
 cd openproject-ce-mcp
 
 # option A: uv (recommended)
@@ -17,16 +28,6 @@ uv sync --dev
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 ```
-
-## Where to send a pull request
-
-`main` is not the active development branch — it stays frozen at the last
-finalized release. Active work happens on two parallel release branches:
-`release/0.3.7` (the original flat-`client.py` architecture, maintenance
-only) and `release/0.4.0` (the layered `app/` architecture, active
-development). Base your PR on whichever of these matches the code you're
-touching, not `main` — a PR against `main` targets a branch nobody merges
-into and will need to be re-applied by hand onto the correct release branch.
 
 ## Run tests
 
