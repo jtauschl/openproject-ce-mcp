@@ -160,7 +160,7 @@ See [SECURITY.md](https://github.com/jtauschl/openproject-ce-mcp/blob/main/SECUR
 ## Development
 
 ```bash
-git clone -b release/0.3.7 https://github.com/jtauschl/openproject-ce-mcp.git
+git clone -b release/0.3.8 https://github.com/jtauschl/openproject-ce-mcp.git
 cd openproject-ce-mcp
 uv sync --dev
 uv run pytest

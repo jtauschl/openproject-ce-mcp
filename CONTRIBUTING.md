@@ -8,7 +8,7 @@
 
 `main` is not the active development branch — it stays frozen at the last
 finalized release. Active work happens on two parallel release branches:
-`release/0.3.7` (the original flat-`client.py` architecture, maintenance
+`release/0.3.8` (the original flat-`client.py` architecture, maintenance
 only) and `release/0.4.0` (the layered `app/` architecture, active
 development). Clone and base your PR on whichever of these matches the code
 you're touching, not `main` — a checkout of `main` (or a PR against it)
@@ -18,7 +18,7 @@ correct release branch.
 ## Set up
 
 ```bash
-git clone -b release/0.3.7 https://github.com/jtauschl/openproject-ce-mcp.git
+git clone -b release/0.3.8 https://github.com/jtauschl/openproject-ce-mcp.git
 cd openproject-ce-mcp
 
 # option A: uv (recommended)
