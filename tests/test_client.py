@@ -6720,6 +6720,113 @@ async def test_create_time_entry_resolves_activity_from_project_form_context() -
 
 
 @pytest.mark.asyncio
+async def test_create_time_entry_resolves_activity_from_linked_allowed_values() -> None:
+    """A project can restrict its activity list to the point OpenProject links a
+    filtered collection instead of embedding it -- same shape as the User-field bug,
+    mirrored for time entry activities."""
+    activities_calls = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal activities_calls
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 6, "name": "Demo", "identifier": "demo"},
+                request=request,
+            )
+        if request.url.path == "/api/v3/time_entries/activities":
+            activities_calls += 1
+            return httpx.Response(
+                200,
+                json={
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 3,
+                                "name": "Development",
+                                "_links": {"self": {"href": "/api/v3/time_entries/activities/3"}},
+                            },
+                            {
+                                "id": 4,
+                                "name": "Consulting",
+                                "_links": {"self": {"href": "/api/v3/time_entries/activities/4"}},
+                            },
+                        ]
+                    }
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/time_entries/form":
+            body = json.loads(request.content)
+            if body == {"_links": {"project": {"href": "/api/v3/projects/6"}}}:
+                return httpx.Response(
+                    200,
+                    json={
+                        "_type": "Form",
+                        "_embedded": {
+                            "schema": {
+                                "activity": {
+                                    "_links": {
+                                        "allowedValues": {"href": "/api/v3/time_entries/activities"},
+                                    }
+                                }
+                            }
+                        },
+                    },
+                    request=request,
+                )
+            return httpx.Response(200, json={"_embedded": {"payload": body, "validationErrors": {}}}, request=request)
+        if request.url.path == "/api/v3/time_entries" and request.method == "POST":
+            body = json.loads(request.content)
+            assert body["_links"]["activity"]["href"] == "/api/v3/time_entries/activities/3"
+            return httpx.Response(
+                201,
+                json={
+                    "id": 11,
+                    "hours": "PT15M",
+                    "spentOn": "2026-03-20",
+                    "_links": {
+                        "self": {"href": "/api/v3/time_entries/11"},
+                        "project": {"href": "/api/v3/projects/6", "title": "Demo"},
+                        "activity": {"href": "/api/v3/time_entries/activities/3", "title": "Development"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+        enable_work_package_write=True,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    created = await client.create_time_entry(
+        project="demo",
+        activity="Development",
+        hours="PT15M",
+        spent_on="2026-03-20",
+        confirm=True,
+    )
+
+    assert created.confirmed is True
+    assert created.result is not None
+    assert created.result.activity == "Development"
+    assert activities_calls > 0, "the linked allowedValues collection was never fetched"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_project_scoped_reads_accept_numeric_project_ids_when_allowed_by_name() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/projects/6":

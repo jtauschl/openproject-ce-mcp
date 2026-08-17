@@ -8180,7 +8180,11 @@ class OpenProjectClient:
         form = await self._post("time_entries/form", json_body={"_links": links})
         schema = form.get("_embedded", {}).get("schema", {})
         activity_field = schema.get("activity", {})
-        allowed = activity_field.get("_embedded", {}).get("allowedValues", [])
+        allowed = activity_field.get("_embedded", {}).get("allowedValues")
+        # Mirrors _resolve_schema_option_href: a project can restrict the activity list
+        # to the point OpenProject links a filtered collection instead of embedding it.
+        if allowed is None:
+            allowed = await self._fetch_linked_allowed_values(activity_field)
         return [self.normalize_time_entry_activity(item) for item in allowed if isinstance(item, dict)]
 
     async def _finalize_version_write(

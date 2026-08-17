@@ -71,6 +71,13 @@ development baseline.
   Because a linked collection can legitimately hold two principals sharing a
   display name, an ambiguous name is now rejected rather than silently
   resolved to whichever matched first. (Thanks to @mehow-vng for the fix.)
+- **Time entry `activity` resolution now also handles a linked (rather than
+  embedded) allowed-values list**, the same underlying OpenProject response
+  shape as the fix directly above. A project that restricts its available
+  activities could make the server link a filtered collection instead of
+  embedding it, which previously left every activity name/id rejected as
+  "not allowed" for `create_time_entry`/`update_time_entry` and
+  `list_time_entry_activities` on that project.
 
 ## 0.3.6 – 2026-08-10
 
