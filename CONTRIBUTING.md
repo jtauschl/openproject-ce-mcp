@@ -18,6 +18,16 @@ python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 ```
 
+## Where to send a pull request
+
+`main` is not the active development branch — it stays frozen at the last
+finalized release. Active work happens on two parallel release branches:
+`release/0.3.7` (the original flat-`client.py` architecture, maintenance
+only) and `release/0.4.0` (the layered `app/` architecture, active
+development). Base your PR on whichever of these matches the code you're
+touching, not `main` — a PR against `main` targets a branch nobody merges
+into and will need to be re-applied by hand onto the correct release branch.
+
 ## Run tests
 
 **Unit tests** (no network — run against `httpx` mocks):
