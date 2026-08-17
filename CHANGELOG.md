@@ -336,7 +336,7 @@ support.
   `create_work_package_wiki_link`/`delete_work_package_wiki_link` need
   17.7+, not 17.6+.
 
-## [0.3.7] - Unreleased
+## [0.3.7] - 2026-08-17
 
 ### Security
 
