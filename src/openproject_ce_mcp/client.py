@@ -262,6 +262,39 @@ class TransportError(OpenProjectError):
     """The request could not reach OpenProject safely."""
 
 
+def _combined_error_message(payload: dict[str, Any]) -> str:
+    """The top-level `message` alone is a generic, useless summary
+    ("Multiple field constraints have been violated.") when OpenProject
+    wraps several validation failures in a `MultipleErrors` HAL error --
+    the real per-field detail lives in `_embedded.errors[]`, each itself a
+    full Error payload with its own `message`. Verified live against a real
+    17.7.1 instance (2026-08-13): a two-provider storage create with an
+    Enterprise-gate violation AND an unrelated field error returns exactly
+    this shape, and without this, InvalidInputError only ever surfaced
+    "Multiple field constraints have been violated." with no way for a
+    caller (or a test asserting on the message) to see which fields, or
+    that the Enterprise gate was even involved.
+
+    Falls back to the top-level message alone (or "" if absent) when there
+    is no `_embedded.errors` list, or it's empty -- the common single-error
+    case is unaffected by this change.
+    """
+    message = str(payload.get("message") or "").strip()
+    embedded = payload.get("_embedded")
+    errors = embedded.get("errors") if isinstance(embedded, dict) else None
+    if not isinstance(errors, list) or not errors:
+        return message
+    detail_messages = [
+        str(err.get("message")).strip()
+        for err in errors
+        if isinstance(err, dict) and str(err.get("message") or "").strip()
+    ]
+    if not detail_messages:
+        return message
+    details = "; ".join(detail_messages)
+    return f"{message} ({details})" if message else details
+
+
 class OpenProjectClient:
     """Small OpenProject API client with optional guarded write support."""
 
@@ -3419,11 +3452,24 @@ class OpenProjectClient:
                 results=[],
             )
         current_user = await self.get_current_user()
-        payload = await self._get(
+
+        async def _work_package_item_allowed(item: dict[str, Any]) -> bool:
+            return self._work_package_payload_allowed(item)
+
+        # This query has no server-side project filter at all (unlike
+        # list_work_packages, which adds one under a restricted scope), so a
+        # single bounded fetch could silently miss every allowed match when
+        # most of the server's matches belong to disallowed projects --
+        # reproduced live: 33 total server matches, 1 in an allowed project,
+        # that one match landing beyond a single page's worth of results.
+        # Scan server pages the same way list_relations/list_views/etc.
+        # already do, rather than trusting one bounded page.
+        raw_items, truncated = await self._scan_and_paginate(
             "work_packages",
-            params={
-                "offset": str(offset),
-                "pageSize": str(effective_limit),
+            item_allowed=_work_package_item_allowed,
+            offset=offset,
+            limit=effective_limit,
+            params_extra={
                 "filters": _json_param(
                     [
                         {"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}},
@@ -3432,35 +3478,14 @@ class OpenProjectClient:
                 ),
             },
         )
-        raw_elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
-        raw_items = [item for item in raw_elements if self._work_package_payload_allowed(item)]
         results = [self.normalize_work_package_summary(item) for item in raw_items]
-        server_total = int(payload.get("total", len(results)))
-        # This query has no server-side project filter at all, so the server total
-        # counts matches across every project regardless of the allowlist — only
-        # trust it when the scope is unrestricted. A clean current page is NOT
-        # sufficient: a later page could still contain disallowed-project matches
-        # that the total would otherwise leak the existence of.
-        total_is_scope_safe = _scope_allows_all(self.settings.read_projects)
-        total_trustworthy = total_is_scope_safe and len(raw_items) == len(raw_elements)
-        if total_trustworthy:
-            total = server_total
-            next_offset = _next_offset(offset, effective_limit, server_total)
-            truncated = server_total > offset * effective_limit
-        else:
-            # See _list_work_package_collection: pagination hints must not be
-            # derived from the untrustworthy server total either. Base "is there
-            # more to page through" purely on whether this raw server page came
-            # back full.
-            total = len(results)
-            next_offset = (offset + 1) if len(raw_elements) == effective_limit else None
-            truncated = len(raw_elements) == effective_limit
+        total = len(results)
         return WorkPackageListResult(
             offset=offset,
             limit=effective_limit,
             total=total,
             count=len(results),
-            next_offset=next_offset,
+            next_offset=(offset + 1) if truncated else None,
             truncated=truncated,
             results=results,
         )
@@ -6072,13 +6097,17 @@ class OpenProjectClient:
         except ValueError:
             payload = {}
 
-        message = str(payload.get("message") or "").strip()
+        message = _combined_error_message(payload)
         status_code = response.status_code
         if status_code == 401:
             raise AuthenticationError("OpenProject authentication failed.")
         if status_code == 403:
-            lowered = message.lower()
-            if "token" in lowered or "authenticate" in lowered:
+            # Classify on the top-level message alone, not the combined one: an
+            # embedded sub-error unrelated to auth (e.g. an Enterprise-gate message
+            # that happens to mention "token") could otherwise misclassify a real
+            # PermissionDeniedError as AuthenticationError.
+            top_level_message = str(payload.get("message") or "").strip().lower()
+            if "token" in top_level_message or "authenticate" in top_level_message:
                 raise AuthenticationError("OpenProject authentication failed.")
             detail = f" ({message})" if message else ""
             raise PermissionDeniedError(f"OpenProject denied access to this resource.{detail}")
@@ -7593,20 +7622,22 @@ class OpenProjectClient:
             )
             if responsible is not None and responsible is not CLEAR:
                 self._ensure_field_writable("work_package", "responsible")
-                links["responsible"] = {"href": self._resolve_schema_option_href(schema, "responsible", responsible)}
+                links["responsible"] = {
+                    "href": await self._resolve_schema_option_href(schema, "responsible", responsible)
+                }
             if priority is not None:
                 self._ensure_field_writable("work_package", "priority")
-                links["priority"] = {"href": self._resolve_schema_option_href(schema, "priority", priority)}
+                links["priority"] = {"href": await self._resolve_schema_option_href(schema, "priority", priority)}
             if category is not None and category is not CLEAR:
                 self._ensure_field_writable("work_package", "category")
-                links["category"] = {"href": self._resolve_schema_option_href(schema, "category", category)}
+                links["category"] = {"href": await self._resolve_schema_option_href(schema, "category", category)}
             if project_phase is not None and project_phase is not CLEAR:
                 self._ensure_field_writable("work_package", "project_phase")
                 links["projectPhase"] = {
-                    "href": self._resolve_schema_option_href(schema, "projectPhase", project_phase)
+                    "href": await self._resolve_schema_option_href(schema, "projectPhase", project_phase)
                 }
             if custom_fields:
-                self._apply_custom_fields(payload, links, schema, custom_fields)
+                await self._apply_custom_fields(payload, links, schema, custom_fields)
         if links:
             payload["_links"] = links
         return payload
@@ -7641,33 +7672,70 @@ class OpenProjectClient:
         form = await self._post(f"projects/{project}/work_packages/form", json_body=schema_payload)
         return form.get("_embedded", {}).get("schema", {})
 
-    def _resolve_schema_option_href(self, schema: dict[str, Any], key: str, raw_value: Any) -> str:
+    async def _resolve_schema_option_href(self, schema: dict[str, Any], key: str, raw_value: Any) -> str:
         field = schema.get(key)
         if not isinstance(field, dict):
             raise InvalidInputError(f"OpenProject schema does not expose field '{key}' for this work package.")
-        allowed_values = field.get("_embedded", {}).get("allowedValues", [])
-        if not isinstance(allowed_values, list):
-            raise InvalidInputError(f"OpenProject schema does not expose allowed values for field '{key}'.")
 
         normalized = str(raw_value).strip()
         if not normalized:
             raise InvalidInputError(f"{key} must not be empty.")
 
-        for item in allowed_values:
-            href = item.get("_links", {}).get("self", {}).get("href")
-            if not href:
-                continue
-            item_id = _id_from_href(href)
-            title = _trim_text(
-                item.get("name") or item.get("_links", {}).get("self", {}).get("title"), limit=SUBJECT_LIMIT
-            )
-            if normalized.isdigit() and item_id is not None and int(normalized) == item_id:
-                return href
-            if title and title.casefold() == normalized.casefold():
-                return href
-        raise InvalidInputError(f"OpenProject value '{raw_value}' is not allowed for field '{key}'.")
+        allowed_values = field.get("_embedded", {}).get("allowedValues")
+        # Fields whose candidate set is unbounded — every User-typed field (assignee,
+        # responsible) and every user/version reference custom field — never embed
+        # allowedValues. OpenProject only links a pre-filtered collection, so an absent
+        # embedded list means "ask the link", not "nothing is allowed".
+        from_link = allowed_values is None
+        if from_link:
+            allowed_values = await self._fetch_linked_allowed_values(field)
+        if not isinstance(allowed_values, list):
+            raise InvalidInputError(f"OpenProject schema does not expose allowed values for field '{key}'.")
 
-    def _apply_custom_fields(
+        matches: list[str] = []
+        for item in allowed_values:
+            href = self._match_schema_option(item, normalized)
+            if href and href not in matches:
+                matches.append(href)
+
+        if not matches:
+            raise InvalidInputError(f"OpenProject value '{raw_value}' is not allowed for field '{key}'.")
+        # Embedded option sets (status, priority, type) are instance-configured and
+        # first-match has always won there — keep that. A linked collection can hold two
+        # principals with the same display name, so refuse to guess which one was meant.
+        if from_link and len(matches) > 1:
+            raise InvalidInputError(
+                f"OpenProject value '{raw_value}' is ambiguous for field '{key}'. Pass a numeric id."
+            )
+        return matches[0]
+
+    def _match_schema_option(self, item: Any, normalized: str) -> str | None:
+        if not isinstance(item, dict):
+            return None
+        href = item.get("_links", {}).get("self", {}).get("href")
+        if not href:
+            return None
+        item_id = _id_from_href(href)
+        title = _trim_text(item.get("name") or item.get("_links", {}).get("self", {}).get("title"), limit=SUBJECT_LIMIT)
+        if normalized.isdigit() and item_id is not None and int(normalized) == item_id:
+            return href
+        if title and title.casefold() == normalized.casefold():
+            return href
+        return None
+
+    async def _fetch_linked_allowed_values(self, field: dict[str, Any]) -> list[Any]:
+        link = field.get("_links", {}).get("allowedValues")
+        # A list here is the inline form used by small option sets, which the embedded
+        # branch already handled; only a single {"href": ...} needs to be dereferenced.
+        if not isinstance(link, dict):
+            return []
+        href = link.get("href")
+        if not isinstance(href, str) or not href:
+            return []
+        payload = await self._get(self._link_to_api_path(href))
+        return payload.get("_embedded", {}).get("elements", [])
+
+    async def _apply_custom_fields(
         self,
         payload: dict[str, Any],
         links: dict[str, Any],
@@ -7684,7 +7752,7 @@ class OpenProjectClient:
             )
             location = field.get("location")
             if location == "_links":
-                hrefs = self._resolve_custom_field_links(field, raw_value, schema_key)
+                hrefs = await self._resolve_custom_field_links(field, raw_value, schema_key)
                 if len(hrefs) == 1:
                     links[schema_key] = {"href": hrefs[0]}
                 else:
@@ -7710,9 +7778,9 @@ class OpenProjectClient:
                 return key
         raise InvalidInputError(f"OpenProject custom field '{raw_key}' is not available for this work package.")
 
-    def _resolve_custom_field_links(self, field: dict[str, Any], raw_value: Any, key: str) -> list[str]:
+    async def _resolve_custom_field_links(self, field: dict[str, Any], raw_value: Any, key: str) -> list[str]:
         values = raw_value if isinstance(raw_value, list) else [raw_value]
-        hrefs = [self._resolve_schema_option_href({key: field}, key, value) for value in values]
+        hrefs = [await self._resolve_schema_option_href({key: field}, key, value) for value in values]
         if not hrefs:
             raise InvalidInputError(f"OpenProject custom field '{key}' requires at least one value.")
         return hrefs
@@ -8112,7 +8180,11 @@ class OpenProjectClient:
         form = await self._post("time_entries/form", json_body={"_links": links})
         schema = form.get("_embedded", {}).get("schema", {})
         activity_field = schema.get("activity", {})
-        allowed = activity_field.get("_embedded", {}).get("allowedValues", [])
+        allowed = activity_field.get("_embedded", {}).get("allowedValues")
+        # Mirrors _resolve_schema_option_href: a project can restrict the activity list
+        # to the point OpenProject links a filtered collection instead of embedding it.
+        if allowed is None:
+            allowed = await self._fetch_linked_allowed_values(activity_field)
         return [self.normalize_time_entry_activity(item) for item in allowed if isinstance(item, dict)]
 
     async def _finalize_version_write(

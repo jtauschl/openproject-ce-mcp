@@ -1386,8 +1386,11 @@ async def search_work_packages(
     project was given. Otherwise (no project, restricted scope) total falls back
     to this page's item count, and next_offset/truncated are based on whether
     this page came back full rather than the server's own total, so nothing here
-    ever reveals how many matches exist in projects you can't see. Page until
-    next_offset is null either way.
+    ever reveals how many matches exist in projects you can't see. Because of
+    this, total can read 0 while next_offset is still non-null (a restrictive
+    scope filtered out every match on this page, but the raw server page was
+    full) — that is not an inconsistency, keep paging via next_offset rather
+    than stopping on a low/zero total. Page until next_offset is null either way.
     """
     client = _client_from_context(ctx)
     safe_query = _validate_required_query(query, field_name="query", max_length=120)
@@ -1494,8 +1497,11 @@ async def list_work_packages(
     the resolved allowed project IDs was sent. Otherwise total falls back to this
     page's item count, and next_offset/truncated are based on whether this page
     came back full rather than the server's own total, so nothing here ever
-    reveals how many matches exist in projects you can't see. Page until
-    next_offset is null either way.
+    reveals how many matches exist in projects you can't see. Because of this,
+    total can read 0 while next_offset is still non-null (a restrictive scope
+    filtered out every match on this page, but the raw server page was full) —
+    that is not an inconsistency, keep paging via next_offset rather than
+    stopping on a low/zero total. Page until next_offset is null either way.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -2167,7 +2173,10 @@ async def create_subtask(
     """Prepare or create a subtask under an existing work package.
 
     The tool validates the payload first. Set confirm=true to write.
-    parent_work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
+    parent_work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"),
+    not UI display number (e.g., 51) — the same value list_work_packages/
+    get_work_package return as each row's `id` field (and as `parent_id`/
+    `parent_display_id` on a child work package).
     Concurrent calls to this tool (or create_work_package) do not preserve call order in the resulting IDs;
     use bulk_create_work_packages when order across several new items matters.
     """
@@ -3712,6 +3721,8 @@ def _return_model(fn: Any) -> type | None:
     we resolve it against this module's namespace (where the models are imported).
     """
     ann = fn.__annotations__.get("return")
+    # ann is the function's own return-type annotation (source-defined), never attacker-controlled input.
+    # nosemgrep: python.lang.security.dangerous-globals-use.dangerous-globals-use
     model = globals().get(ann) if isinstance(ann, str) else ann
     return model if isinstance(model, type) and is_dataclass(model) else None
 
@@ -4484,6 +4495,8 @@ def _validate_positive_int(value: int, *, field_name: str) -> int:
 # renamed tool name raises KeyError here at import time instead of a tool
 # silently vanishing from registration.
 _TOOL_FUNCTIONS: dict[str, Callable] = {
+    # name comes from this module's own tool-classification constants below, never attacker-controlled input.
+    # nosemgrep: python.lang.security.dangerous-globals-use.dangerous-globals-use
     name: globals()[name]
     for name in (
         *PERSONAL_MUTATION_TOOLS,

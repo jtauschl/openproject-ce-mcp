@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openproject-ce-mcp"
-version = "0.3.6"
+version = "0.3.7"
 description = "MCP server for OpenProject Community Edition with guarded read/write support."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -97,6 +97,13 @@ markers = [
     "allow_feature_flag_fetch: opt out of the offline feature-flag stub in conftest",
 ]
 
+[tool.coverage.run]
+source = ["src/openproject_ce_mcp"]
+
+[tool.coverage.report]
+fail_under = 87
+show_missing = true
+
 [tool.ruff]
 line-length = 120
 target-version = "py310"
@@ -113,9 +120,13 @@ select = [
   "SIM", # flake8-simplify
 ]
 ignore = [
-  "E501",   # line too long — wird von formatter gehandhabt
-  "SIM108", # ternary statt if/else — oft schwerer lesbar
+  "E501",   # line too long — handled by the formatter
+  "SIM108", # ternary instead of if/else — often less readable
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["SIM"]  # Testcode darf ausführlicher sein
+"tests/**" = ["SIM"]  # test code may be more verbose
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src/openproject_ce_mcp"]

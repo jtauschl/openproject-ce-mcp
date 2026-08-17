@@ -6,6 +6,8 @@
 #   16.6.10 = classic numeric identifiers (baseline, no displayId, no semantic)
 #   17.4.1  = displayId field introduced
 #   17.5.1  = project-based semantic identifiers active + workspaces (favorites)
+#   17.6.0  = same semantic-identifier generation as 17.5 (no client-relevant API change)
+#   17.7.2  = latest release as of this pin; same semantic-identifier generation as 17.5/17.6
 #
 # Driven by up.sh / down.sh. SECRET_KEY_BASE comes from a generated .env
 # (gitignored); never hardcode it here.
@@ -68,6 +70,44 @@ services:
       retries: 40
       start_period: 120s
 
+  op-17-6:
+    image: openproject/openproject:17.6.0
+    ports:
+      - "8176:80"
+    environment:
+      OPENPROJECT_HOST__NAME: localhost:8176
+      OPENPROJECT_HTTPS: "false"
+      OPENPROJECT_DEFAULT__LANGUAGE: en
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?set via up.sh / .env}
+    volumes:
+      - op176_pgdata:/var/openproject/pgdata
+      - op176_assets:/var/openproject/assets
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/health_checks/default"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 120s
+
+  op-17-7:
+    image: openproject/openproject:17.7.2
+    ports:
+      - "8177:80"
+    environment:
+      OPENPROJECT_HOST__NAME: localhost:8177
+      OPENPROJECT_HTTPS: "false"
+      OPENPROJECT_DEFAULT__LANGUAGE: en
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?set via up.sh / .env}
+    volumes:
+      - op177_pgdata:/var/openproject/pgdata
+      - op177_assets:/var/openproject/assets
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/health_checks/default"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 120s
+
 volumes:
   op166_pgdata:
   op166_assets:
@@ -75,3 +115,7 @@ volumes:
   op174_assets:
   op175_pgdata:
   op175_assets:
+  op176_pgdata:
+  op176_assets:
+  op177_pgdata:
+  op177_assets:

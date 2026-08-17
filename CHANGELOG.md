@@ -7,6 +7,78 @@ development baseline.
 
 ---
 
+## 0.3.7 – 2026-08-17
+
+### Security
+
+- **Bumped `cryptography` to 50.0.0** (from 48.0.1), fixing GHSA-79v4-65xg-pq6g
+  (high severity): a Bleichenbacher-style padding oracle in PKCS#7
+  `EnvelopedData` decryption via distinguishable errors/timing. Pulled in
+  transitively through `pyjwt`; not directly exercised by this project's own
+  code, but the vulnerable range (`>=44.0.0,<50.0.0`) covered the previously
+  locked version.
+
+### Fixed
+
+- **A rejected write's error message now includes the actual per-field
+  reason instead of a generic summary.** OpenProject wraps multiple
+  simultaneous validation failures in a `MultipleErrors` HAL response whose
+  top-level message alone ("Multiple field constraints have been
+  violated.") gave no way to tell which fields, or whether an Enterprise-
+  only feature was involved — the real detail lives in `_embedded.errors[]`
+  and is now surfaced alongside it.
+- **A permission-denied response could be misreported as an authentication
+  failure** if OpenProject's rejection bundled an unrelated detail message
+  mentioning "token" or "authenticate" (e.g. an Enterprise-gate rejection
+  alongside a genuine permission denial) — a side effect of the surfaced-
+  detail fix directly above. The actual error type is now classified
+  correctly again.
+- **`list_my_open_work_packages` could silently return zero or incomplete
+  results even when matching, allowed work packages genuinely existed.**
+  This query has no server-side project filter at all, so under a
+  restricted `OPENPROJECT_READ_PROJECTS` scope a single bounded fetch could
+  land entirely on server pages whose matches belonged to disallowed
+  projects, missing every allowed match beyond that window — reproduced
+  live against a real OpenProject instance: 33 total server matches, only
+  1 in an allowed project, that one match landing past a single page's
+  worth of results. Now scans as many server pages as needed (skipping
+  already-seen allowed matches, stopping once enough are found or the
+  server is exhausted) instead of inspecting only one bounded page —
+  reusing the existing `_scan_and_paginate` helper the same way
+  `list_relations`/`list_views`/etc. already do.
+- **`create_subtask`'s docstring now states that `parent_work_package_id`
+  is the same value `list_work_packages`/`get_work_package` return as each
+  row's `id` field (and as `parent_id`/`parent_display_id` on a child work
+  package)** — same class of clarification as `get_work_package`'s
+  existing docstring note.
+- **`list_work_packages`/`search_work_packages`'s docstrings now explain
+  that `total` can read 0 while `next_offset` is still non-null** under a
+  restrictive `OPENPROJECT_READ_PROJECTS` scope (a full raw server page
+  with every match filtered out by the allowlist) — not an inconsistency,
+  keep paging.
+- **User-typed fields can now be set on writes.** `responsible`, and every
+  user/version reference custom field (e.g. a required "Business Owner" or
+  "Tech Owner" on an Epic), previously failed with
+  `OpenProject value 'X' is not allowed for field 'Y'` for *every* input —
+  display name, numeric id, or href alike — making those work packages
+  impossible to create through the server whenever such a field is required.
+  Option resolution only ever read `schema[field]._embedded.allowedValues`,
+  but fields whose candidate set is unbounded (any `User` field) never embed
+  that list; OpenProject links a pre-filtered collection under
+  `schema[field]._links.allowedValues.href` instead. That link is now
+  dereferenced when no embedded list is present. Embedded option sets
+  (status, priority, type) keep resolving locally with no extra request.
+  Because a linked collection can legitimately hold two principals sharing a
+  display name, an ambiguous name is now rejected rather than silently
+  resolved to whichever matched first. (Thanks to @mehow-vng for the fix.)
+- **Time entry `activity` resolution now also handles a linked (rather than
+  embedded) allowed-values list**, the same underlying OpenProject response
+  shape as the fix directly above. A project that restricts its available
+  activities could make the server link a filtered collection instead of
+  embedding it, which previously left every activity name/id rejected as
+  "not allowed" for `create_time_entry`/`update_time_entry` and
+  `list_time_entry_activities` on that project.
+
 ## 0.3.6 – 2026-08-10
 
 ### Changed

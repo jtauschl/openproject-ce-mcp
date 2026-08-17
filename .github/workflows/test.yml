@@ -2,17 +2,26 @@ name: Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, release/0.3.7]
   pull_request:
   workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: "3.12"
 
@@ -25,18 +34,65 @@ jobs:
       - name: Check formatting
         run: uv run ruff format --check .
 
-  test:
-    runs-on: ${{ matrix.os }}
+      - name: Run mypy
+        run: uv run mypy
+
+      - name: Run bandit (SAST)
+        run: uvx bandit -r src/openproject_ce_mcp -ll
+
+      - name: Run semgrep (SAST)
+        run: uvx semgrep --config auto --error src/openproject_ce_mcp
+
+      - name: Check dependency licenses
+        run: uvx pip-licenses --python .venv/bin/python3 --partial-match --fail-on="GPL;LGPL;AGPL"
+
+  # macos-latest/windows-latest cost roughly 10x/2x a Linux runner-minute — scoped to
+  # release-time confirmation only (the workflow_call from publish.yml's tag push, or a
+  # manual workflow_dispatch), never the per-push/per-PR gate. Split into two jobs rather
+  # than one matrix job with a job-level `if`, because GitHub Actions job-level `if` can't
+  # reference `matrix` at all, and a step-level `if` still provisions (and bills) the
+  # runner before skipping — so test-macos-windows below uses a job-level `if` on
+  # a job with a fixed (non-matrix) runs-on per OS instead.
+  test-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run tests
+        if: matrix.python-version != '3.12'
+        run: uv run pytest
+
+      - name: Run tests with coverage gate
+        if: matrix.python-version == '3.12'
+        run: uv run pytest --cov=src/openproject_ce_mcp --cov-report=term-missing
+
+  test-macos-windows:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -48,10 +104,11 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: "3.12"
 
@@ -61,12 +118,23 @@ jobs:
       - name: Check package metadata
         run: uvx twine check dist/*
 
+      - name: Generate SBOM
+        run: |
+          uv export --no-dev --format requirements-txt --no-hashes -o requirements.txt
+          uvx --from cyclonedx-bom cyclonedx-py requirements requirements.txt --of JSON -o sbom.json
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom
+          path: sbom.json
+
   launchers:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: "3.12"
 
@@ -76,8 +144,22 @@ jobs:
       - name: Check get.sh syntax (POSIX sh)
         run: sh -n get.sh
 
-      - name: Check uninstall.sh syntax (bash)
-        run: bash -n uninstall.sh
+      - name: Check shell scripts syntax (bash -n)
+        run: |
+          for f in dev uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh; do
+            bash -n "$f"
+          done
+
+      - name: shellcheck
+        run: shellcheck get.sh uninstall.sh dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh
+
+      - name: Install shfmt
+        run: |
+          go install mvdan.cc/sh/v3/cmd/shfmt@v3.13.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: shfmt
+        run: shfmt -l get.sh uninstall.sh dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh
 
       - name: Check get.ps1 / uninstall.ps1 syntax (PowerShell parser)
         shell: pwsh

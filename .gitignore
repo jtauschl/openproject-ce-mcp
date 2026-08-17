@@ -3,6 +3,8 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+requirements.txt
+sbom.json
 
 # Test / coverage
 .pytest_cache/
@@ -27,6 +29,8 @@ htmlcov/
 .vscode/
 .cursor/
 .DS_Store
+Thumbs.db
+Desktop.ini
 CONTINUE.md
 
 # Local backups
