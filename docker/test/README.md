@@ -13,7 +13,7 @@ matters to this client (all-in-one images, each bundles PostgreSQL + memcached):
 | `op-17-4`  | 17.4.1  | 8174 | displayId field introduced |
 | `op-17-5`  | 17.5.1  | 8175 | semantic identifiers active + workspaces (favorites) |
 | `op-17-6`  | 17.6.0  | 8176 | same semantic-identifier generation as 17.5 (no client-relevant API change; kept for currency) |
-| `op-17-7`  | 17.7.1  | 8177 | latest release as of this pin; same semantic-identifier generation as 17.5/17.6 |
+| `op-17-7`  | 17.7.2  | 8177 | latest release as of this pin; same semantic-identifier generation as 17.5/17.6 |
 
 ## Usage
 
@@ -23,8 +23,8 @@ docker/test/up.sh 17        # only 17.5.1
 docker/test/up.sh 174       # only 17.4.1
 docker/test/up.sh 16        # only 16.6.10
 docker/test/up.sh 176       # only 17.6.0
-docker/test/up.sh 177       # only 17.7.1
-docker/test/up.sh 177nc     # 17.7.1 + the Nextcloud storage fixture (see below)
+docker/test/up.sh 177       # only 17.7.2
+docker/test/up.sh 177nc     # 17.7.2 + the Nextcloud storage fixture (see below)
 
 # up.sh prints a ready-to-run block per instance, e.g.:
 OPENPROJECT_BASE_URL=http://localhost:8175 \
