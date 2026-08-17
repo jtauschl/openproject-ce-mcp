@@ -110,6 +110,42 @@ async def test_update_storage_renames_without_triggering_host_probe(client: Open
         await client.update_storage(storage_id=seed.id, name="Seed Nextcloud Storage", confirm=True)
 
 
+async def test_delete_file_link_deletes_seeded_link(client: OpenProjectClient, test_project: str) -> None:
+    """delete_file_link's successful-delete path (OPM-360) -- previously only
+    covered by tests/integration/test_write_denials.py's denial check, which
+    itself skips whenever no file link happens to exist. seed.rb's
+    "seed-file-link-deletable.txt" row exists specifically for this test to
+    consume; find_or_create in the seed means a repeat `up.sh` run reseeds it,
+    so deleting it here doesn't leave the fixture permanently gone. The
+    "seed-file-link-persistent.txt" row is a separate, untouched fixture for
+    test_write_denials.py -- this test must not delete that one."""
+    work_packages = await client.list_work_packages(project=test_project, limit=50)
+    file_link_id = None
+    owning_wp_id = None
+    for wp in work_packages.results:
+        links = await client.list_work_package_file_links(wp.id)
+        match = next((link for link in links.results if link.title == "seed-file-link-deletable.txt"), None)
+        if match is not None:
+            file_link_id = match.id
+            owning_wp_id = wp.id
+            break
+    if file_link_id is None:
+        pytest.skip(
+            "no 'seed-file-link-deletable.txt' file link in test_project -- run docker/test/up.sh 177nc to seed one"
+        )
+
+    preview = await client.delete_file_link(file_link_id, confirm=False)
+    assert preview.state == "preview"
+    assert preview.ready is True
+
+    delete_result = await client.delete_file_link(file_link_id, confirm=True)
+    assert delete_result.state == "confirmed"
+    assert delete_result.ready is True
+
+    remaining = await client.list_work_package_file_links(owning_wp_id)
+    assert all(link.id != file_link_id for link in remaining.results)
+
+
 # --- Write path: create/delete a NEW storage ---------------------------------
 
 

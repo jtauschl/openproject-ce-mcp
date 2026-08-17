@@ -21,28 +21,30 @@ async def test_delete_file_link_denied_outside_allowlist(
     client: OpenProjectClient, denied_client: OpenProjectClient, test_project: str
 ) -> None:
     # File links come from external storage integrations this MCP cannot
-    # create, so this is inherently best-effort: skip if none exist anywhere
-    # in test_project rather than failing (consistent with this suite's
-    # existing graceful-skip pattern for other unseeded live preconditions).
+    # create, so this is inherently best-effort: skip if none exist rather
+    # than failing (consistent with this suite's existing graceful-skip
+    # pattern for other unseeded live preconditions). Only runs deterministically
+    # with docker/test/up.sh's 177nc mode (SEED_FILE_LINK=1) -- the default
+    # seed has zero storages and zero file links.
     #
-    # This means delete_file_link's SUCCESSFUL delete path (not just this
-    # denial path) has no deterministic live coverage either -- it only runs
-    # when a file link happens to pre-exist, which this Docker test instance
-    # never has by default (zero Storages::Storage rows; a real Storages::
-    # FileLink additionally needs a configured Storage row, e.g. a
-    # Storages::NextcloudStorage, which this suite deliberately does not set
-    # up -- tracked as a follow-up for a future session/release, not done
-    # here). Confirmed live: docker/test's seeded instance has 0 storages and
-    # 0 file links.
+    # Deliberately targets "seed-file-link-persistent.txt" specifically, not
+    # just any file link: seed.rb (OPM-360) seeds two rows on purpose --
+    # "seed-file-link-deletable.txt" is the one
+    # tests/integration/test_storages.py::test_delete_file_link_deletes_seeded_link
+    # actually destroys via delete_file_link's successful-delete path. Picking
+    # "any" file link here would race with that test depending on execution
+    # order (this test only denies, never deletes, but a plain "first link
+    # found" could still resolve to an id the other test already removed).
     work_packages = await client.list_work_packages(project=test_project, limit=50)
     file_link_id = None
     for wp in work_packages.results:
         links = await client.list_work_package_file_links(wp.id)
-        if links.count > 0:
-            file_link_id = links.results[0].id
+        match = next((link for link in links.results if link.title == "seed-file-link-persistent.txt"), None)
+        if match is not None:
+            file_link_id = match.id
             break
     if file_link_id is None:
-        pytest.skip("no file link available in test_project to verify denial against")
+        pytest.skip("no 'seed-file-link-persistent.txt' file link in test_project to verify denial against")
 
     with pytest.raises(PermissionDeniedError):
         await denied_client.delete_file_link(file_link_id, confirm=True)

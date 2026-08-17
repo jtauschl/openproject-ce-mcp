@@ -127,8 +127,12 @@ for entry in "${SEMANTIC[@]}"; do
     wait_healthy "$svc"
     seed_nextcloud=0
     [ "$WITH_NEXTCLOUD" = "1" ] && [ "$svc" = "op-17-7" ] && seed_nextcloud=1
-    echo "Seeding $svc (SEED_SEMANTIC=$semantic, SEED_NEXTCLOUD_STORAGE=$seed_nextcloud)…"
-    seed_output="$(docker compose exec -T -e SEED_SEMANTIC="$semantic" -e SEED_NEXTCLOUD_STORAGE="$seed_nextcloud" "$svc" \
+    # File link seeding needs the Nextcloud storage fixture above to already
+    # have linked a Storage to this project -- same gate, no separate flag.
+    seed_file_link="$seed_nextcloud"
+    echo "Seeding $svc (SEED_SEMANTIC=$semantic, SEED_NEXTCLOUD_STORAGE=$seed_nextcloud, SEED_FILE_LINK=$seed_file_link)…"
+    seed_output="$(docker compose exec -T -e SEED_SEMANTIC="$semantic" -e SEED_NEXTCLOUD_STORAGE="$seed_nextcloud" \
+        -e SEED_FILE_LINK="$seed_file_link" "$svc" \
         bundle exec rails runner - <seed.rb)"
     echo "$seed_output"
     token="$(sed -n 's/^SEED: API_TOKEN=//p' <<<"$seed_output" | tail -1)"

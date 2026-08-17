@@ -412,4 +412,63 @@ else
   log("nextcloud storage seed not requested (SEED_NEXTCLOUD_STORAGE unset)")
 end
 
+# --- File link fixtures (opt-in, for OPM-360 delete_file_link coverage) --------
+# Requires the Nextcloud storage fixture above (SEED_NEXTCLOUD_STORAGE=1) to
+# already have created a Storages::Storage + Storages::ProjectStorage on this
+# project -- a FileLink's create contract requires the work package's project
+# to actually have that storage linked (validate_project_storage_link), so
+# this only runs when that fixture ran successfully. Bypasses AR validation
+# the same way the storage/project_storage rows above do: creating through
+# Storages::FileLinks::CreateContract would additionally require a live
+# Enterprise-token check (check_for_enterprise_token_requirements), which
+# this fixture -- like the storage connection itself -- deliberately never
+# satisfies. This is NOT a live-connected file: origin_id/origin_name are
+# fabricated, nothing in Nextcloud actually exists at that id.
+#
+# Two rows, not one: "seed-file-link-persistent.txt" stays untouched for
+# tests/integration/test_write_denials.py's read-then-deny check (that test
+# must never see its target vanish out from under it), and
+# "seed-file-link-deletable.txt" is what
+# test_storages.py::test_delete_file_link_deletes_seeded_link actually
+# destroys via delete_file_link's successful-delete path -- which previously
+# had no deterministic live coverage at all (see docker/test/README.md).
+# find_or_create means re-running `up.sh` after a test consumed the deletable
+# row seeds it again, so the test suite stays repeatable without requiring a
+# full container recreate between runs.
+if ENV["SEED_FILE_LINK"] == "1"
+  if defined?(Storages::FileLink)
+    project_storage = Storages::ProjectStorage.find_by(project: project)
+    seed_wp = project.work_packages.first
+    if project_storage.nil?
+      log("no project_storage present -- run with SEED_NEXTCLOUD_STORAGE=1 first to seed a file link")
+    elsif seed_wp.nil?
+      log("no seed work package present -- skipping file link seed")
+    else
+      [
+        ["1", "seed-file-link-persistent.txt"],
+        ["2", "seed-file-link-deletable.txt"]
+      ].each do |origin_id, origin_name|
+        file_link = Storages::FileLink.find_by(container: seed_wp, storage: project_storage.storage, origin_name: origin_name)
+        if file_link.nil?
+          file_link = Storages::FileLink.new(
+            storage: project_storage.storage,
+            creator: admin,
+            container: seed_wp,
+            origin_id: origin_id,
+            origin_name: origin_name
+          )
+          file_link.save(validate: false)
+          log("created file_link id=#{file_link.id} name=#{origin_name} work_package=#{seed_wp.id}")
+        else
+          log("file_link '#{origin_name}' already present (id=#{file_link.id})")
+        end
+      end
+    end
+  else
+    log("Storages::FileLink not defined on this version -- skipping file link seed")
+  end
+else
+  log("file link seed not requested (SEED_FILE_LINK unset)")
+end
+
 log("done")

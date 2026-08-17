@@ -66,6 +66,20 @@ testing is ever wanted, that needs a real interactive OAuth round-trip
 via its admin UI or `occ`, then completing the OAuth exchange through a
 browser) — treated as a known, explicitly out-of-scope gap, not a bug.
 
+**File link fixtures (OPM-360)**: with the `Storages::ProjectStorage` row
+above in place, `up.sh 177nc` also seeds two `Storages::FileLink` rows
+(`save(validate: false)`, same bypass as the storage rows — no live
+Nextcloud file actually exists at either fabricated `origin_id`):
+`seed-file-link-persistent.txt` (read/deny-only,
+`tests/integration/test_write_denials.py` targets this one and never deletes
+it) and `seed-file-link-deletable.txt` (consumed by
+`tests/integration/test_storages.py::test_delete_file_link_deletes_seeded_link`,
+which actually calls `delete_file_link` and destroys it — a repeat `up.sh
+177nc` reseeds it via `find_or_create`, since deleting it is the whole point
+of that test). This is what gives `delete_file_link`'s successful-delete
+path deterministic live coverage; previously it only ran when a file link
+happened to already exist, which the default seed never provides.
+
 **First boot takes several minutes** (migrations + asset precompile). `up.sh`
 waits on the container healthcheck, not a fixed sleep. Each instance needs
 ~1–2 GB RAM, so five all-in-one containers at once can exhaust a small Docker
