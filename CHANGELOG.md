@@ -300,6 +300,13 @@ support.
   and always sees an embedded list either way — mirroring
   `list_available_parent_projects`'s existing link-dereference shape for the
   `parent` field.
+- **Time entry `activity` resolution now also handles a linked (rather than
+  embedded) allowed-values list**, the same underlying OpenProject response
+  shape as the fix directly above. A project that restricts its available
+  activities could make the server link a filtered collection instead of
+  embedding it, which previously left every activity name/id rejected as
+  "not allowed" for `create_time_entry`/`update_time_entry` and
+  `list_time_entry_activities` on that project.
 
 ### Docs
 

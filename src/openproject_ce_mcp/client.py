@@ -773,7 +773,9 @@ class OpenProjectClient:
             api_prefix=self._api_prefix,
         )
 
-        self._time_entry_api: TimeEntryApi = HttpxTimeEntryApi(HttpxTransport(self._http), api_prefix=self._api_prefix)
+        self._time_entry_api: TimeEntryApi = HttpxTimeEntryApi(
+            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
+        )
         self._time_entry_service = TimeEntryService(
             api=self._time_entry_api,
             project_api=self._project_api,
