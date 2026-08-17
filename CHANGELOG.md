@@ -257,8 +257,9 @@ support.
   `information`/`decision`/`work_package`)**, and could fail with "This
   outcome is not editable anymore" against a freshly created meeting.
 - **`init_recurring_meeting_occurrence` failed on every call.** A fix for
-  the underlying server bug has been submitted upstream
-  ([#24772](https://github.com/opf/openproject/pull/24772)).
+  the underlying server bug has been merged upstream
+  ([#24772](https://github.com/opf/openproject/pull/24772)), pending a
+  release that ships it.
 - **`update_user_non_working_time`/`delete_user_non_working_time` could
   falsely report "not found" for a record that genuinely exists**, if that
   record's date range fell outside the current calendar year.
