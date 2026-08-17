@@ -75,7 +75,7 @@ def test_normalize_priority_has_no_url_field() -> None:
 def test_normalize_type_has_no_url_field() -> None:
     # OpenProject's `resources :types` routes a `show` action, but
     # WorkPackageTypes::TypesController never implements it (no `show`
-    # method, no view) -- the web URL this used to build never resolved.
+    # method, no view) -- there is no valid web URL to build here.
     work_package_type = normalize_type(_type_payload())
     assert not hasattr(work_package_type, "url")
     assert work_package_type.is_milestone is False
