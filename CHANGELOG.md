@@ -56,6 +56,21 @@ development baseline.
   restrictive `OPENPROJECT_READ_PROJECTS` scope (a full raw server page
   with every match filtered out by the allowlist) — not an inconsistency,
   keep paging.
+- **User-typed fields can now be set on writes.** `responsible`, and every
+  user/version reference custom field (e.g. a required "Business Owner" or
+  "Tech Owner" on an Epic), previously failed with
+  `OpenProject value 'X' is not allowed for field 'Y'` for *every* input —
+  display name, numeric id, or href alike — making those work packages
+  impossible to create through the server whenever such a field is required.
+  Option resolution only ever read `schema[field]._embedded.allowedValues`,
+  but fields whose candidate set is unbounded (any `User` field) never embed
+  that list; OpenProject links a pre-filtered collection under
+  `schema[field]._links.allowedValues.href` instead. That link is now
+  dereferenced when no embedded list is present. Embedded option sets
+  (status, priority, type) keep resolving locally with no extra request.
+  Because a linked collection can legitimately hold two principals sharing a
+  display name, an ambiguous name is now rejected rather than silently
+  resolved to whichever matched first. (Thanks to @mehow-vng for the fix.)
 
 ## 0.3.6 – 2026-08-10
 

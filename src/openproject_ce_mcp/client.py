@@ -7622,20 +7622,22 @@ class OpenProjectClient:
             )
             if responsible is not None and responsible is not CLEAR:
                 self._ensure_field_writable("work_package", "responsible")
-                links["responsible"] = {"href": self._resolve_schema_option_href(schema, "responsible", responsible)}
+                links["responsible"] = {
+                    "href": await self._resolve_schema_option_href(schema, "responsible", responsible)
+                }
             if priority is not None:
                 self._ensure_field_writable("work_package", "priority")
-                links["priority"] = {"href": self._resolve_schema_option_href(schema, "priority", priority)}
+                links["priority"] = {"href": await self._resolve_schema_option_href(schema, "priority", priority)}
             if category is not None and category is not CLEAR:
                 self._ensure_field_writable("work_package", "category")
-                links["category"] = {"href": self._resolve_schema_option_href(schema, "category", category)}
+                links["category"] = {"href": await self._resolve_schema_option_href(schema, "category", category)}
             if project_phase is not None and project_phase is not CLEAR:
                 self._ensure_field_writable("work_package", "project_phase")
                 links["projectPhase"] = {
-                    "href": self._resolve_schema_option_href(schema, "projectPhase", project_phase)
+                    "href": await self._resolve_schema_option_href(schema, "projectPhase", project_phase)
                 }
             if custom_fields:
-                self._apply_custom_fields(payload, links, schema, custom_fields)
+                await self._apply_custom_fields(payload, links, schema, custom_fields)
         if links:
             payload["_links"] = links
         return payload
@@ -7670,33 +7672,70 @@ class OpenProjectClient:
         form = await self._post(f"projects/{project}/work_packages/form", json_body=schema_payload)
         return form.get("_embedded", {}).get("schema", {})
 
-    def _resolve_schema_option_href(self, schema: dict[str, Any], key: str, raw_value: Any) -> str:
+    async def _resolve_schema_option_href(self, schema: dict[str, Any], key: str, raw_value: Any) -> str:
         field = schema.get(key)
         if not isinstance(field, dict):
             raise InvalidInputError(f"OpenProject schema does not expose field '{key}' for this work package.")
-        allowed_values = field.get("_embedded", {}).get("allowedValues", [])
-        if not isinstance(allowed_values, list):
-            raise InvalidInputError(f"OpenProject schema does not expose allowed values for field '{key}'.")
 
         normalized = str(raw_value).strip()
         if not normalized:
             raise InvalidInputError(f"{key} must not be empty.")
 
-        for item in allowed_values:
-            href = item.get("_links", {}).get("self", {}).get("href")
-            if not href:
-                continue
-            item_id = _id_from_href(href)
-            title = _trim_text(
-                item.get("name") or item.get("_links", {}).get("self", {}).get("title"), limit=SUBJECT_LIMIT
-            )
-            if normalized.isdigit() and item_id is not None and int(normalized) == item_id:
-                return href
-            if title and title.casefold() == normalized.casefold():
-                return href
-        raise InvalidInputError(f"OpenProject value '{raw_value}' is not allowed for field '{key}'.")
+        allowed_values = field.get("_embedded", {}).get("allowedValues")
+        # Fields whose candidate set is unbounded — every User-typed field (assignee,
+        # responsible) and every user/version reference custom field — never embed
+        # allowedValues. OpenProject only links a pre-filtered collection, so an absent
+        # embedded list means "ask the link", not "nothing is allowed".
+        from_link = allowed_values is None
+        if from_link:
+            allowed_values = await self._fetch_linked_allowed_values(field)
+        if not isinstance(allowed_values, list):
+            raise InvalidInputError(f"OpenProject schema does not expose allowed values for field '{key}'.")
 
-    def _apply_custom_fields(
+        matches: list[str] = []
+        for item in allowed_values:
+            href = self._match_schema_option(item, normalized)
+            if href and href not in matches:
+                matches.append(href)
+
+        if not matches:
+            raise InvalidInputError(f"OpenProject value '{raw_value}' is not allowed for field '{key}'.")
+        # Embedded option sets (status, priority, type) are instance-configured and
+        # first-match has always won there — keep that. A linked collection can hold two
+        # principals with the same display name, so refuse to guess which one was meant.
+        if from_link and len(matches) > 1:
+            raise InvalidInputError(
+                f"OpenProject value '{raw_value}' is ambiguous for field '{key}'. Pass a numeric id."
+            )
+        return matches[0]
+
+    def _match_schema_option(self, item: Any, normalized: str) -> str | None:
+        if not isinstance(item, dict):
+            return None
+        href = item.get("_links", {}).get("self", {}).get("href")
+        if not href:
+            return None
+        item_id = _id_from_href(href)
+        title = _trim_text(item.get("name") or item.get("_links", {}).get("self", {}).get("title"), limit=SUBJECT_LIMIT)
+        if normalized.isdigit() and item_id is not None and int(normalized) == item_id:
+            return href
+        if title and title.casefold() == normalized.casefold():
+            return href
+        return None
+
+    async def _fetch_linked_allowed_values(self, field: dict[str, Any]) -> list[Any]:
+        link = field.get("_links", {}).get("allowedValues")
+        # A list here is the inline form used by small option sets, which the embedded
+        # branch already handled; only a single {"href": ...} needs to be dereferenced.
+        if not isinstance(link, dict):
+            return []
+        href = link.get("href")
+        if not isinstance(href, str) or not href:
+            return []
+        payload = await self._get(self._link_to_api_path(href))
+        return payload.get("_embedded", {}).get("elements", [])
+
+    async def _apply_custom_fields(
         self,
         payload: dict[str, Any],
         links: dict[str, Any],
@@ -7713,7 +7752,7 @@ class OpenProjectClient:
             )
             location = field.get("location")
             if location == "_links":
-                hrefs = self._resolve_custom_field_links(field, raw_value, schema_key)
+                hrefs = await self._resolve_custom_field_links(field, raw_value, schema_key)
                 if len(hrefs) == 1:
                     links[schema_key] = {"href": hrefs[0]}
                 else:
@@ -7739,9 +7778,9 @@ class OpenProjectClient:
                 return key
         raise InvalidInputError(f"OpenProject custom field '{raw_key}' is not available for this work package.")
 
-    def _resolve_custom_field_links(self, field: dict[str, Any], raw_value: Any, key: str) -> list[str]:
+    async def _resolve_custom_field_links(self, field: dict[str, Any], raw_value: Any, key: str) -> list[str]:
         values = raw_value if isinstance(raw_value, list) else [raw_value]
-        hrefs = [self._resolve_schema_option_href({key: field}, key, value) for value in values]
+        hrefs = [await self._resolve_schema_option_href({key: field}, key, value) for value in values]
         if not hrefs:
             raise InvalidInputError(f"OpenProject custom field '{key}' requires at least one value.")
         return hrefs
