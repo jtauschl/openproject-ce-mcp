@@ -284,6 +284,22 @@ support.
   coming back exactly `limit` elements long, instead of proving it by
   requesting one extra (`limit + 1`) element from OpenProject and checking
   how many actually survived allowlist filtering.
+- **User-typed fields can now be set on work package writes.** `responsible`,
+  and every user/version reference custom field (e.g. a required "Business
+  Owner" or "Tech Owner" on an Epic), previously failed with `OpenProject
+  value 'X' is not allowed for field 'Y'` for *every* input — display name,
+  numeric id, or href alike — making those work packages impossible to
+  create through the server whenever such a field is required. Option
+  resolution only ever read `schema[field]._embedded.allowedValues`, but
+  fields whose candidate set is unbounded (any `User` field) never embed
+  that list; OpenProject links a pre-filtered collection under
+  `schema[field]._links.allowedValues.href` instead. `parse_form` now
+  dereferences that link in the adapter before the schema reaches
+  `WorkPackageService`, so its option-matching logic keeps resolving locally
+  with no extra request for already-embedded sets (status, priority, type),
+  and always sees an embedded list either way — mirroring
+  `list_available_parent_projects`'s existing link-dereference shape for the
+  `parent` field.
 
 ### Docs
 

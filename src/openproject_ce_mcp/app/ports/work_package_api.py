@@ -30,7 +30,14 @@ an already-fetched schema dict, and lives in `WorkPackageService` instead
 (mirrors `TimeEntryService._resolve_activity_id`'s equivalent shape). No
 dedicated Resolver class is warranted either: this matching is 100% local to
 one domain's write-payload construction, unlike a Resolver's job of serving
-reference resolution reused across multiple domains.
+reference resolution reused across multiple domains. The ONE piece of I/O
+this purity depends on -- dereferencing a field's linked-only `allowedValues`
+(unbounded candidate sets, e.g. any `User`-typed field, never embed the list)
+-- is done by `parse_form` in the Adapter, BEFORE the schema reaches the
+Service, so `_embedded.allowedValues` is always populated by the time the
+Service's matching logic sees it. Same shape as
+`ProjectApi.list_available_parent_projects` dereferencing the `parent`
+field's link.
 
 Comment-posting/normalization deliberately reuses the EXISTING
 `ActivityApi`/`HttpxActivityApi` (injected separately into `WorkPackageService`)
@@ -140,10 +147,15 @@ class WorkPackageApi(Protocol):
         applies -- side-effect-free, safe to call more than once."""
         ...
 
-    def parse_form(self, form: dict[str, Any]) -> WorkPackageFormResult:
-        """Pure, synchronous unwrap of `_embedded.payload`/`.validationErrors`/
-        `.schema` from a raw form response returned by `validate_create`/
-        `validate_update`."""
+    async def parse_form(self, form: dict[str, Any]) -> WorkPackageFormResult:
+        """Unwrap of `_embedded.payload`/`.validationErrors`/`.schema` from a
+        raw form response returned by `validate_create`/`validate_update`.
+        Async because a schema field with an unbounded candidate set (e.g. a
+        `User`-typed field) is dereferenced from `_links.allowedValues.href`
+        into `_embedded.allowedValues` here -- see the module docstring's
+        "Schema-option-resolution" note: this I/O is the adapter's job so the
+        Service's matching logic can stay pure and always see an embedded
+        list."""
         ...
 
     async def commit_create(self, payload: dict[str, Any], *, text_limit: int | None) -> WorkPackageRecord:

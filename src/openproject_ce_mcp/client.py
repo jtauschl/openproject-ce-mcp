@@ -659,7 +659,7 @@ class OpenProjectClient:
         # the seam the 8 already-migrated work-package-reference-dependent
         # domains use).
         self._work_package_api: WorkPackageApi = HttpxWorkPackageApi(
-            HttpxTransport(self._http), api_prefix=self._api_prefix
+            HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
         )
         # Constructed here (moved up from its own block further below) so
         # WorkPackageService can depend on it directly for add_comment()'s

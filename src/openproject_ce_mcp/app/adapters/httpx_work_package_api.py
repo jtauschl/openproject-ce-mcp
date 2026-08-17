@@ -8,6 +8,16 @@ auto-percentage/auto-remaining-time derivation) lives here; all of that is a
 `WorkPackageService` concern (see `app/ports/work_package_api.py`'s module
 docstring).
 
+`parse_form` is the one exception with actual I/O: fields whose candidate set
+is unbounded (any `User`-typed field, e.g. `responsible`, or a user/version
+reference custom field) never embed `allowedValues` -- OpenProject links a
+pre-filtered collection instead (`schema[field]._links.allowedValues.href`).
+`parse_form` dereferences that link into `_embedded.allowedValues` before
+handing the schema to the Service, so `WorkPackageService`'s option-matching
+stays pure/no-I/O as documented, always seeing an embedded list. Mirrors
+`HttpxProjectApi.list_available_parent_projects`'s identical link-dereference
+shape for the `parent` field.
+
 No `httpx` import (depends on the `Transport` Protocol only). Owns the pure
 normalize_* HAL->model translation functions, matching the Projects/Versions
 domains' convention: normalize_* live in the adapter, not the port, and are
@@ -38,8 +48,10 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from urllib.parse import urlparse
 
 from ...models import SortCriterion, WorkPackageDetail, WorkPackageSummary
+from ..errors import OpenProjectServerError
 from ..ports.work_package_api import WorkPackageFormResult, WorkPackagePage, WorkPackageRecord
 from ..ports.work_package_ref import work_package_ref as _work_package_ref_encode
 from ..transport.protocol import Transport
@@ -49,6 +61,7 @@ from ._text import extract_formattable_text_with_meta as _extract_formattable_te
 from ._text import id_from_href as _id_from_href
 from ._text import link_title as _link_title
 from ._text import normalize_form_validation_errors as _normalize_form_validation_errors
+from ._text import origin_from_url as _origin_from_url
 from ._text import trim_text as _trim_text
 from ._text import trim_text_with_meta as _trim_text_with_meta
 
@@ -532,9 +545,30 @@ def normalize_work_package_detail(
 
 
 class HttpxWorkPackageApi:
-    def __init__(self, transport: Transport, *, api_prefix: str = "/api/v3/") -> None:
+    def __init__(self, transport: Transport, *, base_url: str, api_prefix: str = "/api/v3/") -> None:
         self._transport = transport
+        self._origin = _origin_from_url(base_url)
         self._api_prefix = api_prefix
+
+    def _link_to_api_path(self, href: str) -> str:
+        """Same-origin-checked href -> API-relative path. Mirrored by
+        `HttpxProjectApi._link_to_api_path`/`HttpxWorkPackageLookupApi._link_to_api_path`
+        -- deliberately duplicated per adapter rather than shared, so a future
+        change to one cannot silently change another's contract."""
+        parsed = urlparse(href)
+        if not parsed.scheme:
+            path = parsed.path or href
+        else:
+            if _origin_from_url(href) != self._origin:
+                raise OpenProjectServerError("OpenProject returned an unexpected link host.")
+            path = parsed.path
+        if path.startswith(self._api_prefix):
+            relative_path = path[len(self._api_prefix) :]
+        else:
+            relative_path = path.lstrip("/")
+        if parsed.query:
+            return f"{relative_path}?{parsed.query}"
+        return relative_path
 
     def to_record(self, payload: dict[str, Any], *, text_limit: int | None) -> WorkPackageRecord:
         summary = normalize_work_package_summary(payload, text_limit=text_limit)
@@ -596,12 +630,26 @@ class HttpxWorkPackageApi:
         safe_ref = _work_package_ref_encode(work_package_ref)
         return await self._transport.post_json(f"work_packages/{safe_ref}/form", json_body=payload)
 
-    def parse_form(self, form: dict[str, Any]) -> WorkPackageFormResult:
+    async def parse_form(self, form: dict[str, Any]) -> WorkPackageFormResult:
         embedded = form.get("_embedded", {})
+        schema = embedded.get("schema", {})
+        for field in schema.values():
+            if not isinstance(field, dict) or field.get("_embedded", {}).get("allowedValues") is not None:
+                # Either not a field dict, or already carries an embedded
+                # allowedValues list -- both cases resolve locally, no I/O.
+                continue
+            link = field.get("_links", {}).get("allowedValues")
+            if not isinstance(link, dict):
+                continue
+            href = link.get("href")
+            if not isinstance(href, str) or not href:
+                continue
+            payload = await self._transport.get_json(self._link_to_api_path(href))
+            field["_embedded"] = {"allowedValues": payload.get("_embedded", {}).get("elements", [])}
         return WorkPackageFormResult(
             payload=embedded.get("payload", {}),
             validation_errors=_normalize_form_validation_errors(embedded.get("validationErrors")),
-            schema=embedded.get("schema", {}),
+            schema=schema,
         )
 
     async def commit_create(self, payload: dict[str, Any], *, text_limit: int | None) -> WorkPackageRecord:

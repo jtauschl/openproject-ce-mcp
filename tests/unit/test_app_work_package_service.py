@@ -176,7 +176,7 @@ class _FakeWorkPackageApi:
             }
         }
 
-    def parse_form(self, form: dict) -> WorkPackageFormResult:
+    async def parse_form(self, form: dict) -> WorkPackageFormResult:
         embedded = form.get("_embedded", {})
         return WorkPackageFormResult(
             payload=embedded.get("payload", {}),

@@ -1268,7 +1268,7 @@ class WorkPackageService:
             if lock_version is not None:
                 schema_body["lockVersion"] = lock_version
             form = await self._api.validate_update(str(work_package_id), schema_body)
-            return self._api.parse_form(form).schema
+            return (await self._api.parse_form(form)).schema
 
         schema_payload = dict(draft_payload)
         schema_links = dict(schema_payload.get("_links", {}))
@@ -1283,7 +1283,7 @@ class WorkPackageService:
         if schema_links:
             schema_payload["_links"] = schema_links
         form = await self._api.validate_create(project, schema_payload)
-        return self._api.parse_form(form).schema
+        return (await self._api.parse_form(form)).schema
 
     def _resolve_schema_option_href(self, schema: dict[str, Any], key: str, raw_value: Any) -> str:
         field = schema.get(key)
@@ -1643,7 +1643,7 @@ class WorkPackageService:
             resolution_context=wp_context,
         )
         form = await self._api.validate_create(project_id, payload)
-        parsed = self._api.parse_form(form)
+        parsed = await self._api.parse_form(form)
         outcome = await _finalize_write(
             confirm=confirm,
             payload=parsed.payload,
@@ -1717,7 +1717,7 @@ class WorkPackageService:
             resolution_context=wp_context,
         )
         form = await self._api.validate_create(str(project_id), payload)
-        parsed = self._api.parse_form(form)
+        parsed = await self._api.parse_form(form)
         parent_title = _trim_text(parent_project_link.get("title") if parent_project_link else None)
         outcome = await _finalize_write(
             confirm=confirm,
@@ -1940,7 +1940,7 @@ class WorkPackageService:
         form = await self._api.validate_update(ref, payload)
 
         if auto_percentage is not None or auto_remaining is not None:
-            parsed_probe = self._api.parse_form(form)
+            parsed_probe = await self._api.parse_form(form)
             schema = parsed_probe.schema
             changed = False
             if (
@@ -1961,7 +1961,7 @@ class WorkPackageService:
                 payload["lockVersion"] = lock_version
                 form = await self._api.validate_update(ref, payload)
 
-        parsed = self._api.parse_form(form)
+        parsed = await self._api.parse_form(form)
         project_name = _trim_text(current.get("_links", {}).get("project", {}).get("title"))
         outcome = await _finalize_write(
             confirm=confirm,
