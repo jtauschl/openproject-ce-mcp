@@ -45,11 +45,18 @@ SPARSE_PATHS=(
     "lib/api"
     "app/models"
     "app/contracts"
+    "app/validators"   # core field-level validators (e.g. custom-field format rules)
+    "app/representers" # core API v3 HAL representers, where present outside lib/api
     "/config/routes.rb"
     "modules/*/lib/api/v3"                     # every module's API subtree (Backlogs, Meetings, etc.)
     "modules/*/lib/open_project/*/patches/api" # module patches to core representers (e.g. Backlogs' sprint link on work packages)
     "modules/*/app/models"                     # module-specific models (e.g. Meetings' MeetingSection, Storages)
     "modules/*/app/contracts"                  # module-specific validation contracts
+    "modules/*/app/validator"                  # module-specific validators (e.g. Storages' NextcloudCompatibleHostValidator --
+    # singular "validator", unlike core's plural "validators"; found missing
+    # 2026-08-17 while investigating a live host-probe behavior change)
+    "modules/*/app/representers" # module-specific API v3 HAL representers (e.g. Boards/Grids widgets)
+    "modules/*/app/queries"      # module-specific query/filter objects (mirrors core's app/models/queries)
 )
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
