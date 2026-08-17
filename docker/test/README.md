@@ -66,6 +66,15 @@ testing is ever wanted, that needs a real interactive OAuth round-trip
 via its admin UI or `occ`, then completing the OAuth exchange through a
 browser) — treated as a known, explicitly out-of-scope gap, not a bug.
 
+**Any `PATCH` to this storage always 422s (OPM-429)**: the seeded `host:
+"http://nextcloud/"` is plain HTTP on a non-localhost hostname, which
+OpenProject's core `SecureContextUriValidator` always rejects — and PATCH
+re-validates the whole model, not just the fields the request touched, so
+even a name-only rename fails with `url_not_secure_context`. This is not a
+version regression or a client bug; see `CLAUDE.md`'s "Known API quirks" for
+the full explanation. Write tests against this storage should assert the
+expected `InvalidInputError`, not a successful update.
+
 **File link fixtures (OPM-360)**: with the `Storages::ProjectStorage` row
 above in place, `up.sh 177nc` also seeds two `Storages::FileLink` rows
 (`save(validate: false)`, same bypass as the storage rows — no live
