@@ -7,7 +7,7 @@
 #   17.4.1  = displayId field introduced
 #   17.5.1  = project-based semantic identifiers active + workspaces (favorites)
 #   17.6.0  = same semantic-identifier generation as 17.5 (no client-relevant API change)
-#   17.7.1  = latest release as of this pin; same semantic-identifier generation as 17.5/17.6
+#   17.7.2  = latest release as of this pin; same semantic-identifier generation as 17.5/17.6
 #
 # Driven by up.sh / down.sh. SECRET_KEY_BASE comes from a generated .env
 # (gitignored); never hardcode it here.
@@ -90,7 +90,7 @@ services:
       start_period: 120s
 
   op-17-7:
-    image: openproject/openproject:17.7.1
+    image: openproject/openproject:17.7.2
     ports:
       - "8177:80"
     environment:

@@ -30,6 +30,7 @@ VERSIONS=(
     "17.4:v17.4.1"
     "17.5:v17.5.1"
     "17.6:v17.6.0"
+    "17.7:v17.7.2"
 )
 
 # Subtrees that hold the API v3 definitions, representers and query filters,
@@ -37,12 +38,13 @@ VERSIONS=(
 # constant check (check_api.py --constants) verifies.
 SPARSE_PATHS=(
     "lib/api"
-    "app/models/queries"
-    "app/models/work_package"
+    "app/models"
+    "app/contracts"
     "/config/routes.rb"
-    "/app/models/emoji_reaction.rb" # EMOJI_MAP enum values
-    "/app/models/version.rb"        # VERSION_STATUSES
-    "modules/*/lib/api/v3"          # every module's API subtree (Backlogs, Meetings, etc.)
+    "modules/*/lib/api/v3"                     # every module's API subtree (Backlogs, Meetings, etc.)
+    "modules/*/lib/open_project/*/patches/api" # module patches onto core representers (e.g. Backlogs' sprint/backlog_bucket setter on work_package_representer.rb)
+    "modules/*/app/models"
+    "modules/*/app/contracts"
 )
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
