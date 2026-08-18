@@ -151,7 +151,6 @@ def _check_config_parsing(client_configs: list[tuple]) -> tuple[bool, dict[str, 
         try:
             if client.fmt == "json":
                 config = json.loads(target.read_text())
-                # Check for openproject entry explicitly
                 root_key = client.root_key or "mcpServers"
                 has_entry = "openproject" in config.get(root_key, {})
             elif client.fmt == "toml":
