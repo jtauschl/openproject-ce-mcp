@@ -388,7 +388,7 @@ def test_settings_from_env_rejects_invalid_log_level() -> None:
 
 
 def test_settings_from_env_accepts_debug_log_level() -> None:
-    # DEBUG is a real Python logging level and is part of FastMCP's accepted
+    # DEBUG is a real Python logging level and is part of MCPServer's accepted
     # log_level Literal, so this validator's allowed set must include it.
     settings = Settings.from_env(
         {

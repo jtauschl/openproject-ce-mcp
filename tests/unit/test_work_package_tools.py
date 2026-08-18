@@ -1053,7 +1053,7 @@ async def test_bulk_update_work_packages_responsible_error_is_indexed_by_item() 
 @pytest.mark.asyncio
 async def test_bulk_create_work_packages_accepts_select() -> None:
     # select is validated by the tool function but not forwarded to the
-    # client -- the actual field-dropping happens one layer up, in the FastMCP
+    # client -- the actual field-dropping happens one layer up, in the MCPServer
     # registration wrapper's _to_payload call (see tests/test_trimming.py's
     # wrapper-integration test for that). This test only proves the tool
     # function accepts and validates select without erroring.
