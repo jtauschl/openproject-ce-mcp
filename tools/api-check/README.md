@@ -86,9 +86,7 @@ version differences are encoded inline via the `expect` field, e.g. `displayId`
 and the semantic-identifier model are expected **absent** in 16.6:
 
 ```python
-Assumption("displayId field", "field", "displayId",
-           subtree="lib/api/v3/work_packages",
-           expect={"16.6": False})
+Assumption("displayId field", "field", "displayId", subtree="lib/api/v3/work_packages", expect={"16.6": False})
 ```
 
 When the report flags an `UNEXPECTED` difference:
