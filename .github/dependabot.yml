@@ -1,14 +1,15 @@
+# GitHub only reads this file from the default branch (main) — this copy
+# is not read by Dependabot. See main's .github/dependabot.yml for the
+# actual config, which targets this branch via target-branch.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
-    target-branch: release/0.4.0
     schedule:
       interval: weekly
 
   - package-ecosystem: pip
     directory: /
-    target-branch: release/0.4.0
     schedule:
       interval: weekly
     groups:
