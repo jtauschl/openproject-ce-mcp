@@ -8,7 +8,7 @@ from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass
 from typing import Any, cast
 
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
 
 from .client import (
     BATCH_READ_MAX_IDS,
@@ -434,14 +434,14 @@ def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
     return tuple(enabled)
 
 
-def register_tools(mcp: FastMCP, settings: Settings) -> None:
+def register_tools(mcp: MCPServer, settings: Settings) -> None:
     # Register a tool with error-categorization applied, so every failure reaches
     # the agent with a stable [category] prefix.
     #
     # Tools that return a list/write/bulk result are routed through _to_payload for
     # context reduction: payload is dropped on confirmed writes,
     # count/truncated on lists, and `select` trims rows. Those tools are registered
-    # with structured_output=False so FastMCP does not build a fixed dataclass
+    # with structured_output=False so MCPServer does not build a fixed dataclass
     # output schema — it serializes the trimmed dict we return verbatim, letting us
     # omit keys. Detection is by the result model's fields, so no per-tool tagging
     # is needed and it cannot drift. Tool bodies are unchanged; they still return
@@ -3899,7 +3899,7 @@ def _validate_optional_query(value: str | None, *, field_name: str, max_length: 
     if not isinstance(value, str):
         # Reachable with a non-str JSON scalar (e.g. a bare number or bool) from
         # bulk_update_work_packages' untyped `items: list[dict[str, Any]]` — MCP
-        # tool parameters are str-typed and coerced/rejected by FastMCP before
+        # tool parameters are str-typed and coerced/rejected by MCPServer before
         # reaching here, but a dict value has no such guarantee.
         raise ValueError(f"{field_name} must be a string.")
     normalized = " ".join(value.split())

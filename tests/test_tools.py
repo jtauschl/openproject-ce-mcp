@@ -239,7 +239,7 @@ async def test_create_project_tool_does_not_raise_on_rejected_validation_preview
     """A rejected validation preview (ready=False, validation_errors populated)
     is a normal tool result, not an exception. This secures the local
     precondition for the MCP envelope's isError staying False on such a
-    result; it does not exercise the FastMCP protocol layer itself.
+    result; it does not exercise the MCPServer protocol layer itself.
     """
 
     class StubClient:

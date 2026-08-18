@@ -391,7 +391,7 @@ def test_all_scoped_writes_independent() -> None:
 def test_instructions_state_ce_reality() -> None:
     """The initialize handshake carries the CE guidance the agent needs up front."""
     mcp = create_app(make_settings())
-    instructions = mcp._mcp_server.instructions or ""
+    instructions = mcp.instructions or ""
     assert "Community Edition" in instructions
     # The two hard limits we most want the agent to know:
     assert "do not attempt" in instructions.lower() or "not creatable" in instructions.lower()
@@ -401,17 +401,17 @@ def test_instructions_state_ce_reality() -> None:
 def test_serverinfo_version_is_our_version() -> None:
     """serverInfo.version (MCP MUST) reports our package version, not the SDK default."""
     mcp = create_app(make_settings())
-    assert mcp._mcp_server.version == __version__
+    assert mcp.version == __version__
 
 
 def test_create_app_applies_log_level(monkeypatch) -> None:
     """OPENPROJECT_LOG_LEVEL takes effect: create_app forces the root level so
-    FastMCP's default INFO does not leak SDK request logs."""
+    MCPServer's default INFO does not leak SDK request logs."""
     import logging
 
     root = logging.getLogger()
     original_level = root.level
-    # Simulate a handler already installed at INFO (as FastMCP does on construction),
+    # Simulate a handler already installed at INFO (as MCPServer does on construction),
     # which makes basicConfig a no-op — the exact condition of the bug.
     root.setLevel(logging.INFO)
     try:
@@ -450,7 +450,7 @@ async def test_fetch_active_feature_flags_skips_cleanly_inside_a_running_loop(re
 def test_instructions_fall_back_to_static_without_flags() -> None:
     """With no reachable flags (autouse offline stub) instructions are exactly the static text."""
     mcp = create_app(make_settings())
-    assert mcp._mcp_server.instructions == server.CE_INSTRUCTIONS
+    assert mcp.instructions == server.CE_INSTRUCTIONS
 
 
 @pytest.mark.allow_feature_flag_fetch
@@ -462,7 +462,7 @@ def test_instructions_include_live_feature_flags(monkeypatch) -> None:
         lambda settings: ["boardView", "teamPlannerModuleActive"],
     )
     mcp = create_app(make_settings())
-    instructions = mcp._mcp_server.instructions or ""
+    instructions = mcp.instructions or ""
     assert "Active feature flags on this instance" in instructions
     assert "boardView" in instructions
     assert "teamPlannerModuleActive" in instructions

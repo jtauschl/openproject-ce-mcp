@@ -295,19 +295,19 @@ def _check_tool_registration(settings: Settings) -> bool:
     fetch. This shows what tools are enabled by your settings, not necessarily
     what a live server would register (which may vary based on instance features).
     """
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.mcpserver import MCPServer
 
     from .tools import register_tools
 
-    # FastMCP sets up logging — temporarily suppress
+    # MCPServer sets up logging — temporarily suppress
     prev_level = logging.root.level
     logging.root.setLevel(logging.CRITICAL)
 
     try:
-        # Plain FastMCP, not StrictFastMCP: this preview path only registers
+        # Plain MCPServer, not StrictMCPServer: this preview path only registers
         # tools and lists them, it never calls call_tool(), so the strict
         # argument-validation override has nothing to intercept here.
-        mcp = FastMCP("doctor-preview", json_response=True, log_level="CRITICAL")
+        mcp = MCPServer("doctor-preview", log_level="CRITICAL")
         register_tools(mcp, settings)
         tools = list(mcp._tool_manager.list_tools())
 
