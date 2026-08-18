@@ -68,11 +68,9 @@ class RetryTransport(httpx.AsyncBaseTransport):
             try:
                 response = await self._transport.handle_async_request(request)
 
-                # Check if response status is retryable
                 if not self._is_retryable_status(response.status_code):
                     return response
 
-                # Check if we should retry
                 if attempt >= self._max_retries:
                     return response
 
@@ -141,7 +139,6 @@ class RetryTransport(httpx.AsyncBaseTransport):
         Returns:
             Delay in seconds
         """
-        # Check for Retry-After header
         if response is not None:
             retry_after = response.headers.get("Retry-After")
             if retry_after:
@@ -167,13 +164,11 @@ class RetryTransport(httpx.AsyncBaseTransport):
         Returns:
             Delay in seconds, or None if parsing fails
         """
-        # Try parsing as integer (seconds)
         try:
             return float(value)
         except ValueError:
             pass
 
-        # Try parsing as HTTP-date
         try:
             retry_date = parsedate_to_datetime(value)
             now = time.time()

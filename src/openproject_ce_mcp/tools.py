@@ -3313,13 +3313,11 @@ async def get_work_packages(
     """
     client = _client_from_context(ctx)
 
-    # Validate input
     if not isinstance(ids, list):
         raise ValueError("ids must be a list")
     if not ids:
         raise ValueError("ids list cannot be empty")
 
-    # Validate and deduplicate while preserving order
     seen = set()
     unique_ids: list[int | str] = []
     for raw_id in ids:
@@ -6460,14 +6458,12 @@ def _validate_optional_date_range(dates: list[str] | None, field_name: str) -> l
     if len(dates) != 2:
         raise ValueError(f"{field_name} must contain exactly 2 dates [start, end]")
 
-    # Validate each date using existing validator
     start = _validate_optional_date(dates[0], f"{field_name}[0]")
     end = _validate_optional_date(dates[1], f"{field_name}[1]")
 
     if start is None or end is None:
         raise ValueError(f"{field_name} dates cannot be empty")
 
-    # Validate range using existing helper
     _validate_date_range(after=start, before=end, prefix=field_name)
 
     return [start, end]
