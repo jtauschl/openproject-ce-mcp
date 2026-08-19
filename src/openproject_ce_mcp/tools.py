@@ -870,6 +870,10 @@ async def list_capabilities(
 ) -> CapabilityListResult:
     """List API capabilities exposed by OpenProject.
 
+    At least one of project or capability_id is required — there is no
+    unfiltered global listing, since one would bypass the project read
+    allowlist.
+
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
     """
