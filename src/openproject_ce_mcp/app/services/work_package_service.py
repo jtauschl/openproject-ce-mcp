@@ -224,8 +224,10 @@ CLEAR_VERSION = object()
 # (assignee, responsible, category, project_phase) and plain scalar fields
 # (estimated_time, remaining_time, duration -- cleared via <field>: null
 # directly in the payload). Distinguishes "clear this field" from "leave
-# unchanged" (None). parent/version keep their own sentinels above for
-# historical reasons; every other clearable field shares this one.
+# unchanged" (None). parent/version keep their own dedicated sentinels above
+# because each must additionally bypass its own reference-resolution step
+# (numeric-id resolution for parent, name resolution for version); every
+# other clearable field has no such resolution step and shares this one.
 CLEAR = object()
 
 

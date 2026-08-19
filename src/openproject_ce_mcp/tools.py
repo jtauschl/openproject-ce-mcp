@@ -6590,7 +6590,7 @@ _GROUPABLE_WORK_PACKAGE_FIELDS = frozenset(
 # allowed through without membership-checking against the sets above. Whether a
 # given custom field is actually sortable/groupable (its field_format and other
 # per-field settings determine that server-side) is left to OpenProject's own
-# validation, same as before this ticket.
+# validation.
 _CUSTOM_FIELD_PATTERN = re.compile(r"cf_\d+")
 
 
@@ -6632,7 +6632,6 @@ def _validate_sort_by(values: list[str] | None) -> list[SortCriterion] | None:
             field = item
             direction = "asc"
 
-        # Validate field name pattern (alphanumeric + underscore + dot for custom fields)
         if not field.replace("_", "").replace(".", "").isalnum():
             raise ValueError(
                 f"sort_by[{i}]: field name '{field}' contains invalid characters "

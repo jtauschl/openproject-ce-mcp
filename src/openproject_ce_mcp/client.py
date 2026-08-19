@@ -648,22 +648,19 @@ class OpenProjectClient:
             project_id_to_identifier=self._project_id_to_identifier,
         )
 
-        # Domain API port/adapter for the Work Packages migration -- covers
-        # both the READ slice (list/search/get/batch/list_my_open) and the
-        # write slice (create/update/delete/bulk_*/add_comment/create_subtask,
-        # the write-path migration's second sub-step). A separate, parallel port/adapter from
-        # work_package_lookup_api above -- see app/ports/work_package_api.py's
-        # module docstring for why this does NOT wrap/replace
-        # WorkPackageLookupApi, and why WorkPackageResolver above stays
-        # completely unchanged (still bound to work_package_lookup_api, still
-        # the seam the 8 already-migrated work-package-reference-dependent
-        # domains use).
+        # Domain API port/adapter for Work Packages -- covers both the READ
+        # slice (list/search/get/batch/list_my_open) and the write slice
+        # (create/update/delete/bulk_*/add_comment/create_subtask). A
+        # separate, parallel port/adapter from work_package_lookup_api above
+        # -- see app/ports/work_package_api.py's module docstring for why
+        # this does NOT wrap/replace WorkPackageLookupApi, and why
+        # WorkPackageResolver above stays bound to work_package_lookup_api,
+        # the seam every work-package-reference-dependent domain uses.
         self._work_package_api: WorkPackageApi = HttpxWorkPackageApi(
             HttpxTransport(self._http), base_url=settings.base_url, api_prefix=self._api_prefix
         )
-        # Constructed here (moved up from its own block further below) so
-        # WorkPackageService can depend on it directly for add_comment()'s
-        # reuse of the already-migrated Activities normalizer, instead of
+        # Constructed here so WorkPackageService can depend on it directly
+        # for add_comment()'s reuse of the Activities normalizer, instead of
         # duplicating that logic onto WorkPackageApi.
         self._activity_api: ActivityApi = HttpxActivityApi(HttpxTransport(self._http))
         self._work_package_service = WorkPackageService(
