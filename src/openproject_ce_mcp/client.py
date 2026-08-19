@@ -321,13 +321,11 @@ class OpenProjectClient:
         # saturated get_work_packages() batch.
         self._allowlist_semaphore = asyncio.Semaphore(_ALLOWLIST_BULK_CONCURRENCY)
 
-        # Wrap transport with retry logic if max_retries > 0
         if settings.max_retries > 0:
             from .retry_transport import RetryTransport
 
             # Don't double-wrap if user already provided RetryTransport
             if not isinstance(transport, RetryTransport):
-                # If no transport provided, use default httpx transport
                 base_transport = transport or httpx.AsyncHTTPTransport()
                 transport = RetryTransport(
                     wrapped_transport=base_transport,
@@ -2331,7 +2329,6 @@ class OpenProjectClient:
             current_user = await self.get_current_user()
             filters.append({"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}})
 
-        # Extended filters (same as list_work_packages)
         if assignee and not assignee_me:
             assignee_id = await self._resolve_principal_id(assignee)
             filters.append({"assigned_to_id": {"operator": "=", "values": [assignee_id]}})
@@ -2340,7 +2337,6 @@ class OpenProjectClient:
             priority_id = await self._resolve_priority_id(priority)
             filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
 
-        # Date filters
         # Mutual exclusivity: can't use both _on and _between for same field
         if created_on and created_between:
             raise InvalidInputError("Cannot specify both created_on and created_between")
@@ -2465,7 +2461,6 @@ class OpenProjectClient:
             # Use official filter key per source (version_filter.rb:def self.key → :version_id)
             filters.append({"version_id": {"operator": status_operator, "values": []}})
 
-        # Extended filters
         # assignee_me takes precedence for backward compatibility
         if assignee and not assignee_me:
             assignee_id = await self._resolve_principal_id(assignee)
@@ -2479,7 +2474,6 @@ class OpenProjectClient:
             priority_id = await self._resolve_priority_id(priority)
             filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
 
-        # Date filters
         # Mutual exclusivity: can't use both _on and _between for same field
         if created_on and created_between:
             raise InvalidInputError("Cannot specify both created_on and created_between")
@@ -2551,14 +2545,12 @@ class OpenProjectClient:
             "filters": _json_param(filters),
         }
 
-        # Add sortBy as JSON array if provided
         # Format: [["field", "direction"], ...] e.g. [["status", "desc"], ["priority", "asc"]]
         # sort_by is already validated and parsed to SortCriterion by tool layer
         if sort_by:
             sort_criteria = [[criterion.field, criterion.direction] for criterion in sort_by]
             params["sortBy"] = json.dumps(sort_criteria, separators=(",", ":"))
 
-        # Add groupBy as simple field name string if provided
         # group_by is already validated and normalized by tool layer
         if group_by:
             params["groupBy"] = group_by
@@ -2731,10 +2723,8 @@ class OpenProjectClient:
                     # Catch expected API errors, not system exceptions like CancelledError
                     return (work_package_ref, None, str(e))
 
-        # Execute in parallel
         results = await asyncio.gather(*[fetch_one(work_package_ref) for work_package_ref in ids])
 
-        # Build result items
         items = []
         succeeded = 0
         failed = 0
@@ -2760,7 +2750,6 @@ class OpenProjectClient:
                     )
                 )
 
-        # Build user-facing summary message
         if failed == 0:
             message = f"Successfully fetched all {succeeded} work packages."
         elif succeeded == 0:
@@ -9530,7 +9519,6 @@ def _normalize_text(value: Any, *, preserve_newlines: bool) -> str:
             blank_run += 1
             if blank_run <= 1:
                 normalized.append("")
-    # Strip leading/trailing blank lines.
     while normalized and normalized[0] == "":
         normalized.pop(0)
     while normalized and normalized[-1] == "":

@@ -563,7 +563,7 @@ class BatchWorkPackageReadResult:
     total: int
     succeeded: int
     failed: int
-    message: str  # User-facing summary
+    message: str
     results: list[BatchWorkPackageReadItemResult]
 
 

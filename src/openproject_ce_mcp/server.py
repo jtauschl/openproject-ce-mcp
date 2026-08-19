@@ -269,7 +269,6 @@ def main() -> None:
         return
 
     if arg == "doctor":
-        # Let argparse handle --help for doctor subcommand
         if "--help" in sys.argv[2:] or "-h" in sys.argv[2:]:
             parser.parse_args(sys.argv[1:])
         from .doctor import run_doctor

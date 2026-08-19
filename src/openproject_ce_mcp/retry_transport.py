@@ -77,7 +77,6 @@ class RetryTransport(httpx.AsyncBaseTransport):
                 # Close response before retry to free connection pool slot
                 await response.aclose()
 
-                # Calculate delay and retry
                 delay = self._calculate_delay(attempt, response)
                 LOGGER.info(
                     "Retrying request (retry %d/%d) after %.1fs: %s %s (status %d)",
@@ -92,7 +91,6 @@ class RetryTransport(httpx.AsyncBaseTransport):
                 attempt += 1
 
             except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError, httpx.WriteError) as exc:
-                # Transport errors are retryable
                 if attempt >= self._max_retries:
                     LOGGER.warning(
                         "Max retries (%d) exceeded for %s %s: %s",
@@ -142,9 +140,9 @@ class RetryTransport(httpx.AsyncBaseTransport):
         if response is not None:
             retry_after = response.headers.get("Retry-After")
             if retry_after:
-                delay = self._parse_retry_after(retry_after)
-                if delay is not None:
-                    return min(delay, self._max_delay)
+                retry_after_delay = self._parse_retry_after(retry_after)
+                if retry_after_delay is not None:
+                    return min(retry_after_delay, self._max_delay)
 
         # Exponential backoff: base_delay * 2^attempt, capped at 2^20 to prevent overflow
         delay = self._base_delay * min(2**attempt, 2**20)
