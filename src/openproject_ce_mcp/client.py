@@ -7388,10 +7388,12 @@ class OpenProjectClient:
         )
 
     def normalize_help_text(self, payload: dict[str, Any]) -> HelpTextSummary:
+        # attribute_caption reads `caption` -- HelpTextRepresenter declares
+        # `property :caption` with no `as:` rename, not `attributeCaption`.
         return HelpTextSummary(
             id=int(payload["id"]),
             attribute_name=payload.get("attribute") or payload.get("attributeName"),
-            attribute_caption=payload.get("attributeCaption"),
+            attribute_caption=payload.get("caption"),
             help_text=_trim_text(
                 (payload.get("helpText") or {}).get("raw")
                 if isinstance(payload.get("helpText"), dict)
@@ -7401,9 +7403,11 @@ class OpenProjectClient:
         )
 
     def normalize_working_day(self, payload: dict[str, Any]) -> WorkingDay:
+        # day_of_week reads `day` -- WeekDayRepresenter declares
+        # `property :day`, not `dayOfWeek`.
         return WorkingDay(
             name=payload.get("name", ""),
-            day_of_week=int(payload.get("dayOfWeek", 0)),
+            day_of_week=int(payload.get("day", 0)),
             working=bool(payload.get("working", True)),
         )
 
