@@ -9,6 +9,12 @@ development baseline.
 
 ## [0.3.8] - Unreleased
 
+### Docs
+
+- **Corrected `list_work_packages`' `project` parameter docstring** — it
+  wrongly stated only an identifier/slug was accepted; a numeric project ID
+  works too.
+
 ## 0.3.7 – 2026-08-17
 
 ### Security
