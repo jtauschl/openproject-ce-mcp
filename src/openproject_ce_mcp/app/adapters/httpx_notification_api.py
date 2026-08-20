@@ -46,11 +46,13 @@ def normalize_notification(payload: dict[str, Any]) -> NotificationSummary:
     read_ian = payload.get("readIAN")
     if read_ian is None:
         read_ian = bool(payload.get("read"))
-    reason_link = links.get("reason")
-    reason = _link_title(reason_link) or _trim_text(payload.get("reason"), limit=SUBJECT_LIMIT)
+    # reason is a top-level string property (an enum-like identifier, e.g.
+    # "mentioned"/"assigned"), not a link -- notification_representer.rb has
+    # no `_links.reason` at all.
+    reason = _trim_text(payload.get("reason"), limit=SUBJECT_LIMIT)
     return NotificationSummary(
         id=notification_id,
-        subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Notification {notification_id}",
+        subject=_link_title(resource_link) or f"Notification {notification_id}",
         reason=reason,
         read=bool(read_ian),
         project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
