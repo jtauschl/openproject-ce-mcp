@@ -7016,6 +7016,12 @@ class OpenProjectClient:
         project_id: int | None,
         project_name: str | None,
     ) -> CategorySummary:
+        # No is_default field: CategoryRepresenter renders only id, name, the
+        # project link, and defaultAssignee (an unrelated concept -- the user
+        # auto-assigned to work packages in this category, not "is this the
+        # project's default category"). The Category model has no such
+        # attribute anywhere. A prior version of this method read
+        # payload.get("isDefault"), which the API never sends.
         category_id = int(payload["id"])
         links = payload.get("_links", {})
         default_assignee_link = links.get("defaultAssignee")
@@ -7026,7 +7032,6 @@ class OpenProjectClient:
                 name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Category {category_id}",
                 project_id=project_id,
                 project=project_name,
-                is_default=bool(payload.get("isDefault")),
                 default_assignee_id=_id_from_href(
                     default_assignee_link.get("href") if isinstance(default_assignee_link, dict) else None
                 ),
