@@ -335,6 +335,9 @@ support.
   `list_work_package_meeting_agenda_items` needs 17.7+.
   `create_work_package_wiki_link`/`delete_work_package_wiki_link` need
   17.7+, not 17.6+.
+- **Corrected `list_work_packages`' `project` parameter docstring** — it
+  wrongly stated only an identifier/slug was accepted; a numeric project ID
+  works too.
 
 ## [0.3.7] - 2026-08-17
 
