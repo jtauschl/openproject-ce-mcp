@@ -49,6 +49,7 @@ A numeric `user` filters via `UserApi.get_user(user_ref)` instead.
 from __future__ import annotations
 
 import dataclasses
+import re
 from typing import Any
 
 from ...config import Settings
@@ -79,6 +80,46 @@ from .project_scoped_list import SUBJECT_LIMIT
 from .project_scoped_list import trim_text as _trim_text
 
 _FALLBACK_ERRORS = (NotFoundError, PermissionDeniedError, OpenProjectServerError)
+
+# Same page-count cap shape as _PROJECT_NAME_SEARCH_MAX_PAGES
+# (app/resolvers/project_resolver.py) -- bounds the worst case of a
+# total_hours request against an unfiltered, huge time entry collection.
+_TOTAL_HOURS_MAX_PAGES = 50
+
+# hours is always a duration (H/M/S), never a calendar span (Y/M/W/D) --
+# OpenProject's own writer (DateTimeFormatter#format_duration_from_hours)
+# builds it via `Duration.new(seconds: hours * 3600).iso8601`, which can
+# still choose a `PnD`/`PnW` form for a large-enough value, so all
+# designators are parsed for robustness even though D/W/Y/M are rare here.
+_ISO8601_DURATION_PARSE_RE = re.compile(
+    r"^P(?:(?P<weeks>\d+(?:\.\d+)?)W"
+    r"|(?:(?P<years>\d+(?:\.\d+)?)Y)?(?:(?P<months>\d+(?:\.\d+)?)M)?(?:(?P<days>\d+(?:\.\d+)?)D)?"
+    r"(?:T(?:(?P<hours>\d+(?:\.\d+)?)H)?(?:(?P<minutes>\d+(?:\.\d+)?)M)?(?:(?P<seconds>\d+(?:\.\d+)?)S)?)?)$"
+)
+_SECONDS_PER_UNIT = {
+    "weeks": 7 * 86400,
+    "years": 365 * 86400,
+    "months": 30 * 86400,
+    "days": 86400,
+    "hours": 3600,
+    "minutes": 60,
+    "seconds": 1,
+}
+
+
+def _duration_to_seconds(value: str) -> float | None:
+    match = _ISO8601_DURATION_PARSE_RE.fullmatch(value)
+    if match is None:
+        return None
+    return sum(float(v) * _SECONDS_PER_UNIT[unit] for unit, v in match.groupdict().items() if v is not None)
+
+
+def _seconds_to_duration(total_seconds: float) -> str:
+    hours, remainder = divmod(round(total_seconds), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    parts = [f"{hours}H" if hours else "", f"{minutes}M" if minutes else "", f"{seconds}S" if seconds else ""]
+    body = "".join(parts)
+    return f"PT{body}" if body else "PT0S"
 
 
 class TimeEntryService:
@@ -172,6 +213,7 @@ class TimeEntryService:
         spent_on_to: str | None = None,
         offset: int = 1,
         limit: int | None = None,
+        include_total_hours: bool = False,
     ) -> TimeEntryListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
         resolved_work_package_id: int | None = None
@@ -263,6 +305,10 @@ class TimeEntryService:
             offset=offset,
             limit=resolved_limit,
         )
+        total_hours: str | None = None
+        total_hours_truncated = False
+        if include_total_hours:
+            total_hours, total_hours_truncated = await self._sum_hours(fetch_page=fetch_page, item_allowed=item_allowed)
         return TimeEntryListResult(
             offset=offset,
             limit=resolved_limit,
@@ -271,7 +317,49 @@ class TimeEntryService:
             next_offset=next_offset,
             truncated=truncated,
             results=page,
+            total_hours=total_hours,
+            total_hours_truncated=total_hours_truncated,
         )
+
+    async def _sum_hours(
+        self,
+        *,
+        fetch_page: Any,
+        item_allowed: Any,
+    ) -> tuple[str | None, bool]:
+        """Full page-walk over the same filtered collection `list_all` just
+        scanned a bounded window of -- there is no server-side sum for time
+        entries (unlike list_work_packages's include_sums), so this is the
+        only way to get an accurate total. Capped at
+        _TOTAL_HOURS_MAX_PAGES: if the walk is cut off before the collection
+        is exhausted, total_hours_truncated=True signals the sum is a
+        partial one rather than silently under-reporting it as complete.
+        """
+        total_seconds = 0.0
+        walk_offset = 1
+        page_size = self._settings.max_page_size
+        seen_ids: set[Any] = set()
+        for _ in range(_TOTAL_HOURS_MAX_PAGES):
+            raw_page = await fetch_page(walk_offset, page_size)
+            elements = [item for item in raw_page.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
+            if not elements:
+                return _seconds_to_duration(total_seconds), False
+            new_ids = {item.get("id") for item in elements} - seen_ids
+            if not new_ids:
+                # Server ignored offset/pageSize and returned the same page again.
+                return _seconds_to_duration(total_seconds), True
+            seen_ids |= new_ids
+            for item in elements:
+                if item.get("id") not in new_ids or not await item_allowed(item):
+                    continue
+                summary = self._api.to_record(item, text_limit=self._settings.text_limit).summary()
+                seconds = _duration_to_seconds(summary.hours) if summary.hours else None
+                if seconds is not None:
+                    total_seconds += seconds
+            if len(elements) < page_size:
+                return _seconds_to_duration(total_seconds), False
+            walk_offset += 1
+        return _seconds_to_duration(total_seconds), True
 
     async def get(self, time_entry_id: int, *, text_limit: int | None = None) -> TimeEntrySummary:
         access.ensure_read_enabled("work_package", settings=self._settings)

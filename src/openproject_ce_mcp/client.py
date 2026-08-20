@@ -1838,6 +1838,7 @@ class OpenProjectClient:
         spent_on_to: str | None = None,
         offset: int = 1,
         limit: int | None = None,
+        include_total_hours: bool = False,
     ) -> TimeEntryListResult:
         return await self._time_entry_service.list_all(
             project=project,
@@ -1847,6 +1848,7 @@ class OpenProjectClient:
             spent_on_to=spent_on_to,
             offset=offset,
             limit=limit,
+            include_total_hours=include_total_hours,
         )
 
     async def get_time_entry(self, time_entry_id: int, *, text_limit: int | None = None) -> TimeEntrySummary:

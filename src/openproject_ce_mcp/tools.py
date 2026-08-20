@@ -4561,6 +4561,7 @@ async def list_time_entries(
     offset: int = 1,
     limit: int | None = None,
     select: list[str] | None = None,
+    include_total_hours: bool = False,
 ) -> TimeEntryListResult:
     """List time entries with optional project, work package, user, and date filters.
 
@@ -4575,6 +4576,14 @@ async def list_time_entries(
     count of all matches — the search stops as soon as it has enough, so an
     exact total would need an extra full walk. Page until next_offset is
     null.
+
+    include_total_hours=true sums `hours` (as an ISO 8601 duration) across
+    every matching entry, independent of limit/offset — this runs its own
+    full walk of the filtered collection (bounded; see
+    total_hours_truncated), since OpenProject has no server-side sum for
+    time entries (unlike list_work_packages's include_sums). Leave false
+    unless the total is actually needed: it costs extra requests on top of
+    the page this call already returns.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
@@ -4594,6 +4603,7 @@ async def list_time_entries(
             spent_on_to=safe_spent_on_to,
             offset=safe_offset,
             limit=safe_limit,
+            include_total_hours=include_total_hours,
         )
     )
 

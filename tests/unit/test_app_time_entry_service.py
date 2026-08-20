@@ -728,3 +728,82 @@ async def test_list_all_hides_comment_and_its_metadata_when_time_entry_comment_h
     assert entry.comment is None
     assert entry.comment_truncated is False
     assert entry.comment_length is None
+
+
+# --- include_total_hours -----------------------------------------------------
+
+
+class _PaginatingFakeTimeEntryApi(_FakeTimeEntryApi):
+    """Unlike the base fake (always returns the same single page), this one
+    genuinely paginates its records -- needed to exercise _sum_hours's
+    multi-page walk and its cap/truncation behavior."""
+
+    def __init__(self, records: list[TimeEntrySummary]) -> None:
+        super().__init__(records=records)
+
+    async def fetch_page(self, *, offset: int, page_size: int) -> dict:
+        # Mirrors OpenProject's own server behavior: honors the requested
+        # page_size (capped by however many records this fake actually has
+        # left), not a fixed page_size of its own -- a fake that ignored the
+        # caller's page_size would make the short-page-means-exhausted check
+        # in _sum_hours's walk stop too early.
+        self.fetch_page_calls.append((offset, page_size))
+        start = (offset - 1) * page_size
+        page = self._list_summaries[start : start + page_size]
+        elements = [
+            {"id": start + i, "__summary__": s, "_links": {"project": self._project_link}} for i, s in enumerate(page)
+        ]
+        return {"_embedded": {"elements": elements}}
+
+
+@pytest.mark.asyncio
+async def test_list_all_omits_total_hours_by_default() -> None:
+    api = _FakeTimeEntryApi(records=[_summary(7, hours="PT2H")])
+    settings = dataclasses.replace(make_settings(), read_projects=("*",))
+    service = _service(api=api, settings=settings)
+
+    result = await service.list_all()
+
+    assert result.total_hours is None
+    assert result.total_hours_truncated is False
+
+
+@pytest.mark.asyncio
+async def test_list_all_sums_hours_across_every_page_when_requested() -> None:
+    records = [_summary(i, hours=h) for i, h in enumerate(["PT2H", "PT30M", "PT1H15M"])]
+    api = _PaginatingFakeTimeEntryApi(records)
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), max_page_size=2)
+    service = _service(api=api, settings=settings)
+
+    result = await service.list_all(include_total_hours=True)
+
+    assert result.total_hours == "PT3H45M"
+    assert result.total_hours_truncated is False
+
+
+@pytest.mark.asyncio
+async def test_list_all_total_hours_skips_entries_outside_read_allowlist() -> None:
+    records = [
+        _summary(1, hours="PT2H"),
+        _summary(2, hours="PT10H"),
+    ]
+    api = _PaginatingFakeTimeEntryApi(records)
+    api._project_link = {"href": "/api/v3/projects/1", "title": "Demo"}
+    settings = dataclasses.replace(make_settings(), read_projects=("demo",), max_page_size=2)
+    service = _service(api=api, settings=settings)
+
+    result = await service.list_all(include_total_hours=True)
+
+    assert result.total_hours == "PT12H"
+
+
+@pytest.mark.asyncio
+async def test_list_all_total_hours_truncated_when_page_cap_reached() -> None:
+    records = [_summary(i, hours="PT1H") for i in range(500)]
+    api = _PaginatingFakeTimeEntryApi(records)
+    settings = dataclasses.replace(make_settings(), read_projects=("*",), max_page_size=2)
+    service = _service(api=api, settings=settings)
+
+    result = await service.list_all(include_total_hours=True)
+
+    assert result.total_hours_truncated is True

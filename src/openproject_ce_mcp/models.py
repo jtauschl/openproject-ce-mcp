@@ -1059,6 +1059,8 @@ class WorkPackageCostsByTypeResult:
 @dataclass
 class TimeEntryListResult(PageResult):
     results: list[TimeEntrySummary]
+    total_hours: str | None = None
+    total_hours_truncated: bool = False
 
 
 @dataclass
