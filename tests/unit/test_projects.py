@@ -1224,13 +1224,9 @@ async def test_views_categories_and_attachments() -> None:
 
 @pytest.mark.asyncio
 async def test_list_work_package_attachments_walks_every_server_page_when_allowlist_thins_first_page() -> None:
-    """Regression (OPM-379/F5, ported from OPM-373 Phase 5): a single fetch
-    capped at settings.max_results used to be the ONLY fetch this tool ever
-    made, unconditionally returning every attachment with no pagination
-    contract at all. Now scans server pages via scan_records_and_paginate,
-    same fix pattern already applied to list_documents/list_news/etc --
-    stopping as soon as `limit + 1` allowed matches are found rather than
-    walking the full collection."""
+    """Scans server pages via scan_records_and_paginate, stopping as soon as
+    `limit + 1` allowed matches are found rather than walking the full
+    collection."""
     requested_offsets: list[str] = []
 
     def _attachment(attachment_id: int) -> dict:

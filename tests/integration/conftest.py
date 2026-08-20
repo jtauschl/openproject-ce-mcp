@@ -105,10 +105,7 @@ def disposable_project_identifier() -> str:
     "TST" for semantic -- see docker/test/README.md) -- an all-lowercase
     OPENPROJECT_TEST_PROJECT is treated as classic, anything containing an
     uppercase letter as semantic. This mirrors the same signal
-    seed_wiki_page_id (below) already relies on. A prior version of this
-    helper generated a single uppercase-only format on the mistaken belief
-    it was accepted by both grammars; it was only ever exercised against
-    semantic-mode instances, where it happened to pass.
+    seed_wiki_page_id (below) already relies on.
     """
     test_project = os.environ.get("OPENPROJECT_TEST_PROJECT", "mcp-test").strip()
     suffix = uuid.uuid4().hex[:8]

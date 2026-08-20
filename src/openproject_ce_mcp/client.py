@@ -61,11 +61,9 @@ from .app.adapters.httpx_wiki_page_link_api import HttpxWikiPageLinkApi
 from .app.adapters.httpx_work_package_api import HttpxWorkPackageApi
 from .app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
 
-# AuthenticationError/PermissionDeniedError: no longer referenced directly in this
-# module (PermissionDeniedError's own last use, list_work_packages' fail-closed
-# empty-project-cache branch, moved into WorkPackageService with the Work
-# Packages READ migration), but re-exported deliberately -- existing callers/tests
-# import them from here (e.g. `from openproject_ce_mcp.client import
+# AuthenticationError/PermissionDeniedError: not referenced directly in this
+# module, but re-exported deliberately -- existing callers/tests import them
+# from here (e.g. `from openproject_ce_mcp.client import
 # PermissionDeniedError`, used by tests/integration/test_work_packages.py among
 # others) and must keep working.
 from .app.errors import (

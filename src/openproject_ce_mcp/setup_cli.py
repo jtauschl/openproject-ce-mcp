@@ -1371,7 +1371,7 @@ def _collect_credentials(
     writes (``OPENPROJECT_ENABLE_ADMIN_WRITE``) are independent axes that keep
     whatever value they already had (or the default, on a fresh setup); only
     ``--advanced`` re-prompts them. The caller resolves the mode from the
-    ``--quick``/``--advanced`` CLI flags — it is no longer a runtime prompt.
+    ``--quick``/``--advanced`` CLI flags.
 
     In interactive mode, validates the candidate settings against a live API
     connection before returning. A `network_error` offers a genuine choice
@@ -2011,10 +2011,10 @@ def _run_configure(argv: list[str] | None = None, *, interactive: bool | None = 
     claude_code_project = any(c.key == "claude-code" for c in project_clients)
     write_generic_mcp_json = bool(project_clients) and not claude_code_project
 
-    # Removals are NOT applied here — only recorded. Executing them immediately
-    # (the old behavior) meant an abort anywhere after this point left deletions
-    # applied with nothing written; they now run inside _apply_changes, bundled
-    # with every other mutation, after any preview/confirm.
+    # Removals are NOT applied here — only recorded, then run inside
+    # _apply_changes bundled with every other mutation, after any
+    # preview/confirm, so an abort anywhere after this point can never leave
+    # deletions applied with nothing written.
     removed_any = bool(remove_global_clients or remove_project_clients)
     if not global_clients and not project_clients and not write_generic_mcp_json:
         if not removed_any:
