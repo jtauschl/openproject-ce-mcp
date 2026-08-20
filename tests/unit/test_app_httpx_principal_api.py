@@ -30,7 +30,7 @@ def test_normalize_principal_group_has_no_url_field() -> None:
 def test_normalize_principal_trims_and_falls_back_on_missing_name() -> None:
     principal = normalize_principal({"id": 3, "_type": "User"})
     assert principal.name == "Principal 3"
-    assert principal.login is None
+    assert principal.email is None
 
 
 @pytest.mark.asyncio

@@ -217,9 +217,7 @@ class PrincipalSummary:
     id: int
     type: str | None
     name: str
-    login: str | None
     email: str | None
-    status: str | None
 
 
 @dataclass

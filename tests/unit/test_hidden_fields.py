@@ -165,9 +165,7 @@ async def test_hidden_fields_support_wildcards_for_principal_reads() -> None:
     # normalize_activity/normalize_work_package_detail.
     principal = hidden_fields.apply_hidden_fields(
         "principal",
-        normalize_principal(
-            {"id": 5, "_type": "User", "name": "Alice", "login": "alice", "email": "alice@example.com"}
-        ),
+        normalize_principal({"id": 5, "_type": "User", "name": "Alice", "email": "alice@example.com"}),
         settings=client.settings,
     )
 
@@ -177,11 +175,11 @@ async def test_hidden_fields_support_wildcards_for_principal_reads() -> None:
     # exactly these keys from the response.
     assert principal._hidden_keys == frozenset({"name", "email"})
     assert principal.name == "Alice"  # value preserved on the dataclass
-    assert principal.login == "alice"
+    assert principal.type == "User"
     serialized = _to_payload(principal)
     assert "name" not in serialized
     assert "email" not in serialized
-    assert serialized["login"] == "alice"
+    assert serialized["type"] == "User"
 
     await client.aclose()
 

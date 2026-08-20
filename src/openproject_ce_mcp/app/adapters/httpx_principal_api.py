@@ -18,16 +18,26 @@ from ._text import trim_text as _trim_text
 
 
 def normalize_principal(payload: dict[str, Any]) -> PrincipalSummary:
-    """Pure HAL->model translation. Excludes hidden-field masking."""
+    """Pure HAL->model translation. Excludes hidden-field masking.
+
+    No login/status fields: `list_principals` hits `GET /api/v3/principals`
+    with no `select` parameter, which always takes the SQL fast-path
+    representer (`UserSqlRepresenter`/`GroupSqlRepresenter`/
+    `PlaceholderUserSqlRepresenter`, verified against op-sources 17.7) --
+    none of those declare a `login` or `status` property, only
+    `_type`/`id`/`name`/`email` (`firstname`/`lastname` conditionally).
+    `login`/`status` exist only on the full single-resource `UserRepresenter`
+    (`GET /users/{id}`), which this narrow principals-list port never calls.
+    A prior version of this function read payload.get("login")/("status"),
+    which were therefore always None for every principal.
+    """
     principal_type = _trim_text(payload.get("_type"), limit=SUBJECT_LIMIT)
     principal_id = int(payload["id"])
     return PrincipalSummary(
         id=principal_id,
         type=principal_type,
         name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Principal {principal_id}",
-        login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
         email=_trim_text(payload.get("email"), limit=SUBJECT_LIMIT),
-        status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
     )
 
 

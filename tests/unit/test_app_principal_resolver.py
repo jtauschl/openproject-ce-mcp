@@ -17,9 +17,7 @@ def _principal(principal_id: int, name: str, *, lookup_name: str | None = None) 
             id=principal_id,
             type="User",
             name=name,
-            login=name.lower(),
             email=None,
-            status=None,
         ),
         lookup_name=name if lookup_name is None else lookup_name,
     )
