@@ -1797,11 +1797,14 @@ async def test_list_notifications_returns_normalized_results() -> None:
                         "elements": [
                             {
                                 "id": 5,
-                                "subject": "You were mentioned",
                                 "readIAN": False,
                                 "createdAt": "2026-03-20T10:00:00Z",
                                 "_links": {
                                     "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+                                    "resource": {
+                                        "href": "/api/v3/work_packages/42",
+                                        "title": "You were mentioned",
+                                    },
                                 },
                             }
                         ]
