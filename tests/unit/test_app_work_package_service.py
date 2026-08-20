@@ -1230,6 +1230,18 @@ async def test_due_within_days_filters_by_relative_date_range() -> None:
 
 
 @pytest.mark.asyncio
+async def test_due_within_days_zero_is_a_legal_boundary_value() -> None:
+    """due_within_days=0 (due today only) is a legal, non-negative boundary --
+    distinct from None (the "no filter" default), which must not raise."""
+    service, api = _service()
+
+    await service.list(due_within_days=0)
+
+    filters = api.list_calls[0]["filters"]
+    assert {"due_date": {"operator": "<t+", "values": ["0"]}} in filters
+
+
+@pytest.mark.asyncio
 async def test_overdue_only_rejects_combination_with_due_on() -> None:
     service, _ = _service()
 

@@ -170,6 +170,36 @@ async def test_search_work_packages_tool_defaults_include_sums_to_false() -> Non
 
 
 @pytest.mark.asyncio
+async def test_search_work_packages_tool_passes_overdue_only_and_due_within_days() -> None:
+    class StubClient:
+        async def search_work_packages(self, **kwargs):
+            return kwargs
+
+    result = await search_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        search="Feature",
+        due_within_days=0,
+    )
+
+    assert result["overdue_only"] is False
+    assert result["due_within_days"] == 0
+
+
+@pytest.mark.asyncio
+async def test_search_work_packages_tool_rejects_non_integer_due_within_days() -> None:
+    class StubClient:
+        async def search_work_packages(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match="due_within_days must be an integer"):
+        await search_work_packages(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            search="Feature",
+            due_within_days=True,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.asyncio
 async def test_list_work_packages_tool_passes_include_sums_flag() -> None:
     class StubClient:
         async def list_work_packages(self, **kwargs):
@@ -182,6 +212,34 @@ async def test_list_work_packages_tool_passes_include_sums_flag() -> None:
     )
 
     assert result["include_sums"] is True
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_tool_passes_overdue_only_and_due_within_days() -> None:
+    class StubClient:
+        async def list_work_packages(self, **kwargs):
+            return kwargs
+
+    result = await list_work_packages(
+        FakeContext(StubClient()),  # type: ignore[arg-type]
+        overdue_only=True,
+    )
+
+    assert result["overdue_only"] is True
+    assert result["due_within_days"] is None
+
+
+@pytest.mark.asyncio
+async def test_list_work_packages_tool_rejects_non_integer_due_within_days() -> None:
+    class StubClient:
+        async def list_work_packages(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(ValueError, match="due_within_days must be an integer"):
+        await list_work_packages(
+            FakeContext(StubClient()),  # type: ignore[arg-type]
+            due_within_days=True,  # type: ignore[arg-type]
+        )
 
 
 @pytest.mark.asyncio

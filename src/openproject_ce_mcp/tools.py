@@ -3010,6 +3010,7 @@ async def search_work_packages(
     safe_updated_between = _validate_optional_date_range(updated_between, "updated_between")
     safe_due_on = _validate_optional_date(due_on, "due_on")
     safe_due_between = _validate_optional_date_range(due_between, "due_between")
+    safe_due_within_days = _validate_optional_non_negative_int(due_within_days, field_name="due_within_days")
     safe_sort_by = _validate_sort_by(sort_by)
     safe_group_by = _validate_group_by(group_by)
     safe_offset = _validate_offset(offset)
@@ -3032,7 +3033,7 @@ async def search_work_packages(
             due_on=safe_due_on,
             due_between=safe_due_between,
             overdue_only=overdue_only,
-            due_within_days=due_within_days,
+            due_within_days=safe_due_within_days,
             sort_by=safe_sort_by,
             group_by=safe_group_by,
             offset=safe_offset,
@@ -3236,6 +3237,7 @@ async def list_work_packages(
     safe_updated_between = _validate_optional_date_range(updated_between, "updated_between")
     safe_due_on = _validate_optional_date(due_on, "due_on")
     safe_due_between = _validate_optional_date_range(due_between, "due_between")
+    safe_due_within_days = _validate_optional_non_negative_int(due_within_days, field_name="due_within_days")
     safe_sort_by = _validate_sort_by(sort_by)
     safe_group_by = _validate_group_by(group_by)
     safe_offset = _validate_offset(offset)
@@ -3260,7 +3262,7 @@ async def list_work_packages(
             due_on=safe_due_on,
             due_between=safe_due_between,
             overdue_only=overdue_only,
-            due_within_days=due_within_days,
+            due_within_days=safe_due_within_days,
             sort_by=safe_sort_by,
             group_by=safe_group_by,
             offset=safe_offset,
