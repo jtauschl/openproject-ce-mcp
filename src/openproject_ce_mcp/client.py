@@ -6189,9 +6189,7 @@ class OpenProjectClient:
         # avatar is a top-level string property (already a full absolute
         # URL), not a `_links.avatar` link -- verified against
         # user_representer.rb (`property :avatar, getter: ->(*) {
-        # avatar_url(represented) }`) and live against a real instance. A
-        # prior version of this method read `_links.avatar`, which
-        # UserRepresenter never sends -- avatar_url was always None.
+        # avatar_url(represented) }`) and live against a real instance.
         return self._apply_hidden_fields(
             "user",
             UserSummary(
@@ -6216,11 +6214,10 @@ class OpenProjectClient:
         auth_source = _link_title(links.get("authSource"))
         identity_url = payload.get("identityUrl")
         # No groups field: user_representer.rb declares no `_links.groups`
-        # (or any other group-membership exposure) at all -- a prior version
-        # of this method read `_links.groups`, which was always empty. There
-        # is no route that lists a user's groups from the user side;
-        # get_group's own `members` field is the only way to see this
-        # relationship, from the group's side.
+        # (or any other group-membership exposure) at all. There is no route
+        # that lists a user's groups from the user side; get_group's own
+        # `members` field is the only way to see this relationship, from the
+        # group's side.
         return self._apply_hidden_fields(
             "user",
             UserDetail(
@@ -6988,8 +6985,7 @@ class OpenProjectClient:
         # No percentage_complete/created_at/updated_at fields: JobStatusRepresenter
         # renders only job_id/status/message/payload/_type -- there is no
         # progress concept or timestamp property anywhere in the job_status
-        # module. A prior version of this method read percentageDone/progress/
-        # createdAt/updatedAt, none of which the API ever sends.
+        # module.
         return self._apply_hidden_fields(
             "job_status",
             JobStatusDetail(
@@ -7022,8 +7018,7 @@ class OpenProjectClient:
         # project link, and defaultAssignee (an unrelated concept -- the user
         # auto-assigned to work packages in this category, not "is this the
         # project's default category"). The Category model has no such
-        # attribute anywhere. A prior version of this method read
-        # payload.get("isDefault"), which the API never sends.
+        # attribute anywhere.
         category_id = int(payload["id"])
         links = payload.get("_links", {})
         default_assignee_link = links.get("defaultAssignee")
@@ -9662,9 +9657,7 @@ def _entity_type_from_href(href: str | None) -> str | None:
     the entity's type is only ever distinguishable by which resource collection
     its `entity` link's href points into (`/api/v3/work_packages/<id>` vs.
     `/api/v3/meetings/<id>`), matching `EntityRepresenterFactory.representer_type`
-    server-side. A prior version of this function read `payload["entityType"]`,
-    a field the API never actually sends -- entity_type was always None,
-    silently defeating any entity_type=="WorkPackage" comparison."""
+    server-side."""
     if not href:
         return None
     segments = [s for s in href.split("/") if s]
