@@ -6166,6 +6166,13 @@ class OpenProjectClient:
         )
 
     def normalize_principal(self, payload: dict[str, Any]) -> PrincipalSummary:
+        # No login/status fields: list_principals hits GET /api/v3/principals
+        # with no select parameter, which always takes the SQL fast-path
+        # representer (verified against op-sources 17.7's
+        # UserSqlRepresenter/GroupSqlRepresenter/PlaceholderUserSqlRepresenter),
+        # none of which declare a login or status property -- only
+        # _type/id/name/email. login/status exist only on the full
+        # single-resource UserRepresenter (GET /users/{id}), never called here.
         principal_type = _trim_text(payload.get("_type"), limit=SUBJECT_LIMIT)
         principal_id = int(payload["id"])
         return self._apply_hidden_fields(
@@ -6174,9 +6181,7 @@ class OpenProjectClient:
                 id=principal_id,
                 type=principal_type,
                 name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Principal {principal_id}",
-                login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
                 email=_trim_text(payload.get("email"), limit=SUBJECT_LIMIT),
-                status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
             ),
         )
 
