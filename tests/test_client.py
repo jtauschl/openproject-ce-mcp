@@ -7053,7 +7053,6 @@ async def test_views_categories_and_attachments() -> None:
                         "elements": [
                             {
                                 "id": 5,
-                                "title": "spec.md",
                                 "fileName": "spec.md",
                                 "fileSize": 12,
                                 "status": "uploaded",
@@ -7074,7 +7073,6 @@ async def test_views_categories_and_attachments() -> None:
                 200,
                 json={
                     "id": 5,
-                    "title": "spec.md",
                     "fileName": "spec.md",
                     "fileSize": 12,
                     "status": "uploaded",
@@ -7107,7 +7105,6 @@ async def test_views_categories_and_attachments() -> None:
                 200,
                 json={
                     "id": 6,
-                    "title": "spec.md",
                     "fileName": "spec.md",
                     "fileSize": 12,
                     "status": "uploaded",
@@ -8659,10 +8656,10 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
                 200,
                 json={
                     "name": "Subject asc",
-                    "direction": "asc",
                     "_links": {
                         "self": {"href": "/api/v3/queries/sort_bys/subject-asc"},
                         "column": {"title": "Subject"},
+                        "direction": {"title": "asc"},
                     },
                 },
                 request=request,

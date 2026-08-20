@@ -6830,9 +6830,11 @@ class OpenProjectClient:
         sort_by_id = requested_id if requested_id is not None else derived_id
         column_link = links.get("column")
         direction_link = links.get("direction")
-        direction = _trim_text(payload.get("direction"), limit=SUBJECT_LIMIT)
-        if direction is None and isinstance(direction_link, dict):
-            direction = _trim_text(direction_link.get("title"), limit=SUBJECT_LIMIT)
+        # QuerySortByRepresenter has no top-level `direction` property, only the
+        # `_links.direction` link's title.
+        direction = (
+            _trim_text(direction_link.get("title"), limit=SUBJECT_LIMIT) if isinstance(direction_link, dict) else None
+        )
         return self._apply_hidden_fields(
             "query_sort_by",
             QuerySortBySummary(
@@ -7052,8 +7054,8 @@ class OpenProjectClient:
             "attachment",
             AttachmentSummary(
                 id=int(payload["id"]),
-                title=_trim_text(payload.get("title") or payload.get("fileName"), limit=SUBJECT_LIMIT)
-                or f"Attachment {payload['id']}",
+                # AttachmentRepresenter has no `title` property, only `file_name`.
+                title=_trim_text(payload.get("fileName"), limit=SUBJECT_LIMIT) or f"Attachment {payload['id']}",
                 file_name=_trim_text(payload.get("fileName"), limit=SUBJECT_LIMIT),
                 file_size=payload.get("fileSize"),
                 description=self._visible_formattable_text(payload.get("description"), "attachment", "description"),
@@ -7350,7 +7352,8 @@ class OpenProjectClient:
             "file_link",
             FileLinkSummary(
                 id=file_link_id,
-                title=_trim_text(payload.get("title") or payload.get("originData", {}).get("name"), limit=SUBJECT_LIMIT)
+                # FileLinkRepresenter has no top-level `title` property, only `originData.name`.
+                title=_trim_text(payload.get("originData", {}).get("name"), limit=SUBJECT_LIMIT)
                 or f"File link {file_link_id}",
                 storage_id=storage_id,
                 storage_name=storage_name,
