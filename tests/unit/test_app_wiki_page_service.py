@@ -19,7 +19,6 @@ def _detail(wiki_page_id: int = 20, *, project_id: int = 6, project: str = "Demo
         title="Wiki Page",
         project_id=project_id,
         project=project,
-        content="<user-content>Wiki page content</user-content>",
     )
 
 
@@ -35,7 +34,7 @@ class _FakeWikiPageApi:
         self._records = records or {20: _record()}
         self.get_calls: list[int] = []
 
-    async def get(self, wiki_page_id: int, *, text_limit: int | None = None) -> WikiPageRecord:
+    async def get(self, wiki_page_id: int) -> WikiPageRecord:
         self.get_calls.append(wiki_page_id)
         if wiki_page_id not in self._records:
             raise AssertionError(f"no fake record for wiki_page_id {wiki_page_id}")
@@ -64,31 +63,31 @@ async def test_get_returns_stamped_detail() -> None:
 
 @pytest.mark.asyncio
 async def test_get_applies_hidden_field_masking() -> None:
-    settings = dataclasses.replace(make_settings(), hidden_fields={"wiki_page": ("content",)})
+    settings = dataclasses.replace(make_settings(), hidden_fields={"wiki_page": ("title",)})
     api = _FakeWikiPageApi()
     service = _service(api, settings=settings)
 
     result = await service.get(20)
 
-    assert getattr(result, "_hidden_keys", frozenset()) == {"content"}
+    assert getattr(result, "_hidden_keys", frozenset()) == {"title"}
 
 
 @pytest.mark.asyncio
-async def test_get_content_hidden_by_wiki_page_scope_not_project_scope() -> None:
+async def test_get_title_hidden_by_wiki_page_scope_not_project_scope() -> None:
     """Regression test for the entity="wiki_page" vs "project" hide-field bug
     (same bug class as the News hotfix). This is the single most
     important test in this file -- masking must key off the domain's own
     entity string, not a same-named neighbor.
     """
-    settings_project_hidden = dataclasses.replace(make_settings(), hide_project_fields=("content",))
+    settings_project_hidden = dataclasses.replace(make_settings(), hide_project_fields=("title",))
     service_project_hidden = _service(settings=settings_project_hidden)
     result_project_hidden = await service_project_hidden.get(20)
     assert getattr(result_project_hidden, "_hidden_keys", frozenset()) == frozenset()
 
-    settings_wiki_page_hidden = dataclasses.replace(make_settings(), hidden_fields={"wiki_page": ("content",)})
+    settings_wiki_page_hidden = dataclasses.replace(make_settings(), hidden_fields={"wiki_page": ("title",)})
     service_wiki_page_hidden = _service(settings=settings_wiki_page_hidden)
     result_wiki_page_hidden = await service_wiki_page_hidden.get(20)
-    assert getattr(result_wiki_page_hidden, "_hidden_keys", frozenset()) == {"content"}
+    assert getattr(result_wiki_page_hidden, "_hidden_keys", frozenset()) == {"title"}
 
 
 @pytest.mark.asyncio

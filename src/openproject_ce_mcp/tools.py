@@ -1725,20 +1725,18 @@ async def delete_news(
 async def get_wiki_page(
     ctx: Context,
     wiki_page_id: int,
-    text_limit: int | None = 50_000,
 ) -> WikiPageDetail:
-    """Get a single wiki page by id.
+    """Get a single wiki page's metadata (id, title, project) by id.
 
-    content is returned in full by default, capped at 50,000 characters (a
-    wiki page's own upper bound). Pass ``text_limit`` to cap it further, or
-    ``None`` for genuinely uncapped content; when the text is cut,
-    ``content_truncated`` is true and ``content_length`` reports the real
-    length.
+    OpenProject's REST API v3 does not expose a wiki page's body text at
+    all -- GET /api/v3/wiki_pages/{id} returns only id/title/project, and
+    there is no other route that returns the page content. This tool
+    therefore cannot return wiki page text; use the OpenProject web UI to
+    read a page's content.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(wiki_page_id, field_name="wiki_page_id")
-    safe_text_limit = _validate_optional_text_limit(text_limit)
-    return await _run_tool(client.get_wiki_page(safe_id, text_limit=safe_text_limit))
+    return await _run_tool(client.get_wiki_page(safe_id))
 
 
 async def get_post(

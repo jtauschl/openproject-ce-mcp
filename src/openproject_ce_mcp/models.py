@@ -1196,9 +1196,6 @@ class WikiPageDetail:
     title: str
     project_id: int | None
     project: str | None
-    content: str | None
-    content_truncated: bool = False
-    content_length: int | None = None
 
 
 @dataclass

@@ -1363,8 +1363,8 @@ class OpenProjectClient:
     ) -> NewsWriteResult:
         return await self._news_service.delete(news_id=news_id, confirm=confirm)
 
-    async def get_wiki_page(self, wiki_page_id: int, *, text_limit: int | None = 50_000) -> WikiPageDetail:
-        return await self._wiki_page_service.get(wiki_page_id, text_limit=text_limit)
+    async def get_wiki_page(self, wiki_page_id: int) -> WikiPageDetail:
+        return await self._wiki_page_service.get(wiki_page_id)
 
     async def get_post(self, post_id: int) -> PostDetail:
         return await self._post_service.get(post_id)

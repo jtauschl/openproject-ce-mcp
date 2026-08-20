@@ -47,9 +47,9 @@ class WikiPageService:
         self._settings = settings
         self._project_id_to_identifier = project_id_to_identifier
 
-    async def get(self, wiki_page_id: int, *, text_limit: int | None = 50_000) -> WikiPageDetail:
+    async def get(self, wiki_page_id: int) -> WikiPageDetail:
         access.ensure_read_enabled("project", settings=self._settings)
-        record = await self._api.get(wiki_page_id, text_limit=text_limit)
+        record = await self._api.get(wiki_page_id)
         scope_policy.ensure_project_link_allowed(
             record.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
