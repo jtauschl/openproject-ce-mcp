@@ -6186,8 +6186,12 @@ class OpenProjectClient:
         )
 
     def normalize_user(self, payload: dict[str, Any]) -> UserSummary:
-        links = payload.get("_links", {})
-        avatar_link = links.get("avatar")
+        # avatar is a top-level string property (already a full absolute
+        # URL), not a `_links.avatar` link -- verified against
+        # user_representer.rb (`property :avatar, getter: ->(*) {
+        # avatar_url(represented) }`) and live against a real instance. A
+        # prior version of this method read `_links.avatar`, which
+        # UserRepresenter never sends -- avatar_url was always None.
         return self._apply_hidden_fields(
             "user",
             UserSummary(
@@ -6198,7 +6202,7 @@ class OpenProjectClient:
                 status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
                 admin=payload.get("admin"),
                 locked=payload.get("locked"),
-                avatar_url=self._link_to_web_url(avatar_link.get("href")) if isinstance(avatar_link, dict) else None,
+                avatar_url=_trim_text(payload.get("avatar"), limit=SUBJECT_LIMIT),
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
                 firstname=_trim_text(payload.get("firstName"), limit=SUBJECT_LIMIT),
@@ -6209,9 +6213,14 @@ class OpenProjectClient:
     def normalize_user_detail(self, payload: dict[str, Any]) -> UserDetail:
         summary = self.normalize_user(payload)
         links = payload.get("_links", {})
-        groups = [title for item in links.get("groups", []) if isinstance(item, dict) and (title := _link_title(item))]
         auth_source = _link_title(links.get("authSource"))
         identity_url = payload.get("identityUrl")
+        # No groups field: user_representer.rb declares no `_links.groups`
+        # (or any other group-membership exposure) at all -- a prior version
+        # of this method read `_links.groups`, which was always empty. There
+        # is no route that lists a user's groups from the user side;
+        # get_group's own `members` field is the only way to see this
+        # relationship, from the group's side.
         return self._apply_hidden_fields(
             "user",
             UserDetail(
@@ -6228,7 +6237,6 @@ class OpenProjectClient:
                 language=_trim_text(payload.get("language"), limit=SUBJECT_LIMIT),
                 identity_url=identity_url,
                 auth_source=auth_source,
-                groups=groups,
                 firstname=summary.firstname,
                 lastname=summary.lastname,
             ),
