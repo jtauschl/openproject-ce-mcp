@@ -73,6 +73,7 @@ class _FakeTimeEntryApi:
         self._fetch_activities_result = fetch_activities_result
         self._form_payload_overrides = form_payload_overrides or {}
         self.fetch_page_calls: list[tuple[int, int]] = []
+        self.fetch_page_by_href_calls: list[tuple[str, int, int]] = []
         self.get_raw_calls: list[int] = []
         self.validate_create_calls: list[dict] = []
         self.validate_update_calls: list[tuple[int, dict]] = []
@@ -102,6 +103,14 @@ class _FakeTimeEntryApi:
 
     async def fetch_page(self, *, offset: int, page_size: int) -> dict:
         self.fetch_page_calls.append((offset, page_size))
+        elements = [
+            {"id": i, "__summary__": s, "_links": {"project": self._project_link}}
+            for i, s in enumerate(self._list_summaries)
+        ]
+        return {"_embedded": {"elements": elements}}
+
+    async def fetch_page_by_href(self, href: str, *, offset: int, page_size: int) -> dict:
+        self.fetch_page_by_href_calls.append((href, offset, page_size))
         elements = [
             {"id": i, "__summary__": s, "_links": {"project": self._project_link}}
             for i, s in enumerate(self._list_summaries)
@@ -201,13 +210,20 @@ class _FakeUserApi:
 
 
 class _FakeWorkPackageLookupApi:
-    def __init__(self, project_link: dict | None = None) -> None:
+    def __init__(
+        self, project_link: dict | None = None, *, work_package_id: int = 42, time_entries_href: str | None = None
+    ) -> None:
         self._project_link = project_link or {"href": "/api/v3/projects/1", "title": "Demo"}
+        self._work_package_id = work_package_id
+        self._time_entries_href = time_entries_href
         self.get_calls: list[str] = []
 
     async def get(self, work_package_ref: str) -> dict:
         self.get_calls.append(work_package_ref)
-        return {"id": 42, "_links": {"project": self._project_link}}
+        links = {"project": self._project_link}
+        if self._time_entries_href is not None:
+            links["timeEntries"] = {"href": self._time_entries_href}
+        return {"id": self._work_package_id, "_links": links}
 
     async def get_by_href(self, href: str) -> dict:
         return {"_links": {"project": self._project_link}}
@@ -365,20 +381,64 @@ async def test_list_all_denies_entries_outside_read_allowlist() -> None:
 
 @pytest.mark.asyncio
 async def test_list_all_resolves_work_package_id_and_filters_by_entity() -> None:
+    """No timeEntries link on the work package (e.g. an older OpenProject) --
+    falls back to the global scan with client-side entity filtering, same as
+    before this behavior existed."""
     api = _FakeTimeEntryApi(
         records=[
             _summary(1, entity_type="WorkPackage", entity_id=42),
             _summary(2, entity_type="WorkPackage", entity_id=99),
         ]
     )
-    resolve = _resolve_work_package_id_ok(42)
     settings = dataclasses.replace(make_settings(), read_projects=("*",))
-    service = _service(api=api, settings=settings, resolve_work_package_id=resolve)
+    wp_lookup = _FakeWorkPackageLookupApi(work_package_id=42)
+    service = _service(api=api, settings=settings, work_package_lookup_api=wp_lookup)
 
     result = await service.list_all(work_package_id="PROJ-1")
 
-    assert resolve.calls == [("PROJ-1", False)]
+    assert wp_lookup.get_calls == ["PROJ-1"]
+    assert len(api.fetch_page_calls) == 1
+    assert api.fetch_page_by_href_calls == []
     assert [r.id for r in result.results] == [1]
+
+
+@pytest.mark.asyncio
+async def test_list_all_follows_time_entries_href_when_work_package_provides_one() -> None:
+    """A work package that DOES supply _links.timeEntries.href (OpenProject's
+    own pre-built, version-correct filter) is followed directly instead of
+    falling back to the global scan -- this is what OPM-375/dim-c-01 adds."""
+    api = _FakeTimeEntryApi(
+        records=[
+            _summary(1, entity_type="WorkPackage", entity_id=42),
+            _summary(2, entity_type="WorkPackage", entity_id=99),
+        ]
+    )
+    settings = dataclasses.replace(make_settings(), read_projects=("*",))
+    href = "/api/v3/time_entries?filters=%5B%5D"
+    wp_lookup = _FakeWorkPackageLookupApi(work_package_id=42, time_entries_href=href)
+    service = _service(api=api, settings=settings, work_package_lookup_api=wp_lookup)
+
+    result = await service.list_all(work_package_id="PROJ-1")
+
+    assert wp_lookup.get_calls == ["PROJ-1"]
+    assert api.fetch_page_calls == []
+    assert len(api.fetch_page_by_href_calls) == 1
+    assert api.fetch_page_by_href_calls[0][0] == href
+    # The client-side entity filter still runs as a defensive check even
+    # though the server-side link is already scoped to this work package.
+    assert [r.id for r in result.results] == [1]
+
+
+@pytest.mark.asyncio
+async def test_list_all_rejects_work_package_outside_read_scope() -> None:
+    """The scope check that used to live inside WorkPackageIdResolver.resolve_id
+    must still run when list_all fetches the work package payload directly."""
+    settings = dataclasses.replace(make_settings(), read_projects=("other-project",))
+    wp_lookup = _FakeWorkPackageLookupApi(project_link={"href": "/api/v3/projects/1", "title": "Demo"})
+    service = _service(settings=settings, work_package_lookup_api=wp_lookup)
+
+    with pytest.raises(PermissionDeniedError):
+        await service.list_all(work_package_id="PROJ-1")
 
 
 @pytest.mark.asyncio

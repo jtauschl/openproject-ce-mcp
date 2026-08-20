@@ -175,8 +175,28 @@ class TimeEntryService:
     ) -> TimeEntryListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
         resolved_work_package_id: int | None = None
+        time_entries_href: str | None = None
         if work_package_id is not None:
-            resolved_work_package_id = await self._resolve_work_package_id(work_package_id)
+            # Fetched directly (not via WorkPackageIdResolver.resolve_id) so the
+            # full payload -- specifically _links.timeEntries.href -- survives;
+            # resolve_id() only returns the numeric id. Same allowlist check
+            # resolve_id() itself applies internally, so read-scope safety is
+            # unchanged. The href is OpenProject's own pre-built, version-correct
+            # filter for this work package's time entries (its filter key
+            # differs across supported OpenProject versions -- entity_id/
+            # entity_type vs. the older work_package_id -- so following the
+            # server-supplied link avoids needing to detect that ourselves).
+            wp_payload = await self._work_package_lookup_api.get(str(work_package_id))
+            wp_project_link = wp_payload.get("_links", {}).get("project")
+            scope_policy.ensure_project_link_allowed(
+                wp_project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
+            )
+            resolved_work_package_id = int(wp_payload["id"])
+            time_entries_link = wp_payload.get("_links", {}).get("timeEntries")
+            if isinstance(time_entries_link, dict):
+                href = time_entries_link.get("href")
+                if isinstance(href, str) and href:
+                    time_entries_href = href
 
         project_candidates: set[str] = set()
         if project is not None:
@@ -230,8 +250,13 @@ class TimeEntryService:
                 return False
             return not (spent_on_to is not None and (normalized.spent_on is None or normalized.spent_on > spent_on_to))
 
+        fetch_page = (
+            (lambda o, ps: self._api.fetch_page_by_href(time_entries_href, offset=o, page_size=ps))
+            if time_entries_href is not None
+            else (lambda o, ps: self._api.fetch_page(offset=o, page_size=ps))
+        )
         page, total, next_offset, truncated = await fetch_bounded_and_paginate(
-            fetch_page=lambda o, ps: self._api.fetch_page(offset=o, page_size=ps),
+            fetch_page=fetch_page,
             normalize=lambda raw: self._stamp(self._api.to_record(raw, text_limit=self._settings.text_limit).summary()),
             item_allowed=item_allowed,
             server_page_size=self._settings.max_page_size,

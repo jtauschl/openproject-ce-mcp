@@ -32,7 +32,7 @@ entity-vs-project-link distinction, described below).
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 from ...models import TimeEntryActivitySummary, TimeEntrySummary
 from ..api_href import api_href as _api_href
@@ -48,6 +48,25 @@ from ._text import normalize_form_validation_errors as normalize_validation_erro
 from ._text import origin_from_url as _origin_from_url
 from ._text import trim_text as _trim_text
 
+_ENTITY_TYPE_BY_HREF_SEGMENT = {"work_packages": "WorkPackage", "meetings": "Meeting"}
+
+
+def _entity_type_from_href(href: str | None) -> str | None:
+    """OpenProject's TimeEntry representer never emits an `entityType` field --
+    the entity's type is only ever distinguishable by which resource collection
+    its `entity` link's href points into (`/api/v3/work_packages/<id>` vs.
+    `/api/v3/meetings/<id>`), matching `EntityRepresenterFactory.representer_type`
+    server-side. A prior version of this function read `payload["entityType"]`,
+    a field the API never actually sends -- entity_type was always None,
+    silently defeating any entity_type=="WorkPackage" comparison."""
+    if not href:
+        return None
+    segments = [s for s in href.split("/") if s]
+    for segment, entity_type in _ENTITY_TYPE_BY_HREF_SEGMENT.items():
+        if segment in segments:
+            return entity_type
+    return None
+
 
 def normalize_time_entry_raw(payload: dict[str, Any], *, text_limit: int | None) -> TimeEntrySummary:
     """Pure HAL extraction, no hidden-field awareness (see module docstring).
@@ -58,12 +77,13 @@ def normalize_time_entry_raw(payload: dict[str, Any], *, text_limit: int | None)
     links = payload.get("_links", {})
     project_link = links.get("project")
     entity_link = links.get("entity")
+    entity_href = entity_link.get("href") if isinstance(entity_link, dict) else None
     trimmed, truncated, full_length = _extract_formattable_text_with_meta(payload.get("comment"), limit=text_limit)
     return TimeEntrySummary(
         id=int(payload["id"]),
         project=_link_title(project_link),
-        entity_type=_trim_text(payload.get("entityType"), limit=SUBJECT_LIMIT),
-        entity_id=_id_from_href(entity_link.get("href")) if isinstance(entity_link, dict) else None,
+        entity_type=_entity_type_from_href(entity_href),
+        entity_id=_id_from_href(entity_href),
         entity_name=_link_title(entity_link),
         user=_link_title(links.get("user")),
         activity=_link_title(links.get("activity")),
@@ -139,6 +159,16 @@ class HttpxTimeEntryApi:
     async def fetch_page(self, *, offset: int, page_size: int) -> dict[str, Any]:
         params = {"offset": str(offset), "pageSize": str(page_size)}
         return await self._transport.get_json("time_entries", params=params)
+
+    async def fetch_page_by_href(self, href: str, *, offset: int, page_size: int) -> dict[str, Any]:
+        # httpx's params= REPLACES an existing query string on the request URL
+        # rather than merging with it (verified) -- since the link already
+        # carries OpenProject's own filters=[...] query, offset/pageSize must
+        # be merged into the link's query string by hand before dispatch, or
+        # the link's filter would silently be dropped.
+        base_path, _, query = self._link_to_api_path(href).partition("?")
+        merged = urlencode([*parse_qsl(query), ("offset", str(offset)), ("pageSize", str(page_size))])
+        return await self._transport.get_json(f"{base_path}?{merged}")
 
     async def get_raw(self, time_entry_id: int) -> dict[str, Any]:
         return await self._transport.get_json(f"time_entries/{time_entry_id}")
