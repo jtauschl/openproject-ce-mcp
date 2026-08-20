@@ -7205,6 +7205,7 @@ class OpenProjectClient:
         links = payload.get("_links", {})
         project_link = links.get("project")
         entity_link = links.get("entity")
+        entity_href = entity_link.get("href") if isinstance(entity_link, dict) else None
         comment, comment_truncated, comment_length = self._visible_formattable_text_with_meta(
             payload.get("comment"), "time_entry", "comment"
         )
@@ -7213,8 +7214,8 @@ class OpenProjectClient:
             TimeEntrySummary(
                 id=int(payload["id"]),
                 project=_link_title(project_link),
-                entity_type=_trim_text(payload.get("entityType"), limit=SUBJECT_LIMIT),
-                entity_id=_id_from_href(entity_link.get("href")) if isinstance(entity_link, dict) else None,
+                entity_type=_entity_type_from_href(entity_href),
+                entity_id=_id_from_href(entity_href),
                 entity_name=_link_title(entity_link),
                 user=_link_title(links.get("user")),
                 activity=_link_title(links.get("activity")),
@@ -9626,6 +9627,26 @@ def _id_from_href(href: str | None) -> int | None:
         return int(parts[-1])
     except (ValueError, IndexError):
         return None
+
+
+_ENTITY_TYPE_BY_HREF_SEGMENT = {"work_packages": "WorkPackage", "meetings": "Meeting"}
+
+
+def _entity_type_from_href(href: str | None) -> str | None:
+    """OpenProject's TimeEntry representer never emits an `entityType` field --
+    the entity's type is only ever distinguishable by which resource collection
+    its `entity` link's href points into (`/api/v3/work_packages/<id>` vs.
+    `/api/v3/meetings/<id>`), matching `EntityRepresenterFactory.representer_type`
+    server-side. A prior version of this function read `payload["entityType"]`,
+    a field the API never actually sends -- entity_type was always None,
+    silently defeating any entity_type=="WorkPackage" comparison."""
+    if not href:
+        return None
+    segments = [s for s in href.split("/") if s]
+    for segment, entity_type in _ENTITY_TYPE_BY_HREF_SEGMENT.items():
+        if segment in segments:
+            return entity_type
+    return None
 
 
 def _slug_from_href(href: str | None) -> str | None:

@@ -5405,7 +5405,6 @@ async def test_time_entry_crud_and_activity_listing() -> None:
                                     "user": {"href": "/api/v3/users/5", "title": "Jürgen Tauschl"},
                                     "activity": {"href": "/api/v3/time_entries/activities/3", "title": "Development"},
                                 },
-                                "entityType": "WorkPackage",
                             }
                         ]
                     }
@@ -5428,7 +5427,6 @@ async def test_time_entry_crud_and_activity_listing() -> None:
                         "user": {"href": "/api/v3/users/5", "title": "Jürgen Tauschl"},
                         "activity": {"href": "/api/v3/time_entries/activities/3", "title": "Development"},
                     },
-                    "entityType": "WorkPackage",
                 },
                 request=request,
             )
@@ -5526,6 +5524,9 @@ async def test_time_entry_crud_and_activity_listing() -> None:
     assert activities.results[0].name == "Development"
     assert listed.count == 1
     assert listed.results[0].entity_id == 55
+    # entity_type is derived from the entity link's href, not a payload field
+    # OpenProject never actually sends -- see _entity_type_from_href.
+    assert listed.results[0].entity_type == "WorkPackage"
     assert detail.activity == "Development"
     assert created_preview.ready is True
     assert created.time_entry_id == 11
@@ -5540,7 +5541,6 @@ def _time_entry_item(item_id: int, *, project_href: str, project_title: str, spe
         "id": item_id,
         "hours": "PT1H",
         "spentOn": spent_on,
-        "entityType": "WorkPackage",
         "_links": {
             "project": {"href": project_href, "title": project_title},
             "entity": {"href": "/api/v3/work_packages/55", "title": "Task"},
