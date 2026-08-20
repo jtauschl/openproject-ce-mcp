@@ -126,9 +126,6 @@ class JobStatusDetail:
     type: str | None
     status: str | None
     message: str | None
-    created_at: str | None
-    updated_at: str | None
-    percentage_complete: int | float | None
     project_id: int | None
     project: str | None
     created_resource_type: str | None

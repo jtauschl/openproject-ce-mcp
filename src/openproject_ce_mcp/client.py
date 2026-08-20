@@ -6985,6 +6985,11 @@ class OpenProjectClient:
         job_id = _trim_text(payload.get("jobId") or payload.get("id"), limit=SUBJECT_LIMIT) or _slug_from_href(
             top_level_links.get("self", {}).get("href")
         )
+        # No percentage_complete/created_at/updated_at fields: JobStatusRepresenter
+        # renders only job_id/status/message/payload/_type -- there is no
+        # progress concept or timestamp property anywhere in the job_status
+        # module. A prior version of this method read percentageDone/progress/
+        # createdAt/updatedAt, none of which the API ever sends.
         return self._apply_hidden_fields(
             "job_status",
             JobStatusDetail(
@@ -6994,9 +6999,6 @@ class OpenProjectClient:
                     payload.get("status") or payload.get("jobStatus") or payload.get("state"), limit=SUBJECT_LIMIT
                 ),
                 message=_trim_text(payload.get("message") or payload.get("error"), limit=FORMATTABLE_LIMIT),
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-                percentage_complete=payload.get("percentageDone") or payload.get("progress"),
                 project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
                 project=_link_title(project_link),
                 created_resource_type=_trim_text(resource_link.get("type"), limit=SUBJECT_LIMIT)
