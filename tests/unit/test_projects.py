@@ -1386,7 +1386,7 @@ async def test_help_texts_and_working_days() -> None:
                             {
                                 "id": 5,
                                 "attribute": "description",
-                                "attributeCaption": "Description",
+                                "caption": "Description",
                                 "helpText": {"format": "markdown", "raw": "Describe the work."},
                             }
                         ]
@@ -1400,7 +1400,7 @@ async def test_help_texts_and_working_days() -> None:
                 json={
                     "id": 5,
                     "attributeName": "description",
-                    "attributeCaption": "Description",
+                    "caption": "Description",
                     "helpText": {"format": "markdown", "raw": "Describe the work."},
                 },
                 request=request,
@@ -1412,8 +1412,8 @@ async def test_help_texts_and_working_days() -> None:
                     "total": 7,
                     "_embedded": {
                         "elements": [
-                            {"name": "Monday", "dayOfWeek": 1, "working": True},
-                            {"name": "Saturday", "dayOfWeek": 6, "working": False},
+                            {"name": "Monday", "day": 1, "working": True},
+                            {"name": "Saturday", "day": 6, "working": False},
                         ]
                     },
                 },

@@ -27,12 +27,13 @@ def test_normalize_help_text_extracts_raw_text_from_nested_dict() -> None:
         {
             "id": 5,
             "attributeName": "description",
-            "attributeCaption": "Description",
+            "caption": "Description",
             "helpText": {"format": "markdown", "raw": "Describe the work."},
         }
     )
     assert summary.id == 5
     assert summary.attribute_name == "description"
+    assert summary.attribute_caption == "Description"
     assert summary.help_text == "Describe the work."
 
 
@@ -43,7 +44,7 @@ def test_normalize_help_text_falls_back_to_attribute_key() -> None:
 
 
 def test_normalize_working_day_maps_fields() -> None:
-    day = normalize_working_day({"name": "Monday", "dayOfWeek": 1, "working": True})
+    day = normalize_working_day({"name": "Monday", "day": 1, "working": True})
     assert day.name == "Monday"
     assert day.day_of_week == 1
     assert day.working is True
@@ -121,7 +122,7 @@ async def test_list_working_days_sends_days_week_path() -> None:
         assert request.url.path == "/api/v3/days/week"
         return httpx.Response(
             200,
-            json={"_embedded": {"elements": [{"name": "Monday", "dayOfWeek": 1, "working": True}]}},
+            json={"_embedded": {"elements": [{"name": "Monday", "day": 1, "working": True}]}},
             request=request,
         )
 

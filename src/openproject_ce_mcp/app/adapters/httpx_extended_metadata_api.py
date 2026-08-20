@@ -37,12 +37,17 @@ FORMATTABLE_LIMIT = 1_200
 def normalize_help_text(payload: dict[str, Any]) -> HelpTextSummary:
     """Pure HAL->model translation. Excludes hidden-field masking: this
     entity has no hidden-field masking at the adapter level (masking, if
-    any, is a Service-layer concern)."""
+    any, is a Service-layer concern).
+
+    attribute_caption reads `caption` -- `HelpTextRepresenter` (verified
+    against op-sources 16.1/17.7) declares `property :caption` with no
+    `as:` rename, not `attributeCaption`.
+    """
     help_text_value = payload.get("helpText")
     return HelpTextSummary(
         id=int(payload["id"]),
         attribute_name=payload.get("attribute") or payload.get("attributeName"),
-        attribute_caption=payload.get("attributeCaption"),
+        attribute_caption=payload.get("caption"),
         help_text=_trim_text(
             help_text_value.get("raw") if isinstance(help_text_value, dict) else help_text_value,
             limit=FORMATTABLE_LIMIT,
@@ -51,9 +56,11 @@ def normalize_help_text(payload: dict[str, Any]) -> HelpTextSummary:
 
 
 def normalize_working_day(payload: dict[str, Any]) -> WorkingDay:
+    # day_of_week reads `day` -- WeekDayRepresenter (verified against
+    # op-sources 16.1/17.7) declares `property :day`, not `dayOfWeek`.
     return WorkingDay(
         name=payload.get("name", ""),
-        day_of_week=int(payload.get("dayOfWeek", 0)),
+        day_of_week=int(payload.get("day", 0)),
         working=bool(payload.get("working", True)),
     )
 
