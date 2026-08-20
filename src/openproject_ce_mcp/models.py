@@ -256,7 +256,6 @@ class UserDetail:
     language: str | None
     identity_url: str | None
     auth_source: str | None
-    groups: list[str]
     firstname: str | None = None
     lastname: str | None = None
 

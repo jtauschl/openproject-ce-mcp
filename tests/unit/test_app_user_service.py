@@ -47,7 +47,6 @@ def _detail(user_id: int = 5, **kwargs: object) -> UserDetail:
         language="en",
         identity_url=None,
         auth_source=None,
-        groups=[],
         firstname=summary.firstname,
         lastname=summary.lastname,
     )

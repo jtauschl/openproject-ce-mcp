@@ -127,7 +127,7 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
                                 "locked": False,
                                 "createdAt": "2026-01-01T00:00:00Z",
                                 "updatedAt": "2026-01-02T00:00:00Z",
-                                "_links": {"avatar": {"href": "/avatars/5.png"}},
+                                "avatar": "https://op.example.com/users/5/avatar",
                             }
                         ]
                     },
@@ -148,11 +148,10 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
                     "language": "en",
                     "createdAt": "2026-01-01T00:00:00Z",
                     "updatedAt": "2026-01-02T00:00:00Z",
+                    "avatar": "https://op.example.com/users/5/avatar",
                     "_links": {
-                        "avatar": {"href": "/avatars/5.png"},
                         "showUser": {"href": "/users/5"},
                         "authSource": {"title": "LDAP"},
-                        "groups": [{"title": "Admins"}],
                     },
                 },
                 request=request,
@@ -215,8 +214,9 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
 
     assert users.count == 1
     assert users.results[0].email == "alice@example.com"
+    assert users.results[0].avatar_url == "https://op.example.com/users/5/avatar"
     assert user.language == "en"
-    assert user.groups == ["Admins"]
+    assert user.auth_source == "LDAP"
     assert groups.count == 1
     assert groups.results[0].member_count == 2
     assert group.members == ["Alice", "Bob"]

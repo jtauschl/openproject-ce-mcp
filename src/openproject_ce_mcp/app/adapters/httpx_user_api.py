@@ -18,7 +18,6 @@ from ..ports.user_api import UserFormResult, UserRecord
 from ..transport.protocol import Transport
 from ._text import SUBJECT_LIMIT
 from ._text import link_title as _link_title
-from ._text import link_to_web_url as _link_to_web_url
 from ._text import origin_from_url as _origin_from_url
 from ._text import reject_path_traversal_segments as _reject_path_traversal_segments
 from ._text import trim_text as _trim_text
@@ -40,9 +39,15 @@ def _normalize_validation_errors(value: Any) -> dict[str, str]:
 
 
 def normalize_user(payload: dict[str, Any], *, base_url: str, origin: str) -> UserSummary:
-    """Pure HAL->model translation. Excludes hidden-field masking."""
-    links = payload.get("_links", {})
-    avatar_link = links.get("avatar")
+    """Pure HAL->model translation. Excludes hidden-field masking.
+
+    avatar is a top-level string property (already a full absolute URL,
+    e.g. "https://host/users/5/avatar"), not a `_links.avatar` link --
+    verified against `user_representer.rb` (`property :avatar, getter:
+    ->(*) { avatar_url(represented) }`) and live against a real instance.
+    A prior version of this function read `_links.avatar`, which
+    UserRepresenter never sends -- avatar_url was always None.
+    """
     return UserSummary(
         id=int(payload["id"]),
         name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT),
@@ -51,9 +56,7 @@ def normalize_user(payload: dict[str, Any], *, base_url: str, origin: str) -> Us
         status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
         admin=payload.get("admin"),
         locked=payload.get("locked"),
-        avatar_url=_link_to_web_url(avatar_link.get("href"), base_url=base_url, origin=origin)
-        if isinstance(avatar_link, dict)
-        else None,
+        avatar_url=_trim_text(payload.get("avatar"), limit=SUBJECT_LIMIT),
         created_at=payload.get("createdAt"),
         updated_at=payload.get("updatedAt"),
         firstname=_trim_text(payload.get("firstName"), limit=SUBJECT_LIMIT),
@@ -74,11 +77,17 @@ def normalize_user_detail(
     second `normalize_user()` call -- callers with only the raw payload
     (commit_create/commit_update/commit_lock/commit_unlock) omit it and get
     the summary computed here, same as before.
+
+    No `groups` field: `user_representer.rb` declares no `_links.groups` (or
+    any other group-membership exposure) at all -- a prior version of this
+    function read `_links.groups`, which was always empty. There is no route
+    that lists a user's groups from the user side; `get_group`'s own
+    `members` field is the only way to see this relationship, from the
+    group's side.
     """
     if summary is None:
         summary = normalize_user(payload, base_url=base_url, origin=origin)
     links = payload.get("_links", {})
-    groups = [title for item in links.get("groups", []) if isinstance(item, dict) and (title := _link_title(item))]
     auth_source = _link_title(links.get("authSource"))
     identity_url = payload.get("identityUrl")
     return UserDetail(
@@ -95,7 +104,6 @@ def normalize_user_detail(
         language=_trim_text(payload.get("language"), limit=SUBJECT_LIMIT),
         identity_url=identity_url,
         auth_source=auth_source,
-        groups=groups,
         firstname=summary.firstname,
         lastname=summary.lastname,
     )
