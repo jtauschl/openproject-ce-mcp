@@ -8,6 +8,13 @@ link is already present on the raw payload, with no lazy-normalization-
 avoidance rationale requiring an intermediate record. `to_record()`/
 `normalize` is only called for elements that already survived the filter.
 
+`fetch_page_by_href` follows a server-supplied, already-filtered collection
+link (e.g. a work package's `_links.timeEntries.href`, which OpenProject
+bakes its own entity_id/entity_type-or-work_package_id filter into --
+the exact filter key differs across supported OpenProject versions, so
+following the link instead of building the filter ourselves avoids needing
+version detection entirely). Same-origin-checked before being dereferenced.
+
 `get_raw` returns the raw HAL payload (not a record) for the same reason:
 `get_time_entry`/`update_time_entry`/`delete_time_entry` all read
 `payload.get("_links", {}).get("project")` directly off the raw fetch,
@@ -71,6 +78,7 @@ class TimeEntryApi(Protocol):
     """
 
     async def fetch_page(self, *, offset: int, page_size: int) -> dict[str, Any]: ...
+    async def fetch_page_by_href(self, href: str, *, offset: int, page_size: int) -> dict[str, Any]: ...
     def to_record(self, payload: dict[str, Any], *, text_limit: int | None) -> TimeEntryRecord: ...
     def to_activity_record(self, payload: dict[str, Any]) -> TimeEntryActivityRecord: ...
     def parse_form_result(self, form: dict[str, Any]) -> TimeEntryFormResult: ...
