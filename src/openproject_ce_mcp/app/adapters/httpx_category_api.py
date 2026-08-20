@@ -29,6 +29,14 @@ def normalize_category(payload: dict[str, Any], *, project_id: int | None, proje
 
     Excludes hidden-field masking -- that is a Policy/Service decision
     applied after this returns, not something the adapter does.
+
+    No `is_default` field: `CategoryRepresenter` (verified against
+    op-sources 16.1/17.7) renders only `id`, `name`, the `project` link, and
+    `defaultAssignee` (an unrelated concept -- the user auto-assigned to
+    work packages in this category, not "is this the project's default
+    category"). The `Category` model itself has no such attribute anywhere.
+    A prior version of this function read `payload.get("isDefault")`, which
+    the API never sends -- is_default was always False.
     """
     category_id = int(payload["id"])
     links = payload.get("_links", {})
@@ -38,7 +46,6 @@ def normalize_category(payload: dict[str, Any], *, project_id: int | None, proje
         name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Category {category_id}",
         project_id=project_id,
         project=project_name,
-        is_default=bool(payload.get("isDefault")),
         default_assignee_id=_id_from_href(
             default_assignee_link.get("href") if isinstance(default_assignee_link, dict) else None
         ),

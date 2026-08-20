@@ -28,7 +28,6 @@ def _summary(
         name=name,
         project_id=project_id,
         project=project,
-        is_default=False,
         default_assignee_id=default_assignee_id,
         default_assignee=default_assignee,
     )

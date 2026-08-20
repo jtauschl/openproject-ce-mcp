@@ -849,7 +849,6 @@ class CategorySummary:
     name: str
     project_id: int | None
     project: str | None
-    is_default: bool
     default_assignee_id: int | None = None
     default_assignee: str | None = None
 

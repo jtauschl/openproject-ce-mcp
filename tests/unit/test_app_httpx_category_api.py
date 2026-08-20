@@ -19,7 +19,6 @@ def _category_payload(category_id: int = 1) -> dict:
     return {
         "id": category_id,
         "name": "Bugs",
-        "isDefault": True,
         "_links": {
             "defaultAssignee": {"href": "/api/v3/users/9", "title": "Ada Lovelace"},
         },
@@ -43,7 +42,6 @@ async def test_list_for_project_requests_the_project_scoped_endpoint() -> None:
     assert summary.name == "Bugs"
     assert summary.project_id == 6
     assert summary.project == "Demo Project"
-    assert summary.is_default is True
     assert summary.default_assignee_id == 9
     assert summary.default_assignee == "Ada Lovelace"
 
