@@ -2631,10 +2631,8 @@ class OpenProjectClient:
         # WORK_PACKAGE_ANCESTORS_LIMIT=20), not a paginated server scan -- unlike
         # the 3 scan sites (Relations/Notifications/Reminders), there is no
         # early-stopping concern here, so both arrays' hrefs are collected and
-        # resolved together in ONE bulk call rather than page-by-page. Every
-        # entry in both arrays was unconditionally visited by the old
-        # sequential `keep()` too (no short-circuit), so every outcome here
-        # is "sequentially reachable" and a real Exception is always
+        # resolved together in ONE bulk call rather than page-by-page, with
+        # every outcome "sequentially reachable" and a real Exception always
         # re-raised, never swallowed.
         all_hrefs = [
             href
@@ -5622,11 +5620,10 @@ class OpenProjectClient:
         # Note: there is no "lang" parameter here. OpenProject's real
         # UserPreferenceRepresenter has no "lang" property at all -- language
         # is a User attribute (see update_user's "language" field), not a
-        # preference. A previous version of this method sent {"lang": ...} to
-        # PATCH /api/v3/my_preferences, which the real API silently ignored
-        # (verified live: even a nonsense value returned 200 with no
-        # validation error and no effect), so it always appeared to succeed
-        # while doing nothing.
+        # preference. PATCH /api/v3/my_preferences silently ignores an
+        # unknown key like "lang" (verified live: even a nonsense value
+        # returns 200 with no validation error and no effect), so sending it
+        # here would always appear to succeed while doing nothing.
         self._ensure_write_enabled("personal")
         body: dict[str, Any] = {}
         if time_zone is not None:
@@ -8971,10 +8968,9 @@ class OpenProjectClient:
     ) -> str | None:
         """Hide-aware, delimited formattable text.
 
-        The returned text is always wrapped by ``_delimit_user_content`` --
-        every caller used to do this immediately after calling this method (or,
-        for several call sites, not at all), so it is folded in here instead of
-        repeated (or missing) at each call site.
+        The returned text is always wrapped by ``_delimit_user_content`` here,
+        rather than left to each call site, so no caller can forget it or
+        duplicate it.
         """
         if self._field_hidden(entity, field_name):
             return None
