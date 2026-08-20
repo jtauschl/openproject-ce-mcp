@@ -23,9 +23,6 @@ def test_normalize_job_status_builds_summary_from_project_link() -> None:
             "jobId": "77",
             "status": "in_progress",
             "message": "Copy running",
-            "percentageDone": 40,
-            "createdAt": "2026-03-20T10:00:00Z",
-            "updatedAt": "2026-03-20T10:05:00Z",
             # OpenProject nests a job's own resource links one level down,
             # inside `payload._links` -- top-level `_links` only ever
             # carries `self`.
@@ -43,7 +40,6 @@ def test_normalize_job_status_builds_summary_from_project_link() -> None:
     assert detail.id == "77"
     assert detail.status == "in_progress"
     assert detail.message == "Copy running"
-    assert detail.percentage_complete == 40
     assert detail.project_id == 6
     assert detail.project == "Demo"
     assert detail.created_resource_id == 88

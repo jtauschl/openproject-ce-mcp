@@ -64,6 +64,14 @@ def normalize_job_status(payload: dict[str, Any]) -> JobStatusDetail:
     No `url` field: a client-constructed web page path
     (`{base_url}/job_statuses/{job_id}`) is not a server-supplied href, so it
     is not built here, per the "no constructed output URLs" rule.
+
+    No `percentage_complete`/`created_at`/`updated_at` fields either:
+    `JobStatusRepresenter` (verified against op-sources 17.7) renders only
+    `job_id`/`status`/`message`/`payload`/`_type` -- there is no progress
+    concept or timestamp property anywhere in the job_status module. A prior
+    version of this function read `percentageDone`/`progress`/`createdAt`/
+    `updatedAt`, none of which the API ever sends -- all three were always
+    None.
     """
     top_level_links = payload.get("_links", {})
     links = _job_status_inner_links(payload)
@@ -81,9 +89,6 @@ def normalize_job_status(payload: dict[str, Any]) -> JobStatusDetail:
             payload.get("status") or payload.get("jobStatus") or payload.get("state"), limit=SUBJECT_LIMIT
         ),
         message=_trim_text(payload.get("message") or payload.get("error"), limit=FORMATTABLE_LIMIT),
-        created_at=payload.get("createdAt"),
-        updated_at=payload.get("updatedAt"),
-        percentage_complete=payload.get("percentageDone") or payload.get("progress"),
         project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
         project=_link_title(project_link),
         created_resource_type=_trim_text(resource_link.get("type"), limit=SUBJECT_LIMIT)
