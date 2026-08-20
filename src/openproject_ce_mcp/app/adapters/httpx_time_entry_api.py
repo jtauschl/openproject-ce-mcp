@@ -56,9 +56,7 @@ def _entity_type_from_href(href: str | None) -> str | None:
     the entity's type is only ever distinguishable by which resource collection
     its `entity` link's href points into (`/api/v3/work_packages/<id>` vs.
     `/api/v3/meetings/<id>`), matching `EntityRepresenterFactory.representer_type`
-    server-side. A prior version of this function read `payload["entityType"]`,
-    a field the API never actually sends -- entity_type was always None,
-    silently defeating any entity_type=="WorkPackage" comparison."""
+    server-side."""
     if not href:
         return None
     segments = [s for s in href.split("/") if s]

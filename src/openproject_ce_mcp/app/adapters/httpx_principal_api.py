@@ -28,8 +28,6 @@ def normalize_principal(payload: dict[str, Any]) -> PrincipalSummary:
     `_type`/`id`/`name`/`email` (`firstname`/`lastname` conditionally).
     `login`/`status` exist only on the full single-resource `UserRepresenter`
     (`GET /users/{id}`), which this narrow principals-list port never calls.
-    A prior version of this function read payload.get("login")/("status"),
-    which were therefore always None for every principal.
     """
     principal_type = _trim_text(payload.get("_type"), limit=SUBJECT_LIMIT)
     principal_id = int(payload["id"])

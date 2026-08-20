@@ -15,12 +15,8 @@ wiki_page_representer.rb, verified against 16.1 and 17.7) renders only
 `id`, `title`, and the project link -- no `text`/`content` property, and
 `WikiPagesAPI`'s single `GET /wiki_pages/{id}` route (the only one that
 exists; no list/create/update/delete either) mounts nothing else that would
-expose the page body. A prior version of this adapter read
-`payload.get("text") or payload.get("content")`, neither of which the API
-ever sends -- WikiPageDetail.content/content_truncated/content_length were
-always None/empty. Removed rather than kept as always-None: OpenProject's
-REST API v3 has no route that returns wiki page body text at all, so there
-was never a fixable bug here, just a field that cannot exist.
+expose the page body. OpenProject's REST API v3 simply has no route that
+returns wiki page body text at all.
 """
 
 from __future__ import annotations

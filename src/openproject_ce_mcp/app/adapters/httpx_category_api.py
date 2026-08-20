@@ -35,8 +35,6 @@ def normalize_category(payload: dict[str, Any], *, project_id: int | None, proje
     `defaultAssignee` (an unrelated concept -- the user auto-assigned to
     work packages in this category, not "is this the project's default
     category"). The `Category` model itself has no such attribute anywhere.
-    A prior version of this function read `payload.get("isDefault")`, which
-    the API never sends -- is_default was always False.
     """
     category_id = int(payload["id"])
     links = payload.get("_links", {})

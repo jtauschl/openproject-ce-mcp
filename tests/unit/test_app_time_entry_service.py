@@ -382,8 +382,7 @@ async def test_list_all_denies_entries_outside_read_allowlist() -> None:
 @pytest.mark.asyncio
 async def test_list_all_resolves_work_package_id_and_filters_by_entity() -> None:
     """No timeEntries link on the work package (e.g. an older OpenProject) --
-    falls back to the global scan with client-side entity filtering, same as
-    before this behavior existed."""
+    falls back to the global scan with client-side entity filtering."""
     api = _FakeTimeEntryApi(
         records=[
             _summary(1, entity_type="WorkPackage", entity_id=42),
@@ -431,8 +430,8 @@ async def test_list_all_follows_time_entries_href_when_work_package_provides_one
 
 @pytest.mark.asyncio
 async def test_list_all_rejects_work_package_outside_read_scope() -> None:
-    """The scope check that used to live inside WorkPackageIdResolver.resolve_id
-    must still run when list_all fetches the work package payload directly."""
+    """list_all fetches the work package payload directly (not via
+    WorkPackageIdResolver), so it must apply the read-allowlist check itself."""
     settings = dataclasses.replace(make_settings(), read_projects=("other-project",))
     wp_lookup = _FakeWorkPackageLookupApi(project_link={"href": "/api/v3/projects/1", "title": "Demo"})
     service = _service(settings=settings, work_package_lookup_api=wp_lookup)

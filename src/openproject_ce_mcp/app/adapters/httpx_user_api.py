@@ -45,8 +45,6 @@ def normalize_user(payload: dict[str, Any], *, base_url: str, origin: str) -> Us
     e.g. "https://host/users/5/avatar"), not a `_links.avatar` link --
     verified against `user_representer.rb` (`property :avatar, getter:
     ->(*) { avatar_url(represented) }`) and live against a real instance.
-    A prior version of this function read `_links.avatar`, which
-    UserRepresenter never sends -- avatar_url was always None.
     """
     return UserSummary(
         id=int(payload["id"]),
@@ -79,11 +77,9 @@ def normalize_user_detail(
     the summary computed here, same as before.
 
     No `groups` field: `user_representer.rb` declares no `_links.groups` (or
-    any other group-membership exposure) at all -- a prior version of this
-    function read `_links.groups`, which was always empty. There is no route
-    that lists a user's groups from the user side; `get_group`'s own
-    `members` field is the only way to see this relationship, from the
-    group's side.
+    any other group-membership exposure) at all. There is no route that
+    lists a user's groups from the user side; `get_group`'s own `members`
+    field is the only way to see this relationship, from the group's side.
     """
     if summary is None:
         summary = normalize_user(payload, base_url=base_url, origin=origin)
