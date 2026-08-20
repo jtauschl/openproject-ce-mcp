@@ -35,8 +35,8 @@ def normalize_file_link(payload: dict[str, Any]) -> FileLinkSummary:
     storage_name = _link_title(storage_link)
     return FileLinkSummary(
         id=file_link_id,
-        title=_trim_text(payload.get("title") or payload.get("originData", {}).get("name"), limit=SUBJECT_LIMIT)
-        or f"File link {file_link_id}",
+        # FileLinkRepresenter has no top-level `title` property, only `originData.name`.
+        title=_trim_text(payload.get("originData", {}).get("name"), limit=SUBJECT_LIMIT) or f"File link {file_link_id}",
         storage_id=storage_id,
         storage_name=storage_name,
         created_at=payload.get("createdAt"),

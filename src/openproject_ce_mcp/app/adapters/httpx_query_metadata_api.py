@@ -98,9 +98,11 @@ def normalize_query_sort_by(
     sort_by_id = requested_id if requested_id is not None else derived_id
     column_link = links.get("column")
     direction_link = links.get("direction")
-    direction = _trim_text(payload.get("direction"), limit=SUBJECT_LIMIT)
-    if direction is None and isinstance(direction_link, dict):
-        direction = _trim_text(direction_link.get("title"), limit=SUBJECT_LIMIT)
+    # QuerySortByRepresenter has no top-level `direction` property, only the
+    # `_links.direction` link's title.
+    direction = (
+        _trim_text(direction_link.get("title"), limit=SUBJECT_LIMIT) if isinstance(direction_link, dict) else None
+    )
     return QuerySortBySummary(
         id=sort_by_id,
         name=_trim_text(payload.get("name") or self_link.get("title"), limit=SUBJECT_LIMIT),

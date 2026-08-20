@@ -62,7 +62,7 @@ def test_normalize_query_operator_falls_back_to_self_link_title() -> None:
     assert operator.name == "is (OR)"
 
 
-def test_normalize_query_sort_by_falls_back_to_direction_link_title() -> None:
+def test_normalize_query_sort_by_reads_direction_from_link_title() -> None:
     # No requested_id passed -- id is derived from the self-link, which carries
     # OpenProject's real hyphen-joined form ("subject-asc"), not the client's
     # colon-separated public id ("subject:asc"). See get_sort_by for the

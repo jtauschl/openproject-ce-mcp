@@ -68,8 +68,8 @@ def normalize_attachment(payload: dict[str, Any], *, base_url: str, origin: str)
         download_href = links["staticDownloadLocation"].get("href")
     return AttachmentSummary(
         id=int(payload["id"]),
-        title=_trim_text(payload.get("title") or payload.get("fileName"), limit=SUBJECT_LIMIT)
-        or f"Attachment {payload['id']}",
+        # AttachmentRepresenter has no `title` property, only `file_name`.
+        title=_trim_text(payload.get("fileName"), limit=SUBJECT_LIMIT) or f"Attachment {payload['id']}",
         file_name=_trim_text(payload.get("fileName"), limit=SUBJECT_LIMIT),
         file_size_bytes=payload.get("fileSize"),
         description=_delimit_user_content(_extract_formattable_text(payload.get("description"))),

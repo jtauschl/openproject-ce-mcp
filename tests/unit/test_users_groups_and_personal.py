@@ -379,10 +379,10 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
                 200,
                 json={
                     "name": "Subject asc",
-                    "direction": "asc",
                     "_links": {
                         "self": {"href": "/api/v3/queries/sort_bys/subject-asc"},
                         "column": {"title": "Subject"},
+                        "direction": {"title": "asc"},
                     },
                 },
                 request=request,

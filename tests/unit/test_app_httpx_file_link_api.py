@@ -18,7 +18,7 @@ def _client(handler) -> httpx.AsyncClient:
 def _file_link_payload(file_link_id: int = 5, *, container_href: str | None = "/api/v3/work_packages/9") -> dict:
     payload: dict = {
         "id": file_link_id,
-        "title": "spec.pdf",
+        "originData": {"name": "spec.pdf"},
         "createdAt": "2026-01-01T00:00:00Z",
         "updatedAt": "2026-01-02T00:00:00Z",
         "_links": {
@@ -105,19 +105,17 @@ async def test_delete_sends_delete_request() -> None:
         await api.delete(5)
 
 
-def test_normalize_file_link_falls_back_to_origin_data_name_when_title_missing() -> None:
+def test_normalize_file_link_uses_origin_data_name_as_title() -> None:
     payload = _file_link_payload()
-    del payload["title"]
-    payload["originData"] = {"name": "fallback-name.pdf"}
 
     summary = normalize_file_link(payload)
 
-    assert summary.title == "fallback-name.pdf"
+    assert summary.title == "spec.pdf"
 
 
-def test_normalize_file_link_falls_back_to_generated_title_when_nothing_present() -> None:
+def test_normalize_file_link_falls_back_to_generated_title_when_origin_data_missing() -> None:
     payload = _file_link_payload()
-    del payload["title"]
+    del payload["originData"]
 
     summary = normalize_file_link(payload)
 
@@ -126,7 +124,7 @@ def test_normalize_file_link_falls_back_to_generated_title_when_nothing_present(
 
 def test_normalize_file_link_trims_long_title() -> None:
     payload = _file_link_payload()
-    payload["title"] = "x" * 300
+    payload["originData"] = {"name": "x" * 300}
 
     summary = normalize_file_link(payload)
 
