@@ -221,13 +221,11 @@ CLEAR_PARENT = object()
 CLEAR_VERSION = object()
 
 # Generic "clear this field" sentinel, shared by both nullable HAL-link fields
-# (assignee, responsible, category, project_phase) and plain scalar fields
-# (estimated_time, remaining_time, duration -- cleared via <field>: null
-# directly in the payload). Distinguishes "clear this field" from "leave
+# (assignee, responsible, category, project_phase, sprint) and plain scalar
+# fields (estimated_time, remaining_time, duration -- cleared via <field>:
+# null directly in the payload). Distinguishes "clear this field" from "leave
 # unchanged" (None). parent/version keep their own dedicated sentinels above
-# because each must additionally bypass its own reference-resolution step
-# (numeric-id resolution for parent, name resolution for version); every
-# other clearable field has no such resolution step and shares this one.
+# instead of sharing this one, for historical reasons.
 CLEAR = object()
 
 

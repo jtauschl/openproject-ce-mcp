@@ -3065,10 +3065,10 @@ async def list_work_packages(
 ) -> WorkPackageListResult:
     """List work packages with structured filters and no free-text query requirement.
 
-    project is the project identifier/slug (e.g. "opm"), not a numeric
-    project_id. There is no generic filters=[...] parameter — each filter is
-    its own named argument (version, status, assignee, the date filters,
-    etc.), listed below.
+    project accepts a numeric ID, exact identifier/slug, or project name; the
+    parameter is named project, not project_id. There is no generic
+    filters=[...] parameter — each filter is its own named argument (version,
+    status, assignee, the date filters, etc.), listed below.
 
     version_status filters by the status of a work package's assigned version:
     one of 'open', 'closed', or 'locked'.

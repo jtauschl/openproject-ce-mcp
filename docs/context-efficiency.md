@@ -119,7 +119,7 @@ tool description instead, the worst-case `tools/list` payload above would
 balloon roughly 4x. This has been observed happening in practice with a
 real MCP client during tool discovery — attributed to the client's own
 MCP-to-function-schema translation (many function-calling APIs have no
-separate slot for server-wide notes), not to this server or to FastMCP's
+separate slot for server-wide notes), not to this server or to MCPServer's
 `Tool.description` construction (built solely from each function's own
 docstring). No local
 workaround was added — copying instructions into every tool description here

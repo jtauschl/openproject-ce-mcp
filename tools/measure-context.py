@@ -152,7 +152,7 @@ async def measure_tools_list() -> None:
     # server.instructions is carried exactly once (the spec-standard `initialize`
     # field) and never duplicated into any individual tool's `description` --
     # confirming the duplication, if real, is not introduced by this server or
-    # by FastMCP's Tool.description construction (which is built from each
+    # by MCPServer's Tool.description construction (which is built from each
     # function's own docstring, never referencing `instructions`).
     print("=== server instructions vs. per-tool descriptions ===\n")
     settings = Settings.from_env({**BASE_ENV, **WRITE_ENV, "OPENPROJECT_ENABLE_EXTENDED_READ": "true"})
