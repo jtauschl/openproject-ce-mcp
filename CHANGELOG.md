@@ -30,6 +30,9 @@ support.
   parameter** to return server-computed `groups`/`total_sums` aggregates
   (estimated time, story points, costs, etc.) alongside a `group_by` query,
   instead of requiring client-side pagination and summation.
+- **`list_work_packages`/`search_work_packages` gain `overdue_only` and
+  `due_within_days` parameters** to filter by due-date status server-side,
+  instead of requiring the caller to fetch every result and filter locally.
 - **`list_documents`, `list_views`, and `list_sprints` gain a `search`
   parameter.**
 - **`bulk_update_work_packages` now supports `sprint`.**

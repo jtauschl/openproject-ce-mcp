@@ -1209,6 +1209,70 @@ async def test_apply_date_filters_rejects_both_on_and_between() -> None:
 
 
 @pytest.mark.asyncio
+async def test_overdue_only_filters_by_due_date_before_today_and_open_status() -> None:
+    service, api = _service()
+
+    await service.list(overdue_only=True)
+
+    filters = api.list_calls[0]["filters"]
+    assert {"due_date": {"operator": "<t-", "values": ["1"]}} in filters
+    assert {"status_id": {"operator": "o", "values": []}} in filters
+
+
+@pytest.mark.asyncio
+async def test_due_within_days_filters_by_relative_date_range() -> None:
+    service, api = _service()
+
+    await service.list(due_within_days=7)
+
+    filters = api.list_calls[0]["filters"]
+    assert {"due_date": {"operator": "<t+", "values": ["7"]}} in filters
+
+
+@pytest.mark.asyncio
+async def test_overdue_only_rejects_combination_with_due_on() -> None:
+    service, _ = _service()
+
+    with pytest.raises(InvalidInputError):
+        await service.list(overdue_only=True, due_on="2026-01-01")
+
+
+@pytest.mark.asyncio
+async def test_overdue_only_rejects_combination_with_due_within_days() -> None:
+    service, _ = _service()
+
+    with pytest.raises(InvalidInputError):
+        await service.list(overdue_only=True, due_within_days=3)
+
+
+@pytest.mark.asyncio
+async def test_due_within_days_rejects_combination_with_due_between() -> None:
+    service, _ = _service()
+
+    with pytest.raises(InvalidInputError):
+        await service.list(due_within_days=3, due_between=["2026-01-01", "2026-01-31"])
+
+
+@pytest.mark.asyncio
+async def test_due_within_days_rejects_negative_value() -> None:
+    service, _ = _service()
+
+    with pytest.raises(InvalidInputError):
+        await service.list(due_within_days=-1)
+
+
+@pytest.mark.asyncio
+async def test_search_overdue_only_filters_by_due_date_before_today_and_open_status() -> None:
+    service, api = _service()
+
+    await service.search(search="foo", overdue_only=True)
+
+    filters = api.list_calls[0]["filters"]
+    assert {"due_date": {"operator": "<t-", "values": ["1"]}} in filters
+    assert {"status_id": {"operator": "o", "values": []}} in filters
+
+
+@pytest.mark.asyncio
 async def test_list_my_open_uses_current_user_and_open_status_filter() -> None:
     service, api = _service()
 

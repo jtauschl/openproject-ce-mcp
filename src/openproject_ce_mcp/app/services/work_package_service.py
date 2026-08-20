@@ -760,6 +760,8 @@ class WorkPackageService:
         updated_between: list[str] | None,
         due_on: str | None,
         due_between: list[str] | None,
+        overdue_only: bool,
+        due_within_days: int | None,
     ) -> None:
         def _validate_date(date_str: str, field_name: str) -> str:
             normalized = date_str.strip()
@@ -783,6 +785,12 @@ class WorkPackageService:
             raise InvalidInputError("Cannot specify both updated_on and updated_between")
         if due_on and due_between:
             raise InvalidInputError("Cannot specify both due_on and due_between")
+        if overdue_only and (due_on or due_between or due_within_days is not None):
+            raise InvalidInputError("Cannot combine overdue_only with due_on, due_between, or due_within_days")
+        if due_within_days is not None and (due_on or due_between):
+            raise InvalidInputError("Cannot combine due_within_days with due_on or due_between")
+        if due_within_days is not None and due_within_days < 0:
+            raise InvalidInputError("due_within_days must be >= 0")
 
         if created_on:
             filters.append({"created_at": {"operator": "=d", "values": [_validate_date(created_on, "created_on")]}})
@@ -800,6 +808,15 @@ class WorkPackageService:
             filters.append({"due_date": {"operator": "=d", "values": [_validate_date(due_on, "due_on")]}})
         if due_between:
             filters.append({"due_date": {"operator": "<>d", "values": _validate_range(due_between, "due_between")}})
+        if overdue_only:
+            # "<t-" with days=1 means due_date <= yesterday (strictly before
+            # today) -- matches WorkPackage#overdue?'s own due_date < today
+            # predicate. Combined with the open-status meta-filter, since
+            # OpenProject's own overdue? also requires !closed?.
+            filters.append({"due_date": {"operator": "<t-", "values": ["1"]}})
+            filters.append({"status_id": {"operator": "o", "values": []}})
+        if due_within_days is not None:
+            filters.append({"due_date": {"operator": "<t+", "values": [str(due_within_days)]}})
 
     def _apply_custom_field_filters(
         self,
@@ -884,6 +901,8 @@ class WorkPackageService:
         updated_between: list[str] | None = None,
         due_on: str | None = None,
         due_between: list[str] | None = None,
+        overdue_only: bool = False,
+        due_within_days: int | None = None,
         sort_by: list[SortCriterion] | None = None,
         group_by: str | None = None,
         offset: int = 1,
@@ -930,6 +949,8 @@ class WorkPackageService:
             updated_between=updated_between,
             due_on=due_on,
             due_between=due_between,
+            overdue_only=overdue_only,
+            due_within_days=due_within_days,
         )
         return await self._list_collection(
             project_id=project_id,
@@ -960,6 +981,8 @@ class WorkPackageService:
         updated_between: list[str] | None = None,
         due_on: str | None = None,
         due_between: list[str] | None = None,
+        overdue_only: bool = False,
+        due_within_days: int | None = None,
         sort_by: list[SortCriterion] | None = None,
         group_by: str | None = None,
         offset: int = 1,
@@ -1028,6 +1051,8 @@ class WorkPackageService:
             updated_between=updated_between,
             due_on=due_on,
             due_between=due_between,
+            overdue_only=overdue_only,
+            due_within_days=due_within_days,
         )
         return await self._list_collection(
             project_id=project_id,

@@ -2952,6 +2952,8 @@ async def search_work_packages(
     updated_between: list[str] | None = None,
     due_on: str | None = None,
     due_between: list[str] | None = None,
+    overdue_only: bool = False,
+    due_within_days: int | None = None,
     sort_by: list[str] | None = None,
     group_by: str | None = None,
     offset: int = 1,
@@ -2980,16 +2982,17 @@ async def search_work_packages(
 
     priority filters by priority name or numeric ID (case-insensitive).
 
-    Date filters, sort_by/group_by, select, pagination (offset/limit/total),
-    include_sums, and each result's custom_fields/custom_comments (raw-key
-    custom-field values/comments, capped and hide-matched exactly as
-    documented) all work exactly as documented on list_work_packages — see
-    that tool's docstring for the full field lists and semantics. One
-    difference: total is the real matching count only when scope is
-    unrestricted or an explicit project was given (list_work_packages's
-    server-side allowed-project filter for the no-project+restricted-scope
-    case does not apply here); otherwise total/groups/total_sums fall back
-    to this page's data, same safety guarantee either way.
+    Date filters, overdue_only/due_within_days, sort_by/group_by, select,
+    pagination (offset/limit/total), include_sums, and each result's
+    custom_fields/custom_comments (raw-key custom-field values/comments,
+    capped and hide-matched exactly as documented) all work exactly as
+    documented on list_work_packages — see that tool's docstring for the
+    full field lists and semantics. One difference: total is the real
+    matching count only when scope is unrestricted or an explicit project
+    was given (list_work_packages's server-side allowed-project filter for
+    the no-project+restricted-scope case does not apply here); otherwise
+    total/groups/total_sums fall back to this page's data, same safety
+    guarantee either way.
 
     custom_field_filters filters by custom field value(s); see
     list_work_packages's docstring for the full parameter documentation
@@ -3028,6 +3031,8 @@ async def search_work_packages(
             updated_between=safe_updated_between,
             due_on=safe_due_on,
             due_between=safe_due_between,
+            overdue_only=overdue_only,
+            due_within_days=due_within_days,
             sort_by=safe_sort_by,
             group_by=safe_group_by,
             offset=safe_offset,
@@ -3055,6 +3060,8 @@ async def list_work_packages(
     updated_between: list[str] | None = None,
     due_on: str | None = None,
     due_between: list[str] | None = None,
+    overdue_only: bool = False,
+    due_within_days: int | None = None,
     sort_by: list[str] | None = None,
     group_by: str | None = None,
     offset: int = 1,
@@ -3083,6 +3090,13 @@ async def list_work_packages(
     - created_on/updated_on/due_on: exact date match
     - created_between/updated_between/due_between: inclusive date range [start, end]
     Cannot specify both _on and _between for the same field.
+
+    overdue_only=true restricts results to work packages with due_date before
+    today that are not closed (OpenProject's own overdue? predicate — there
+    is no dedicated overdue API filter, this composes a relative date filter
+    with the open-status meta-filter). due_within_days=N restricts to
+    due_date in [today, today+N days]. Neither can be combined with each
+    other or with due_on/due_between (all four constrain the same field).
 
     sort_by accepts a list of sort criteria in format "field:direction"
     (e.g., ["status:desc", "priority:asc"]). Direction defaults to "asc" if omitted.
@@ -3245,6 +3259,8 @@ async def list_work_packages(
             updated_between=safe_updated_between,
             due_on=safe_due_on,
             due_between=safe_due_between,
+            overdue_only=overdue_only,
+            due_within_days=due_within_days,
             sort_by=safe_sort_by,
             group_by=safe_group_by,
             offset=safe_offset,
