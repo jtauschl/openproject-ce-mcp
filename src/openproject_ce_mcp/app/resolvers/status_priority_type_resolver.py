@@ -23,24 +23,41 @@ Depends on `StatusPriorityTypeApi` (the Port), never
 regression -- an instance can have work-package writes enabled with reads
 entirely disabled, and this resolver's callers (write-path name resolution)
 must keep working in that configuration.
+
+`statuses_cache`/`priorities_cache` are the same `SingletonCache` instances
+`client.py` also gives `StatusPriorityTypeService` -- see `app/caches.py`.
+Consulting the cache here does NOT add a read-gate check: the cache holds no
+gate logic of its own, so this resolver's no-gate contract is unchanged.
 """
 
 from __future__ import annotations
 
+from ..caches import SingletonCache
 from ..errors import InvalidInputError
-from ..ports.status_priority_type_api import StatusPriorityTypeApi
+from ..ports.status_priority_type_api import PriorityRecord, StatusPriorityTypeApi, StatusRecord
 
 
 class StatusPriorityTypeResolver:
-    def __init__(self, *, api: StatusPriorityTypeApi) -> None:
+    def __init__(
+        self,
+        *,
+        api: StatusPriorityTypeApi,
+        statuses_cache: SingletonCache[list[StatusRecord]],
+        priorities_cache: SingletonCache[list[PriorityRecord]],
+    ) -> None:
         self._api = api
+        self._statuses_cache = statuses_cache
+        self._priorities_cache = priorities_cache
 
     async def resolve_status_id(self, status_ref: str) -> str:
         if status_ref.isdigit():
             return status_ref
-        records = await self._api.list_statuses()
+        if self._statuses_cache.value is None:
+            self._statuses_cache.value = await self._api.list_statuses()
         matches = [
-            str(record.summary.id) for record in records if record.lookup_name.casefold() == status_ref.casefold()
+            str(record.summary.id)
+            for record in self._statuses_cache.value
+            if record.lookup_name.casefold() == status_ref.casefold()
         ]
         if not matches:
             raise InvalidInputError(f"OpenProject status '{status_ref}' was not found.")
@@ -49,9 +66,12 @@ class StatusPriorityTypeResolver:
     async def resolve_priority_id(self, priority_ref: str) -> str:
         if priority_ref.isdigit():
             return priority_ref
-        records = await self._api.list_priorities()
+        if self._priorities_cache.value is None:
+            self._priorities_cache.value = await self._api.list_priorities()
         matches = [
-            str(record.summary.id) for record in records if record.lookup_name.casefold() == priority_ref.casefold()
+            str(record.summary.id)
+            for record in self._priorities_cache.value
+            if record.lookup_name.casefold() == priority_ref.casefold()
         ]
         if not matches:
             raise InvalidInputError(f"OpenProject priority '{priority_ref}' was not found.")

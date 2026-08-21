@@ -5,6 +5,7 @@ import dataclasses
 import pytest
 from _client_test_helpers import make_settings
 
+from openproject_ce_mcp.app.caches import SingletonCache
 from openproject_ce_mcp.app.errors import PermissionDeniedError
 from openproject_ce_mcp.app.ports.status_priority_type_api import PriorityRecord, StatusRecord, TypeRecord
 from openproject_ce_mcp.app.services.status_priority_type_service import StatusPriorityTypeService
@@ -70,14 +71,18 @@ class _FakeStatusPriorityTypeApi:
             r.summary.id: r for r in (types or [TypeRecord(summary=_type_summary(), lookup_name=_type_summary().name)])
         }
         self.list_types_calls: list[int | None] = []
+        self.list_statuses_calls = 0
+        self.list_priorities_calls = 0
 
     async def list_statuses(self) -> list[StatusRecord]:
+        self.list_statuses_calls += 1
         return list(self._statuses.values())
 
     async def get_status(self, status_id: int) -> StatusRecord:
         return self._statuses[status_id]
 
     async def list_priorities(self) -> list[PriorityRecord]:
+        self.list_priorities_calls += 1
         return list(self._priorities.values())
 
     async def get_priority(self, priority_id: int) -> PriorityRecord:
@@ -107,12 +112,16 @@ def _service(
     *,
     settings=None,
     resolve_project_ref=_resolve_project_ref,
+    statuses_cache: SingletonCache | None = None,
+    priorities_cache: SingletonCache | None = None,
 ) -> StatusPriorityTypeService:
     api = api or _FakeStatusPriorityTypeApi()
     return StatusPriorityTypeService(
         api=api,
         settings=settings or make_settings(),
         resolve_project_ref=resolve_project_ref,
+        statuses_cache=statuses_cache if statuses_cache is not None else SingletonCache(),
+        priorities_cache=priorities_cache if priorities_cache is not None else SingletonCache(),
     )
 
 
@@ -160,6 +169,33 @@ async def test_list_statuses_checks_read_enabled() -> None:
 
     with pytest.raises(PermissionDeniedError):
         await service.list_statuses()
+
+
+@pytest.mark.asyncio
+async def test_list_statuses_does_not_call_the_api_twice() -> None:
+    api = _FakeStatusPriorityTypeApi()
+    service = _service(api)
+
+    await service.list_statuses()
+    await service.list_statuses()
+
+    assert api.list_statuses_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_list_statuses_still_gates_a_read_after_the_cache_is_populated() -> None:
+    """A cache hit must not bypass the read-enablement gate -- the gate check
+    runs on every call, only the underlying API fetch is skipped."""
+    cache: SingletonCache = SingletonCache()
+    api = _FakeStatusPriorityTypeApi()
+    service = _service(api, statuses_cache=cache)
+    await service.list_statuses()
+
+    settings = dataclasses.replace(make_settings(), enable_work_package_read=False)
+    gated_service = _service(api, settings=settings, statuses_cache=cache)
+
+    with pytest.raises(PermissionDeniedError):
+        await gated_service.list_statuses()
 
 
 # ── Priorities ──────────────────────────────────────────────────────────────
@@ -237,6 +273,35 @@ async def test_list_priorities_checks_read_enabled() -> None:
 
     with pytest.raises(PermissionDeniedError):
         await service.list_priorities()
+
+
+@pytest.mark.asyncio
+async def test_list_priorities_does_not_call_the_api_twice() -> None:
+    api = _FakeStatusPriorityTypeApi()
+    service = _service(api)
+
+    await service.list_priorities()
+    await service.list_priorities()
+
+    assert api.list_priorities_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_list_statuses_shares_its_cache_with_the_resolver() -> None:
+    """statuses_cache is the SAME instance client.py also gives
+    StatusPriorityTypeResolver -- a fetch via the Service must be visible to
+    the Resolver without a second API call."""
+    from openproject_ce_mcp.app.resolvers.status_priority_type_resolver import StatusPriorityTypeResolver
+
+    api = _FakeStatusPriorityTypeApi()
+    statuses_cache: SingletonCache = SingletonCache()
+    service = _service(api, statuses_cache=statuses_cache)
+    resolver = StatusPriorityTypeResolver(api=api, statuses_cache=statuses_cache, priorities_cache=SingletonCache())
+
+    await service.list_statuses()
+    await resolver.resolve_status_id("In progress")
+
+    assert api.list_statuses_calls == 1
 
 
 # ── Types ───────────────────────────────────────────────────────────────────

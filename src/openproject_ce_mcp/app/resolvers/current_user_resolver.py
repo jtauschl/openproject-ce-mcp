@@ -20,22 +20,30 @@ calls, not worth a new shared abstraction. `CurrentUserService` itself is
 unchanged and still backs the `get_current_user` MCP tool directly; this
 Resolver is a second, independent implementation of the exact same
 free-standing logic, not a replacement for the Service.
+
+`cache` is the same `SingletonCache` instance `client.py` also gives
+`CurrentUserService` -- see `app/caches.py`. Populating it here does not
+change this Resolver's gate/mask behavior; the cache holds no logic of its
+own.
 """
 
 from __future__ import annotations
 
 from ...config import Settings
 from ...models import CurrentUser
+from ..caches import SingletonCache
 from ..policies import access, hidden_fields
-from ..ports.current_user_api import CurrentUserApi
+from ..ports.current_user_api import CurrentUserApi, CurrentUserRecord
 
 
 class CurrentUserResolver:
-    def __init__(self, *, api: CurrentUserApi, settings: Settings) -> None:
+    def __init__(self, *, api: CurrentUserApi, settings: Settings, cache: SingletonCache[CurrentUserRecord]) -> None:
         self._api = api
         self._settings = settings
+        self._cache = cache
 
     async def __call__(self) -> CurrentUser:
         access.ensure_read_enabled("principal", settings=self._settings)
-        record = await self._api.get_current_user()
-        return hidden_fields.apply_hidden_fields("current_user", record.summary, settings=self._settings)
+        if self._cache.value is None:
+            self._cache.value = await self._api.get_current_user()
+        return hidden_fields.apply_hidden_fields("current_user", self._cache.value.summary, settings=self._settings)

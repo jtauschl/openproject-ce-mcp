@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from openproject_ce_mcp.app.adapters.httpx_status_priority_type_api import HttpxStatusPriorityTypeApi
+from openproject_ce_mcp.app.caches import SingletonCache
 from openproject_ce_mcp.app.errors import InvalidInputError
 from openproject_ce_mcp.app.ports.status_priority_type_api import PriorityRecord, StatusRecord
 from openproject_ce_mcp.app.resolvers.status_priority_type_resolver import StatusPriorityTypeResolver
@@ -43,24 +44,32 @@ class _FakeApi:
     ) -> None:
         self._statuses = statuses or []
         self._priorities = priorities or []
+        self.list_statuses_calls = 0
+        self.list_priorities_calls = 0
 
     async def list_statuses(self) -> list[StatusRecord]:
+        self.list_statuses_calls += 1
         return self._statuses
 
     async def list_priorities(self) -> list[PriorityRecord]:
+        self.list_priorities_calls += 1
         return self._priorities
+
+
+def _resolver(api) -> StatusPriorityTypeResolver:
+    return StatusPriorityTypeResolver(api=api, statuses_cache=SingletonCache(), priorities_cache=SingletonCache())
 
 
 @pytest.mark.asyncio
 async def test_resolve_status_id_numeric_passthrough_never_calls_the_api() -> None:
-    resolver = StatusPriorityTypeResolver(api=_FakeApi())
+    resolver = _resolver(_FakeApi())
     assert await resolver.resolve_status_id("7") == "7"
 
 
 @pytest.mark.asyncio
 async def test_resolve_status_id_matches_by_case_insensitive_name() -> None:
     api = _FakeApi(statuses=[_status(1, "New"), _status(2, "In Progress")])
-    resolver = StatusPriorityTypeResolver(api=api)
+    resolver = _resolver(api)
     assert await resolver.resolve_status_id("in progress") == "2"
 
 
@@ -70,42 +79,69 @@ async def test_resolve_status_id_returns_first_match_on_duplicate_names() -> Non
     name -- no ambiguity error, unlike TypeResolver/SprintResolver. This
     asymmetry is pre-existing and must be preserved exactly."""
     api = _FakeApi(statuses=[_status(1, "New"), _status(2, "New")])
-    resolver = StatusPriorityTypeResolver(api=api)
+    resolver = _resolver(api)
     assert await resolver.resolve_status_id("New") == "1"
 
 
 @pytest.mark.asyncio
 async def test_resolve_status_id_raises_when_not_found() -> None:
-    resolver = StatusPriorityTypeResolver(api=_FakeApi())
+    resolver = _resolver(_FakeApi())
     with pytest.raises(InvalidInputError, match="was not found"):
         await resolver.resolve_status_id("Ghost")
 
 
 @pytest.mark.asyncio
 async def test_resolve_priority_id_numeric_passthrough_never_calls_the_api() -> None:
-    resolver = StatusPriorityTypeResolver(api=_FakeApi())
+    resolver = _resolver(_FakeApi())
     assert await resolver.resolve_priority_id("3") == "3"
 
 
 @pytest.mark.asyncio
 async def test_resolve_priority_id_matches_by_case_insensitive_name() -> None:
     api = _FakeApi(priorities=[_priority(1, "Low"), _priority(2, "High")])
-    resolver = StatusPriorityTypeResolver(api=api)
+    resolver = _resolver(api)
     assert await resolver.resolve_priority_id("HIGH") == "2"
 
 
 @pytest.mark.asyncio
 async def test_resolve_priority_id_returns_first_match_on_duplicate_names() -> None:
     api = _FakeApi(priorities=[_priority(1, "High"), _priority(2, "High")])
-    resolver = StatusPriorityTypeResolver(api=api)
+    resolver = _resolver(api)
     assert await resolver.resolve_priority_id("High") == "1"
 
 
 @pytest.mark.asyncio
 async def test_resolve_priority_id_raises_when_not_found() -> None:
-    resolver = StatusPriorityTypeResolver(api=_FakeApi())
+    resolver = _resolver(_FakeApi())
     with pytest.raises(InvalidInputError, match="was not found"):
         await resolver.resolve_priority_id("Ghost")
+
+
+@pytest.mark.asyncio
+async def test_resolve_status_id_reuses_a_shared_cache_across_two_resolver_instances() -> None:
+    """statuses_cache is the SAME instance client.py also gives
+    StatusPriorityTypeService -- a resolution via one consumer must be
+    visible to the other without a second API call."""
+    api = _FakeApi(statuses=[_status(1, "New")])
+    statuses_cache: SingletonCache = SingletonCache()
+    resolver_a = StatusPriorityTypeResolver(api=api, statuses_cache=statuses_cache, priorities_cache=SingletonCache())
+    resolver_b = StatusPriorityTypeResolver(api=api, statuses_cache=statuses_cache, priorities_cache=SingletonCache())
+
+    assert await resolver_a.resolve_status_id("New") == "1"
+    assert await resolver_b.resolve_status_id("New") == "1"
+
+    assert api.list_statuses_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_resolve_priority_id_does_not_call_the_api_twice() -> None:
+    api = _FakeApi(priorities=[_priority(1, "High")])
+    resolver = _resolver(api)
+
+    await resolver.resolve_priority_id("High")
+    await resolver.resolve_priority_id("High")
+
+    assert api.list_priorities_calls == 1
 
 
 @pytest.mark.asyncio
@@ -131,7 +167,7 @@ async def test_resolve_status_id_matches_the_raw_name_exactly_via_real_port() ->
 
     http = httpx.AsyncClient(base_url=f"{BASE_URL}/api/v3/", transport=httpx.MockTransport(handler))
     api = HttpxStatusPriorityTypeApi(HttpxTransport(http))
-    resolver = StatusPriorityTypeResolver(api=api)
+    resolver = _resolver(api)
 
     assert await resolver.resolve_status_id("In   Progress\t") == "1"
     with pytest.raises(InvalidInputError, match="was not found"):
@@ -154,7 +190,7 @@ async def test_resolve_status_id_does_not_match_a_blank_name_against_the_synthet
 
     http = httpx.AsyncClient(base_url=f"{BASE_URL}/api/v3/", transport=httpx.MockTransport(handler))
     api = HttpxStatusPriorityTypeApi(HttpxTransport(http))
-    resolver = StatusPriorityTypeResolver(api=api)
+    resolver = _resolver(api)
 
     with pytest.raises(InvalidInputError, match="was not found"):
         await resolver.resolve_status_id("Status 7")

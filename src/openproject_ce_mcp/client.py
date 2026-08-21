@@ -60,6 +60,7 @@ from .app.adapters.httpx_wiki_page_api import HttpxWikiPageApi
 from .app.adapters.httpx_wiki_page_link_api import HttpxWikiPageLinkApi
 from .app.adapters.httpx_work_package_api import HttpxWorkPackageApi
 from .app.adapters.httpx_work_package_lookup_api import HttpxWorkPackageLookupApi
+from .app.caches import SingletonCache
 
 # AuthenticationError/PermissionDeniedError: not referenced directly in this
 # module, but re-exported deliberately -- existing callers/tests import them
@@ -91,7 +92,7 @@ from .app.ports.backlog_bucket_api import BacklogBucketApi
 from .app.ports.board_api import BoardApi
 from .app.ports.category_api import CategoryApi
 from .app.ports.cost_api import CostApi
-from .app.ports.current_user_api import CurrentUserApi
+from .app.ports.current_user_api import CurrentUserApi, CurrentUserRecord
 from .app.ports.document_api import DocumentApi
 from .app.ports.emoji_reaction_api import EmojiReactionApi
 from .app.ports.extended_metadata_api import ExtendedMetadataApi
@@ -99,7 +100,7 @@ from .app.ports.file_link_api import FileLinkApi
 from .app.ports.github_gitlab_link_api import GithubGitlabLinkApi
 from .app.ports.grid_api import GridApi
 from .app.ports.group_api import GroupApi
-from .app.ports.instance_configuration_api import InstanceConfigurationApi
+from .app.ports.instance_configuration_api import InstanceConfigurationApi, InstanceConfigurationRecord
 from .app.ports.job_status_api import JobStatusApi
 from .app.ports.meeting_agenda_item_api import MeetingAgendaItemApi
 from .app.ports.meeting_api import MeetingApi
@@ -120,7 +121,7 @@ from .app.ports.relation_api import RelationApi
 from .app.ports.reminder_api import ReminderApi
 from .app.ports.role_api import RoleApi
 from .app.ports.sprint_api import SprintApi
-from .app.ports.status_priority_type_api import StatusPriorityTypeApi
+from .app.ports.status_priority_type_api import PriorityRecord, StatusPriorityTypeApi, StatusRecord
 from .app.ports.storage_api import StorageApi
 from .app.ports.time_entry_api import TimeEntryApi
 from .app.ports.user_api import UserApi
@@ -380,6 +381,13 @@ class OpenProjectClient:
         self._origin = _origin_from_url(settings.base_url)
         self._api_prefix = urlparse(settings.api_base_url).path.rstrip("/") + "/"
         self._project_id_to_identifier: dict[int, str] = {}
+        # Process-lifetime caches for read-only, process-global API responses
+        # (see app/caches.py) -- each is shared by every real consumer of
+        # that value (Service and, where one exists, Resolver alike).
+        self._current_user_cache: SingletonCache[CurrentUserRecord] = SingletonCache()
+        self._statuses_cache: SingletonCache[list[StatusRecord]] = SingletonCache()
+        self._priorities_cache: SingletonCache[list[PriorityRecord]] = SingletonCache()
+        self._instance_configuration_cache: SingletonCache[InstanceConfigurationRecord] = SingletonCache()
 
         # Wrap transport with retry logic if max_retries > 0
         if settings.max_retries > 0:
@@ -460,12 +468,16 @@ class OpenProjectClient:
             HttpxTransport(self._http)
         )
         self._instance_configuration_service = InstanceConfigurationService(
-            api=self._instance_configuration_api, settings=settings
+            api=self._instance_configuration_api, settings=settings, cache=self._instance_configuration_cache
         )
 
         self._current_user_api: CurrentUserApi = HttpxCurrentUserApi(HttpxTransport(self._http))
-        self._current_user_service = CurrentUserService(api=self._current_user_api, settings=settings)
-        self._current_user_resolver = CurrentUserResolver(api=self._current_user_api, settings=settings)
+        self._current_user_service = CurrentUserService(
+            api=self._current_user_api, settings=settings, cache=self._current_user_cache
+        )
+        self._current_user_resolver = CurrentUserResolver(
+            api=self._current_user_api, settings=settings, cache=self._current_user_cache
+        )
 
         self._principal_api: PrincipalApi = HttpxPrincipalApi(HttpxTransport(self._http))
         self._principal_service = PrincipalService(api=self._principal_api, settings=settings)
@@ -607,8 +619,14 @@ class OpenProjectClient:
             api=self._status_priority_type_api,
             settings=settings,
             resolve_project_ref=self._get_project_payload,
+            statuses_cache=self._statuses_cache,
+            priorities_cache=self._priorities_cache,
         )
-        self._status_priority_type_resolver = StatusPriorityTypeResolver(api=self._status_priority_type_api)
+        self._status_priority_type_resolver = StatusPriorityTypeResolver(
+            api=self._status_priority_type_api,
+            statuses_cache=self._statuses_cache,
+            priorities_cache=self._priorities_cache,
+        )
         self._type_resolver = TypeResolver(
             api=self._status_priority_type_api, resolve_project_ref=self._get_project_payload
         )
