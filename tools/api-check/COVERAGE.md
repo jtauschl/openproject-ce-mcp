@@ -10,14 +10,14 @@ resource                   client  live   classification
 actions                    yes     —      covered
 activities                 yes     —      covered
 attachments                yes     —      covered
-backlog_buckets            —       —      GAP (CE)
+backlog_buckets            yes     —      covered
 backups                    —       —      enterprise
 budgets                    —       —      enterprise
 capabilities               yes     —      covered
-categories                 —       —      subresource
+categories                 yes     —      covered
 configuration              yes     —      covered
-cost_entries               —       —      subresource
-cost_types                 —       —      GAP (CE)
+cost_entries               yes     —      covered
+cost_types                 yes     —      covered
 custom_actions             —       —      subresource
 custom_fields              —       —      subresource
 custom_options             yes     —      covered
@@ -28,16 +28,16 @@ errors                     —       —      internal
 favorites                  —       —      subresource
 file_links                 yes     —      covered
 formatter                  —       —      internal
-github_pull_requests       —       —      subresource
+github_pull_requests       yes     —      covered
 gitlab_issues              —       —      subresource
 gitlab_merge_requests      —       —      subresource
 groups                     yes     —      covered
 help_texts                 yes     —      covered
 job_status                 yes     —      covered
-meeting_agenda_items       —       —      subresource
-meeting_outcomes           —       —      subresource
-meeting_sections           —       —      subresource
-meetings                   —       —      GAP (CE)
+meeting_agenda_items       yes     —      covered
+meeting_outcomes           yes     —      covered
+meeting_sections           yes     —      covered
+meetings                   yes     —      covered
 memberships                yes     —      covered
 news                       yes     —      covered
 notifications              yes     —      covered
@@ -46,17 +46,17 @@ oauth_client               —       —      subresource
 page_links                 —       —      subresource
 placeholder_users          —       —      enterprise
 portfolios                 —       —      enterprise
-posts                      —       —      GAP (CE)
+posts                      yes     —      covered
 principals                 yes     —      covered
 priorities                 yes     —      covered
 programs                   —       —      enterprise
 project_phase_definitions  yes     —      covered
 project_phases             yes     —      covered
-project_storages           —       —      GAP (CE)
+project_storages           yes     —      covered
 projects                   yes     —      covered
 providers                  —       —      internal
 queries                    yes     —      covered
-recurring_meetings         —       —      GAP (CE)
+recurring_meetings         yes     —      covered
 relations                  yes     —      covered
 reminders                  yes     —      covered
 render                     —       —      internal
@@ -67,7 +67,7 @@ shares                     —       —      subresource
 sprints                    yes     —      covered
 statuses                   yes     —      covered
 storage_files              —       —      enterprise
-storages                   —       —      GAP (CE)
+storages                   yes     —      covered
 string_objects             —       —      internal
 time_entries               yes     —      covered
 types                      yes     —      covered
@@ -84,16 +84,10 @@ wiki_pages                 yes     —      covered
 work_packages              yes     —      covered
 workspaces                 yes     —      covered
 
-Summary: GAP (CE)=7, covered=35, enterprise=7, internal=9, subresource=18
+Summary: covered=48, enterprise=7, internal=9, subresource=12
 (live probe skipped — set OPENPROJECT_BASE_URL / OPENPROJECT_API_TOKEN for CE availability)
 ```
 
 ## Genuine CE gaps
 
-- `backlog_buckets`
-- `cost_types`
-- `meetings`
-- `posts`
-- `project_storages`
-- `recurring_meetings`
-- `storages`
+_None — every plain top-level CE resource is covered._

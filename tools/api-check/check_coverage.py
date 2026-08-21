@@ -37,6 +37,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SOURCES = ROOT.parent / "op-sources"
 CLIENT = ROOT / "src" / "openproject_ce_mcp" / "client.py"
+ADAPTERS_DIR = ROOT / "src" / "openproject_ce_mcp" / "app" / "adapters"
 COVERAGE_MD = Path(__file__).resolve().parent / "COVERAGE.md"
 SOURCE_VERSION = "17.6"  # inventory reference
 
@@ -158,27 +159,61 @@ def _source_resources() -> list[str]:
     return sorted(resources)
 
 
-def _client_resources() -> set[str]:
-    """First path segment of every request path / HAL href in the client."""
-    text = CLIENT.read_text()
+def _resource_segments(text: str, path_patterns: tuple[str, ...]) -> set[str]:
+    """First path segment of every request path matched by ``path_patterns``."""
     used: set[str] = set()
-    # Direct self._get/_post/_patch/_delete(...) calls, plus the path=/write_path=/
-    # delete_path= keyword arguments passed to the shared bounded-fetch/detail/
-    # write/delete helpers (_fetch_bounded_and_paginate, _fetch_and_normalize_detail,
-    # _finalize_write, _finalize_delete). A resource reached only through one of
-    # these helpers, with no other literal self._get(...) call site elsewhere,
-    # would otherwise be silently undercounted as unused.
-    path_patterns = (
-        r'self\._(?:get|post|patch|delete)\(\s*f?"([^"]+)"',
-        r'\b(?:path|write_path|delete_path)=\s*f?"([^"]+)"',
-    )
     for pattern in path_patterns:
         for path in re.findall(pattern, text):
             seg = path.lstrip("/").split("/")[0]
             seg = re.sub(r"\{.*?\}", "", seg)
             if re.fullmatch(r"[a-z_]+", seg):
                 used.add(seg)
-    used |= set(re.findall(r'_api_href\(f?"([a-z_]+)', text))
+    return used
+
+
+def _client_resources() -> set[str]:
+    """First path segment of each request path / HAL href the client reaches.
+
+    Two call-site shapes exist side by side on this branch: the legacy
+    ``client.py`` (a thin, mostly-delegating shim — see the layered app/
+    architecture migration) still has a handful of direct
+    self._get/_post/_patch/_delete(...) calls plus the path=/write_path=/
+    delete_path= keyword arguments passed to its own bounded-fetch/detail/
+    write/delete helpers; the real HTTP-calling code for everything else
+    lives in app/adapters/httpx_*.py, which calls one of
+    self._transport.get_json/post_json/patch_json/delete_json/delete/
+    post_raw_json/post_multipart(...), or, for the few verbs those don't
+    cover, self._transport.request_raw("METHOD", path, ...). A resource
+    reached only through one of these, with no matching call site in the
+    other, would otherwise be silently undercounted as unused.
+
+    Matches only a literal (or f-string) path passed directly in the
+    method's path argument (the first argument for the *_json/delete
+    methods, the second for request_raw) — a path built up in a local
+    variable first (e.g. HttpxExtendedMetadataApi.render_text's
+    ``endpoint``) is not resolved.
+    The one known case this misses (``render``) is harmless in practice,
+    since it's manually classified as "internal" in CLASSIFICATION and
+    never reported as a gap either way.
+    """
+    client_text = CLIENT.read_text()
+    used = _resource_segments(
+        client_text,
+        (
+            r'self\._(?:get|post|patch|delete)\(\s*f?"([^"]+)"',
+            r'\b(?:path|write_path|delete_path)=\s*f?"([^"]+)"',
+        ),
+    )
+    used |= set(re.findall(r'_api_href\(f?"([a-z_]+)', client_text))
+    for adapter in sorted(ADAPTERS_DIR.glob("httpx_*.py")):
+        adapter_text = adapter.read_text()
+        used |= _resource_segments(
+            adapter_text,
+            (
+                r'self\._transport\.(?:get_json|post_json|patch_json|delete_json|delete|post_raw_json|post_multipart)\(\s*f?"([^"]+)"',
+                r'self\._transport\.request_raw\(\s*"[A-Z]+",\s*f?"([^"]+)"',
+            ),
+        )
     return used
 
 

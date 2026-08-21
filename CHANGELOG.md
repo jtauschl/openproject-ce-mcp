@@ -238,6 +238,10 @@ support.
 
 ### Fixed
 
+- **`tools/api-check/check_coverage.py` missed almost all client resource
+  usage**, since it only scanned `client.py` for HTTP call sites; the real
+  calls live in `app/adapters/httpx_*.py`. `COVERAGE.md` regenerated to
+  reflect actual coverage.
 - **`list_work_package_wiki_links` failed whenever at least one link
   existed on a work package**, an OpenProject server bug this MCP cannot
   work around client-side; a fix has been submitted upstream

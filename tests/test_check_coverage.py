@@ -44,6 +44,97 @@ def test_client_resources_detects_helper_keyword_path_arguments(tmp_path, monkey
     assert "views" in check_coverage._client_resources()
 
 
+def test_client_resources_scans_app_adapters_directory(tmp_path, monkeypatch):
+    # On release/0.4.0 the real HTTP-calling code lives in
+    # app/adapters/httpx_*.py, not client.py (a thin, mostly-delegating shim
+    # since the layered app/ architecture migration) -- a resource reached
+    # only through an adapter's self._transport.*_json(...) call, with no
+    # matching call site in client.py itself, was silently undercounted as
+    # unused (OPM-430).
+    synthetic_client = tmp_path / "client.py"
+    synthetic_client.write_text("")
+    monkeypatch.setattr(check_coverage, "CLIENT", synthetic_client)
+
+    adapters_dir = tmp_path / "app" / "adapters"
+    adapters_dir.mkdir(parents=True)
+    (adapters_dir / "httpx_meeting_api.py").write_text(
+        "class HttpxMeetingApi:\n"
+        "    async def list(self):\n"
+        '        return await self._transport.get_json("meetings")\n'
+        "    async def get(self, meeting_id):\n"
+        '        return await self._transport.get_json(f"meetings/{meeting_id}")\n'
+    )
+    monkeypatch.setattr(check_coverage, "ADAPTERS_DIR", adapters_dir)
+
+    assert "meetings" in check_coverage._client_resources()
+
+
+def test_client_resources_detects_request_raw_verb_calls(tmp_path, monkeypatch):
+    # "workspaces" (project favorite add/remove) is reached only via
+    # self._transport.request_raw("POST"/"DELETE", path, ...) -- a third
+    # call-site shape distinct from the *_json(...) helpers, which would
+    # otherwise silently undercount it as unused (OPM-430).
+    synthetic_client = tmp_path / "client.py"
+    synthetic_client.write_text("")
+    monkeypatch.setattr(check_coverage, "CLIENT", synthetic_client)
+
+    adapters_dir = tmp_path / "app" / "adapters"
+    adapters_dir.mkdir(parents=True)
+    (adapters_dir / "httpx_project_api.py").write_text(
+        "class HttpxProjectApi:\n"
+        "    async def add_favorite(self, project_id):\n"
+        '        await self._transport.request_raw("POST", f"workspaces/{project_id}/favorite", json_body={})\n'
+    )
+    monkeypatch.setattr(check_coverage, "ADAPTERS_DIR", adapters_dir)
+
+    assert "workspaces" in check_coverage._client_resources()
+
+
+def test_client_resources_detects_post_raw_json_calls(tmp_path, monkeypatch):
+    # self._transport.post_raw_json(...) is a fourth Transport method
+    # distinct from the *_json verbs, post_multipart, and request_raw.
+    # The one real caller (HttpxExtendedMetadataApi.render_text) builds its
+    # path in a local variable first, which this scan can't resolve (see
+    # _client_resources's docstring) -- this test instead isolates the
+    # regex itself against a literal path, so the post_raw_json match arm
+    # added for OPM-430 has a direct regression test independent of
+    # whether any real call site happens to use a literal.
+    synthetic_client = tmp_path / "client.py"
+    synthetic_client.write_text("")
+    monkeypatch.setattr(check_coverage, "CLIENT", synthetic_client)
+
+    adapters_dir = tmp_path / "app" / "adapters"
+    adapters_dir.mkdir(parents=True)
+    (adapters_dir / "httpx_extended_metadata_api.py").write_text(
+        "class HttpxExtendedMetadataApi:\n"
+        "    async def render_plain(self, text):\n"
+        '        return await self._transport.post_raw_json(\n            "render/plain", content=text.encode(), headers={}\n        )\n'
+    )
+    monkeypatch.setattr(check_coverage, "ADAPTERS_DIR", adapters_dir)
+
+    assert "render" in check_coverage._client_resources()
+
+
+def test_client_resources_detects_post_multipart_calls(tmp_path, monkeypatch):
+    # Attachment uploads use self._transport.post_multipart(...), a
+    # Transport method distinct from the *_json verbs and request_raw --
+    # missing it would silently undercount the resource as unused.
+    synthetic_client = tmp_path / "client.py"
+    synthetic_client.write_text("")
+    monkeypatch.setattr(check_coverage, "CLIENT", synthetic_client)
+
+    adapters_dir = tmp_path / "app" / "adapters"
+    adapters_dir.mkdir(parents=True)
+    (adapters_dir / "httpx_attachment_api.py").write_text(
+        "class HttpxAttachmentApi:\n"
+        "    async def upload(self, work_package_id, filename, content):\n"
+        '        response = await self._transport.post_multipart(\n            f"work_packages/{work_package_id}/attachments", files={}\n        )\n'
+    )
+    monkeypatch.setattr(check_coverage, "ADAPTERS_DIR", adapters_dir)
+
+    assert "work_packages" in check_coverage._client_resources()
+
+
 def test_unaliased_unused_resource_is_review_without_live_probe(monkeypatch):
     monkeypatch.setattr(check_coverage, "_source_resources", lambda: ["mystery_resource"])
     monkeypatch.setattr(check_coverage, "_client_resources", lambda: set())
