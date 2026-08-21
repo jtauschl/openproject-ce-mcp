@@ -31,7 +31,16 @@ from openproject_ce_mcp.presentation import _to_payload
 EXPECTED_FIELD_ORDER: dict[str, list[str]] = {
     "ActionListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "ActivityListResult": ["count", "results"],
-    "AttachmentListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
+    "AttachmentListResult": [
+        "offset",
+        "limit",
+        "total",
+        "count",
+        "next_offset",
+        "truncated",
+        "results",
+        "total_size_bytes",
+    ],
     "BacklogBucketListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "BoardListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],
     "CapabilityListResult": ["offset", "limit", "total", "count", "next_offset", "truncated", "results"],

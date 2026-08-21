@@ -14,13 +14,17 @@ PROJECT_ID_TO_IDENTIFIER = {6: "demo", 7: "secret"}
 
 
 def _summary(
-    attachment_id: int = 5, *, container_type: str = "WorkPackage", container_id: int = 9
+    attachment_id: int = 5,
+    *,
+    container_type: str = "WorkPackage",
+    container_id: int = 9,
+    file_size_bytes: int | None = 1024,
 ) -> AttachmentSummary:
     return AttachmentSummary(
         id=attachment_id,
         title="report.pdf",
         file_name="report.pdf",
-        file_size_bytes=1024,
+        file_size_bytes=file_size_bytes,
         description=None,
         content_type="application/pdf",
         status="uploaded",
@@ -32,11 +36,18 @@ def _summary(
     )
 
 
-def _record(attachment_id: int = 5, *, has_container_link: bool = True, container_id: int = 9) -> AttachmentRecord:
+def _record(
+    attachment_id: int = 5,
+    *,
+    has_container_link: bool = True,
+    container_id: int = 9,
+    file_size_bytes: int | None = 1024,
+) -> AttachmentRecord:
     container_link = {"href": f"/api/v3/work_packages/{container_id}"} if has_container_link else None
     summary_container_id = container_id if has_container_link else None
     return AttachmentRecord(
-        summary=_summary(attachment_id, container_id=summary_container_id), container_link=container_link
+        summary=_summary(attachment_id, container_id=summary_container_id, file_size_bytes=file_size_bytes),
+        container_link=container_link,
     )
 
 
@@ -180,6 +191,49 @@ async def test_list_for_work_package_masks_hidden_description() -> None:
     result = await service.list_for_work_package(9)
 
     assert getattr(result.results[0], "_hidden_keys", frozenset()) == {"description"}
+
+
+@pytest.mark.asyncio
+async def test_list_for_work_package_omits_total_size_by_default() -> None:
+    api = _FakeAttachmentApi(records=[_record(1, file_size_bytes=1024)])
+    service = _service(api=api)
+
+    result = await service.list_for_work_package(9)
+
+    assert result.total_size_bytes is None
+
+
+@pytest.mark.asyncio
+async def test_list_for_work_package_sums_file_sizes_when_requested() -> None:
+    api = _FakeAttachmentApi(
+        records=[_record(1, file_size_bytes=1024), _record(2, file_size_bytes=2048), _record(3, file_size_bytes=512)]
+    )
+    service = _service(api=api)
+
+    result = await service.list_for_work_package(9, include_total_size=True)
+
+    assert result.total_size_bytes == 3584
+
+
+@pytest.mark.asyncio
+async def test_list_for_work_package_total_size_is_none_when_a_size_is_unknown() -> None:
+    api = _FakeAttachmentApi(records=[_record(1, file_size_bytes=1024), _record(2, file_size_bytes=None)])
+    service = _service(api=api)
+
+    result = await service.list_for_work_package(9, include_total_size=True)
+
+    assert result.total_size_bytes is None
+
+
+@pytest.mark.asyncio
+async def test_list_for_work_package_total_size_is_none_when_file_size_hidden() -> None:
+    api = _FakeAttachmentApi(records=[_record(1, file_size_bytes=1024)])
+    settings = dataclasses.replace(make_settings(), hidden_fields={"attachment": ("file_size_bytes",)})
+    service = _service(api=api, settings=settings)
+
+    result = await service.list_for_work_package(9, include_total_size=True)
+
+    assert result.total_size_bytes is None
 
 
 # --- get ----------------------------------------------------------------------

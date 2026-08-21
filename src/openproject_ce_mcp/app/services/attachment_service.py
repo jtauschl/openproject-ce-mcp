@@ -112,7 +112,7 @@ class AttachmentService:
         return hidden_fields.apply_hidden_fields("attachment", summary, settings=self._settings)
 
     async def list_for_work_package(
-        self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
+        self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None, include_total_size: bool = False
     ) -> AttachmentListResult:
         access.ensure_read_enabled("work_package", settings=self._settings)
         effective_limit = clamp_limit(
@@ -143,6 +143,9 @@ class AttachmentService:
         )
         results = [self._stamp(record.summary) for record in raw_items]
         total = len(results)
+        total_size_bytes = (
+            await self._sum_attachment_sizes(resolved_id, results, truncated) if include_total_size else None
+        )
         return AttachmentListResult(
             offset=offset,
             limit=effective_limit,
@@ -151,7 +154,42 @@ class AttachmentService:
             next_offset=offset + 1 if truncated else None,
             truncated=truncated,
             results=results,
+            total_size_bytes=total_size_bytes,
         )
+
+    async def _sum_attachment_sizes(
+        self, work_package_id: int, page_results: list[AttachmentSummary], truncated: bool
+    ) -> int | None:
+        """OpenProject's own attachments endpoint is unpaginated
+        (AttachmentCollectionRepresenter < UnpaginatedCollection) -- any
+        single fetch already returns every attachment, so `page_results` is
+        already the complete set unless the SCAN stopped early at `limit`
+        (truncated=True), in which case a second, unbounded fetch gets the
+        rest. Returns None (not a silently partial sum) if any attachment's
+        file_size_bytes is hidden or unknown, matching how a hidden field
+        must not leak indirectly through an aggregate.
+        """
+        if hidden_fields.field_hidden("attachment", "file_size_bytes", settings=self._settings):
+            return None
+        if not truncated:
+            summaries = page_results
+        else:
+            raw_items, _ = await scan_records_and_paginate(
+                lambda o, ps: self._api.list_for_work_package(work_package_id, offset=o, page_size=ps),
+                item_allowed=lambda record: (
+                    record.summary.container_type == "WorkPackage" and record.summary.container_id == work_package_id
+                ),
+                server_page_size=self._settings.max_page_size,
+                offset=1,
+                limit=self._settings.max_results,
+                key=lambda r: r.summary.id,
+            )
+            summaries = [record.summary for record in raw_items]
+        sizes = [s.file_size_bytes for s in summaries]
+        known_sizes = [size for size in sizes if size is not None]
+        if len(known_sizes) != len(sizes):
+            return None
+        return sum(known_sizes)
 
     async def get(self, attachment_id: int) -> AttachmentSummary:
         access.ensure_read_enabled("work_package", settings=self._settings)

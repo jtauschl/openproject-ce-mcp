@@ -4480,6 +4480,7 @@ async def list_work_package_attachments(
     offset: int = 1,
     limit: int | None = None,
     select: list[str] | None = None,
+    include_total_size: bool = False,
 ) -> AttachmentListResult:
     """List attachments on a work package.
 
@@ -4490,13 +4491,23 @@ async def list_work_package_attachments(
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
+
+    include_total_size=true sums file_size_bytes across every attachment
+    (independent of limit/offset) — OpenProject's attachments endpoint
+    always returns the full list in one response, so this costs no extra
+    request in the common case. Null if file_size_bytes is hidden by
+    server configuration, rather than leaking it indirectly through a sum.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=AttachmentSummary)
-    return await _run_tool(client.list_work_package_attachments(safe_id, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(
+        client.list_work_package_attachments(
+            safe_id, offset=safe_offset, limit=safe_limit, include_total_size=include_total_size
+        )
+    )
 
 
 async def get_attachment(

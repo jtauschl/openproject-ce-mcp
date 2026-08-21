@@ -1798,9 +1798,16 @@ class OpenProjectClient:
         return await self._category_service.get(category_id=category_id, project_ref=project_ref)
 
     async def list_work_package_attachments(
-        self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
+        self,
+        work_package_id: int | str,
+        *,
+        offset: int = 1,
+        limit: int | None = None,
+        include_total_size: bool = False,
     ) -> AttachmentListResult:
-        return await self._attachment_service.list_for_work_package(work_package_id, offset=offset, limit=limit)
+        return await self._attachment_service.list_for_work_package(
+            work_package_id, offset=offset, limit=limit, include_total_size=include_total_size
+        )
 
     async def get_attachment(self, attachment_id: int) -> AttachmentSummary:
         return await self._attachment_service.get(attachment_id)

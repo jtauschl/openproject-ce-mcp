@@ -916,6 +916,7 @@ class AttachmentSummary:
 @dataclass
 class AttachmentListResult(PageResult):
     results: list[AttachmentSummary]
+    total_size_bytes: int | None = None
 
 
 @dataclass
