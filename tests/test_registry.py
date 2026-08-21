@@ -13,10 +13,14 @@ def _registered_tool_names() -> set[str]:
 
     register_tools() no longer contains hand-written `tool(name)` calls to
     parse — it iterates `enabled_tool_names()`, which resolves names through
-    `_TOOL_FUNCTIONS`. That dict is itself derived from the classification
+    `_TOOL_FUNCTIONS`. Each tool function populates that dict itself via the
+    `@register_tool` decorator at import time; `test_tool_groups.py`'s
+    `test_every_classified_name_resolves_to_a_real_function` separately
+    verifies `_TOOL_FUNCTIONS`'s keys exactly match the classification
     constants (READ_TOOLS_BY_SCOPE, WRITE_TOOLS_BY_SCOPE,
-    PERSONAL_MUTATION_TOOLS, ADMIN_WRITE_TOOLS), so reading its keys directly
-    is both simpler and more accurate than re-parsing register_tools() via AST.
+    PERSONAL_MUTATION_TOOLS, ATTACHMENT_UPLOAD_TOOLS), so reading its keys
+    directly here is both simpler and more accurate than re-parsing
+    register_tools() via AST.
     """
     return set(_tools._TOOL_FUNCTIONS)
 

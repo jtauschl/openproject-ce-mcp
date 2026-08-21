@@ -7,7 +7,7 @@ import re
 from collections.abc import Callable
 from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 from mcp.server.mcpserver import Context, MCPServer
 
@@ -684,6 +684,26 @@ def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
     return tuple(enabled)
 
 
+# Resolves every classified tool name (via @register_tool below) to its
+# actual function object. Explicit registration, not module-namespace
+# introspection, so this survives tools.py eventually being split into
+# per-domain files (OPM-395) without needing to change again -- each
+# function carries its own registration with it wherever it's defined.
+_ToolFunc = TypeVar("_ToolFunc", bound=Callable[..., Any])
+_TOOL_FUNCTIONS: dict[str, Callable[..., Any]] = {}
+
+
+def register_tool(fn: _ToolFunc) -> _ToolFunc:
+    name = fn.__name__
+    if name in _TOOL_FUNCTIONS:
+        raise RuntimeError(
+            f"Duplicate tool registration: {name} ({fn.__module__}.{fn.__qualname__} "
+            f"collides with an already-registered function of the same name)"
+        )
+    _TOOL_FUNCTIONS[name] = fn
+    return fn
+
+
 def register_tools(mcp: MCPServer, settings: Settings) -> None:
     # Register a tool with error-categorization applied, so every failure reaches
     # the agent with a stable [category] prefix.
@@ -727,6 +747,7 @@ def register_tools(mcp: MCPServer, settings: Settings) -> None:
         tool(_TOOL_FUNCTIONS[name])
 
 
+@register_tool
 async def list_projects(
     ctx: Context,
     search: str | None = None,
@@ -752,6 +773,7 @@ async def list_projects(
     return await _run_tool(client.list_projects(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def get_project(
     ctx: Context,
     project: str,
@@ -772,6 +794,7 @@ async def get_project(
     return await _run_tool(client.get_project(safe_project, text_limit=safe_text_limit))
 
 
+@register_tool
 async def list_sprints(
     ctx: Context,
     project: str | None = None,
@@ -807,6 +830,7 @@ async def list_sprints(
     )
 
 
+@register_tool
 async def get_sprint(
     ctx: Context,
     sprint_id: int,
@@ -817,6 +841,7 @@ async def get_sprint(
     return await _run_tool(client.get_sprint(safe_id))
 
 
+@register_tool
 async def list_backlog_buckets(
     ctx: Context,
     project: str | None = None,
@@ -855,6 +880,7 @@ async def list_backlog_buckets(
     )
 
 
+@register_tool
 async def get_backlog_bucket(
     ctx: Context,
     backlog_bucket_id: int,
@@ -865,6 +891,7 @@ async def get_backlog_bucket(
     return await _run_tool(client.get_backlog_bucket(safe_id))
 
 
+@register_tool
 async def get_project_admin_context(
     ctx: Context,
     project: str,
@@ -875,6 +902,7 @@ async def get_project_admin_context(
     return await _run_tool(client.get_project_admin_context(safe_project))
 
 
+@register_tool
 async def get_project_configuration(
     ctx: Context,
     project: str,
@@ -906,6 +934,7 @@ def _validate_project_descriptive_fields(
     }
 
 
+@register_tool
 async def create_project(
     ctx: Context,
     name: str,
@@ -944,6 +973,7 @@ async def create_project(
     )
 
 
+@register_tool
 async def copy_project(
     ctx: Context,
     source_project: str,
@@ -985,6 +1015,7 @@ async def copy_project(
     )
 
 
+@register_tool
 async def get_job_status(
     ctx: Context,
     job_status_id: str,
@@ -997,6 +1028,7 @@ async def get_job_status(
     return await _run_tool(client.get_job_status(safe_id))
 
 
+@register_tool
 async def update_project(
     ctx: Context,
     project: str,
@@ -1054,6 +1086,7 @@ async def update_project(
     )
 
 
+@register_tool
 async def delete_project(
     ctx: Context,
     project: str,
@@ -1065,6 +1098,7 @@ async def delete_project(
     return await _run_tool(client.delete_project(project_ref=safe_project, confirm=confirm))
 
 
+@register_tool
 async def list_roles(
     ctx: Context,
     select: list[str] | None = None,
@@ -1084,6 +1118,7 @@ async def list_roles(
     return await _run_tool(client.list_roles(offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def list_principals(
     ctx: Context,
     search: str | None = None,
@@ -1104,6 +1139,7 @@ async def list_principals(
     return await _run_tool(client.list_principals(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def list_users(
     ctx: Context,
     search: str | None = None,
@@ -1129,6 +1165,7 @@ async def list_users(
     return await _run_tool(client.list_users(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def get_user(
     ctx: Context,
     user: str,
@@ -1139,6 +1176,7 @@ async def get_user(
     return await _run_tool(client.get_user(safe_user))
 
 
+@register_tool
 async def list_groups(
     ctx: Context,
     search: str | None = None,
@@ -1163,6 +1201,7 @@ async def list_groups(
     return await _run_tool(client.list_groups(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def get_group(
     ctx: Context,
     group_id: int,
@@ -1173,6 +1212,7 @@ async def get_group(
     return await _run_tool(client.get_group(safe_group_id))
 
 
+@register_tool
 async def list_storages(
     ctx: Context,
     select: list[str] | None = None,
@@ -1194,6 +1234,7 @@ async def list_storages(
     return await _run_tool(client.list_storages(offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def get_storage(
     ctx: Context,
     storage_id: int,
@@ -1204,6 +1245,7 @@ async def get_storage(
     return await _run_tool(client.get_storage(safe_storage_id))
 
 
+@register_tool
 async def list_actions(
     ctx: Context,
     offset: int = 1,
@@ -1224,6 +1266,7 @@ async def list_actions(
     return await _run_tool(client.list_actions(offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def list_capabilities(
     ctx: Context,
     project: str | None = None,
@@ -1260,6 +1303,7 @@ async def list_capabilities(
     )
 
 
+@register_tool
 async def get_query_filter(
     ctx: Context,
     filter_id: str,
@@ -1270,6 +1314,7 @@ async def get_query_filter(
     return await _run_tool(client.get_query_filter(safe_filter_id))
 
 
+@register_tool
 async def get_query_column(
     ctx: Context,
     column_id: str,
@@ -1280,6 +1325,7 @@ async def get_query_column(
     return await _run_tool(client.get_query_column(safe_column_id))
 
 
+@register_tool
 async def get_query_operator(
     ctx: Context,
     operator_id: str,
@@ -1290,6 +1336,7 @@ async def get_query_operator(
     return await _run_tool(client.get_query_operator(safe_operator_id))
 
 
+@register_tool
 async def get_query_sort_by(
     ctx: Context,
     sort_by_id: str,
@@ -1300,6 +1347,7 @@ async def get_query_sort_by(
     return await _run_tool(client.get_query_sort_by(safe_sort_by_id))
 
 
+@register_tool
 async def list_query_filter_instance_schemas(
     ctx: Context,
     project: str | None = None,
@@ -1310,6 +1358,7 @@ async def list_query_filter_instance_schemas(
     return await _run_tool(client.list_query_filter_instance_schemas(project=safe_project))
 
 
+@register_tool
 async def get_query_filter_instance_schema(
     ctx: Context,
     schema_id: str,
@@ -1320,6 +1369,7 @@ async def get_query_filter_instance_schema(
     return await _run_tool(client.get_query_filter_instance_schema(safe_schema_id))
 
 
+@register_tool
 async def list_project_memberships(
     ctx: Context,
     project: str,
@@ -1343,6 +1393,7 @@ async def list_project_memberships(
     return await _run_tool(client.list_project_memberships(safe_project, offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def get_membership(
     ctx: Context,
     membership_id: int,
@@ -1353,6 +1404,7 @@ async def get_membership(
     return await _run_tool(client.get_membership(safe_id))
 
 
+@register_tool
 async def create_membership(
     ctx: Context,
     project: str,
@@ -1380,6 +1432,7 @@ async def create_membership(
     )
 
 
+@register_tool
 async def update_membership(
     ctx: Context,
     membership_id: int,
@@ -1404,6 +1457,7 @@ async def update_membership(
     )
 
 
+@register_tool
 async def delete_membership(
     ctx: Context,
     membership_id: int,
@@ -1415,6 +1469,7 @@ async def delete_membership(
     return await _run_tool(client.delete_membership(membership_id=safe_id, confirm=confirm))
 
 
+@register_tool
 async def get_my_project_access(
     ctx: Context,
     project: str,
@@ -1425,18 +1480,21 @@ async def get_my_project_access(
     return await _run_tool(client.get_my_project_access(safe_project))
 
 
+@register_tool
 async def get_instance_configuration(ctx: Context) -> InstanceConfiguration:
     """Return instance-level OpenProject configuration and active feature flags."""
     client = _client_from_context(ctx)
     return await _run_tool(client.get_instance_configuration())
 
 
+@register_tool
 async def list_project_phase_definitions(ctx: Context) -> ProjectPhaseDefinitionListResult:
     """List available project lifecycle phase definitions exposed by OpenProject."""
     client = _client_from_context(ctx)
     return await _run_tool(client.list_project_phase_definitions())
 
 
+@register_tool
 async def get_project_phase_definition(
     ctx: Context,
     phase_definition_id: int,
@@ -1447,6 +1505,7 @@ async def get_project_phase_definition(
     return await _run_tool(client.get_project_phase_definition(safe_id))
 
 
+@register_tool
 async def get_project_phase(
     ctx: Context,
     phase_id: int,
@@ -1457,6 +1516,7 @@ async def get_project_phase(
     return await _run_tool(client.get_project_phase(safe_id))
 
 
+@register_tool
 async def list_views(
     ctx: Context,
     project: str | None = None,
@@ -1492,6 +1552,7 @@ async def list_views(
     )
 
 
+@register_tool
 async def get_view(
     ctx: Context,
     view_id: int,
@@ -1502,6 +1563,7 @@ async def get_view(
     return await _run_tool(client.get_view(safe_id))
 
 
+@register_tool
 async def list_documents(
     ctx: Context,
     project: str | None = None,
@@ -1539,6 +1601,7 @@ async def list_documents(
     )
 
 
+@register_tool
 async def get_document(
     ctx: Context,
     document_id: int,
@@ -1557,6 +1620,7 @@ async def get_document(
     return await _run_tool(client.get_document(safe_id, text_limit=safe_text_limit))
 
 
+@register_tool
 async def list_project_storages(
     ctx: Context,
     project: str | None = None,
@@ -1584,6 +1648,7 @@ async def list_project_storages(
     return await _run_tool(client.list_project_storages(project=safe_project, offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def get_project_storage(
     ctx: Context,
     project_storage_id: int,
@@ -1594,6 +1659,7 @@ async def get_project_storage(
     return await _run_tool(client.get_project_storage(safe_id))
 
 
+@register_tool
 async def update_document(
     ctx: Context,
     document_id: int,
@@ -1617,6 +1683,7 @@ async def update_document(
     )
 
 
+@register_tool
 async def list_news(
     ctx: Context,
     project: str | None = None,
@@ -1659,6 +1726,7 @@ async def list_news(
     )
 
 
+@register_tool
 async def get_news(
     ctx: Context,
     news_id: int,
@@ -1677,6 +1745,7 @@ async def get_news(
     return await _run_tool(client.get_news(safe_id, text_limit=safe_text_limit))
 
 
+@register_tool
 async def create_news(
     ctx: Context,
     project: str,
@@ -1702,6 +1771,7 @@ async def create_news(
     )
 
 
+@register_tool
 async def update_news(
     ctx: Context,
     news_id: int,
@@ -1730,6 +1800,7 @@ async def update_news(
     )
 
 
+@register_tool
 async def delete_news(
     ctx: Context,
     news_id: int,
@@ -1741,6 +1812,7 @@ async def delete_news(
     return await _run_tool(client.delete_news(news_id=safe_id, confirm=confirm))
 
 
+@register_tool
 async def get_wiki_page(
     ctx: Context,
     wiki_page_id: int,
@@ -1758,6 +1830,7 @@ async def get_wiki_page(
     return await _run_tool(client.get_wiki_page(safe_id))
 
 
+@register_tool
 async def get_post(
     ctx: Context,
     post_id: int,
@@ -1776,6 +1849,7 @@ async def get_post(
     return await _run_tool(client.get_post(safe_id))
 
 
+@register_tool
 async def list_work_package_wiki_links(
     ctx: Context,
     work_package_id: int | str,
@@ -1805,6 +1879,7 @@ async def list_work_package_wiki_links(
     return await _run_tool(client.list_work_package_wiki_links(safe_id, offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def create_work_package_wiki_link(
     ctx: Context,
     work_package_id: int | str,
@@ -1836,6 +1911,7 @@ async def create_work_package_wiki_link(
     )
 
 
+@register_tool
 async def delete_work_package_wiki_link(
     ctx: Context,
     work_package_id: int | str,
@@ -1867,6 +1943,7 @@ async def delete_work_package_wiki_link(
 # --- Meetings ---
 
 
+@register_tool
 async def list_meetings(
     ctx: Context,
     project: str | None = None,
@@ -1892,6 +1969,7 @@ async def list_meetings(
     return await _run_tool(client.list_meetings(project=safe_project, offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def get_meeting(ctx: Context, meeting_id: int) -> MeetingSummary:
     """Get a single OpenProject meeting by id.
 
@@ -1902,6 +1980,7 @@ async def get_meeting(ctx: Context, meeting_id: int) -> MeetingSummary:
     return await _run_tool(client.get_meeting(safe_id))
 
 
+@register_tool
 async def create_meeting(
     ctx: Context,
     project: str,
@@ -1951,6 +2030,7 @@ async def create_meeting(
     )
 
 
+@register_tool
 async def update_meeting(
     ctx: Context,
     meeting_id: int,
@@ -2006,6 +2086,7 @@ async def update_meeting(
     )
 
 
+@register_tool
 async def delete_meeting(ctx: Context, meeting_id: int, confirm: bool = False) -> MeetingWriteResult:
     """Prepare or delete an OpenProject meeting; only deletes when called
     again with confirm=true.
@@ -2017,6 +2098,7 @@ async def delete_meeting(ctx: Context, meeting_id: int, confirm: bool = False) -
     return await _run_tool(client.delete_meeting(meeting_id=safe_id, confirm=confirm))
 
 
+@register_tool
 async def list_meeting_agenda_items(
     ctx: Context,
     meeting_id: int,
@@ -2051,6 +2133,7 @@ async def list_meeting_agenda_items(
     )
 
 
+@register_tool
 async def list_work_package_meeting_agenda_items(
     ctx: Context,
     work_package_id: int | str,
@@ -2088,6 +2171,7 @@ async def list_work_package_meeting_agenda_items(
     )
 
 
+@register_tool
 async def get_meeting_agenda_item(ctx: Context, agenda_item_id: int) -> MeetingAgendaItemSummary:
     """Get a single meeting agenda item by id.
 
@@ -2098,6 +2182,7 @@ async def get_meeting_agenda_item(ctx: Context, agenda_item_id: int) -> MeetingA
     return await _run_tool(client.get_meeting_agenda_item(safe_id))
 
 
+@register_tool
 async def create_meeting_agenda_item(
     ctx: Context,
     meeting_id: int,
@@ -2141,6 +2226,7 @@ async def create_meeting_agenda_item(
     )
 
 
+@register_tool
 async def update_meeting_agenda_item(
     ctx: Context,
     agenda_item_id: int,
@@ -2190,6 +2276,7 @@ async def update_meeting_agenda_item(
     )
 
 
+@register_tool
 async def delete_meeting_agenda_item(
     ctx: Context, agenda_item_id: int, confirm: bool = False
 ) -> MeetingAgendaItemWriteResult:
@@ -2203,6 +2290,7 @@ async def delete_meeting_agenda_item(
     return await _run_tool(client.delete_meeting_agenda_item(agenda_item_id=safe_id, confirm=confirm))
 
 
+@register_tool
 async def list_meeting_outcomes(
     ctx: Context,
     agenda_item_id: int,
@@ -2237,6 +2325,7 @@ async def list_meeting_outcomes(
     )
 
 
+@register_tool
 async def get_meeting_outcome(ctx: Context, outcome_id: int) -> MeetingOutcomeSummary:
     """Get a single meeting outcome by id.
 
@@ -2247,6 +2336,7 @@ async def get_meeting_outcome(ctx: Context, outcome_id: int) -> MeetingOutcomeSu
     return await _run_tool(client.get_meeting_outcome(safe_id))
 
 
+@register_tool
 async def create_meeting_outcome(
     ctx: Context,
     agenda_item_id: int,
@@ -2287,6 +2377,7 @@ async def create_meeting_outcome(
     )
 
 
+@register_tool
 async def update_meeting_outcome(
     ctx: Context,
     outcome_id: int,
@@ -2327,6 +2418,7 @@ async def update_meeting_outcome(
     )
 
 
+@register_tool
 async def delete_meeting_outcome(ctx: Context, outcome_id: int, confirm: bool = False) -> MeetingOutcomeWriteResult:
     """Prepare or delete a meeting outcome; only deletes when called again
     with confirm=true.
@@ -2338,6 +2430,7 @@ async def delete_meeting_outcome(ctx: Context, outcome_id: int, confirm: bool = 
     return await _run_tool(client.delete_meeting_outcome(outcome_id=safe_id, confirm=confirm))
 
 
+@register_tool
 async def list_meeting_sections(
     ctx: Context,
     meeting_id: int,
@@ -2358,6 +2451,7 @@ async def list_meeting_sections(
     return await _run_tool(client.list_meeting_sections(safe_id, offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def get_meeting_section(ctx: Context, section_id: int) -> MeetingSectionSummary:
     """Get a single meeting section by id.
 
@@ -2368,6 +2462,7 @@ async def get_meeting_section(ctx: Context, section_id: int) -> MeetingSectionSu
     return await _run_tool(client.get_meeting_section(safe_id))
 
 
+@register_tool
 async def create_meeting_section(
     ctx: Context,
     meeting_id: int,
@@ -2394,6 +2489,7 @@ async def create_meeting_section(
     )
 
 
+@register_tool
 async def update_meeting_section(
     ctx: Context,
     section_id: int,
@@ -2417,6 +2513,7 @@ async def update_meeting_section(
     )
 
 
+@register_tool
 async def delete_meeting_section(ctx: Context, section_id: int, confirm: bool = False) -> MeetingSectionWriteResult:
     """Prepare or delete a meeting section; only deletes when called again
     with confirm=true.
@@ -2428,6 +2525,7 @@ async def delete_meeting_section(ctx: Context, section_id: int, confirm: bool = 
     return await _run_tool(client.delete_meeting_section(section_id=safe_id, confirm=confirm))
 
 
+@register_tool
 async def list_recurring_meetings(
     ctx: Context,
     project: str | None = None,
@@ -2451,6 +2549,7 @@ async def list_recurring_meetings(
     return await _run_tool(client.list_recurring_meetings(project=safe_project, offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def get_recurring_meeting(ctx: Context, recurring_meeting_id: int) -> RecurringMeetingSummary:
     """Get a single OpenProject recurring meeting series by id.
 
@@ -2461,6 +2560,7 @@ async def get_recurring_meeting(ctx: Context, recurring_meeting_id: int) -> Recu
     return await _run_tool(client.get_recurring_meeting(safe_id))
 
 
+@register_tool
 async def create_recurring_meeting(
     ctx: Context,
     project: str,
@@ -2512,6 +2612,7 @@ async def create_recurring_meeting(
     )
 
 
+@register_tool
 async def update_recurring_meeting(
     ctx: Context,
     recurring_meeting_id: int,
@@ -2564,6 +2665,7 @@ async def update_recurring_meeting(
     )
 
 
+@register_tool
 async def delete_recurring_meeting(
     ctx: Context, recurring_meeting_id: int, confirm: bool = False
 ) -> RecurringMeetingWriteResult:
@@ -2580,6 +2682,7 @@ async def delete_recurring_meeting(
 _VALID_OCCURRENCE_FILTERS: set[str] = {"upcoming", "past", "cancelled", "open"}
 
 
+@register_tool
 async def list_recurring_meeting_occurrences(
     ctx: Context,
     recurring_meeting_id: int,
@@ -2607,6 +2710,7 @@ async def list_recurring_meeting_occurrences(
     return await _run_tool(client.list_recurring_meeting_occurrences(safe_id, filter=safe_filter, limit=safe_limit))
 
 
+@register_tool
 async def init_recurring_meeting_occurrence(
     ctx: Context,
     recurring_meeting_id: int,
@@ -2632,6 +2736,7 @@ async def init_recurring_meeting_occurrence(
     )
 
 
+@register_tool
 async def cancel_recurring_meeting_occurrence(
     ctx: Context,
     recurring_meeting_id: int,
@@ -2662,6 +2767,7 @@ async def cancel_recurring_meeting_occurrence(
     )
 
 
+@register_tool
 async def list_user_non_working_times(
     ctx: Context,
     user_ref: str,
@@ -2697,6 +2803,7 @@ async def list_user_non_working_times(
     )
 
 
+@register_tool
 async def create_user_non_working_time(
     ctx: Context,
     user_ref: str,
@@ -2722,6 +2829,7 @@ async def create_user_non_working_time(
     )
 
 
+@register_tool
 async def update_user_non_working_time(
     ctx: Context,
     user_ref: str,
@@ -2751,6 +2859,7 @@ async def update_user_non_working_time(
     )
 
 
+@register_tool
 async def delete_user_non_working_time(
     ctx: Context,
     user_ref: str,
@@ -2769,6 +2878,7 @@ async def delete_user_non_working_time(
     return await _run_tool(client.delete_user_non_working_time(safe_user, safe_id, confirm=confirm))
 
 
+@register_tool
 async def list_user_working_hours(
     ctx: Context,
     user_ref: str,
@@ -2797,6 +2907,7 @@ async def list_user_working_hours(
     return await _run_tool(client.list_user_working_hours(safe_user, offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def get_user_working_hours(
     ctx: Context,
     user_ref: str,
@@ -2813,6 +2924,7 @@ async def get_user_working_hours(
     return await _run_tool(client.get_user_working_hours(safe_user, safe_id))
 
 
+@register_tool
 async def create_user_working_hours(
     ctx: Context,
     user_ref: str,
@@ -2863,6 +2975,7 @@ async def create_user_working_hours(
     )
 
 
+@register_tool
 async def update_user_working_hours(
     ctx: Context,
     user_ref: str,
@@ -2905,6 +3018,7 @@ async def update_user_working_hours(
     )
 
 
+@register_tool
 async def delete_user_working_hours(
     ctx: Context,
     user_ref: str,
@@ -2922,6 +3036,7 @@ async def delete_user_working_hours(
     return await _run_tool(client.delete_user_working_hours(safe_user, safe_id, confirm=confirm))
 
 
+@register_tool
 async def execute_query(
     ctx: Context,
     query_id: int,
@@ -2951,6 +3066,7 @@ async def execute_query(
     return await _run_tool(client.execute_query(safe_query_id, offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def list_categories(
     ctx: Context,
     project: str,
@@ -2966,6 +3082,7 @@ async def list_categories(
     return await _run_tool(client.list_categories(safe_project))
 
 
+@register_tool
 async def get_category(
     ctx: Context,
     category_id: int,
@@ -2983,6 +3100,7 @@ async def get_category(
     return await _run_tool(client.get_category(category_id=safe_id, project_ref=safe_project))
 
 
+@register_tool
 async def get_project_work_package_context(
     ctx: Context,
     project: str,
@@ -2995,6 +3113,7 @@ async def get_project_work_package_context(
     return await _run_tool(client.get_project_work_package_context(project=safe_project, type=safe_type))
 
 
+@register_tool
 async def search_work_packages(
     ctx: Context,
     search: str,
@@ -3102,6 +3221,7 @@ async def search_work_packages(
     )
 
 
+@register_tool
 async def list_work_packages(
     ctx: Context,
     project: str | None = None,
@@ -3331,6 +3451,7 @@ async def list_work_packages(
     )
 
 
+@register_tool
 async def get_work_package(
     ctx: Context,
     work_package_id: int | str,
@@ -3365,6 +3486,7 @@ async def get_work_package(
     return await _run_tool(client.get_work_package(safe_id, text_limit=safe_text_limit))
 
 
+@register_tool
 async def get_work_packages(
     ctx: Context,
     ids: list[int | str],
@@ -3461,6 +3583,7 @@ def _validate_work_package_create_fields(
     }
 
 
+@register_tool
 async def create_work_package(
     ctx: Context,
     project: str,
@@ -3610,6 +3733,7 @@ def _validate_work_package_update_fields(
     }
 
 
+@register_tool
 async def update_work_package(
     ctx: Context,
     work_package_id: int | str,
@@ -3738,6 +3862,7 @@ _BULK_CREATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(
 )
 
 
+@register_tool
 async def bulk_create_work_packages(
     ctx: Context,
     items: list[dict[str, Any]],
@@ -3878,6 +4003,7 @@ _BULK_UPDATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(
 )
 
 
+@register_tool
 async def bulk_update_work_packages(
     ctx: Context,
     items: list[dict[str, Any]],
@@ -3982,6 +4108,7 @@ async def bulk_update_work_packages(
     return await _run_tool(client.bulk_update_work_packages(items=safe_items, confirm=confirm))
 
 
+@register_tool
 async def delete_work_package(
     ctx: Context,
     work_package_id: int | str,
@@ -3997,6 +4124,7 @@ async def delete_work_package(
     return await _run_tool(client.delete_work_package(work_package_id=safe_id, confirm=confirm))
 
 
+@register_tool
 async def create_subtask(
     ctx: Context,
     parent_work_package_id: int | str,
@@ -4060,6 +4188,7 @@ async def create_subtask(
     )
 
 
+@register_tool
 async def add_work_package_comment(
     ctx: Context,
     work_package_id: int | str,
@@ -4098,6 +4227,7 @@ async def add_work_package_comment(
     )
 
 
+@register_tool
 async def create_work_package_relation(
     ctx: Context,
     work_package_id: int | str,
@@ -4139,6 +4269,7 @@ async def create_work_package_relation(
     )
 
 
+@register_tool
 async def delete_relation(
     ctx: Context,
     relation_id: int,
@@ -4150,6 +4281,7 @@ async def delete_relation(
     return await _run_tool(client.delete_relation(relation_id=safe_id, confirm=confirm))
 
 
+@register_tool
 async def list_my_open_work_packages(
     ctx: Context,
     offset: int = 1,
@@ -4183,6 +4315,7 @@ async def list_my_open_work_packages(
     return await _run_tool(client.list_my_open_work_packages(offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def list_versions(
     ctx: Context,
     project: str | None = None,
@@ -4212,6 +4345,7 @@ async def list_versions(
     )
 
 
+@register_tool
 async def get_version(
     ctx: Context,
     version_id: int,
@@ -4253,6 +4387,7 @@ def _validate_version_schedule_fields(
     }
 
 
+@register_tool
 async def create_version(
     ctx: Context,
     project: str,
@@ -4288,6 +4423,7 @@ async def create_version(
     )
 
 
+@register_tool
 async def update_version(
     ctx: Context,
     version_id: int,
@@ -4332,6 +4468,7 @@ async def update_version(
     )
 
 
+@register_tool
 async def delete_version(
     ctx: Context,
     version_id: int,
@@ -4343,6 +4480,7 @@ async def delete_version(
     return await _run_tool(client.delete_version(version_id=safe_id, confirm=confirm))
 
 
+@register_tool
 async def list_boards(
     ctx: Context,
     project: str | None = None,
@@ -4371,6 +4509,7 @@ async def list_boards(
     )
 
 
+@register_tool
 async def get_board(
     ctx: Context,
     board_id: int,
@@ -4408,6 +4547,7 @@ def _validate_board_query_fields(
     }
 
 
+@register_tool
 async def create_board(
     ctx: Context,
     name: str,
@@ -4456,6 +4596,7 @@ async def create_board(
     )
 
 
+@register_tool
 async def update_board(
     ctx: Context,
     board_id: int,
@@ -4523,6 +4664,7 @@ async def update_board(
     )
 
 
+@register_tool
 async def delete_board(
     ctx: Context,
     board_id: int,
@@ -4534,6 +4676,7 @@ async def delete_board(
     return await _run_tool(client.delete_board(board_id=safe_id, confirm=confirm))
 
 
+@register_tool
 async def list_work_package_attachments(
     ctx: Context,
     work_package_id: int | str,
@@ -4570,6 +4713,7 @@ async def list_work_package_attachments(
     )
 
 
+@register_tool
 async def get_attachment(
     ctx: Context,
     attachment_id: int,
@@ -4580,6 +4724,7 @@ async def get_attachment(
     return await _run_tool(client.get_attachment(safe_id))
 
 
+@register_tool
 async def create_work_package_attachment(
     ctx: Context,
     work_package_id: int | str,
@@ -4605,6 +4750,7 @@ async def create_work_package_attachment(
     )
 
 
+@register_tool
 async def delete_attachment(
     ctx: Context,
     attachment_id: int,
@@ -4616,12 +4762,14 @@ async def delete_attachment(
     return await _run_tool(client.delete_attachment(attachment_id=safe_id, confirm=confirm))
 
 
+@register_tool
 async def list_time_entry_activities(ctx: Context) -> TimeEntryActivityListResult:
     """List available time entry activities."""
     client = _client_from_context(ctx)
     return await _run_tool(client.list_time_entry_activities())
 
 
+@register_tool
 async def list_time_entries(
     ctx: Context,
     project: str | None = None,
@@ -4679,6 +4827,7 @@ async def list_time_entries(
     )
 
 
+@register_tool
 async def get_time_entry(
     ctx: Context,
     time_entry_id: int,
@@ -4697,6 +4846,7 @@ async def get_time_entry(
     return await _run_tool(client.get_time_entry(safe_id, text_limit=safe_text_limit))
 
 
+@register_tool
 async def create_time_entry(
     ctx: Context,
     activity: str,
@@ -4746,6 +4896,7 @@ async def create_time_entry(
     )
 
 
+@register_tool
 async def update_time_entry(
     ctx: Context,
     time_entry_id: int,
@@ -4798,6 +4949,7 @@ async def update_time_entry(
     )
 
 
+@register_tool
 async def create_time_entry_until(
     ctx: Context,
     activity: str,
@@ -4846,6 +4998,7 @@ async def create_time_entry_until(
     )
 
 
+@register_tool
 async def update_time_entry_until(
     ctx: Context,
     time_entry_id: int,
@@ -4889,6 +5042,7 @@ async def update_time_entry_until(
     )
 
 
+@register_tool
 async def delete_time_entry(
     ctx: Context,
     time_entry_id: int,
@@ -4900,6 +5054,7 @@ async def delete_time_entry(
     return await _run_tool(client.delete_time_entry(time_entry_id=safe_id, confirm=confirm))
 
 
+@register_tool
 async def get_cost_entry(
     ctx: Context,
     cost_entry_id: int,
@@ -4914,6 +5069,7 @@ async def get_cost_entry(
     return await _run_tool(client.get_cost_entry(safe_id))
 
 
+@register_tool
 async def list_work_package_cost_entries(
     ctx: Context,
     work_package_id: int | str,
@@ -4930,6 +5086,7 @@ async def list_work_package_cost_entries(
     return await _run_tool(client.list_work_package_cost_entries(safe_id))
 
 
+@register_tool
 async def get_work_package_costs_by_type(
     ctx: Context,
     work_package_id: int | str,
@@ -4949,6 +5106,7 @@ async def get_work_package_costs_by_type(
     return await _run_tool(client.get_work_package_costs_by_type(safe_id))
 
 
+@register_tool
 async def get_cost_type(
     ctx: Context,
     cost_type_id: int,
@@ -4965,6 +5123,7 @@ async def get_cost_type(
     return await _run_tool(client.get_cost_type(safe_id))
 
 
+@register_tool
 async def get_github_pull_request(
     ctx: Context,
     github_pull_request_id: int,
@@ -4988,6 +5147,7 @@ async def get_github_pull_request(
     return await _run_tool(client.get_github_pull_request(safe_id))
 
 
+@register_tool
 async def list_work_package_github_pull_requests(
     ctx: Context,
     work_package_id: int | str,
@@ -5007,6 +5167,7 @@ async def list_work_package_github_pull_requests(
     return await _run_tool(client.list_work_package_github_pull_requests(safe_id))
 
 
+@register_tool
 async def list_work_package_gitlab_issues(
     ctx: Context,
     work_package_id: int | str,
@@ -5027,6 +5188,7 @@ async def list_work_package_gitlab_issues(
     return await _run_tool(client.list_work_package_gitlab_issues(safe_id))
 
 
+@register_tool
 async def list_work_package_gitlab_merge_requests(
     ctx: Context,
     work_package_id: int | str,
@@ -5048,6 +5210,7 @@ async def list_work_package_gitlab_merge_requests(
     return await _run_tool(client.list_work_package_gitlab_merge_requests(safe_id))
 
 
+@register_tool
 async def get_work_package_relations(
     ctx: Context,
     work_package_id: int | str,
@@ -5089,6 +5252,7 @@ async def get_work_package_relations(
     return await _run_tool(client.get_work_package_relations(safe_id, offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def get_work_package_activities(
     ctx: Context,
     work_package_id: int | str,
@@ -5116,6 +5280,7 @@ async def get_work_package_activities(
     return await _run_tool(client.get_work_package_activities(safe_id, limit=safe_limit, text_limit=safe_text_limit))
 
 
+@register_tool
 async def list_work_package_reactions(
     ctx: Context,
     work_package_id: int | str,
@@ -5133,6 +5298,7 @@ async def list_work_package_reactions(
     return await _run_tool(client.list_work_package_reactions(safe_id))
 
 
+@register_tool
 async def toggle_activity_emoji_reaction(
     ctx: Context,
     activity_id: int,
@@ -5152,6 +5318,7 @@ async def toggle_activity_emoji_reaction(
     return await _run_tool(client.toggle_activity_emoji_reaction(safe_id, safe_reaction, confirm=confirm))
 
 
+@register_tool
 async def list_reminders(ctx: Context, select: list[str] | None = None) -> ReminderListResult:
     """List the current user's active reminders across all work packages.
 
@@ -5162,6 +5329,7 @@ async def list_reminders(ctx: Context, select: list[str] | None = None) -> Remin
     return await _run_tool(client.list_reminders())
 
 
+@register_tool
 async def create_work_package_reminder(
     ctx: Context,
     work_package_id: int | str,
@@ -5189,6 +5357,7 @@ async def create_work_package_reminder(
     )
 
 
+@register_tool
 async def update_reminder(
     ctx: Context,
     reminder_id: int,
@@ -5211,6 +5380,7 @@ async def update_reminder(
     )
 
 
+@register_tool
 async def delete_reminder(
     ctx: Context,
     reminder_id: int,
@@ -5222,6 +5392,7 @@ async def delete_reminder(
     return await _run_tool(client.delete_reminder(reminder_id=safe_id, confirm=confirm))
 
 
+@register_tool
 async def set_project_favorite(
     ctx: Context,
     project: str,
@@ -5240,12 +5411,14 @@ async def set_project_favorite(
     return await _run_tool(client.remove_project_favorite(project=safe_project, confirm=confirm))
 
 
+@register_tool
 async def get_current_user(ctx: Context) -> CurrentUser:
     """Return the currently authenticated user's profile."""
     client = _client_from_context(ctx)
     return await _run_tool(client.get_current_user())
 
 
+@register_tool
 async def list_statuses(ctx: Context) -> StatusListResult:
     """List all available work package statuses.
 
@@ -5256,6 +5429,7 @@ async def list_statuses(ctx: Context) -> StatusListResult:
     return await _run_tool(client.list_statuses())
 
 
+@register_tool
 async def get_status(ctx: Context, status_id: int) -> StatusSummary:
     """Get a single work package status by id."""
     client = _client_from_context(ctx)
@@ -5263,12 +5437,14 @@ async def get_status(ctx: Context, status_id: int) -> StatusSummary:
     return await _run_tool(client.get_status(safe_id))
 
 
+@register_tool
 async def list_priorities(ctx: Context) -> PriorityListResult:
     """List all available work package priorities."""
     client = _client_from_context(ctx)
     return await _run_tool(client.list_priorities())
 
 
+@register_tool
 async def get_priority(ctx: Context, priority_id: int) -> PrioritySummary:
     """Get a single work package priority by id."""
     client = _client_from_context(ctx)
@@ -5276,6 +5452,7 @@ async def get_priority(ctx: Context, priority_id: int) -> PrioritySummary:
     return await _run_tool(client.get_priority(safe_id))
 
 
+@register_tool
 async def list_types(
     ctx: Context,
     project: str | None = None,
@@ -5290,6 +5467,7 @@ async def list_types(
     return await _run_tool(client.list_types(project=safe_project))
 
 
+@register_tool
 async def get_type(ctx: Context, type_id: int) -> TypeSummary:
     """Get a single work package type by id."""
     client = _client_from_context(ctx)
@@ -5297,6 +5475,7 @@ async def get_type(ctx: Context, type_id: int) -> TypeSummary:
     return await _run_tool(client.get_type(safe_id))
 
 
+@register_tool
 async def list_work_package_watchers(
     ctx: Context,
     work_package_id: int | str,
@@ -5314,6 +5493,7 @@ async def list_work_package_watchers(
     return await _run_tool(client.list_work_package_watchers(safe_id))
 
 
+@register_tool
 async def set_work_package_watcher(
     ctx: Context,
     work_package_id: int | str,
@@ -5337,6 +5517,7 @@ async def set_work_package_watcher(
     return await _run_tool(client.remove_work_package_watcher(safe_wp_id, safe_user_id, confirm=confirm))
 
 
+@register_tool
 async def list_notifications(
     ctx: Context,
     unread_only: bool = False,
@@ -5359,6 +5540,7 @@ async def list_notifications(
     return await _run_tool(client.list_notifications(unread_only=unread_only, limit=safe_limit, offset=safe_offset))
 
 
+@register_tool
 async def mark_notifications_read(
     ctx: Context, notification_id: int | None = None, confirm: bool = False
 ) -> NotificationMarkResult:
@@ -5375,6 +5557,7 @@ async def mark_notifications_read(
     return await _run_tool(client.mark_notification_read(safe_id, confirm=confirm))
 
 
+@register_tool
 async def create_user(
     ctx: Context,
     login: str,
@@ -5410,6 +5593,7 @@ async def create_user(
     )
 
 
+@register_tool
 async def update_user(
     ctx: Context,
     user_id: int,
@@ -5452,6 +5636,7 @@ async def update_user(
     )
 
 
+@register_tool
 async def delete_user(
     ctx: Context,
     user_id: int,
@@ -5463,6 +5648,7 @@ async def delete_user(
     return await _run_tool(client.delete_user(safe_id, confirm=confirm))
 
 
+@register_tool
 async def set_user_locked(
     ctx: Context,
     user_id: int,
@@ -5481,6 +5667,7 @@ async def set_user_locked(
     return await _run_tool(client.unlock_user(safe_id, confirm=confirm))
 
 
+@register_tool
 async def create_group(
     ctx: Context,
     name: str,
@@ -5493,6 +5680,7 @@ async def create_group(
     return await _run_tool(client.create_group(name=safe_name, user_ids=user_ids, confirm=confirm))
 
 
+@register_tool
 async def update_group(
     ctx: Context,
     group_id: int,
@@ -5515,6 +5703,7 @@ async def update_group(
     )
 
 
+@register_tool
 async def delete_group(
     ctx: Context,
     group_id: int,
@@ -5526,6 +5715,7 @@ async def delete_group(
     return await _run_tool(client.delete_group(safe_id, confirm=confirm))
 
 
+@register_tool
 async def create_storage(
     ctx: Context,
     name: str,
@@ -5576,6 +5766,7 @@ async def create_storage(
     )
 
 
+@register_tool
 async def update_storage(
     ctx: Context,
     storage_id: int,
@@ -5596,6 +5787,7 @@ async def update_storage(
     return await _run_tool(client.update_storage(storage_id=safe_id, name=safe_name, host=safe_host, confirm=confirm))
 
 
+@register_tool
 async def delete_storage(
     ctx: Context,
     storage_id: int,
@@ -5613,6 +5805,7 @@ async def delete_storage(
     return await _run_tool(client.delete_storage(safe_id, confirm=confirm))
 
 
+@register_tool
 async def list_work_package_file_links(
     ctx: Context,
     work_package_id: int | str,
@@ -5630,6 +5823,7 @@ async def list_work_package_file_links(
     return await _run_tool(client.list_work_package_file_links(safe_id))
 
 
+@register_tool
 async def delete_file_link(
     ctx: Context,
     file_link_id: int,
@@ -5641,6 +5835,7 @@ async def delete_file_link(
     return await _run_tool(client.delete_file_link(safe_id, confirm=confirm))
 
 
+@register_tool
 async def list_grids(
     ctx: Context,
     scope: str | None = None,
@@ -5666,6 +5861,7 @@ async def list_grids(
     return await _run_tool(client.list_grids(scope=safe_scope, offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def get_grid(ctx: Context, grid_id: int) -> GridSummary:
     """Get a single dashboard grid by id."""
     client = _client_from_context(ctx)
@@ -5673,6 +5869,7 @@ async def get_grid(ctx: Context, grid_id: int) -> GridSummary:
     return await _run_tool(client.get_grid(safe_id))
 
 
+@register_tool
 async def create_grid(
     ctx: Context,
     name: str,
@@ -5702,6 +5899,7 @@ async def create_grid(
     )
 
 
+@register_tool
 async def update_grid(
     ctx: Context,
     grid_id: int,
@@ -5735,6 +5933,7 @@ async def update_grid(
     )
 
 
+@register_tool
 async def delete_grid(
     ctx: Context,
     grid_id: int,
@@ -5746,6 +5945,7 @@ async def delete_grid(
     return await _run_tool(client.delete_grid(grid_id=safe_id, confirm=confirm))
 
 
+@register_tool
 async def get_my_preferences(ctx: Context) -> UserPreferences:
     """Return the current user's OpenProject preferences (timezone, sorting, popups, …).
 
@@ -5756,6 +5956,7 @@ async def get_my_preferences(ctx: Context) -> UserPreferences:
     return await _run_tool(client.get_my_preferences())
 
 
+@register_tool
 async def update_my_preferences(
     ctx: Context,
     time_zone: str | None = None,
@@ -5782,6 +5983,7 @@ async def update_my_preferences(
     )
 
 
+@register_tool
 async def render_text(
     ctx: Context,
     text: str,
@@ -5795,12 +5997,14 @@ async def render_text(
     return await _run_tool(client.render_text(text=safe_text, format=format))
 
 
+@register_tool
 async def list_help_texts(ctx: Context) -> HelpTextListResult:
     """List all help texts configured for work-package and project attributes."""
     client = _client_from_context(ctx)
     return await _run_tool(client.list_help_texts())
 
 
+@register_tool
 async def get_help_text(ctx: Context, help_text_id: int) -> HelpTextSummary:
     """Get a single help text by id."""
     client = _client_from_context(ctx)
@@ -5808,12 +6012,14 @@ async def get_help_text(ctx: Context, help_text_id: int) -> HelpTextSummary:
     return await _run_tool(client.get_help_text(safe_id))
 
 
+@register_tool
 async def list_working_days(ctx: Context) -> WorkingDayListResult:
     """List the Mon–Sun working-day configuration (7 entries showing which weekdays are working days)."""
     client = _client_from_context(ctx)
     return await _run_tool(client.list_working_days())
 
 
+@register_tool
 async def list_non_working_days(
     ctx: Context,
     year: int | None = None,
@@ -5823,6 +6029,7 @@ async def list_non_working_days(
     return await _run_tool(client.list_non_working_days(year=year))
 
 
+@register_tool
 async def get_custom_option(ctx: Context, custom_option_id: int) -> CustomOptionSummary:
     """Fetch the label/value of a single custom field option by id."""
     client = _client_from_context(ctx)
@@ -5830,6 +6037,7 @@ async def get_custom_option(ctx: Context, custom_option_id: int) -> CustomOption
     return await _run_tool(client.get_custom_option(safe_id))
 
 
+@register_tool
 async def list_relations(
     ctx: Context,
     relation_type: str | None = None,
@@ -5866,6 +6074,7 @@ async def list_relations(
     return await _run_tool(client.list_relations(relation_type=safe_type, offset=safe_offset, limit=safe_limit))
 
 
+@register_tool
 async def update_relation(
     ctx: Context,
     relation_id: int,
@@ -6843,21 +7052,3 @@ def _validate_choice(
 # internal server error (500), not a clean 422, so this must be checked
 # client-side rather than left to the server's own validation.
 _MEETING_OUTCOME_KINDS = {"information", "decision", "work_package"}
-
-
-# Resolves every classified tool name to its actual function object.
-# Derived directly from the classification constants rather than listed a
-# second time, so it can never silently diverge from them — a misspelled or
-# renamed tool name raises KeyError here at import time instead of a tool
-# silently vanishing from registration.
-_TOOL_FUNCTIONS: dict[str, Callable] = {
-    # name comes from this module's own tool-classification constants below, never attacker-controlled input.
-    # nosemgrep: python.lang.security.dangerous-globals-use.dangerous-globals-use
-    name: globals()[name]
-    for name in (
-        *PERSONAL_MUTATION_TOOLS,
-        *ATTACHMENT_UPLOAD_TOOLS,
-        *(name for names in READ_TOOLS_BY_SCOPE.values() for name in names),
-        *(name for names in WRITE_TOOLS_BY_SCOPE.values() for name in names),
-    )
-}

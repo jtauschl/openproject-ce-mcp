@@ -130,19 +130,29 @@ def test_every_classified_scope_string_is_known_to_settings() -> None:
 
 
 def test_every_classified_name_resolves_to_a_real_function() -> None:
-    # _TOOL_FUNCTIONS is built via globals()[name] over the classification
-    # constants at import time — if this test file can import `tools` at
-    # all, every classified name already resolved (a bad name would have
-    # raised KeyError at module load). This test locks that invariant in
-    # explicitly rather than relying on import success alone.
-    all_classified = (
-        set(tools.PERSONAL_MUTATION_TOOLS)
-        | set(tools.ATTACHMENT_UPLOAD_TOOLS)
-        | set().union(*tools.READ_TOOLS_BY_SCOPE.values())
-        | set().union(*tools.WRITE_TOOLS_BY_SCOPE.values())
-        | set(tools.ADMIN_WRITE_TOOLS)
-    )
-    assert all_classified == set(tools._TOOL_FUNCTIONS)
+    # _TOOL_FUNCTIONS is built by each tool function registering itself via
+    # @register_tool at import time (not module-namespace introspection) —
+    # if this test file can import `tools` at all, every classified name
+    # already resolved (a name with no matching @register_tool'd function
+    # would leave a gap here, not raise at import time, since registration
+    # and classification are two independent lists). This test locks that
+    # invariant in explicitly rather than relying on import success alone.
+    # ADMIN_WRITE_TOOLS is deliberately NOT listed separately here -- it's
+    # already folded into WRITE_TOOLS_BY_SCOPE["admin"] (see that constant's
+    # definition), so including it again would make every admin tool name
+    # count as "classified twice" and fail the duplicate check below.
+    all_names_list = [
+        *tools.PERSONAL_MUTATION_TOOLS,
+        *tools.ATTACHMENT_UPLOAD_TOOLS,
+        *(name for names in tools.READ_TOOLS_BY_SCOPE.values() for name in names),
+        *(name for names in tools.WRITE_TOOLS_BY_SCOPE.values() for name in names),
+    ]
+    # Checked on the unreduced list, not just the deduplicated set below --
+    # two classification constants both naming the same tool would silently
+    # collapse under a plain set union and never surface as a bug.
+    duplicates = {name for name in all_names_list if all_names_list.count(name) > 1}
+    assert not duplicates, f"Tool name(s) classified more than once: {sorted(duplicates)}"
+    assert set(all_names_list) == set(tools._TOOL_FUNCTIONS)
 
 
 def test_every_write_tool_requires_confirm() -> None:

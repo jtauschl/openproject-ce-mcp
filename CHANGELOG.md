@@ -192,6 +192,12 @@ support.
 - CI now runs **Semgrep** as a second SAST pass, and a complete
   shell-script gate across the repo's shell scripts. No end-user-visible
   behavior change.
+- **`tools.py`'s tool registry now builds via explicit `@register_tool`
+  decorators on each tool function**, instead of resolving classified names
+  through the module's `globals()` at import time — groundwork for
+  eventually splitting `tools.py` into per-domain files (OPM-395), since
+  each function now carries its own registration wherever it's defined. No
+  end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and
