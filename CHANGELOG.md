@@ -9,6 +9,14 @@ development baseline.
 
 ## [0.3.8] - Unreleased
 
+### Changed
+
+- **CI gains a weekly job that tests against the newest dependency versions
+  allowed by `pyproject.toml`'s declared ranges** (`uv sync --upgrade`,
+  ignoring `uv.lock`'s pinned versions), catching drift a real
+  `pip`/`pipx`/`uv tool install` could pick up but the normal, lockfile-pinned
+  test run never exercises. No end-user-visible behavior change.
+
 ### Docs
 
 - **Corrected `list_work_packages`' `project` parameter docstring** — it
