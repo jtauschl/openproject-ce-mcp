@@ -211,6 +211,11 @@ support.
   tool currently lives in `tools.py`; this stays correct once tools.py is
   eventually split into per-domain files (OPM-395). No end-user-visible
   behavior change.
+- **7 more validators moved from `tools.py` into `tools_validation.py`**
+  (project/work-package reference and relation-type validation, each with
+  its own regex constant used exclusively by that validator) — further
+  groundwork for splitting `tools.py` into per-domain files (OPM-395). No
+  end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and

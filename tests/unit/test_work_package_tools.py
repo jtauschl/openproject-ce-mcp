@@ -6,7 +6,6 @@ from _tools_test_helpers import FakeContext, make_settings
 
 from openproject_ce_mcp.client import CLEAR, CLEAR_PARENT, CLEAR_VERSION, OpenProjectClient
 from openproject_ce_mcp.tools import (
-    _validate_work_package_ref,
     add_work_package_comment,
     bulk_create_work_packages,
     bulk_update_work_packages,
@@ -26,6 +25,7 @@ from openproject_ce_mcp.tools import (
     update_relation,
     update_work_package,
 )
+from openproject_ce_mcp.tools_validation import _validate_work_package_ref
 
 
 @pytest.mark.asyncio

@@ -204,18 +204,25 @@ from .tools_validation import (
     _validate_optional_filter_list,
     _validate_optional_non_negative_int,
     _validate_optional_percentage_done,
+    _validate_optional_project_identifier,
+    _validate_optional_project_ref,
     _validate_optional_query,
     _validate_optional_string_list,
     _validate_optional_text,
     _validate_optional_update_text,
     _validate_optional_user_or_principal_ref,
     _validate_optional_user_ref,
+    _validate_optional_work_package_ref,
     _validate_participant_refs,
     _validate_positive_int,
+    _validate_project_identifier,
+    _validate_project_ref,
+    _validate_relation_type,
     _validate_required_date,
     _validate_required_query,
     _validate_required_string_list,
     _validate_required_text,
+    _validate_work_package_ref,
 )
 
 # ISO 8601 date-time, e.g. 2026-12-01T09:00:00Z or with a +HH:MM offset. The
@@ -242,13 +249,6 @@ DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:
 # fractional-S shape always satisfies.
 ISO8601_DURATION_RE = re.compile(
     r"^P(?:\d+W|(?=\d|T)(?:\d+Y)?(?:\d+M)?(?:\d+D)?(?:T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+(?:\.\d+)?S)?)?)$"
-)
-PROJECT_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-# A project-based work package reference: a project identifier followed by "-<number>"
-# (e.g. PROJ-123). The numeric form is handled separately before this pattern applies.
-WORK_PACKAGE_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}-\d+$")
-RELATION_TYPE_RE = re.compile(
-    r"^(relates|duplicates|duplicated|blocks|blocked|precedes|follows|includes|partof|requires|required)$"
 )
 
 
@@ -6452,65 +6452,6 @@ def _validate_custom_field_filters(
     return normalized
 
 
-def _validate_optional_project_ref(value: str | None) -> str | None:
-    if value is None:
-        return None
-    return _validate_project_ref(value)
-
-
-def _validate_optional_project_identifier(value: str | None) -> str | None:
-    if value is None:
-        return None
-    return _validate_project_identifier(value)
-
-
-def _validate_project_ref(value: str) -> str:
-    normalized = " ".join(value.split())
-    if not normalized:
-        raise ValueError("project is required.")
-    if normalized.isdigit():
-        _validate_positive_int(int(normalized), field_name="project")
-        return normalized
-    if PROJECT_REF_RE.fullmatch(normalized):
-        return normalized
-    # Not identifier-shaped (e.g. contains spaces) — pass through as a display-name
-    # candidate. Resolution (including "not found"/"ambiguous" errors) happens
-    # server-side in OpenProjectClient._resolve_project_ref, which can actually check.
-    if len(normalized) > 255:
-        raise ValueError("project must be 255 characters or fewer.")
-    return normalized
-
-
-def _validate_project_identifier(value: str) -> str:
-    normalized = " ".join(value.split())
-    if not normalized:
-        raise ValueError("identifier is required.")
-    if not PROJECT_REF_RE.fullmatch(normalized):
-        raise ValueError("identifier must be a valid project identifier.")
-    return normalized
-
-
-def _validate_work_package_ref(value: int | str, *, field_name: str = "work_package_id") -> str:
-    normalized = " ".join(str(value).split())
-    if not normalized:
-        raise ValueError(f"{field_name} is required.")
-    if normalized.isdigit():
-        _validate_positive_int(int(normalized), field_name=field_name)
-        return normalized
-    if not WORK_PACKAGE_REF_RE.fullmatch(normalized):
-        raise ValueError(
-            f"{field_name}: use internal id (e.g., 952) or display_id (e.g., 'PROJ-51'), "
-            f"not UI display number (e.g., 51)."
-        )
-    return normalized
-
-
-def _validate_optional_work_package_ref(value: int | str | None, *, field_name: str = "work_package_id") -> str | None:
-    if value is None:
-        return None
-    return _validate_work_package_ref(value, field_name=field_name)
-
-
 def _validate_optional_datetime(value: str | None, *, field_name: str) -> str | None:
     if value is None:
         return None
@@ -6602,15 +6543,6 @@ def _clearable_duration(value: str | None, *, field_name: str) -> str | object |
     update_work_package and bulk_update_work_packages.
     """
     return _clearable(value, lambda v: _validate_optional_duration(v, field_name=field_name))
-
-
-def _validate_relation_type(value: str) -> str:
-    normalized = _validate_required_query(value, field_name="relation_type", max_length=20).casefold()
-    if not RELATION_TYPE_RE.fullmatch(normalized):
-        raise ValueError(
-            "relation_type must be one of: relates, duplicates, duplicated, blocks, blocked, precedes, follows, includes, partof, requires, required."
-        )
-    return normalized
 
 
 def _validate_optional_text_limit(value: int | None) -> int | None:

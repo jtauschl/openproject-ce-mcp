@@ -8,7 +8,16 @@ exercising a validator in isolation), never the reverse.
 from __future__ import annotations
 
 import datetime
+import re
 from typing import Any
+
+PROJECT_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+# A project-based work package reference: a project identifier followed by "-<number>"
+# (e.g. PROJ-123). The numeric form is handled separately before this pattern applies.
+WORK_PACKAGE_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}-\d+$")
+RELATION_TYPE_RE = re.compile(
+    r"^(relates|duplicates|duplicated|blocks|blocked|precedes|follows|includes|partof|requires|required)$"
+)
 
 
 def _validate_positive_int(value: int, *, field_name: str) -> int:
@@ -375,4 +384,72 @@ def _validate_choice(
     if normalized not in allowed_values:
         allowed = ", ".join(sorted(allowed_values))
         raise ValueError(f"{field_name} must be one of: {allowed}.")
+    return normalized
+
+
+def _validate_optional_project_ref(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return _validate_project_ref(value)
+
+
+def _validate_optional_project_identifier(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return _validate_project_identifier(value)
+
+
+def _validate_project_ref(value: str) -> str:
+    normalized = " ".join(value.split())
+    if not normalized:
+        raise ValueError("project is required.")
+    if normalized.isdigit():
+        _validate_positive_int(int(normalized), field_name="project")
+        return normalized
+    if PROJECT_REF_RE.fullmatch(normalized):
+        return normalized
+    # Not identifier-shaped (e.g. contains spaces) — pass through as a display-name
+    # candidate. Resolution (including "not found"/"ambiguous" errors) happens
+    # server-side in OpenProjectClient._resolve_project_ref, which can actually check.
+    if len(normalized) > 255:
+        raise ValueError("project must be 255 characters or fewer.")
+    return normalized
+
+
+def _validate_project_identifier(value: str) -> str:
+    normalized = " ".join(value.split())
+    if not normalized:
+        raise ValueError("identifier is required.")
+    if not PROJECT_REF_RE.fullmatch(normalized):
+        raise ValueError("identifier must be a valid project identifier.")
+    return normalized
+
+
+def _validate_work_package_ref(value: int | str, *, field_name: str = "work_package_id") -> str:
+    normalized = " ".join(str(value).split())
+    if not normalized:
+        raise ValueError(f"{field_name} is required.")
+    if normalized.isdigit():
+        _validate_positive_int(int(normalized), field_name=field_name)
+        return normalized
+    if not WORK_PACKAGE_REF_RE.fullmatch(normalized):
+        raise ValueError(
+            f"{field_name}: use internal id (e.g., 952) or display_id (e.g., 'PROJ-51'), "
+            f"not UI display number (e.g., 51)."
+        )
+    return normalized
+
+
+def _validate_optional_work_package_ref(value: int | str | None, *, field_name: str = "work_package_id") -> str | None:
+    if value is None:
+        return None
+    return _validate_work_package_ref(value, field_name=field_name)
+
+
+def _validate_relation_type(value: str) -> str:
+    normalized = _validate_required_query(value, field_name="relation_type", max_length=20).casefold()
+    if not RELATION_TYPE_RE.fullmatch(normalized):
+        raise ValueError(
+            "relation_type must be one of: relates, duplicates, duplicated, blocks, blocked, precedes, follows, includes, partof, requires, required."
+        )
     return normalized
