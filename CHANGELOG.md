@@ -192,6 +192,11 @@ support.
 - CI now runs **Semgrep** as a second SAST pass, and a complete
   shell-script gate across the repo's shell scripts. No end-user-visible
   behavior change.
+- **CI gains a weekly job that tests against the newest dependency versions
+  allowed by `pyproject.toml`'s declared ranges** (`uv sync --upgrade`,
+  ignoring `uv.lock`'s pinned versions), catching drift a real
+  `pip`/`pipx`/`uv tool install` could pick up but the normal, lockfile-pinned
+  test run never exercises. No end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and
