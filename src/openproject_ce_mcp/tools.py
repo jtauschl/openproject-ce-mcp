@@ -1509,6 +1509,7 @@ async def list_documents(
     offset: int = 1,
     limit: int | None = None,
     select: list[str] | None = None,
+    text_limit: int | None = None,
 ) -> DocumentListResult:
     """List documents, optionally filtered to a single project or by title search.
 
@@ -1519,13 +1520,22 @@ async def list_documents(
     the count of allowed documents returned on THIS page, not a full count of
     all matches — the search stops as soon as it has enough, so an exact
     total would need an extra full walk. Page until next_offset is null.
+
+    text_limit caps each document's description at that many characters
+    (default: the server's configured OPENPROJECT_TEXT_LIMIT, NOT unlimited --
+    unlike get_document's single-item default). When text is cut,
+    description_truncated is true and description_length reports the real
+    length.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     _validate_select(select, row_type=DocumentSummary)
+    safe_text_limit = _validate_optional_text_limit(text_limit)
     return await _run_tool(
-        client.list_documents(project=safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
+        client.list_documents(
+            project=safe_project, search=safe_search, offset=safe_offset, limit=safe_limit, text_limit=safe_text_limit
+        )
     )
 
 
@@ -1614,6 +1624,7 @@ async def list_news(
     offset: int = 1,
     limit: int | None = None,
     select: list[str] | None = None,
+    text_limit: int | None = None,
 ) -> NewsListResult:
     """List news entries, optionally filtered by project or title/summary search.
 
@@ -1625,17 +1636,25 @@ async def list_news(
     count of all matches — the search stops as soon as it has enough, so an
     exact total would need an extra full walk. Page until next_offset is
     null.
+
+    text_limit caps each entry's summary/description at that many characters
+    (default: the server's configured OPENPROJECT_TEXT_LIMIT, NOT unlimited --
+    unlike get_news's single-item default). When text is cut,
+    description_truncated is true and description_length reports the real
+    length.
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     _validate_select(select, row_type=NewsSummary)
+    safe_text_limit = _validate_optional_text_limit(text_limit)
     return await _run_tool(
         client.list_news(
             project=safe_project,
             search=safe_search,
             offset=safe_offset,
             limit=safe_limit,
+            text_limit=safe_text_limit,
         )
     )
 
@@ -2003,6 +2022,7 @@ async def list_meeting_agenda_items(
     meeting_id: int,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> MeetingAgendaItemListResult:
     """List agenda items of an OpenProject meeting.
 
@@ -2011,11 +2031,15 @@ async def list_meeting_agenda_items(
     This list is unpaginated server-side (OpenProject returns every agenda
     item of the meeting in one response) — offset/limit are applied
     client-side by this MCP.
+
+    select fields: id, title, notes (see server instructions for select's
+    general semantics).
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(meeting_id, field_name="meeting_id")
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=MeetingAgendaItemSummary)
     return await _run_tool(client.list_meeting_agenda_items(safe_id, offset=safe_offset, limit=safe_limit))
 
 
@@ -2024,6 +2048,7 @@ async def list_work_package_meeting_agenda_items(
     work_package_id: int | str,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> MeetingAgendaItemListResult:
     """List meeting agenda items linked to a work package.
 
@@ -2033,11 +2058,15 @@ async def list_work_package_meeting_agenda_items(
 
     This list is unpaginated server-side — offset/limit are applied
     client-side by this MCP.
+
+    select fields: id, title, notes (see server instructions for select's
+    general semantics).
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=MeetingAgendaItemSummary)
     return await _run_tool(client.list_work_package_meeting_agenda_items(safe_id, offset=safe_offset, limit=safe_limit))
 
 
@@ -2161,6 +2190,7 @@ async def list_meeting_outcomes(
     agenda_item_id: int,
     offset: int = 1,
     limit: int | None = None,
+    select: list[str] | None = None,
 ) -> MeetingOutcomeListResult:
     """List outcomes of a meeting agenda item.
 
@@ -2169,11 +2199,15 @@ async def list_meeting_outcomes(
 
     This list is unpaginated server-side — offset/limit are applied
     client-side by this MCP.
+
+    select fields: id, kind, notes (see server instructions for select's
+    general semantics).
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
+    _validate_select(select, row_type=MeetingOutcomeSummary)
     return await _run_tool(client.list_meeting_outcomes(safe_id, offset=safe_offset, limit=safe_limit))
 
 

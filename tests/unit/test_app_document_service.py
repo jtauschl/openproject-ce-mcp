@@ -60,6 +60,7 @@ class _FakeDocumentApi:
     def __init__(self, records: list[DocumentRecord] | None = None) -> None:
         self._records = {r.summary.id: r for r in (records or [_record()])}
         self.list_all_calls: list[int] = []
+        self.list_all_text_limit_calls: list[int | None] = []
         self.get_calls: list[int] = []
         self.commit_update_calls: list[tuple[int, dict]] = []
         self.commit_result_project: str = "Demo Project"
@@ -68,6 +69,7 @@ class _FakeDocumentApi:
         self, *, offset: int, page_size: int, text_limit: int | None = None
     ) -> tuple[list[DocumentRecord], int]:
         self.list_all_calls.append(page_size)
+        self.list_all_text_limit_calls.append(text_limit)
         records = list(self._records.values())
         return records, len(records)
 
@@ -108,6 +110,27 @@ async def test_list_returns_stamped_summaries() -> None:
     assert result.count == 1
     assert result.results[0].id == 1
     assert len(api.list_all_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_defaults_text_limit_to_the_server_setting() -> None:
+    settings = dataclasses.replace(make_settings(), text_limit=77)
+    api = _FakeDocumentApi()
+    service = _service(api, settings=settings)
+
+    await service.list()
+
+    assert api.list_all_text_limit_calls == [77]
+
+
+@pytest.mark.asyncio
+async def test_list_passes_an_explicit_text_limit_through() -> None:
+    api = _FakeDocumentApi()
+    service = _service(api)
+
+    await service.list(text_limit=10)
+
+    assert api.list_all_text_limit_calls == [10]
 
 
 @pytest.mark.asyncio

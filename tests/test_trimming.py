@@ -39,6 +39,9 @@ from openproject_ce_mcp.tools import (
     get_work_packages,
     list_actions,
     list_capabilities,
+    list_meeting_agenda_items,
+    list_meeting_outcomes,
+    list_work_package_meeting_agenda_items,
     list_work_packages,
     update_relation,
 )
@@ -289,6 +292,41 @@ def test_validate_select_rejects_empty() -> None:
 
 def test_validate_select_none_passes() -> None:
     assert _validate_select(None, row_type=m.WorkPackageSummary) is None
+
+
+def test_validate_select_accepts_meeting_agenda_item_fields() -> None:
+    assert _validate_select(["id", "title", "notes"], row_type=m.MeetingAgendaItemSummary) == [
+        "id",
+        "title",
+        "notes",
+    ]
+
+
+def test_validate_select_rejects_unknown_field_for_meeting_agenda_item() -> None:
+    with pytest.raises(ValueError, match="not a valid MeetingAgendaItemSummary field"):
+        _validate_select(["bogus"], row_type=m.MeetingAgendaItemSummary)
+
+
+def test_validate_select_accepts_meeting_outcome_fields() -> None:
+    assert _validate_select(["id", "kind", "notes"], row_type=m.MeetingOutcomeSummary) == ["id", "kind", "notes"]
+
+
+def test_validate_select_rejects_unknown_field_for_meeting_outcome() -> None:
+    with pytest.raises(ValueError, match="not a valid MeetingOutcomeSummary field"):
+        _validate_select(["bogus"], row_type=m.MeetingOutcomeSummary)
+
+
+def test_meeting_list_tools_accept_select_in_their_signature() -> None:
+    """OPM-93/dim-442: these three tools previously had no select parameter at
+    all -- the tool() wrapper (see this module's docstring) derives
+    elide_none from `"select" in inspect.signature(fn).parameters`, so this
+    is the actual functional gate that determines whether the trimming
+    wrapper elides unselected None fields for these tools."""
+    import inspect
+
+    for fn in (list_meeting_agenda_items, list_work_package_meeting_agenda_items, list_meeting_outcomes):
+        assert "select" in inspect.signature(fn).parameters
+        assert _returns_trimmable(fn) is True
 
 
 def test_normalize_select_shapes_kwarg() -> None:

@@ -138,6 +138,7 @@ class NewsService:
         search: str | None = None,
         offset: int = 1,
         limit: int | None = None,
+        text_limit: int | None = None,
     ) -> NewsListResult:
         access.ensure_read_enabled("project", settings=self._settings)
         effective_limit = clamp_limit(
@@ -172,8 +173,9 @@ class NewsService:
         # Scan server pages rather than a single fetch capped at
         # settings.max_results, which would silently hide any news item
         # beyond that cap once the endpoint's real result count exceeds it.
+        effective_text_limit = text_limit if text_limit is not None else self._settings.text_limit
         raw_items, truncated = await scan_records_and_paginate(
-            lambda o, ps: self._api.list_page(offset=o, page_size=ps, text_limit=self._settings.text_limit),
+            lambda o, ps: self._api.list_page(offset=o, page_size=ps, text_limit=effective_text_limit),
             item_allowed=_record_allowed,
             server_page_size=self._settings.max_page_size,
             offset=offset,

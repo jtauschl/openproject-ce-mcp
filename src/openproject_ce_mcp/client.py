@@ -1314,8 +1314,11 @@ class OpenProjectClient:
         search: str | None = None,
         offset: int = 1,
         limit: int | None = None,
+        text_limit: int | None = None,
     ) -> DocumentListResult:
-        return await self._document_service.list(project=project, search=search, offset=offset, limit=limit)
+        return await self._document_service.list(
+            project=project, search=search, offset=offset, limit=limit, text_limit=text_limit
+        )
 
     async def get_document(self, document_id: int, *, text_limit: int | None = None) -> DocumentDetail:
         return await self._document_service.get(document_id, text_limit=text_limit)
@@ -1339,8 +1342,11 @@ class OpenProjectClient:
         search: str | None = None,
         offset: int = 1,
         limit: int | None = None,
+        text_limit: int | None = None,
     ) -> NewsListResult:
-        return await self._news_service.list(project=project, search=search, offset=offset, limit=limit)
+        return await self._news_service.list(
+            project=project, search=search, offset=offset, limit=limit, text_limit=text_limit
+        )
 
     async def get_news(self, news_id: int, *, text_limit: int | None = None) -> NewsDetail:
         return await self._news_service.get(news_id, text_limit=text_limit)
