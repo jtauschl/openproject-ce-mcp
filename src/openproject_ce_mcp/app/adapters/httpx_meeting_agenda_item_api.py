@@ -13,6 +13,13 @@ MeetingOutcomeService is the place to fetch full outcome detail).
 `meetingSection` -- verified against `meeting_agenda_item_representer.rb`).
 `presenter` is `skip_render` when absent (no presenter set), so its link key
 may be entirely missing from `_links`, not merely null.
+
+`_record`'s `text_limit` falls back to the constructor-bound default when
+omitted -- `list_for_meeting`/`list_for_work_package` accept a per-call
+override (used by the matching Service methods' own `text_limit`
+parameter); `get`/`create`/`update` intentionally do NOT, always using the
+constructor-bound default, since only the list tools got a per-call
+override in this pass.
 """
 
 from __future__ import annotations
@@ -71,18 +78,23 @@ class HttpxMeetingAgendaItemApi:
         self._transport = transport
         self._text_limit = text_limit
 
-    def _record(self, payload: dict[str, Any]) -> MeetingAgendaItemRecord:
-        return MeetingAgendaItemRecord(summary=normalize_meeting_agenda_item(payload, text_limit=self._text_limit))
+    def _record(self, payload: dict[str, Any], *, text_limit: int | None = None) -> MeetingAgendaItemRecord:
+        effective_text_limit = text_limit if text_limit is not None else self._text_limit
+        return MeetingAgendaItemRecord(summary=normalize_meeting_agenda_item(payload, text_limit=effective_text_limit))
 
-    async def list_for_meeting(self, meeting_id: int) -> list[MeetingAgendaItemRecord]:
+    async def list_for_meeting(
+        self, meeting_id: int, *, text_limit: int | None = None
+    ) -> list[MeetingAgendaItemRecord]:
         payload = await self._transport.get_json(f"meetings/{meeting_id}/agenda_items")
         elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
-        return [self._record(item) for item in elements]
+        return [self._record(item, text_limit=text_limit) for item in elements]
 
-    async def list_for_work_package(self, work_package_id: int) -> list[MeetingAgendaItemRecord]:
+    async def list_for_work_package(
+        self, work_package_id: int, *, text_limit: int | None = None
+    ) -> list[MeetingAgendaItemRecord]:
         payload = await self._transport.get_json(f"work_packages/{work_package_id}/meeting_agenda_items")
         elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
-        return [self._record(item) for item in elements]
+        return [self._record(item, text_limit=text_limit) for item in elements]
 
     async def get(self, agenda_item_id: int) -> MeetingAgendaItemRecord:
         return self._record(await self._transport.get_json(f"meeting_agenda_items/{agenda_item_id}"))

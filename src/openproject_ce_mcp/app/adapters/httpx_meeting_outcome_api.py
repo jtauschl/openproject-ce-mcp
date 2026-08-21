@@ -8,6 +8,12 @@ shapes and the critical `"agendaItem"` HAL-key finding.
 in source, same trio-hiding shape as Meeting Agenda Items' `notes`).
 `author` is `skip_render` when absent (`author_id.nil?`), so its link key
 may be entirely missing.
+
+`_record`'s `text_limit` falls back to the constructor-bound default when
+omitted -- `list_for_agenda_item` accepts a per-call override (used by
+`MeetingOutcomeService.list_for_agenda_item`'s own `text_limit` parameter);
+`get`/`create`/`update` intentionally do NOT, always using the
+constructor-bound default, matching Meeting Agenda Items' identical shape.
 """
 
 from __future__ import annotations
@@ -56,13 +62,16 @@ class HttpxMeetingOutcomeApi:
         self._transport = transport
         self._text_limit = text_limit
 
-    def _record(self, payload: dict[str, Any]) -> MeetingOutcomeRecord:
-        return MeetingOutcomeRecord(summary=normalize_meeting_outcome(payload, text_limit=self._text_limit))
+    def _record(self, payload: dict[str, Any], *, text_limit: int | None = None) -> MeetingOutcomeRecord:
+        effective_text_limit = text_limit if text_limit is not None else self._text_limit
+        return MeetingOutcomeRecord(summary=normalize_meeting_outcome(payload, text_limit=effective_text_limit))
 
-    async def list_for_agenda_item(self, meeting_id: int, agenda_item_id: int) -> list[MeetingOutcomeRecord]:
+    async def list_for_agenda_item(
+        self, meeting_id: int, agenda_item_id: int, *, text_limit: int | None = None
+    ) -> list[MeetingOutcomeRecord]:
         payload = await self._transport.get_json(f"meetings/{meeting_id}/agenda_items/{agenda_item_id}/outcomes")
         elements = [item for item in payload.get("_embedded", {}).get("elements", []) if isinstance(item, dict)]
-        return [self._record(item) for item in elements]
+        return [self._record(item, text_limit=text_limit) for item in elements]
 
     async def get(self, outcome_id: int) -> MeetingOutcomeRecord:
         return self._record(await self._transport.get_json(f"meeting_outcomes/{outcome_id}"))

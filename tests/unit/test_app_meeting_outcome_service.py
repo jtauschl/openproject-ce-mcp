@@ -103,13 +103,15 @@ class _FakeMeetingOutcomeApi:
     def __init__(self, records: list[MeetingOutcomeRecord] | None = None) -> None:
         self._records = records or [MeetingOutcomeRecord(summary=_outcome_summary())]
         self.list_calls: list[tuple[int, int]] = []
+        self.list_text_limit_calls: list[int | None] = []
         self.get_calls: list[int] = []
         self.create_calls: list[dict] = []
         self.update_calls: list[tuple[int, dict]] = []
         self.delete_calls: list[int] = []
 
-    async def list_for_agenda_item(self, meeting_id: int, agenda_item_id: int):
+    async def list_for_agenda_item(self, meeting_id: int, agenda_item_id: int, *, text_limit: int | None = None):
         self.list_calls.append((meeting_id, agenda_item_id))
+        self.list_text_limit_calls.append(text_limit)
         return list(self._records)
 
     async def get(self, outcome_id: int) -> MeetingOutcomeRecord:
@@ -156,6 +158,17 @@ async def test_list_for_agenda_item_walks_agenda_item_to_meeting_and_uses_both_i
     assert result.count == 1
     assert agenda_api.get_calls == [21]
     assert api.list_calls == [(12, 21)]
+
+
+@pytest.mark.asyncio
+async def test_list_for_agenda_item_passes_text_limit_through_to_the_adapter() -> None:
+    api = _FakeMeetingOutcomeApi()
+    agenda_api = _FakeMeetingAgendaItemApi(meeting_id=12)
+    service = _service(api=api, meeting_agenda_item_api=agenda_api)
+
+    await service.list_for_agenda_item(21, text_limit=10)
+
+    assert api.list_text_limit_calls == [10]
 
 
 @pytest.mark.asyncio

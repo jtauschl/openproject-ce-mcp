@@ -77,7 +77,7 @@ class MeetingOutcomeService:
         return meeting_id
 
     async def list_for_agenda_item(
-        self, agenda_item_id: int, *, offset: int = 1, limit: int | None = None
+        self, agenda_item_id: int, *, offset: int = 1, limit: int | None = None, text_limit: int | None = None
     ) -> MeetingOutcomeListResult:
         access.ensure_read_enabled("meeting", settings=self._settings)
         effective_limit = clamp_limit(
@@ -87,7 +87,7 @@ class MeetingOutcomeService:
             max_results=self._settings.max_results,
         )
         meeting_id = await self._ensure_via_agenda_item(agenda_item_id, write=False)
-        records = await self._api.list_for_agenda_item(meeting_id, agenda_item_id)
+        records = await self._api.list_for_agenda_item(meeting_id, agenda_item_id, text_limit=text_limit)
         summaries = [self._stamp(record.summary) for record in records]
         page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=summaries)
         return MeetingOutcomeListResult(

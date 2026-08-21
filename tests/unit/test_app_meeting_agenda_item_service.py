@@ -76,17 +76,20 @@ class _FakeMeetingAgendaItemApi:
         self._records = records or [MeetingAgendaItemRecord(summary=_agenda_summary())]
         self.list_for_meeting_calls: list[int] = []
         self.list_for_work_package_calls: list[int] = []
+        self.list_text_limit_calls: list[int | None] = []
         self.get_calls: list[int] = []
         self.create_calls: list[dict] = []
         self.update_calls: list[tuple[int, dict]] = []
         self.delete_calls: list[int] = []
 
-    async def list_for_meeting(self, meeting_id: int):
+    async def list_for_meeting(self, meeting_id: int, *, text_limit: int | None = None):
         self.list_for_meeting_calls.append(meeting_id)
+        self.list_text_limit_calls.append(text_limit)
         return list(self._records)
 
-    async def list_for_work_package(self, work_package_id: int):
+    async def list_for_work_package(self, work_package_id: int, *, text_limit: int | None = None):
         self.list_for_work_package_calls.append(work_package_id)
+        self.list_text_limit_calls.append(text_limit)
         return list(self._records)
 
     async def get(self, agenda_item_id: int) -> MeetingAgendaItemRecord:
@@ -156,6 +159,26 @@ async def test_list_for_meeting_denies_read_when_parent_meeting_project_disallow
 
 
 @pytest.mark.asyncio
+async def test_list_for_meeting_passes_text_limit_through_to_the_adapter() -> None:
+    api = _FakeMeetingAgendaItemApi()
+    service = _service(api=api)
+
+    await service.list_for_meeting(12, text_limit=10)
+
+    assert api.list_text_limit_calls == [10]
+
+
+@pytest.mark.asyncio
+async def test_list_for_meeting_omits_text_limit_by_default() -> None:
+    api = _FakeMeetingAgendaItemApi()
+    service = _service(api=api)
+
+    await service.list_for_meeting(12)
+
+    assert api.list_text_limit_calls == [None]
+
+
+@pytest.mark.asyncio
 async def test_list_for_meeting_applies_client_side_pagination() -> None:
     records = [MeetingAgendaItemRecord(summary=_agenda_summary(item_id=i)) for i in range(1, 6)]
     api = _FakeMeetingAgendaItemApi(records)
@@ -187,6 +210,16 @@ async def test_list_for_work_package_resolves_work_package_id() -> None:
     assert result.count == 1
     assert resolved == [("99", False)]
     assert api.list_for_work_package_calls == [99]
+
+
+@pytest.mark.asyncio
+async def test_list_for_work_package_passes_text_limit_through_to_the_adapter() -> None:
+    api = _FakeMeetingAgendaItemApi()
+    service = _service(api=api)
+
+    await service.list_for_work_package("99", text_limit=10)
+
+    assert api.list_text_limit_calls == [10]
 
 
 # --- get -- fetch-then-check bypass regression ------------------------------

@@ -2023,6 +2023,7 @@ async def list_meeting_agenda_items(
     offset: int = 1,
     limit: int | None = None,
     select: list[str] | None = None,
+    text_limit: int | None = None,
 ) -> MeetingAgendaItemListResult:
     """List agenda items of an OpenProject meeting.
 
@@ -2034,13 +2035,20 @@ async def list_meeting_agenda_items(
 
     select fields: id, title, notes (see server instructions for select's
     general semantics).
+
+    text_limit caps each item's notes at that many characters (default: the
+    server's configured OPENPROJECT_TEXT_LIMIT, NOT unlimited). When text is
+    cut, notes_truncated is true and notes_length reports the real length.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(meeting_id, field_name="meeting_id")
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=MeetingAgendaItemSummary)
-    return await _run_tool(client.list_meeting_agenda_items(safe_id, offset=safe_offset, limit=safe_limit))
+    safe_text_limit = _validate_optional_text_limit(text_limit)
+    return await _run_tool(
+        client.list_meeting_agenda_items(safe_id, offset=safe_offset, limit=safe_limit, text_limit=safe_text_limit)
+    )
 
 
 async def list_work_package_meeting_agenda_items(
@@ -2049,6 +2057,7 @@ async def list_work_package_meeting_agenda_items(
     offset: int = 1,
     limit: int | None = None,
     select: list[str] | None = None,
+    text_limit: int | None = None,
 ) -> MeetingAgendaItemListResult:
     """List meeting agenda items linked to a work package.
 
@@ -2061,13 +2070,22 @@ async def list_work_package_meeting_agenda_items(
 
     select fields: id, title, notes (see server instructions for select's
     general semantics).
+
+    text_limit caps each item's notes at that many characters (default: the
+    server's configured OPENPROJECT_TEXT_LIMIT, NOT unlimited). When text is
+    cut, notes_truncated is true and notes_length reports the real length.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=MeetingAgendaItemSummary)
-    return await _run_tool(client.list_work_package_meeting_agenda_items(safe_id, offset=safe_offset, limit=safe_limit))
+    safe_text_limit = _validate_optional_text_limit(text_limit)
+    return await _run_tool(
+        client.list_work_package_meeting_agenda_items(
+            safe_id, offset=safe_offset, limit=safe_limit, text_limit=safe_text_limit
+        )
+    )
 
 
 async def get_meeting_agenda_item(ctx: Context, agenda_item_id: int) -> MeetingAgendaItemSummary:
@@ -2191,6 +2209,7 @@ async def list_meeting_outcomes(
     offset: int = 1,
     limit: int | None = None,
     select: list[str] | None = None,
+    text_limit: int | None = None,
 ) -> MeetingOutcomeListResult:
     """List outcomes of a meeting agenda item.
 
@@ -2202,13 +2221,20 @@ async def list_meeting_outcomes(
 
     select fields: id, kind, notes (see server instructions for select's
     general semantics).
+
+    text_limit caps each outcome's notes at that many characters (default:
+    the server's configured OPENPROJECT_TEXT_LIMIT, NOT unlimited). When text
+    is cut, notes_truncated is true and notes_length reports the real length.
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=MeetingOutcomeSummary)
-    return await _run_tool(client.list_meeting_outcomes(safe_id, offset=safe_offset, limit=safe_limit))
+    safe_text_limit = _validate_optional_text_limit(text_limit)
+    return await _run_tool(
+        client.list_meeting_outcomes(safe_id, offset=safe_offset, limit=safe_limit, text_limit=safe_text_limit)
+    )
 
 
 async def get_meeting_outcome(ctx: Context, outcome_id: int) -> MeetingOutcomeSummary:

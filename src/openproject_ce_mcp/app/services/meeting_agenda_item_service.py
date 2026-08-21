@@ -77,7 +77,7 @@ class MeetingAgendaItemService:
             )
 
     async def list_for_meeting(
-        self, meeting_id: int, *, offset: int = 1, limit: int | None = None
+        self, meeting_id: int, *, offset: int = 1, limit: int | None = None, text_limit: int | None = None
     ) -> MeetingAgendaItemListResult:
         access.ensure_read_enabled("meeting", settings=self._settings)
         effective_limit = clamp_limit(
@@ -87,7 +87,7 @@ class MeetingAgendaItemService:
             max_results=self._settings.max_results,
         )
         await self._ensure_meeting_allowed(meeting_id, write=False)
-        records = await self._api.list_for_meeting(meeting_id)
+        records = await self._api.list_for_meeting(meeting_id, text_limit=text_limit)
         summaries = [self._stamp(record.summary) for record in records]
         page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=summaries)
         return MeetingAgendaItemListResult(
@@ -101,7 +101,12 @@ class MeetingAgendaItemService:
         )
 
     async def list_for_work_package(
-        self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
+        self,
+        work_package_id: int | str,
+        *,
+        offset: int = 1,
+        limit: int | None = None,
+        text_limit: int | None = None,
     ) -> MeetingAgendaItemListResult:
         access.ensure_read_enabled("meeting", settings=self._settings)
         effective_limit = clamp_limit(
@@ -111,7 +116,7 @@ class MeetingAgendaItemService:
             max_results=self._settings.max_results,
         )
         resolved_id = await self._resolve_work_package_id(work_package_id, write=False)
-        records = await self._api.list_for_work_package(resolved_id)
+        records = await self._api.list_for_work_package(resolved_id, text_limit=text_limit)
         summaries = [self._stamp(record.summary) for record in records]
         page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=summaries)
         return MeetingAgendaItemListResult(

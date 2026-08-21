@@ -107,6 +107,56 @@ async def test_list_for_work_package_requests_the_work_package_scoped_endpoint()
 
 
 @pytest.mark.asyncio
+async def test_list_for_meeting_per_call_text_limit_overrides_the_constructor_default() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = _agenda_item_payload()
+        payload["notes"] = {"raw": "x" * 100}
+        return httpx.Response(200, json={"_embedded": {"elements": [payload]}}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client), text_limit=1000)
+        records = await api.list_for_meeting(12, text_limit=10)
+
+    assert records[0].summary.notes_truncated is True
+    assert records[0].summary.notes_length == 100
+
+
+@pytest.mark.asyncio
+async def test_list_for_meeting_falls_back_to_the_constructor_default_when_text_limit_omitted() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = _agenda_item_payload()
+        payload["notes"] = {"raw": "x" * 100}
+        return httpx.Response(200, json={"_embedded": {"elements": [payload]}}, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client), text_limit=10)
+        records = await api.list_for_meeting(12)
+
+    assert records[0].summary.notes_truncated is True
+    assert records[0].summary.notes_length == 100
+
+
+@pytest.mark.asyncio
+async def test_get_always_uses_the_constructor_default_never_a_list_call_override() -> None:
+    """get()/create()/update() are intentionally out of scope for the
+    per-call override this ticket adds -- only the list methods take
+    text_limit. This guards against a future edit accidentally threading
+    the list override into _record's other callers."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = _agenda_item_payload()
+        payload["notes"] = {"raw": "x" * 100}
+        return httpx.Response(200, json=payload, request=request)
+
+    async with _client(handler) as http_client:
+        api = HttpxMeetingAgendaItemApi(HttpxTransport(http_client), text_limit=10)
+        record = await api.get(21)
+
+    assert record.summary.notes_truncated is True
+    assert record.summary.notes_length == 100
+
+
+@pytest.mark.asyncio
 async def test_get_requests_the_agenda_item_id() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/meeting_agenda_items/21"

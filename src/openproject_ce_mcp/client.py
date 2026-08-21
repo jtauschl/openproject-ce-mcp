@@ -1483,15 +1483,22 @@ class OpenProjectClient:
         return await self._meeting_service.delete(meeting_id=meeting_id, confirm=confirm)
 
     async def list_meeting_agenda_items(
-        self, meeting_id: int, *, offset: int = 1, limit: int | None = None
+        self, meeting_id: int, *, offset: int = 1, limit: int | None = None, text_limit: int | None = None
     ) -> MeetingAgendaItemListResult:
-        return await self._meeting_agenda_item_service.list_for_meeting(meeting_id, offset=offset, limit=limit)
+        return await self._meeting_agenda_item_service.list_for_meeting(
+            meeting_id, offset=offset, limit=limit, text_limit=text_limit
+        )
 
     async def list_work_package_meeting_agenda_items(
-        self, work_package_id: int | str, *, offset: int = 1, limit: int | None = None
+        self,
+        work_package_id: int | str,
+        *,
+        offset: int = 1,
+        limit: int | None = None,
+        text_limit: int | None = None,
     ) -> MeetingAgendaItemListResult:
         return await self._meeting_agenda_item_service.list_for_work_package(
-            work_package_id, offset=offset, limit=limit
+            work_package_id, offset=offset, limit=limit, text_limit=text_limit
         )
 
     async def get_meeting_agenda_item(self, agenda_item_id: int) -> MeetingAgendaItemSummary:
@@ -1549,9 +1556,11 @@ class OpenProjectClient:
         return await self._meeting_agenda_item_service.delete(agenda_item_id=agenda_item_id, confirm=confirm)
 
     async def list_meeting_outcomes(
-        self, agenda_item_id: int, *, offset: int = 1, limit: int | None = None
+        self, agenda_item_id: int, *, offset: int = 1, limit: int | None = None, text_limit: int | None = None
     ) -> MeetingOutcomeListResult:
-        return await self._meeting_outcome_service.list_for_agenda_item(agenda_item_id, offset=offset, limit=limit)
+        return await self._meeting_outcome_service.list_for_agenda_item(
+            agenda_item_id, offset=offset, limit=limit, text_limit=text_limit
+        )
 
     async def get_meeting_outcome(self, outcome_id: int) -> MeetingOutcomeSummary:
         return await self._meeting_outcome_service.get(outcome_id)
