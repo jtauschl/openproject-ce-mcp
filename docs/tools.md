@@ -299,6 +299,47 @@ user exists.
 | `list_work_package_file_links` | List Nextcloud file links attached to a work package (Community Edition) |
 | `delete_file_link` | Validate and then delete a Nextcloud file link; only deletes when called again with `confirm=true` |
 
+### Bulk writes vs. parallel single calls
+
+`bulk_create_work_packages`/`bulk_update_work_packages` process items strictly
+sequentially, one at a time — this is deliberate, not a missing optimization:
+it guarantees server-assigned IDs match call order, and one item's rejection
+never blocks the rest of the batch. Neither guarantee holds if you instead
+issue N parallel `create_work_package`/`update_work_package` calls yourself.
+
+**Use `bulk_*` when order or per-item failure isolation matters** — e.g. a
+later item's `parent_work_package_id` references an earlier item's
+just-assigned ID within the same call, or you need one partial-failure report
+instead of reconciling N independent results yourself.
+
+**Otherwise, weigh the real per-item cost**, which differs sharply between
+create and update and depends on how many optional fields resolve by name
+rather than numeric ID:
+
+| Scenario | First item | Later items, same project |
+|---|---|---|
+| Create, only required fields (`project`/`type`/`subject`) | 3 requests | 2 requests |
+| Create, several name-resolved optional fields (type/version by name, `assignee="me"`, custom fields) | `7 + L` requests | `3 + L` requests (often just 3) |
+| Update, only required fields | 3 requests | 3 requests (no batch saving) |
+| Update, several name-resolved optional fields | `12 + L` requests | `6 + L` requests |
+
+`L` is the number of distinct, not-yet-cached `allowedValues` schema hrefs
+the batch touches — data-dependent, no fixed upper bound. Spreading a batch
+across multiple projects loses most of the "later items" saving, since the
+per-project/per-type/per-href caches this counts on are scoped to what's
+already been seen in the batch.
+
+The two scenarios land so differently because **create batches well, update
+doesn't**: same-project/type/version lookups and dereferenced `allowedValues`
+schema fields are cached across the whole batch, so item 2+ in a uniform
+create batch is cheap. `update` additionally requires one uncached
+`GET` of the current record per item (needed for its `lockVersion`), and its
+`allowedValues` hrefs are frequently work-package-specific rather than
+project-specific, so they rarely hit the batch cache. In practice, prefer
+`bulk_update_work_packages` for its ordering/failure-isolation guarantee
+rather than for a performance win — the per-item cost saving over N
+individual `update_work_package` calls is small.
+
 ## Attachments
 
 | Tool | Description |
