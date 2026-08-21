@@ -14,14 +14,8 @@ from openproject_ce_mcp.tools import (
     _validate_custom_field_filters,
     _validate_group_by,
     _validate_optional_duration,
-    _validate_optional_non_negative_int,
-    _validate_optional_percentage_done,
-    _validate_optional_text,
-    _validate_optional_update_text,
-    _validate_optional_user_ref,
     _validate_optional_work_package_ref,
     _validate_positive_int,
-    _validate_required_text,
     _validate_sort_by,
     _validate_work_package_ref,
     bulk_create_work_packages,
@@ -29,6 +23,14 @@ from openproject_ce_mcp.tools import (
     create_work_package_relation,
     create_work_package_reminder,
     toggle_activity_emoji_reaction,
+)
+from openproject_ce_mcp.tools_validation import (
+    _validate_optional_non_negative_int,
+    _validate_optional_percentage_done,
+    _validate_optional_text,
+    _validate_optional_update_text,
+    _validate_optional_user_ref,
+    _validate_required_text,
 )
 
 

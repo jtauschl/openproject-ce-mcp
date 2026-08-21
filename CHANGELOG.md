@@ -198,6 +198,12 @@ support.
   eventually splitting `tools.py` into per-domain files (OPM-395), since
   each function now carries its own registration wherever it's defined. No
   end-user-visible behavior change.
+- **22 generic field-validation helpers moved from `tools.py` into the
+  existing `tools_validation.py` sibling module** — further groundwork for
+  splitting `tools.py` into per-domain files (OPM-395); these validators
+  have no OpenProject-domain-specific logic, so they're shared, presentation-
+  layer utilities rather than something any one future domain module would
+  own. No end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and
