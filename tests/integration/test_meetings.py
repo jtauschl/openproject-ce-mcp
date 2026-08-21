@@ -232,6 +232,41 @@ async def test_create_get_update_delete_meeting_agenda_item(
     assert delete_result.ready and delete_result.state == "confirmed"
 
 
+async def test_list_meeting_agenda_items_text_limit_overrides_the_server_default(
+    client: OpenProjectClient, test_project: str, meeting_ids: list[int]
+) -> None:
+    """OPM-447: list_meeting_agenda_items' text_limit is a per-call override,
+    not just the constructor-bound server default."""
+    try:
+        meeting_result = await client.create_meeting(
+            project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
+        )
+    except NotFoundError:
+        pytest.skip("Meetings module not installed/enabled, or OpenProject < 17.4, on this instance")
+    assert meeting_result.ready, meeting_result.validation_errors
+    meeting_id = meeting_result.meeting_id
+    meeting_ids.append(meeting_id)
+
+    long_notes = "x" * 500
+    create_result = await client.create_meeting_agenda_item(
+        meeting_id=meeting_id, title=f"[integration-test] {uuid.uuid4().hex[:8]}", notes=long_notes, confirm=True
+    )
+    assert create_result.ready, create_result.validation_errors
+    agenda_item_id = create_result.agenda_item_id
+    assert agenda_item_id is not None
+
+    limited = await client.list_meeting_agenda_items(meeting_id, text_limit=10)
+    item = next(i for i in limited.results if i.id == agenda_item_id)
+    assert item.notes_truncated is True
+    assert item.notes_length == 500
+
+    default = await client.list_meeting_agenda_items(meeting_id)
+    item_default = next(i for i in default.results if i.id == agenda_item_id)
+    assert item_default.notes_truncated is False
+
+    await client.delete_meeting_agenda_item(agenda_item_id=agenda_item_id, confirm=True)
+
+
 async def test_meeting_agenda_item_links_to_work_package(
     client: OpenProjectClient, test_project: str, meeting_ids: list[int], wp_ids: list[int]
 ) -> None:
@@ -360,6 +395,53 @@ async def test_create_get_update_delete_meeting_outcome(
 
     delete_result = await client.delete_meeting_outcome(outcome_id=outcome_id, confirm=True)
     assert delete_result.ready and delete_result.state == "confirmed"
+
+
+async def test_list_meeting_outcomes_text_limit_overrides_the_server_default(
+    client: OpenProjectClient, test_project: str, meeting_ids: list[int]
+) -> None:
+    """OPM-447: list_meeting_outcomes' text_limit is a per-call override, not
+    just the constructor-bound server default."""
+    try:
+        meeting_result = await client.create_meeting(
+            project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
+        )
+    except NotFoundError:
+        pytest.skip("Meetings module not installed/enabled, or OpenProject < 17.4, on this instance")
+    assert meeting_result.ready, meeting_result.validation_errors
+    meeting_id = meeting_result.meeting_id
+    meeting_ids.append(meeting_id)
+
+    agenda_result = await client.create_meeting_agenda_item(
+        meeting_id=meeting_id, title="[integration-test] agenda item for outcome text_limit", confirm=True
+    )
+    assert agenda_result.ready, agenda_result.validation_errors
+    agenda_item_id = agenda_result.agenda_item_id
+
+    state_result = await client.update_meeting(meeting_id=meeting_id, state="in_progress", confirm=True)
+    assert state_result.ready, state_result.validation_errors
+
+    long_notes = "x" * 500
+    try:
+        create_result = await client.create_meeting_outcome(
+            agenda_item_id=agenda_item_id, kind="information", notes=long_notes, confirm=True
+        )
+    except NotFoundError:
+        pytest.skip("meeting_outcomes endpoint not available (requires OpenProject 17.6+)")
+    assert create_result.ready, create_result.validation_errors
+    outcome_id = create_result.outcome_id
+    assert outcome_id is not None
+
+    limited = await client.list_meeting_outcomes(agenda_item_id, text_limit=10)
+    outcome = next(o for o in limited.results if o.id == outcome_id)
+    assert outcome.notes_truncated is True
+    assert outcome.notes_length == 500
+
+    default = await client.list_meeting_outcomes(agenda_item_id)
+    outcome_default = next(o for o in default.results if o.id == outcome_id)
+    assert outcome_default.notes_truncated is False
+
+    await client.delete_meeting_outcome(outcome_id=outcome_id, confirm=True)
 
 
 async def test_create_update_delete_meeting_outcome_denied_outside_write_allowlist(
