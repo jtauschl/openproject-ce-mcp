@@ -543,6 +543,31 @@ async def test_bulk_create_work_packages_applies_duration_fields(
     assert item.result.result.estimated_time == "PT8H"
 
 
+async def test_bulk_create_work_packages_resolves_responsible_by_name_across_items(
+    client: OpenProjectClient, test_project: str, wp_ids: list[int]
+) -> None:
+    """OPM-439: responsible is the one bulk_create-relevant field that
+    triggers _get_write_schema's schema probe (see schema_needs in
+    work_package_service.py), which is where the href-keyed allowedValues
+    cache lives -- this exercises that cache with real HTTP round trips,
+    not just a mocked unit test. Two items in the SAME project must both
+    resolve `responsible` correctly whether the second item hits the cache
+    or not; this test only asserts correctness, not request counts (that's
+    already covered at the unit level in test_app_work_package_service.py)."""
+    me = await client.get_current_user()
+    items = [
+        {"project": test_project, "type": "Task", "subject": f"{_SUBJECT_BULK} responsible 1", "responsible": me.name},
+        {"project": test_project, "type": "Task", "subject": f"{_SUBJECT_BULK} responsible 2", "responsible": me.name},
+    ]
+    result = await client.bulk_create_work_packages(items=items, confirm=True)
+    assert result.succeeded == 2
+    for item in result.items:
+        assert item.result is not None and item.result.work_package_id is not None
+        wp_ids.append(item.result.work_package_id)
+        assert item.result.result is not None
+        assert item.result.result.responsible == me.name
+
+
 async def test_list_work_package_watchers(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
     result = await client.create_work_package(
         project=test_project,

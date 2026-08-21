@@ -35,6 +35,43 @@ async def test_get_instance_configuration(client: OpenProjectClient) -> None:
     assert config.maximum_api_v3_page_size > 0
 
 
+async def test_get_current_user_is_consistent_across_repeated_calls(client: OpenProjectClient) -> None:
+    """OPM-438: get_current_user is cached for the process lifetime -- the
+    second call must return identical data to the first (same object
+    reference within one client isn't asserted here, only value equality,
+    since the fixture's client already lives for the whole test)."""
+    first = await client.get_current_user()
+    second = await client.get_current_user()
+    assert first.id == second.id
+    assert first.login == second.login
+    assert first.name == second.name
+
+
+async def test_get_instance_configuration_is_consistent_across_repeated_calls(client: OpenProjectClient) -> None:
+    """OPM-438: get_instance_configuration is cached for the process
+    lifetime -- repeated calls must return identical data."""
+    first = await client.get_instance_configuration()
+    second = await client.get_instance_configuration()
+    assert first.host_name == second.host_name
+    assert first.maximum_api_v3_page_size == second.maximum_api_v3_page_size
+
+
+async def test_list_statuses_is_consistent_across_repeated_calls(client: OpenProjectClient) -> None:
+    """OPM-438: list_statuses is cached for the process lifetime."""
+    first = await client.list_statuses()
+    second = await client.list_statuses()
+    assert first.count == second.count
+    assert [s.id for s in first.results] == [s.id for s in second.results]
+
+
+async def test_list_priorities_is_consistent_across_repeated_calls(client: OpenProjectClient) -> None:
+    """OPM-438: list_priorities is cached for the process lifetime."""
+    first = await client.list_priorities()
+    second = await client.list_priorities()
+    assert first.count == second.count
+    assert [p.id for p in first.results] == [p.id for p in second.results]
+
+
 async def test_list_time_entry_activities(client: OpenProjectClient) -> None:
     result = await client.list_time_entry_activities()
     # A fresh OpenProject instance ships default time entry activities
