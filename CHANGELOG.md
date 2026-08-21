@@ -204,6 +204,13 @@ support.
   have no OpenProject-domain-specific logic, so they're shared, presentation-
   layer utilities rather than something any one future domain module would
   own. No end-user-visible behavior change.
+- **A tool's return-type resolution (`_return_model`, used to decide whether
+  a response gets trimmed) now resolves against the tool function's own
+  defining module (`fn.__globals__`) instead of `tools.py`'s module
+  namespace** — the previous approach happened to work only because every
+  tool currently lives in `tools.py`; this stays correct once tools.py is
+  eventually split into per-domain files (OPM-395). No end-user-visible
+  behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and

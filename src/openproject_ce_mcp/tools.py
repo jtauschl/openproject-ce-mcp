@@ -6166,13 +6166,18 @@ async def _run_tool(awaitable):
 def _return_model(fn: Any) -> type | None:
     """Resolve a tool's return-annotation to its dataclass model, or None.
 
-    ``from __future__ import annotations`` makes the return annotation a string, so
-    we resolve it against this module's namespace (where the models are imported).
+    ``from __future__ import annotations`` makes the return annotation a string,
+    so we resolve it against ``fn``'s own defining module's namespace
+    (``fn.__globals__``, not the caller's) -- this stays correct however
+    tools.py is eventually split across per-domain files (OPM-395), since a
+    tool function moved to another module still resolves against its new
+    home rather than silently returning None. Callers must pass the actual
+    tool function, not a wrapper around it -- functools.wraps() copies
+    __annotations__ but not __globals__, so a wrapper's __globals__ points
+    at the wrapper's own defining module, not the original function's.
     """
     ann = fn.__annotations__.get("return")
-    # ann is the function's own return-type annotation (source-defined), never attacker-controlled input.
-    # nosemgrep: python.lang.security.dangerous-globals-use.dangerous-globals-use
-    model = globals().get(ann) if isinstance(ann, str) else ann
+    model = fn.__globals__.get(ann) if isinstance(ann, str) else ann
     return model if isinstance(model, type) and is_dataclass(model) else None
 
 
