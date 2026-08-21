@@ -120,13 +120,20 @@ CLASSIFICATION: dict[str, str] = {
     "storage_files": "enterprise",  # source raises API::Errors::EnterpriseTokenMissing
 }
 
-# Confirmed genuine top-level CE gaps — verified by reading each resource's
-# actual *_api.rb file in the pinned 17.6 clone (not a live probe against a
-# different version; see CLASSIFICATION's subresource entries above for why
-# that would be unreliable). Encoded here so `_classify` reports them as
-# `GAP (CE)` deterministically, without requiring a live probe on every run —
-# the live-probe branch in `_classify` still runs when enabled, as an
-# independent cross-check that this set hasn't drifted from a later release.
+# Regression guard, not a current-gap list: every one of these 7 resources
+# is now `used` (see OPM-430 — they were implemented in app/adapters/ all
+# along, just undercounted by a scan-scope bug in _client_resources() that
+# predates this set's own reclassification below). `_classify` checks `used`
+# before consulting this set, so none of these can actually be reported as
+# `GAP (CE)` today. The set stays so that if client usage of one of these
+# resources were ever removed, `_classify` would deterministically fall back
+# to `GAP (CE)` again instead of silently vanishing into `review` — each
+# entry was originally verified as a genuine top-level CE resource by
+# reading its actual *_api.rb file in the pinned 17.6 clone (not a live
+# probe against a different version; see CLASSIFICATION's subresource
+# entries above for why that would be unreliable); the live-probe branch in
+# `_classify` still runs when enabled, as an independent cross-check that
+# this hasn't drifted from a later release.
 #   meetings, recurring_meetings, storages, project_storages — genuine
 #     `resources :x do get &Index... end` top-level collection GETs.
 #   backlog_buckets — same: a real top-level Index + Show in
@@ -137,7 +144,7 @@ CLASSIFICATION: dict[str, str] = {
 #     resource's own directory), but a top-level detail/show-by-id route does
 #     (`route_param :id do get ... end` with no preceding collection `get`).
 #     A "list" tool could never be built against either; a "get by id" tool
-#     could. Reported as a gap rather than forced into "subresource" (which
+#     could. Classified here rather than forced into "subresource" (which
 #     would incorrectly imply a parent path exists) or "internal" (which
 #     would incorrectly imply the endpoint isn't real, user-facing CE data).
 CONFIRMED_GAPS: frozenset[str] = frozenset(
