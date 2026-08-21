@@ -14,6 +14,7 @@ from openproject_ce_mcp.app.adapters.httpx_work_package_api import (
     normalize_work_package_summary,
 )
 from openproject_ce_mcp.app.errors import InvalidInputError
+from openproject_ce_mcp.app.ports.project_resolution import ProjectResolutionContext, WorkPackageResolutionContext
 from openproject_ce_mcp.app.transport.httpx_transport import HttpxTransport
 from openproject_ce_mcp.models import SortCriterion
 
@@ -433,6 +434,121 @@ async def test_parse_form_dereferences_linked_allowed_values() -> None:
     assert "_embedded" not in form["_embedded"]["schema"]["responsible"]
 
     await http_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_parse_form_uses_the_allowed_values_cache_when_the_href_is_a_hit() -> None:
+    """A pre-populated cache entry for the exact resolved href must be
+    served without a request -- the cache key is the href itself (see
+    WorkPackageResolutionContext.get_allowed_values's docstring)."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    http_client = _client(handler)
+    api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+    cache = WorkPackageResolutionContext(ProjectResolutionContext(resolve=None))  # type: ignore[arg-type]
+    cache.store_allowed_values("/api/v3/principals?filters=x", [{"id": 15, "name": "Cached User"}])
+    form = {
+        "_embedded": {
+            "payload": {},
+            "validationErrors": {},
+            "schema": {
+                "responsible": {
+                    "_links": {"allowedValues": {"href": "/api/v3/principals?filters=x"}},
+                }
+            },
+        }
+    }
+
+    result = await api.parse_form(form, resolve_links=True, allowed_values_cache=cache)
+
+    assert result.schema["responsible"]["_embedded"]["allowedValues"] == [{"id": 15, "name": "Cached User"}]
+    await http_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_parse_form_populates_the_allowed_values_cache_on_a_miss() -> None:
+    """A cache miss dispatches the real request AND stores the result under
+    the resolved href, so a second parse_form call sharing the same cache
+    instance is a hit."""
+    requested_paths = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requested_paths.append(request.url.path)
+        return httpx.Response(
+            200,
+            json={"_embedded": {"elements": [{"id": 15, "name": "Stefania Iran"}]}},
+            request=request,
+        )
+
+    http_client = _client(handler)
+    api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+    cache = WorkPackageResolutionContext(ProjectResolutionContext(resolve=None))  # type: ignore[arg-type]
+    form = {
+        "_embedded": {
+            "payload": {},
+            "validationErrors": {},
+            "schema": {
+                "responsible": {
+                    "_links": {"allowedValues": {"href": "/api/v3/principals?filters=x"}},
+                }
+            },
+        }
+    }
+
+    first = await api.parse_form(form, resolve_links=True, allowed_values_cache=cache)
+    second = await api.parse_form(form, resolve_links=True, allowed_values_cache=cache)
+
+    assert first.schema["responsible"]["_embedded"]["allowedValues"] == [{"id": 15, "name": "Stefania Iran"}]
+    assert second.schema["responsible"]["_embedded"]["allowedValues"] == [{"id": 15, "name": "Stefania Iran"}]
+    assert requested_paths == ["/api/v3/principals"]  # only one real request across both calls
+    await http_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_parse_form_two_different_hrefs_never_share_a_cache_entry() -> None:
+    """Distinct hrefs (e.g. one work package's update-path assignee scope vs.
+    another's) must never collide in the cache -- this is the correctness
+    property the href-keyed design exists for (see OPM-439's self-review:
+    a (project_id, field_key) key would have been too coarse for the
+    update path, where the href is scoped to the individual work package)."""
+    requested_paths = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requested_paths.append(request.url.path)
+        user_id = 15 if "7" in request.url.path else 22
+        return httpx.Response(
+            200,
+            json={"_embedded": {"elements": [{"id": user_id, "name": f"User {user_id}"}]}},
+            request=request,
+        )
+
+    http_client = _client(handler)
+    api = HttpxWorkPackageApi(HttpxTransport(http_client), base_url=BASE_URL)
+    cache = WorkPackageResolutionContext(ProjectResolutionContext(resolve=None))  # type: ignore[arg-type]
+
+    def _form(work_package_id: int) -> dict:
+        return {
+            "_embedded": {
+                "payload": {},
+                "validationErrors": {},
+                "schema": {
+                    "responsible": {
+                        "_links": {
+                            "allowedValues": {"href": f"/api/v3/work_packages/{work_package_id}/available_assignees"}
+                        },
+                    }
+                },
+            }
+        }
+
+    result_a = await api.parse_form(_form(7), resolve_links=True, allowed_values_cache=cache)
+    result_b = await api.parse_form(_form(9), resolve_links=True, allowed_values_cache=cache)
+
+    assert result_a.schema["responsible"]["_embedded"]["allowedValues"] == [{"id": 15, "name": "User 15"}]
+    assert result_b.schema["responsible"]["_embedded"]["allowedValues"] == [{"id": 22, "name": "User 22"}]
+    assert len(requested_paths) == 2  # both distinct work packages triggered their own request
 
 
 @pytest.mark.asyncio

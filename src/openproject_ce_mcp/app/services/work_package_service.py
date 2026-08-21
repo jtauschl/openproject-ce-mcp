@@ -1281,9 +1281,15 @@ class WorkPackageService:
         draft_payload: dict[str, Any],
         lock_version: int | None,
         project_context: ProjectResolutionContext | None,
+        allowed_values_cache: WorkPackageResolutionContext | None,
     ) -> dict[str, Any]:
         """Embedded schema probe (call #1 of up to 3 `/form` POSTs per
-        `update()` -- see `app/ports/work_package_api.py`'s module docstring)."""
+        `update()` -- see `app/ports/work_package_api.py`'s module docstring).
+
+        `allowed_values_cache` is the same `wp_context` bulk_create/
+        bulk_update share across a batch's items -- see
+        `WorkPackageResolutionContext.get_allowed_values`'s docstring for why
+        caching a dereferenced `allowedValues` href is safe across items."""
         if work_package_id is not None:
             # OpenProject 17.x rejects the work-package form endpoint with a
             # "could not be updated due to conflicting modifications" (409)
@@ -1293,7 +1299,9 @@ class WorkPackageService:
             if lock_version is not None:
                 schema_body["lockVersion"] = lock_version
             form = await self._api.validate_update(str(work_package_id), schema_body)
-            return (await self._api.parse_form(form, resolve_links=True)).schema
+            return (
+                await self._api.parse_form(form, resolve_links=True, allowed_values_cache=allowed_values_cache)
+            ).schema
 
         schema_payload = dict(draft_payload)
         schema_links = dict(schema_payload.get("_links", {}))
@@ -1308,7 +1316,7 @@ class WorkPackageService:
         if schema_links:
             schema_payload["_links"] = schema_links
         form = await self._api.validate_create(project, schema_payload)
-        return (await self._api.parse_form(form, resolve_links=True)).schema
+        return (await self._api.parse_form(form, resolve_links=True, allowed_values_cache=allowed_values_cache)).schema
 
     def _resolve_schema_option_href(self, schema: dict[str, Any], key: str, raw_value: Any) -> str:
         field = schema.get(key)
@@ -1538,6 +1546,7 @@ class WorkPackageService:
                 draft_payload=payload,
                 lock_version=lock_version,
                 project_context=project_context,
+                allowed_values_cache=resolution_context,
             )
             if responsible is not None and responsible is not CLEAR:
                 hidden_fields.ensure_field_writable("work_package", "responsible", settings=self._settings)

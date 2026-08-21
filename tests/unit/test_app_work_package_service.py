@@ -129,6 +129,7 @@ class _FakeWorkPackageApi:
         self.validation_errors_queue: list[dict[str, str]] = []
         self.next_schema: dict = {}
         self.parse_form_resolve_links_calls: list[bool] = []
+        self.parse_form_allowed_values_cache_calls: list[object] = []
 
     async def list(self, *, filters, offset, limit, sort_by, group_by, include_sums: bool = False) -> WorkPackagePage:
         self.list_calls.append(
@@ -177,8 +178,11 @@ class _FakeWorkPackageApi:
             }
         }
 
-    async def parse_form(self, form: dict, *, resolve_links: bool = False) -> WorkPackageFormResult:
+    async def parse_form(
+        self, form: dict, *, resolve_links: bool = False, allowed_values_cache=None
+    ) -> WorkPackageFormResult:
         self.parse_form_resolve_links_calls.append(resolve_links)
+        self.parse_form_allowed_values_cache_calls.append(allowed_values_cache)
         embedded = form.get("_embedded", {})
         return WorkPackageFormResult(
             payload=embedded.get("payload", {}),
@@ -1692,6 +1696,38 @@ async def test_bulk_create_shares_resolution_context_across_items_in_same_projec
     assert project_resolve_calls == 1
 
 
+@pytest.mark.asyncio
+async def test_bulk_create_passes_the_same_allowed_values_cache_to_every_item() -> None:
+    """OPM-439: every item in one bulk_create batch must share the SAME
+    WorkPackageResolutionContext instance as parse_form's allowed_values_cache
+    -- this is what lets the adapter reuse a resolved allowedValues href
+    across items instead of re-fetching it per item."""
+    api = _FakeWorkPackageApi()
+    api.next_schema = {"customField10": {"name": "Story points", "location": "payload"}}
+    service, _ = _service(api)
+
+    await service.bulk_create(
+        items=[
+            {"project": "demo", "type": "Task", "subject": "One", "custom_fields": {"customField10": 1}},
+            {"project": "demo", "type": "Task", "subject": "Two", "custom_fields": {"customField10": 2}},
+        ],
+        confirm=False,
+    )
+
+    # Two items, each with custom_fields -> two schema-probe parse_form calls
+    # (resolve_links=True) plus each item's final resolve_links=False parse.
+    schema_probe_caches = [
+        cache
+        for resolve_links, cache in zip(
+            api.parse_form_resolve_links_calls, api.parse_form_allowed_values_cache_calls, strict=True
+        )
+        if resolve_links
+    ]
+    assert len(schema_probe_caches) == 2
+    assert schema_probe_caches[0] is not None
+    assert schema_probe_caches[0] is schema_probe_caches[1]
+
+
 # ----------------------------------------------------------------------
 # update()
 # ----------------------------------------------------------------------
@@ -1926,6 +1962,45 @@ async def test_bulk_update_commit_updates_every_item() -> None:
 
     assert result.succeeded == 1
     assert len(api.commit_update_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_passes_the_same_cache_but_each_item_gets_its_own_form_probe() -> None:
+    """OPM-439: unlike bulk_create's project-scoped href reuse, bulk_update's
+    schema probe is per-work-package (validate_update targets that WP's own
+    ref) -- the shared cache object must still be passed to every item's
+    parse_form call so a REPEATED field on the SAME work package would hit
+    the cache, but two different work packages naturally get two separate
+    validate_update/parse_form round trips (this is expected, not a caching
+    failure -- see OPM-439's href-keyed design rationale)."""
+    api = _FakeWorkPackageApi()
+    api._records_by_id = {6: _record(6), 7: _record(7)}
+    api.next_schema = {"customField10": {"name": "Story points", "location": "payload"}}
+    service, _ = _service(api)
+
+    await service.bulk_update(
+        items=[
+            {"work_package_id": 6, "custom_fields": {"customField10": 1}},
+            {"work_package_id": 7, "custom_fields": {"customField10": 2}},
+        ],
+        confirm=False,
+    )
+
+    schema_probe_caches = [
+        cache
+        for resolve_links, cache in zip(
+            api.parse_form_resolve_links_calls, api.parse_form_allowed_values_cache_calls, strict=True
+        )
+        if resolve_links
+    ]
+    assert len(schema_probe_caches) == 2
+    assert schema_probe_caches[0] is not None
+    # Same cache OBJECT shared across items (so a repeated href within one
+    # item, or across items resolving the identical href, would hit it) --
+    # even though this test's two work packages happen to each trigger their
+    # own validate_update call (a validate_update-per-work-package is
+    # unavoidable; only the allowedValues dereference itself is cacheable).
+    assert schema_probe_caches[0] is schema_probe_caches[1]
 
 
 @pytest.mark.asyncio

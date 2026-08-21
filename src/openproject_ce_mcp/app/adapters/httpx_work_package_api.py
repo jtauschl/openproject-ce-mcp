@@ -58,6 +58,7 @@ from urllib.parse import urlparse
 
 from ...models import SortCriterion, WorkPackageDetail, WorkPackageSummary
 from ..errors import OpenProjectServerError
+from ..ports.project_resolution import WorkPackageResolutionContext
 from ..ports.work_package_api import WorkPackageFormResult, WorkPackagePage, WorkPackageRecord
 from ..ports.work_package_ref import work_package_ref as _work_package_ref_encode
 from ..transport.protocol import Transport
@@ -636,22 +637,36 @@ class HttpxWorkPackageApi:
         safe_ref = _work_package_ref_encode(work_package_ref)
         return await self._transport.post_json(f"work_packages/{safe_ref}/form", json_body=payload)
 
-    async def parse_form(self, form: dict[str, Any], *, resolve_links: bool = False) -> WorkPackageFormResult:
+    async def parse_form(
+        self,
+        form: dict[str, Any],
+        *,
+        resolve_links: bool = False,
+        allowed_values_cache: WorkPackageResolutionContext | None = None,
+    ) -> WorkPackageFormResult:
         embedded = form.get("_embedded") or {}
         schema = embedded.get("schema") or {}
         if resolve_links:
-            schema = await self._resolve_linked_allowed_values(schema)
+            schema = await self._resolve_linked_allowed_values(schema, cache=allowed_values_cache)
         return WorkPackageFormResult(
             payload=embedded.get("payload", {}),
             validation_errors=_normalize_form_validation_errors(embedded.get("validationErrors")),
             schema=schema,
         )
 
-    async def _resolve_linked_allowed_values(self, schema: dict[str, Any]) -> dict[str, Any]:
+    async def _resolve_linked_allowed_values(
+        self, schema: dict[str, Any], *, cache: WorkPackageResolutionContext | None
+    ) -> dict[str, Any]:
         """Dereference every schema field's `_links.allowedValues.href` that
         isn't already embedded, returning a new schema dict -- the input is
         never mutated in place, so a caller holding a reference to the
-        original `form`/schema sees it unchanged."""
+        original `form`/schema sees it unchanged.
+
+        `cache`, when given, is consulted/populated by the resolved `href`
+        itself -- see `WorkPackageResolutionContext.get_allowed_values`'s
+        docstring for why href is the safe cache key (it already encodes
+        whether the dereferenced set is project-scoped or scoped to one
+        individual work package)."""
         resolved: dict[str, Any] = dict(schema)
         for key, field in schema.items():
             if not isinstance(field, dict) or (field.get("_embedded") or {}).get("allowedValues") is not None:
@@ -664,8 +679,12 @@ class HttpxWorkPackageApi:
             href = link.get("href")
             if not isinstance(href, str) or not href:
                 continue
-            payload = await self._transport.get_json(self._link_to_api_path(href))
-            elements = (payload.get("_embedded") or {}).get("elements", [])
+            elements = cache.get_allowed_values(href) if cache is not None else None
+            if elements is None:
+                payload = await self._transport.get_json(self._link_to_api_path(href))
+                elements = (payload.get("_embedded") or {}).get("elements", [])
+                if cache is not None:
+                    cache.store_allowed_values(href, elements)
             resolved[key] = {**field, "_embedded": {**(field.get("_embedded") or {}), "allowedValues": elements}}
         return resolved
 

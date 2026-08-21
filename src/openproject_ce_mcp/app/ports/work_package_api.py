@@ -85,6 +85,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from ...models import SortCriterion, WorkPackageDetail, WorkPackageSummary
+from .project_resolution import WorkPackageResolutionContext
 
 
 @dataclass(frozen=True)
@@ -149,7 +150,13 @@ class WorkPackageApi(Protocol):
         applies -- side-effect-free, safe to call more than once."""
         ...
 
-    async def parse_form(self, form: dict[str, Any], *, resolve_links: bool = False) -> WorkPackageFormResult:
+    async def parse_form(
+        self,
+        form: dict[str, Any],
+        *,
+        resolve_links: bool = False,
+        allowed_values_cache: WorkPackageResolutionContext | None = None,
+    ) -> WorkPackageFormResult:
         """Unwrap of `_embedded.payload`/`.validationErrors`/`.schema` from a
         raw form response returned by `validate_create`/`validate_update`.
         Async because, when `resolve_links=True`, a schema field with an
@@ -168,7 +175,13 @@ class WorkPackageApi(Protocol):
         `project_phase`/custom-field options) passes `resolve_links=True`.
         Never mutates the input `form`'s schema in place -- returns a new
         schema dict, so a caller holding a reference to the original `form`
-        sees it unchanged."""
+        sees it unchanged.
+
+        `allowed_values_cache`, when given (a bulk_create/bulk_update batch's
+        shared `wp_context`), is consulted/populated per dereferenced href
+        instead of always dispatching the GET -- see
+        `WorkPackageResolutionContext.get_allowed_values`'s docstring for why
+        caching by href (not by project/field) is the safe granularity."""
         ...
 
     async def commit_create(self, payload: dict[str, Any], *, text_limit: int | None) -> WorkPackageRecord:
