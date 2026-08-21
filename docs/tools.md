@@ -303,31 +303,38 @@ user exists.
 
 `bulk_create_work_packages`/`bulk_update_work_packages` process items strictly
 sequentially, one at a time — this is deliberate, not a missing optimization:
-it guarantees server-assigned IDs match call order, and one item's rejection
-never blocks the rest of the batch. Neither guarantee holds if you instead
-issue N parallel `create_work_package`/`update_work_package` calls yourself.
+each item's outcome is independent (one item's rejection never blocks the
+rest of the batch), and items are processed in the order given. Neither
+guarantee holds if you instead issue N parallel `create_work_package`/
+`update_work_package` calls yourself. Note this is *processing* order, not a
+monotonic-ID guarantee, and items cannot reference each other's IDs within
+the same batch — every item's payload is built before any item is sent.
 
-**Use `bulk_*` when order or per-item failure isolation matters** — e.g. a
-later item's `parent_work_package_id` references an earlier item's
-just-assigned ID within the same call, or you need one partial-failure report
-instead of reconciling N independent results yourself.
+**Use `bulk_*` when per-item failure isolation or a single consolidated
+result matters** — you get one report covering every item's success/failure
+instead of reconciling N independent call results yourself.
 
-**Otherwise, weigh the real per-item cost**, which differs sharply between
-create and update and depends on how many optional fields resolve by name
-rather than numeric ID:
+**Otherwise, weigh the real per-item request count** (all figures are for
+one `confirm=true` call; `confirm=false` previews cost one less), which
+differs sharply between create and update and depends on how many optional
+fields resolve by name rather than numeric ID:
 
 | Scenario | First item | Later items, same project |
 |---|---|---|
 | Create, only required fields (`project`/`type`/`subject`) | 3 requests | 2 requests |
-| Create, several name-resolved optional fields (type/version by name, `assignee="me"`, custom fields) | `7 + L` requests | `3 + L` requests (often just 3) |
-| Update, only required fields | 3 requests | 3 requests (no batch saving) |
-| Update, several name-resolved optional fields | `12 + L` requests | `6 + L` requests |
+| Create, type + version by name, `assignee="me"`, one custom field | `7 + L` requests | `3 + L` requests (often just 3) |
+| Update, no optional fields (only the target work package's id) | 3 requests | 3 requests (no batch saving) |
+| Update, type + version + sprint by name, one custom field, closing status without explicit remaining time | `12 + L` requests | `6 + L` requests |
 
 `L` is the number of distinct, not-yet-cached `allowedValues` schema hrefs
-the batch touches — data-dependent, no fixed upper bound. Spreading a batch
-across multiple projects loses most of the "later items" saving, since the
-per-project/per-type/per-href caches this counts on are scoped to what's
-already been seen in the batch.
+the batch touches (e.g. a User-typed custom field's candidate list) —
+data-dependent, no fixed upper bound. A simpler mix of optional fields costs
+less than the table's worked examples — e.g. update with just a type and
+version by name, no custom fields or status change, runs closer to `8 + L`
+first item / `4 + L` later items. Spreading a batch across multiple projects
+loses most of the "later items" saving, since the per-project/per-type/
+per-href caches this counts on are scoped to what's already been seen in the
+batch.
 
 The two scenarios land so differently because **create batches well, update
 doesn't**: same-project/type/version lookups and dereferenced `allowedValues`
@@ -335,10 +342,12 @@ schema fields are cached across the whole batch, so item 2+ in a uniform
 create batch is cheap. `update` additionally requires one uncached
 `GET` of the current record per item (needed for its `lockVersion`), and its
 `allowedValues` hrefs are frequently work-package-specific rather than
-project-specific, so they rarely hit the batch cache. In practice, prefer
-`bulk_update_work_packages` for its ordering/failure-isolation guarantee
-rather than for a performance win — the per-item cost saving over N
-individual `update_work_package` calls is small.
+project-specific, so they rarely hit the batch cache. Request count isn't the
+same as wall-clock time — sequential processing can be slower in practice
+than N genuinely parallel single calls, even at a lower total request count.
+In practice, prefer `bulk_update_work_packages` for its consolidated result
+and failure-isolation guarantee, not as a request-count optimization — the
+saving over N individual `update_work_package` calls is real but modest.
 
 ## Attachments
 
