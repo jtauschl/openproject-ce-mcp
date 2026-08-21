@@ -216,6 +216,10 @@ support.
   its own regex constant used exclusively by that validator) — further
   groundwork for splitting `tools.py` into per-domain files (OPM-395). No
   end-user-visible behavior change.
+- **4 more validators (date-time and duration format validation) moved from
+  `tools.py` into `tools_validation.py`**, along with their regex constants —
+  further groundwork for splitting `tools.py` into per-domain files
+  (OPM-395). No end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and

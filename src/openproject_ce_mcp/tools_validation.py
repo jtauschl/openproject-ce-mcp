@@ -19,6 +19,32 @@ RELATION_TYPE_RE = re.compile(
     r"^(relates|duplicates|duplicated|blocks|blocked|precedes|follows|includes|partof|requires|required)$"
 )
 
+# ISO 8601 date-time, e.g. 2026-12-01T09:00:00Z or with a +HH:MM offset. The
+# fractional-second component is capped at 6 digits (microsecond precision) --
+# datetime.fromisoformat() silently truncates anything beyond that, and
+# tools.py's _duration_between relies on fromisoformat's parsed value being
+# the caller's actual intent, not a silently-rounded approximation of a
+# sub-microsecond value the regex would otherwise have let through.
+DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$")
+# Full ISO 8601 duration: either weeks alone ("P2W") or a year/month/day date part
+# and/or a "T"-prefixed time part (hours/minutes/seconds) — the week designator
+# cannot combine with anything else, per the ISO 8601 standard's own week-format
+# rule. Live-verified 2026-07-17 against real OpenProject 16.6 (Docker test harness):
+# "P1D"/"P2W"/"P1Y"/"P1M"/"P1Y2M3D"/"P1DT18H" are all accepted and echoed back
+# unchanged (an earlier version of this regex rejected day-based values entirely,
+# based on an incorrect assumption), while "P1W2D"/"P2WT3H" (week mixed with
+# another designator) are rejected by OpenProject itself with a format error —
+# confirmed here too, not just assumed from the standard. The seconds component
+# additionally allows an optional decimal fraction (e.g. "PT7H30M15.5S") —
+# verified directly against the `iso8601` Ruby gem OpenProject uses server-side
+# (ISO8601::Duration.new(...), see time_entry_representer.rb's `hours=` setter):
+# its grammar permits a fractional value on any single non-zero component, as
+# long as it's the last one, which our own H/M-integer-only + optionally-
+# fractional-S shape always satisfies.
+ISO8601_DURATION_RE = re.compile(
+    r"^P(?:\d+W|(?=\d|T)(?:\d+Y)?(?:\d+M)?(?:\d+D)?(?:T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+(?:\.\d+)?S)?)?)$"
+)
+
 
 def _validate_positive_int(value: int, *, field_name: str) -> int:
     # Type-safe: MCP args arrive as JSON, so a wrong type (e.g. "5", None, True)
@@ -452,4 +478,38 @@ def _validate_relation_type(value: str) -> str:
         raise ValueError(
             "relation_type must be one of: relates, duplicates, duplicated, blocks, blocked, precedes, follows, includes, partof, requires, required."
         )
+    return normalized
+
+
+def _validate_optional_datetime(value: str | None, *, field_name: str) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if not DATETIME_RE.fullmatch(normalized):
+        raise ValueError(f"{field_name} must be an ISO 8601 date-time, e.g. 2026-12-01T09:00:00Z.")
+    return normalized
+
+
+def _validate_required_datetime(value: str, *, field_name: str) -> str:
+    normalized = _validate_optional_datetime(value, field_name=field_name)
+    if not normalized:
+        raise ValueError(f"{field_name} is required.")
+    return normalized
+
+
+def _validate_optional_duration(value: str | None, *, field_name: str) -> str | None:
+    normalized = _validate_optional_query(value, field_name=field_name, max_length=50)
+    if normalized is None:
+        return None
+    if not ISO8601_DURATION_RE.fullmatch(normalized):
+        raise ValueError(f"{field_name} must use a simple ISO 8601 duration like PT1H30M.")
+    return normalized
+
+
+def _validate_required_duration(value: str, *, field_name: str) -> str:
+    normalized = _validate_optional_duration(value, field_name=field_name)
+    if not normalized:
+        raise ValueError(f"{field_name} is required.")
     return normalized

@@ -7,13 +7,10 @@ from _tools_test_helpers import FakeContext
 
 from openproject_ce_mcp.models import SortCriterion
 from openproject_ce_mcp.tools import (
-    DATETIME_RE,
-    ISO8601_DURATION_RE,
     _duration_between,
     _pad_fractional_seconds,
     _validate_custom_field_filters,
     _validate_group_by,
-    _validate_optional_duration,
     _validate_positive_int,
     _validate_sort_by,
     bulk_create_work_packages,
@@ -23,6 +20,9 @@ from openproject_ce_mcp.tools import (
     toggle_activity_emoji_reaction,
 )
 from openproject_ce_mcp.tools_validation import (
+    DATETIME_RE,
+    ISO8601_DURATION_RE,
+    _validate_optional_duration,
     _validate_optional_non_negative_int,
     _validate_optional_percentage_done,
     _validate_optional_text,

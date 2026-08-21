@@ -201,6 +201,8 @@ from .tools_validation import (
     _validate_optional_custom_fields,
     _validate_optional_date,
     _validate_optional_date_range,
+    _validate_optional_datetime,
+    _validate_optional_duration,
     _validate_optional_filter_list,
     _validate_optional_non_negative_int,
     _validate_optional_percentage_done,
@@ -219,38 +221,13 @@ from .tools_validation import (
     _validate_project_ref,
     _validate_relation_type,
     _validate_required_date,
+    _validate_required_datetime,
+    _validate_required_duration,
     _validate_required_query,
     _validate_required_string_list,
     _validate_required_text,
     _validate_work_package_ref,
 )
-
-# ISO 8601 date-time, e.g. 2026-12-01T09:00:00Z or with a +HH:MM offset. The
-# fractional-second component is capped at 6 digits (microsecond precision) --
-# datetime.fromisoformat() silently truncates anything beyond that, and
-# _duration_between relies on fromisoformat's parsed value being the caller's
-# actual intent, not a silently-rounded approximation of a sub-microsecond
-# value the regex would otherwise have let through.
-DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$")
-# Full ISO 8601 duration: either weeks alone ("P2W") or a year/month/day date part
-# and/or a "T"-prefixed time part (hours/minutes/seconds) — the week designator
-# cannot combine with anything else, per the ISO 8601 standard's own week-format
-# rule. Live-verified 2026-07-17 against real OpenProject 16.6 (Docker test harness):
-# "P1D"/"P2W"/"P1Y"/"P1M"/"P1Y2M3D"/"P1DT18H" are all accepted and echoed back
-# unchanged (an earlier version of this regex rejected day-based values entirely,
-# based on an incorrect assumption), while "P1W2D"/"P2WT3H" (week mixed with
-# another designator) are rejected by OpenProject itself with a format error —
-# confirmed here too, not just assumed from the standard. The seconds component
-# additionally allows an optional decimal fraction (e.g. "PT7H30M15.5S") —
-# verified directly against the `iso8601` Ruby gem OpenProject uses server-side
-# (ISO8601::Duration.new(...), see time_entry_representer.rb's `hours=` setter):
-# its grammar permits a fractional value on any single non-zero component, as
-# long as it's the last one, which our own H/M-integer-only + optionally-
-# fractional-S shape always satisfies.
-ISO8601_DURATION_RE = re.compile(
-    r"^P(?:\d+W|(?=\d|T)(?:\d+Y)?(?:\d+M)?(?:\d+D)?(?:T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+(?:\.\d+)?S)?)?)$"
-)
-
 
 # ── Tool classification ──────────────────────────────────────────────────────
 #
@@ -6452,48 +6429,15 @@ def _validate_custom_field_filters(
     return normalized
 
 
-def _validate_optional_datetime(value: str | None, *, field_name: str) -> str | None:
-    if value is None:
-        return None
-    normalized = value.strip()
-    if not normalized:
-        return None
-    if not DATETIME_RE.fullmatch(normalized):
-        raise ValueError(f"{field_name} must be an ISO 8601 date-time, e.g. 2026-12-01T09:00:00Z.")
-    return normalized
-
-
-def _validate_required_datetime(value: str, *, field_name: str) -> str:
-    normalized = _validate_optional_datetime(value, field_name=field_name)
-    if not normalized:
-        raise ValueError(f"{field_name} is required.")
-    return normalized
-
-
-def _validate_optional_duration(value: str | None, *, field_name: str) -> str | None:
-    normalized = _validate_optional_query(value, field_name=field_name, max_length=50)
-    if normalized is None:
-        return None
-    if not ISO8601_DURATION_RE.fullmatch(normalized):
-        raise ValueError(f"{field_name} must use a simple ISO 8601 duration like PT1H30M.")
-    return normalized
-
-
-def _validate_required_duration(value: str, *, field_name: str) -> str:
-    normalized = _validate_optional_duration(value, field_name=field_name)
-    if not normalized:
-        raise ValueError(f"{field_name} is required.")
-    return normalized
-
-
 def _pad_fractional_seconds(value: str) -> str:
     """Pad a `.d{1,6}` fractional-seconds fragment to exactly 6 digits.
 
     Python's `datetime.fromisoformat` only accepts 0, 3, or 6 fractional
-    digits before 3.11 (this project supports 3.10+); DATETIME_RE already
-    allows any count from 1 to 6 (matching what OpenProject itself accepts),
-    so a value like "09:00:07.5Z" must be normalized to "09:00:07.500000Z"
-    before parsing, not just have "Z" swapped for "+00:00".
+    digits before 3.11 (this project supports 3.10+); the date-time validator
+    in tools_validation.py accepts any count from 1 to 6 (matching what
+    OpenProject itself accepts), so a value like "09:00:07.5Z" must be
+    normalized to "09:00:07.500000Z" before parsing, not just have "Z"
+    swapped for "+00:00".
     """
     return re.sub(r"\.(\d{1,6})(?=Z|[+-]\d{2}:\d{2}$)", lambda m: f".{m.group(1):0<6}", value)
 
@@ -6502,11 +6446,11 @@ def _duration_between(start_time: str, end_time: str) -> str:
     """Compute an ISO 8601 duration string for end_time - start_time.
 
     Used by create_time_entry_until/update_time_entry_until to derive `hours`
-    locally, since OpenProject's own API never accepts `end_time` as a write
-    field (see ISO8601_DURATION_RE's comment and the create_time_entry
-    docstring). Uses timedelta's own exact integer fields (days/seconds/
-    microseconds), never total_seconds() -- a float -- for the whole-unit
-    breakdown, so the hours/minutes/seconds split is exact by construction.
+    locally, since OpenProject's API accepts an ISO 8601 duration in `hours`,
+    not `end_time`, as a write field (see the create_time_entry docstring).
+    Uses timedelta's own exact integer fields (days/seconds/microseconds),
+    never total_seconds() -- a float -- for the whole-unit breakdown, so the
+    hours/minutes/seconds split is exact by construction.
     """
     start = datetime.datetime.fromisoformat(_pad_fractional_seconds(start_time).replace("Z", "+00:00"))
     end = datetime.datetime.fromisoformat(_pad_fractional_seconds(end_time).replace("Z", "+00:00"))
@@ -6517,11 +6461,12 @@ def _duration_between(start_time: str, end_time: str) -> str:
     hours, remainder = divmod(total_seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     microseconds = delta.microseconds
-    # Only the seconds component ever carries a fractional part (ISO 8601
-    # duration semantics; see ISO8601_DURATION_RE's comment). `microseconds` is
-    # an exact integer (0-999999) added to the already-whole `seconds`, then
-    # formatted with a fixed decimal count (never `%g`/`str(float)`), avoiding
-    # both scientific notation on tiny fractions and any rounding-induced carry.
+    # Durations generated here use a fractional value only on the seconds
+    # component; the ISO 8601 duration validator in tools_validation.py
+    # accepts that shape. `microseconds` is an exact integer (0-999999) added
+    # to the already-whole `seconds`, then formatted with a fixed decimal
+    # count (never `%g`/`str(float)`), avoiding both scientific notation on
+    # tiny fractions and any rounding-induced carry.
     if microseconds:
         seconds_str = f"{seconds + microseconds / 1_000_000:.6f}".rstrip("0").rstrip(".")
     else:
