@@ -313,6 +313,24 @@ support.
   required fields, output_schema presence) from before the move, proving the
   file relocation had zero effect on what an MCP client sees. No
   end-user-visible behavior change.
+- **The Membership domain's 9 tool functions (`list_roles`, `list_actions`,
+  `list_capabilities`, `list_project_memberships`, `get_membership`,
+  `create_membership`, `update_membership`, `delete_membership`,
+  `get_current_user`) moved from `tools.py` into a new
+  `tools_memberships.py`** — the sixth domain split under OPM-395. Unlike the
+  User Schedule and Misc Extended splits, `tools.py` **does** re-export all
+  nine names: four of them (`list_actions`, `list_capabilities`, `list_roles`,
+  `list_project_memberships`) are imported directly from
+  `openproject_ce_mcp.tools` by existing tests (`test_trimming.py`,
+  `tests/unit/test_project_and_domain_tools.py`), so this split follows the
+  same re-export transition step as the Reminders, Versions, and Boards
+  splits. `tools.py` imports `tools_memberships` for its `@register_tool`
+  registration side effect and the re-export. A characterization test
+  (`tests/test_membership_tools_schema_characterization.py`) locks in the 9
+  tools' exact MCP schema (parameter names/types/order, descriptions,
+  required fields, output_schema presence) from before the move, proving the
+  file relocation had zero effect on what an MCP client sees. No
+  end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and

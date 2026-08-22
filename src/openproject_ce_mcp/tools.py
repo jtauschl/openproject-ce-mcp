@@ -19,8 +19,6 @@ from .client import (
 )
 from .config import Settings
 from .models import (
-    ActionListResult,
-    ActionSummary,
     ActivityListResult,
     ActivitySummary,
     ActivityWriteResult,
@@ -32,14 +30,11 @@ from .models import (
     BacklogBucketSummary,
     BatchWorkPackageReadResult,
     BulkWorkPackageWriteResult,
-    CapabilityListResult,
-    CapabilitySummary,
     CategoryListResult,
     CategorySummary,
     CostEntryListResult,
     CostEntrySummary,
     CostTypeSummary,
-    CurrentUser,
     DocumentDetail,
     DocumentListResult,
     DocumentSummary,
@@ -76,9 +71,6 @@ from .models import (
     MeetingSectionWriteResult,
     MeetingSummary,
     MeetingWriteResult,
-    MembershipListResult,
-    MembershipSummary,
-    MembershipWriteResult,
     NewsDetail,
     NewsListResult,
     NewsSummary,
@@ -121,8 +113,6 @@ from .models import (
     RelationSummary,
     RelationUpdateResult,
     RelationWriteResult,
-    RoleListResult,
-    RoleSummary,
     SprintDetail,
     SprintListResult,
     SprintSummary,
@@ -165,6 +155,17 @@ from .tools_boards import (  # noqa: F401 -- @register_tool side effect; re-expo
     get_board,
     list_boards,
     update_board,
+)
+from .tools_memberships import (  # noqa: F401 -- @register_tool side effect; re-exported, existing tests import list_actions/list_capabilities/list_roles/list_project_memberships from here
+    create_membership,
+    delete_membership,
+    get_current_user,
+    get_membership,
+    list_actions,
+    list_capabilities,
+    list_project_memberships,
+    list_roles,
+    update_membership,
 )
 from .tools_reminders import (  # noqa: F401 -- @register_tool side effect; re-exported, several tests import these from here
     create_work_package_reminder,
@@ -216,7 +217,6 @@ from .tools_validation import (
     _validate_required_datetime,
     _validate_required_duration,
     _validate_required_query,
-    _validate_required_string_list,
     _validate_required_text,
     _validate_select,
     _validate_sort_by,
@@ -1042,26 +1042,6 @@ async def delete_project(
 
 
 @register_tool
-async def list_roles(
-    ctx: Context,
-    select: list[str] | None = None,
-    offset: int = 1,
-    limit: int | None = None,
-) -> RoleListResult:
-    """List OpenProject roles visible to the current user.
-
-    select fields: id, name (see server instructions for select's general semantics).
-    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap.
-    """
-    client = _client_from_context(ctx)
-    _validate_select(select, row_type=RoleSummary)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
-    return await _run_tool(client.list_roles(offset=safe_offset, limit=safe_limit))
-
-
-@register_tool
 async def list_principals(
     ctx: Context,
     search: str | None = None,
@@ -1189,64 +1169,6 @@ async def get_storage(
 
 
 @register_tool
-async def list_actions(
-    ctx: Context,
-    offset: int = 1,
-    limit: int | None = None,
-    select: list[str] | None = None,
-) -> ActionListResult:
-    """List API actions exposed by OpenProject.
-
-    select fields: id, url (see server instructions for select's general semantics).
-
-    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap.
-    """
-    client = _client_from_context(ctx)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
-    _validate_select(select, row_type=ActionSummary)
-    return await _run_tool(client.list_actions(offset=safe_offset, limit=safe_limit))
-
-
-@register_tool
-async def list_capabilities(
-    ctx: Context,
-    project: str | None = None,
-    capability_id: str | None = None,
-    offset: int = 1,
-    limit: int | None = None,
-    select: list[str] | None = None,
-) -> CapabilityListResult:
-    """List API capabilities exposed by OpenProject.
-
-    At least one of project or capability_id is required — there is no
-    unfiltered global listing, since one would bypass the project read
-    allowlist.
-
-    select fields: id, action_id, context (see server instructions for
-    select's general semantics).
-
-    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap.
-    """
-    client = _client_from_context(ctx)
-    safe_project = _validate_optional_project_ref(project)
-    safe_capability_id = _validate_optional_query(capability_id, field_name="capability_id", max_length=100)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
-    _validate_select(select, row_type=CapabilitySummary)
-    return await _run_tool(
-        client.list_capabilities(
-            project=safe_project,
-            capability_id=safe_capability_id,
-            offset=safe_offset,
-            limit=safe_limit,
-        )
-    )
-
-
-@register_tool
 async def get_query_filter(
     ctx: Context,
     filter_id: str,
@@ -1310,106 +1232,6 @@ async def get_query_filter_instance_schema(
     client = _client_from_context(ctx)
     safe_schema_id = _validate_required_query(schema_id, field_name="schema_id", max_length=100)
     return await _run_tool(client.get_query_filter_instance_schema(safe_schema_id))
-
-
-@register_tool
-async def list_project_memberships(
-    ctx: Context,
-    project: str,
-    offset: int = 1,
-    limit: int | None = None,
-    select: list[str] | None = None,
-) -> MembershipListResult:
-    """List memberships for a project, including principal and role names.
-
-    select fields: id, principal_name, role_names (see server instructions for
-    select's general semantics).
-
-    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap.
-    """
-    client = _client_from_context(ctx)
-    safe_project = _validate_project_ref(project)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
-    _validate_select(select, row_type=MembershipSummary)
-    return await _run_tool(client.list_project_memberships(safe_project, offset=safe_offset, limit=safe_limit))
-
-
-@register_tool
-async def get_membership(
-    ctx: Context,
-    membership_id: int,
-) -> MembershipSummary:
-    """Get a compact membership summary by id."""
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(membership_id, field_name="membership_id")
-    return await _run_tool(client.get_membership(safe_id))
-
-
-@register_tool
-async def create_membership(
-    ctx: Context,
-    project: str,
-    principal: str,
-    roles: list[str],
-    notification_message: str | None = None,
-    confirm: bool = False,
-) -> MembershipWriteResult:
-    """Prepare or create a project membership."""
-    client = _client_from_context(ctx)
-    safe_project = _validate_project_ref(project)
-    safe_principal = _validate_required_query(principal, field_name="principal", max_length=255)
-    safe_roles = _validate_required_string_list(roles, field_name="roles", max_items=20, item_max_length=100)
-    safe_notification_message = _validate_optional_text(
-        notification_message, field_name="notification_message", max_length=10_000
-    )
-    return await _run_tool(
-        client.create_membership(
-            project=safe_project,
-            principal=safe_principal,
-            roles=safe_roles,
-            notification_message=safe_notification_message,
-            confirm=confirm,
-        )
-    )
-
-
-@register_tool
-async def update_membership(
-    ctx: Context,
-    membership_id: int,
-    roles: list[str],
-    notification_message: str | None = None,
-    confirm: bool = False,
-) -> MembershipWriteResult:
-    """Prepare or update a project membership."""
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(membership_id, field_name="membership_id")
-    safe_roles = _validate_required_string_list(roles, field_name="roles", max_items=20, item_max_length=100)
-    safe_notification_message = _validate_optional_text(
-        notification_message, field_name="notification_message", max_length=10_000
-    )
-    return await _run_tool(
-        client.update_membership(
-            membership_id=safe_id,
-            roles=safe_roles,
-            notification_message=safe_notification_message,
-            confirm=confirm,
-        )
-    )
-
-
-@register_tool
-async def delete_membership(
-    ctx: Context,
-    membership_id: int,
-    confirm: bool = False,
-) -> MembershipWriteResult:
-    """Prepare or delete a project membership."""
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(membership_id, field_name="membership_id")
-    return await _run_tool(client.delete_membership(membership_id=safe_id, confirm=confirm))
 
 
 @register_tool
@@ -4661,13 +4483,6 @@ async def set_project_favorite(
     if favorite:
         return await _run_tool(client.add_project_favorite(project=safe_project, confirm=confirm))
     return await _run_tool(client.remove_project_favorite(project=safe_project, confirm=confirm))
-
-
-@register_tool
-async def get_current_user(ctx: Context) -> CurrentUser:
-    """Return the currently authenticated user's profile."""
-    client = _client_from_context(ctx)
-    return await _run_tool(client.get_current_user())
 
 
 @register_tool
