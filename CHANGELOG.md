@@ -372,6 +372,25 @@ support.
   required fields, output_schema presence) from before the move, proving the
   file relocation had zero effect on what an MCP client sees. No
   end-user-visible behavior change.
+- **The Query Schema Extended domain's 6 tool functions (`get_query_filter`,
+  `get_query_column`, `get_query_operator`, `get_query_sort_by`,
+  `list_query_filter_instance_schemas`, `get_query_filter_instance_schema`)
+  moved from `tools.py` into a new `tools_query_schema.py`** — the ninth
+  domain split under OPM-395. `tools.py` does **not** re-export these
+  names — no existing test imports any of them directly from
+  `openproject_ce_mcp.tools`, so the re-export step that the Reminders,
+  Versions, Boards, Membership, Personal, and Admin splits needed as a
+  transition aid is unnecessary here, following the same no-re-export
+  pattern as the Misc Extended and User Schedule splits. `tools.py` imports
+  `tools_query_schema` only for its `@register_tool` registration side
+  effect; the `READ_TOOLS_BY_SCOPE["extended"]`/`ADDITIONAL_READ_SCOPES_BY_TOOL`
+  scope-classification tables stay in `tools.py`, unaffected by this move. A
+  characterization test
+  (`tests/test_query_schema_extended_tools_schema_characterization.py`)
+  locks in the 6 tools' exact MCP schema (parameter names/types/order,
+  descriptions, required fields, output_schema presence) from before the
+  move, proving the file relocation had zero effect on what an MCP client
+  sees. No end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and

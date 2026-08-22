@@ -9,6 +9,7 @@ from mcp.server.mcpserver import Context, MCPServer
 
 from . import (
     tools_misc,  # noqa: F401 -- @register_tool side effect
+    tools_query_schema,  # noqa: F401 -- @register_tool side effect
     tools_user_schedule,  # noqa: F401 -- @register_tool side effect
 )
 from .client import (
@@ -89,12 +90,6 @@ from .models import (
     ProjectSummary,
     ProjectWorkPackageContext,
     ProjectWriteResult,
-    QueryColumnSummary,
-    QueryFilterInstanceSchemaListResult,
-    QueryFilterInstanceSchemaSummary,
-    QueryFilterSummary,
-    QueryOperatorSummary,
-    QuerySortBySummary,
     RecurringMeetingListResult,
     RecurringMeetingOccurrenceListResult,
     RecurringMeetingOccurrenceWriteResult,
@@ -1045,72 +1040,6 @@ async def delete_project(
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
     return await _run_tool(client.delete_project(project_ref=safe_project, confirm=confirm))
-
-
-@register_tool
-async def get_query_filter(
-    ctx: Context,
-    filter_id: str,
-) -> QueryFilterSummary:
-    """Get a single query filter by id."""
-    client = _client_from_context(ctx)
-    safe_filter_id = _validate_required_query(filter_id, field_name="filter_id", max_length=100)
-    return await _run_tool(client.get_query_filter(safe_filter_id))
-
-
-@register_tool
-async def get_query_column(
-    ctx: Context,
-    column_id: str,
-) -> QueryColumnSummary:
-    """Get a single query column by id."""
-    client = _client_from_context(ctx)
-    safe_column_id = _validate_required_query(column_id, field_name="column_id", max_length=100)
-    return await _run_tool(client.get_query_column(safe_column_id))
-
-
-@register_tool
-async def get_query_operator(
-    ctx: Context,
-    operator_id: str,
-) -> QueryOperatorSummary:
-    """Get a single query operator by id."""
-    client = _client_from_context(ctx)
-    safe_operator_id = _validate_required_query(operator_id, field_name="operator_id", max_length=100)
-    return await _run_tool(client.get_query_operator(safe_operator_id))
-
-
-@register_tool
-async def get_query_sort_by(
-    ctx: Context,
-    sort_by_id: str,
-) -> QuerySortBySummary:
-    """Get a single query sort-by definition by id."""
-    client = _client_from_context(ctx)
-    safe_sort_by_id = _validate_required_query(sort_by_id, field_name="sort_by_id", max_length=100)
-    return await _run_tool(client.get_query_sort_by(safe_sort_by_id))
-
-
-@register_tool
-async def list_query_filter_instance_schemas(
-    ctx: Context,
-    project: str | None = None,
-) -> QueryFilterInstanceSchemaListResult:
-    """List query filter instance schemas globally or for a project."""
-    client = _client_from_context(ctx)
-    safe_project = _validate_optional_project_ref(project)
-    return await _run_tool(client.list_query_filter_instance_schemas(project=safe_project))
-
-
-@register_tool
-async def get_query_filter_instance_schema(
-    ctx: Context,
-    schema_id: str,
-) -> QueryFilterInstanceSchemaSummary:
-    """Get a single query filter instance schema by id."""
-    client = _client_from_context(ctx)
-    safe_schema_id = _validate_required_query(schema_id, field_name="schema_id", max_length=100)
-    return await _run_tool(client.get_query_filter_instance_schema(safe_schema_id))
 
 
 @register_tool
