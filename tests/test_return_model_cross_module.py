@@ -6,19 +6,18 @@ plain string. `_return_model` looks that string up as a class name to decide
 whether a tool's result is a trimmable dataclass. Before this fix it looked
 the name up in tools.py's own `globals()` -- correct only because every tool
 function lived in tools.py itself and _return_model itself lived there too.
-_return_model now lives in tools_runtime.py while every tool function still
-lives in tools.py (OPM-395's ongoing per-domain split hasn't moved any tool
-function out of tools.py yet) -- this is already a cross-module case today,
-and the fn.__globals__-based fix resolves against each tool's own defining
-module rather than tools_runtime's, so it will keep working unchanged once a
-tool function does move to its own per-domain file.
+`_return_model` now lives in tools_runtime.py, and tool functions are split
+across both tools.py and per-domain files (tools_reminders.py so far, more to
+follow) -- the fn.__globals__-based fix resolves against each tool's own
+defining module regardless of which of those it is, rather than searching
+tools_runtime's or tools.py's namespace.
 
 `ExampleModel` and `example_tool` are deliberately defined here, in this
-test module's own namespace -- not in tools.py or tools_runtime.py -- so this
-test fails against the pre-fix globals()-based lookup (ExampleModel doesn't
-exist in tools.py's namespace) and passes against the fn.__globals__-based
-fix (which resolves against this module's namespace instead, regardless of
-which module calls _return_model).
+test module's own namespace -- not in tools.py, tools_runtime.py, or any
+per-domain tools_*.py file -- so this test fails against the pre-fix
+globals()-based lookup (ExampleModel doesn't exist in tools.py's namespace)
+and passes against the fn.__globals__-based fix (which resolves against this
+module's namespace instead, regardless of which module calls _return_model).
 """
 
 from __future__ import annotations

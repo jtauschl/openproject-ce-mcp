@@ -232,6 +232,19 @@ support.
   project's other presentation-layer input validators, since it validates
   user-supplied field names rather than being registration mechanics. No
   end-user-visible behavior change.
+- **The Reminders domain's 4 tool functions (`list_reminders`,
+  `create_work_package_reminder`, `update_reminder`, `delete_reminder`) moved
+  from `tools.py` into a new `tools_reminders.py`** — OPM-395's first actual
+  pilot domain split, following the groundwork laid by the previous two
+  entries. `tools.py` imports the new module for its `@register_tool`
+  registration side effect and, for now, re-exports the four functions so
+  existing test imports keep working unchanged (this re-export is a
+  deliberate transition step, not the long-term shape). A characterization
+  test (`tests/test_reminder_tools_schema_characterization.py`) locks in the
+  4 tools' exact MCP schema (parameter names/types/order, descriptions,
+  required fields, absent output_schema) from before the move, proving the
+  file relocation had zero effect on what an MCP client sees. No
+  end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and
