@@ -331,6 +331,25 @@ support.
   required fields, output_schema presence) from before the move, proving the
   file relocation had zero effect on what an MCP client sees. No
   end-user-visible behavior change.
+- **The Personal domain's 4 tool functions (`list_notifications`,
+  `mark_notifications_read`, `get_my_preferences`, `update_my_preferences`)
+  moved from `tools.py` into a new `tools_personal.py`** — the seventh domain
+  split under OPM-395. Like the Membership split, `tools.py` **does**
+  re-export all four names: two of them (`list_notifications`,
+  `mark_notifications_read`) are imported directly from
+  `openproject_ce_mcp.tools` by an existing test
+  (`tests/unit/test_project_and_domain_tools.py`), so this split follows the
+  same re-export transition step as the Reminders, Versions, Boards, and
+  Membership splits. `tools.py` imports `tools_personal` for its
+  `@register_tool` registration side effect and the re-export; the
+  `PERSONAL_MUTATION_TOOLS`/`READ_TOOLS_BY_SCOPE["personal"]`
+  scope-classification tables stay in `tools.py`, unaffected by this move. A
+  characterization test
+  (`tests/test_personal_tools_schema_characterization.py`) locks in the 4
+  tools' exact MCP schema (parameter names/types/order, descriptions,
+  required fields, output_schema presence) from before the move, proving the
+  file relocation had zero effect on what an MCP client sees. No
+  end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and
