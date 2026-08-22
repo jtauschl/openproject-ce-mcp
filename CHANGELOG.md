@@ -278,6 +278,26 @@ support.
   descriptions, required fields, output_schema presence) from before the
   move, proving the file relocation had zero effect on what an MCP client
   sees. No end-user-visible behavior change.
+- **The User Schedule domain's 9 tool functions (`list_user_non_working_times`,
+  `create_user_non_working_time`, `update_user_non_working_time`,
+  `delete_user_non_working_time`, `list_user_working_hours`,
+  `get_user_working_hours`, `create_user_working_hours`,
+  `update_user_working_hours`, `delete_user_working_hours`) moved from
+  `tools.py` into a new `tools_user_schedule.py`** — the fourth domain split
+  under OPM-395, following the same pattern as the Reminders, Versions, and
+  Boards splits. Unlike those three, `tools.py` does **not** re-export these
+  names — no existing test imports any of them directly from
+  `openproject_ce_mcp.tools` (the integration tests that reference names like
+  `create_user_working_hours` call the `OpenProjectClient` method of that
+  name, not this MCP-wrapper function), so the re-export step that the prior
+  three splits needed as a transition aid is unnecessary here. `tools.py`
+  imports `tools_user_schedule` only for its `@register_tool` registration
+  side effect. A characterization test
+  (`tests/test_user_schedule_tools_schema_characterization.py`) locks in the
+  9 tools' exact MCP schema (parameter names/types/order, descriptions,
+  required fields, output_schema presence) from before the move, proving the
+  file relocation had zero effect on what an MCP client sees. No
+  end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and
