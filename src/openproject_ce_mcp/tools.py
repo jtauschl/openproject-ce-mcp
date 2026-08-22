@@ -7,7 +7,10 @@ from typing import Any
 
 from mcp.server.mcpserver import Context, MCPServer
 
-from . import tools_user_schedule  # noqa: F401 -- @register_tool side effect
+from . import (
+    tools_misc,  # noqa: F401 -- @register_tool side effect
+    tools_user_schedule,  # noqa: F401 -- @register_tool side effect
+)
 from .client import (
     BATCH_READ_MAX_IDS,
     CLEAR,
@@ -37,7 +40,6 @@ from .models import (
     CostEntrySummary,
     CostTypeSummary,
     CurrentUser,
-    CustomOptionSummary,
     DocumentDetail,
     DocumentListResult,
     DocumentSummary,
@@ -60,8 +62,6 @@ from .models import (
     GroupListResult,
     GroupSummary,
     GroupWriteResult,
-    HelpTextListResult,
-    HelpTextSummary,
     InstanceConfiguration,
     JobStatusDetail,
     MeetingAgendaItemListResult,
@@ -83,7 +83,6 @@ from .models import (
     NewsListResult,
     NewsSummary,
     NewsWriteResult,
-    NonWorkingDayListResult,
     NotificationListResult,
     NotificationMarkResult,
     NotificationSummary,
@@ -122,7 +121,6 @@ from .models import (
     RelationSummary,
     RelationUpdateResult,
     RelationWriteResult,
-    RenderedText,
     RoleListResult,
     RoleSummary,
     SprintDetail,
@@ -155,7 +153,6 @@ from .models import (
     WikiPageDetail,
     WikiPageLinkListResult,
     WikiPageLinkWriteResult,
-    WorkingDayListResult,
     WorkPackageCostsByTypeResult,
     WorkPackageDetail,
     WorkPackageListResult,
@@ -5236,60 +5233,6 @@ async def update_my_preferences(
             confirm=confirm,
         )
     )
-
-
-@register_tool
-async def render_text(
-    ctx: Context,
-    text: str,
-    format: str = "markdown",
-) -> RenderedText:
-    """Render markdown or plain text to HTML using the OpenProject API. format: 'markdown' or 'plain'."""
-    client = _client_from_context(ctx)
-    safe_text = _validate_required_text(text, field_name="text", max_length=50_000)
-    if format not in ("markdown", "plain"):
-        raise ValueError("format must be 'markdown' or 'plain'.")
-    return await _run_tool(client.render_text(text=safe_text, format=format))
-
-
-@register_tool
-async def list_help_texts(ctx: Context) -> HelpTextListResult:
-    """List all help texts configured for work-package and project attributes."""
-    client = _client_from_context(ctx)
-    return await _run_tool(client.list_help_texts())
-
-
-@register_tool
-async def get_help_text(ctx: Context, help_text_id: int) -> HelpTextSummary:
-    """Get a single help text by id."""
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(help_text_id, field_name="help_text_id")
-    return await _run_tool(client.get_help_text(safe_id))
-
-
-@register_tool
-async def list_working_days(ctx: Context) -> WorkingDayListResult:
-    """List the Mon–Sun working-day configuration (7 entries showing which weekdays are working days)."""
-    client = _client_from_context(ctx)
-    return await _run_tool(client.list_working_days())
-
-
-@register_tool
-async def list_non_working_days(
-    ctx: Context,
-    year: int | None = None,
-) -> NonWorkingDayListResult:
-    """List non-working days (public holidays / closures) for a given year, or the current year."""
-    client = _client_from_context(ctx)
-    return await _run_tool(client.list_non_working_days(year=year))
-
-
-@register_tool
-async def get_custom_option(ctx: Context, custom_option_id: int) -> CustomOptionSummary:
-    """Fetch the label/value of a single custom field option by id."""
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(custom_option_id, field_name="custom_option_id")
-    return await _run_tool(client.get_custom_option(safe_id))
 
 
 @register_tool

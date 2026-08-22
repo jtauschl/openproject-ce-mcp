@@ -298,6 +298,21 @@ support.
   required fields, output_schema presence) from before the move, proving the
   file relocation had zero effect on what an MCP client sees. No
   end-user-visible behavior change.
+- **The Misc Extended domain's 6 tool functions (`render_text`,
+  `list_help_texts`, `get_help_text`, `list_working_days`,
+  `list_non_working_days`, `get_custom_option`) moved from `tools.py` into a
+  new `tools_misc.py`** — the fifth domain split under OPM-395, following the
+  same pattern as the User Schedule split. `tools.py` does **not** re-export
+  these names — no existing test imports any of them directly from
+  `openproject_ce_mcp.tools`, so the re-export step that the Reminders,
+  Versions, and Boards splits needed as a transition aid is unnecessary here.
+  `tools.py` imports `tools_misc` only for its `@register_tool` registration
+  side effect. A characterization test
+  (`tests/test_misc_extended_tools_schema_characterization.py`) locks in the
+  6 tools' exact MCP schema (parameter names/types/order, descriptions,
+  required fields, output_schema presence) from before the move, proving the
+  file relocation had zero effect on what an MCP client sees. No
+  end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and
