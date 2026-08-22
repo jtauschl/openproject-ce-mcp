@@ -391,6 +391,36 @@ support.
   descriptions, required fields, output_schema presence) from before the
   move, proving the file relocation had zero effect on what an MCP client
   sees. No end-user-visible behavior change.
+- **The Meeting domain's 29 tool functions (`list_meetings`, `get_meeting`,
+  `create_meeting`, `update_meeting`, `delete_meeting`,
+  `list_meeting_agenda_items`, `list_work_package_meeting_agenda_items`,
+  `get_meeting_agenda_item`, `create_meeting_agenda_item`,
+  `update_meeting_agenda_item`, `delete_meeting_agenda_item`,
+  `list_meeting_outcomes`, `get_meeting_outcome`, `create_meeting_outcome`,
+  `update_meeting_outcome`, `delete_meeting_outcome`, `list_meeting_sections`,
+  `get_meeting_section`, `create_meeting_section`, `update_meeting_section`,
+  `delete_meeting_section`, `list_recurring_meetings`,
+  `get_recurring_meeting`, `create_recurring_meeting`,
+  `update_recurring_meeting`, `delete_recurring_meeting`,
+  `list_recurring_meeting_occurrences`, `init_recurring_meeting_occurrence`,
+  `cancel_recurring_meeting_occurrence`) moved from `tools.py` into a new
+  `tools_meetings.py`** — the tenth and largest domain split under OPM-395.
+  `tools.py` re-exports only three of the twenty-nine names
+  (`list_meeting_agenda_items`, `list_meeting_outcomes`,
+  `list_work_package_meeting_agenda_items`), the ones an existing test
+  (`tests/test_trimming.py`) imports directly from
+  `openproject_ce_mcp.tools`; the other twenty-six follow the no-re-export
+  pattern established by the Misc Extended, User Schedule, and Query Schema
+  Extended splits. `tools.py` imports `tools_meetings` for its
+  `@register_tool` registration side effect and the partial re-export; the
+  `READ_TOOLS_BY_SCOPE["meeting"]`/`WRITE_TOOLS_BY_SCOPE["meeting"]`/
+  `_PROJECT_SCOPED_WRITE_SCOPES` scope-classification tables stay in
+  `tools.py`, unaffected by this move. A characterization test
+  (`tests/test_meeting_tools_schema_characterization.py`) locks in the 29
+  tools' exact MCP schema (parameter names/types/order, descriptions,
+  required fields, output_schema presence) from before the move, proving the
+  file relocation had zero effect on what an MCP client sees. No
+  end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and
