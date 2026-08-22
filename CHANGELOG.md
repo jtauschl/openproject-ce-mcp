@@ -245,6 +245,26 @@ support.
   required fields, absent output_schema) from before the move, proving the
   file relocation had zero effect on what an MCP client sees. No
   end-user-visible behavior change.
+- **The Versions domain's 5 tool functions (`list_versions`, `get_version`,
+  `create_version`, `update_version`, `delete_version`), plus their
+  domain-local `_validate_version_schedule_fields` helper, moved from
+  `tools.py` into a new `tools_versions.py`** — the second domain split under
+  OPM-395, following the same pattern as the Reminders split. As part of this
+  move, `_validate_optional_text_limit` (a general-purpose validator used by
+  12 other, still-unmigrated tools) relocated from `tools.py` into
+  `tools_validation.py` alongside the other shared input validators, since it
+  is not Versions-domain-local and a Versions-owned copy would have created a
+  reverse import from `tools_versions.py` back into `tools.py`; all of its
+  call sites, in and outside the Versions domain, keep working unchanged via
+  `tools.py`'s existing `tools_validation` import block. `tools.py` imports
+  `tools_versions` for its `@register_tool` registration side effect and, for
+  now, re-exports the five functions so existing test imports keep working
+  unchanged (a deliberate transition step, not the long-term shape). A
+  characterization test (`tests/test_version_tools_schema_characterization.py`)
+  locks in the 5 tools' exact MCP schema (parameter names/types/order,
+  descriptions, required fields, output_schema presence) from before the
+  move, proving the file relocation had zero effect on what an MCP client
+  sees. No end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and

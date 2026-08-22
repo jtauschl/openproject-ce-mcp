@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import fields as dataclass_fields
 from typing import Any
 
+from .config import TEXT_LIMIT_MAX
 from .models import SortCriterion
 
 PROJECT_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -378,6 +379,20 @@ def _validate_optional_non_negative_int(value: int | None, *, field_name: str) -
     if value < 0:
         raise ValueError(f"{field_name} must be at least 0.")
     return value
+
+
+def _validate_optional_text_limit(value: int | None) -> int | None:
+    """Validate an explicit ``text_limit`` override.
+
+    ``None`` means "no cap" (the default for a single work package). An explicit
+    value must be a non-negative int; TEXT_LIMIT_MAX is a sanity ceiling that
+    guards against typos like ``text_limit=99999999`` — it never applies to the
+    uncapped default path.
+    """
+    limit = _validate_optional_non_negative_int(value, field_name="text_limit")
+    if limit is not None and limit > TEXT_LIMIT_MAX:
+        raise ValueError(f"text_limit must not exceed {TEXT_LIMIT_MAX}.")
+    return limit
 
 
 def _validate_optional_percentage_done(value: int | None, *, field_name: str = "percentage_done") -> int | None:
