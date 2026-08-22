@@ -228,7 +228,7 @@ custom fields, and a friendly name might not even be enabled on every project in
 
 Custom fields are also sortable/groupable via their `cf_<N>` key on `sort_by`/`group_by` — this predates
 OPM-109 (landed in commit `740a250`, 2026-07-20, live-verified against a real OpenProject instance) and
-required no change for this ticket. See `_CUSTOM_FIELD_PATTERN` in `tools.py` and the `sort_by`/`group_by`
+required no change for this ticket. See `_CUSTOM_FIELD_PATTERN` in `tools_validation.py` and the `sort_by`/`group_by`
 parameter docs on `list_work_packages`. Note this pass-through is intentionally permissive at the MCP layer
 (any `cf_\d+`-shaped string is accepted locally): OpenProject itself builds the real sort/group SQL from each
 field's select-instance definition, and not every format is guaranteed sortable/groupable there (e.g. `text`

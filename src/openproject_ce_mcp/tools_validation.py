@@ -11,6 +11,8 @@ import datetime
 import re
 from typing import Any
 
+from .models import SortCriterion
+
 PROJECT_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 # A project-based work package reference: a project identifier followed by "-<number>"
 # (e.g. PROJ-123). The numeric form is handled separately before this pattern applies.
@@ -638,4 +640,141 @@ def _validate_required_duration(value: str, *, field_name: str) -> str:
     normalized = _validate_optional_duration(value, field_name=field_name)
     if not normalized:
         raise ValueError(f"{field_name} is required.")
+    return normalized
+
+
+# Cross-checked against OpenProject's own query property/project-phase select
+# definitions -- these are the standard (non-custom-field) attributes
+# OpenProject actually accepts via GET /work_packages?sortBy=.../groupBy=...,
+# not a guess at plausible names. assignee/assignedTo/
+# percentage_done etc. are accepted aliases alongside the canonical Rails
+# attribute name; both are included here rather than normalized, since the
+# client sends the field straight through unchanged.
+_SORTABLE_WORK_PACKAGE_FIELDS = frozenset(
+    {
+        "id",
+        "project",
+        "subject",
+        "type",
+        "status",
+        "priority",
+        "author",
+        "assigned_to",
+        "assignee",
+        "responsible",
+        "updated_at",
+        "category",
+        "version",
+        "start_date",
+        "due_date",
+        "estimated_hours",
+        "estimated_time",
+        "remaining_hours",
+        "remaining_time",
+        "done_ratio",
+        "percentage_done",
+        "created_at",
+        "duration",
+        "project_phase",
+        "story_points",
+    }
+)
+
+# Subset of _SORTABLE_WORK_PACKAGE_FIELDS that OpenProject also accepts for
+# groupBy -- confirmed by live-testing every entry above (e.g. due_date and
+# estimated_hours/estimated_time sort fine but reject with "Can't group by"
+# on group_by; parent/subject/id/created_at/updated_at/duration/start_date
+# have no groupable column at all in property_select.rb).
+_GROUPABLE_WORK_PACKAGE_FIELDS = frozenset(
+    {
+        "project",
+        "type",
+        "status",
+        "priority",
+        "author",
+        "assigned_to",
+        "assignee",
+        "responsible",
+        "category",
+        "version",
+        "done_ratio",
+        "percentage_done",
+        "project_phase",
+    }
+)
+
+# A custom field's wire identifier is cf_<id> (the numeric id assigned when the
+# field was created on this instance, per CustomField#column_name) -- inherently
+# instance-specific and impossible to enumerate statically, so this pattern is
+# allowed through without membership-checking against the sets above. Whether a
+# given custom field is actually sortable/groupable (its field_format and other
+# per-field settings determine that server-side) is left to OpenProject's own
+# validation.
+_CUSTOM_FIELD_PATTERN = re.compile(r"cf_\d+")
+
+
+def _describe_valid_fields(allowed: frozenset[str]) -> str:
+    return ", ".join(sorted(allowed)) + ", or a custom field's cf_<id> identifier"
+
+
+def _validate_sort_by(values: list[str] | None) -> list[SortCriterion] | None:
+    """Validate and parse sort_by list into list of SortCriterion objects.
+
+    Validates format, field name pattern, and parses each item.
+    Returns None if input is None.
+    Raises ValueError if any item is invalid.
+    """
+    if values is None:
+        return None
+    if not isinstance(values, list):
+        raise ValueError("sort_by must be a list of strings")
+
+    result = []
+    for i, item in enumerate(values):
+        if not isinstance(item, str):
+            raise ValueError(f"sort_by[{i}] must be a string, got {type(item).__name__}")
+
+        item = item.strip()
+        if not item:
+            raise ValueError(f"sort_by[{i}] cannot be empty")
+
+        if ":" in item:
+            parts = item.split(":", 1)
+            field = parts[0].strip()
+            direction = parts[1].strip().lower()
+
+            if not field:
+                raise ValueError(f"sort_by[{i}]: field name cannot be empty")
+            if direction not in ("asc", "desc"):
+                raise ValueError(f"sort_by[{i}]: direction must be 'asc' or 'desc', got '{direction}'")
+        else:
+            field = item
+            direction = "asc"
+
+        if not field.replace("_", "").replace(".", "").isalnum():
+            raise ValueError(
+                f"sort_by[{i}]: field name '{field}' contains invalid characters "
+                "(only alphanumeric, underscore, and dot allowed)"
+            )
+        if field not in _SORTABLE_WORK_PACKAGE_FIELDS and not _CUSTOM_FIELD_PATTERN.fullmatch(field):
+            raise ValueError(
+                f"sort_by[{i}]: unknown field '{field}'. "
+                f"Valid fields are: {_describe_valid_fields(_SORTABLE_WORK_PACKAGE_FIELDS)}."
+            )
+
+        result.append(SortCriterion(field=field, direction=direction))
+
+    return result if result else None
+
+
+def _validate_group_by(value: str | None) -> str | None:
+    """Validate group_by against OpenProject's actual groupable work-package columns."""
+    normalized = _validate_optional_query(value, field_name="group_by", max_length=120)
+    if normalized is None:
+        return None
+    if normalized not in _GROUPABLE_WORK_PACKAGE_FIELDS and not _CUSTOM_FIELD_PATTERN.fullmatch(normalized):
+        raise ValueError(
+            f"group_by: unknown field '{normalized}'. "
+            f"Valid fields are: {_describe_valid_fields(_GROUPABLE_WORK_PACKAGE_FIELDS)}."
+        )
     return normalized
