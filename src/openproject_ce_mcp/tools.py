@@ -194,6 +194,7 @@ from .presentation import _to_payload
 from .tools_validation import (
     _require_at_least_one,
     _validate_choice,
+    _validate_custom_field_filters,
     _validate_limit,
     _validate_list_query_params,
     _validate_offset,
@@ -6298,135 +6299,6 @@ def _clearable_ref(
     if isinstance(value, str) and value.strip().lower() == "none":
         return sentinel
     return validate(value)
-
-
-# Matches either "cf_<N>" (CustomField#column_name, the actual OpenProject
-# filter key) or "customField<N>" (CustomField#attribute_name(:camel_case),
-# the JSON/PATCH key used by the read/write value paths). Both forms are
-# accepted transparently and always normalized to "cf_<N>" on the wire, so
-# callers never need to know the two are different strings for the same
-# field. The id itself must be a positive integer with no leading zero
-# (OpenProject's own CustomField ids start at 1; "cf_0"/"cf_01" cannot refer
-# to a real field, and left-padding could otherwise let "cf_01" and "cf_1"
-# collide silently after normalization).
-_CF_FILTER_KEY_PATTERN = re.compile(r"^(cf_|customField)([1-9]\d*)$", re.ASCII)
-
-# Union of every operator symbol legal for AT LEAST ONE CE-realistic custom
-# field format (see docs/filters.md's "Custom-Field Filters" section for the
-# full per-format breakdown and source citations). This is intentionally the
-# union, not a per-format set -- tools.py validators are Settings-free and
-# have no network access to look up a given cf_<N>'s actual field_format, so
-# a symbol outside this union is rejected here (cheap, unambiguous), while an
-# operator that IS in the union but illegal for the specific field's format
-# is left to OpenProject's own validation (a clean 400, mapped to
-# InvalidInputError by app/transport/errors.py) -- see work_package_service.py's
-# _apply_custom_field_filters for the format-aware part of this split.
-_CF_FILTER_OPERATOR_SYMBOLS = frozenset(
-    {
-        "=",
-        "~",
-        "!",
-        "!~",
-        ">=",
-        "<=",
-        "&=",
-        "*",
-        "!*",
-        "<t+",
-        ">t+",
-        "t+",
-        "t",
-        "w",
-        ">t-",
-        "<t-",
-        "t-",
-        "=d",
-        "<>d",
-    }
-)
-
-_CF_FILTER_MAX_ENTRIES = 20
-_CF_FILTER_MAX_VALUES = 100
-_CF_FILTER_MAX_VALUE_LENGTH = 1_000
-
-
-def _validate_custom_field_filters(
-    value: dict[str, dict[str, Any]] | None,
-) -> dict[str, dict[str, Any]] | None:
-    """Validate custom_field_filters shape and normalize keys to cf_<N>.
-
-    Accepts "cf_<N>" or "customField<N>" keys (both forms always accepted
-    transparently) and rejects any other key shape immediately, before any
-    network call. Each value must be {"operator": str, "values": list[str]},
-    with the operator drawn from the union of all legal CE custom-field
-    filter operators (see _CF_FILTER_OPERATOR_SYMBOLS above).
-
-    This is deliberately syntax-only, matching every other tools.py validator
-    in this module (see _validate_optional_custom_fields): per-field
-    format/operator legality and OPENPROJECT_HIDE_CUSTOM_FIELDS rejection
-    both require Settings and/or format knowledge this layer does not have,
-    and happen in work_package_service.py's _apply_custom_field_filters
-    instead.
-    """
-    if value is None:
-        return None
-    if not isinstance(value, dict):
-        raise ValueError(
-            "custom_field_filters must be an object mapping 'cf_<N>'/'customField<N>' keys to filter specs."
-        )
-    if len(value) > _CF_FILTER_MAX_ENTRIES:
-        raise ValueError(f"custom_field_filters must contain at most {_CF_FILTER_MAX_ENTRIES} entries.")
-    normalized: dict[str, dict[str, Any]] = {}
-    for raw_key, spec in value.items():
-        if not isinstance(raw_key, str):
-            raise ValueError(f"custom_field_filters keys must be strings, got {type(raw_key).__name__}.")
-        match = _CF_FILTER_KEY_PATTERN.match(raw_key)
-        if not match:
-            raise ValueError(
-                f"custom_field_filters key '{raw_key}' must be of the form 'cf_<N>' or 'customField<N>' "
-                "(N a positive integer, no leading zero)."
-            )
-        cf_key = f"cf_{match.group(2)}"
-        if cf_key in normalized:
-            raise ValueError(
-                f"custom_field_filters has two keys that both resolve to '{cf_key}' "
-                "(cf_<N> and customField<N> forms cannot be combined for the same field)."
-            )
-        if not isinstance(spec, dict):
-            raise ValueError(f"custom_field_filters['{raw_key}'] must be an object with 'operator' and 'values'.")
-        extra_keys = set(spec) - {"operator", "values"}
-        if extra_keys:
-            raise ValueError(
-                f"custom_field_filters['{raw_key}'] has unsupported key(s): {sorted(extra_keys)}. "
-                "Only 'operator' and 'values' are accepted."
-            )
-        if "operator" not in spec or "values" not in spec:
-            raise ValueError(f"custom_field_filters['{raw_key}'] must be an object with 'operator' and 'values'.")
-        operator = spec["operator"]
-        values = spec["values"]
-        if not isinstance(operator, str) or not operator:
-            raise ValueError(f"custom_field_filters['{raw_key}'].operator must be a non-empty string.")
-        if operator not in _CF_FILTER_OPERATOR_SYMBOLS:
-            raise ValueError(
-                f"custom_field_filters['{raw_key}'].operator '{operator}' is not a recognized "
-                f"custom-field filter operator. Valid operators: {sorted(_CF_FILTER_OPERATOR_SYMBOLS)}."
-            )
-        if not isinstance(values, list):
-            raise ValueError(f"custom_field_filters['{raw_key}'].values must be a list of strings.")
-        if len(values) > _CF_FILTER_MAX_VALUES:
-            raise ValueError(
-                f"custom_field_filters['{raw_key}'].values must contain at most {_CF_FILTER_MAX_VALUES} items."
-            )
-        for item in values:
-            if not isinstance(item, str):
-                raise ValueError(f"custom_field_filters['{raw_key}'].values must be a list of strings.")
-            if len(item) > _CF_FILTER_MAX_VALUE_LENGTH:
-                raise ValueError(
-                    f"custom_field_filters['{raw_key}'].values items must be at most "
-                    f"{_CF_FILTER_MAX_VALUE_LENGTH} characters."
-                )
-        normalized[cf_key] = {"operator": operator, "values": list(values)}
-    return normalized
 
 
 def _pad_fractional_seconds(value: str) -> str:

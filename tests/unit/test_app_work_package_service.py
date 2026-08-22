@@ -2466,8 +2466,8 @@ async def test_list_custom_field_filters_wildcard_hide_pattern_matches() -> None
 @pytest.mark.asyncio
 async def test_list_custom_field_filters_rejects_invalid_key_shape_at_service_layer() -> None:
     # Defense-in-depth: a direct OpenProjectClient/Service caller bypassing
-    # tools.py's _validate_custom_field_filters must still get a clean
-    # InvalidInputError, not a malformed filter silently sent upstream.
+    # tools_validation.py's _validate_custom_field_filters must still get a
+    # clean InvalidInputError, not a malformed filter silently sent upstream.
     service, api = _service()
 
     with pytest.raises(InvalidInputError, match="must be of the form"):
