@@ -52,9 +52,9 @@ async def test_list_priorities_stamps_hidden_field_for_masking(client: OpenProje
     missing from HIDE_FIELD_ENV_BY_ENTITY entirely, so _apply_hidden_fields
     never stamped a _hidden_keys marker on their results, unlike every other
     read-normalized entity -- the actual masking happens one layer up, in
-    tools._to_payload, which reads that marker to drop the field from the
-    MCP response entirely. This client-layer test proves the stamp itself is
-    present against a live payload; the drop-from-response behavior is
+    presentation._to_payload, which reads that marker to drop the field from
+    the MCP response entirely. This client-layer test proves the stamp itself
+    is present against a live payload; the drop-from-response behavior is
     already covered by tools.py's own unit tests (mocked client)."""
     hidden_settings = dataclasses.replace(client.settings, hidden_fields={"priority": ("color",)})
     hidden_client = OpenProjectClient(hidden_settings)

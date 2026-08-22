@@ -15,6 +15,7 @@ import inspect
 import pytest
 
 from openproject_ce_mcp import tools
+from openproject_ce_mcp import tools_runtime as _tools_runtime
 from openproject_ce_mcp.config import ConfigError, Settings
 
 
@@ -130,17 +131,18 @@ def test_every_classified_scope_string_is_known_to_settings() -> None:
 
 
 def test_every_classified_name_resolves_to_a_real_function() -> None:
-    # _TOOL_FUNCTIONS is built by each tool function registering itself via
-    # @register_tool at import time (not module-namespace introspection) —
-    # if this test file can import `tools` at all, every classified name
-    # already resolved (a name with no matching @register_tool'd function
-    # would leave a gap here, not raise at import time, since registration
-    # and classification are two independent lists). This test locks that
-    # invariant in explicitly rather than relying on import success alone.
-    # ADMIN_WRITE_TOOLS is deliberately NOT listed separately here -- it's
-    # already folded into WRITE_TOOLS_BY_SCOPE["admin"] (see that constant's
-    # definition), so including it again would make every admin tool name
-    # count as "classified twice" and fail the duplicate check below.
+    # _TOOL_FUNCTIONS (tools_runtime) is built by each tool function registering
+    # itself via @register_tool at import time (not module-namespace
+    # introspection) -- if this test file can import `tools` at all, every
+    # classified name already resolved (a name with no matching
+    # @register_tool'd function would leave a gap here, not raise at import
+    # time, since registration and classification are two independent lists).
+    # This test locks that invariant in explicitly rather than relying on
+    # import success alone. ADMIN_WRITE_TOOLS is deliberately NOT listed
+    # separately here -- it's already folded into WRITE_TOOLS_BY_SCOPE["admin"]
+    # (see that constant's definition), so including it again would make every
+    # admin tool name count as "classified twice" and fail the duplicate check
+    # below.
     all_names_list = [
         *tools.PERSONAL_MUTATION_TOOLS,
         *tools.ATTACHMENT_UPLOAD_TOOLS,
@@ -152,7 +154,7 @@ def test_every_classified_name_resolves_to_a_real_function() -> None:
     # collapse under a plain set union and never surface as a bug.
     duplicates = {name for name in all_names_list if all_names_list.count(name) > 1}
     assert not duplicates, f"Tool name(s) classified more than once: {sorted(duplicates)}"
-    assert set(all_names_list) == set(tools._TOOL_FUNCTIONS)
+    assert set(all_names_list) == set(_tools_runtime._TOOL_FUNCTIONS)
 
 
 def test_every_write_tool_requires_confirm() -> None:
@@ -167,7 +169,7 @@ def test_every_write_tool_requires_confirm() -> None:
         | set(tools.ATTACHMENT_UPLOAD_TOOLS)
     )
     for name in write_tool_names:
-        sig = inspect.signature(tools._TOOL_FUNCTIONS[name])
+        sig = inspect.signature(_tools_runtime._TOOL_FUNCTIONS[name])
         assert "confirm" in sig.parameters, f"{name} has no confirm parameter"
         assert sig.parameters["confirm"].default is False, f"{name}'s confirm must default to False"
 

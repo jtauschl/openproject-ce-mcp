@@ -2,12 +2,8 @@ from __future__ import annotations
 
 import datetime
 import functools
-import inspect
 import re
-from collections.abc import Callable
-from dataclasses import fields as dataclass_fields
-from dataclasses import is_dataclass
-from typing import Any, TypeVar, cast
+from typing import Any
 
 from mcp.server.mcpserver import Context, MCPServer
 
@@ -16,14 +12,6 @@ from .client import (
     CLEAR,
     CLEAR_PARENT,
     CLEAR_VERSION,
-    AuthenticationError,
-    InvalidInputError,
-    NotFoundError,
-    OpenProjectClient,
-    OpenProjectError,
-    OpenProjectServerError,
-    PermissionDeniedError,
-    TransportError,
 )
 from .config import TEXT_LIMIT_MAX, Settings
 from .models import (
@@ -189,7 +177,12 @@ from .models import (
     WorkPackageSummary,
     WorkPackageWriteResult,
 )
-from .presentation import _to_payload
+from .tools_runtime import (
+    _client_from_context,
+    _run_tool,
+    register_selected_tools,
+    register_tool,
+)
 from .tools_validation import (
     _clearable,
     _clearable_duration,
@@ -231,6 +224,7 @@ from .tools_validation import (
     _validate_required_query,
     _validate_required_string_list,
     _validate_required_text,
+    _validate_select,
     _validate_sort_by,
     _validate_work_package_ref,
 )
@@ -685,67 +679,14 @@ def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
     return tuple(enabled)
 
 
-# Resolves every classified tool name (via @register_tool below) to its
-# actual function object. Explicit registration, not module-namespace
-# introspection, so this survives tools.py eventually being split into
-# per-domain files without needing to change again -- each
-# function carries its own registration with it wherever it's defined.
-_ToolFunc = TypeVar("_ToolFunc", bound=Callable[..., Any])
-_TOOL_FUNCTIONS: dict[str, Callable[..., Any]] = {}
-
-
-def register_tool(fn: _ToolFunc) -> _ToolFunc:
-    name = fn.__name__
-    if name in _TOOL_FUNCTIONS:
-        raise RuntimeError(
-            f"Duplicate tool registration: {name} ({fn.__module__}.{fn.__qualname__} "
-            f"collides with an already-registered function of the same name)"
-        )
-    _TOOL_FUNCTIONS[name] = fn
-    return fn
-
-
 def register_tools(mcp: MCPServer, settings: Settings) -> None:
-    # Register a tool with error-categorization applied, so every failure reaches
-    # the agent with a stable [category] prefix.
-    #
-    # Tools that return a list/write/bulk result are routed through _to_payload for
-    # context reduction: payload is dropped on confirmed writes,
-    # count/truncated on lists, and `select` trims rows. Those tools are registered
-    # with structured_output=False so the SDK does not build a fixed dataclass
-    # output schema — it serializes the trimmed dict we return verbatim, letting us
-    # omit keys. Detection is by the result model's fields, so no per-tool tagging
-    # is needed and it cannot drift. Tool bodies are unchanged; they still return
-    # their dataclass, which the wrapper trims.
-    #
-    # When any hide-field config is active, every dataclass-returning tool is
-    # trimmed too, so single-entity reads (get_*) can drop hidden keys entirely
-    # rather than emit them as null. This only widens schema loss when the
-    # operator opted into hiding.
-    hide_active = bool(settings.hidden_fields)
+    """Register every tool enabled by `settings`.
 
-    def tool(fn):
-        if not (_returns_trimmable(fn) or (hide_active and _returns_dataclass(fn))):
-            return mcp.tool()(_categorize_tool_errors(fn))
-
-        wrapped = _categorize_tool_errors(fn)
-        # Whether this tool's own signature accepts `select` -- NOT whether its
-        # return model happens to carry a `results`/`items` field. Some list
-        # tools (e.g. list_statuses) return a `results`-bearing model but have
-        # no `select` parameter at all, so relying on the return type alone
-        # would wrongly treat them as select-driven and keep eliding their
-        # None fields with no way for a caller to ask for them back.
-        elide_none = "select" in inspect.signature(fn).parameters
-
-        @functools.wraps(wrapped)
-        async def trimming(*args, **kwargs):
-            select = _normalize_select(kwargs.get("select"))
-            return _to_payload(await wrapped(*args, **kwargs), select=select, elide_none=elide_none)
-
-        return mcp.tool(structured_output=False)(trimming)
-
-    for name in enabled_tool_names(settings):
-        tool(_TOOL_FUNCTIONS[name])
+    Policy (which names are enabled) is this module's job; the mechanics of
+    resolving a name to its function and wrapping it for error-categorization
+    and trimming live in tools_runtime.register_selected_tools.
+    """
+    register_selected_tools(mcp, names=enabled_tool_names(settings), hide_active=bool(settings.hidden_fields))
 
 
 @register_tool
@@ -6116,150 +6057,6 @@ async def update_relation(
             confirm=confirm,
         )
     )
-
-
-def _client_from_context(ctx: Context) -> OpenProjectClient:
-    app_context = cast(Any, ctx.request_context.lifespan_context)
-    return app_context.client
-
-
-# Stable, machine-readable category prefixes so a calling agent can branch on the
-# kind of failure rather than parsing free text. The prefix leads the message,
-# which stays human-readable, e.g.
-#   "[permission_denied] OpenProject work package write support is disabled. ..."
-_ERROR_CATEGORY: dict[type[Exception], str] = {
-    InvalidInputError: "validation_error",
-    AuthenticationError: "auth_error",
-    PermissionDeniedError: "permission_denied",
-    NotFoundError: "not_found",
-    TransportError: "transport_error",
-    OpenProjectServerError: "server_error",
-    OpenProjectError: "openproject_error",  # base fallback
-}
-_CATEGORY_PREFIX_RE = re.compile(r"^\[[a-z_]+\]\s")
-
-
-def _prefix(category: str, message: str) -> str:
-    if _CATEGORY_PREFIX_RE.match(message):
-        return message  # already categorized; don't double-prefix
-    return f"[{category}] {message}"
-
-
-async def _run_tool(awaitable):
-    try:
-        return await awaitable
-    except InvalidInputError as exc:
-        # Validation failures surface as ValueError; everything else as RuntimeError.
-        raise ValueError(_prefix("validation_error", str(exc))) from exc
-    except OpenProjectError as exc:
-        category = next(
-            (cat for typ, cat in _ERROR_CATEGORY.items() if isinstance(exc, typ)),
-            "openproject_error",
-        )
-        raise RuntimeError(_prefix(category, str(exc))) from exc
-
-
-def _return_model(fn: Any) -> type | None:
-    """Resolve a tool's return-annotation to its dataclass model, or None.
-
-    ``from __future__ import annotations`` makes the return annotation a string,
-    so we resolve it against ``fn``'s own defining module's namespace
-    (``fn.__globals__``, not the caller's) -- this stays correct however
-    tools.py is eventually split across per-domain files, since a
-    tool function moved to another module still resolves against its new
-    home rather than silently returning None. Callers must pass the actual
-    tool function, not a wrapper around it -- functools.wraps() copies
-    __annotations__ but not __globals__, so a wrapper's __globals__ points
-    at the wrapper's own defining module, not the original function's.
-    """
-    ann = fn.__annotations__.get("return")
-    model = fn.__globals__.get(ann) if isinstance(ann, str) else ann
-    return model if isinstance(model, type) and is_dataclass(model) else None
-
-
-def _returns_dataclass(fn: Any) -> bool:
-    """True if the tool returns a dataclass result (so it can be serialized/trimmed)."""
-    return _return_model(fn) is not None
-
-
-def _returns_trimmable(fn: Any) -> bool:
-    """True if a tool returns a result the context-reduction seam should trim.
-
-    A result is trimmable when its model carries a field the seam acts on:
-    ``results`` (list results → count/truncated drop + select), ``payload`` (write
-    results → payload drop on confirm), or ``items`` (bulk results, whose nested
-    per-item write results carry their own payload to drop). Detection inspects the
-    model's fields, so it cannot drift from suffix conventions (e.g.
-    RelationUpdateResult, ProjectCopyResult carry payload but are not *WriteResult).
-
-    Also trimmable when the tool's own signature accepts ``select`` directly,
-    even if its return model has none of those three fields -- this is the
-    bare single-entity case (e.g. get_work_package → WorkPackageDetail): the
-    model itself has no results/items for select to act on, but
-    _to_payload's top-level-select branch (see presentation.py) still needs
-    the trimming wrapper to run at all in order to reach select in the first
-    place.
-    """
-    if "select" in inspect.signature(fn).parameters:
-        return True
-    model = _return_model(fn)
-    if model is None:
-        return False
-    names = {f.name for f in dataclass_fields(model)}
-    return bool(names & {"results", "payload", "items"})
-
-
-def _validate_select(select: list[str] | None, *, row_type: type) -> list[str] | None:
-    """Validate a field-selection list against a result-row dataclass.
-
-    Called in the tool body so invalid field names raise [validation_error] before
-    the client call. Returns the cleaned list (or None). The trimming wrapper reads
-    the same ``select`` kwarg and applies it after the result resolves.
-    """
-    if select is None:
-        return None
-    valid = {f.name for f in dataclass_fields(row_type)}
-    chosen: list[str] = []
-    for raw in select:
-        name = str(raw).strip()
-        if name not in valid:
-            allowed = ", ".join(sorted(valid))
-            raise ValueError(f"select field '{name}' is not a valid {row_type.__name__} field. Allowed: {allowed}.")
-        if name not in chosen:
-            chosen.append(name)
-    if not chosen:
-        raise ValueError("select must contain at least one field name.")
-    return chosen
-
-
-def _normalize_select(select: Any) -> frozenset[str] | None:
-    """Turn a raw ``select`` kwarg into a field set for the trimming wrapper.
-
-    Validation already happened in the tool body (_validate_select); here we only
-    normalize the shape. Returns None when no usable selection is present.
-    """
-    if not select:
-        return None
-    return frozenset(str(name).strip() for name in select if str(name).strip())
-
-
-def _categorize_tool_errors(fn):
-    """Wrap a tool so every failure carries a category prefix.
-
-    _run_tool already prefixes errors from the client call, but input validators
-    in the tool body raise plain ValueError *before* _run_tool runs. This wrapper
-    catches those and tags them [validation_error] too, so an agent sees a
-    consistent, machine-readable category for every tool failure.
-    """
-
-    @functools.wraps(fn)
-    async def wrapper(*args, **kwargs):
-        try:
-            return await fn(*args, **kwargs)
-        except ValueError as exc:
-            raise ValueError(_prefix("validation_error", str(exc))) from exc
-
-    return wrapper
 
 
 def _pad_fractional_seconds(value: str) -> str:

@@ -21,7 +21,7 @@ from openproject_ce_mcp.models import (
     QueryOperatorSummary,
     QuerySortBySummary,
 )
-from openproject_ce_mcp.tools import _to_payload
+from openproject_ce_mcp.presentation import _to_payload
 
 
 def _filter_summary(filter_id: str = "assignee") -> QueryFilterSummary:

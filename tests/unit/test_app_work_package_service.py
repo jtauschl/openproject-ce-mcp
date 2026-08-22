@@ -1356,7 +1356,7 @@ async def test_get_stays_masked_under_restricted_scope_even_with_hierarchy_prese
     result = await service.get(6)
 
     # Hidden fields are TAGGED, not nulled (see hidden_fields.apply_hidden_fields's
-    # own docstring: the value stays on the dataclass; tools._to_payload's
+    # own docstring: the value stays on the dataclass; presentation._to_payload's
     # serialization seam is what actually drops the key from the response).
     # The bug this test guards is `_hidden_keys` going missing entirely --
     # which would make _to_payload treat the field as NOT hidden at all.
@@ -1443,8 +1443,8 @@ async def test_create_commit_calls_commit_create_and_masks_result() -> None:
     assert len(api.commit_create_calls) == 1
     assert result.result is not None
     # apply_hidden_fields stamps a _hidden_keys marker; it does not blank the
-    # field itself -- tools._to_payload's serialization layer drops the key
-    # entirely at the MCP response boundary.
+    # field itself -- presentation._to_payload's serialization layer drops the
+    # key entirely at the MCP response boundary.
     assert result.result._hidden_keys == frozenset({"description"})
 
 

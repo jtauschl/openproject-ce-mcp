@@ -220,6 +220,18 @@ support.
   `tools.py` into `tools_validation.py`**, along with their regex constants —
   further groundwork for splitting `tools.py` into per-domain files
   (OPM-395). No end-user-visible behavior change.
+- **The tool-registration/dispatch/error-translation/trimming mechanics moved
+  from `tools.py` into a new sibling module, `tools_runtime.py`** (the
+  `@register_tool` decorator and registry, `_client_from_context`, error
+  categorization, and the return-model/`select`-trimming machinery) — the
+  first real step of splitting `tools.py` into per-domain files (OPM-395):
+  `tools.py` keeps the tool functions and the scope-classification/policy
+  tables (`enabled_tool_names` and friends), while `tools_runtime.py` is a
+  pure, domain-agnostic mechanism module that never imports back from
+  `tools.py`. `_validate_select` moved to `tools_validation.py` alongside the
+  project's other presentation-layer input validators, since it validates
+  user-supplied field names rather than being registration mechanics. No
+  end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and

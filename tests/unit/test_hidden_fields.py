@@ -25,7 +25,7 @@ from openproject_ce_mcp.client import (
     OpenProjectClient,
 )
 from openproject_ce_mcp.config import Settings
-from openproject_ce_mcp.tools import _to_payload
+from openproject_ce_mcp.presentation import _to_payload
 
 
 @pytest.mark.asyncio
@@ -99,8 +99,8 @@ async def test_allowed_projects_and_hidden_fields_filter_read_outputs() -> None:
     # hidden-field-aware by design either (same masking split as
     # normalize_activity above) -- the value is preserved on the dataclass,
     # hidden_fields.apply_hidden_fields only tags it for the serialization
-    # seam (tools._to_payload) to drop, mirroring this project's layered
-    # masking contract.
+    # seam (presentation._to_payload) to drop, mirroring this project's
+    # layered masking contract.
     assert "description" in visible_project._hidden_keys
     assert visible_project.description == "<user-content>secret</user-content>"  # preserved on the dataclass
     assert "description" not in _to_payload(visible_project)

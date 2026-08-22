@@ -25,12 +25,9 @@ import pytest
 from openproject_ce_mcp import models as m
 from openproject_ce_mcp.client import OpenProjectClient
 from openproject_ce_mcp.config import Settings
+from openproject_ce_mcp.presentation import _to_payload
 from openproject_ce_mcp.server import create_app
 from openproject_ce_mcp.tools import (
-    _normalize_select,
-    _returns_trimmable,
-    _to_payload,
-    _validate_select,
     bulk_create_work_packages,
     bulk_update_work_packages,
     create_work_package,
@@ -45,6 +42,8 @@ from openproject_ce_mcp.tools import (
     list_work_packages,
     update_relation,
 )
+from openproject_ce_mcp.tools_runtime import _normalize_select, _returns_trimmable
+from openproject_ce_mcp.tools_validation import _validate_select
 
 
 def _wp_summary(**overrides) -> m.WorkPackageSummary:

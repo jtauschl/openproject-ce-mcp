@@ -93,10 +93,10 @@ def apply_hidden_fields(entity: str, value: Any, *, settings: Settings) -> Any:
 
     The names are stamped as a private ``_hidden_keys`` attribute (not a
     dataclass field, so it never appears in the schema/output). The
-    serialization seam (tools._to_payload) reads it and drops those keys
-    entirely from the response — hidden fields cost neither their key name nor
-    a null value. Stamping is possible because the response dataclasses
-    are not frozen.
+    serialization seam (presentation._to_payload) reads it and drops those
+    keys entirely from the response — hidden fields cost neither their key
+    name nor a null value. Stamping is possible because the response
+    dataclasses are not frozen.
     """
     if not is_dataclass(value):
         return value

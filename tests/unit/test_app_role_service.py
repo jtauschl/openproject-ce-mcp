@@ -9,7 +9,7 @@ from openproject_ce_mcp.app.errors import PermissionDeniedError
 from openproject_ce_mcp.app.ports.role_api import RoleRecord
 from openproject_ce_mcp.app.services.role_service import RoleService
 from openproject_ce_mcp.models import RoleSummary
-from openproject_ce_mcp.tools import _to_payload
+from openproject_ce_mcp.presentation import _to_payload
 
 
 def _role_summary(role_id: int = 8, name: str = "Project admin") -> RoleSummary:

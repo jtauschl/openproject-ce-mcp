@@ -9,7 +9,7 @@ from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedErr
 from openproject_ce_mcp.app.ports.user_working_hours_api import UserWorkingHoursRecord
 from openproject_ce_mcp.app.services.user_working_hours_service import UserWorkingHoursService
 from openproject_ce_mcp.models import UserWorkingHoursSummary
-from openproject_ce_mcp.tools import _to_payload
+from openproject_ce_mcp.presentation import _to_payload
 
 
 def _summary(record_id: int = 5, *, user_id: int | None = 3, valid_from: str = "2026-08-01") -> UserWorkingHoursSummary:

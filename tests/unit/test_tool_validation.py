@@ -561,7 +561,7 @@ async def test_run_tool_prefixes_client_error_categories() -> None:
         PermissionDeniedError,
         TransportError,
     )
-    from openproject_ce_mcp.tools import _run_tool
+    from openproject_ce_mcp.tools_runtime import _run_tool
 
     async def raiser(exc):
         raise exc
@@ -584,7 +584,7 @@ async def test_run_tool_prefixes_client_error_categories() -> None:
 
 @pytest.mark.asyncio
 async def test_categorize_tool_errors_tags_validation_and_avoids_double_prefix() -> None:
-    from openproject_ce_mcp.tools import _categorize_tool_errors
+    from openproject_ce_mcp.tools_runtime import _categorize_tool_errors
 
     @_categorize_tool_errors
     async def raw_validation(_ctx):

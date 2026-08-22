@@ -10,7 +10,7 @@ from openproject_ce_mcp.app.ports.job_status_api import JobStatusRecord
 from openproject_ce_mcp.app.ports.project_api import ProjectRecord
 from openproject_ce_mcp.app.services.job_status_service import JobStatusService
 from openproject_ce_mcp.models import JobStatusDetail, ProjectSummary
-from openproject_ce_mcp.tools import _to_payload
+from openproject_ce_mcp.presentation import _to_payload
 
 
 def _detail(*, job_status_id: int = 77, project: str | None = "Demo", project_id: int | None = 6) -> JobStatusDetail:

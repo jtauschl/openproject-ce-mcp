@@ -11,6 +11,7 @@ import datetime
 import functools
 import re
 from collections.abc import Callable
+from dataclasses import fields as dataclass_fields
 from typing import Any
 
 from .models import SortCriterion
@@ -855,3 +856,27 @@ def _clearable_duration(value: str | None, *, field_name: str, sentinel: object)
     on update_work_package and bulk_update_work_packages.
     """
     return _clearable(value, lambda v: _validate_optional_duration(v, field_name=field_name), sentinel=sentinel)
+
+
+def _validate_select(select: list[str] | None, *, row_type: type) -> list[str] | None:
+    """Validate a field-selection list against a result-row dataclass.
+
+    Called in the tool body so invalid field names raise [validation_error] before
+    the client call. Returns the cleaned list (or None). The trimming wrapper
+    (tools_runtime._normalize_select) reads the same ``select`` kwarg and applies
+    it after the result resolves.
+    """
+    if select is None:
+        return None
+    valid = {f.name for f in dataclass_fields(row_type)}
+    chosen: list[str] = []
+    for raw in select:
+        name = str(raw).strip()
+        if name not in valid:
+            allowed = ", ".join(sorted(valid))
+            raise ValueError(f"select field '{name}' is not a valid {row_type.__name__} field. Allowed: {allowed}.")
+        if name not in chosen:
+            chosen.append(name)
+    if not chosen:
+        raise ValueError("select must contain at least one field name.")
+    return chosen

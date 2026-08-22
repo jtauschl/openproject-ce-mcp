@@ -10,7 +10,7 @@ from openproject_ce_mcp.app.errors import PermissionDeniedError
 from openproject_ce_mcp.app.ports.status_priority_type_api import PriorityRecord, StatusRecord, TypeRecord
 from openproject_ce_mcp.app.services.status_priority_type_service import StatusPriorityTypeService
 from openproject_ce_mcp.models import PrioritySummary, StatusSummary, TypeSummary
-from openproject_ce_mcp.tools import _to_payload
+from openproject_ce_mcp.presentation import _to_payload
 
 
 def _status_summary(status_id: int = 1, *, default_done_ratio: int | None = 30) -> StatusSummary:

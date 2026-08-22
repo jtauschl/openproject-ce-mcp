@@ -9,7 +9,7 @@ from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedErr
 from openproject_ce_mcp.app.ports.action_capability_api import ActionRecord, CapabilityRecord
 from openproject_ce_mcp.app.services.action_capability_service import ActionCapabilityService
 from openproject_ce_mcp.models import ActionSummary, CapabilitySummary
-from openproject_ce_mcp.tools import _to_payload
+from openproject_ce_mcp.presentation import _to_payload
 
 
 def _action_summary(action_id: str = "update") -> ActionSummary:

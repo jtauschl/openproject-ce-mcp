@@ -1,28 +1,31 @@
 """Regression test: _return_model must resolve a tool's return annotation
-against the tool's OWN defining module, not tools.py's module.
+against the tool's OWN defining module, not tools_runtime's or tools.py's.
 
 `from __future__ import annotations` turns every return annotation into a
 plain string. `_return_model` looks that string up as a class name to decide
 whether a tool's result is a trimmable dataclass. Before this fix it looked
 the name up in tools.py's own `globals()` -- correct only because every tool
-function currently lives in tools.py itself. Once tools.py is eventually
-split into per-domain files, a tool defined elsewhere would still
-carry a correct annotation string, but the old code would search the wrong
-module and silently return None instead of the real model.
+function lived in tools.py itself and _return_model itself lived there too.
+_return_model now lives in tools_runtime.py while every tool function still
+lives in tools.py (OPM-395's ongoing per-domain split hasn't moved any tool
+function out of tools.py yet) -- this is already a cross-module case today,
+and the fn.__globals__-based fix resolves against each tool's own defining
+module rather than tools_runtime's, so it will keep working unchanged once a
+tool function does move to its own per-domain file.
 
 `ExampleModel` and `example_tool` are deliberately defined here, in this
-test module's own namespace -- not in tools.py -- so this test fails against
-the pre-fix globals()-based lookup (ExampleModel doesn't exist in tools.py's
-namespace) and passes against the fn.__globals__-based fix (which resolves
-against this module's namespace instead, regardless of which module calls
-_return_model).
+test module's own namespace -- not in tools.py or tools_runtime.py -- so this
+test fails against the pre-fix globals()-based lookup (ExampleModel doesn't
+exist in tools.py's namespace) and passes against the fn.__globals__-based
+fix (which resolves against this module's namespace instead, regardless of
+which module calls _return_model).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from openproject_ce_mcp.tools import _return_model, _returns_dataclass
+from openproject_ce_mcp.tools_runtime import _return_model, _returns_dataclass
 
 
 @dataclass

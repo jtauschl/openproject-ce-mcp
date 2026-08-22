@@ -9,7 +9,7 @@ from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedErr
 from openproject_ce_mcp.app.ports.storage_api import StorageRecord
 from openproject_ce_mcp.app.services.storage_service import StorageService
 from openproject_ce_mcp.models import StorageDetail, StorageSummary
-from openproject_ce_mcp.tools import _to_payload
+from openproject_ce_mcp.presentation import _to_payload
 
 
 def _summary(

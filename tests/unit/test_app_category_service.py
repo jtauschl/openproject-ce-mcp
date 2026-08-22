@@ -9,7 +9,7 @@ from openproject_ce_mcp.app.errors import NotFoundError, PermissionDeniedError
 from openproject_ce_mcp.app.ports.category_api import CategoryRecord
 from openproject_ce_mcp.app.services.category_service import CategoryService
 from openproject_ce_mcp.models import CategorySummary
-from openproject_ce_mcp.tools import _to_payload
+from openproject_ce_mcp.presentation import _to_payload
 
 PROJECT_ID_TO_IDENTIFIER = {6: "demo", 7: "other"}
 

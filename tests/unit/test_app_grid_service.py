@@ -9,7 +9,7 @@ from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedErr
 from openproject_ce_mcp.app.ports.grid_api import GridFormResult, GridRecord
 from openproject_ce_mcp.app.services.grid_service import GridService
 from openproject_ce_mcp.models import GridSummary
-from openproject_ce_mcp.tools import _to_payload
+from openproject_ce_mcp.presentation import _to_payload
 
 BASE_URL = "https://op.example.com"
 

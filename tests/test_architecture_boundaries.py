@@ -135,8 +135,22 @@ def _app_import_violations(source: str) -> list[str]:
 
 
 def test_tools_module_never_imports_from_app_directly() -> None:
-    violations = _app_import_violations((SRC / "tools.py").read_text())
-    assert violations == [], f"tools.py must not import from app/ directly: {violations}"
+    # Covers every presentation-layer tools module -- tools.py itself and every
+    # per-domain split-out (tools_runtime.py, tools_validation.py,
+    # tools_reminders.py, ...) -- not just tools.py by name. A narrower,
+    # hardcoded-to-tools.py version of this check would silently stop covering
+    # a new tools_<domain>.py file the moment one exists. Deliberately broad:
+    # `tools*.py` also matches a hypothetical differently-layered file that
+    # merely happens to start with "tools" (e.g. a future tools_config.py for
+    # unrelated config parsing) -- accepted, since every file that currently
+    # matches genuinely belongs to this presentation layer, and a narrower
+    # allowlist would have to be maintained by hand for every new domain file
+    # this check exists specifically to cover automatically.
+    tools_modules = sorted(SRC.glob("tools*.py"))
+    assert tools_modules, "expected at least tools.py to match SRC.glob('tools*.py')"
+    for module in tools_modules:
+        violations = _app_import_violations(module.read_text())
+        assert violations == [], f"{module.name} must not import from app/ directly: {violations}"
 
 
 _HAL_ALLOWED_ABSOLUTE_ROOTS = {"__future__", "typing"}

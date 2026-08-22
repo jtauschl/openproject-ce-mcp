@@ -9,7 +9,7 @@ from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedErr
 from openproject_ce_mcp.app.ports.user_api import UserFormResult, UserRecord
 from openproject_ce_mcp.app.services.user_service import UserService
 from openproject_ce_mcp.models import UserDetail, UserSummary
-from openproject_ce_mcp.tools import _to_payload
+from openproject_ce_mcp.presentation import _to_payload
 
 BASE_URL = "https://op.example.com"
 

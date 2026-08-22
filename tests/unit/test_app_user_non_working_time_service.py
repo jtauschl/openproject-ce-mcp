@@ -9,7 +9,7 @@ from openproject_ce_mcp.app.errors import InvalidInputError, NotFoundError, Perm
 from openproject_ce_mcp.app.ports.user_non_working_time_api import UserNonWorkingTimeRecord
 from openproject_ce_mcp.app.services.user_non_working_time_service import UserNonWorkingTimeService
 from openproject_ce_mcp.models import UserNonWorkingTimeSummary
-from openproject_ce_mcp.tools import _to_payload
+from openproject_ce_mcp.presentation import _to_payload
 
 
 def _summary(record_id: int = 5, *, user_id: int | None = 3, start: str = "2026-08-01", end: str = "2026-08-10"):

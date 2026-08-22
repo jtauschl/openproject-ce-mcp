@@ -38,12 +38,12 @@ from _write_contract_cases_types import WriteToolCase, materialize_case
 
 from openproject_ce_mcp.client import OpenProjectClient
 from openproject_ce_mcp.tools import (
-    _TOOL_FUNCTIONS,
     ADMIN_WRITE_TOOLS,
     ATTACHMENT_UPLOAD_TOOLS,
     PERSONAL_MUTATION_TOOLS,
     WRITE_TOOLS_BY_SCOPE,
 )
+from openproject_ce_mcp.tools_runtime import _TOOL_FUNCTIONS
 
 
 def test_every_registered_write_tool_has_a_contract_case() -> None:

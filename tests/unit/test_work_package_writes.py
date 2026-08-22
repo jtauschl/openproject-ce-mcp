@@ -24,7 +24,7 @@ from openproject_ce_mcp.client import (
     PermissionDeniedError,
 )
 from openproject_ce_mcp.config import Settings
-from openproject_ce_mcp.tools import _to_payload
+from openproject_ce_mcp.presentation import _to_payload
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,7 @@ from openproject_ce_mcp.app.errors import InvalidInputError, PermissionDeniedErr
 from openproject_ce_mcp.app.ports.group_api import GroupRecord
 from openproject_ce_mcp.app.services.group_service import GroupService
 from openproject_ce_mcp.models import GroupDetail, GroupSummary
-from openproject_ce_mcp.tools import _to_payload
+from openproject_ce_mcp.presentation import _to_payload
 
 BASE_URL = "https://op.example.com"
 API_PREFIX = "/api/v3/"
