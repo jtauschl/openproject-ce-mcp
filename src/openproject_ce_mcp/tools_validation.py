@@ -8,7 +8,9 @@ exercising a validator in isolation), never the reverse.
 from __future__ import annotations
 
 import datetime
+import functools
 import re
+from collections.abc import Callable
 from typing import Any
 
 from .models import SortCriterion
@@ -778,3 +780,78 @@ def _validate_group_by(value: str | None) -> str | None:
             f"Valid fields are: {_describe_valid_fields(_GROUPABLE_WORK_PACKAGE_FIELDS)}."
         )
     return normalized
+
+
+def _validate_optional_version(
+    value: str | None, *, sentinel: object, field_name: str = "version"
+) -> str | object | None:
+    """Validate a version argument, mapping 'none' (any case) to ``sentinel``.
+
+    Returns None to leave the version unchanged, ``sentinel`` to unassign it, or
+    the validated version name/id. Mirrors the parent 'none' un-parenting sentinel.
+    ``sentinel`` has no default here (unlike ``_clearable``'s generic form) since
+    every real caller needs the field-specific CLEAR_VERSION object, not the
+    generic CLEAR one, to distinguish which field was cleared.
+    """
+    return _clearable(
+        value,
+        functools.partial(_validate_optional_query, field_name=field_name, max_length=100),
+        sentinel=sentinel,
+    )
+
+
+def _clearable(value: str | None, validate: Callable[[str], Any], *, sentinel: object) -> str | object | None:
+    """Map a nullable optional argument to a clear sentinel or a validated value.
+
+    Returns None (leave unchanged), ``sentinel`` (clear the field, for 'none' in any
+    case), or the result of ``validate(value)``. Shared by any field that supports
+    clearing via 'none' — both HAL-link associations (assignee, responsible, category,
+    project_phase, sprint, project parent) and plain scalar fields (estimated_time,
+    remaining_time, duration); ``validate`` decides what a non-'none' value means.
+    ``sentinel`` has no default and must always be passed explicitly by the caller
+    (e.g. the generic CLEAR, or a field-specific one like CLEAR_VERSION) — those
+    sentinel objects are canonically defined at the app/ layer, which this module
+    never imports from, so this presentation-layer helper only ever receives one as
+    an opaque object, never defines or imports one itself. Use ``_clearable_ref``
+    instead for a field whose validator genuinely accepts a numeric value too
+    (currently only work-package refs).
+
+    ``value`` is declared str-only: every real caller's field is str-typed at the MCP
+    tool boundary. A non-str scalar (e.g. a bare JSON number) can still reach here
+    from bulk_update_work_packages' untyped ``items: list[dict[str, Any]]`` — the
+    ``isinstance`` check below is a runtime safety net for that case (mypy sees `Any`
+    there and can't catch it statically), not something this function's own str-only
+    contract needs to express. The validator itself (e.g. `_validate_optional_query`)
+    is responsible for rejecting a non-str value cleanly if one slips through.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip().lower() == "none":
+        return sentinel
+    return validate(value)
+
+
+def _clearable_ref(
+    value: int | str | None, validate: Callable[[int | str], Any], *, sentinel: object
+) -> str | object | None:
+    """Like ``_clearable``, but for a validator that accepts a numeric ref directly.
+
+    Only ``_validate_work_package_ref`` needs this today (parent/
+    parent_work_package_id can legitimately be a JSON int, not just a display-id
+    string) — everything else goes through the str-only ``_clearable``.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip().lower() == "none":
+        return sentinel
+    return validate(value)
+
+
+def _clearable_duration(value: str | None, *, field_name: str, sentinel: object) -> str | object | None:
+    """Validate a duration argument, mapping 'none' (any case) to ``sentinel``.
+
+    Returns None to leave the field unchanged, ``sentinel`` to clear it, or the
+    validated ISO 8601 duration. Shared by estimated_time/remaining_time/duration
+    on update_work_package and bulk_update_work_packages.
+    """
+    return _clearable(value, lambda v: _validate_optional_duration(v, field_name=field_name), sentinel=sentinel)

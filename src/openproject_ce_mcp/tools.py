@@ -191,6 +191,9 @@ from .models import (
 )
 from .presentation import _to_payload
 from .tools_validation import (
+    _clearable,
+    _clearable_duration,
+    _clearable_ref,
     _require_at_least_one,
     _validate_choice,
     _validate_custom_field_filters,
@@ -215,6 +218,7 @@ from .tools_validation import (
     _validate_optional_update_text,
     _validate_optional_user_or_principal_ref,
     _validate_optional_user_ref,
+    _validate_optional_version,
     _validate_optional_work_package_ref,
     _validate_participant_refs,
     _validate_positive_int,
@@ -1055,7 +1059,7 @@ async def update_project(
         status_explanation, field_name="status_explanation", max_length=10_000
     )
     # parent: 'none' (any case) makes the project top-level; otherwise a project ref.
-    safe_parent = _clearable(parent, lambda v: _validate_optional_project_ref(v))
+    safe_parent = _clearable(parent, lambda v: _validate_optional_project_ref(v), sentinel=CLEAR)
     _require_at_least_one(
         safe_name,
         safe_identifier,
@@ -3696,24 +3700,33 @@ def _validate_work_package_update_fields(
             description, field_name=f"{field_prefix}description", max_length=10_000
         ),
         "type": _validate_optional_query(type, field_name=f"{field_prefix}type", max_length=100),
-        "version": _validate_optional_version(version, field_name=f"{field_prefix}version"),
+        "version": _validate_optional_version(version, field_name=f"{field_prefix}version", sentinel=CLEAR_VERSION),
         "sprint": _clearable(
-            sprint, lambda v: _validate_optional_query(v, field_name=f"{field_prefix}sprint", max_length=100)
+            sprint,
+            lambda v: _validate_optional_query(v, field_name=f"{field_prefix}sprint", max_length=100),
+            sentinel=CLEAR,
         ),
         "project_phase": _clearable(
             project_phase,
             lambda v: _validate_optional_query(v, field_name=f"{field_prefix}project_phase", max_length=100),
+            sentinel=CLEAR,
         ),
         "status": _validate_optional_query(status, field_name=f"{field_prefix}status", max_length=100),
         "assignee": _clearable(
-            assignee, lambda v: _validate_optional_user_ref(v, field_name=f"{field_prefix}assignee")
+            assignee,
+            lambda v: _validate_optional_user_ref(v, field_name=f"{field_prefix}assignee"),
+            sentinel=CLEAR,
         ),
         "responsible": _clearable(
-            responsible, lambda v: _validate_optional_user_ref(v, field_name=f"{field_prefix}responsible")
+            responsible,
+            lambda v: _validate_optional_user_ref(v, field_name=f"{field_prefix}responsible"),
+            sentinel=CLEAR,
         ),
         "priority": _validate_optional_query(priority, field_name=f"{field_prefix}priority", max_length=100),
         "category": _clearable(
-            category, lambda v: _validate_optional_query(v, field_name=f"{field_prefix}category", max_length=100)
+            category,
+            lambda v: _validate_optional_query(v, field_name=f"{field_prefix}category", max_length=100),
+            sentinel=CLEAR,
         ),
         "custom_fields": _validate_optional_custom_fields(custom_fields),
         "parent": _clearable_ref(
@@ -3721,9 +3734,13 @@ def _validate_work_package_update_fields(
         ),
         "start_date": _validate_optional_date(start_date, field_name=f"{field_prefix}start_date"),
         "due_date": _validate_optional_date(due_date, field_name=f"{field_prefix}due_date"),
-        "estimated_time": _clearable_duration(estimated_time, field_name=f"{field_prefix}estimated_time"),
-        "remaining_time": _clearable_duration(remaining_time, field_name=f"{field_prefix}remaining_time"),
-        "duration": _clearable_duration(duration, field_name=f"{field_prefix}duration"),
+        "estimated_time": _clearable_duration(
+            estimated_time, field_name=f"{field_prefix}estimated_time", sentinel=CLEAR
+        ),
+        "remaining_time": _clearable_duration(
+            remaining_time, field_name=f"{field_prefix}remaining_time", sentinel=CLEAR
+        ),
+        "duration": _clearable_duration(duration, field_name=f"{field_prefix}duration", sentinel=CLEAR),
         "percentage_done": _validate_optional_percentage_done(
             percentage_done, field_name=f"{field_prefix}percentage_done"
         ),
@@ -6245,63 +6262,6 @@ def _categorize_tool_errors(fn):
     return wrapper
 
 
-def _validate_optional_version(value: str | None, *, field_name: str = "version") -> str | object | None:
-    """Validate a version argument, mapping 'none' (any case) to CLEAR_VERSION.
-
-    Returns None to leave the version unchanged, CLEAR_VERSION to unassign it, or
-    the validated version name/id. Mirrors the parent 'none' un-parenting sentinel.
-    """
-    return _clearable(
-        value,
-        functools.partial(_validate_optional_query, field_name=field_name, max_length=100),
-        sentinel=CLEAR_VERSION,
-    )
-
-
-def _clearable(value: str | None, validate: Callable[[str], Any], *, sentinel: object = CLEAR) -> str | object | None:
-    """Map a nullable optional argument to a clear sentinel or a validated value.
-
-    Returns None (leave unchanged), ``sentinel`` (clear the field, for 'none' in any
-    case), or the result of ``validate(value)``. Shared by any field that supports
-    clearing via 'none' — both HAL-link associations (assignee, responsible, category,
-    project_phase, sprint, project parent) and plain scalar fields (estimated_time,
-    remaining_time, duration); ``validate`` decides what a non-'none' value means.
-    ``sentinel`` defaults to the generic ``CLEAR``; pass a field-specific sentinel
-    (e.g. ``CLEAR_VERSION``) where the caller needs to distinguish which field was
-    cleared. Use ``_clearable_ref`` instead for a field whose validator genuinely
-    accepts a numeric value too (currently only work-package refs).
-
-    ``value`` is declared str-only: every real caller's field is str-typed at the MCP
-    tool boundary. A non-str scalar (e.g. a bare JSON number) can still reach here
-    from bulk_update_work_packages' untyped ``items: list[dict[str, Any]]`` — the
-    ``isinstance`` check below is a runtime safety net for that case (mypy sees `Any`
-    there and can't catch it statically), not something this function's own str-only
-    contract needs to express. The validator itself (e.g. `_validate_optional_query`)
-    is responsible for rejecting a non-str value cleanly if one slips through.
-    """
-    if value is None:
-        return None
-    if isinstance(value, str) and value.strip().lower() == "none":
-        return sentinel
-    return validate(value)
-
-
-def _clearable_ref(
-    value: int | str | None, validate: Callable[[int | str], Any], *, sentinel: object = CLEAR
-) -> str | object | None:
-    """Like ``_clearable``, but for a validator that accepts a numeric ref directly.
-
-    Only ``_validate_work_package_ref`` needs this today (parent/
-    parent_work_package_id can legitimately be a JSON int, not just a display-id
-    string) — everything else goes through the str-only ``_clearable``.
-    """
-    if value is None:
-        return None
-    if isinstance(value, str) and value.strip().lower() == "none":
-        return sentinel
-    return validate(value)
-
-
 def _pad_fractional_seconds(value: str) -> str:
     """Pad a `.d{1,6}` fractional-seconds fragment to exactly 6 digits.
 
@@ -6351,16 +6311,6 @@ def _duration_between(start_time: str, end_time: str) -> str:
     ]
     body = "".join(p for p in parts if p)
     return f"PT{body}"
-
-
-def _clearable_duration(value: str | None, *, field_name: str) -> str | object | None:
-    """Validate a duration argument, mapping 'none' (any case) to CLEAR.
-
-    Returns None to leave the field unchanged, CLEAR to clear it, or the validated
-    ISO 8601 duration. Shared by estimated_time/remaining_time/duration on
-    update_work_package and bulk_update_work_packages.
-    """
-    return _clearable(value, lambda v: _validate_optional_duration(v, field_name=field_name))
 
 
 def _validate_optional_text_limit(value: int | None) -> int | None:
