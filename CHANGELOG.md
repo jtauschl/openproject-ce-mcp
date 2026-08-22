@@ -265,6 +265,19 @@ support.
   descriptions, required fields, output_schema presence) from before the
   move, proving the file relocation had zero effect on what an MCP client
   sees. No end-user-visible behavior change.
+- **The Boards domain's 5 tool functions (`list_boards`, `get_board`,
+  `create_board`, `update_board`, `delete_board`), plus their domain-local
+  `_validate_board_query_fields` helper, moved from `tools.py` into a new
+  `tools_boards.py`** — the third domain split under OPM-395, following the
+  same pattern as the Reminders and Versions splits. `tools.py` imports
+  `tools_boards` for its `@register_tool` registration side effect and, for
+  now, re-exports the five functions so existing test imports keep working
+  unchanged (a deliberate transition step, not the long-term shape). A
+  characterization test (`tests/test_board_tools_schema_characterization.py`)
+  locks in the 5 tools' exact MCP schema (parameter names/types/order,
+  descriptions, required fields, output_schema presence) from before the
+  move, proving the file relocation had zero effect on what an MCP client
+  sees. No end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and
