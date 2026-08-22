@@ -6002,8 +6002,7 @@ async def test_raise_for_status_403_embedded_token_mention_does_not_misclassify(
 
 
 async def test_raise_for_status_multiple_errors_surfaces_embedded_detail_messages() -> None:
-    """Live-verified regression guard (2026-08-13, real 17.7.1 instance): a
-    MultipleErrors HAL payload's top-level `message` alone
+    """A MultipleErrors HAL payload's top-level `message` alone
     ("Multiple field constraints have been violated.") is useless -- the real
     per-field detail lives in `_embedded.errors[]`. Without this, a caller
     could not tell an Enterprise-gate rejection apart from any other
@@ -9199,13 +9198,11 @@ async def test_unlock_user_uses_delete_response_without_redundant_get() -> None:
 
 @pytest.mark.asyncio
 async def test_user_preferences_get_and_update() -> None:
-    """Regression: a previous version of this mock simulated "id"/"lang"/
-    "updatedAt" fields on the my_preferences response and a "lang" write
-    parameter -- OpenProject's real UserPreferenceRepresenter has no such
-    properties at all (verified live 2026-07-29: PATCH {"lang": ...} against
-    a running instance returns 200 and silently no-ops, even for a garbage
-    value). Language is a User attribute, set via update_user's "language"
-    field, not a preference. This mock now reflects the real response shape."""
+    """OpenProject's real UserPreferenceRepresenter has no "id"/"lang"/
+    "updatedAt" property at all -- PATCH {"lang": ...} against my_preferences
+    returns 200 and silently no-ops, even for a garbage value. Language is a
+    User attribute, set via update_user's "language" field, not a
+    preference. This mock reflects the real response shape."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/my_preferences" and request.method == "GET":
@@ -16902,10 +16899,9 @@ async def test_update_work_package_sets_percentage_done_explicitly() -> None:
 
 async def test_update_work_package_autofills_progress_on_close_without_estimate() -> None:
     """OpenProject's own validation requires remainingTime to be null/absent
-    (not "PT0H") when the work package has no estimatedTime -- live-verified
-    against real OpenProject: submitting "PT0H" here gets rejected with
-    "must stay empty". The GET response below deliberately has no
-    estimatedTime, matching that case."""
+    (not "PT0H") when the work package has no estimatedTime -- submitting
+    "PT0H" here gets rejected with "must stay empty". The GET response below
+    deliberately has no estimatedTime, matching that case."""
     form_calls = {"count": 0}
     status_list_calls = {"count": 0}
 
@@ -16963,8 +16959,8 @@ async def test_update_work_package_autofills_progress_on_close_without_estimate(
 async def test_update_work_package_autofills_progress_on_close_with_existing_estimate() -> None:
     """Opposite of the no-estimate case above: when the work package already
     has an estimatedTime (from the pre-write GET, not this call's own
-    params), remainingTime must autofill to "PT0H", not null -- live-verified:
-    submitting null here gets rejected with "must be 0h"."""
+    params), remainingTime must autofill to "PT0H", not null -- submitting
+    null here gets rejected with "must be 0h"."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
