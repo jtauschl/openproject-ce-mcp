@@ -350,6 +350,28 @@ support.
   required fields, output_schema presence) from before the move, proving the
   file relocation had zero effect on what an MCP client sees. No
   end-user-visible behavior change.
+- **The Admin domain's 17 tool functions (`list_principals`, `list_users`,
+  `get_user`, `list_groups`, `get_group`, `list_storages`, `get_storage`,
+  `create_user`, `update_user`, `delete_user`, `set_user_locked`,
+  `create_group`, `update_group`, `delete_group`, `create_storage`,
+  `update_storage`, `delete_storage`) moved from `tools.py` into a new
+  `tools_admin.py`** — the eighth domain split under OPM-395. Like the
+  Membership and Personal splits, `tools.py` **does** re-export all
+  seventeen names: seven of them (`create_user`, `update_user`,
+  `delete_user`, `set_user_locked`, `create_group`, `update_group`,
+  `delete_group`) are imported directly from `openproject_ce_mcp.tools` by
+  an existing test (`tests/unit/test_project_and_domain_tools.py`), so this
+  split follows the same re-export transition step as the Reminders,
+  Versions, Boards, Membership, and Personal splits. `tools.py` imports
+  `tools_admin` for its `@register_tool` registration side effect and the
+  re-export; the `READ_TOOLS_BY_SCOPE["admin"]`/`ADMIN_WRITE_TOOLS`/
+  `WRITE_TOOLS_BY_SCOPE["admin"]` scope-classification tables stay in
+  `tools.py`, unaffected by this move. A characterization test
+  (`tests/test_admin_tools_schema_characterization.py`) locks in the 17
+  tools' exact MCP schema (parameter names/types/order, descriptions,
+  required fields, output_schema presence) from before the move, proving the
+  file relocation had zero effect on what an MCP client sees. No
+  end-user-visible behavior change.
 - **Tool descriptions are substantially shorter across the whole catalog**:
   duplicated multi-paragraph explanations (date filters, `sort_by`/`group_by`,
   `select`, pagination, `include_sums`) between `search_work_packages` and
