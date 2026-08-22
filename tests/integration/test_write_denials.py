@@ -28,7 +28,7 @@ async def test_delete_file_link_denied_outside_allowlist(
     # seed has zero storages and zero file links.
     #
     # Deliberately targets "seed-file-link-persistent.txt" specifically, not
-    # just any file link: seed.rb (OPM-360) seeds two rows on purpose --
+    # just any file link: seed.rb seeds two rows on purpose --
     # "seed-file-link-deletable.txt" is the one
     # tests/integration/test_storages.py::test_delete_file_link_deletes_seeded_link
     # actually destroys via delete_file_link's successful-delete path. Picking

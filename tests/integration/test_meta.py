@@ -36,7 +36,7 @@ async def test_get_instance_configuration(client: OpenProjectClient) -> None:
 
 
 async def test_get_current_user_is_consistent_across_repeated_calls(client: OpenProjectClient) -> None:
-    """OPM-438: get_current_user is cached for the process lifetime -- the
+    """get_current_user is cached for the process lifetime -- the
     second call must return identical data to the first (same object
     reference within one client isn't asserted here, only value equality,
     since the fixture's client already lives for the whole test)."""
@@ -48,7 +48,7 @@ async def test_get_current_user_is_consistent_across_repeated_calls(client: Open
 
 
 async def test_get_instance_configuration_is_consistent_across_repeated_calls(client: OpenProjectClient) -> None:
-    """OPM-438: get_instance_configuration is cached for the process
+    """get_instance_configuration is cached for the process
     lifetime -- repeated calls must return identical data."""
     first = await client.get_instance_configuration()
     second = await client.get_instance_configuration()
@@ -57,7 +57,7 @@ async def test_get_instance_configuration_is_consistent_across_repeated_calls(cl
 
 
 async def test_list_statuses_is_consistent_across_repeated_calls(client: OpenProjectClient) -> None:
-    """OPM-438: list_statuses is cached for the process lifetime."""
+    """list_statuses is cached for the process lifetime."""
     first = await client.list_statuses()
     second = await client.list_statuses()
     assert first.count == second.count
@@ -65,7 +65,7 @@ async def test_list_statuses_is_consistent_across_repeated_calls(client: OpenPro
 
 
 async def test_list_priorities_is_consistent_across_repeated_calls(client: OpenProjectClient) -> None:
-    """OPM-438: list_priorities is cached for the process lifetime."""
+    """list_priorities is cached for the process lifetime."""
     first = await client.list_priorities()
     second = await client.list_priorities()
     assert first.count == second.count

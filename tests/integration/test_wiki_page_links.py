@@ -53,7 +53,7 @@ verification call hits the exact same broken collection endpoint above, so
 delete is currently unusable whenever a link actually exists to delete --
 this is the correct tradeoff (fail closed/unavailable rather than silently
 reintroducing the authorization bypass) and is expected to resolve itself
-once OPM-399/OP-19928 is fixed upstream, with no client-side code change
+once OP-19928 is fixed upstream, with no client-side code change
 needed.
 """
 
@@ -147,10 +147,9 @@ async def test_create_wiki_page_link_denies_work_package_outside_write_allowlist
     reason="Upstream OpenProject bug: Wikis::PageLinkMetadataService#enrich_models "
     "raises a Postgres syntax error whenever at least one wiki page link exists "
     "for the queried work package (see module docstring). Reported upstream; "
-    "un-xfail once fixed. strict=False (2026-08-15): observed passing against a "
-    "locally-pulled 17.7.1 image after being live-verified broken on 17.7.1 "
-    "earlier -- the 17.7.1 tag itself appears mutable upstream, so this can flip "
-    "either way per-pull until the fix's actual release is confirmed via the "
+    "un-xfail once fixed. strict=False: the 17.7.1 image tag appears mutable "
+    "upstream, so a locally-pulled 17.7.1 can pass or fail this case depending "
+    "on when it was pulled, until the fix's actual release is confirmed via the "
     "monitored PR (opf/openproject#24770 / OP-19928).",
     strict=False,
 )

@@ -405,7 +405,7 @@ async def test_list_all_resolves_work_package_id_and_filters_by_entity() -> None
 async def test_list_all_follows_time_entries_href_when_work_package_provides_one() -> None:
     """A work package that DOES supply _links.timeEntries.href (OpenProject's
     own pre-built, version-correct filter) is followed directly instead of
-    falling back to the global scan -- this is what OPM-375/dim-c-01 adds."""
+    falling back to the global scan."""
     api = _FakeTimeEntryApi(
         records=[
             _summary(1, entity_type="WorkPackage", entity_id=42),

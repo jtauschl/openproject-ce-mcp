@@ -87,8 +87,7 @@ def test_raise_for_status_403_embedded_token_mention_does_not_misclassify() -> N
 
 
 def test_raise_for_status_multiple_errors_surfaces_embedded_detail_messages() -> None:
-    """Live-verified regression guard (2026-08-13, real 17.7.1 instance): a
-    MultipleErrors HAL payload's top-level `message` alone
+    """A MultipleErrors HAL payload's top-level `message` alone
     ("Multiple field constraints have been violated.") is useless -- the real
     per-field detail lives in `_embedded.errors[]`. Without this, a caller
     could not tell an Enterprise-gate rejection apart from any other

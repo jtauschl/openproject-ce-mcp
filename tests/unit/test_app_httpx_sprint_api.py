@@ -74,7 +74,7 @@ async def test_list_all_requests_the_sprints_endpoint() -> None:
 
 @pytest.mark.asyncio
 async def test_list_all_skips_an_element_with_a_missing_id() -> None:
-    """Regression test for the has_usable_id unification (OPM-376): list_*
+    """Regression test for the has_usable_id unification: list_*
     must not raise on one malformed element among otherwise well-formed
     ones -- skip it, don't fail every other sprint."""
 

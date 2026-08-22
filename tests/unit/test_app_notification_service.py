@@ -80,7 +80,7 @@ def _work_package_project_allowed_from(allowed_hrefs: set[str]):
 
 
 def _work_package_project_allowed_bulk_from(allowed_hrefs: set[str], *, errors: dict[str, Exception] | None = None):
-    """Fake `WorkPackageProjectAllowedBulkCheck` (OPM-379/F3): mirrors
+    """Fake `WorkPackageProjectAllowedBulkCheck`: mirrors
     `WorkPackageResolver.project_links_allowed`'s dedupe/cache/only-bools-
     cached contract closely enough for Service-level tests. `calls` records
     each bulk invocation's deduped href list (in order) -- concurrency itself
@@ -324,7 +324,7 @@ async def test_list_all_reports_not_truncated_under_restrictive_scope_when_genui
 
 @pytest.mark.asyncio
 async def test_list_all_not_truncated_when_exactly_limit_allowed_matches_exist_under_restrictive_scope() -> None:
-    """Regression test for OPM-379/F3 Korrektur 6c: `_rescan_and_skip`
+    """Regression test: `_rescan_and_skip`
     previously set `truncated=True` as soon as `len(results) >= limit` was
     reached MID-PAGE, WITHOUT the `limit + 1` lookahead every sibling scan
     helper (`fetch_bounded_and_paginate`/`scan_and_paginate`/

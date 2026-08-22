@@ -510,8 +510,8 @@ async def test_parse_form_populates_the_allowed_values_cache_on_a_miss() -> None
 async def test_parse_form_two_different_hrefs_never_share_a_cache_entry() -> None:
     """Distinct hrefs (e.g. one work package's update-path assignee scope vs.
     another's) must never collide in the cache -- this is the correctness
-    property the href-keyed design exists for (see OPM-439's self-review:
-    a (project_id, field_key) key would have been too coarse for the
+    property the href-keyed design exists for (a (project_id, field_key)
+    key would have been too coarse for the
     update path, where the href is scoped to the individual work package)."""
     requested_paths = []
 
@@ -652,7 +652,7 @@ async def test_post_comment_builds_params_and_body() -> None:
 
 
 # ---------------------------------------------------------------------------
-# OPM-94: custom_fields / custom_comments read-value exposure
+# custom_fields / custom_comments read-value exposure
 # ---------------------------------------------------------------------------
 
 
@@ -735,7 +735,7 @@ def test_custom_fields_multi_value_link_format_from_links() -> None:
 
 def test_custom_fields_empty_single_value_link_kept_as_none_not_omitted() -> None:
     """An empty single-value link can render as {href: null, title: null}
-    (per OPM-94 §2) -- this is a genuine, interpretable dict shape (a link
+    -- this is a genuine, interpretable dict shape (a link
     with no value), so it normalizes to None via _link_title and is KEPT,
     not omitted."""
     payload = _wp_payload()

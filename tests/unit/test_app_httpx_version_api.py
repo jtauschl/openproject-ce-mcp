@@ -73,7 +73,7 @@ async def test_list_global_hits_unscoped_endpoint_and_has_no_server_total() -> N
 
 @pytest.mark.asyncio
 async def test_list_for_project_skips_an_element_with_a_missing_id() -> None:
-    """Regression test for the has_usable_id unification (OPM-376): list_*
+    """Regression test for the has_usable_id unification: list_*
     must not raise on one malformed element among otherwise well-formed
     ones -- skip it, don't fail every other version."""
 
@@ -142,8 +142,8 @@ async def test_create_form_posts_to_form_endpoint_and_reports_validation_errors(
 
 @pytest.mark.asyncio
 async def test_create_form_validation_errors_prefer_raw_over_message() -> None:
-    """Regression test for the normalize_form_validation_errors unification
-    (OPM-376): this adapter's validation-error shape must still try
+    """Regression test for the normalize_form_validation_errors unification:
+    this adapter's validation-error shape must still try
     formattable-text extraction (raw/html) BEFORE falling back to
     entry["message"] -- pins the behavior against an accidental switch to
     the other, message-first shape Board/Membership/User use.

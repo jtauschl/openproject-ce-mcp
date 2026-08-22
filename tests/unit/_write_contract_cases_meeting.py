@@ -1,5 +1,5 @@
 """Write/delete-tool behavioral-contract cases for the Meetings domain
-(5 sub-resources, OPM-154): Meetings, Meeting Agenda Items, Meeting
+(5 sub-resources): Meetings, Meeting Agenda Items, Meeting
 Outcomes, Meeting Sections, Recurring Meetings + Occurrences.
 
 Sibling modules import this as `from _write_contract_cases_meeting import

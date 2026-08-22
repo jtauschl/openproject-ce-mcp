@@ -1,4 +1,4 @@
-"""Integration tests for storages/project_storages (OPM-179).
+"""Integration tests for storages/project_storages.
 
 Requires the Nextcloud Docker fixture: `docker/test/up.sh 177nc` (sets
 SEED_NEXTCLOUD_STORAGE=1, which seeds a Storages::NextcloudStorage +
@@ -41,9 +41,8 @@ the fixture commit's message). This means:
   This project's own seed fixture (`docker/test/seed.rb`) sets
   `host: "http://nextcloud/"` -- plain HTTP, non-localhost -- which
   `SecureContextUriValidator` always rejects (`url_not_secure_context` /
-  "Host is not providing a Secure Context"). Verified live against 17.7.2
-  (2026-08-17, OPM-429): a name-only PATCH against the seeded storage
-  reliably 422s with this error, confirming it is not client-side host
+  "Host is not providing a Secure Context"). A name-only PATCH against the
+  seeded storage reliably 422s with this error, confirming it is not client-side host
   re-injection and not a version regression -- it is the seed fixture's own
   host value failing an always-on server-side validator, independent of the
   actual PATCH body. The Docker Nextcloud fixture has no TLS termination, so
@@ -119,7 +118,7 @@ async def test_update_storage_rename_rejected_by_seeded_insecure_host(client: Op
     PATCH. The seed fixture's `http://nextcloud/` host is plain HTTP on a
     non-localhost hostname, which `SecureContextUriValidator` always rejects
     -- so even this no-op-on-host rename 422s. See the module docstring
-    (OPM-429) for the full explanation."""
+    for the full explanation."""
     listed = await client.list_storages()
     seed = next(s for s in listed.results if s.name == "Seed Nextcloud Storage")
 
@@ -129,7 +128,7 @@ async def test_update_storage_rename_rejected_by_seeded_insecure_host(client: Op
 
 
 async def test_delete_file_link_deletes_seeded_link(client: OpenProjectClient, test_project: str) -> None:
-    """delete_file_link's successful-delete path (OPM-360) -- previously only
+    """delete_file_link's successful-delete path -- previously only
     covered by tests/integration/test_write_denials.py's denial check, which
     itself skips whenever no file link happens to exist. seed.rb's
     "seed-file-link-deletable.txt" row exists specifically for this test to
@@ -175,9 +174,7 @@ async def test_create_storage_one_drive_rejected_without_enterprise_token(
     EnterpriseToken.allows_to?(:one_drive_sharepoint_file_storage), which a
     Community Edition instance never satisfies.
 
-    Live-verified against a real 17.7.1 instance (2026-08-13, during a
-    5-Docker-version integration sweep): even a syntactically valid GUID
-    tenant_id (matching OneDriveContract's own
+    Even a syntactically valid GUID tenant_id (matching OneDriveContract's own
     /\\A(?:[a-f0-9]{8}-...|consumers)\\z/i regex, confirmed against source)
     still triggers a SECOND validation error alongside the Enterprise-gate
     one ("Directory (tenant) ID is invalid.", root cause not identified --

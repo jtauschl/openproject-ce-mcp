@@ -43,7 +43,7 @@ class CollectionResult:
 
 
 WriteResultState = Literal["rejected", "invalid", "preview", "confirmed"]
-"""Confirm-gated write/delete outcome (OPM-373 Phase 3, replaces the former
+"""Confirm-gated write/delete outcome (replaces the former
 confirmed/requires_confirmation boolean pair):
 - "rejected": confirm=False, payload invalid. No mutation was committed.
   Fix the payload, then retry with confirm=true.
@@ -69,8 +69,8 @@ class ConfirmationHeader:
     batch-shaped, not a single confirm-gated action, and keeps its own
     confirmed/requires_confirmation pair unchanged.
 
-    `state` replaces the former confirmed/requires_confirmation pair (OPM-373
-    Phase 3) -- see WriteResultState. `ready` is fully derivable from `state`
+    `state` replaces the former confirmed/requires_confirmation pair --
+    see WriteResultState. `ready` is fully derivable from `state`
     (`state in ("preview", "confirmed")`) but is kept as its own field: it is
     read directly by callers (e.g. work_package_service.py's
     `_bulk_item_result`) and lets a consumer check "did this succeed
@@ -1076,8 +1076,8 @@ class QueriedRelationPerspective:
     """Caller-relative reading of a relation's stored type/from_id/to_id,
     from the point of view of one specific work package (the one a caller
     queried relations FOR). Purely derived, additive: never changes type/
-    from_id/to_id, which stay OpenProject's raw, perspective-stable values
-    (OPM-193). Only present when a query anchor exists (list_for_work_package/
+    from_id/to_id, which stay OpenProject's raw, perspective-stable values.
+    Only present when a query anchor exists (list_for_work_package/
     get_work_package_relations); absent (None on the summary) for a global,
     unanchored list_all() result, where no single work package is "the one
     being queried" to read the relation relative to.

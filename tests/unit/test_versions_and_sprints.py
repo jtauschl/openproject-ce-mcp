@@ -757,7 +757,7 @@ async def test_list_versions_global_backfills_after_allowlist_filter() -> None:
     assert [v.id for v in page.results] == [2, 4]
     assert page.count == 2
     # total is only the count returned on THIS page, not an exact count of
-    # the full allowlist-filtered collection -- OPM-373 Phase 5's
+    # the full allowlist-filtered collection -- this reflects a deliberate
     # total-contract change (ported from release/0.3.6).
     assert page.total == 2
     assert page.truncated is True
@@ -936,7 +936,7 @@ async def test_list_versions_global_search_filters_by_name_substring() -> None:
 
 @pytest.mark.asyncio
 async def test_list_versions_global_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    """Regression: a naive scan implementation can set
     truncated=True as soon as `limit` allowed items are collected, without
     checking whether a matching version actually exists beyond that window."""
     import dataclasses
@@ -1085,7 +1085,7 @@ async def test_list_sprints_backfills_after_allowlist_filter() -> None:
     assert [s.id for s in page.results] == [2, 4]
     assert page.count == 2
     # total is a lower bound (len(results) on this page), not an exact count of
-    # the full allowlist-filtered collection -- OPM-373 Phase 5's total-contract
+    # the full allowlist-filtered collection -- this reflects a deliberate total-contract
     # change (ported from release/0.3.6), same convention as list_relations.
     assert page.total == 2
     assert page.truncated is True
@@ -1157,7 +1157,7 @@ async def test_list_project_sprints_backfills_after_allowlist_filter() -> None:
     assert [s.id for s in page.results] == [2, 4]
     assert page.count == 2
     # total is a lower bound (len(results) on this page), not an exact count of
-    # the full allowlist-filtered collection -- OPM-373 Phase 5's total-contract
+    # the full allowlist-filtered collection -- this reflects a deliberate total-contract
     # change (ported from release/0.3.6), same convention as list_relations.
     assert page.total == 2
     assert page.truncated is True
@@ -1168,7 +1168,7 @@ async def test_list_project_sprints_backfills_after_allowlist_filter() -> None:
 
 @pytest.mark.asyncio
 async def test_list_sprints_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    """Regression: a naive scan implementation can set
     truncated=True as soon as `limit` allowed items are collected, without
     checking whether a matching sprint actually exists beyond that window."""
     requested_offsets: list[str] = []

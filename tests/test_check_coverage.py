@@ -50,7 +50,7 @@ def test_client_resources_scans_app_adapters_directory(tmp_path, monkeypatch):
     # since the layered app/ architecture migration) -- a resource reached
     # only through an adapter's self._transport.*_json(...) call, with no
     # matching call site in client.py itself, was silently undercounted as
-    # unused (OPM-430).
+    # unused.
     synthetic_client = tmp_path / "client.py"
     synthetic_client.write_text("")
     monkeypatch.setattr(check_coverage, "CLIENT", synthetic_client)
@@ -73,7 +73,7 @@ def test_client_resources_detects_request_raw_verb_calls(tmp_path, monkeypatch):
     # "workspaces" (project favorite add/remove) is reached only via
     # self._transport.request_raw("POST"/"DELETE", path, ...) -- a third
     # call-site shape distinct from the *_json(...) helpers, which would
-    # otherwise silently undercount it as unused (OPM-430).
+    # otherwise silently undercount it as unused.
     synthetic_client = tmp_path / "client.py"
     synthetic_client.write_text("")
     monkeypatch.setattr(check_coverage, "CLIENT", synthetic_client)
@@ -97,7 +97,7 @@ def test_client_resources_detects_post_raw_json_calls(tmp_path, monkeypatch):
     # path in a local variable first, which this scan can't resolve (see
     # _client_resources's docstring) -- this test instead isolates the
     # regex itself against a literal path, so the post_raw_json match arm
-    # added for OPM-430 has a direct regression test independent of
+    # has a direct regression test independent of
     # whether any real call site happens to use a literal.
     synthetic_client = tmp_path / "client.py"
     synthetic_client.write_text("")

@@ -264,7 +264,7 @@ async def test_list_for_work_package_resolves_anchor_and_sends_involved_filter()
 @pytest.mark.asyncio
 async def test_list_all_never_populates_queried_perspective() -> None:
     """No single anchor work package exists for an instance-wide listing --
-    queried_perspective must stay None rather than guess one side (OPM-214)."""
+    queried_perspective must stay None rather than guess one side."""
     api = _FakeRelationApi()
     settings = dataclasses.replace(make_settings(), read_projects=("*",))
     service = _service(api=api, settings=settings)
@@ -277,7 +277,7 @@ async def test_list_all_never_populates_queried_perspective() -> None:
 @pytest.mark.asyncio
 async def test_list_for_work_package_stamps_perspective_from_the_from_side() -> None:
     """Anchor == from_id: direction is "from", effective_type equals the
-    stored type unchanged (OPM-214)."""
+    stored type unchanged."""
     record = _record(1, summary=_summary(1, relation_type="blocks", from_id=10, to_id=11))
     api = _FakeRelationApi(records=[record])
     resolve = _resolve_work_package_id_ok(10)
@@ -299,7 +299,7 @@ async def test_list_for_work_package_stamps_perspective_from_the_from_side() -> 
 async def test_list_for_work_package_stamps_perspective_from_the_to_side() -> None:
     """Anchor == to_id: direction is "to", effective_type flips to the
     stored type's reverse label ("blocks" read from the blocked side reads
-    as "blocked") (OPM-214)."""
+    as "blocked")."""
     record = _record(1, summary=_summary(1, relation_type="blocks", from_id=10, to_id=11))
     api = _FakeRelationApi(records=[record])
     resolve = _resolve_work_package_id_ok(11)
@@ -322,8 +322,7 @@ async def test_list_for_work_package_populates_predecessor_successor_only_for_fo
     """precedes/follows is OpenProject's only relation-type pair with a
     genuine temporal-scheduling direction (Relation#predecessor_id/
     successor_id upstream) -- predecessor_id/successor_id must be populated
-    for a stored "follows" relation and stay None for every other type
-    (OPM-214)."""
+    for a stored "follows" relation and stay None for every other type."""
     record = _record(1, summary=_summary(1, relation_type="follows", from_id=10, to_id=11))
     api = _FakeRelationApi(records=[record])
     resolve = _resolve_work_package_id_ok(10)
@@ -352,7 +351,7 @@ async def test_list_for_work_package_treats_a_stored_precedes_type_as_unmapped()
     change this client doesn't know about yet), effective_type falls back to
     the raw type unchanged on both sides, and predecessor_id/successor_id
     stay None, rather than guessing a direction this client has never
-    verified for that literal stored type (OPM-214)."""
+    verified for that literal stored type."""
     record = _record(1, summary=_summary(1, relation_type="precedes", from_id=10, to_id=11))
     api = _FakeRelationApi(records=[record])
     resolve = _resolve_work_package_id_ok(10)
@@ -376,7 +375,7 @@ async def test_list_for_work_package_omits_perspective_when_from_id_or_to_id_hid
     hiding "from_id"/"to_id" via OPENPROJECT_HIDE_RELATION_FIELDS must
     suppress queried_perspective entirely, not just the top-level
     from_id/to_id fields, or the hidden id would leak back out through the
-    nested field (OPM-214 follow-up: found by independent review)."""
+    nested field."""
     record = _record(1, summary=_summary(1, relation_type="follows", from_id=10, to_id=11))
     api = _FakeRelationApi(records=[record])
     resolve = _resolve_work_package_id_ok(10)
@@ -418,7 +417,7 @@ async def test_list_for_work_package_omits_perspective_when_only_to_id_hidden() 
 async def test_list_for_work_package_leaves_perspective_none_when_anchor_is_neither_side() -> None:
     """Defensive: a relation whose from_id/to_id don't actually involve the
     queried anchor (shouldn't happen via the real `involved` server filter,
-    but stay safe rather than mislabel a direction) (OPM-214)."""
+    but stay safe rather than mislabel a direction)."""
     record = _record(1, summary=_summary(1, relation_type="blocks", from_id=10, to_id=11))
     api = _FakeRelationApi(records=[record])
     resolve = _resolve_work_package_id_ok(99)
@@ -472,7 +471,7 @@ async def test_list_all_checks_both_hrefs_and_reuses_one_cache() -> None:
 
 @pytest.mark.asyncio
 async def test_list_all_swallows_to_side_exception_when_from_side_already_denied() -> None:
-    """OPM-379/F3 Korrektur 3: with bulk resolution, a relation's `to` href is
+    """With bulk resolution, a relation's `to` href is
     now speculatively resolved even when `from` is already denied -- the old
     sequential control flow would never have checked `to` at all in that
     case. If `to`'s speculative resolution fails (e.g. a transient 5xx), that

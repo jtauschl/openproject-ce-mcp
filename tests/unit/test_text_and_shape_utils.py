@@ -140,7 +140,7 @@ def test_extract_formattable_text_with_meta_falls_back_to_html_when_raw_is_empty
 def test_extract_formattable_text_with_meta_default_collapses_newlines() -> None:
     # Default preserve_newlines=False must collapse multi-line raw text --
     # this is the shape every non-newline-preserving adapter (Project,
-    # Time Entry, Version) relies on after the OPM-376 unification.
+    # Time Entry, Version) relies on after the extraction unification.
     value = {"raw": "Line one\n\nLine two"}
 
     text, _, _ = _extract_formattable_text_with_meta(value, limit=None)
@@ -920,7 +920,7 @@ async def test_get_work_package_relations_paginates_allowed_results() -> None:
     page1 = await client.get_work_package_relations(10, offset=1, limit=2)
     assert [r.to_id for r in page1.results] == [11, 12]
     # total is a lower bound (len(results) on this page), not an exact count
-    # of the full ACL-filtered collection -- OPM-373 Phase 5's total-contract
+    # of the full ACL-filtered collection -- this reflects a deliberate total-contract
     # change.
     assert page1.total == 2
     assert page1.next_offset == 2

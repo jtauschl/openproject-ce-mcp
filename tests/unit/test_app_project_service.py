@@ -624,7 +624,7 @@ async def test_update_allows_reparent_into_a_project_inside_write_allowlist() ->
 
 @pytest.mark.asyncio
 async def test_update_builds_parent_href_from_this_service_s_own_api_prefix() -> None:
-    """Regression test for the _api_href unification (OPM-376): the parent
+    """Regression test for the _api_href unification: the parent
     link's href must use THIS service's own api_prefix, not a hardcoded
     "/api/v3/" -- a non-default prefix here would silently pass if the
     prefix argument were ever dropped.
@@ -807,7 +807,7 @@ async def test_copy_commits_and_derives_job_status_id_without_exposing_the_url()
     assert result.state == "confirmed"
     # job_status_id is derived from the job_status_url internally (get_job_status
     # is the intended follow-up call), but the redundant url itself is no
-    # longer part of the response -- OPM-373 token-reduction bugfix.
+    # longer part of the response -- a deliberate token-reduction bugfix.
     assert result.job_status_id == "1"
     assert not hasattr(result, "job_status_url")
     assert len(api.commit_copy_calls) == 1

@@ -1470,8 +1470,8 @@ async def test_get_custom_option() -> None:
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
-    # Extended Metadata migration (19th domain, 2026-07-27): see the
-    # comment in test_help_texts_and_working_days above.
+    # Gated by the same "extended" read-enablement scope as
+    # test_help_texts_and_working_days above.
     settings = dataclasses.replace(make_settings(), enable_metadata_tools=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 

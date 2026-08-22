@@ -730,9 +730,8 @@ async def test_update_time_entry_until_rejects_end_time_before_start_time() -> N
 @pytest.mark.asyncio
 async def test_create_time_entry_tool_accepts_day_based_hours() -> None:
     # hours shares ISO8601_DURATION_RE with estimated_time/remaining_time/duration
-    # on work packages; day-based values must be accepted here too. Live-verified
-    # 2026-07-17 against real OpenProject 16.6: a time entry with hours="P1D" was
-    # created successfully and echoed back unchanged.
+    # on work packages; day-based values must be accepted here too — a time
+    # entry with hours="P1D" is created successfully and echoed back unchanged.
     class StubClient:
         async def create_time_entry(self, **kwargs):
             return kwargs

@@ -244,7 +244,7 @@ async def test_list_work_packages_tool_rejects_non_integer_due_within_days() -> 
 
 @pytest.mark.asyncio
 async def test_list_work_packages_tool_passes_custom_field_filters_to_client() -> None:
-    # OPM-109: confirms the tool actually forwards the validated/normalized
+    # Confirms the tool actually forwards the validated/normalized
     # custom_field_filters through to OpenProjectClient.list_work_packages --
     # a gap where the tool signature could silently drop the parameter before
     # it reaches client.py would otherwise go undetected by the Service-layer

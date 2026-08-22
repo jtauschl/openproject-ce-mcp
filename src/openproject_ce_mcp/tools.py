@@ -682,7 +682,7 @@ def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
 # Resolves every classified tool name (via @register_tool below) to its
 # actual function object. Explicit registration, not module-namespace
 # introspection, so this survives tools.py eventually being split into
-# per-domain files (OPM-395) without needing to change again -- each
+# per-domain files without needing to change again -- each
 # function carries its own registration with it wherever it's defined.
 _ToolFunc = TypeVar("_ToolFunc", bound=Callable[..., Any])
 _TOOL_FUNCTIONS: dict[str, Callable[..., Any]] = {}
@@ -1856,8 +1856,8 @@ async def list_work_package_wiki_links(
     Requires OpenProject 17.6+ — the wiki_page_links endpoint does not exist
     on earlier versions and returns a [server_error].
 
-    Known OpenProject server bug (confirmed on 16.6/17.6/17.7.1, tracked as
-    OPM-399): this call returns a [server_error] whenever the work package
+    Known OpenProject server bug (confirmed on 16.6/17.6/17.7.1): this call
+    returns a [server_error] whenever the work package
     actually has one or more wiki page links — only the empty-list case
     reliably works. create_work_package_wiki_link/delete_work_package_wiki_link
     are unaffected and fully functional.
@@ -1916,8 +1916,8 @@ async def delete_work_package_wiki_link(
     """Prepare or delete a work package's wiki page link; only deletes when
     called again with confirm=true.
 
-    Known OpenProject server bug (confirmed on 16.6/17.6/17.7.1, tracked as
-    OPM-399): this call currently fails with a [server_error] whenever the
+    Known OpenProject server bug (confirmed on 16.6/17.6/17.7.1): this call
+    currently fails with a [server_error] whenever the
     given link actually exists — the same bug that breaks
     list_work_package_wiki_links, since this tool verifies link_id actually
     belongs to work_package_id before deleting (a real authorization check,
@@ -6146,7 +6146,7 @@ def _return_model(fn: Any) -> type | None:
     ``from __future__ import annotations`` makes the return annotation a string,
     so we resolve it against ``fn``'s own defining module's namespace
     (``fn.__globals__``, not the caller's) -- this stays correct however
-    tools.py is eventually split across per-domain files (OPM-395), since a
+    tools.py is eventually split across per-domain files, since a
     tool function moved to another module still resolves against its new
     home rather than silently returning None. Callers must pass the actual
     tool function, not a wrapper around it -- functools.wraps() copies
@@ -6302,8 +6302,8 @@ def _clearable_ref(
 
 # Matches either "cf_<N>" (CustomField#column_name, the actual OpenProject
 # filter key) or "customField<N>" (CustomField#attribute_name(:camel_case),
-# the JSON/PATCH key used by the read/write value paths) -- OPM-109 accepts
-# both forms transparently and always normalizes to "cf_<N>" on the wire, so
+# the JSON/PATCH key used by the read/write value paths). Both forms are
+# accepted transparently and always normalized to "cf_<N>" on the wire, so
 # callers never need to know the two are different strings for the same
 # field. The id itself must be a positive integer with no leading zero
 # (OpenProject's own CustomField ids start at 1; "cf_0"/"cf_01" cannot refer
@@ -6504,11 +6504,10 @@ def _validate_optional_text_limit(value: int | None) -> int | None:
     return limit
 
 
-# Verified live against a real OpenProject 17.5 instance (curl against
-# GET /work_packages?sortBy=.../groupBy=...) and cross-checked against
-# OpenProject's own query property/project-phase select definitions -- these
-# are the standard (non-custom-field) attributes OpenProject actually
-# accepts, not a guess at plausible names. assignee/assignedTo/
+# Cross-checked against OpenProject's own query property/project-phase select
+# definitions -- these are the standard (non-custom-field) attributes
+# OpenProject actually accepts via GET /work_packages?sortBy=.../groupBy=...,
+# not a guess at plausible names. assignee/assignedTo/
 # percentage_done etc. are accepted aliases alongside the canonical Rails
 # attribute name; both are included here rather than normalized, since the
 # client sends the field straight through unchanged.

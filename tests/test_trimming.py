@@ -154,7 +154,7 @@ def test_returns_trimmable_detects_list_write_bulk() -> None:
 
 
 def test_returns_trimmable_false_for_single_entity_reads() -> None:
-    # get_work_package is NOT here (OPM-373 Phase 4): it now has `select`,
+    # get_work_package is NOT here: it now has `select`,
     # so _returns_trimmable is True for it -- see
     # test_returns_trimmable_true_for_select_capable_single_entity_and_list_tools.
     assert _returns_trimmable(get_status) is False
@@ -196,7 +196,7 @@ def test_none_valued_field_kept_explicit_when_not_elide_none() -> None:
     # results) are registered with elide_none=False, since there is no way
     # for a caller to ask for an elided field back. Simulate that policy
     # directly by passing elide_none=False explicitly -- WorkPackageDetail
-    # itself is select-capable now (via get_work_package, OPM-373 Phase 4),
+    # itself is select-capable now (via get_work_package),
     # but this test exercises the _to_payload mechanism in isolation, not
     # get_work_package's actual registered elide_none policy.
     detail = _wp_detail(priority=None, category=None, children=[])
@@ -209,8 +209,8 @@ def test_none_valued_field_kept_explicit_when_not_elide_none() -> None:
 def test_select_field_with_none_value_stays_explicit_null() -> None:
     # Requesting a field via select guarantees its presence, even when its
     # value is None -- this is how a caller distinguishes "unset" from "not
-    # requested". select trims either the top-level row list, or (since
-    # OPM-373 Phase 4) a bare top-level entity directly -- see
+    # requested". select trims either the top-level row list, or
+    # a bare top-level entity directly -- see
     # _to_payload's docstring. This test exercises the row-list case; a
     # list result is used to actually exercise _select_fields via the
     # per-row branch.
@@ -317,7 +317,7 @@ def test_validate_select_rejects_unknown_field_for_meeting_outcome() -> None:
 
 
 def test_meeting_list_tools_accept_select_in_their_signature() -> None:
-    """OPM-93/dim-442: these three tools previously had no select parameter at
+    """These three tools previously had no select parameter at
     all -- the tool() wrapper (see this module's docstring) derives
     elide_none from `"select" in inspect.signature(fn).parameters`, so this
     is the actual functional gate that determines whether the trimming
@@ -367,7 +367,7 @@ def test_validate_select_rejects_unknown_field_for_work_package_detail() -> None
         _validate_select(["bogus"], row_type=m.WorkPackageDetail)
 
 
-# ── OPM-94: select=["custom_fields"] round-trip ───────────────────────────────
+# ── select=["custom_fields"] round-trip ───────────────────────────────
 
 
 def test_select_custom_fields_keeps_only_that_field_on_list_row() -> None:
@@ -525,7 +525,7 @@ def test_trimmed_tools_have_no_output_schema() -> None:
         "bulk_create_work_packages",
         "update_relation",
         "get_work_packages",
-        # OPM-373 Phase 4: now select-capable, hence trimmed.
+        # now select-capable, hence trimmed.
         "get_work_package",
         "list_actions",
         "list_capabilities",
@@ -536,7 +536,7 @@ def test_trimmed_tools_have_no_output_schema() -> None:
 def test_untrimmed_tools_keep_output_schema() -> None:
     tools = _tools(create_app(_make_settings()))
     # get_work_package moved to test_trimmed_tools_have_no_output_schema above
-    # (OPM-373 Phase 4: it now has `select`, so it's trimmed unconditionally).
+    # (it now has `select`, so it's trimmed unconditionally).
     for name in ["get_status", "get_project"]:
         assert tools[name].output_schema is not None, name
 
@@ -551,7 +551,6 @@ def test_list_tools_expose_select_param() -> None:
         "get_work_packages",
         "bulk_create_work_packages",
         "bulk_update_work_packages",
-        # OPM-373 Phase 4.
         "get_work_package",
         "list_actions",
         "list_capabilities",
@@ -761,7 +760,7 @@ def test_hidden_field_stays_absent_even_when_selected() -> None:
     assert "id" in out["results"][0]
 
 
-# ── select on a bare top-level entity (OPM-373 Phase 4) ───────────────────────
+# ── select on a bare top-level entity ───────────────────────
 
 
 def test_top_level_select_trims_bare_dataclass_fields() -> None:
@@ -840,8 +839,8 @@ async def test_get_work_package_select_is_threaded_through_the_registered_wrappe
 
 
 def test_single_entity_read_keeps_schema_without_hide_config() -> None:
-    # get_work_package is no longer a valid example here (OPM-373 Phase 4:
-    # it's now select-capable, hence trimmed unconditionally) -- get_status
+    # get_work_package is no longer a valid example here (it's now
+    # select-capable, hence trimmed unconditionally) -- get_status
     # remains genuinely select-less and untrimmed absent hide-config.
     tools = _tools(create_app(_make_settings()))
     assert tools["get_status"].output_schema is not None
@@ -861,8 +860,8 @@ def test_single_entity_read_keeps_other_null_fields_when_hide_config_active() ->
     # start being elided as a side effect of field-hiding being on.
     # WorkPackageDetail is just this test's fixture type here -- it exercises
     # _to_payload directly, independent of get_work_package's own
-    # registration (which is now select-capable, elide_none=True, since
-    # OPM-373 Phase 4; unrelated to what this test verifies).
+    # registration (which is now select-capable, elide_none=True;
+    # unrelated to what this test verifies).
     detail = _wp_detail(priority=None, category=None)
     object.__setattr__(detail, "_hidden_keys", frozenset({"lock_version"}))
     out = _to_payload(detail, elide_none=False)

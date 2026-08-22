@@ -33,7 +33,7 @@ APP = SRC / "app"
 
 # Pre-existing httpx importers not migrated to the layered app/ tree: client.py's own httpx import is
 # now only used by its shared _get/_post/_request transport primitives and its two cross-service
-# coordinator methods (get_my_project_access, get_project_work_package_context -- see OPM-380/B4),
+# coordinator methods (get_my_project_access, get_project_work_package_context),
 # not by any per-domain logic (every domain method delegates to a Service); retry_transport.py is
 # wrapped-not-replaced by design; doctor.py/setup_cli.py are named, pre-existing exceptions.
 _PRE_EXISTING_HTTPX_IMPORTERS = {"client.py", "retry_transport.py", "doctor.py", "setup_cli.py"}
@@ -676,7 +676,7 @@ def test_board_service_binds_the_api_param_to_board_api_specifically() -> None:
 
 def test_meeting_service_binds_the_api_param_to_meeting_api_specifically() -> None:
     """Non-generalized regression test for the Meetings domain's exact
-    guarantee (OPM-154): the api param is MeetingApi exactly, not just "some
+    guarantee: the api param is MeetingApi exactly, not just "some
     Protocol". No MeetingResolver exists -- meeting_id is always a numeric
     value already validated by tools.py."""
     from openproject_ce_mcp.app.adapters.httpx_meeting_api import HttpxMeetingApi
@@ -780,7 +780,7 @@ def test_meeting_outcome_service_binds_its_three_dependencies_to_the_right_proto
 
 def test_recurring_meeting_service_binds_the_api_param_to_recurring_meeting_api_specifically() -> None:
     """Non-generalized regression test for the Recurring Meetings (+
-    Occurrences) domain's exact guarantee (OPM-154): the api param is
+    Occurrences) domain's exact guarantee: the api param is
     RecurringMeetingApi exactly, not just "some Protocol". No dedicated
     Resolver exists -- recurring_meeting_id is always a numeric value already
     validated by tools.py, and occurrences are addressed by start_time, not
@@ -860,7 +860,7 @@ def test_current_user_service_binds_the_api_param_to_current_user_api_specifical
     that seam is implemented independently by
     app/resolvers/current_user_resolver.py's CurrentUserResolver (see the
     type-pins on PrincipalResolver/WorkPackageService/TimeEntryService
-    below), not by this Service (OPM-380/D2)."""
+    below), not by this Service."""
     from openproject_ce_mcp.app.adapters.httpx_current_user_api import HttpxCurrentUserApi
     from openproject_ce_mcp.app.ports.current_user_api import CurrentUserApi
     from openproject_ce_mcp.app.services.current_user_service import CurrentUserService
@@ -894,7 +894,7 @@ def test_principal_resolver_binds_the_api_param_to_principal_api_specifically() 
     """Sibling check for PrincipalResolver (not a Service, but follows the
     same Port-binding discipline): the api param is PrincipalApi exactly,
     not just "some Protocol", and not the concrete adapter. Also pins its
-    current_user param to the CurrentUserLookup seam (see OPM-380/D2:
+    current_user param to the CurrentUserLookup seam (see:
     PrincipalResolver depends on CurrentUserResolver's implementation of
     this seam, not on client.py's get_current_user bound method)."""
     from openproject_ce_mcp.app.adapters.httpx_principal_api import HttpxPrincipalApi
@@ -1309,13 +1309,13 @@ def test_work_package_resolver_methods_structurally_satisfy_the_seam_protocols()
 
 
 def test_f3_allowlist_semaphore_is_structurally_separate_from_f6_batch_read_semaphore() -> None:
-    """OPM-379/F3's bulk-allowlist-resolution semaphore
+    """The bulk-allowlist-resolution semaphore
     (`WorkPackageResolver._allowlist_semaphore`) must be a genuinely SEPARATE
-    `asyncio.Semaphore` instance from OPM-379/F6's
+    `asyncio.Semaphore` instance from the batch-read semaphore,
     `WorkPackageService._batch_read_semaphore` -- sharing one would deadlock:
-    `get_batch()` holds F6 permits while its own nested calls to
+    `get_batch()` holds batch-read permits while its own nested calls to
     `get()` -> `_filter_hierarchy_allowlist()` wait on the SAME semaphore for
-    the F3 allowlist bulk-check, so a saturated batch could never release the
+    the allowlist bulk-check, so a saturated batch could never release the
     permit its own nested check is waiting for. Both are allowed to share the
     same numeric limit (10) -- that's not a contradiction, only object
     identity must differ. A pure numeric-value check would not have caught a
@@ -1534,7 +1534,7 @@ def test_reminder_service_binds_its_four_dependencies_to_the_right_protocols() -
 
     assert hints["work_package_project_allowed_bulk"] is WorkPackageProjectAllowedBulkCheck, (
         "ReminderService.__init__'s work_package_project_allowed_bulk param must be typed "
-        "WorkPackageProjectAllowedBulkCheck (OPM-379/F3)"
+        "WorkPackageProjectAllowedBulkCheck"
     )
     assert hints["work_package_project_allowed_bulk"] is not WorkPackageResolver, (
         "ReminderService.__init__'s work_package_project_allowed_bulk param must not be the concrete resolver class"
@@ -1572,7 +1572,7 @@ def test_notification_service_binds_the_api_param_to_notification_api_specifical
 
     assert hints["work_package_project_allowed_bulk"] is WorkPackageProjectAllowedBulkCheck, (
         "NotificationService.__init__'s work_package_project_allowed_bulk param must be typed "
-        "WorkPackageProjectAllowedBulkCheck (OPM-379/F3)"
+        "WorkPackageProjectAllowedBulkCheck"
     )
     assert hints["work_package_project_allowed_bulk"] is not WorkPackageResolver, (
         "NotificationService.__init__'s work_package_project_allowed_bulk param must not be the concrete resolver class"
@@ -1627,7 +1627,7 @@ def test_relation_service_binds_its_dependencies_to_the_right_protocols() -> Non
 
     assert hints["work_package_project_allowed_bulk"] is WorkPackageProjectAllowedBulkCheck, (
         "RelationService.__init__'s work_package_project_allowed_bulk param must be typed "
-        "WorkPackageProjectAllowedBulkCheck (OPM-379/F3)"
+        "WorkPackageProjectAllowedBulkCheck"
     )
     assert hints["work_package_project_allowed_bulk"] is not WorkPackageResolver, (
         "RelationService.__init__'s work_package_project_allowed_bulk param must not be the concrete resolver class"
@@ -1820,7 +1820,7 @@ def test_work_package_service_binds_the_api_param_to_work_package_api_specifical
 
     assert hints["work_package_project_allowed_bulk"] is WorkPackageProjectAllowedBulkCheck, (
         "WorkPackageService.__init__'s work_package_project_allowed_bulk param must be typed "
-        "WorkPackageProjectAllowedBulkCheck (OPM-379/F3)"
+        "WorkPackageProjectAllowedBulkCheck"
     )
     assert hints["work_package_project_allowed_bulk"] is not WorkPackageResolver, (
         "WorkPackageService.__init__'s work_package_project_allowed_bulk param must not be the concrete resolver class"
@@ -1865,17 +1865,17 @@ def test_work_package_service_binds_the_api_param_to_work_package_api_specifical
     )
 
     assert hints["current_user"] is CurrentUserLookup, (
-        "WorkPackageService.__init__'s current_user param must be typed CurrentUserLookup (OPM-380/D2: depends on "
+        "WorkPackageService.__init__'s current_user param must be typed CurrentUserLookup (depends on "
         "CurrentUserResolver's implementation of this seam, not on client.py's get_current_user bound method)"
     )
 
 
-# OPM-380/B4: the exact set of OpenProjectClient public methods allowed to contain real logic
+# The exact set of OpenProjectClient public methods allowed to contain real logic
 # instead of being a pure one-line delegation to a single Service. Lifecycle (initialize/aclose),
 # create_project/update_project's CLEAR-sentinel translation + identifier-cache sync, and
 # add_project_favorite/remove_project_favorite's shared-private-helper indirection are pre-existing,
-# understood minor deviations -- not orchestration logic, and out of B4's scope. get_my_project_access
-# and get_project_work_package_context are the two ticket-named cross-service coordinators (see the
+# understood minor deviations -- not orchestration logic, and out of scope here. get_my_project_access
+# and get_project_work_package_context are the two named cross-service coordinators (see the
 # section comment directly above them in client.py). A new method needing more than one Service call
 # must be added here explicitly, not silently left as a growing exception to the delegation pattern.
 _CLIENT_NON_DELEGATING_METHODS = frozenset(
@@ -1916,13 +1916,13 @@ def _is_pure_service_delegation(fn: ast.AsyncFunctionDef) -> bool:
 
 
 def test_client_public_methods_are_pure_delegations_except_named_coordinators() -> None:
-    """Locks in OPM-380/B4's finding: nearly every public method on
+    """Locks in the finding that nearly every public method on
     OpenProjectClient is a pure one-line delegation to a single Service, and
     the only methods allowed to deviate are the ones explicitly named in
     _CLIENT_NON_DELEGATING_METHODS above. A new method silently growing
     multi-Service orchestration logic inline (instead of either staying a
     pure delegation, or being added to the allowlist with a reason) now
-    fails CI immediately instead of drifting back toward the pre-B4 state
+    fails CI immediately instead of drifting back toward the earlier state
     where client.py was a second, undocumented orchestration layer."""
     tree = ast.parse((SRC / "client.py").read_text())
     class_node = next(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == "OpenProjectClient")
@@ -1937,8 +1937,7 @@ def test_client_public_methods_are_pure_delegations_except_named_coordinators() 
     assert not unexpected_non_delegating, (
         f"OpenProjectClient methods {unexpected_non_delegating} are not pure Service delegations and are not "
         "in _CLIENT_NON_DELEGATING_METHODS -- either simplify them back to a pure "
-        "`return await self._x_service.method(...)`, or add them to the allowlist above with a reason "
-        "(see OPM-380/B4)."
+        "`return await self._x_service.method(...)`, or add them to the allowlist above with a reason."
     )
 
     stale_allowlist_entries = [

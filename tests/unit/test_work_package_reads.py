@@ -1134,7 +1134,7 @@ async def test_search_work_packages_date_filters() -> None:
 
 @pytest.mark.asyncio
 async def test_list_work_packages_custom_field_filters_builds_cf_filter_end_to_end() -> None:
-    """OPM-109: end-to-end through the real OpenProjectClient/Service/httpx
+    """End-to-end through the real OpenProjectClient/Service/httpx
     adapter (not just a fake) -- confirms the actual wire payload sent to
     GET /api/v3/work_packages contains a cf_<N>-keyed filter fragment."""
     captured: dict[str, str] = {}

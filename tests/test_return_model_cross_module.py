@@ -6,7 +6,7 @@ plain string. `_return_model` looks that string up as a class name to decide
 whether a tool's result is a trimmable dataclass. Before this fix it looked
 the name up in tools.py's own `globals()` -- correct only because every tool
 function currently lives in tools.py itself. Once tools.py is eventually
-split into per-domain files (OPM-395), a tool defined elsewhere would still
+split into per-domain files, a tool defined elsewhere would still
 carry a correct annotation string, but the old code would search the wrong
 module and silently return None instead of the real model.
 

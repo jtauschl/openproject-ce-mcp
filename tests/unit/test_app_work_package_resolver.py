@@ -220,7 +220,7 @@ async def test_project_link_allowed_different_hrefs_are_cached_independently() -
     assert api.get_by_href_calls == [href_a, href_b]
 
 
-# --- project_links_allowed (OPM-379/F3) ---
+# --- project_links_allowed ---
 
 
 class _ConcurrencyTrackingWorkPackageLookupApi:
@@ -229,8 +229,8 @@ class _ConcurrencyTrackingWorkPackageLookupApi:
     counter, yields control (so overlapping calls actually interleave
     instead of running back-to-back within a single event-loop tick), then
     decrements. Mirrors `test_app_work_package_service.py`'s
-    `_ConcurrencyTrackingWorkPackageApi` (OPM-379/F6's equivalent test
-    double) for the analogous F3 concurrency-bound assertion."""
+    `_ConcurrencyTrackingWorkPackageApi` (the equivalent test
+    double for batch reads) for the analogous concurrency-bound assertion."""
 
     def __init__(self, records: dict[str, dict], *, delay: float = 0.0) -> None:
         self._records = records
@@ -257,7 +257,7 @@ class _ConcurrencyTrackingWorkPackageLookupApi:
 
 @pytest.mark.asyncio
 async def test_project_links_allowed_bounds_concurrency_to_the_semaphore_limit() -> None:
-    """Regression (OPM-379/F3): a naive `asyncio.gather` over every href with
+    """Regression: a naive `asyncio.gather` over every href with
     no cap could fire an unbounded number of simultaneous requests. The
     shared, instance-level `_allowlist_semaphore` must keep the observed peak
     at or below `_ALLOWLIST_BULK_CONCURRENCY` (10), while still proving
@@ -332,10 +332,10 @@ async def test_project_links_allowed_cache_hits_short_circuit_with_no_io() -> No
 @pytest.mark.asyncio
 async def test_project_links_allowed_separate_calls_do_not_share_a_cache() -> None:
     """Cross-call caching remains deliberately unavailable (pre-existing
-    security decision, unaffected by a1 vs a2 -- see OPM-379 plan notes: a
-    work package can change project at runtime, so a cached positive result
-    across calls risks stale authorization). Two calls with separate
-    WorkPackageAllowedContext instances must each fetch fresh."""
+    security decision: a work package can change project at runtime, so a
+    cached positive result across calls risks stale authorization). Two
+    calls with separate WorkPackageAllowedContext instances must each fetch
+    fresh."""
     href = "/api/v3/work_packages/1"
     resolver, api = _resolver({href: _wp_payload(1)})
 

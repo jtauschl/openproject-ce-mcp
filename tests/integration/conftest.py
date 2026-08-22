@@ -213,7 +213,7 @@ async def admin_write_disabled_client():
 @pytest.fixture
 async def hide_custom_fields_client():
     """A client with every custom field hidden (OPENPROJECT_HIDE_CUSTOM_FIELDS
-    equivalent, via a `cf_*` glob), for OPM-109's hidden-custom-field-filter
+    equivalent, via a `cf_*` glob), for the hidden-custom-field-filter
     rejection test -- read/write scope stays identical to the default
     integration client, only hide_custom_fields differs."""
     settings = _integration_settings()

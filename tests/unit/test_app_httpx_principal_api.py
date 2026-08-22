@@ -35,7 +35,7 @@ def test_normalize_principal_trims_and_falls_back_on_missing_name() -> None:
 
 @pytest.mark.asyncio
 async def test_list_principals_skips_an_element_with_a_missing_id() -> None:
-    """Regression test for the has_usable_id unification (OPM-376): list_*
+    """Regression test for the has_usable_id unification: list_*
     must not raise on one malformed element among otherwise well-formed
     ones -- skip it, don't fail every other principal. Principal previously
     had no collection-path test at all for this behavior."""

@@ -35,7 +35,7 @@ def _attachment_payload(attachment_id: int = 5, *, container_href: str | None = 
 
 @pytest.mark.asyncio
 async def test_list_for_work_package_requests_one_page_with_offset_and_page_size() -> None:
-    """OPM-379/F5: the Adapter now returns one page at a time (records, total)
+    """The Adapter now returns one page at a time (records, total)
     -- the Service scans multiple pages via scan_records_and_paginate,
     matching every other migrated list domain's shape (the Adapter no longer
     walks the whole collection itself)."""

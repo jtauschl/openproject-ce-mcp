@@ -32,8 +32,7 @@ def _record(reminder_id: int = 7, *, remindable_href: str | None = "/api/v3/work
 def _raw(reminder_id: int, *, remindable_href: str | None) -> dict:
     """A raw payload standing in for what fetch_page's `_embedded.elements`
     would contain -- `_FakeReminderApi.to_record` below turns this into a
-    ReminderRecord, mirroring the real Adapter's fetch_page/to_record split
-    (OPM-379/F5)."""
+    ReminderRecord, mirroring the real Adapter's fetch_page/to_record split."""
     links = {"remindable": {"href": remindable_href}} if remindable_href is not None else {}
     return {"id": reminder_id, "_links": links}
 
@@ -157,7 +156,7 @@ def _work_package_project_allowed_from(allowed_hrefs: set[str]):
 
 
 def _work_package_project_allowed_bulk_from(allowed_hrefs: set[str]):
-    """Fake `WorkPackageProjectAllowedBulkCheck` (OPM-379/F3): mirrors
+    """Fake `WorkPackageProjectAllowedBulkCheck`: mirrors
     `WorkPackageResolver.project_links_allowed`'s dedupe/cache/only-bools-
     cached contract closely enough for Service-level tests. `calls` records
     each bulk invocation's deduped href list (in order), for tests that need

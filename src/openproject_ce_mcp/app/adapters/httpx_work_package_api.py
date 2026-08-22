@@ -77,7 +77,7 @@ WORK_PACKAGE_ANCESTORS_LIMIT = 20
 
 # Caps the NUMBER of distinct customField<N> entries kept in custom_fields
 # (and, independently, the number of customComment<N> entries kept in
-# custom_comments -- see _extract_custom_comments). Per OPM-94.
+# custom_comments -- see _extract_custom_comments).
 CUSTOM_FIELD_VALUE_LIMIT = 50
 
 # Scalar-string length cap for string/link/date-format CF values and for
@@ -237,11 +237,11 @@ def _normalize_custom_field_entry(raw: Any, *, text_limit: int | None) -> tuple[
 def _extract_custom_fields(
     payload: dict[str, Any], links: dict[str, Any], *, text_limit: int | None
 ) -> tuple[dict[str, Any] | None, bool]:
-    """Build the `custom_fields` dict, applying every cap from OPM-94 §4/§5.
+    """Build the `custom_fields` dict, applying every cap described below.
 
     ``text_limit`` is threaded through to the Formattable/text-format branch
     of `_normalize_custom_field_entry` -- the SAME value the caller applies
-    to `description` in this normalization context, per OPM-94 §1.
+    to `description` in this normalization context.
 
     Normalize-first, THEN cap (fixes a blocking bug from an earlier draft):
     up to CUSTOM_FIELD_VALUE_LIMIT raw keys are normalized in ascending
@@ -311,8 +311,8 @@ def _extract_custom_comments(payload: dict[str, Any]) -> tuple[dict[str, str] | 
     is kept anyway (harmless, forward-compatible should a future OpenProject
     version ever add `comments: true` to WorkPackage) but will return
     `(None, False)` for every real WorkPackage payload today -- see
-    docker/test/seed.rb's OPM-94 custom-field seed block and this project's
-    OPM-94 implementation report for the full finding.
+    docker/test/seed.rb's custom-field seed block for the seeded data this
+    finding was verified against.
     """
     raw_entries = {
         key: value for key, value in payload.items() if key.startswith("customComment") and key[13:].isdigit()

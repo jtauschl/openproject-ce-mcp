@@ -254,7 +254,7 @@ async def test_list_types_skips_a_non_dict_element() -> None:
 
 @pytest.mark.asyncio
 async def test_list_statuses_accepts_a_numeric_string_id() -> None:
-    """Regression test for the has_usable_id unification (OPM-376): a
+    """Regression test for the has_usable_id unification: a
     string-typed numeric id (e.g. "7") is a usable id, not a malformed one."""
 
     async def handler(request: httpx.Request) -> httpx.Response:

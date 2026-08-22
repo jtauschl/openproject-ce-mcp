@@ -838,7 +838,7 @@ class OpenProjectClient:
             resolve_work_package_id=self._work_package_resolver.resolve_id,
         )
 
-        # Meetings (5 sub-resources, OPM-154). Meeting is constructed first --
+        # Meetings (5 sub-resources). Meeting is constructed first --
         # the other four sub-resources have no project of their own and
         # depend on MeetingApi as a cross-domain Port to resolve their
         # allowlist check through a parent Meeting (the precedent already
@@ -1234,8 +1234,8 @@ class OpenProjectClient:
     # get_my_project_access and get_project_work_package_context (further below)
     # are the ONLY public methods on this class that are not pure one-line
     # delegations to a single Service. Each combines several already-migrated
-    # Services/policies into one response shape that no single Service owns
-    # (OPM-380/B4). Every other public method here stays a pure
+    # Services/policies into one response shape that no single Service owns.
+    # Every other public method here stays a pure
     # `return await self._x_service.method(...)` delegation -- a new method
     # needing more than that belongs alongside these two, explicitly, not
     # silently mixed into the delegation methods around it.
@@ -1979,7 +1979,7 @@ class OpenProjectClient:
         return await self._github_gitlab_link_service.list_work_package_gitlab_merge_requests(work_package_id)
 
     # The other cross-service coordinator -- see get_my_project_access's
-    # header comment above (OPM-380/B4).
+    # header comment above.
     async def get_project_work_package_context(
         self,
         *,

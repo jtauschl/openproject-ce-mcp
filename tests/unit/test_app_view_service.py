@@ -239,7 +239,7 @@ class _PagedFakeViewApi:
 
 @pytest.mark.asyncio
 async def test_list_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    """Regression: a naive scan implementation can set
     truncated=True as soon as `limit` allowed items are collected, without
     checking whether a matching view actually exists beyond that window."""
     api = _PagedFakeViewApi({1: [_record(view_id=1)]})

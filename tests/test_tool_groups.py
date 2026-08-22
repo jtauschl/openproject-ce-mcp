@@ -442,8 +442,8 @@ def test_project_scoped_write_tools_need_both_allowlists_non_empty(scope: str) -
 # is non-empty; unlike the write side this is gated on read_projects alone,
 # never write_projects (reading is independent of write authorization).
 
-# Historically "the five project scopes" -- now six with Meetings added
-# (OPM-154), name kept for continuity with existing test/doc references.
+# Historically "the five project scopes" -- now six with Meetings added,
+# name kept for continuity with existing test/doc references.
 _FIVE_PROJECT_SCOPE_NAMES = ("project", "work_package", "membership", "version", "board", "meeting")
 
 # Independently hardcoded, NOT derived from tools._PROJECT_SCOPED_READ_TOOLS —
@@ -476,7 +476,7 @@ def _all_five_scope_tools() -> set[str]:
 
 def test_project_scoped_and_global_read_tools_partition_the_five_scopes() -> None:
     all_five_scope_tools = _all_five_scope_tools()
-    assert len(all_five_scope_tools) == 84  # list_project_storages/get_project_storage added (OPM-179)
+    assert len(all_five_scope_tools) == 84  # list_project_storages/get_project_storage added
     assert _EXPECTED_GLOBAL_READ_TOOLS <= all_five_scope_tools
     assert tools._PROJECT_SCOPED_READ_TOOLS == all_five_scope_tools - _EXPECTED_GLOBAL_READ_TOOLS
     assert tools._PROJECT_SCOPED_READ_TOOLS.isdisjoint(_EXPECTED_GLOBAL_READ_TOOLS)

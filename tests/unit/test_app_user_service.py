@@ -218,7 +218,7 @@ async def test_list_users_search_overfetches_and_filters_then_paginates() -> Non
 
     # 2 survivors match "ali" (alice, alison); page 2 with limit=1 is the 2nd survivor.
     # total is a lower bound (len(results) on this page), not an exact count
-    # of the full search-filtered collection -- OPM-373 Phase 5's
+    # of the full search-filtered collection -- this reflects a deliberate
     # total-contract change.
     assert result.total == 1
     assert result.count == 1
@@ -277,7 +277,7 @@ class _PagedFakeUserApi:
 
 @pytest.mark.asyncio
 async def test_list_users_search_not_truncated_when_exactly_limit_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): a naive scan implementation can set
+    """Regression: a naive scan implementation can set
     truncated=True as soon as `limit` matches are collected, without
     checking whether a matching user actually exists beyond that window."""
     api = _PagedFakeUserApi({1: [_record(user_id=1, login="alice")]})

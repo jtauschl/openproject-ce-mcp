@@ -8,7 +8,7 @@ response IS paginated (`PageLinkCollectionRepresenter` inherits OpenProject's
 `OffsetPaginatedCollection`, unlike the Attachments endpoint) -- `total` is
 read directly from the response, no `len(records)` fallback needed.
 
-KNOWN SERVER LIMITATION (tracked as OPM-418, not fixed client-side): the
+KNOWN SERVER LIMITATION (not fixed client-side): the
 work-package-scoped endpoint's own handler (`work_package_wiki_page_links_
 api.rb`) never forwards the request's `offset` param into `page:` when
 constructing `PageLinkCollectionRepresenter` -- only `per_page: params[:

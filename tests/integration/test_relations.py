@@ -167,7 +167,7 @@ async def test_update_relation_changes_description_and_type(
 async def test_get_work_package_relations_stamps_queried_perspective_from_both_sides(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    """OPM-214: a "follows" relation read from get_work_package_relations
+    """A "follows" relation read from get_work_package_relations
     must carry a caller-relative queried_perspective alongside the raw,
     unchanged type/from_id/to_id -- from BOTH involved work packages'
     perspectives, not just the one the relation happened to be created
@@ -211,7 +211,7 @@ async def test_get_work_package_relations_stamps_queried_perspective_from_both_s
         to_side = await client.get_work_package_relations(target.work_package_id)
         to_side_relation = next(r for r in to_side.results if r.id == relation_id)
         # Raw fields are perspective-stable: identical regardless of which
-        # work package's relations were queried (OPM-193).
+        # work package's relations were queried.
         assert to_side_relation.type == "follows"
         assert to_side_relation.from_id == source.work_package_id
         assert to_side_relation.to_id == target.work_package_id

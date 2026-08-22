@@ -29,12 +29,9 @@ DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:
 # Full ISO 8601 duration: either weeks alone ("P2W") or a year/month/day date part
 # and/or a "T"-prefixed time part (hours/minutes/seconds) — the week designator
 # cannot combine with anything else, per the ISO 8601 standard's own week-format
-# rule. Live-verified 2026-07-17 against real OpenProject 16.6 (Docker test harness):
-# "P1D"/"P2W"/"P1Y"/"P1M"/"P1Y2M3D"/"P1DT18H" are all accepted and echoed back
-# unchanged (an earlier version of this regex rejected day-based values entirely,
-# based on an incorrect assumption), while "P1W2D"/"P2WT3H" (week mixed with
-# another designator) are rejected by OpenProject itself with a format error —
-# confirmed here too, not just assumed from the standard. The seconds component
+# rule. OpenProject accepts "P1D"/"P2W"/"P1Y"/"P1M"/"P1Y2M3D"/"P1DT18H" and
+# echoes them back unchanged, while rejecting "P1W2D"/"P2WT3H" (week mixed
+# with another designator) with a format error. The seconds component
 # additionally allows an optional decimal fraction (e.g. "PT7H30M15.5S") —
 # verified directly against the `iso8601` Ruby gem OpenProject uses server-side
 # (ISO8601::Duration.new(...), see time_entry_representer.rb's `hours=` setter):

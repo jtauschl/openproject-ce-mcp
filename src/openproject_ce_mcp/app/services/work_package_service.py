@@ -72,7 +72,7 @@ siblings computed from the TRUE, unmasked text, leaking its existence/length
 even though the adapter's own extraction is not hidden-field-aware by design
 (masking is a Service concern in this layered architecture).
 
-`search()`/`list()`'s `custom_field_filters` parameter (OPM-109) is applied
+`search()`/`list()`'s `custom_field_filters` parameter is applied
 by `_apply_custom_field_filters`, a synchronous, network-free helper: it
 normalizes `cf_<N>`/`customField<N>` keys, rejects hidden fields, and appends
 the resulting filter fragments -- deliberately WITHOUT probing a live schema
@@ -82,8 +82,8 @@ rationale: no single project+type context exists for an unscoped list/search
 call the way there is for the write path's per-call schema probe). An
 operator/format mismatch surfaces as OpenProject's own clean 400
 (`InvalidQuery`), already mapped to `InvalidInputError` by
-`app/transport/errors.py` -- this is a deliberate scope decision for this
-ticket, not an oversight.
+`app/transport/errors.py` -- this is a deliberate scope decision,
+not an oversight.
 """
 
 from __future__ import annotations
@@ -147,7 +147,7 @@ BATCH_READ_MAX_IDS = 100
 # uncapped default get()'s own single-item path uses.
 FORMATTABLE_LIMIT = 1_200
 
-# Per-CE-realistic-format legal filter operator sets for OPM-109's
+# Per-CE-realistic-format legal filter operator sets for
 # custom_field_filters, verified against OpenProject CE source
 # (op-sources/full-17.6): app/models/queries/filters/shared/custom_field_filter.rb
 # (format -> subfilter_class dispatch), custom_fields/base.rb (type dispatch +
@@ -271,7 +271,7 @@ def _trim_text(value: Any, *, limit: int = SUBJECT_LIMIT) -> str | None:
 def _mask_custom_field_keys(values: dict[str, Any] | None, *, settings: Settings) -> dict[str, Any] | None:
     """Key-only hide-on-read for a `custom_fields` dict.
 
-    Per OPM-90's approved strategy, hide-on-read matches ONLY the raw
+    Per the approved strategy, hide-on-read matches ONLY the raw
     `customField<N>` key/wildcard against `OPENPROJECT_HIDE_CUSTOM_FIELDS`,
     NEVER the friendly name -- unlike the write path's
     `ensure_custom_field_writable`, which matches both the resolved schema
@@ -824,7 +824,7 @@ class WorkPackageService:
         *,
         custom_field_filters: dict[str, dict[str, Any]] | None,
     ) -> None:
-        """Append cf_<N> filter fragments for OPM-109's custom_field_filters.
+        """Append cf_<N> filter fragments for custom_field_filters.
 
         Synchronous and network-free: keys are already normalized to cf_<N>
         by tools.py's _validate_custom_field_filters (or, for a direct

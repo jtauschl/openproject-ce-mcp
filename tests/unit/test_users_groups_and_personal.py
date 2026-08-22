@@ -809,7 +809,7 @@ async def test_list_users_search_overfetches_and_filters_then_paginates() -> Non
     # "ali" substring-matches ids 1 (name+login) and 4 (name "Alicente"); 2 and 3 don't match.
     assert {u.id for u in page.results} == {1, 4}
     # total is a lower bound (len(results) on this page), not an exact count
-    # of the full search-filtered collection -- OPM-373 Phase 5's
+    # of the full search-filtered collection -- this reflects a deliberate
     # total-contract change.
     assert page.total == 2
 
@@ -889,7 +889,7 @@ async def test_list_groups_search_overfetches_and_filters_then_paginates() -> No
 
     assert {g.id for g in page.results} == {1, 4}
     # total is a lower bound (len(results) on this page), not an exact count
-    # of the full search-filtered collection -- OPM-373 Phase 5's
+    # of the full search-filtered collection -- this reflects a deliberate
     # total-contract change.
     assert page.total == 2
 

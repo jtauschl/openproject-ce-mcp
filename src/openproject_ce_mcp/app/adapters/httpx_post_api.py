@@ -13,7 +13,7 @@ is a short plain string, not formattable/HAL-wrapped text).
 No `attachments_url`/`url`: same reasoning as HttpxDocumentApi/
 HttpxWikiPageApi -- a pure API sub-collection href with no dedicated MCP
 tool to justify keeping it (the AttachmentsByPostAPI mount is explicitly out
-of scope for OPM-178).
+of scope).
 """
 
 from __future__ import annotations

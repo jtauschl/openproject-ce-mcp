@@ -158,8 +158,8 @@ async def test_create_form_posts_to_form_endpoint() -> None:
 
 @pytest.mark.asyncio
 async def test_create_form_validation_errors_prefer_raw_over_message() -> None:
-    """Regression test for the normalize_form_validation_errors unification
-    (OPM-376): this adapter's validation-error shape must still try
+    """Regression test for the normalize_form_validation_errors unification:
+    this adapter's validation-error shape must still try
     formattable-text extraction (raw/html) BEFORE falling back to
     entry["message"] -- pins the behavior against an accidental switch to
     the other, message-first shape Board/Membership/User use.

@@ -309,9 +309,8 @@ async def test_bulk_update_work_packages_tool_passes_validated_items() -> None:
 
 
 def test_validate_optional_duration_accepts_date_part_units() -> None:
-    # Live-verified 2026-07-17 against real OpenProject 16.6 (Docker harness):
-    # day/week/month/year units and date+time combinations are accepted and
-    # echoed back unchanged, contrary to the regex's former PT-only restriction.
+    # OpenProject accepts day/week/month/year units and date+time combinations
+    # and echoes them back unchanged.
     assert _validate_optional_duration("P1D", field_name="x") == "P1D"
     assert _validate_optional_duration("P2W", field_name="x") == "P2W"
     assert _validate_optional_duration("P1Y", field_name="x") == "P1Y"
@@ -325,9 +324,8 @@ def test_validate_optional_duration_accepts_date_part_units() -> None:
 
 
 def test_validate_optional_duration_rejects_week_combined_with_other_units() -> None:
-    # Live-verified 2026-07-17 against real OpenProject 16.6: "P1W2D" and
-    # "P2WT3H" are rejected by OpenProject itself ("Invalid format for
-    # property... Expected format like 'ISO 8601 duration'") — the week
+    # "P1W2D" and "P2WT3H" are rejected by OpenProject itself ("Invalid format
+    # for property... Expected format like 'ISO 8601 duration'") — the week
     # designator cannot combine with any other designator, per the ISO 8601
     # standard's own week-format rule. The regex must reject these locally
     # too, not silently accept something OpenProject itself refuses.
@@ -605,9 +603,8 @@ async def test_categorize_tool_errors_tags_validation_and_avoids_double_prefix()
 
 
 def test_validate_sort_by_accepts_real_sortable_columns() -> None:
-    # Live-verified 2026-07-20 against real OpenProject 17.5 (Docker
-    # harness) -- these column identifiers are what GET /work_packages?sortBy=
-    # actually accepts (cross-checked against OpenProject's own query
+    # These column identifiers are what GET /work_packages?sortBy= actually
+    # accepts (cross-checked against OpenProject's own query
     # property/project-phase select definitions), not a guess at plausible names.
     criteria = _validate_sort_by(["status:desc", "assigned_to", "assignee:asc", "cf_5:desc"])
     assert criteria == [
@@ -619,7 +616,7 @@ def test_validate_sort_by_accepts_real_sortable_columns() -> None:
 
 
 def test_validate_sort_by_rejects_unknown_field_with_valid_list() -> None:
-    # Live-verified: "spent_hours" and "due_date" both round-trip syntax
+    # "spent_hours" and "due_date" both round-trip syntax
     # validation (alphanumeric+underscore) but OpenProject itself rejects
     # spent_hours for sorting ("Can't sort by column: spent_hours") -- catching
     # this locally with the real allowed set beats a guessed plausible name
@@ -639,7 +636,7 @@ def test_validate_group_by_accepts_real_groupable_columns() -> None:
 
 
 def test_validate_group_by_rejects_sortable_but_not_groupable_field() -> None:
-    # Live-verified: due_date/estimated_hours/estimated_time/created_at/
+    # due_date/estimated_hours/estimated_time/created_at/
     # updated_at/duration/start_date all sort fine but OpenProject rejects
     # them for groupBy ("Can't group by: due_date") -- property_select.rb
     # confirms none of them declare a `groupable:` column. This is exactly
@@ -651,7 +648,7 @@ def test_validate_group_by_rejects_sortable_but_not_groupable_field() -> None:
         _validate_group_by("estimated_time")
 
 
-# --- OPM-109: _validate_custom_field_filters -------------------------------
+# --- _validate_custom_field_filters -------------------------------
 
 
 def test_validate_custom_field_filters_none_passes_through() -> None:

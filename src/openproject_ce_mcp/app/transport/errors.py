@@ -27,10 +27,9 @@ def _combined_message(payload: dict[str, Any]) -> str:
     ("Multiple field constraints have been violated.") when OpenProject
     wraps several validation failures in a `MultipleErrors` HAL error --
     the real per-field detail lives in `_embedded.errors[]`, each itself a
-    full Error payload with its own `message`. Verified live against a real
-    17.7.1 instance (2026-08-13): a two-provider storage create with an
-    Enterprise-gate violation AND an unrelated field error returns exactly
-    this shape, and without this, InvalidInputError only ever surfaced
+    full Error payload with its own `message`. A two-provider storage create
+    with an Enterprise-gate violation AND an unrelated field error returns
+    exactly this shape, and without this, InvalidInputError only ever surfaced
     "Multiple field constraints have been violated." with no way for a
     caller (or a test asserting on the message) to see which fields, or
     that the Enterprise gate was even involved.

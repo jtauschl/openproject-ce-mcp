@@ -283,7 +283,7 @@ async def _all_project_allowed(href: str, *, context: WorkPackageAllowedContext 
 
 def _bulk_from_single(single):
     """Builds a `WorkPackageProjectAllowedBulkCheck` fake from an existing
-    single-href `WorkPackageProjectAllowedCheck` fake (OPM-379/F3): since
+    single-href `WorkPackageProjectAllowedCheck` fake: since
     `_filter_hierarchy_allowlist` now resolves children+ancestors through the
     bulk seam exclusively, every single-href fake in this file needs a bulk
     equivalent too -- this derives one generically instead of hand-writing a
@@ -432,7 +432,7 @@ async def test_list_my_open_checks_read_enabled_before_current_user_lookup() -> 
 
 @pytest.mark.asyncio
 async def test_list_my_open_exposes_custom_fields_via_same_normalize_path() -> None:
-    """Smoke-level regression guard (OPM-94 §4): list_my_open_work_packages
+    """Smoke-level regression guard: list_my_open_work_packages
     reuses the same normalize_work_package_summary/WorkPackageService._stamp
     path as list()/search() -- custom_fields must appear automatically, with
     no list_my_open-specific production code required."""
@@ -734,7 +734,7 @@ async def test_list_stamps_hidden_description_and_zeroes_summary_metadata() -> N
 
 
 # ---------------------------------------------------------------------------
-# OPM-94: custom_fields/custom_comments hide-on-read (key-only match)
+# custom_fields/custom_comments hide-on-read (key-only match)
 # ---------------------------------------------------------------------------
 
 
@@ -761,7 +761,7 @@ async def test_get_hides_custom_field_matched_by_raw_key() -> None:
 
 @pytest.mark.asyncio
 async def test_get_does_not_hide_custom_field_matched_only_by_friendly_name() -> None:
-    """Read-side hide-on-read is KEY-ONLY (per OPM-90's approved strategy) --
+    """Read-side hide-on-read is KEY-ONLY (per the approved strategy) --
     a pattern written as the custom field's friendly name (e.g. "Story
     points") has no effect on custom_fields, unlike the write path's
     ensure_custom_field_writable, which matches both the schema name and the
@@ -919,7 +919,7 @@ async def test_get_filters_hierarchy_entries_outside_read_allowlist() -> None:
 
 @pytest.mark.asyncio
 async def test_get_filters_hierarchy_deduplicates_an_href_shared_by_children_and_ancestors() -> None:
-    """OPM-379/F3 Korrektur 2: children and ancestors are combined into ONE
+    """Children and ancestors are combined into ONE
     deduplicated bulk resolution, not resolved separately -- a shared href
     appearing in both arrays (e.g. the same work package genuinely is both a
     sibling reference AND an ancestor in some malformed/edge-case server
@@ -1002,7 +1002,7 @@ async def test_get_batch_partial_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_get_batch_exposes_custom_fields_via_same_normalize_path() -> None:
-    """Smoke-level regression guard (OPM-94 §4): get_work_packages (batch)
+    """Smoke-level regression guard: get_work_packages (batch)
     reuses the same normalize_work_package_detail/WorkPackageService._stamp
     path as get() -- custom_fields/custom_comments must appear automatically,
     with no batch-specific production code required."""
@@ -1062,7 +1062,7 @@ class _ConcurrencyTrackingWorkPackageApi(_FakeWorkPackageApi):
 
 @pytest.mark.asyncio
 async def test_get_batch_bounds_concurrent_requests_to_the_semaphore_limit() -> None:
-    """Regression (OPM-379/F6): get_batch used to fan out asyncio.gather with
+    """Regression: get_batch used to fan out asyncio.gather with
     no concurrency cap at all -- up to BATCH_READ_MAX_IDS (100) requests
     could fire simultaneously. The shared, Service-level semaphore must keep
     the observed peak at or below its configured limit."""
@@ -1078,15 +1078,16 @@ async def test_get_batch_bounds_concurrent_requests_to_the_semaphore_limit() -> 
 
 @pytest.mark.asyncio
 async def test_get_batch_hierarchy_filtering_completes_under_a_timeout_while_f6_semaphore_is_saturated() -> None:
-    """OPM-379/F3+F6 structural independence, behaviorally proven (not just
+    """Structural independence of the batch-read and allowlist semaphores,
+    behaviorally proven (not just
     the object-identity assertion in test_architecture_boundaries.py): each
-    of get_batch()'s 10 concurrently in-flight get() calls holds an F6
+    of get_batch()'s 10 concurrently in-flight get() calls holds a
     `_batch_read_semaphore` permit for its ENTIRE duration, INCLUDING its own
-    nested `_filter_hierarchy_allowlist()` call, which needs the SEPARATE F3
-    allowlist semaphore to resolve each work package's ancestor href. If F3
-    and F6 shared one semaphore, this would deadlock: all 10 permits held by
+    nested `_filter_hierarchy_allowlist()` call, which needs the SEPARATE
+    allowlist semaphore to resolve each work package's ancestor href. If the
+    two semaphores were shared, this would deadlock: all 10 permits held by
     the 10 in-flight get() calls, every one of them then blocked waiting for
-    an F3 permit that can only free up once a get() call finishes -- which
+    an allowlist permit that can only free up once a get() call finishes -- which
     can't happen while it's still waiting. Proven by requiring the whole
     get_batch() (more ids than the semaphore limit, so genuine saturation is
     guaranteed) to complete within a generous timeout."""
@@ -1698,7 +1699,7 @@ async def test_bulk_create_shares_resolution_context_across_items_in_same_projec
 
 @pytest.mark.asyncio
 async def test_bulk_create_passes_the_same_allowed_values_cache_to_every_item() -> None:
-    """OPM-439: every item in one bulk_create batch must share the SAME
+    """Every item in one bulk_create batch must share the SAME
     WorkPackageResolutionContext instance as parse_form's allowed_values_cache
     -- this is what lets the adapter reuse a resolved allowedValues href
     across items instead of re-fetching it per item."""
@@ -1966,13 +1967,13 @@ async def test_bulk_update_commit_updates_every_item() -> None:
 
 @pytest.mark.asyncio
 async def test_bulk_update_passes_the_same_cache_but_each_item_gets_its_own_form_probe() -> None:
-    """OPM-439: unlike bulk_create's project-scoped href reuse, bulk_update's
+    """Unlike bulk_create's project-scoped href reuse, bulk_update's
     schema probe is per-work-package (validate_update targets that WP's own
     ref) -- the shared cache object must still be passed to every item's
     parse_form call so a REPEATED field on the SAME work package would hit
     the cache, but two different work packages naturally get two separate
     validate_update/parse_form round trips (this is expected, not a caching
-    failure -- see OPM-439's href-keyed design rationale)."""
+    failure -- see the href-keyed design rationale)."""
     api = _FakeWorkPackageApi()
     api._records_by_id = {6: _record(6), 7: _record(7)}
     api.next_schema = {"customField10": {"name": "Story points", "location": "payload"}}
@@ -2285,7 +2286,7 @@ async def test_add_comment_works_with_read_disabled() -> None:
     assert result.state == "preview"
 
 
-# --- OPM-109: custom_field_filters -----------------------------------------
+# --- custom_field_filters -----------------------------------------
 #
 # Per-format representative coverage: one entry per CE-realistic custom-field
 # format (string, text, link, int, float, date, bool, list, user, version --

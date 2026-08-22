@@ -546,7 +546,7 @@ async def test_bulk_create_work_packages_applies_duration_fields(
 async def test_bulk_create_work_packages_resolves_responsible_by_name_across_items(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    """OPM-439: responsible is the one bulk_create-relevant field that
+    """responsible is the one bulk_create-relevant field that
     triggers _get_write_schema's schema probe (see schema_needs in
     work_package_service.py), which is where the href-keyed allowedValues
     cache lives -- this exercises that cache with real HTTP round trips,
@@ -846,9 +846,9 @@ async def test_get_work_package_hierarchy_filters_ancestors_and_children_outside
 
 
 async def test_get_work_package_exposes_seeded_custom_field_value(client: OpenProjectClient, test_project: str) -> None:
-    """OPM-94: real write-then-read round trip against a live instance.
+    """Real write-then-read round trip against a live instance.
 
-    docker/test/seed.rb (extended for OPM-94) creates a real, activated
+    docker/test/seed.rb creates a real, activated
     "Seed Text Field" (string-format) work-package custom field, attached to
     every type enabled on the test project, and sets a known value on the
     project's seeded work package -- this test finds that seeded work
@@ -871,16 +871,16 @@ async def test_get_work_package_exposes_seeded_custom_field_value(client: OpenPr
     # The raw key is unknown ahead of time (depends on the instance's custom
     # field auto-increment id) -- find the entry by its known seeded value
     # instead. The value is wrapped in <user-content> delimiting (every
-    # string-format CF value is, per OPM-94 -- untrusted user content).
+    # string-format CF value is -- untrusted user content).
     matching_values = [v for v in wp.custom_fields.values() if v and "Seeded custom field value" in str(v)]
     assert matching_values, f"no custom_fields entry contained the seeded value; got: {wp.custom_fields}"
     assert matching_values[0] == "<user-content>Seeded custom field value</user-content>"
 
 
 async def test_list_work_packages_filters_by_seeded_custom_field(client: OpenProjectClient, test_project: str) -> None:
-    """OPM-109: real custom_field_filters round trip against a live instance.
+    """Real custom_field_filters round trip against a live instance.
 
-    Reuses OPM-94's seeded "Seed Text Field" custom field the same way --
+    Reuses the seeded "Seed Text Field" custom field the same way --
     discover its cf_<N> filter key from a prior get_work_package call's
     customField<N> keys (never hardcode the numeric id) -- then confirms
     list_work_packages(custom_field_filters={cf_<N>: ...}) actually narrows
@@ -918,7 +918,7 @@ async def test_list_work_packages_filters_by_seeded_custom_field(client: OpenPro
 async def test_list_work_packages_rejects_invalid_operator_for_custom_field(
     client: OpenProjectClient, test_project: str
 ) -> None:
-    """OPM-109: an operator that is syntactically a recognized custom-field
+    """An operator that is syntactically a recognized custom-field
     filter operator but illegal for this specific field's format (a
     string-format field does not support ">=") must surface a clean error
     from OpenProject's own validation (mapped to InvalidInputError), not a
@@ -941,7 +941,7 @@ async def test_list_work_packages_rejects_invalid_operator_for_custom_field(
 async def test_list_work_packages_rejects_hidden_custom_field_filter(
     hide_custom_fields_client: OpenProjectClient, test_project: str
 ) -> None:
-    """OPM-109: a custom field matched by OPENPROJECT_HIDE_CUSTOM_FIELDS must
+    """A custom field matched by OPENPROJECT_HIDE_CUSTOM_FIELDS must
     be rejected as a filter target, not silently ignored."""
     with pytest.raises(InvalidInputError, match="hidden"):
         await hide_custom_fields_client.list_work_packages(

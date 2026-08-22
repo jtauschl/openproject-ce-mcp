@@ -15,16 +15,16 @@ older/Backlogs-disabled instance), the tests skip rather than fail, since
 there is no API to seed a backlog bucket.
 
 NOTE on `update_work_package`: unlike Sprints (whose `sprint` field on
-`update_work_package` landed separately under OPM-104, after the read-only
-Sprints domain landed under OPM-86), OpenProject 17.6 *does* expose
+`update_work_package` landed separately, after the read-only
+Sprints domain landed first), OpenProject 17.6 *does* expose
 `backlogBucket` as a writable work-package HAL link (confirmed against
 op-sources/full-17.6's `work_package_representer.rb`/
 `work_package_schema_representer.rb`, plus an XOR-with-`sprint_id` DB
 constraint) -- but wiring a `backlog_bucket` field onto `update_work_package`
-is out of scope for this read-only ticket (OPM-176), mirroring the
-Sprints/OPM-86-then-OPM-104 precedent exactly. No work-package
+is out of scope for this read-only pass, mirroring the
+Sprints precedent exactly. No work-package
 cross-reference test exists here for that reason -- it is deferred to a
-follow-up ticket analogous to OPM-104, not because the API lacks the
+follow-up piece of work, not because the API lacks the
 capability.
 """
 

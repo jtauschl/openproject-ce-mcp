@@ -7,7 +7,7 @@ from openproject_ce_mcp.app.pagination import paginate_all, scan_and_paginate, s
 
 @pytest.mark.asyncio
 async def test_scan_and_paginate_stops_after_limit_plus_one_allowed_matches() -> None:
-    """OPM-373 Phase 5: unlike paginate_all, this must NOT walk the entire
+    """Unlike paginate_all, this must NOT walk the entire
     collection -- only enough pages to confirm limit+1 allowed matches (or
     genuine exhaustion)."""
     calls: list[int] = []

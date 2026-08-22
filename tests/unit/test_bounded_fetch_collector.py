@@ -4,7 +4,7 @@ Covers the shared scan-server-pages-filter-normalize-and-stop shape used by
 RelationService/TimeEntryService: scan server pages, normalize + filter raw
 elements via an async item_allowed, and stop as soon as `limit + 1` allowed
 items are confirmed (or the collection is genuinely exhausted) -- never
-walks the full collection first (OPM-373 Phase 5).
+walks the full collection first.
 
 Previously exercised indirectly via OpenProjectClient._fetch_bounded_and_paginate
 (a thin wrapper hardcoded to a single `self._get(path, ...)` fetch); now
@@ -95,7 +95,7 @@ async def test_fetch_bounded_and_paginate_boundary_respects_offset_and_limit() -
 
 @pytest.mark.asyncio
 async def test_fetch_bounded_and_paginate_stops_once_limit_plus_one_is_confirmed_across_pages() -> None:
-    """OPM-373 Phase 5: unlike the old walk-to-completion shape, this must
+    """Unlike the old walk-to-completion shape, this must
     fetch only as many server pages as needed to confirm limit+1 allowed
     matches, not the entire collection. Here limit=2 needs a 3rd confirmed
     match to prove truncation; page 1 (page_size=2) only has 2 raw elements,
@@ -161,7 +161,7 @@ async def test_fetch_bounded_and_paginate_does_not_evaluate_item_allowed_past_th
 
 @pytest.mark.asyncio
 async def test_fetch_bounded_and_paginate_not_truncated_when_exactly_limit_allowed_matches_exist() -> None:
-    """Regression (OPM-373 Phase 5): the old shape (and a naive early-stopping
+    """Regression: the old shape (and a naive early-stopping
     port of it) can set truncated=True as soon as `limit` allowed items are
     collected, without checking whether a matching item actually exists
     beyond that window."""
@@ -179,7 +179,7 @@ async def test_fetch_bounded_and_paginate_not_truncated_when_exactly_limit_allow
     assert next_offset is None
 
 
-# --- item_allowed_bulk (OPM-379/F3 page-batching hook) ----------------------
+# --- item_allowed_bulk (page-batching hook) ----------------------
 
 
 @pytest.mark.asyncio
@@ -237,7 +237,7 @@ async def test_fetch_bounded_and_paginate_item_allowed_bulk_filters_like_item_al
 
 @pytest.mark.asyncio
 async def test_fetch_bounded_and_paginate_item_allowed_bulk_is_called_once_per_server_page() -> None:
-    """Page-batching, not whole-call collection (OPM-379/F3 Korrektur 1):
+    """Page-batching, not whole-call collection:
     the bulk hook must be invoked once PER FETCHED SERVER PAGE, not once for
     the entire call -- resolving speculatively beyond the current page would
     defeat the early-stopping fetch_bounded_and_paginate exists for."""
@@ -297,7 +297,7 @@ async def test_fetch_bounded_and_paginate_item_allowed_bulk_exception_past_looka
     """A speculative Exception outcome for an item AFTER the limit+1-th
     allowed match is found on the same page must be silently discarded --
     the old one-at-a-time `item_allowed` control flow would never have
-    awaited that item's check at all (OPM-379/F3 Korrektur 3/6a)."""
+    awaited that item's check at all."""
     elements = [{"id": i, "name": f"item-{i}"} for i in range(1, 6)]  # 5 raw elements, one page
 
     async def item_allowed_bulk(items: list[dict]) -> list[bool | Exception]:

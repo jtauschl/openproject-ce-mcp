@@ -32,7 +32,7 @@ def _reminder_payload(reminder_id: int = 7, *, remindable_href: str | None = "/a
 
 @pytest.mark.asyncio
 async def test_fetch_page_requests_reminders_with_pagination_params() -> None:
-    """OPM-379/F5: fetch_page returns the raw HAL page (not normalized
+    """fetch_page returns the raw HAL page (not normalized
     records) -- the Service scans multiple pages via
     fetch_bounded_and_paginate + to_record, matching Relations' shape."""
 

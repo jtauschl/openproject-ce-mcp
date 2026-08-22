@@ -2520,10 +2520,9 @@ async def test_update_work_package_sets_percentage_done_explicitly() -> None:
 
 async def test_update_work_package_autofills_progress_on_close_without_estimate() -> None:
     """OpenProject's own validation requires remainingTime to be null/absent
-    (not "PT0H") when the work package has no estimatedTime -- live-verified
-    against real OpenProject: submitting "PT0H" here gets rejected with
-    "must stay empty". The GET response below deliberately has no
-    estimatedTime, matching that case."""
+    (not "PT0H") when the work package has no estimatedTime -- submitting
+    "PT0H" here gets rejected with "must stay empty". The GET response below
+    deliberately has no estimatedTime, matching that case."""
     form_calls = {"count": 0}
     status_list_calls = {"count": 0}
 
@@ -2581,8 +2580,8 @@ async def test_update_work_package_autofills_progress_on_close_without_estimate(
 async def test_update_work_package_autofills_progress_on_close_with_existing_estimate() -> None:
     """Opposite of the no-estimate case above: when the work package already
     has an estimatedTime (from the pre-write GET, not this call's own
-    params), remainingTime must autofill to "PT0H", not null -- live-verified:
-    submitting null here gets rejected with "must be 0h"."""
+    params), remainingTime must autofill to "PT0H", not null -- submitting
+    null here gets rejected with "must be 0h"."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
@@ -2843,7 +2842,6 @@ async def test_update_work_package_close_succeeds_with_work_package_read_disable
 
 @pytest.mark.asyncio
 async def test_hidden_custom_field_is_rejected_after_schema_resolution_by_resolved_name() -> None:
-    # Pre-existing coverage gap (found during the write-migration plan review, 2026-08-01):
     # test_hidden_custom_field_is_rejected_on_write (test_hidden_fields.py) only exercises the FIRST
     # gate, _ensure_custom_field_input_writable, which matches the RAW caller-supplied key against
     # itself. It cannot catch a hide pattern that only matches the field's *resolved schema name* --
@@ -2903,7 +2901,6 @@ async def test_hidden_custom_field_is_rejected_after_schema_resolution_by_resolv
 
 @pytest.mark.asyncio
 async def test_create_work_package_rejects_assignee_supplied_by_name() -> None:
-    # Pre-existing coverage gap (found during the write-migration plan review, 2026-08-01):
     # _resolve_assignee_id (client.py) is deliberately narrower than the read-side principal
     # resolver -- it accepts only "me" or a bare numeric user id, never a name search, unlike
     # assignee/assignee_me filtering on list_work_packages/search_work_packages. This negative case

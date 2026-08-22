@@ -1,4 +1,4 @@
-"""Integration tests for the Meetings domain (5 sub-resources, OPM-154):
+"""Integration tests for the Meetings domain (5 sub-resources):
 Meetings, Meeting Agenda Items, Meeting Sections, Meeting Outcomes,
 Recurring Meetings + virtual Occurrences.
 
@@ -235,7 +235,7 @@ async def test_create_get_update_delete_meeting_agenda_item(
 async def test_list_meeting_agenda_items_text_limit_overrides_the_server_default(
     client: OpenProjectClient, test_project: str, meeting_ids: list[int]
 ) -> None:
-    """OPM-447: list_meeting_agenda_items' text_limit is a per-call override,
+    """list_meeting_agenda_items' text_limit is a per-call override,
     not just the constructor-bound server default."""
     try:
         meeting_result = await client.create_meeting(
@@ -400,7 +400,7 @@ async def test_create_get_update_delete_meeting_outcome(
 async def test_list_meeting_outcomes_text_limit_overrides_the_server_default(
     client: OpenProjectClient, test_project: str, meeting_ids: list[int]
 ) -> None:
-    """OPM-447: list_meeting_outcomes' text_limit is a per-call override, not
+    """list_meeting_outcomes' text_limit is a per-call override, not
     just the constructor-bound server default."""
     try:
         meeting_result = await client.create_meeting(
