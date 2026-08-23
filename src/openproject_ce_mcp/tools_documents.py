@@ -94,7 +94,7 @@ async def list_documents(
     _validate_select(select, row_type=DocumentSummary)
     safe_text_limit = _validate_optional_text_limit(text_limit)
     return await _run_tool(
-        client.list_documents(
+        client.document.list(
             project=safe_project, search=safe_search, offset=safe_offset, limit=safe_limit, text_limit=safe_text_limit
         )
     )
@@ -116,7 +116,7 @@ async def get_document(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(document_id, field_name="document_id")
     safe_text_limit = _validate_optional_text_limit(text_limit)
-    return await _run_tool(client.get_document(safe_id, text_limit=safe_text_limit))
+    return await _run_tool(client.document.get(safe_id, text_limit=safe_text_limit))
 
 
 @register_tool
@@ -134,7 +134,7 @@ async def update_document(
     safe_description = _validate_optional_update_text(description, field_name="description", max_length=10_000)
     _require_at_least_one(safe_title, safe_description, message="At least one field to update is required.")
     return await _run_tool(
-        client.update_document(
+        client.document.update(
             document_id=safe_id,
             title=safe_title,
             description=safe_description,
@@ -176,7 +176,7 @@ async def list_news(
     _validate_select(select, row_type=NewsSummary)
     safe_text_limit = _validate_optional_text_limit(text_limit)
     return await _run_tool(
-        client.list_news(
+        client.news.list(
             project=safe_project,
             search=safe_search,
             offset=safe_offset,
@@ -202,7 +202,7 @@ async def get_news(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(news_id, field_name="news_id")
     safe_text_limit = _validate_optional_text_limit(text_limit)
-    return await _run_tool(client.get_news(safe_id, text_limit=safe_text_limit))
+    return await _run_tool(client.news.get(safe_id, text_limit=safe_text_limit))
 
 
 @register_tool
@@ -221,7 +221,7 @@ async def create_news(
     safe_summary = _validate_optional_text(summary, field_name="summary", max_length=500)
     safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
     return await _run_tool(
-        client.create_news(
+        client.news.create(
             project=safe_project,
             title=safe_title,
             summary=safe_summary,
@@ -250,7 +250,7 @@ async def update_news(
         safe_title, safe_summary, safe_description, message="At least one field to update is required."
     )
     return await _run_tool(
-        client.update_news(
+        client.news.update(
             news_id=safe_id,
             title=safe_title,
             summary=safe_summary,
@@ -269,7 +269,7 @@ async def delete_news(
     """Prepare or delete a news entry."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(news_id, field_name="news_id")
-    return await _run_tool(client.delete_news(news_id=safe_id, confirm=confirm))
+    return await _run_tool(client.news.delete(news_id=safe_id, confirm=confirm))
 
 
 @register_tool
@@ -287,7 +287,7 @@ async def get_wiki_page(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(wiki_page_id, field_name="wiki_page_id")
-    return await _run_tool(client.get_wiki_page(safe_id))
+    return await _run_tool(client.wiki_page.get(safe_id))
 
 
 @register_tool
@@ -306,7 +306,7 @@ async def get_post(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(post_id, field_name="post_id")
-    return await _run_tool(client.get_post(safe_id))
+    return await _run_tool(client.post.get(safe_id))
 
 
 @register_tool
@@ -336,7 +336,7 @@ async def list_work_package_wiki_links(
     safe_id = _validate_work_package_ref(work_package_id)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
-    return await _run_tool(client.list_work_package_wiki_links(safe_id, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.wiki_page_link.list_for_work_package(safe_id, offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -365,9 +365,7 @@ async def create_work_package_wiki_link(
     safe_identifier = _validate_required_query(identifier, field_name="identifier", max_length=255)
     safe_provider = _validate_required_query(provider, field_name="provider", max_length=255)
     return await _run_tool(
-        client.create_work_package_wiki_link(
-            safe_id, identifier=safe_identifier, provider=safe_provider, confirm=confirm
-        )
+        client.wiki_page_link.create(safe_id, identifier=safe_identifier, provider=safe_provider, confirm=confirm)
     )
 
 
@@ -397,4 +395,4 @@ async def delete_work_package_wiki_link(
     client = _client_from_context(ctx)
     safe_wp_id = _validate_work_package_ref(work_package_id)
     safe_link_id = _validate_positive_int(link_id, field_name="link_id")
-    return await _run_tool(client.delete_work_package_wiki_link(safe_wp_id, safe_link_id, confirm=confirm))
+    return await _run_tool(client.wiki_page_link.delete(safe_wp_id, safe_link_id, confirm=confirm))

@@ -328,36 +328,43 @@ async def test_copy_project_tool_passes_expected_arguments() -> None:
 
 @pytest.mark.asyncio
 async def test_job_document_news_and_wiki_tools_pass_arguments() -> None:
-    class StubClient:
-        async def get_job_status(self, job_status_id):
-            return {"job_status_id": job_status_id}
-
-        async def list_documents(self, **kwargs):
+    class _DocumentNamespace:
+        async def list(self, **kwargs):
             return kwargs
 
-        async def get_document(self, document_id, **kwargs):
+        async def get(self, document_id, **kwargs):
             return {"document_id": document_id, **kwargs}
 
-        async def update_document(self, **kwargs):
+        async def update(self, **kwargs):
             return kwargs
 
-        async def list_news(self, **kwargs):
+    class _NewsNamespace:
+        async def list(self, **kwargs):
             return kwargs
 
-        async def get_news(self, news_id, **kwargs):
+        async def get(self, news_id, **kwargs):
             return {"news_id": news_id, **kwargs}
 
-        async def create_news(self, **kwargs):
+        async def create(self, **kwargs):
             return kwargs
 
-        async def update_news(self, **kwargs):
+        async def update(self, **kwargs):
             return kwargs
 
-        async def delete_news(self, **kwargs):
+        async def delete(self, **kwargs):
             return kwargs
 
-        async def get_wiki_page(self, wiki_page_id, **kwargs):
+    class _WikiPageNamespace:
+        async def get(self, wiki_page_id, **kwargs):
             return {"wiki_page_id": wiki_page_id, **kwargs}
+
+    class StubClient:
+        document = _DocumentNamespace()
+        news = _NewsNamespace()
+        wiki_page = _WikiPageNamespace()
+
+        async def get_job_status(self, job_status_id):
+            return {"job_status_id": job_status_id}
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
