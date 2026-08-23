@@ -2,9 +2,9 @@
 
 Depends on the CategoryApi Protocol, never HttpxCategoryApi concretely
 (enforced by the architecture-boundary test). No dedicated CategoryResolver:
-a `category_id` is always a numeric value already validated by tools.py --
-there is no semantic-reference resolution for this domain to warrant a
-Resolver in the ADR sense.
+a `category_id` is always a numeric value already validated by the tool layer
+(tools_categories.py) -- there is no semantic-reference resolution for this
+domain to warrant a Resolver in the ADR sense.
 
 Categories shares the "project" read scope with Projects/News/Documents --
 there is no dedicated OPENPROJECT_ENABLE_CATEGORY_* flag, so

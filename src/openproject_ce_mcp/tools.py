@@ -29,8 +29,6 @@ from .models import (
     AttachmentWriteResult,
     BatchWorkPackageReadResult,
     BulkWorkPackageWriteResult,
-    CategoryListResult,
-    CategorySummary,
     CostEntryListResult,
     CostEntrySummary,
     CostTypeSummary,
@@ -95,6 +93,10 @@ from .tools_boards import (  # noqa: F401 -- @register_tool side effect; re-expo
     get_board,
     list_boards,
     update_board,
+)
+from .tools_categories import (  # noqa: F401 -- @register_tool side effect; re-exported, test_project_and_domain_tools.py imports get_category/list_categories from here
+    get_category,
+    list_categories,
 )
 from .tools_documents import (  # noqa: F401 -- @register_tool side effect; re-exported, test_project_and_domain_tools.py imports create_news/delete_news/get_document/get_news/get_wiki_page/list_documents/list_news/update_document/update_news from here
     create_news,
@@ -679,40 +681,6 @@ def register_tools(mcp: MCPServer, settings: Settings) -> None:
     and trimming live in tools_runtime.register_selected_tools.
     """
     register_selected_tools(mcp, names=enabled_tool_names(settings), hide_active=bool(settings.hidden_fields))
-
-
-@register_tool
-async def list_categories(
-    ctx: Context,
-    project: str,
-    select: list[str] | None = None,
-) -> CategoryListResult:
-    """List work-package categories configured for a project.
-
-    select fields: id, name (see server instructions for select's general semantics).
-    """
-    client = _client_from_context(ctx)
-    safe_project = _validate_project_ref(project)
-    _validate_select(select, row_type=CategorySummary)
-    return await _run_tool(client.list_categories(safe_project))
-
-
-@register_tool
-async def get_category(
-    ctx: Context,
-    category_id: int,
-    project: str | None = None,
-) -> CategorySummary:
-    """Get a single category by id.
-
-    project is optional: when given, it's cross-checked against the
-    category's real project and a mismatch raises a not-found error, rather
-    than being the sole source of authorization.
-    """
-    client = _client_from_context(ctx)
-    safe_project = _validate_optional_project_ref(project)
-    safe_id = _validate_positive_int(category_id, field_name="category_id")
-    return await _run_tool(client.get_category(category_id=safe_id, project_ref=safe_project))
 
 
 @register_tool

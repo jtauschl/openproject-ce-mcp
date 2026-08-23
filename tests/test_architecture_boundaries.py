@@ -595,8 +595,9 @@ def test_category_service_binds_the_api_param_to_category_api_specifically() -> 
     guarantee, sibling to the checks above: the api param is CategoryApi
     exactly, not just "some Protocol". No CategoryResolver exists (like
     Memberships/News/Documents/Wiki Pages) -- category_id is always a numeric
-    value already validated by tools.py, so there is no semantic-reference
-    resolution for this domain to warrant a Resolver."""
+    value already validated by the tool layer (tools_categories.py), so there
+    is no semantic-reference resolution for this domain to warrant a
+    Resolver."""
     from openproject_ce_mcp.app.adapters.httpx_category_api import HttpxCategoryApi
     from openproject_ce_mcp.app.ports.category_api import CategoryApi
     from openproject_ce_mcp.app.services.category_service import CategoryService
