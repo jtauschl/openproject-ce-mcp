@@ -9,6 +9,7 @@ from mcp.server.mcpserver import Context, MCPServer
 
 from . import (
     tools_misc,  # noqa: F401 -- @register_tool side effect
+    tools_query,  # noqa: F401 -- @register_tool side effect
     tools_query_schema,  # noqa: F401 -- @register_tool side effect
     tools_user_schedule,  # noqa: F401 -- @register_tool side effect
 )
@@ -678,36 +679,6 @@ def register_tools(mcp: MCPServer, settings: Settings) -> None:
     and trimming live in tools_runtime.register_selected_tools.
     """
     register_selected_tools(mcp, names=enabled_tool_names(settings), hide_active=bool(settings.hidden_fields))
-
-
-@register_tool
-async def execute_query(
-    ctx: Context,
-    query_id: int,
-    offset: int = 1,
-    limit: int | None = None,
-) -> WorkPackageListResult:
-    """Execute a saved OpenProject query by id and return its resolved work packages.
-
-    query_id: the query's own numeric id — obtain it from get_view/list_views's
-    query_id field, or from list_boards/get_board (a board's id IS its
-    underlying query id, since OpenProject Boards are Query resources).
-
-    Runs the query server-side (OpenProject resolves its stored filters/sort/
-    group_by and returns real work packages, not just the query's
-    definition) — no client-side filter translation happens here. Results are
-    still filtered against this MCP's own OPENPROJECT_READ_PROJECTS allowlist
-    before being returned, since the query itself executes with the API
-    token's full server-side permissions.
-
-    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap.
-    """
-    client = _client_from_context(ctx)
-    safe_query_id = _validate_positive_int(query_id, field_name="query_id")
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
-    return await _run_tool(client.execute_query(safe_query_id, offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
