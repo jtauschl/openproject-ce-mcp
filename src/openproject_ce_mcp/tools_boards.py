@@ -54,7 +54,7 @@ async def list_boards(
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     _validate_select(select, row_type=BoardSummary)
     return await _run_tool(
-        client.list_boards(project=safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
+        client.board.list(project=safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
     )
 
 
@@ -66,7 +66,7 @@ async def get_board(
     """Get a saved OpenProject board/query by id."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(board_id, field_name="board_id")
-    return await _run_tool(client.get_board(safe_id))
+    return await _run_tool(client.board.get(safe_id))
 
 
 def _validate_board_query_fields(
@@ -126,7 +126,7 @@ async def create_board(
         filters=filters,
     )
     return await _run_tool(
-        client.create_board(
+        client.board.create(
             name=safe_name,
             project=common["project"],
             public=public,
@@ -193,7 +193,7 @@ async def update_board(
         message="At least one field to update is required.",
     )
     return await _run_tool(
-        client.update_board(
+        client.board.update(
             board_id=safe_id,
             name=safe_name,
             project=common["project"],
@@ -222,4 +222,4 @@ async def delete_board(
     """Prepare or delete a saved OpenProject board/query."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(board_id, field_name="board_id")
-    return await _run_tool(client.delete_board(board_id=safe_id, confirm=confirm))
+    return await _run_tool(client.board.delete(board_id=safe_id, confirm=confirm))
