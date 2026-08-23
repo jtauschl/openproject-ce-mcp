@@ -69,9 +69,6 @@ from .models import (
     TimeEntryWriteResult,
     TypeListResult,
     TypeSummary,
-    ViewDetail,
-    ViewListResult,
-    ViewSummary,
     WatcherListResult,
     WatcherSummary,
     WatcherWriteResult,
@@ -215,6 +212,10 @@ from .tools_versions import (  # noqa: F401 -- @register_tool side effect; re-ex
     get_version,
     list_versions,
     update_version,
+)
+from .tools_views import (  # noqa: F401 -- @register_tool side effect; re-exported, test_project_and_domain_tools.py imports list_views/get_view from here
+    get_view,
+    list_views,
 )
 
 # ── Tool classification ──────────────────────────────────────────────────────
@@ -675,53 +676,6 @@ def register_tools(mcp: MCPServer, settings: Settings) -> None:
     and trimming live in tools_runtime.register_selected_tools.
     """
     register_selected_tools(mcp, names=enabled_tool_names(settings), hide_active=bool(settings.hidden_fields))
-
-
-@register_tool
-async def list_views(
-    ctx: Context,
-    project: str | None = None,
-    type: str | None = None,
-    search: str | None = None,
-    offset: int = 1,
-    limit: int | None = None,
-    select: list[str] | None = None,
-) -> ViewListResult:
-    """List saved OpenProject views, optionally filtered by project, view subtype, or name search.
-
-    select fields: id, name (see server instructions for select's general semantics).
-
-    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap. total is only
-    the count of allowed views returned on THIS page, not a full count of all
-    matches — the search stops as soon as it has enough, so an exact total
-    would need an extra full walk. Page until next_offset is null.
-    """
-    client = _client_from_context(ctx)
-    safe_project = _validate_optional_project_ref(project)
-    safe_type = _validate_optional_query(type, field_name="type", max_length=120)
-    safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
-    _validate_select(select, row_type=ViewSummary)
-    return await _run_tool(
-        client.list_views(
-            project=safe_project,
-            view_type=safe_type,
-            search=safe_search,
-            offset=safe_offset,
-            limit=safe_limit,
-        )
-    )
-
-
-@register_tool
-async def get_view(
-    ctx: Context,
-    view_id: int,
-) -> ViewDetail:
-    """Get a single OpenProject view by id."""
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(view_id, field_name="view_id")
-    return await _run_tool(client.get_view(safe_id))
 
 
 @register_tool

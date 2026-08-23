@@ -2,7 +2,7 @@
 
 Depends on the ViewApi Protocol, never HttpxViewApi concretely (enforced by
 the architecture-boundary test). No dedicated ViewResolver: a `view_id` is
-always a numeric value already validated by tools.py -- there is no
+always a numeric value already validated by tools_views.py -- there is no
 semantic-reference resolution for this domain to warrant a Resolver.
 
 Views shares the "project" read scope with Projects/News/Documents/

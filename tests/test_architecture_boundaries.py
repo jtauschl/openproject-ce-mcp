@@ -611,7 +611,7 @@ def test_view_service_binds_the_api_param_to_view_api_specifically() -> None:
     guarantee, sibling to the checks above: the api param is ViewApi
     exactly, not just "some Protocol". No ViewResolver exists (like
     Memberships/News/Documents/Wiki Pages/Categories) -- view_id is always a
-    numeric value already validated by tools.py, so there is no
+    numeric value already validated by tools_views.py, so there is no
     semantic-reference resolution for this domain to warrant a Resolver."""
     from openproject_ce_mcp.app.adapters.httpx_view_api import HttpxViewApi
     from openproject_ce_mcp.app.ports.view_api import ViewApi
