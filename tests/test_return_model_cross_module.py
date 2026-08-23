@@ -7,10 +7,10 @@ whether a tool's result is a trimmable dataclass. Before this fix it looked
 the name up in tools.py's own `globals()` -- correct only because every tool
 function lived in tools.py itself and _return_model itself lived there too.
 `_return_model` now lives in tools_runtime.py, and tool functions are split
-across both tools.py and per-domain files (tools_boards.py, tools_reminders.py,
-and tools_versions.py so far, more to follow) -- the fn.__globals__-based fix
-resolves against each tool's own defining module regardless of which of
-those it is, rather than searching tools_runtime's or tools.py's namespace.
+across both tools.py and per-domain files (tools_*.py, more to follow) -- the
+fn.__globals__-based fix resolves against each tool's own defining module
+regardless of which of those it is, rather than searching tools_runtime's or
+tools.py's namespace.
 
 `ExampleModel` and `example_tool` are deliberately defined here, in this
 test module's own namespace -- not in tools.py, tools_runtime.py, or any
