@@ -24,9 +24,6 @@ from .models import (
     ActivityListResult,
     ActivitySummary,
     ActivityWriteResult,
-    AttachmentListResult,
-    AttachmentSummary,
-    AttachmentWriteResult,
     BatchWorkPackageReadResult,
     BulkWorkPackageWriteResult,
     CostEntryListResult,
@@ -35,9 +32,6 @@ from .models import (
     EmojiReactionListResult,
     EmojiReactionSummary,
     EmojiReactionWriteResult,
-    FileLinkListResult,
-    FileLinkSummary,
-    FileLinkWriteResult,
     GithubPullRequestListResult,
     GithubPullRequestSummary,
     GitlabIssueListResult,
@@ -82,6 +76,14 @@ from .tools_admin import (  # noqa: F401 -- @register_tool side effect; re-expor
     update_group,
     update_storage,
     update_user,
+)
+from .tools_attachments import (  # noqa: F401 -- @register_tool side effect; re-exported, test_project_and_domain_tools.py imports all six of these from here
+    create_work_package_attachment,
+    delete_attachment,
+    delete_file_link,
+    get_attachment,
+    list_work_package_attachments,
+    list_work_package_file_links,
 )
 from .tools_boards import (  # noqa: F401 -- @register_tool side effect; re-exported, test_project_and_domain_tools.py imports these from here
     create_board,
@@ -1847,92 +1849,6 @@ async def list_my_open_work_packages(
 
 
 @register_tool
-async def list_work_package_attachments(
-    ctx: Context,
-    work_package_id: int | str,
-    offset: int = 1,
-    limit: int | None = None,
-    select: list[str] | None = None,
-    include_total_size: bool = False,
-) -> AttachmentListResult:
-    """List attachments on a work package.
-
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
-
-    select fields: id, title, file_name, description (see server instructions
-    for select's general semantics).
-
-    limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
-    next_offset as the next call's offset to page past the cap.
-
-    include_total_size=true sums file_size_bytes across every attachment
-    (independent of limit/offset) — OpenProject's attachments endpoint
-    always returns the full list in one response, so this costs no extra
-    request in the common case. Null if file_size_bytes is hidden by
-    server configuration, rather than leaking it indirectly through a sum.
-    """
-    client = _client_from_context(ctx)
-    safe_id = _validate_work_package_ref(work_package_id)
-    safe_offset = _validate_offset(offset)
-    safe_limit = _validate_limit(limit)
-    _validate_select(select, row_type=AttachmentSummary)
-    return await _run_tool(
-        client.list_work_package_attachments(
-            safe_id, offset=safe_offset, limit=safe_limit, include_total_size=include_total_size
-        )
-    )
-
-
-@register_tool
-async def get_attachment(
-    ctx: Context,
-    attachment_id: int,
-) -> AttachmentSummary:
-    """Get a single attachment by id."""
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(attachment_id, field_name="attachment_id")
-    return await _run_tool(client.get_attachment(safe_id))
-
-
-@register_tool
-async def create_work_package_attachment(
-    ctx: Context,
-    work_package_id: int | str,
-    file_path: str,
-    description: str | None = None,
-    confirm: bool = False,
-) -> AttachmentWriteResult:
-    """Prepare or upload an attachment to a work package.
-
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
-    """
-    client = _client_from_context(ctx)
-    safe_work_package_id = _validate_work_package_ref(work_package_id)
-    safe_file_path = _validate_required_text(file_path, field_name="file_path", max_length=4096)
-    safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
-    return await _run_tool(
-        client.create_work_package_attachment(
-            work_package_id=safe_work_package_id,
-            file_path=safe_file_path,
-            description=safe_description,
-            confirm=confirm,
-        )
-    )
-
-
-@register_tool
-async def delete_attachment(
-    ctx: Context,
-    attachment_id: int,
-    confirm: bool = False,
-) -> AttachmentWriteResult:
-    """Prepare or delete an attachment."""
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(attachment_id, field_name="attachment_id")
-    return await _run_tool(client.delete_attachment(attachment_id=safe_id, confirm=confirm))
-
-
-@register_tool
 async def list_time_entry_activities(ctx: Context) -> TimeEntryActivityListResult:
     """List available time entry activities."""
     client = _client_from_context(ctx)
@@ -2543,36 +2459,6 @@ async def set_work_package_watcher(
     if watching:
         return await _run_tool(client.add_work_package_watcher(safe_wp_id, safe_user_id, confirm=confirm))
     return await _run_tool(client.remove_work_package_watcher(safe_wp_id, safe_user_id, confirm=confirm))
-
-
-@register_tool
-async def list_work_package_file_links(
-    ctx: Context,
-    work_package_id: int | str,
-    select: list[str] | None = None,
-) -> FileLinkListResult:
-    """List Nextcloud file links attached to a work package (Community Edition).
-
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
-
-    select fields: id, title (see server instructions for select's general semantics).
-    """
-    client = _client_from_context(ctx)
-    safe_id = _validate_work_package_ref(work_package_id)
-    _validate_select(select, row_type=FileLinkSummary)
-    return await _run_tool(client.list_work_package_file_links(safe_id))
-
-
-@register_tool
-async def delete_file_link(
-    ctx: Context,
-    file_link_id: int,
-    confirm: bool = False,
-) -> FileLinkWriteResult:
-    """Prepare or delete a Nextcloud file link."""
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(file_link_id, field_name="file_link_id")
-    return await _run_tool(client.delete_file_link(safe_id, confirm=confirm))
 
 
 @register_tool
