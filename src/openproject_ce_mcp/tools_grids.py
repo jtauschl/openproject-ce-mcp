@@ -53,7 +53,7 @@ async def list_grids(
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=GridSummary)
-    return await _run_tool(client.list_grids(scope=safe_scope, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.grid.list(scope=safe_scope, offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -61,7 +61,7 @@ async def get_grid(ctx: Context, grid_id: int) -> GridSummary:
     """Get a single dashboard grid by id."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(grid_id, field_name="grid_id")
-    return await _run_tool(client.get_grid(safe_id))
+    return await _run_tool(client.grid.get(safe_id))
 
 
 @register_tool
@@ -84,7 +84,7 @@ async def create_grid(
         _validate_positive_int(column_count, field_name="column_count") if column_count is not None else None
     )
     return await _run_tool(
-        client.create_grid(
+        client.grid.create(
             name=safe_name,
             scope=safe_scope,
             row_count=safe_row_count,
@@ -118,7 +118,7 @@ async def update_grid(
         safe_name, safe_row_count, safe_column_count, message="At least one field to update is required."
     )
     return await _run_tool(
-        client.update_grid(
+        client.grid.update(
             grid_id=safe_id,
             name=safe_name,
             row_count=safe_row_count,
@@ -137,4 +137,4 @@ async def delete_grid(
     """Prepare or delete a dashboard grid. Only deletes when called again with confirm=true."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(grid_id, field_name="grid_id")
-    return await _run_tool(client.delete_grid(grid_id=safe_id, confirm=confirm))
+    return await _run_tool(client.grid.delete(grid_id=safe_id, confirm=confirm))

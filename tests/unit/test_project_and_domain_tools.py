@@ -1041,19 +1041,23 @@ async def test_file_link_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_grid_tools_pass_expected_arguments() -> None:
     class StubClient:
-        async def list_grids(self, **kwargs):
+        @property
+        def grid(self):
+            return self
+
+        async def list(self, **kwargs):
             return kwargs
 
-        async def get_grid(self, grid_id):
+        async def get(self, grid_id):
             return {"grid_id": grid_id}
 
-        async def create_grid(self, **kwargs):
+        async def create(self, **kwargs):
             return kwargs
 
-        async def update_grid(self, **kwargs):
+        async def update(self, **kwargs):
             return kwargs
 
-        async def delete_grid(self, **kwargs):
+        async def delete(self, **kwargs):
             return kwargs
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
@@ -1080,7 +1084,11 @@ async def test_grid_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_update_grid_requires_at_least_one_field() -> None:
     class StubClient:
-        async def update_grid(self, **kwargs):
+        @property
+        def grid(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match="At least one field"):
