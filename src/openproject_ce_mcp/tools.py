@@ -27,10 +27,6 @@ from .models import (
     EmojiReactionListResult,
     EmojiReactionSummary,
     EmojiReactionWriteResult,
-    GithubPullRequestListResult,
-    GithubPullRequestSummary,
-    GitlabIssueListResult,
-    GitlabMergeRequestListResult,
     WorkPackageDetail,
     WorkPackageListResult,
     WorkPackageSummary,
@@ -101,6 +97,12 @@ from .tools_grids import (  # noqa: F401 -- @register_tool side effect; re-expor
     get_grid,
     list_grids,
     update_grid,
+)
+from .tools_integrations import (  # noqa: F401 -- @register_tool side effect; re-exported for consistency
+    get_github_pull_request,
+    list_work_package_github_pull_requests,
+    list_work_package_gitlab_issues,
+    list_work_package_gitlab_merge_requests,
 )
 from .tools_meetings import (  # noqa: F401 -- @register_tool side effect; re-exported, test_trimming.py imports these three from here
     list_meeting_agenda_items,
@@ -1857,93 +1859,6 @@ async def list_my_open_work_packages(
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=WorkPackageSummary)
     return await _run_tool(client.list_my_open_work_packages(offset=safe_offset, limit=safe_limit))
-
-
-@register_tool
-async def get_github_pull_request(
-    ctx: Context,
-    github_pull_request_id: int,
-) -> GithubPullRequestSummary:
-    """Get a single GitHub pull request by its own id.
-
-    GitHub pull requests are read-only mirror rows synced by OpenProject's own
-    GitHub App integration -- never creatable via this API. An empty or 404
-    result can mean either the pull request doesn't exist, or the GitHub App
-    integration isn't configured on this instance; OpenProject's API does not
-    distinguish these cases.
-
-    Unlike work-package-scoped lookups in this domain, this global lookup
-    relies on OpenProject's own visibility check (whether the linked work
-    package is visible to the API token), not on this MCP's
-    OPENPROJECT_READ_PROJECTS allowlist -- the pull request payload carries no
-    project link for this MCP to check against.
-    """
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(github_pull_request_id, field_name="github_pull_request_id")
-    return await _run_tool(client.get_github_pull_request(safe_id))
-
-
-@register_tool
-async def list_work_package_github_pull_requests(
-    ctx: Context,
-    work_package_id: int | str,
-) -> GithubPullRequestListResult:
-    """List all GitHub pull requests linked to a work package.
-
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
-
-    Returns every linked pull request in one call -- this endpoint is
-    unpaginated on OpenProject's side (no offset/limit parameters exist). An
-    empty result can mean either no pull requests are linked, or the GitHub
-    App integration isn't configured on this instance; OpenProject's API does
-    not distinguish these cases.
-    """
-    client = _client_from_context(ctx)
-    safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.list_work_package_github_pull_requests(safe_id))
-
-
-@register_tool
-async def list_work_package_gitlab_issues(
-    ctx: Context,
-    work_package_id: int | str,
-) -> GitlabIssueListResult:
-    """List all GitLab issues linked to a work package.
-
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
-
-    Returns every linked issue in one call -- this endpoint is unpaginated on
-    OpenProject's side (no offset/limit parameters exist). An empty result can
-    mean either no issues are linked, or the GitLab integration isn't
-    configured on this instance; OpenProject's API does not distinguish these
-    cases. No single-item get_gitlab_issue tool exists because no such
-    endpoint exists upstream -- only this work-package-scoped list.
-    """
-    client = _client_from_context(ctx)
-    safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.list_work_package_gitlab_issues(safe_id))
-
-
-@register_tool
-async def list_work_package_gitlab_merge_requests(
-    ctx: Context,
-    work_package_id: int | str,
-) -> GitlabMergeRequestListResult:
-    """List all GitLab merge requests linked to a work package.
-
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
-
-    Returns every linked merge request in one call -- this endpoint is
-    unpaginated on OpenProject's side (no offset/limit parameters exist). An
-    empty result can mean either no merge requests are linked, or the GitLab
-    integration isn't configured on this instance; OpenProject's API does not
-    distinguish these cases. No single-item get_gitlab_merge_request tool
-    exists because no such endpoint exists upstream -- only this
-    work-package-scoped list.
-    """
-    client = _client_from_context(ctx)
-    safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.list_work_package_gitlab_merge_requests(safe_id))
 
 
 @register_tool
