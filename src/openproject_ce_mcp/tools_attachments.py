@@ -79,7 +79,7 @@ async def list_work_package_attachments(
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=AttachmentSummary)
     return await _run_tool(
-        client.list_work_package_attachments(
+        client.attachment.list_for_work_package(
             safe_id, offset=safe_offset, limit=safe_limit, include_total_size=include_total_size
         )
     )
@@ -93,7 +93,7 @@ async def get_attachment(
     """Get a single attachment by id."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(attachment_id, field_name="attachment_id")
-    return await _run_tool(client.get_attachment(safe_id))
+    return await _run_tool(client.attachment.get(safe_id))
 
 
 @register_tool
@@ -113,7 +113,7 @@ async def create_work_package_attachment(
     safe_file_path = _validate_required_text(file_path, field_name="file_path", max_length=4096)
     safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
     return await _run_tool(
-        client.create_work_package_attachment(
+        client.attachment.create(
             work_package_id=safe_work_package_id,
             file_path=safe_file_path,
             description=safe_description,
@@ -131,7 +131,7 @@ async def delete_attachment(
     """Prepare or delete an attachment."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(attachment_id, field_name="attachment_id")
-    return await _run_tool(client.delete_attachment(attachment_id=safe_id, confirm=confirm))
+    return await _run_tool(client.attachment.delete(attachment_id=safe_id, confirm=confirm))
 
 
 @register_tool
@@ -149,7 +149,7 @@ async def list_work_package_file_links(
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
     _validate_select(select, row_type=FileLinkSummary)
-    return await _run_tool(client.list_work_package_file_links(safe_id))
+    return await _run_tool(client.file_link.list_for_work_package(safe_id))
 
 
 @register_tool
@@ -161,4 +161,4 @@ async def delete_file_link(
     """Prepare or delete a Nextcloud file link."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(file_link_id, field_name="file_link_id")
-    return await _run_tool(client.delete_file_link(safe_id, confirm=confirm))
+    return await _run_tool(client.file_link.delete(safe_id, confirm=confirm))

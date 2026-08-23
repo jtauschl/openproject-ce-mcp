@@ -543,16 +543,20 @@ async def test_view_category_and_attachment_tools_pass_expected_arguments(tmp_pa
         async def get_category(self, **kwargs):
             return kwargs
 
-        async def list_work_package_attachments(self, work_package_id, **kwargs):
+        @property
+        def attachment(self):
+            return self
+
+        async def list_for_work_package(self, work_package_id, **kwargs):
             return {"work_package_id": work_package_id, **kwargs}
 
-        async def get_attachment(self, attachment_id):
+        async def get(self, attachment_id):
             return {"attachment_id": attachment_id}
 
-        async def create_work_package_attachment(self, **kwargs):
+        async def create(self, **kwargs):
             return kwargs
 
-        async def delete_attachment(self, **kwargs):
+        async def delete(self, **kwargs):
             return kwargs
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
@@ -1004,10 +1008,14 @@ async def test_update_group_requires_at_least_one_field() -> None:
 @pytest.mark.asyncio
 async def test_file_link_tools_pass_expected_arguments() -> None:
     class StubClient:
-        async def list_work_package_file_links(self, work_package_id):
+        @property
+        def file_link(self):
+            return self
+
+        async def list_for_work_package(self, work_package_id):
             return {"work_package_id": work_package_id}
 
-        async def delete_file_link(self, file_link_id, **kwargs):
+        async def delete(self, file_link_id, **kwargs):
             return {"file_link_id": file_link_id, **kwargs}
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
