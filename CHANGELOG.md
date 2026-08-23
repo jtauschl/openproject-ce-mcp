@@ -53,6 +53,21 @@ development baseline.
 - **Corrected `list_work_packages`' `project` parameter docstring** — it
   wrongly stated only an identifier/slug was accepted; a numeric project ID
   works too.
+- **`docs/installation.md`'s install-method guidance reordered and
+  reworded**, following an independent review prompted by the launcher
+  bugfixes above: `pipx` is now the unambiguous primary recommendation
+  (matching the Python Packaging User Guide's own guidance for standalone
+  CLI tools), `uv tool install` is a secondary option for users who already
+  have `uv`, plain `pip install` is explicitly qualified to already-managed
+  environments only rather than presented as a peer alternative, and `uvx`
+  is reframed as a run-on-demand client-config detail rather than a fourth
+  "install method" alongside the other three. `README.md`'s Install section
+  updated to match.
+- **Updated the OpenProject-version-verification claim from "runtime-smoke-
+  tested through 17.5" to "source-audited through 17.7, runtime-smoke-
+  tested through 17.7"** — re-ran `tools/api-check/check_api.py` (default,
+  `--all`, and `--constants` modes) against the full 16.0–17.7 source range
+  with no drift found, and live-verified against a real 17.7.2 instance.
 
 ## 0.3.7 – 2026-08-17
 
