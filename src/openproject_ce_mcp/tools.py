@@ -24,9 +24,6 @@ from .models import (
     ActivityWriteResult,
     BatchWorkPackageReadResult,
     BulkWorkPackageWriteResult,
-    CostEntryListResult,
-    CostEntrySummary,
-    CostTypeSummary,
     EmojiReactionListResult,
     EmojiReactionSummary,
     EmojiReactionWriteResult,
@@ -46,7 +43,6 @@ from .models import (
     WatcherListResult,
     WatcherSummary,
     WatcherWriteResult,
-    WorkPackageCostsByTypeResult,
     WorkPackageDetail,
     WorkPackageListResult,
     WorkPackageSummary,
@@ -89,6 +85,12 @@ from .tools_boards import (  # noqa: F401 -- @register_tool side effect; re-expo
 from .tools_categories import (  # noqa: F401 -- @register_tool side effect; re-exported, test_project_and_domain_tools.py imports get_category/list_categories from here
     get_category,
     list_categories,
+)
+from .tools_costs import (  # noqa: F401 -- @register_tool side effect; re-exported for consistency with other domain modules (no existing test currently imports these four directly from tools.py)
+    get_cost_entry,
+    get_cost_type,
+    get_work_package_costs_by_type,
+    list_work_package_cost_entries,
 )
 from .tools_documents import (  # noqa: F401 -- @register_tool side effect; re-exported, test_project_and_domain_tools.py imports create_news/delete_news/get_document/get_news/get_wiki_page/list_documents/list_news/update_document/update_news from here
     create_news,
@@ -1848,75 +1850,6 @@ async def list_my_open_work_packages(
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=WorkPackageSummary)
     return await _run_tool(client.list_my_open_work_packages(offset=safe_offset, limit=safe_limit))
-
-
-@register_tool
-async def get_cost_entry(
-    ctx: Context,
-    cost_entry_id: int,
-) -> CostEntrySummary:
-    """Get a single cost entry by id.
-
-    Cost entries are entirely read-only in OpenProject's API (Community
-    Edition) -- there is no create/update/delete endpoint for this resource.
-    """
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(cost_entry_id, field_name="cost_entry_id")
-    return await _run_tool(client.get_cost_entry(safe_id))
-
-
-@register_tool
-async def list_work_package_cost_entries(
-    ctx: Context,
-    work_package_id: int | str,
-) -> CostEntryListResult:
-    """List all cost entries recorded against a work package.
-
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
-
-    Returns every cost entry for the work package in one call -- this endpoint
-    is unpaginated on OpenProject's side (no offset/limit parameters exist).
-    """
-    client = _client_from_context(ctx)
-    safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.list_work_package_cost_entries(safe_id))
-
-
-@register_tool
-async def get_work_package_costs_by_type(
-    ctx: Context,
-    work_package_id: int | str,
-) -> WorkPackageCostsByTypeResult:
-    """Get a work package's costs aggregated by cost type.
-
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
-
-    count is the number of distinct cost types with recorded spend on this
-    work package, not a monetary total. Each result's spent_units is a
-    quantity in that cost type's own unit (see get_cost_type for the unit
-    name) -- there is no currency conversion or grand total computed here or
-    by OpenProject's own API.
-    """
-    client = _client_from_context(ctx)
-    safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.get_work_package_costs_by_type(safe_id))
-
-
-@register_tool
-async def get_cost_type(
-    ctx: Context,
-    cost_type_id: int,
-) -> CostTypeSummary:
-    """Get a cost type by id.
-
-    Cost types are entirely read-only in OpenProject's API (Community
-    Edition) -- there is no create/update/delete endpoint, and no collection
-    GET either (no list_cost_types tool exists because the endpoint does not
-    exist upstream).
-    """
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(cost_type_id, field_name="cost_type_id")
-    return await _run_tool(client.get_cost_type(safe_id))
 
 
 @register_tool
