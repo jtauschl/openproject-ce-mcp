@@ -72,7 +72,11 @@ async def test_get_work_package_returns_compact_summary() -> None:
 @pytest.mark.asyncio
 async def test_get_work_packages_tool_rejects_unknown_select_field() -> None:
     class StubClient:
-        async def get_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def get_batch(self, **kwargs):
             raise AssertionError("client should not be called when select validation fails")
 
     with pytest.raises(ValueError, match="not a valid WorkPackageDetail field"):
@@ -86,7 +90,11 @@ async def test_get_work_packages_tool_rejects_unknown_select_field() -> None:
 @pytest.mark.asyncio
 async def test_get_work_packages_tool_does_not_forward_select_to_client() -> None:
     class StubClient:
-        async def get_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def get_batch(self, **kwargs):
             return kwargs
 
     result = await get_work_packages(
@@ -104,7 +112,11 @@ async def test_search_work_packages_tool_accepts_parent_display_id_select_field(
     # parent_display_id must be a valid select value for WorkPackageSummary,
     # not raise "not a valid WorkPackageSummary field".
     class StubClient:
-        async def search_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def search(self, **kwargs):
             return kwargs
 
     result = await search_work_packages(
@@ -119,7 +131,11 @@ async def test_search_work_packages_tool_accepts_parent_display_id_select_field(
 @pytest.mark.asyncio
 async def test_search_work_packages_tool_passes_status_filter() -> None:
     class StubClient:
-        async def search_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def search(self, **kwargs):
             return kwargs
 
     result = await search_work_packages(
@@ -142,7 +158,11 @@ async def test_search_work_packages_tool_passes_status_filter() -> None:
 @pytest.mark.asyncio
 async def test_search_work_packages_tool_passes_include_sums_flag() -> None:
     class StubClient:
-        async def search_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def search(self, **kwargs):
             return kwargs
 
     result = await search_work_packages(
@@ -158,7 +178,11 @@ async def test_search_work_packages_tool_passes_include_sums_flag() -> None:
 @pytest.mark.asyncio
 async def test_search_work_packages_tool_defaults_include_sums_to_false() -> None:
     class StubClient:
-        async def search_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def search(self, **kwargs):
             return kwargs
 
     result = await search_work_packages(
@@ -172,7 +196,11 @@ async def test_search_work_packages_tool_defaults_include_sums_to_false() -> Non
 @pytest.mark.asyncio
 async def test_search_work_packages_tool_passes_overdue_only_and_due_within_days() -> None:
     class StubClient:
-        async def search_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def search(self, **kwargs):
             return kwargs
 
     result = await search_work_packages(
@@ -188,7 +216,11 @@ async def test_search_work_packages_tool_passes_overdue_only_and_due_within_days
 @pytest.mark.asyncio
 async def test_search_work_packages_tool_rejects_non_integer_due_within_days() -> None:
     class StubClient:
-        async def search_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def search(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match="due_within_days must be an integer"):
@@ -202,7 +234,11 @@ async def test_search_work_packages_tool_rejects_non_integer_due_within_days() -
 @pytest.mark.asyncio
 async def test_list_work_packages_tool_passes_include_sums_flag() -> None:
     class StubClient:
-        async def list_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def list(self, **kwargs):
             return kwargs
 
     result = await list_work_packages(
@@ -217,7 +253,11 @@ async def test_list_work_packages_tool_passes_include_sums_flag() -> None:
 @pytest.mark.asyncio
 async def test_list_work_packages_tool_passes_overdue_only_and_due_within_days() -> None:
     class StubClient:
-        async def list_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def list(self, **kwargs):
             return kwargs
 
     result = await list_work_packages(
@@ -232,7 +272,11 @@ async def test_list_work_packages_tool_passes_overdue_only_and_due_within_days()
 @pytest.mark.asyncio
 async def test_list_work_packages_tool_rejects_non_integer_due_within_days() -> None:
     class StubClient:
-        async def list_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def list(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match="due_within_days must be an integer"):
@@ -250,7 +294,11 @@ async def test_list_work_packages_tool_passes_custom_field_filters_to_client() -
     # it reaches client.py would otherwise go undetected by the Service-layer
     # tests alone.
     class StubClient:
-        async def list_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def list(self, **kwargs):
             return kwargs
 
     result = await list_work_packages(
@@ -264,7 +312,11 @@ async def test_list_work_packages_tool_passes_custom_field_filters_to_client() -
 @pytest.mark.asyncio
 async def test_list_work_packages_tool_defaults_custom_field_filters_to_none() -> None:
     class StubClient:
-        async def list_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def list(self, **kwargs):
             return kwargs
 
     result = await list_work_packages(FakeContext(StubClient()))  # type: ignore[arg-type]
@@ -275,7 +327,11 @@ async def test_list_work_packages_tool_defaults_custom_field_filters_to_none() -
 @pytest.mark.asyncio
 async def test_list_work_packages_tool_rejects_invalid_custom_field_filter_key() -> None:
     class StubClient:
-        async def list_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def list(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match="must be of the form"):
@@ -288,7 +344,11 @@ async def test_list_work_packages_tool_rejects_invalid_custom_field_filter_key()
 @pytest.mark.asyncio
 async def test_search_work_packages_tool_passes_custom_field_filters_to_client() -> None:
     class StubClient:
-        async def search_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def search(self, **kwargs):
             return kwargs
 
     result = await search_work_packages(
@@ -349,7 +409,11 @@ async def test_list_work_packages_returns_version_and_description_flags() -> Non
 @pytest.mark.asyncio
 async def test_create_work_package_tool_requires_confirmation_before_write() -> None:
     class StubClient:
-        async def create_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def create(self, **kwargs):
             return kwargs
 
     result = await create_work_package(
@@ -369,7 +433,11 @@ async def test_create_work_package_tool_requires_confirmation_before_write() -> 
 @pytest.mark.asyncio
 async def test_update_work_package_tool_requires_at_least_one_field() -> None:
     class StubClient:
-        async def update_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match="At least one field"):
@@ -379,7 +447,11 @@ async def test_update_work_package_tool_requires_at_least_one_field() -> None:
 @pytest.mark.asyncio
 async def test_update_work_package_tool_passes_project_phase() -> None:
     class StubClient:
-        async def update_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     result = await update_work_package(
@@ -396,7 +468,11 @@ async def test_update_work_package_tool_passes_project_phase() -> None:
 @pytest.mark.asyncio
 async def test_update_work_package_tool_passes_parent_ref() -> None:
     class StubClient:
-        async def update_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     result = await update_work_package(
@@ -412,7 +488,11 @@ async def test_update_work_package_tool_passes_parent_ref() -> None:
 @pytest.mark.asyncio
 async def test_update_work_package_tool_maps_none_to_clear_parent_sentinel() -> None:
     class StubClient:
-        async def update_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     result = await update_work_package(
@@ -430,7 +510,11 @@ async def test_update_work_package_tool_maps_none_to_clear_parent_sentinel() -> 
 async def test_update_work_package_tool_parent_alone_satisfies_field_requirement() -> None:
     # Clearing the parent is a real change: it must not trip "at least one field".
     class StubClient:
-        async def update_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     result = await update_work_package(
@@ -446,7 +530,11 @@ async def test_update_work_package_tool_parent_alone_satisfies_field_requirement
 @pytest.mark.asyncio
 async def test_update_work_package_tool_maps_none_to_clear_version_sentinel() -> None:
     class StubClient:
-        async def update_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     result = await update_work_package(
@@ -464,7 +552,11 @@ async def test_update_work_package_tool_maps_none_to_clear_version_sentinel() ->
 async def test_update_work_package_tool_version_alone_satisfies_field_requirement() -> None:
     # Clearing the version is a real change: it must not trip "at least one field".
     class StubClient:
-        async def update_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     result = await update_work_package(
@@ -486,7 +578,11 @@ async def test_update_work_package_tool_maps_none_to_clear_sentinel(field) -> No
     # 'none' on a nullable association field must reach the client as the CLEAR
     # sentinel (unassign), not the literal string "none".
     class StubClient:
-        async def update_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     result = await update_work_package(
@@ -503,7 +599,11 @@ async def test_update_work_package_tool_maps_none_to_clear_sentinel(field) -> No
 async def test_update_work_package_tool_clear_field_satisfies_field_requirement() -> None:
     # Clearing assignee alone is a real change: it must not trip "at least one field".
     class StubClient:
-        async def update_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     result = await update_work_package(
@@ -519,7 +619,11 @@ async def test_update_work_package_tool_clear_field_satisfies_field_requirement(
 @pytest.mark.asyncio
 async def test_update_work_package_tool_clears_description() -> None:
     class StubClient:
-        async def update_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     result = await update_work_package(
@@ -535,7 +639,11 @@ async def test_update_work_package_tool_clears_description() -> None:
 @pytest.mark.asyncio
 async def test_update_work_package_tool_passes_real_version_name() -> None:
     class StubClient:
-        async def update_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     result = await update_work_package(
@@ -552,7 +660,11 @@ async def test_update_work_package_tool_passes_real_version_name() -> None:
 @pytest.mark.asyncio
 async def test_update_work_package_tool_passes_real_sprint_name() -> None:
     class StubClient:
-        async def update_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     result = await update_work_package(
@@ -569,7 +681,11 @@ async def test_update_work_package_tool_passes_real_sprint_name() -> None:
 @pytest.mark.asyncio
 async def test_create_work_package_tool_passes_parent_ref() -> None:
     class StubClient:
-        async def create_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def create(self, **kwargs):
             return kwargs
 
     result = await create_work_package(
@@ -587,7 +703,11 @@ async def test_create_work_package_tool_passes_parent_ref() -> None:
 @pytest.mark.asyncio
 async def test_delete_work_package_tool_passes_confirmation_flag() -> None:
     class StubClient:
-        async def delete_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def delete(self, **kwargs):
             return kwargs
 
     result = await delete_work_package(FakeContext(StubClient()), "42", confirm=True)  # type: ignore[arg-type]
@@ -599,7 +719,11 @@ async def test_delete_work_package_tool_passes_confirmation_flag() -> None:
 @pytest.mark.asyncio
 async def test_add_work_package_comment_tool_passes_notify_flag() -> None:
     class StubClient:
-        async def add_work_package_comment(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def add_comment(self, **kwargs):
             return kwargs
 
     result = await add_work_package_comment(
@@ -648,6 +772,10 @@ async def test_update_relation_tool_clears_description() -> None:
 @pytest.mark.asyncio
 async def test_create_subtask_tool_passes_parent_id() -> None:
     class StubClient:
+        @property
+        def work_package(self):
+            return self
+
         async def create_subtask(self, **kwargs):
             return kwargs
 
@@ -684,7 +812,11 @@ async def test_get_project_work_package_context_tool_passes_type() -> None:
 @pytest.mark.asyncio
 async def test_create_work_package_tool_passes_custom_fields() -> None:
     class StubClient:
-        async def create_work_package(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def create(self, **kwargs):
             return kwargs
 
     result = await create_work_package(
@@ -725,10 +857,14 @@ async def test_watcher_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_emoji_reaction_tools_pass_expected_arguments() -> None:
     class StubClient:
-        async def list_work_package_reactions(self, work_package_id):
+        @property
+        def emoji_reaction(self):
+            return self
+
+        async def list_for_work_package(self, work_package_id):
             return {"work_package_id": work_package_id}
 
-        async def toggle_activity_emoji_reaction(self, activity_id, reaction, confirm=False):
+        async def toggle(self, activity_id, reaction, confirm=False):
             return {"activity_id": activity_id, "reaction": reaction, "confirm": confirm}
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
@@ -745,7 +881,11 @@ async def test_emoji_reaction_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_list_work_packages_version_status_validation() -> None:
     class StubClient:
-        async def list_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def list(self, **kwargs):
             return kwargs
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
@@ -763,7 +903,11 @@ async def test_bulk_update_work_packages_tool_clears_item_description() -> None:
     # update_work_package's — worth its own test rather than assuming it
     # shares behavior just because it calls the same validator.
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             return kwargs
 
     result = await bulk_update_work_packages(
@@ -783,7 +927,11 @@ async def test_bulk_update_work_packages_tool_accepts_each_duration_field_alone(
     received: list = []
 
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             received.extend(kwargs["items"])
             return {
                 "action": "bulk_update",
@@ -822,7 +970,11 @@ async def test_bulk_update_work_packages_tool_maps_none_duration_to_clear_sentin
     received: list = []
 
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             received.extend(kwargs["items"])
             return {
                 "action": "bulk_update",
@@ -858,7 +1010,11 @@ async def test_bulk_update_work_packages_tool_maps_none_to_clear_sentinel() -> N
     received: list = []
 
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             received.extend(kwargs["items"])
             return {
                 "action": "bulk_update",
@@ -899,7 +1055,11 @@ async def test_bulk_update_work_packages_tool_accepts_numeric_parent_work_packag
     received: list = []
 
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             received.extend(kwargs["items"])
             return {
                 "action": "bulk_update",
@@ -929,7 +1089,11 @@ async def test_bulk_update_work_packages_tool_accepts_parent_alias() -> None:
     received: list = []
 
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             received.extend(kwargs["items"])
             return {
                 "action": "bulk_update",
@@ -958,7 +1122,11 @@ async def test_bulk_update_work_packages_tool_parent_alias_maps_none_to_clear_se
     received: list = []
 
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             received.extend(kwargs["items"])
             return {
                 "action": "bulk_update",
@@ -983,7 +1151,11 @@ async def test_bulk_update_work_packages_tool_parent_alias_maps_none_to_clear_se
 @pytest.mark.asyncio
 async def test_bulk_update_work_packages_tool_rejects_both_parent_aliases() -> None:
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match=r"items\[0\] must not specify both parent and parent_work_package_id"):
@@ -997,7 +1169,11 @@ async def test_bulk_update_work_packages_tool_rejects_both_parent_aliases() -> N
 @pytest.mark.asyncio
 async def test_bulk_update_work_packages_tool_invalid_parent_alias_reports_own_field_name() -> None:
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match=r"items\[0\]\.parent"):
@@ -1016,7 +1192,11 @@ async def test_bulk_update_work_packages_tool_rejects_non_string_scalar_cleanly(
     # a clean [validation_error] ValueError, not an unhandled AttributeError from
     # .split()/.strip() deep inside a validator.
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match="must be a string"):
@@ -1033,7 +1213,11 @@ async def test_bulk_update_work_packages_tool_version_error_has_item_index() -> 
     # sibling field in the same loop (items[1].version, not just "version"),
     # so a caller can tell which item in the batch failed.
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match=r"items\[1\]\.version must be at most 100 characters"):
@@ -1052,7 +1236,11 @@ async def test_bulk_create_work_packages_assignee_error_is_indexed_by_item() -> 
     # assignee's error is now indexed with "items[{i}]." like every sibling
     # field in this loop, so a multi-item bulk call can tell which item failed.
     class StubClient:
-        async def bulk_create_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_create(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match=r"^items\[0\]\.assignee: 'me' or numeric user id"):
@@ -1067,7 +1255,11 @@ async def test_bulk_create_work_packages_assignee_error_is_indexed_by_item() -> 
 async def test_bulk_create_work_packages_responsible_error_is_indexed_by_item() -> None:
     # Same item-indexing fix as assignee above, for responsible.
     class StubClient:
-        async def bulk_create_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_create(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match=r"^items\[0\]\.responsible: 'me' or numeric user id"):
@@ -1082,7 +1274,11 @@ async def test_bulk_create_work_packages_responsible_error_is_indexed_by_item() 
 async def test_bulk_update_work_packages_assignee_error_is_indexed_by_item() -> None:
     # Same item-indexing fix as the two bulk_create tests above.
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match=r"^items\[0\]\.assignee: 'me' or numeric user id"):
@@ -1097,7 +1293,11 @@ async def test_bulk_update_work_packages_assignee_error_is_indexed_by_item() -> 
 async def test_bulk_update_work_packages_responsible_error_is_indexed_by_item() -> None:
     # Same item-indexing fix as assignee above, for responsible.
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match=r"^items\[0\]\.responsible: 'me' or numeric user id"):
@@ -1116,7 +1316,11 @@ async def test_bulk_create_work_packages_accepts_select() -> None:
     # wrapper-integration test for that). This test only proves the tool
     # function accepts and validates select without erroring.
     class StubClient:
-        async def bulk_create_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_create(self, **kwargs):
             return {"action": "bulk_create", "items": []}
 
     result = await bulk_create_work_packages(
@@ -1131,7 +1335,11 @@ async def test_bulk_create_work_packages_accepts_select() -> None:
 @pytest.mark.asyncio
 async def test_bulk_create_work_packages_rejects_invalid_select_field() -> None:
     class StubClient:
-        async def bulk_create_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_create(self, **kwargs):
             return {"action": "bulk_create", "items": []}
 
     with pytest.raises(ValueError, match="not a valid WorkPackageWriteResult field"):
@@ -1147,7 +1355,11 @@ async def test_bulk_create_work_packages_rejects_invalid_select_field() -> None:
 async def test_bulk_update_work_packages_accepts_select() -> None:
     # Same split as the bulk_create test above: validation only, not threading.
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             return {"action": "bulk_update", "items": []}
 
     result = await bulk_update_work_packages(
@@ -1162,7 +1374,11 @@ async def test_bulk_update_work_packages_accepts_select() -> None:
 @pytest.mark.asyncio
 async def test_bulk_update_work_packages_rejects_invalid_select_field() -> None:
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             return {"action": "bulk_update", "items": []}
 
     with pytest.raises(ValueError, match="not a valid WorkPackageWriteResult field"):
@@ -1179,7 +1395,11 @@ async def test_bulk_work_packages_accept_semantic_refs() -> None:
     received: dict = {}
 
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             received["update"] = kwargs["items"]
             return {
                 "action": "bulk_update",
@@ -1192,7 +1412,7 @@ async def test_bulk_work_packages_accept_semantic_refs() -> None:
                 "items": [],
             }
 
-        async def bulk_create_work_packages(self, **kwargs):
+        async def bulk_create(self, **kwargs):
             received["create"] = kwargs["items"]
             return {
                 "action": "bulk_create",
@@ -1234,7 +1454,11 @@ async def test_bulk_create_work_packages_tool_accepts_parent_alias() -> None:
     received: list = []
 
     class StubClient:
-        async def bulk_create_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_create(self, **kwargs):
             received.extend(kwargs["items"])
             return {
                 "action": "bulk_create",
@@ -1259,7 +1483,11 @@ async def test_bulk_create_work_packages_tool_accepts_parent_alias() -> None:
 @pytest.mark.asyncio
 async def test_bulk_create_work_packages_tool_rejects_both_parent_aliases() -> None:
     class StubClient:
-        async def bulk_create_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_create(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match=r"items\[0\] must not specify both parent and parent_work_package_id"):

@@ -64,7 +64,11 @@ async def test_create_relation_tool_validates_relation_type() -> None:
 @pytest.mark.asyncio
 async def test_toggle_emoji_reaction_validates_inputs() -> None:
     class StubClient:
-        async def toggle_activity_emoji_reaction(self, activity_id, reaction):
+        @property
+        def emoji_reaction(self):
+            return self
+
+        async def toggle(self, activity_id, reaction):
             return {"activity_id": activity_id, "reaction": reaction}
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
@@ -96,7 +100,11 @@ async def test_reminder_tools_validate_inputs() -> None:
 @pytest.mark.asyncio
 async def test_bulk_create_work_packages_tool_validates_required_fields() -> None:
     class StubClient:
-        async def bulk_create_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_create(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match="items must not be empty"):
@@ -123,7 +131,11 @@ async def test_bulk_create_work_packages_tool_passes_validated_items() -> None:
     received: list = []
 
     class StubClient:
-        async def bulk_create_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_create(self, **kwargs):
             received.extend(kwargs["items"])
             return {
                 "action": "bulk_create",
@@ -165,7 +177,11 @@ async def test_bulk_create_work_packages_tool_rejects_unknown_item_field() -> No
     # An unsupported item key must fail loudly (indexed error), not be
     # silently dropped.
     class StubClient:
-        async def bulk_create_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_create(self, **kwargs):
             raise AssertionError("must not reach the client when an item has an unknown field")
 
     with pytest.raises(ValueError, match=r"items\[0\] has unsupported field\(s\): totally_unknown_field"):
@@ -182,7 +198,11 @@ async def test_bulk_create_work_packages_tool_passes_duration_fields() -> None:
     received: list = []
 
     class StubClient:
-        async def bulk_create_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_create(self, **kwargs):
             received.extend(kwargs["items"])
             return {
                 "action": "bulk_create",
@@ -218,7 +238,11 @@ async def test_bulk_create_work_packages_tool_passes_duration_fields() -> None:
 @pytest.mark.asyncio
 async def test_bulk_update_work_packages_tool_validates_required_fields() -> None:
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match="items must not be empty"):
@@ -248,7 +272,11 @@ async def test_bulk_update_work_packages_tool_rejects_unknown_item_field() -> No
     # Same bug class as bulk_create's unknown-item-field validation, but for bulk_update: an unsupported
     # item key must fail loudly (indexed error), not be silently dropped.
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             raise AssertionError("must not reach the client when an item has an unknown field")
 
     with pytest.raises(ValueError, match=r"items\[0\] has unsupported field\(s\): totally_unknown_field"):
@@ -263,7 +291,11 @@ async def test_bulk_update_work_packages_tool_passes_validated_items() -> None:
     received: list = []
 
     class StubClient:
-        async def bulk_update_work_packages(self, **kwargs):
+        @property
+        def work_package(self):
+            return self
+
+        async def bulk_update(self, **kwargs):
             received.extend(kwargs["items"])
             return {
                 "action": "bulk_update",

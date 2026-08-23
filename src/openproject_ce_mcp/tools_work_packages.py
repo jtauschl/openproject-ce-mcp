@@ -166,7 +166,7 @@ async def search_work_packages(
     _validate_select(select, row_type=WorkPackageSummary)
     safe_custom_field_filters = _validate_custom_field_filters(custom_field_filters)
     return await _run_tool(
-        client.search_work_packages(
+        client.work_package.search(
             search=safe_search,
             project=safe_project,
             status=safe_status,
@@ -394,7 +394,7 @@ async def list_work_packages(
     _validate_select(select, row_type=WorkPackageSummary)
     safe_custom_field_filters = _validate_custom_field_filters(custom_field_filters)
     return await _run_tool(
-        client.list_work_packages(
+        client.work_package.list(
             project=safe_project,
             type=safe_type,
             version=safe_version,
@@ -454,7 +454,7 @@ async def get_work_package(
     safe_id = _validate_work_package_ref(work_package_id)
     safe_text_limit = _validate_optional_text_limit(text_limit)
     _validate_select(select, row_type=WorkPackageDetail)
-    return await _run_tool(client.get_work_package(safe_id, text_limit=safe_text_limit))
+    return await _run_tool(client.work_package.get(safe_id, text_limit=safe_text_limit))
 
 
 @register_tool
@@ -511,7 +511,7 @@ async def get_work_packages(
     safe_text_limit = _validate_optional_text_limit(text_limit)
     _validate_select(select, row_type=WorkPackageDetail)
 
-    return await _run_tool(client.get_work_packages(ids=unique_ids, text_limit=safe_text_limit))
+    return await _run_tool(client.work_package.get_batch(ids=unique_ids, text_limit=safe_text_limit))
 
 
 def _validate_work_package_create_fields(
@@ -612,7 +612,7 @@ async def create_work_package(
     )
     safe_parent = _validate_optional_work_package_ref(parent, field_name="parent")
     return await _run_tool(
-        client.create_work_package(
+        client.work_package.create(
             project=safe_project,
             type=safe_type,
             subject=safe_subject,
@@ -785,7 +785,7 @@ async def update_work_package(
         message="At least one field to update is required.",
     )
     return await _run_tool(
-        client.update_work_package(
+        client.work_package.update(
             work_package_id=safe_id,
             subject=common["subject"],
             description=common["description"],
@@ -957,7 +957,7 @@ async def bulk_create_work_packages(
                 "duration": common["duration"],
             }
         )
-    return await _run_tool(client.bulk_create_work_packages(items=safe_items, confirm=confirm))
+    return await _run_tool(client.work_package.bulk_create(items=safe_items, confirm=confirm))
 
 
 _BULK_UPDATE_WORK_PACKAGE_ITEM_FIELDS = frozenset(
@@ -1089,7 +1089,7 @@ async def bulk_update_work_packages(
                 "percentage_done": common["percentage_done"],
             }
         )
-    return await _run_tool(client.bulk_update_work_packages(items=safe_items, confirm=confirm))
+    return await _run_tool(client.work_package.bulk_update(items=safe_items, confirm=confirm))
 
 
 @register_tool
@@ -1105,7 +1105,7 @@ async def delete_work_package(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.delete_work_package(work_package_id=safe_id, confirm=confirm))
+    return await _run_tool(client.work_package.delete(work_package_id=safe_id, confirm=confirm))
 
 
 @register_tool
@@ -1153,7 +1153,7 @@ async def create_subtask(
         due_date=due_date,
     )
     return await _run_tool(
-        client.create_subtask(
+        client.work_package.create_subtask(
             parent_work_package_id=safe_parent_id,
             type=safe_type,
             subject=safe_subject,
@@ -1201,7 +1201,7 @@ async def add_work_package_comment(
     safe_id = _validate_work_package_ref(work_package_id)
     safe_comment = _validate_required_text(comment, field_name="comment", max_length=10_000)
     return await _run_tool(
-        client.add_work_package_comment(
+        client.work_package.add_comment(
             work_package_id=safe_id,
             comment=safe_comment,
             internal=internal,
@@ -1242,7 +1242,7 @@ async def list_my_open_work_packages(
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=WorkPackageSummary)
-    return await _run_tool(client.list_my_open_work_packages(offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.work_package.list_my_open(offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -1270,7 +1270,7 @@ async def get_work_package_activities(
     safe_limit = _validate_limit(limit)
     safe_text_limit = _validate_optional_text_limit(text_limit)
     _validate_select(select, row_type=ActivitySummary)
-    return await _run_tool(client.get_work_package_activities(safe_id, limit=safe_limit, text_limit=safe_text_limit))
+    return await _run_tool(client.activity.list_for_work_package(safe_id, limit=safe_limit, text_limit=safe_text_limit))
 
 
 @register_tool
@@ -1288,7 +1288,7 @@ async def list_work_package_reactions(
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
     _validate_select(select, row_type=EmojiReactionSummary)
-    return await _run_tool(client.list_work_package_reactions(safe_id))
+    return await _run_tool(client.emoji_reaction.list_for_work_package(safe_id))
 
 
 @register_tool
@@ -1308,4 +1308,4 @@ async def toggle_activity_emoji_reaction(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(activity_id, field_name="activity_id")
     safe_reaction = _validate_required_query(reaction, field_name="reaction", max_length=50)
-    return await _run_tool(client.toggle_activity_emoji_reaction(safe_id, safe_reaction, confirm=confirm))
+    return await _run_tool(client.emoji_reaction.toggle(safe_id, safe_reaction, confirm=confirm))
