@@ -4,7 +4,7 @@ Depends on the MembershipApi Protocol, never HttpxMembershipApi concretely
 (enforced by the architecture-boundary test). No dedicated
 MembershipResolver: unlike Versions (name -> id) or Projects
 (identifier/name -> id), a `membership_id` is always a numeric value already
-validated by tools.py -- there is no semantic-reference resolution for this
+validated by tools_memberships.py -- there is no semantic-reference resolution for this
 domain to warrant a Resolver in the ADR sense.
 
 `_WriteOutcome`/`_finalize_write` are shared via `app/services/_write_outcome.py`

@@ -5,7 +5,7 @@ create_work_package_wiki_link, delete_work_package_wiki_link.
 
 One file for five sub-domains (Documents, News, Wiki Pages, Posts, Wiki-Page
 Links): none of these 13 functions calls another of them, and none is called
-by any other tools.py function -- every body only validates its own
+by any other domain's tool function -- every body only validates its own
 arguments (via tools_validation.py) and delegates to exactly one
 `client.<method>(...)` call. A finer per-domain split is possible but not
 warranted for a group this size; keeping them together avoids triplicating

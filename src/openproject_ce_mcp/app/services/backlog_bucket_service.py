@@ -3,7 +3,7 @@
 Depends on the BacklogBucketApi Protocol, never HttpxBacklogBucketApi
 concretely (enforced by the architecture-boundary test). No dedicated
 BacklogBucketResolver: a `backlog_bucket_id` is always a numeric value
-already validated by tools.py -- there is no semantic-reference resolution
+already validated by tools_sprints.py -- there is no semantic-reference resolution
 for this domain to warrant a Resolver (mirrors Sprints/Views/Categories/Wiki
 Pages).
 

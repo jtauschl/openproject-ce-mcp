@@ -26,9 +26,10 @@ def _unexpected(request: httpx.Request) -> None:
 
 # --- update_my_preferences ------------------------------------------------
 #
-# Client method (client.py:4735, `update_my_preferences`) does a direct PATCH with
-# no prerequisite GET -- the preview (confirm=False) branch returns before issuing
-# any HTTP call at all.
+# client.py's `update_my_preferences` is a thin delegation to
+# UserPreferencesService.update, which does a direct PATCH with no
+# prerequisite GET -- the preview (confirm=False) branch returns before
+# issuing any HTTP call at all.
 
 
 def _base_personal_settings(**overrides: object) -> Settings:
@@ -43,7 +44,7 @@ def _base_personal_settings(**overrides: object) -> Settings:
         "log_level": "WARNING",
         "read_projects": ("*",),
         "write_projects": ("*",),
-        # Registration of these three tools in tools.py additionally ANDs
+        # Registration of these two tools in tools.py additionally ANDs
         # enable_personal_read on top of the "personal" write_scope gate the
         # shared denial test flips -- both must be True for a realistic
         # preview-then-confirm run.
@@ -72,11 +73,11 @@ def _update_my_preferences_handler(request: httpx.Request) -> httpx.Response:
 
 # --- mark_notifications_read (single-id branch) ----------------------------
 #
-# client.mark_notification_read (client.py:4160) has a real client-side
-# preview branch: confirm=False returns a NotificationMarkResult
-# (requires_confirmation=True, ready=True) without issuing any HTTP call, and
-# confirm=True POSTs to notifications/{id}/read_ian. Not a rubber-stamp/
-# always-executes tool.
+# client.mark_notification_read is a thin delegation to
+# NotificationService.mark_read, which has a real preview branch:
+# confirm=False returns a NotificationMarkResult (requires_confirmation=True,
+# ready=True) without issuing any HTTP call, and confirm=True POSTs to
+# notifications/{id}/read_ian. Not a rubber-stamp/always-executes tool.
 
 
 def _mark_notification_read_handler(request: httpx.Request) -> httpx.Response:
@@ -90,7 +91,7 @@ def _mark_notification_read_handler(request: httpx.Request) -> httpx.Response:
 #
 # Needs a real local file under tmp_path and a matching Settings.attachment_root
 # known only at test time -- Settings is frozen, so this can't be a static
-# kwargs/settings pair like the other three; see `materialize` below.
+# kwargs/settings pair like the other two; see `materialize` below.
 
 
 def _base_settings_for_attachment(**overrides: object) -> Settings:

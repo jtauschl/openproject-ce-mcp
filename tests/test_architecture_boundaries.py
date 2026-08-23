@@ -405,7 +405,7 @@ def test_membership_service_binds_the_api_param_to_membership_api_specifically()
     guarantee, sibling to the Versions-only and Projects-only checks above:
     the api param is MembershipApi exactly, not just "some Protocol". No
     MembershipResolver exists (unlike Versions/Projects) -- membership_id is
-    always a numeric value already validated by tools.py, so there is no
+    always a numeric value already validated by tools_memberships.py, so there is no
     semantic-reference resolution for this domain to warrant a Resolver."""
     from openproject_ce_mcp.app.adapters.httpx_membership_api import HttpxMembershipApi
     from openproject_ce_mcp.app.ports.membership_api import MembershipApi
@@ -627,7 +627,7 @@ def test_grid_service_binds_the_api_param_to_grid_api_specifically() -> None:
     """Non-generalized regression test for the Grids domain's exact
     guarantee, sibling to the checks above: the api param is GridApi
     exactly, not just "some Protocol". No GridResolver exists -- grid_id is
-    always a numeric value already validated by tools.py, so there is no
+    always a numeric value already validated by tools_grids.py, so there is no
     semantic-reference resolution for this domain to warrant a Resolver."""
     from openproject_ce_mcp.app.adapters.httpx_grid_api import HttpxGridApi
     from openproject_ce_mcp.app.ports.grid_api import GridApi
@@ -641,12 +641,14 @@ def test_grid_service_binds_the_api_param_to_grid_api_specifically() -> None:
 def test_sprint_service_binds_the_api_param_to_sprint_api_specifically() -> None:
     """Non-generalized regression test for the Sprints domain's exact
     guarantee, sibling to the checks above: the api param is SprintApi
-    exactly, not just "some Protocol". No SprintResolver exists -- sprint_id
-    is always a numeric value already validated by tools.py, so there is no
-    semantic-reference resolution for this domain to warrant a Resolver
-    (client.py's own `_resolve_sprint_id`, which resolves a *name* to an id
-    for work-package writes, stays client.py-side machinery consuming
-    SprintApi/sprint_policy directly, not a Service-layer Resolver)."""
+    exactly, not just "some Protocol". This Service's only id-bearing tool,
+    `get_sprint`, takes a sprint_id that is always a numeric value already
+    validated by tools_sprints.py, so no Resolver is needed HERE for that
+    path (list_sprints takes no sprint id at all). A separate `SprintResolver`
+    (`app/resolvers/sprint_resolver.py`) does exist for the work-package
+    write path, where a sprint is given by *name*, not id --
+    `OpenProjectClient` injects its `resolve_id` into `WorkPackageService`,
+    a different Service this SprintService test does not cover."""
     from openproject_ce_mcp.app.adapters.httpx_sprint_api import HttpxSprintApi
     from openproject_ce_mcp.app.ports.sprint_api import SprintApi
     from openproject_ce_mcp.app.services.sprint_service import SprintService
@@ -661,7 +663,7 @@ def test_backlog_bucket_service_binds_the_api_param_to_backlog_bucket_api_specif
     guarantee, sibling to the Sprints check above: the api param is
     BacklogBucketApi exactly, not just "some Protocol". No
     BacklogBucketResolver exists -- backlog_bucket_id is always a numeric
-    value already validated by tools.py, so there is no semantic-reference
+    value already validated by tools_sprints.py, so there is no semantic-reference
     resolution for this domain to warrant a Resolver."""
     from openproject_ce_mcp.app.adapters.httpx_backlog_bucket_api import HttpxBacklogBucketApi
     from openproject_ce_mcp.app.ports.backlog_bucket_api import BacklogBucketApi
@@ -678,7 +680,7 @@ def test_board_service_binds_the_api_param_to_board_api_specifically() -> None:
     """Non-generalized regression test for the Boards domain's exact
     guarantee, sibling to the checks above: the api param is BoardApi
     exactly, not just "some Protocol". No BoardResolver exists -- board_id is
-    always a numeric value already validated by tools.py, so there is no
+    always a numeric value already validated by tools_boards.py, so there is no
     semantic-reference resolution for this domain to warrant a Resolver."""
     from openproject_ce_mcp.app.adapters.httpx_board_api import HttpxBoardApi
     from openproject_ce_mcp.app.ports.board_api import BoardApi
@@ -693,7 +695,7 @@ def test_meeting_service_binds_the_api_param_to_meeting_api_specifically() -> No
     """Non-generalized regression test for the Meetings domain's exact
     guarantee: the api param is MeetingApi exactly, not just "some
     Protocol". No MeetingResolver exists -- meeting_id is always a numeric
-    value already validated by tools.py."""
+    value already validated by tools_meetings.py."""
     from openproject_ce_mcp.app.adapters.httpx_meeting_api import HttpxMeetingApi
     from openproject_ce_mcp.app.ports.meeting_api import MeetingApi
     from openproject_ce_mcp.app.services.meeting_service import MeetingService
@@ -798,7 +800,7 @@ def test_recurring_meeting_service_binds_the_api_param_to_recurring_meeting_api_
     Occurrences) domain's exact guarantee: the api param is
     RecurringMeetingApi exactly, not just "some Protocol". No dedicated
     Resolver exists -- recurring_meeting_id is always a numeric value already
-    validated by tools.py, and occurrences are addressed by start_time, not
+    validated by tools_meetings.py, and occurrences are addressed by start_time, not
     an id."""
     from openproject_ce_mcp.app.adapters.httpx_recurring_meeting_api import HttpxRecurringMeetingApi
     from openproject_ce_mcp.app.ports.recurring_meeting_api import RecurringMeetingApi
@@ -1047,7 +1049,7 @@ def test_status_priority_type_service_binds_the_api_param_to_status_priority_typ
     domain's exact guarantee, sibling to the checks above: the api param is
     StatusPriorityTypeApi exactly, not just "some Protocol". No dedicated
     Resolver exists for status_id/priority_id/type_id -- all three are always
-    numeric values already validated by tools.py. `list_types`' optional
+    numeric values already validated by tools_reference_data.py. `list_types`' optional
     `project` filter uses the pre-existing ProjectRefResolver seam instead
     (a request-shaping parameter, not a semantic reference needing a
     dedicated Resolver)."""
@@ -1088,7 +1090,7 @@ def test_job_status_service_binds_the_api_param_to_job_status_api_specifically()
     """Non-generalized regression test for the Job Status domain's exact
     guarantee, sibling to the checks above: the api param is JobStatusApi
     exactly, not just "some Protocol". No dedicated Resolver: job_status_id
-    is a plain numeric id already validated by tools.py, not a semantic
+    is a UUID-string id already validated by tools_projects.py, not a semantic
     reference needing lookup."""
     from openproject_ce_mcp.app.adapters.httpx_job_status_api import HttpxJobStatusApi
     from openproject_ce_mcp.app.ports.job_status_api import JobStatusApi

@@ -3,7 +3,7 @@
 Depends on the StatusPriorityTypeApi Protocol, never HttpxStatusPriorityTypeApi
 concretely (enforced by the architecture-boundary test). No dedicated
 Resolver for any of the three: `status_id`/`priority_id`/`type_id` are always
-numeric values already validated by tools.py.
+numeric values already validated by tools_reference_data.py.
 
 All three share `access.ensure_read_enabled("work_package", ...)` as their
 gate, so one Service bundling all three, rather than three separate

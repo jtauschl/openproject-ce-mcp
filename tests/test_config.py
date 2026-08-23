@@ -502,7 +502,9 @@ def test_tilde_attachment_root_is_accepted() -> None:
 
 def test_empty_attachment_root_is_accepted_at_config_time() -> None:
     # The config layer only validates format when a value IS given — the actual
-    # "uploads disabled" enforcement happens later, in client.py/tools.py, not here.
+    # "uploads disabled" enforcement happens later, in
+    # app/services/attachment_service.py (runtime path check) and tools.py
+    # (registration gate), not here.
     settings = Settings.from_env(
         {
             "OPENPROJECT_BASE_URL": "https://op.example.com",

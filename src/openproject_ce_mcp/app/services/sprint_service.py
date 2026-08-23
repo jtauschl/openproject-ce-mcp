@@ -1,10 +1,17 @@
 """Application Service for the Sprints (Backlogs) domain.
 
 Depends on the SprintApi Protocol, never HttpxSprintApi concretely (enforced
-by the architecture-boundary test). No dedicated SprintResolver: a
-`sprint_id` is always a numeric value already validated by tools.py -- there
-is no semantic-reference resolution for this domain to warrant a Resolver
-(mirrors Views/Categories/Wiki Pages).
+by the architecture-boundary test). This Service's only id-bearing tool,
+`get_sprint`, takes a `sprint_id` that is always a numeric value already
+validated by tools_sprints.py -- no dedicated Resolver is needed here,
+mirroring Views/Categories/Wiki Pages (list_sprints takes no sprint id at
+all; `list_backlog_buckets`/`get_backlog_bucket` are a separate domain
+served by `BacklogBucketService`, not this Service). A SEPARATE
+`SprintResolver` (`app/resolvers/sprint_resolver.py`) does exist for the
+work-package write path, where `update_work_package`/`bulk_update_work_packages`
+accept a sprint by NAME, not id -- `OpenProjectClient` injects
+`self._sprint_resolver.resolve_id` into `WorkPackageService`, which is a
+different, semantic-reference resolution this Service itself never performs.
 
 Sprints shares the "project" read scope with Projects/News/Documents/
 Categories/Views/Grids -- no dedicated OPENPROJECT_ENABLE_SPRINT_* flag

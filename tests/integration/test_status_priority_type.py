@@ -55,7 +55,7 @@ async def test_list_priorities_stamps_hidden_field_for_masking(client: OpenProje
     presentation._to_payload, which reads that marker to drop the field from
     the MCP response entirely. This client-layer test proves the stamp itself
     is present against a live payload; the drop-from-response behavior is
-    already covered by tools.py's own unit tests (mocked client)."""
+    already covered by the tool layer's own unit tests (mocked client)."""
     hidden_settings = dataclasses.replace(client.settings, hidden_fields={"priority": ("color",)})
     hidden_client = OpenProjectClient(hidden_settings)
     await hidden_client.initialize()

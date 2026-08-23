@@ -1,11 +1,11 @@
 """MCP output/context-reduction presentation policy.
 
-Relocated out of tools.py: this is presentation/serialization policy (hides
-confirmed payloads, drops derived fields, applies `select`, filters hidden
-fields) rather than a model definition, so it does not belong in models.py
-either. Package-root module (not under app/) -- tools.py must never import
-from app/ directly (see tests/test_architecture_boundaries.py), and this is
-needed by tools.py.
+Relocated out of the tool layer: this is presentation/serialization policy
+(hides confirmed payloads, drops derived fields, applies `select`, filters
+hidden fields) rather than a model definition, so it does not belong in
+models.py either. Package-root module (not under app/) -- the tool layer must
+never import from app/ directly (see tests/test_architecture_boundaries.py),
+and this is needed by tools_runtime.py's registration wrapper.
 """
 
 from __future__ import annotations
@@ -38,8 +38,8 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None, elide_none:
       explicit ``null`` otherwise. An empty list/dict is always kept regardless
       (it means "present but empty", distinct from "not applicable"). ``elide_none``
       reflects the *calling tool's* serialization policy, not the shape of the
-      dataclass currently being serialized: it is set once by the ``tools.py``
-      registration wrapper — true when the tool accepts a ``select`` parameter
+      dataclass currently being serialized: it is set once by the
+      ``tools_runtime.py`` registration wrapper — true when the tool accepts a ``select`` parameter
       (so a caller who wants a ``None`` field back can request it explicitly),
       false when it does not (so nothing would otherwise be able to recover an
       elided field). It is threaded unchanged through every recursive call,

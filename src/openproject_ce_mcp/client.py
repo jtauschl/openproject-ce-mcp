@@ -196,14 +196,14 @@ from .app.services.wiki_page_service import WikiPageService
 # CLEAR/CLEAR_VERSION/CLEAR_PARENT are canonically defined in
 # app/services/work_package_service.py (this domain's write-path migration
 # moved them there) and re-exported here unchanged -- object identity is
-# preserved by Python's normal import semantics, so tools.py's existing
-# `from .client import CLEAR, CLEAR_PARENT, CLEAR_VERSION` keeps working
-# without any change. `CLEAR` is also still used internally below (Projects'
-# write path, a DIFFERENT, unrelated sentinel from the same-named
+# preserved by Python's normal import semantics, so tools_work_packages.py's
+# existing `from .client import CLEAR, CLEAR_PARENT, CLEAR_VERSION` keeps
+# working without any change. `CLEAR` is also still used internally below
+# (Projects' write path, a DIFFERENT, unrelated sentinel from the same-named
 # CLEAR_PARENT here -- Projects' own is aliased to _PROJECT_CLEAR_PARENT
 # above, never conflated with this one). `_narrow_cleared` is NOT re-exported
-# -- it was client.py-internal only, never imported by tools.py, and the
-# Service now has its own copy.
+# -- it was client.py-internal only, never imported by the tool layer, and
+# the Service now has its own copy.
 from .app.services.work_package_service import CLEAR, CLEAR_PARENT, CLEAR_VERSION, WorkPackageService  # noqa: F401
 from .app.transport.errors import raise_for_status as _map_status_to_error
 from .app.transport.httpx_transport import HttpxTransport

@@ -41,9 +41,9 @@ docstring.
 `search()`/`list()` stay two separate methods (not one parametrized method):
 they have non-overlapping required/exclusive parameters (`search` is required
 for `search_work_packages` and has no `type`/`version`/`version_status`;
-`list_work_packages` has no `search`), and `tools.py` registers them as two
-separate MCP tools already -- 1:1 parity with the Service layer is the
-simpler, less surprising mapping. Both call the shared private
+`list_work_packages` has no `search`), and `tools_work_packages.py` registers
+them as two separate MCP tools already -- 1:1 parity with the Service layer is
+the simpler, less surprising mapping. Both call the shared private
 `_list_collection` helper, so the actual overlap logic (pagination,
 total-trust derivation, allowlist filtering) exists exactly once.
 

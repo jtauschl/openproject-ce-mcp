@@ -2,7 +2,7 @@
 
 Depends on the GridApi Protocol, never HttpxGridApi concretely (enforced by
 the architecture-boundary test). No dedicated GridResolver: a `grid_id` is
-always a numeric value already validated by tools.py.
+always a numeric value already validated by tools_grids.py.
 
 No ProjectRefResolver seam: unlike every domain with a `project` filter
 parameter, Grids never resolves a project ref -- `scope` is a raw href/path

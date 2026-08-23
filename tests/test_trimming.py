@@ -560,13 +560,14 @@ def test_list_tools_expose_select_param() -> None:
 # ── select is actually threaded through the registered wrapper ───────────────
 #
 # The test above only proves `select` is *published* in a tool's schema. It
-# does NOT prove tools.py:459-460 (the register_tools() trimming wrapper)
+# does NOT prove tools_runtime.py's register_selected_tools() trimming wrapper
 # actually *reads* the kwarg and applies it via _to_payload -- and the
 # _to_payload unit tests further up only prove the mechanism works in
 # isolation, not that it's really wired up for these two tools. This test
 # calls the real registered callable (`Tool.fn`, confirmed by inspection to be
-# the `trimming` wrapper from register_tools, not the raw tool function -- it
-# returns a plain dict, not a dataclass) through a real OpenProjectClient, so
+# the `trimming` wrapper from register_selected_tools, not the raw tool
+# function -- it returns a plain dict, not a dataclass) through a real
+# OpenProjectClient, so
 # it's the one assertion that proves the full path end-to-end. One bulk tool
 # is enough: both share the same return type and the same generic wrapper
 # mechanism: their own signatures/validators are already covered separately

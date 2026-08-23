@@ -2,7 +2,7 @@
 
 Depends on the BoardApi Protocol, never HttpxBoardApi concretely (enforced by
 the architecture-boundary test). No dedicated BoardResolver: a `board_id` is
-always a numeric value already validated by tools.py.
+always a numeric value already validated by tools_boards.py.
 
 Boards have their own dedicated OPENPROJECT_ENABLE_BOARD_READ/_WRITE flags
 (unlike Views/Grids/Categories, which share the generic "project" scope) --

@@ -1,8 +1,9 @@
-"""Shared presentation-layer validation helpers for tools.py (MCP tool handlers).
+"""Shared presentation-layer validation helpers for the MCP tool handlers in
+each per-domain `tools_<domain>.py` module.
 
-tools.py stays presentation-only and never imports from `app/` — this module
-is a plain sibling, imported by tools.py (and directly by some unit tests
-exercising a validator in isolation), never the reverse.
+The tool layer stays presentation-only and never imports from `app/` -- this
+module is a plain sibling, imported by the domain modules (and directly by
+some unit tests exercising a validator in isolation), never the reverse.
 """
 
 from __future__ import annotations

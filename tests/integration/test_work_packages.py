@@ -26,7 +26,7 @@ class _FakeAppContext:
 
 
 class _FakeContext:
-    """Minimal Context stand-in so a tools.py function can be exercised
+    """Minimal Context stand-in so a tool-layer function can be exercised
     directly against a real client, the same shape tests/unit's mocked
     unit tests use (FakeAppContext/FakeContext in _tools_test_helpers.py),
     but wrapping a live client instead of a stub."""
@@ -495,7 +495,7 @@ async def test_bulk_create_work_packages_rejects_unknown_item_field(
     """Regression: bulk_create_work_packages/bulk_update_work_packages
     accept an unrestricted items: list[dict] with no schema on each item's
     keys -- a misspelled or unsupported field was silently ignored instead
-    of raising an error. This is a tools.py-layer validation (client.py has
+    of raising an error. This is a tool-layer validation (client.py has
     no knowledge of the item schema), so it's exercised through the tool
     function directly rather than client.bulk_create_work_packages."""
     ctx = _FakeContext(client)  # type: ignore[arg-type]

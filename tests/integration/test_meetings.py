@@ -647,7 +647,7 @@ async def test_recurring_meeting_occurrence_init_and_cancel(
     a different, not-yet-materialized one. The cancelled occurrence's
     server-created cancellation Meeting is NOT independently cleaned up here
     (its id is not returned to the caller at all -- see this domain's
-    documented quirk in tools.py/docs/tools.md); it is a genuine, expected,
+    documented quirk in tools_meetings.py/docs/tools.md); it is a genuine, expected,
     permanent side effect of calling cancel on a virtual occurrence, not a
     test-cleanup gap."""
     try:

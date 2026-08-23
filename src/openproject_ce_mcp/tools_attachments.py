@@ -18,8 +18,8 @@ from `openproject_ce_mcp.tools`, matching `tools_relations.py`'s and
 `tools_projects.py`'s precedent of re-exporting the full moved set.
 
 `create_work_package_attachment`'s registration gate (`ATTACHMENT_UPLOAD_TOOLS`,
-requiring both work-package write scope AND a configured
-`OPENPROJECT_ATTACHMENT_ROOT`) stays in `tools.py`'s own
+requiring work-package write scope, a configured `OPENPROJECT_ATTACHMENT_ROOT`,
+AND a usable project read/write allowlist) stays in `tools.py`'s own
 `register_tools()`/`enabled_tool_names()` -- only the function body moved
 here, not the gating metadata.
 """

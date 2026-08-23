@@ -81,7 +81,8 @@ instance as the table above, though it fetches its own separate page of rows
 larger of the two because it affects *every* field on a tool with no
 `select` parameter at all (e.g. `list_statuses`, one of several list tools
 whose return type happens to carry a `results` field but has no `select` in
-its own signature — see `tools.py`'s `tool()` wrapper for how that
+its own signature — see `tools_runtime.py`'s `register_selected_tools()`, specifically the
+inner `tool()` wrapper's `elide_none` check, for how that
 distinction is derived from the real function signature, not guessed from
 the return type; simulated here on work-package rows since this
 instance's 14 seeded statuses are all fully populated and would show no

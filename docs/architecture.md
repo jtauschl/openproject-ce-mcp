@@ -19,7 +19,9 @@ src/openproject_ce_mcp/
 │                         methods (a Service must not depend on another Service)
 ├── retry_transport.py    HTTP retry with backoff for transient failures
 ├── models.py             compact dataclasses returned to MCP clients
-├── tools.py              validated MCP tool handlers
+├── tools.py              tool registration/classification infrastructure; the
+│                         handlers themselves live in per-domain tools_<domain>.py
+│                         modules (see "tools.py and the per-domain tool modules" below)
 ├── server.py             MCPServer bootstrap and lifecycle management
 ├── setup_cli.py          the interactive `configure` command
 ├── doctor.py             the `doctor` diagnostics command
@@ -60,11 +62,22 @@ src/openproject_ce_mcp/
 - Keeps tool responses stable and compact.
 - Decouples MCP-facing output from raw OpenProject payloads.
 
-### `tools.py`
+### `tools.py` and the per-domain tool modules
 
-- Exposes MCP tools on top of the client.
-- Validates and normalizes user input before it reaches the client.
-- Translates internal exceptions into MCP-safe tool errors.
+- Each domain's MCP tools live in their own `tools_<domain>.py` module (e.g.
+  `tools_projects.py`, `tools_work_packages.py`) on top of the client:
+  validates and normalizes user input before it reaches the client, and
+  translates internal exceptions into MCP-safe tool errors.
+- `tools.py` itself holds no tool functions -- only `enabled_tool_names()`/
+  `register_tools()` and the scope-classification constants (which tool
+  belongs to which read/write scope), plus a side-effect import of every
+  `tools_<domain>.py` module and a re-export of names still imported directly
+  by some tests.
+- `tools_runtime.py` is the shared kernel every domain module depends on: the
+  `@register_tool` decorator/registry, `_client_from_context`/`_run_tool`,
+  error categorization, and the return-model/select-trimming machinery.
+- `tools_validation.py` holds the generic, domain-crossing field validators
+  every domain module imports from.
 
 ### `server.py`
 
@@ -78,7 +91,7 @@ src/openproject_ce_mcp/
 are one-line delegations to a layered implementation under `app/`:
 
 ```text
-tools.py (MCP presentation)
+tools_<domain>.py (MCP presentation)
     -> Application Services (app/services/)
         -> Policies (app/policies/, no I/O)
         -> Resolvers (app/resolvers/, I/O only via a port)
@@ -146,7 +159,7 @@ tools.py (MCP presentation)
   through a request-scoped resolution context: a single top-level call touching the same project
   more than once performs the read/write-allowlist check once, not once per touch, without ever
   skipping it outright. A domain whose id is always already-numeric or an opaque string (validated
-  by `tools.py`) needs no dedicated Resolver at all — it depends directly on the shared
+  by its `tools_<domain>.py` module) needs no dedicated Resolver at all — it depends directly on the shared
   `ProjectRefResolver` seam (`app/ports/project_ref.py`) when it needs to resolve an optional
   `project` filter, and on nothing else.
 - **Application Services** orchestrate a single use case: Policy checks, Resolver calls, port
@@ -266,8 +279,9 @@ tools.py (MCP presentation)
   the server's multipart parser treat it as an uploaded file rather than a JSON string.
 - `OpenProjectClient` remains a 100%-compatible facade: each domain's public method signatures stay
   unchanged unless a deliberate, separately-decided behavior change was bundled into a past
-  migration — in which case `tools.py`'s matching tool gained the same change, the only kind of
-  `tools.py` edit a domain migration itself ever requires. The two `client.py`-level orchestration
+  migration — in which case the domain's matching tool in its `tools_<domain>.py` module gained the
+  same change, the only kind of tool-layer edit a domain migration itself ever requires. The two
+  `client.py`-level orchestration
   methods that combine multiple domains (`get_project_work_package_context`, `get_my_project_access`)
   stay as `client.py`-level orchestration rather than moving into a single Service, since a Service
   must not depend on another Service.
@@ -292,7 +306,7 @@ intentionally not duplicated here, since this file describes only the current ar
 
 Two domains (Wiki Page Links, Query execution) were added directly against these `app/` layers
 with no flat `client.py` predecessor to migrate from — genuinely new API surface, not a migration.
-For a domain built this way, "`tools.py`'s matching tool gained the same change" above does not
+For a domain built this way, "the domain's matching tool gained the same change" above does not
 apply as written: every migrated domain's tools were already registered in `tools.py`'s
 classification constants (`READ_TOOLS_BY_SCOPE`/`WRITE_TOOLS_BY_SCOPE`/
 `_PROJECT_SCOPED_READ_TOOLS`) before its Service existed, so a migration's own `tools.py` diff was
@@ -354,7 +368,7 @@ resolution steps explicit.
 
 Typical read flow:
 
-1. MCP client calls a tool in `tools.py`
+1. MCP client calls a tool in its domain's `tools_<domain>.py` module
 2. tool input is validated and normalized
 3. the domain's Application Service (`app/services/`) checks read gating and project scope via `app/policies/`
 4. the domain's Adapter (`app/adapters/`) calls the OpenProject API through `HttpxTransport`
@@ -363,7 +377,7 @@ Typical read flow:
 
 Typical write flow:
 
-1. MCP client calls a mutating tool in `tools.py`
+1. MCP client calls a mutating tool in its domain's `tools_<domain>.py` module
 2. tool input is validated
 3. the domain's Application Service checks project scope and write enablement via `app/policies/`
 4. write payload is prepared, often through OpenProject form endpoints

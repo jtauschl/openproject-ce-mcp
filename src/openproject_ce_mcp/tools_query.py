@@ -14,8 +14,8 @@ ordinary `"work_package"` read scope in `READ_TOOLS_BY_SCOPE` (the same scope
 as `list_work_packages`/`get_work_package`) and also appears in
 `_PROJECT_SCOPED_READ_TOOLS`, and it validates its numeric id/paging
 arguments with `_validate_positive_int`/`_validate_offset`/`_validate_limit`
--- the same validators `list_work_packages` and similar tools use elsewhere
-in `tools.py`. The two modules share only the generic `tools_runtime` helpers
+-- the same validators `list_work_packages` and similar tools use in
+`tools_work_packages.py`. The two modules share only the generic `tools_runtime` helpers
 every domain module uses (`_client_from_context`/`_run_tool`/`register_tool`);
 they share no domain-specific validator or return model, so folding
 `execute_query` into `tools_query_schema.py` would misrepresent it as a

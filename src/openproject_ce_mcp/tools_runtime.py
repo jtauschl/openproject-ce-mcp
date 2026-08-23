@@ -1,11 +1,11 @@
 """Tool-registration, dispatch, error-translation, and trimming mechanics.
 
-This module is the shared kernel every domain's tool functions (some still in
-`tools.py`, most already split out into their own per-domain
-`tools_<domain>.py` files) depend on: the `@register_tool` decorator +
-registry, `register_selected_tools()` (the mechanical half of registration),
-request-scoped MCP `Context` access, error categorization, and the
-return-model/select-trimming machinery.
+This module is the shared kernel every domain's tool functions (each living
+in its own per-domain `tools_<domain>.py` file; `tools.py` itself holds no
+tool functions, only registration/classification infrastructure) depend on:
+the `@register_tool` decorator + registry, `register_selected_tools()` (the
+mechanical half of registration), request-scoped MCP `Context` access, error
+categorization, and the return-model/select-trimming machinery.
 
 Strictly one-directional: this module never imports from `tools.py`, any
 `tools_<domain>.py`, or `app/` -- it only imports from `.client`, `.models`,
@@ -167,9 +167,9 @@ def _return_model(fn: Any) -> type | None:
     ``from __future__ import annotations`` makes the return annotation a string,
     so we resolve it against ``fn``'s own defining module's namespace
     (``fn.__globals__``, not the caller's) -- this stays correct regardless of
-    which module defines the tool (``tools.py`` or any per-domain
-    ``tools_<domain>.py`` module), since a tool function defined in any module
-    still resolves against its own home rather than silently returning None.
+    which ``tools_<domain>.py`` module defines the tool, since a tool function
+    defined in any module still resolves against its own home rather than
+    silently returning None.
     Callers must pass the actual tool function, not a wrapper around it --
     functools.wraps() copies __annotations__ but not __globals__, so a
     wrapper's __globals__ points at the wrapper's own defining module, not the
