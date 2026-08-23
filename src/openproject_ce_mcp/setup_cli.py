@@ -2,8 +2,9 @@
 # This is the interactive MCP server setup, not a packaging file.
 # Run via the installed console command: openproject-ce-mcp configure
 #   (or the openproject-ce-mcp-setup alias)
-# From a source checkout it also runs via ./get.sh / .\get.ps1 or
-# `python3 configure_mcp.py` (a thin shim that imports this module).
+# From a manual source checkout it also runs via `python3 configure_mcp.py`
+# (a thin shim that imports this module) -- see docs/installation.md's
+# "Development / from source" section.
 """Interactive setup: registers the openproject MCP server with clients and writes .mcp.json.
 
 Runs in two modes:
@@ -667,8 +668,10 @@ def _run_uninstall() -> None:
 
     Removes from BOTH the user-wide (global) config of each client AND the
     project-local config in the current directory (mirroring what configure now
-    writes). Output is grouped by scope, one line per target with its status. The
-    venv/caches of a source checkout are handled by uninstall.sh/.ps1.
+    writes). Output is grouped by scope, one line per target with its status. A
+    manual source checkout's own .venv/caches are removed separately (see
+    docs/installation.md's "Development / from source" section), not by
+    this command.
     """
     clients = _clients()
     failed: list[Path] = []

@@ -164,7 +164,24 @@ support.
   overrides](docs/tools.md#user-schedule-overrides) for detail. Pulled
   forward from the 0.5.0 backlog.
 
-### Changed
+### Removed
+
+- **`get.ps1`/`get.sh` (the source-install one-liners) and `uninstall.ps1`/
+  `uninstall.sh` are gone**, along with their CI job and executable tests.
+  Live-testing them on a fresh Windows VM (OPM-444) surfaced 3 real bugs in a
+  small amount of maintained surface (a missing dependency-install step, a
+  PowerShell `exit`-inside-`iex` bug, a Microsoft-Store-Python-stub crash) —
+  on reflection, these two platform-specific launcher scripts serve neither
+  the normal end user (who gets the same published package more simply via
+  `pipx`) nor a contributor (who already has `git clone` + `uv sync --dev`
+  documented in `CONTRIBUTING.md`). `docs/installation.md`'s
+  "Development / from source" section now points there directly instead of
+  offering a scripted one-liner. `docs/installation.md`'s install-method
+  order and phrasing were also reworked to recommend `pipx` unambiguously as
+  the primary path (`uv tool install` as a secondary option for existing `uv`
+  users, plain `pip install` qualified to already-managed environments only,
+  `uvx` reframed as a run-on-demand client-config detail rather than a
+  peer "install method").
 
 - **Breaking: removed client-constructed `url` fields (and a few
   sub-collection hrefs like `activities_url`/`relations_url`) from MCP

@@ -1075,8 +1075,9 @@ def test_merge_scope_prefill_new_key_wins_over_legacy_within_same_source(tmp_pat
 
 
 def test_shim_reexports_public_names() -> None:
-    # The root configure_mcp.py shim must re-export main and helpers so get.sh
-    # and any importer keep working.
+    # The root configure_mcp.py shim must re-export main and helpers so a
+    # manual source checkout (`python3 configure_mcp.py`) and any importer
+    # keep working.
     import importlib.util
 
     shim_path = Path(__file__).resolve().parent.parent / "configure_mcp.py"
@@ -1092,8 +1093,6 @@ def test_setup_cli_main_dispatches_uninstall_argv(monkeypatch) -> None:
     # Unit-level check of the argv-parsing -> dispatch logic in isolation: does
     # NOT exercise the configure_mcp.py shim itself (main = _setup_cli.main
     # there, so calling it directly bypasses the shim's own module-load path).
-    # The real launcher -> interpreter handoff is covered separately by the
-    # executable uninstall.sh/uninstall.ps1 tests in test_launchers.py.
     called = []
     monkeypatch.setattr(c, "_run_uninstall", lambda: called.append(True))
     c.main(["--uninstall"], interactive=False)

@@ -13,7 +13,7 @@ bootstrap() {
     uv sync --dev
 }
 
-shell_scripts=(dev get.sh uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh)
+shell_scripts=(dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh)
 
 lint() {
     uv run ruff check .
@@ -24,8 +24,7 @@ lint() {
     uvx pip-licenses --python .venv/bin/python3 --fail-on="GPL;LGPL;AGPL"
     shellcheck "${shell_scripts[@]}"
     shfmt -l "${shell_scripts[@]}"
-    sh -n get.sh
-    for f in dev uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh; do
+    for f in "${shell_scripts[@]}"; do
         bash -n "$f"
     done
     if ! command -v actionlint >/dev/null 2>&1; then

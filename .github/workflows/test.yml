@@ -162,7 +162,7 @@ jobs:
           name: sbom
           path: sbom.json
 
-  launchers:
+  shell-scripts:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -175,17 +175,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Check get.sh syntax (POSIX sh)
-        run: sh -n get.sh
-
       - name: Check shell scripts syntax (bash -n)
         run: |
-          for f in dev uninstall.sh docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh; do
+          for f in dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh; do
             bash -n "$f"
           done
 
       - name: shellcheck
-        run: shellcheck get.sh uninstall.sh dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh
+        run: shellcheck dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh
 
       - name: Install shfmt
         run: |
@@ -193,21 +190,4 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: shfmt
-        run: shfmt -l get.sh uninstall.sh dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh
-
-      - name: Check get.ps1 / uninstall.ps1 syntax (PowerShell parser)
-        shell: pwsh
-        run: |
-          $hadErrors = $false
-          foreach ($f in @("get.ps1", "uninstall.ps1")) {
-            $errors = $null
-            [void][System.Management.Automation.Language.Parser]::ParseFile($f, [ref]$null, [ref]$errors)
-            if ($errors.Count -gt 0) {
-              $errors | ForEach-Object { Write-Host "::error file=$f::$($_.Message)" }
-              $hadErrors = $true
-            }
-          }
-          if ($hadErrors) { exit 1 }
-
-      - name: Run launcher tests
-        run: uv run pytest -m launcher
+        run: shfmt -l dev docker/test/up.sh docker/test/down.sh tools/api-check/fetch-sources.sh
