@@ -1964,3 +1964,58 @@ def test_client_public_methods_are_pure_delegations_except_named_coordinators() 
         f"_CLIENT_NON_DELEGATING_METHODS names {stale_allowlist_entries} that no longer exist on "
         "OpenProjectClient -- remove them from the allowlist."
     )
+
+
+@pytest.mark.asyncio
+async def test_client_service_namespaces_are_complete_and_identity_preserving() -> None:
+    """OPM-394: every `self._<domain>_service` attribute OpenProjectClient constructs in
+    __init__ must have a matching read-only `client.<domain>` property returning that exact
+    object (not a copy/rebuild) -- the additive namespace facade this ticket introduces.
+
+    Built via runtime introspection (`vars(client)` for the private service attributes,
+    `vars(type(client))` for declared `property` descriptors) rather than a hardcoded list of
+    49 names, so this test automatically fails the moment a NEW Service is added to __init__
+    without a matching property -- the actual failure mode OPM-394 exists to prevent, not just
+    a snapshot of today's domain list."""
+    import httpx
+
+    from openproject_ce_mcp.client import OpenProjectClient
+    from openproject_ce_mcp.config import Settings
+
+    settings = Settings(
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=20,
+        max_page_size=50,
+        max_results=100,
+        log_level="WARNING",
+    )
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request))
+    client = OpenProjectClient(settings, transport=transport)
+    try:
+        private_services = {
+            name: value for name, value in vars(client).items() if name.startswith("_") and name.endswith("_service")
+        }
+        assert private_services, "expected OpenProjectClient to construct at least one Service"
+
+        declared_properties = {
+            name: descriptor for name, descriptor in vars(type(client)).items() if isinstance(descriptor, property)
+        }
+
+        for private_name, service_instance in private_services.items():
+            public_name = private_name[1 : -len("_service")]
+            assert public_name in declared_properties, (
+                f"OpenProjectClient constructs {private_name} but has no matching "
+                f"`client.{public_name}` namespace property -- add one (see OPM-394)."
+            )
+            descriptor = declared_properties[public_name]
+            assert descriptor.fset is None, f"client.{public_name} must be read-only (no setter)"
+            assert descriptor.fdel is None, f"client.{public_name} must be read-only (no deleter)"
+            assert getattr(client, public_name) is service_instance, (
+                f"client.{public_name} must return the exact same object as self.{private_name}, "
+                "not a rebuilt/copied instance."
+            )
+    finally:
+        await client.aclose()

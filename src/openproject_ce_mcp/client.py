@@ -981,6 +981,266 @@ class OpenProjectClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
+    # ── Service namespace properties (OPM-394) ─────────────────────────────────
+    #
+    # Read-only views onto the same Service instances constructed in __init__ --
+    # a named alias, not a second implementation. Additive: every existing flat
+    # delegation method below (e.g. `client.list_projects(...)`) keeps working
+    # unchanged; a caller may migrate to the namespaced form (`client.project.list(...)`)
+    # at its own pace, domain by domain. Object identity with the private
+    # `self._<domain>_service` attribute is enforced by
+    # `test_client_service_namespaces_are_complete_and_identity_preserving` in
+    # tests/test_architecture_boundaries.py, which also fails if a future Service
+    # is added without a matching property here.
+
+    @property
+    def action_capability(self) -> ActionCapabilityService:
+        """Same object as `self._action_capability_service` -- a named view, not a second implementation."""
+        return self._action_capability_service
+
+    @property
+    def activity(self) -> ActivityService:
+        """Same object as `self._activity_service` -- a named view, not a second implementation."""
+        return self._activity_service
+
+    @property
+    def attachment(self) -> AttachmentService:
+        """Same object as `self._attachment_service` -- a named view, not a second implementation."""
+        return self._attachment_service
+
+    @property
+    def backlog_bucket(self) -> BacklogBucketService:
+        """Same object as `self._backlog_bucket_service` -- a named view, not a second implementation."""
+        return self._backlog_bucket_service
+
+    @property
+    def board(self) -> BoardService:
+        """Same object as `self._board_service` -- a named view, not a second implementation."""
+        return self._board_service
+
+    @property
+    def category(self) -> CategoryService:
+        """Same object as `self._category_service` -- a named view, not a second implementation."""
+        return self._category_service
+
+    @property
+    def cost(self) -> CostService:
+        """Same object as `self._cost_service` -- a named view, not a second implementation."""
+        return self._cost_service
+
+    @property
+    def current_user(self) -> CurrentUserService:
+        """Same object as `self._current_user_service` -- a named view, not a second implementation."""
+        return self._current_user_service
+
+    @property
+    def document(self) -> DocumentService:
+        """Same object as `self._document_service` -- a named view, not a second implementation."""
+        return self._document_service
+
+    @property
+    def emoji_reaction(self) -> EmojiReactionService:
+        """Same object as `self._emoji_reaction_service` -- a named view, not a second implementation."""
+        return self._emoji_reaction_service
+
+    @property
+    def extended_metadata(self) -> ExtendedMetadataService:
+        """Same object as `self._extended_metadata_service` -- a named view, not a second implementation."""
+        return self._extended_metadata_service
+
+    @property
+    def file_link(self) -> FileLinkService:
+        """Same object as `self._file_link_service` -- a named view, not a second implementation."""
+        return self._file_link_service
+
+    @property
+    def github_gitlab_link(self) -> GithubGitlabLinkService:
+        """Same object as `self._github_gitlab_link_service` -- a named view, not a second implementation."""
+        return self._github_gitlab_link_service
+
+    @property
+    def grid(self) -> GridService:
+        """Same object as `self._grid_service` -- a named view, not a second implementation."""
+        return self._grid_service
+
+    @property
+    def group(self) -> GroupService:
+        """Same object as `self._group_service` -- a named view, not a second implementation."""
+        return self._group_service
+
+    @property
+    def instance_configuration(self) -> InstanceConfigurationService:
+        """Same object as `self._instance_configuration_service` -- a named view, not a second implementation."""
+        return self._instance_configuration_service
+
+    @property
+    def job_status(self) -> JobStatusService:
+        """Same object as `self._job_status_service` -- a named view, not a second implementation."""
+        return self._job_status_service
+
+    @property
+    def meeting(self) -> MeetingService:
+        """Same object as `self._meeting_service` -- a named view, not a second implementation."""
+        return self._meeting_service
+
+    @property
+    def meeting_agenda_item(self) -> MeetingAgendaItemService:
+        """Same object as `self._meeting_agenda_item_service` -- a named view, not a second implementation."""
+        return self._meeting_agenda_item_service
+
+    @property
+    def meeting_outcome(self) -> MeetingOutcomeService:
+        """Same object as `self._meeting_outcome_service` -- a named view, not a second implementation."""
+        return self._meeting_outcome_service
+
+    @property
+    def meeting_section(self) -> MeetingSectionService:
+        """Same object as `self._meeting_section_service` -- a named view, not a second implementation."""
+        return self._meeting_section_service
+
+    @property
+    def membership(self) -> MembershipService:
+        """Same object as `self._membership_service` -- a named view, not a second implementation."""
+        return self._membership_service
+
+    @property
+    def news(self) -> NewsService:
+        """Same object as `self._news_service` -- a named view, not a second implementation."""
+        return self._news_service
+
+    @property
+    def notification(self) -> NotificationService:
+        """Same object as `self._notification_service` -- a named view, not a second implementation."""
+        return self._notification_service
+
+    @property
+    def post(self) -> PostService:
+        """Same object as `self._post_service` -- a named view, not a second
+        implementation. Named after OpenProject's "Post" (forum message) domain,
+        not the HTTP POST method -- see PostService for its actual operations.
+        """
+        return self._post_service
+
+    @property
+    def principal(self) -> PrincipalService:
+        """Same object as `self._principal_service` -- a named view, not a second implementation."""
+        return self._principal_service
+
+    @property
+    def project(self) -> ProjectService:
+        """Same object as `self._project_service` -- a named view, not a second implementation."""
+        return self._project_service
+
+    @property
+    def project_admin(self) -> ProjectAdminService:
+        """Same object as `self._project_admin_service` -- a named view, not a second implementation."""
+        return self._project_admin_service
+
+    @property
+    def project_storage(self) -> ProjectStorageService:
+        """Same object as `self._project_storage_service` -- a named view, not a second implementation."""
+        return self._project_storage_service
+
+    @property
+    def query_execution(self) -> QueryExecutionService:
+        """Same object as `self._query_execution_service` -- a named view, not a second implementation."""
+        return self._query_execution_service
+
+    @property
+    def query_metadata(self) -> QueryMetadataService:
+        """Same object as `self._query_metadata_service` -- a named view, not a second implementation."""
+        return self._query_metadata_service
+
+    @property
+    def recurring_meeting(self) -> RecurringMeetingService:
+        """Same object as `self._recurring_meeting_service` -- a named view, not a second implementation."""
+        return self._recurring_meeting_service
+
+    @property
+    def relation(self) -> RelationService:
+        """Same object as `self._relation_service` -- a named view, not a second implementation."""
+        return self._relation_service
+
+    @property
+    def reminder(self) -> ReminderService:
+        """Same object as `self._reminder_service` -- a named view, not a second implementation."""
+        return self._reminder_service
+
+    @property
+    def role(self) -> RoleService:
+        """Same object as `self._role_service` -- a named view, not a second implementation."""
+        return self._role_service
+
+    @property
+    def sprint(self) -> SprintService:
+        """Same object as `self._sprint_service` -- a named view, not a second implementation."""
+        return self._sprint_service
+
+    @property
+    def status_priority_type(self) -> StatusPriorityTypeService:
+        """Same object as `self._status_priority_type_service` -- a named view, not a second implementation."""
+        return self._status_priority_type_service
+
+    @property
+    def storage(self) -> StorageService:
+        """Same object as `self._storage_service` -- a named view, not a second implementation."""
+        return self._storage_service
+
+    @property
+    def time_entry(self) -> TimeEntryService:
+        """Same object as `self._time_entry_service` -- a named view, not a second implementation."""
+        return self._time_entry_service
+
+    @property
+    def user(self) -> UserService:
+        """Same object as `self._user_service` -- a named view, not a second implementation."""
+        return self._user_service
+
+    @property
+    def user_non_working_time(self) -> UserNonWorkingTimeService:
+        """Same object as `self._user_non_working_time_service` -- a named view, not a second implementation."""
+        return self._user_non_working_time_service
+
+    @property
+    def user_preferences(self) -> UserPreferencesService:
+        """Same object as `self._user_preferences_service` -- a named view, not a second implementation."""
+        return self._user_preferences_service
+
+    @property
+    def user_working_hours(self) -> UserWorkingHoursService:
+        """Same object as `self._user_working_hours_service` -- a named view, not a second implementation."""
+        return self._user_working_hours_service
+
+    @property
+    def version(self) -> VersionService:
+        """Same object as `self._version_service` -- a named view, not a second implementation."""
+        return self._version_service
+
+    @property
+    def view(self) -> ViewService:
+        """Same object as `self._view_service` -- a named view, not a second implementation."""
+        return self._view_service
+
+    @property
+    def watcher(self) -> WatcherService:
+        """Same object as `self._watcher_service` -- a named view, not a second implementation."""
+        return self._watcher_service
+
+    @property
+    def wiki_page(self) -> WikiPageService:
+        """Same object as `self._wiki_page_service` -- a named view, not a second implementation."""
+        return self._wiki_page_service
+
+    @property
+    def wiki_page_link(self) -> WikiPageLinkService:
+        """Same object as `self._wiki_page_link_service` -- a named view, not a second implementation."""
+        return self._wiki_page_link_service
+
+    @property
+    def work_package(self) -> WorkPackageService:
+        """Same object as `self._work_package_service` -- a named view, not a second implementation."""
+        return self._work_package_service
+
     async def list_projects(
         self,
         *,
