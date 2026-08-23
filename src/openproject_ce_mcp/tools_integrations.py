@@ -50,7 +50,7 @@ async def get_github_pull_request(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(github_pull_request_id, field_name="github_pull_request_id")
-    return await _run_tool(client.get_github_pull_request(safe_id))
+    return await _run_tool(client.github_gitlab_link.get_github_pull_request(safe_id))
 
 
 @register_tool
@@ -70,7 +70,7 @@ async def list_work_package_github_pull_requests(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.list_work_package_github_pull_requests(safe_id))
+    return await _run_tool(client.github_gitlab_link.list_work_package_github_pull_requests(safe_id))
 
 
 @register_tool
@@ -91,7 +91,7 @@ async def list_work_package_gitlab_issues(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.list_work_package_gitlab_issues(safe_id))
+    return await _run_tool(client.github_gitlab_link.list_work_package_gitlab_issues(safe_id))
 
 
 @register_tool
@@ -113,4 +113,4 @@ async def list_work_package_gitlab_merge_requests(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.list_work_package_gitlab_merge_requests(safe_id))
+    return await _run_tool(client.github_gitlab_link.list_work_package_gitlab_merge_requests(safe_id))
