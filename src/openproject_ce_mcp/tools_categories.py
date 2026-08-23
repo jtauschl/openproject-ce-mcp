@@ -38,7 +38,7 @@ async def list_categories(
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
     _validate_select(select, row_type=CategorySummary)
-    return await _run_tool(client.list_categories(safe_project))
+    return await _run_tool(client.category.list(safe_project))
 
 
 @register_tool
@@ -56,4 +56,4 @@ async def get_category(
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
     safe_id = _validate_positive_int(category_id, field_name="category_id")
-    return await _run_tool(client.get_category(category_id=safe_id, project_ref=safe_project))
+    return await _run_tool(client.category.get(category_id=safe_id, project_ref=safe_project))

@@ -538,6 +538,13 @@ async def test_view_category_and_attachment_tools_pass_expected_arguments(tmp_pa
     sample_file = tmp_path / "notes.txt"
     sample_file.write_text("hello", encoding="utf-8")
 
+    class _CategoryNamespace:
+        async def list(self, project):
+            return {"project": project}
+
+        async def get(self, **kwargs):
+            return kwargs
+
     class StubClient:
         async def list_views(self, **kwargs):
             return kwargs
@@ -545,11 +552,7 @@ async def test_view_category_and_attachment_tools_pass_expected_arguments(tmp_pa
         async def get_view(self, view_id):
             return {"view_id": view_id}
 
-        async def list_categories(self, project):
-            return {"project": project}
-
-        async def get_category(self, **kwargs):
-            return kwargs
+        category = _CategoryNamespace()
 
         @property
         def attachment(self):
