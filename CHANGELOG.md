@@ -9,6 +9,37 @@ development baseline.
 
 ## [0.3.8] - Unreleased
 
+### Fixed
+
+- **`get.ps1`/`get.sh` (the source-install launchers) never installed the
+  project's own dependencies before running `configure_mcp.py`**, which
+  crashed immediately with `ModuleNotFoundError: No module named 'httpx'` on
+  any interpreter that didn't already happen to have them — the documented
+  behavior ("installs dependencies via `uv` if available, or `venv` + `pip`
+  otherwise") was never actually implemented. Found live-testing on a fresh
+  Windows VM. Both scripts now create `.venv` via `uv sync --no-dev` when `uv`
+  is available, falling back to `venv` + `pip install -e .` otherwise —
+  matching what `uninstall.ps1`/`uninstall.sh` already expected and removed.
+- **`get.ps1` closed the user's entire PowerShell window on any error**, not
+  just the script, when run via its own documented `irm ... | iex` usage —
+  `exit` inside a script block executed through `iex` terminates the
+  enclosing host process, not just the inline script. Every error path now
+  reports failure via a variable instead of `exit`, only calling `exit` when
+  the script is run as a file (where it's actually safe).
+- **`get.ps1` crashed with an opaque `NativeCommandError` instead of its own
+  "Python 3.10 or later is required" message** on a fresh Windows install
+  where `python`/`py` resolve to the built-in Microsoft Store
+  app-execution-alias stub (present by default when no real Python is
+  installed) — the stub's non-zero exit wasn't caught by the existing
+  `2>$null` redirect. Native Python version probes are now wrapped in
+  `try`/`catch` so a stub is correctly treated as "not usable" instead of
+  aborting the whole script.
+- **`docs/installation.md`'s Windows source-install one-liner could silently
+  fail with a confusing empty-string `Invoke-Expression` error** on a fresh
+  Windows PowerShell 5.1 install, where the `SystemDefault` TLS setting does
+  not reliably negotiate TLS 1.2 with GitHub — the documented command now
+  forces TLS 1.2 explicitly before downloading the script.
+
 ### Changed
 
 - **CI gains a weekly job that tests against the newest dependency versions

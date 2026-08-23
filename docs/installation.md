@@ -118,8 +118,10 @@ available, or `venv` + `pip` otherwise), and runs the same interactive setup.
 **Windows (PowerShell)** — clones to `%USERPROFILE%\openproject-ce-mcp`, binary at `...\.venv\Scripts\openproject-ce-mcp.exe`; set `$env:DIR` to override the destination:
 
 ```powershell
-irm https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.ps1 | iex
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; irm https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.ps1 | iex
 ```
+
+The `SecurityProtocol` line forces TLS 1.2 for this download — Windows PowerShell 5.1's `SystemDefault` setting does not reliably negotiate TLS 1.2 with GitHub on some Windows installs, and without it `irm` can silently return an empty response (surfacing later as a confusing `iex`/`Invoke-Expression` error about an empty string, not an obvious network error).
 
 **macOS / Linux** — clones to `~/openproject-ce-mcp`, binary at `~/openproject-ce-mcp/.venv/bin/openproject-ce-mcp`; `DIR=…` overrides the destination:
 
