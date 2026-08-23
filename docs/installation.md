@@ -15,7 +15,7 @@ asks and every environment variable it can set, see
 | | |
 |---|---|
 | Python | 3.10 or later |
-| OpenProject | Community Edition 16.1 or later (source-audited through 17.6, runtime-smoke-tested through 17.5), API v3 accessible |
+| OpenProject | Community Edition 16.1 or later (source-audited through 17.7, runtime-smoke-tested through 17.7), API v3 accessible |
 | OS | macOS 12+, Linux, or Windows 10/11 |
 
 ## Prepare your OpenProject instance

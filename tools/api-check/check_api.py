@@ -489,23 +489,50 @@ def _extract_client_filters() -> set[str]:
     return keys - FILTER_SKIP
 
 
+def _resource_roots(version: str) -> list[Path]:
+    """Every lib/api/v3 tree this version's source ships: the core one, plus
+    each module's own (fetch-sources.sh's sparse-checkout pulls both -- see
+    its SPARSE_PATHS comment "every module's API subtree (Backlogs,
+    Meetings, etc.)"). A resource like `meetings`/`storages`/`cost_entries`
+    lives under modules/<name>/lib/api/v3, never under the core tree, so
+    checking only the core root silently treats every such CE feature module
+    as "missing" at every version -- caught via --all reporting a false
+    12-resource regression at 17.7 that didn't reproduce with any older
+    pinned version singled out, which would have been a red herring for an
+    actual client/source incompatibility.
+    """
+    base = SOURCES / version
+    roots = [base / "lib" / "api" / "v3"]
+    modules_dir = base / "modules"
+    if modules_dir.is_dir():
+        roots.extend(sorted(modules_dir.glob("*/lib/api/v3")))
+    return [r for r in roots if r.exists()]
+
+
 def _resource_present(version: str, resource: str) -> bool:
-    """Robust presence check: directory, path-helper entry, or *_api.rb file."""
-    api = SOURCES / version / "lib" / "api" / "v3"
-    if not api.exists():
+    """Robust presence check: directory, path-helper entry, or *_api.rb file,
+    searched across the core lib/api/v3 tree and every module's own (see
+    _resource_roots)."""
+    roots = _resource_roots(version)
+    if not roots:
         return False
     name = RESOURCE_ALIASES.get(resource, resource)
-    if (api / name).is_dir():
-        return True
-    helper = api / "utilities" / "path_helper.rb"
-    if helper.exists():
-        hit = (
-            subprocess.run(["grep", "-qE", rf"\b{name}\b", str(helper)], capture_output=True, check=False).returncode
-            == 0
-        )
-        if hit:
+    for api in roots:
+        if (api / name).is_dir():
             return True
-    return _find_any(api, f"*{name}*")
+        helper = api / "utilities" / "path_helper.rb"
+        if helper.exists():
+            hit = (
+                subprocess.run(
+                    ["grep", "-qE", rf"\b{name}\b", str(helper)], capture_output=True, check=False
+                ).returncode
+                == 0
+            )
+            if hit:
+                return True
+        if _find_any(api, f"*{name}*"):
+            return True
+    return False
 
 
 def _filter_present(version: str, filter_key: str) -> bool:
