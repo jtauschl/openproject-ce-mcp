@@ -34,9 +34,6 @@ from .models import (
     GridListResult,
     GridSummary,
     GridWriteResult,
-    WatcherListResult,
-    WatcherSummary,
-    WatcherWriteResult,
     WorkPackageDetail,
     WorkPackageListResult,
     WorkPackageSummary,
@@ -231,6 +228,10 @@ from .tools_versions import (  # noqa: F401 -- @register_tool side effect; re-ex
 from .tools_views import (  # noqa: F401 -- @register_tool side effect; re-exported, test_project_and_domain_tools.py imports list_views/get_view from here
     get_view,
     list_views,
+)
+from .tools_watchers import (  # noqa: F401 -- @register_tool side effect; re-exported, test_work_package_tools.py imports both of these from here
+    list_work_package_watchers,
+    set_work_package_watcher,
 )
 
 # ── Tool classification ──────────────────────────────────────────────────────
@@ -2005,48 +2006,6 @@ async def toggle_activity_emoji_reaction(
     safe_id = _validate_positive_int(activity_id, field_name="activity_id")
     safe_reaction = _validate_required_query(reaction, field_name="reaction", max_length=50)
     return await _run_tool(client.toggle_activity_emoji_reaction(safe_id, safe_reaction, confirm=confirm))
-
-
-@register_tool
-async def list_work_package_watchers(
-    ctx: Context,
-    work_package_id: int | str,
-    select: list[str] | None = None,
-) -> WatcherListResult:
-    """List watchers of a work package.
-
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
-
-    select fields: id, name (see server instructions for select's general semantics).
-    """
-    client = _client_from_context(ctx)
-    safe_id = _validate_work_package_ref(work_package_id)
-    _validate_select(select, row_type=WatcherSummary)
-    return await _run_tool(client.list_work_package_watchers(safe_id))
-
-
-@register_tool
-async def set_work_package_watcher(
-    ctx: Context,
-    work_package_id: int | str,
-    user_id: int,
-    watching: bool,
-    confirm: bool = False,
-) -> WatcherWriteResult:
-    """Prepare or add/remove a watcher on a work package.
-
-    work_package_id: internal id (e.g., 952) or display_id (e.g., "PROJ-51"), not UI display number.
-    watching=true adds the watcher; watching=false removes it. The two
-    previews are NOT symmetric: watching=true's preview looks up and returns
-    the real watcher's summary (result is populated); watching=false's
-    preview makes no extra lookup and always returns result=null.
-    """
-    client = _client_from_context(ctx)
-    safe_wp_id = _validate_work_package_ref(work_package_id)
-    safe_user_id = _validate_positive_int(user_id, field_name="user_id")
-    if watching:
-        return await _run_tool(client.add_work_package_watcher(safe_wp_id, safe_user_id, confirm=confirm))
-    return await _run_tool(client.remove_work_package_watcher(safe_wp_id, safe_user_id, confirm=confirm))
 
 
 @register_tool
