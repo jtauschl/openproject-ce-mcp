@@ -225,10 +225,11 @@ async def test_create_project_tool_omits_description_from_http_payload_when_empt
 
 @pytest.mark.asyncio
 async def test_update_project_tool_clears_description_and_status_explanation() -> None:
-    # The bug lived in tools.py validation, not the client payload builder — a
-    # client-level test alone would already pass before the fix, since the
-    # builder correctly forwards "" once it actually receives one. This test
-    # exercises the real reported bug: the tool must pass "" through, not None.
+    # The bug lived in the tool/presentation-layer validation, not the client
+    # payload builder — a client-level test alone would already pass before
+    # the fix, since the builder correctly forwards "" once it actually
+    # receives one. This test exercises the real reported bug: the tool must
+    # pass "" through, not None.
     class StubClient:
         async def update_project(self, **kwargs):
             return kwargs
