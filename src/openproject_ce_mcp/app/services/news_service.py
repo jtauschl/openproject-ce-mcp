@@ -2,9 +2,9 @@
 
 Depends on the NewsApi Protocol, never HttpxNewsApi concretely (enforced by
 the architecture-boundary test). No dedicated NewsResolver: like Memberships,
-a `news_id` is always a numeric value already validated by tools.py -- there
-is no semantic-reference resolution for this domain to warrant a Resolver in
-the ADR sense.
+a `news_id` is always a numeric value already validated by the tool layer --
+there is no semantic-reference resolution for this domain to warrant a
+Resolver in the ADR sense.
 
 News shares the "project" read/write scope with Projects/Documents/Grids --
 there is no dedicated OPENPROJECT_ENABLE_NEWS_* flag, so every

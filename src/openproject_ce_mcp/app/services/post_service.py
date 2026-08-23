@@ -3,8 +3,8 @@
 Depends on the PostApi Protocol, never HttpxPostApi concretely (enforced by
 the architecture-boundary test). No dedicated PostResolver: like
 Memberships/News/Documents/Wiki Pages, a `post_id` is always a numeric value
-already validated by tools.py -- there is no semantic-reference resolution
-for this domain to warrant a Resolver in the ADR sense.
+already validated by the tool layer -- there is no semantic-reference
+resolution for this domain to warrant a Resolver in the ADR sense.
 
 Posts share the "project" read scope with Projects/News/Grids/Documents/Wiki
 Pages -- there is no dedicated OPENPROJECT_ENABLE_POST_* flag, so the

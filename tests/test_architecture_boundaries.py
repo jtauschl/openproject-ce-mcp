@@ -422,8 +422,8 @@ def test_news_service_binds_the_api_param_to_news_api_specifically() -> None:
     """Non-generalized regression test for the News domain's exact guarantee,
     sibling to the checks above: the api param is NewsApi exactly, not just
     "some Protocol". No NewsResolver exists (like Memberships) -- news_id is
-    always a numeric value already validated by tools.py, so there is no
-    semantic-reference resolution for this domain to warrant a Resolver."""
+    always a numeric value already validated by the tool layer, so there is
+    no semantic-reference resolution for this domain to warrant a Resolver."""
     from openproject_ce_mcp.app.adapters.httpx_news_api import HttpxNewsApi
     from openproject_ce_mcp.app.ports.news_api import NewsApi
     from openproject_ce_mcp.app.services.news_service import NewsService
@@ -438,8 +438,8 @@ def test_document_service_binds_the_api_param_to_document_api_specifically() -> 
     guarantee, sibling to the checks above: the api param is DocumentApi
     exactly, not just "some Protocol". No DocumentResolver exists (like
     Memberships/News) -- document_id is always a numeric value already
-    validated by tools.py, so there is no semantic-reference resolution for
-    this domain to warrant a Resolver."""
+    validated by the tool layer, so there is no semantic-reference resolution
+    for this domain to warrant a Resolver."""
     from openproject_ce_mcp.app.adapters.httpx_document_api import HttpxDocumentApi
     from openproject_ce_mcp.app.ports.document_api import DocumentApi
     from openproject_ce_mcp.app.services.document_service import DocumentService
@@ -454,7 +454,7 @@ def test_wiki_page_service_binds_the_api_param_to_wiki_page_api_specifically() -
     guarantee, sibling to the checks above: the api param is WikiPageApi
     exactly, not just "some Protocol". No WikiPageResolver exists (like
     Memberships/News/Documents) -- wiki_page_id is always a numeric value
-    already validated by tools.py, so there is no semantic-reference
+    already validated by the tool layer, so there is no semantic-reference
     resolution for this domain to warrant a Resolver."""
     from openproject_ce_mcp.app.adapters.httpx_wiki_page_api import HttpxWikiPageApi
     from openproject_ce_mcp.app.ports.wiki_page_api import WikiPageApi
@@ -470,8 +470,8 @@ def test_post_service_binds_the_api_param_to_post_api_specifically() -> None:
     guarantee, sibling to the checks above: the api param is PostApi
     exactly, not just "some Protocol". No PostResolver exists (like
     Memberships/News/Documents/Wiki Pages) -- post_id is always a numeric
-    value already validated by tools.py, so there is no semantic-reference
-    resolution for this domain to warrant a Resolver."""
+    value already validated by the tool layer, so there is no
+    semantic-reference resolution for this domain to warrant a Resolver."""
     from openproject_ce_mcp.app.adapters.httpx_post_api import HttpxPostApi
     from openproject_ce_mcp.app.ports.post_api import PostApi
     from openproject_ce_mcp.app.services.post_service import PostService

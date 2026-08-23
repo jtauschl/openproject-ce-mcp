@@ -3,8 +3,8 @@
 Depends on the DocumentApi Protocol, never HttpxDocumentApi concretely
 (enforced by the architecture-boundary test). No dedicated DocumentResolver:
 like Memberships/News, a `document_id` is always a numeric value already
-validated by tools.py -- there is no semantic-reference resolution for this
-domain to warrant a Resolver in the ADR sense.
+validated by the tool layer -- there is no semantic-reference resolution for
+this domain to warrant a Resolver in the ADR sense.
 
 Documents shares the "project" read/write scope with Projects/News/Grids --
 there is no dedicated OPENPROJECT_ENABLE_DOCUMENT_* flag, so every

@@ -3,8 +3,8 @@
 Depends on the WikiPageApi Protocol, never HttpxWikiPageApi concretely
 (enforced by the architecture-boundary test). No dedicated WikiPageResolver:
 like Memberships/News/Documents, a `wiki_page_id` is always a numeric value
-already validated by tools.py -- there is no semantic-reference resolution
-for this domain to warrant a Resolver in the ADR sense.
+already validated by the tool layer -- there is no semantic-reference
+resolution for this domain to warrant a Resolver in the ADR sense.
 
 Wiki pages share the "project" read scope with Projects/News/Grids/
 Documents -- there is no dedicated OPENPROJECT_ENABLE_WIKI_* flag, so the
