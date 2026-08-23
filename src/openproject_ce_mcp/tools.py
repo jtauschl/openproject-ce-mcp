@@ -34,12 +34,6 @@ from .models import (
     GridListResult,
     GridSummary,
     GridWriteResult,
-    PriorityListResult,
-    PrioritySummary,
-    StatusListResult,
-    StatusSummary,
-    TypeListResult,
-    TypeSummary,
     WatcherListResult,
     WatcherSummary,
     WatcherWriteResult,
@@ -148,6 +142,14 @@ from .tools_projects import (  # noqa: F401 -- @register_tool side effect; re-ex
     list_projects,
     set_project_favorite,
     update_project,
+)
+from .tools_reference_data import (  # noqa: F401 -- @register_tool side effect; re-exported, test_project_and_domain_tools.py imports all six of these and test_trimming.py imports get_status from here
+    get_priority,
+    get_status,
+    get_type,
+    list_priorities,
+    list_statuses,
+    list_types,
 )
 from .tools_relations import (  # noqa: F401 -- @register_tool side effect; re-exported, test_tool_validation.py/test_work_package_tools.py/test_trimming.py import several of these from here
     create_work_package_relation,
@@ -2003,63 +2005,6 @@ async def toggle_activity_emoji_reaction(
     safe_id = _validate_positive_int(activity_id, field_name="activity_id")
     safe_reaction = _validate_required_query(reaction, field_name="reaction", max_length=50)
     return await _run_tool(client.toggle_activity_emoji_reaction(safe_id, safe_reaction, confirm=confirm))
-
-
-@register_tool
-async def list_statuses(ctx: Context) -> StatusListResult:
-    """List all available work package statuses.
-
-    Read-only: statuses cannot be created or modified via the OpenProject API
-    (Community Edition); configure them in the web admin UI.
-    """
-    client = _client_from_context(ctx)
-    return await _run_tool(client.list_statuses())
-
-
-@register_tool
-async def get_status(ctx: Context, status_id: int) -> StatusSummary:
-    """Get a single work package status by id."""
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(status_id, field_name="status_id")
-    return await _run_tool(client.get_status(safe_id))
-
-
-@register_tool
-async def list_priorities(ctx: Context) -> PriorityListResult:
-    """List all available work package priorities."""
-    client = _client_from_context(ctx)
-    return await _run_tool(client.list_priorities())
-
-
-@register_tool
-async def get_priority(ctx: Context, priority_id: int) -> PrioritySummary:
-    """Get a single work package priority by id."""
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(priority_id, field_name="priority_id")
-    return await _run_tool(client.get_priority(safe_id))
-
-
-@register_tool
-async def list_types(
-    ctx: Context,
-    project: str | None = None,
-) -> TypeListResult:
-    """List all available work package types, optionally filtered by project.
-
-    Read-only: types cannot be created or modified via the OpenProject API
-    (Community Edition); configure them in the web admin UI.
-    """
-    client = _client_from_context(ctx)
-    safe_project = _validate_optional_project_ref(project)
-    return await _run_tool(client.list_types(project=safe_project))
-
-
-@register_tool
-async def get_type(ctx: Context, type_id: int) -> TypeSummary:
-    """Get a single work package type by id."""
-    client = _client_from_context(ctx)
-    safe_id = _validate_positive_int(type_id, field_name="type_id")
-    return await _run_tool(client.get_type(safe_id))
 
 
 @register_tool
