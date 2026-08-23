@@ -21,9 +21,9 @@ class _FakeAppContext:
 
 
 class _FakeContext:
-    """Minimal Context stand-in so a tools.py function can be exercised
-    directly against a real client -- create_time_entry_until/
-    update_time_entry_until are tools.py-layer only (they compute `hours`
+    """Minimal Context stand-in so a tool/presentation-layer function can be
+    exercised directly against a real client -- create_time_entry_until/
+    update_time_entry_until are presentation-layer only (they compute `hours`
     locally, then delegate to client.create_time_entry/update_time_entry),
     with no dedicated client.py method of their own to call directly, unlike
     every other time entry operation this file otherwise tests via `client`."""

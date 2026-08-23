@@ -28,9 +28,10 @@ RELATION_TYPE_RE = re.compile(
 # ISO 8601 date-time, e.g. 2026-12-01T09:00:00Z or with a +HH:MM offset. The
 # fractional-second component is capped at 6 digits (microsecond precision) --
 # datetime.fromisoformat() silently truncates anything beyond that, and
-# tools.py's _duration_between relies on fromisoformat's parsed value being
-# the caller's actual intent, not a silently-rounded approximation of a
-# sub-microsecond value the regex would otherwise have let through.
+# tools_time_entries.py's _duration_between relies on fromisoformat's parsed
+# value being the caller's actual intent, not a silently-rounded
+# approximation of a sub-microsecond value the regex would otherwise have
+# let through.
 DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$")
 # Full ISO 8601 duration: either weeks alone ("P2W") or a year/month/day date part
 # and/or a "T"-prefixed time part (hours/minutes/seconds) — the week designator
