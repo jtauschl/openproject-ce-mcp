@@ -46,7 +46,7 @@ async def get_cost_entry(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(cost_entry_id, field_name="cost_entry_id")
-    return await _run_tool(client.get_cost_entry(safe_id))
+    return await _run_tool(client.cost.get_cost_entry(safe_id))
 
 
 @register_tool
@@ -63,7 +63,7 @@ async def list_work_package_cost_entries(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.list_work_package_cost_entries(safe_id))
+    return await _run_tool(client.cost.list_work_package_cost_entries(safe_id))
 
 
 @register_tool
@@ -83,7 +83,7 @@ async def get_work_package_costs_by_type(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
-    return await _run_tool(client.get_work_package_costs_by_type(safe_id))
+    return await _run_tool(client.cost.get_work_package_costs_by_type(safe_id))
 
 
 @register_tool
@@ -100,4 +100,4 @@ async def get_cost_type(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(cost_type_id, field_name="cost_type_id")
-    return await _run_tool(client.get_cost_type(safe_id))
+    return await _run_tool(client.cost.get_cost_type(safe_id))
