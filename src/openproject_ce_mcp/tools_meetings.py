@@ -97,7 +97,7 @@ async def list_meetings(
     safe_project = _validate_optional_project_ref(project)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
-    return await _run_tool(client.list_meetings(project=safe_project, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.meeting.list_all(project=safe_project, offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -108,7 +108,7 @@ async def get_meeting(ctx: Context, meeting_id: int) -> MeetingSummary:
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(meeting_id, field_name="meeting_id")
-    return await _run_tool(client.get_meeting(safe_id))
+    return await _run_tool(client.meeting.get(safe_id))
 
 
 @register_tool
@@ -146,7 +146,7 @@ async def create_meeting(
     safe_duration = _validate_optional_duration(duration, field_name="duration")
     safe_participants = _validate_participant_refs(participant_user_refs)
     return await _run_tool(
-        client.create_meeting(
+        client.meeting.create(
             project=safe_project,
             title=safe_title,
             location=safe_location,
@@ -201,7 +201,7 @@ async def update_meeting(
         message="At least one field to update is required.",
     )
     return await _run_tool(
-        client.update_meeting(
+        client.meeting.update(
             meeting_id=safe_id,
             title=safe_title,
             location=safe_location,
@@ -226,7 +226,7 @@ async def delete_meeting(ctx: Context, meeting_id: int, confirm: bool = False) -
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(meeting_id, field_name="meeting_id")
-    return await _run_tool(client.delete_meeting(meeting_id=safe_id, confirm=confirm))
+    return await _run_tool(client.meeting.delete(meeting_id=safe_id, confirm=confirm))
 
 
 @register_tool
@@ -260,7 +260,9 @@ async def list_meeting_agenda_items(
     _validate_select(select, row_type=MeetingAgendaItemSummary)
     safe_text_limit = _validate_optional_text_limit(text_limit)
     return await _run_tool(
-        client.list_meeting_agenda_items(safe_id, offset=safe_offset, limit=safe_limit, text_limit=safe_text_limit)
+        client.meeting_agenda_item.list_for_meeting(
+            safe_id, offset=safe_offset, limit=safe_limit, text_limit=safe_text_limit
+        )
     )
 
 
@@ -296,7 +298,7 @@ async def list_work_package_meeting_agenda_items(
     _validate_select(select, row_type=MeetingAgendaItemSummary)
     safe_text_limit = _validate_optional_text_limit(text_limit)
     return await _run_tool(
-        client.list_work_package_meeting_agenda_items(
+        client.meeting_agenda_item.list_for_work_package(
             safe_id, offset=safe_offset, limit=safe_limit, text_limit=safe_text_limit
         )
     )
@@ -310,7 +312,7 @@ async def get_meeting_agenda_item(ctx: Context, agenda_item_id: int) -> MeetingA
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
-    return await _run_tool(client.get_meeting_agenda_item(safe_id))
+    return await _run_tool(client.meeting_agenda_item.get(safe_id))
 
 
 @register_tool
@@ -344,7 +346,7 @@ async def create_meeting_agenda_item(
         else None
     )
     return await _run_tool(
-        client.create_meeting_agenda_item(
+        client.meeting_agenda_item.create(
             meeting_id=safe_meeting_id,
             title=safe_title,
             notes=safe_notes,
@@ -394,7 +396,7 @@ async def update_meeting_agenda_item(
         message="At least one field to update is required.",
     )
     return await _run_tool(
-        client.update_meeting_agenda_item(
+        client.meeting_agenda_item.update(
             agenda_item_id=safe_id,
             title=safe_title,
             notes=safe_notes,
@@ -418,7 +420,7 @@ async def delete_meeting_agenda_item(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(agenda_item_id, field_name="agenda_item_id")
-    return await _run_tool(client.delete_meeting_agenda_item(agenda_item_id=safe_id, confirm=confirm))
+    return await _run_tool(client.meeting_agenda_item.delete(agenda_item_id=safe_id, confirm=confirm))
 
 
 @register_tool
@@ -452,7 +454,9 @@ async def list_meeting_outcomes(
     _validate_select(select, row_type=MeetingOutcomeSummary)
     safe_text_limit = _validate_optional_text_limit(text_limit)
     return await _run_tool(
-        client.list_meeting_outcomes(safe_id, offset=safe_offset, limit=safe_limit, text_limit=safe_text_limit)
+        client.meeting_outcome.list_for_agenda_item(
+            safe_id, offset=safe_offset, limit=safe_limit, text_limit=safe_text_limit
+        )
     )
 
 
@@ -464,7 +468,7 @@ async def get_meeting_outcome(ctx: Context, outcome_id: int) -> MeetingOutcomeSu
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(outcome_id, field_name="outcome_id")
-    return await _run_tool(client.get_meeting_outcome(safe_id))
+    return await _run_tool(client.meeting_outcome.get(safe_id))
 
 
 @register_tool
@@ -498,7 +502,7 @@ async def create_meeting_outcome(
         int(safe_work_package_id) if safe_work_package_id is not None and safe_work_package_id.isdigit() else None
     )
     return await _run_tool(
-        client.create_meeting_outcome(
+        client.meeting_outcome.create(
             agenda_item_id=safe_agenda_item_id,
             kind=safe_kind,
             notes=safe_notes,
@@ -539,7 +543,7 @@ async def update_meeting_outcome(
         safe_kind, safe_notes, safe_work_package_numeric_id, message="At least one field to update is required."
     )
     return await _run_tool(
-        client.update_meeting_outcome(
+        client.meeting_outcome.update(
             outcome_id=safe_id,
             kind=safe_kind,
             notes=safe_notes,
@@ -558,7 +562,7 @@ async def delete_meeting_outcome(ctx: Context, outcome_id: int, confirm: bool = 
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(outcome_id, field_name="outcome_id")
-    return await _run_tool(client.delete_meeting_outcome(outcome_id=safe_id, confirm=confirm))
+    return await _run_tool(client.meeting_outcome.delete(outcome_id=safe_id, confirm=confirm))
 
 
 @register_tool
@@ -579,7 +583,7 @@ async def list_meeting_sections(
     safe_id = _validate_positive_int(meeting_id, field_name="meeting_id")
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
-    return await _run_tool(client.list_meeting_sections(safe_id, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.meeting_section.list_for_meeting(safe_id, offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -590,7 +594,7 @@ async def get_meeting_section(ctx: Context, section_id: int) -> MeetingSectionSu
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(section_id, field_name="section_id")
-    return await _run_tool(client.get_meeting_section(safe_id))
+    return await _run_tool(client.meeting_section.get(safe_id))
 
 
 @register_tool
@@ -614,7 +618,7 @@ async def create_meeting_section(
     safe_meeting_id = _validate_positive_int(meeting_id, field_name="meeting_id")
     safe_title = _validate_required_text(title, field_name="title", max_length=255)
     return await _run_tool(
-        client.create_meeting_section(
+        client.meeting_section.create(
             meeting_id=safe_meeting_id, title=safe_title, position=position, backlog=backlog, confirm=confirm
         )
     )
@@ -640,7 +644,7 @@ async def update_meeting_section(
     safe_title = _validate_optional_query(title, field_name="title", max_length=255)
     _require_at_least_one(safe_title, position, message="At least one field to update is required.")
     return await _run_tool(
-        client.update_meeting_section(section_id=safe_id, title=safe_title, position=position, confirm=confirm)
+        client.meeting_section.update(section_id=safe_id, title=safe_title, position=position, confirm=confirm)
     )
 
 
@@ -653,7 +657,7 @@ async def delete_meeting_section(ctx: Context, section_id: int, confirm: bool = 
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(section_id, field_name="section_id")
-    return await _run_tool(client.delete_meeting_section(section_id=safe_id, confirm=confirm))
+    return await _run_tool(client.meeting_section.delete(section_id=safe_id, confirm=confirm))
 
 
 @register_tool
@@ -677,7 +681,9 @@ async def list_recurring_meetings(
     safe_project = _validate_optional_project_ref(project)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
-    return await _run_tool(client.list_recurring_meetings(project=safe_project, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(
+        client.recurring_meeting.list_all(project=safe_project, offset=safe_offset, limit=safe_limit)
+    )
 
 
 @register_tool
@@ -688,7 +694,7 @@ async def get_recurring_meeting(ctx: Context, recurring_meeting_id: int) -> Recu
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(recurring_meeting_id, field_name="recurring_meeting_id")
-    return await _run_tool(client.get_recurring_meeting(safe_id))
+    return await _run_tool(client.recurring_meeting.get(safe_id))
 
 
 @register_tool
@@ -726,7 +732,7 @@ async def create_recurring_meeting(
     safe_start = _validate_required_datetime(start_time, field_name="start_time")
     safe_end_date = _validate_optional_date(end_date, "end_date")
     return await _run_tool(
-        client.create_recurring_meeting(
+        client.recurring_meeting.create(
             project=safe_project,
             title=safe_title,
             frequency=safe_frequency,
@@ -782,7 +788,7 @@ async def update_recurring_meeting(
         message="At least one field to update is required.",
     )
     return await _run_tool(
-        client.update_recurring_meeting(
+        client.recurring_meeting.update(
             recurring_meeting_id=safe_id,
             title=safe_title,
             frequency=safe_frequency,
@@ -807,7 +813,7 @@ async def delete_recurring_meeting(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(recurring_meeting_id, field_name="recurring_meeting_id")
-    return await _run_tool(client.delete_recurring_meeting(recurring_meeting_id=safe_id, confirm=confirm))
+    return await _run_tool(client.recurring_meeting.delete(recurring_meeting_id=safe_id, confirm=confirm))
 
 
 _VALID_OCCURRENCE_FILTERS: set[str] = {"upcoming", "past", "cancelled", "open"}
@@ -838,7 +844,7 @@ async def list_recurring_meeting_occurrences(
     if safe_filter is None:
         safe_filter = "upcoming"
     safe_limit = _validate_limit(limit)
-    return await _run_tool(client.list_recurring_meeting_occurrences(safe_id, filter=safe_filter, limit=safe_limit))
+    return await _run_tool(client.recurring_meeting.list_occurrences(safe_id, filter=safe_filter, limit=safe_limit))
 
 
 @register_tool
@@ -863,7 +869,7 @@ async def init_recurring_meeting_occurrence(
     safe_id = _validate_positive_int(recurring_meeting_id, field_name="recurring_meeting_id")
     safe_start = _validate_required_datetime(start_time, field_name="start_time")
     return await _run_tool(
-        client.init_recurring_meeting_occurrence(recurring_meeting_id=safe_id, start_time=safe_start, confirm=confirm)
+        client.recurring_meeting.init_occurrence(recurring_meeting_id=safe_id, start_time=safe_start, confirm=confirm)
     )
 
 
@@ -894,5 +900,5 @@ async def cancel_recurring_meeting_occurrence(
     safe_id = _validate_positive_int(recurring_meeting_id, field_name="recurring_meeting_id")
     safe_start = _validate_required_datetime(start_time, field_name="start_time")
     return await _run_tool(
-        client.cancel_recurring_meeting_occurrence(recurring_meeting_id=safe_id, start_time=safe_start, confirm=confirm)
+        client.recurring_meeting.cancel_occurrence(recurring_meeting_id=safe_id, start_time=safe_start, confirm=confirm)
     )
