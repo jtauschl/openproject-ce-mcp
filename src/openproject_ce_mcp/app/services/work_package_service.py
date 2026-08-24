@@ -111,7 +111,13 @@ from ...models import (
     WorkPackageWriteResult,
 )
 from ..api_href import api_href as _api_href
-from ..errors import InvalidInputError, OpenProjectError, OpenProjectServerError, PermissionDeniedError
+from ..errors import (
+    InvalidInputError,
+    NotFoundError,
+    OpenProjectError,
+    OpenProjectServerError,
+    PermissionDeniedError,
+)
 from ..pagination import effective_limit, paginate_server
 from ..policies import access, hidden_fields
 from ..policies import work_package_policy as _work_package_policy
@@ -934,35 +940,35 @@ class WorkPackageService:
         effective = effective_limit(limit, settings=self._settings)
         if not self._settings.read_projects:
             return _empty_list_result(offset=offset, limit=effective)
-        filters: list[dict[str, Any]] = [{"subject_or_id": {"operator": "**", "values": [search]}}]
+        other_filters: list[dict[str, Any]] = []
         # Applied first, before any network-resolving filter below (project/
         # status/assignee/priority), so a rejection (hidden field, malformed
         # spec) fails fast without wasted round-trips -- matches the tool
         # docstring's "rejected before any network call" claim.
-        self._apply_custom_field_filters(filters, custom_field_filters=custom_field_filters)
+        self._apply_custom_field_filters(other_filters, custom_field_filters=custom_field_filters)
         project_id: int | None = None
         total_is_scope_safe = scope_allows_all(self._settings.read_projects)
         if project is not None:
             project_payload = await self._resolve_project_ref(project)
             project_id = int(project_payload["id"])
-            filters.append({"project_id": {"operator": "=", "values": [str(project_id)]}})
+            other_filters.append({"project_id": {"operator": "=", "values": [str(project_id)]}})
             total_is_scope_safe = True
         if status:
             status_id = await self._resolve_status_id(status)
-            filters.append({"status_id": {"operator": "=", "values": [status_id]}})
+            other_filters.append({"status_id": {"operator": "=", "values": [status_id]}})
         if open_only:
-            filters.append({"status_id": {"operator": "o", "values": []}})
+            other_filters.append({"status_id": {"operator": "o", "values": []}})
         if assignee_me:
             current_user = await self._current_user()
-            filters.append({"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}})
+            other_filters.append({"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}})
         if assignee and not assignee_me:
             assignee_id = await self._resolve_principal_id(assignee)
-            filters.append({"assigned_to_id": {"operator": "=", "values": [assignee_id]}})
+            other_filters.append({"assigned_to_id": {"operator": "=", "values": [assignee_id]}})
         if priority:
             priority_id = await self._resolve_priority_id(priority)
-            filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
+            other_filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
         self._apply_date_filters(
-            filters,
+            other_filters,
             created_on=created_on,
             created_between=created_between,
             updated_on=updated_on,
@@ -972,16 +978,59 @@ class WorkPackageService:
             overdue_only=overdue_only,
             due_within_days=due_within_days,
         )
-        return await self._list_collection(
-            project_id=project_id,
-            filters=filters,
-            offset=offset,
-            limit=effective,
-            sort_by=sort_by,
-            group_by=group_by,
-            total_is_scope_safe=total_is_scope_safe,
-            include_sums=include_sums,
+        result, exact_match = await asyncio.gather(
+            self._list_collection(
+                project_id=project_id,
+                filters=[{"subject_or_id": {"operator": "**", "values": [search]}}, *other_filters],
+                offset=offset,
+                limit=effective,
+                sort_by=sort_by,
+                group_by=group_by,
+                total_is_scope_safe=total_is_scope_safe,
+                include_sums=include_sums,
+            ),
+            self._resolve_search_exact_match(search, other_filters=other_filters),
         )
+        if exact_match is not None and any(item.id == exact_match.id for item in result.results):
+            exact_match = None
+        return dataclasses.replace(result, exact_match=exact_match)
+
+    async def _resolve_search_exact_match(
+        self, search: str, *, other_filters: list[dict[str, Any]]
+    ) -> WorkPackageSummary | None:
+        """Resolve search()'s query directly (numeric id or display id, via
+        the same server-side lookup get() uses) and check it against every
+        OTHER active filter server-side, without duplicating any
+        filter-matching logic client-side.
+
+        Returns None for "no exact match" -- both when the query simply
+        doesn't resolve to anything (NotFoundError), and when it resolves to
+        something the caller isn't allowed to read (PermissionDeniedError)
+        -- the latter must not leak the existence of an out-of-scope work
+        package by surfacing as an error from what looks like a plain text
+        search.
+        """
+        stripped = search.strip()
+        if not stripped:
+            return None
+        try:
+            resolved_id = await self._resolve_work_package_id(stripped)
+        except (NotFoundError, PermissionDeniedError, InvalidInputError):
+            return None
+        candidate_filters = [{"id": {"operator": "=", "values": [str(resolved_id)]}}, *other_filters]
+        candidates = await self._list_collection(
+            project_id=None,
+            filters=candidate_filters,
+            offset=1,
+            limit=1,
+            sort_by=None,
+            group_by=None,
+            total_is_scope_safe=False,
+        )
+        for item in candidates.results:
+            if item.id == resolved_id:
+                return item
+        return None
 
     async def list(
         self,

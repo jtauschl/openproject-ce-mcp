@@ -163,6 +163,13 @@ support.
   available from 17.7 — see [User schedule
   overrides](docs/tools.md#user-schedule-overrides) for detail. Pulled
   forward from the 0.5.0 backlog.
+- **`search_work_packages` now also resolves its `query` directly as a
+  numeric id or display id (e.g. `PROJ-42`), returned separately as
+  `exact_match` when it satisfies every other active filter** — previously,
+  a display id never matched, since the underlying `subject_or_id` filter
+  only matches subject text or a numeric id. `exact_match` is kept separate
+  from `results`/`total`/pagination, and `select` applies to it the same
+  way it applies to a results row.
 
 ### Removed
 

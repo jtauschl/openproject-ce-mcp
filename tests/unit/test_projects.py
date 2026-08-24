@@ -875,6 +875,8 @@ async def test_job_status_documents_news_and_wiki() -> None:
 @pytest.mark.asyncio
 async def test_project_scoped_reads_accept_numeric_project_ids_when_allowed_by_name() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/Scoped":
+            return httpx.Response(404, json={"message": "not found"}, request=request)
         if request.url.path == "/api/v3/projects/6":
             return httpx.Response(
                 200,

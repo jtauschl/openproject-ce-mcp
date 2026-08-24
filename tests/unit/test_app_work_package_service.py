@@ -365,7 +365,10 @@ def _service(
         return "9"
 
     async def default_resolve_work_package_id(ref, *, write=False):
-        return int(ref)
+        try:
+            return int(ref)
+        except ValueError:
+            raise NotFoundError(f"OpenProject work package '{ref}' was not found.") from None
 
     async def current_user():
         return CurrentUser(id=42, name="Admin", login="admin")

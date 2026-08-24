@@ -117,6 +117,18 @@ async def search_work_packages(
     category, description, or other linked-resource fields. To filter by
     version, use list_work_packages(version=..., project=...) instead.
 
+    In parallel with that text/id search, search is always also resolved
+    directly (numeric id or display id like "PROJ-42") the same way
+    get_work_package does. When that resolves to a work package that also
+    satisfies every other filter given here (project/status/assignee/dates/
+    custom fields/etc.), it's returned separately as exact_match — never
+    folded into results, and never counted toward total/count/pagination,
+    since a single extra item can't be paginated consistently. Absent (not
+    present in the response at all) when nothing resolves, when the
+    resolved item fails a filter, or when it's already present in results
+    via the text match. select applies to exact_match the same way it
+    applies to each results row.
+
     Without project, the search runs globally across every project readable
     under OPENPROJECT_READ_PROJECTS, not just one project — pass project
     explicitly to scope results to it.

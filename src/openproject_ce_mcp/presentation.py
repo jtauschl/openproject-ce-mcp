@@ -121,6 +121,8 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None, elide_none:
                 continue
             if name == row_field_name and select is not None:
                 out[name] = [_select_fields(row, select, elide_none=elide_none) for row in child]
+            elif is_list_result and name == "exact_match" and select is not None:
+                out[name] = _select_fields(child, select, elide_none=elide_none)
             else:
                 out[name] = _to_payload(child, elide_none=elide_none)
         return out

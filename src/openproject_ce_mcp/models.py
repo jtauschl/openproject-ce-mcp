@@ -580,6 +580,12 @@ class WorkPackageListResult(PageResult):
     results: list[WorkPackageSummary]
     groups: list[WorkPackageGroupSums] | None = None
     total_sums: dict[str, Any] | None = None
+    # Populated only by search() when its query resolves directly to a work
+    # package (numeric id or display id) that also satisfies every other
+    # active filter -- kept separate from `results` rather than merged in,
+    # since merging would break pagination/total/sort_by consistency for a
+    # result set that already has well-defined semantics of its own.
+    exact_match: WorkPackageSummary | None = None
 
 
 @dataclass
