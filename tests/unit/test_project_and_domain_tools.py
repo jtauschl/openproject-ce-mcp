@@ -458,13 +458,17 @@ async def test_version_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_sprint_tools_pass_expected_arguments() -> None:
     class StubClient:
-        async def list_sprints(self, **kwargs):
+        @property
+        def sprint(self):
+            return self
+
+        async def list(self, **kwargs):
             return kwargs
 
-        async def list_project_sprints(self, project, **kwargs):
+        async def list_for_project(self, project, **kwargs):
             return {"project": project, **kwargs}
 
-        async def get_sprint(self, sprint_id):
+        async def get(self, sprint_id):
             return {"sprint_id": sprint_id}
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]

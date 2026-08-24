@@ -74,10 +74,10 @@ async def list_sprints(
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     _validate_select(select, row_type=SprintSummary)
     if project is None:
-        return await _run_tool(client.list_sprints(search=safe_search, offset=safe_offset, limit=safe_limit))
+        return await _run_tool(client.sprint.list(search=safe_search, offset=safe_offset, limit=safe_limit))
     safe_project = _validate_project_ref(project)
     return await _run_tool(
-        client.list_project_sprints(safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
+        client.sprint.list_for_project(safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
     )
 
 
@@ -89,7 +89,7 @@ async def get_sprint(
     """Get a Backlogs sprint by id."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(sprint_id, field_name="sprint_id")
-    return await _run_tool(client.get_sprint(safe_id))
+    return await _run_tool(client.sprint.get(safe_id))
 
 
 @register_tool
@@ -124,10 +124,10 @@ async def list_backlog_buckets(
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     _validate_select(select, row_type=BacklogBucketSummary)
     if project is None:
-        return await _run_tool(client.list_backlog_buckets(search=safe_search, offset=safe_offset, limit=safe_limit))
+        return await _run_tool(client.backlog_bucket.list(search=safe_search, offset=safe_offset, limit=safe_limit))
     safe_project = _validate_project_ref(project)
     return await _run_tool(
-        client.list_project_backlog_buckets(safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
+        client.backlog_bucket.list_for_project(safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
     )
 
 
@@ -139,4 +139,4 @@ async def get_backlog_bucket(
     """Get a Backlogs backlog bucket by id. Requires OpenProject 17.6 or newer."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(backlog_bucket_id, field_name="backlog_bucket_id")
-    return await _run_tool(client.get_backlog_bucket(safe_id))
+    return await _run_tool(client.backlog_bucket.get(safe_id))
