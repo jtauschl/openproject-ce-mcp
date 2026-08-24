@@ -209,6 +209,24 @@ class _FakeWorkPackageApi:
         return {"id": 55, "_type": "Activity", "comment": {"raw": comment}, "_links": {}}
 
 
+class _TargetVersionsEchoingWorkPackageApi(_FakeWorkPackageApi):
+    async def validate_create(self, project_id: str, payload: dict) -> dict:
+        form = await super().validate_create(project_id, payload)
+        form["_embedded"]["payload"] = {
+            **form["_embedded"]["payload"],
+            "_links": {**form["_embedded"]["payload"].get("_links", {}), "targetVersions": []},
+        }
+        return form
+
+    async def validate_update(self, work_package_ref: str, payload: dict) -> dict:
+        form = await super().validate_update(work_package_ref, payload)
+        form["_embedded"]["payload"] = {
+            **form["_embedded"]["payload"],
+            "_links": {**form["_embedded"]["payload"].get("_links", {}), "targetVersions": []},
+        }
+        return form
+
+
 class _FakeStatusApi:
     def __init__(self, *, is_closed: bool = False) -> None:
         self.is_closed = is_closed
@@ -1449,6 +1467,25 @@ async def test_create_commit_calls_commit_create_and_masks_result() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_strips_unrequested_target_versions_on_commit() -> None:
+    # Regression: OpenProject's form response echoes an unrequested
+    # _links.targetVersions, which the server rejects on commit as a
+    # version/targetVersions conflict.
+    api = _TargetVersionsEchoingWorkPackageApi()
+    service, _ = _service(api)
+
+    preview = await service.create(project="demo", type="Task", subject="New WP", version="1.0", confirm=False)
+    assert "targetVersions" in preview.payload["_links"]
+
+    result = await service.create(project="demo", type="Task", subject="New WP", version="1.0", confirm=True)
+
+    assert result.state == "confirmed"
+    assert len(api.commit_create_calls) == 1
+    committed_payload = api.commit_create_calls[0]
+    assert "targetVersions" not in committed_payload["_links"]
+
+
+@pytest.mark.asyncio
 async def test_create_rejects_when_write_scope_denies_project() -> None:
     api = _FakeWorkPackageApi()
 
@@ -1575,6 +1612,21 @@ async def test_create_subtask_derives_project_from_parent_link() -> None:
     project_id, payload = api.validate_create_calls[0]
     assert project_id == "1"
     assert payload["_links"]["parent"]["href"] == "/api/v3/work_packages/6"
+
+
+@pytest.mark.asyncio
+async def test_create_subtask_strips_unrequested_target_versions_on_commit() -> None:
+    api = _TargetVersionsEchoingWorkPackageApi()
+    api._records_by_id[6] = _record(6, payload=_payload(6, project_href="/api/v3/projects/1", project_title="Demo"))
+    service, _ = _service(api)
+
+    result = await service.create_subtask(
+        parent_work_package_id=6, type="Task", subject="Child task", version="1.0", confirm=True
+    )
+
+    assert result.state == "confirmed"
+    committed_payload = api.commit_create_calls[0]
+    assert "targetVersions" not in committed_payload["_links"]
 
 
 @pytest.mark.asyncio
@@ -1758,6 +1810,83 @@ async def test_update_commit_calls_commit_update() -> None:
     ref, payload = api.commit_update_calls[0]
     assert ref == "6"
     assert payload["subject"] == "Renamed"
+
+
+@pytest.mark.asyncio
+async def test_update_strips_unrequested_target_versions_on_commit() -> None:
+    # Regression: OpenProject's form response echoes an unrequested
+    # _links.targetVersions, which the server rejects on commit as a
+    # version/targetVersions conflict.
+    api = _TargetVersionsEchoingWorkPackageApi()
+    service, _ = _service(api)
+
+    preview = await service.update(work_package_id=6, version="1.0", confirm=False)
+    assert "targetVersions" in preview.payload["_links"]
+
+    result = await service.update(work_package_id=6, version="1.0", confirm=True)
+
+    assert result.state == "confirmed"
+    assert len(api.commit_update_calls) == 1
+    _, committed_payload = api.commit_update_calls[0]
+    assert "targetVersions" not in committed_payload["_links"]
+
+
+@pytest.mark.asyncio
+async def test_update_clear_version_strips_unrequested_target_versions_on_commit() -> None:
+    from openproject_ce_mcp.app.services.work_package_service import CLEAR_VERSION
+
+    api = _TargetVersionsEchoingWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.update(work_package_id=6, version=CLEAR_VERSION, confirm=True)
+
+    assert result.state == "confirmed"
+    _, committed_payload = api.commit_update_calls[0]
+    assert committed_payload["_links"]["version"]["href"] is None
+    assert "targetVersions" not in committed_payload["_links"]
+
+
+@pytest.mark.asyncio
+async def test_update_without_version_intent_leaves_target_versions_untouched() -> None:
+    api = _TargetVersionsEchoingWorkPackageApi()
+    service, _ = _service(api)
+
+    result = await service.update(work_package_id=6, subject="Renamed", confirm=True)
+
+    assert result.state == "confirmed"
+    _, committed_payload = api.commit_update_calls[0]
+    assert committed_payload["_links"]["targetVersions"] == []
+
+
+@pytest.mark.asyncio
+async def test_update_rejected_target_versions_conflict_reports_validation_errors() -> None:
+    api = _TargetVersionsEchoingWorkPackageApi()
+    api.validation_errors_queue.append({"version": "Version is not assignable."})
+    service, _ = _service(api)
+
+    result = await service.update(work_package_id=6, version="1.0", confirm=True)
+
+    assert result.state == "invalid"
+    assert result.ready is False
+    assert result.validation_errors == {"version": "Version is not assignable."}
+    assert "targetVersions" in result.payload["_links"]
+    assert api.commit_update_calls == []
+
+
+def test_strip_unrequested_target_versions_does_not_mutate_input() -> None:
+    from openproject_ce_mcp.app.services.work_package_service import _strip_unrequested_target_versions
+
+    original_links = {"version": {"href": "/api/v3/versions/11"}, "targetVersions": []}
+    payload = {"subject": "WP", "_links": original_links}
+    original_payload = {"subject": "WP", "_links": {"version": {"href": "/api/v3/versions/11"}, "targetVersions": []}}
+
+    stripped = _strip_unrequested_target_versions(payload)
+
+    assert "targetVersions" not in stripped["_links"]
+    assert stripped is not payload
+    assert stripped["_links"] is not original_links
+    assert payload == original_payload
+    assert payload["_links"] is original_links
 
 
 @pytest.mark.asyncio

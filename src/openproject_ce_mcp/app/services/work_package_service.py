@@ -241,6 +241,26 @@ def _narrow_cleared(value: Any, *, sentinel: object = None) -> Any:
     return value
 
 
+def _strip_unrequested_target_versions(payload: dict[str, Any]) -> dict[str, Any]:
+    """Drop an echoed `_links.targetVersions` OpenProject's work-package form
+    response adds even when the request never set it, so committing the
+    form's own payload back verbatim -- this client's normal write pattern
+    -- doesn't collide with the `version` field the caller actually asked to
+    change. Upstream bug, tracking status/version scope in
+    openproject-ce-mcp-int's upstream-openproject-bugs.md (entry 11) --
+    remove this once that entry marks the upstream form-echo fixed.
+
+    Call only when the caller's own request set `_links.version` -- a
+    create/update that never touches version passes its payload through
+    every other field unaffected, so there's nothing to strip.
+    """
+    links = payload.get("_links")
+    if not isinstance(links, dict) or "targetVersions" not in links:
+        return payload
+    new_links = {k: v for k, v in links.items() if k != "targetVersions"}
+    return {**payload, "_links": new_links}
+
+
 SUBJECT_LIMIT = 255
 
 
@@ -1684,7 +1704,9 @@ class WorkPackageService:
             validation_errors=parsed.validation_errors,
             identity={"work_package_id": None, "project": project_payload.get("name")},
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
-            commit=lambda p: self._api.commit_create(p, text_limit=FORMATTABLE_LIMIT),
+            commit=lambda p: self._api.commit_create(
+                _strip_unrequested_target_versions(p) if version is not None else p, text_limit=FORMATTABLE_LIMIT
+            ),
             committed_identity=lambda record: {
                 "work_package_id": record.summary.id,
                 "project": record.summary.project,
@@ -1759,7 +1781,9 @@ class WorkPackageService:
             validation_errors=parsed.validation_errors,
             identity={"work_package_id": None, "project": parent_title},
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
-            commit=lambda p: self._api.commit_create(p, text_limit=FORMATTABLE_LIMIT),
+            commit=lambda p: self._api.commit_create(
+                _strip_unrequested_target_versions(p) if version is not None else p, text_limit=FORMATTABLE_LIMIT
+            ),
             committed_identity=lambda record: {
                 "work_package_id": record.summary.id,
                 "project": record.summary.project,
@@ -1995,6 +2019,7 @@ class WorkPackageService:
                 payload["lockVersion"] = lock_version
                 form = await self._api.validate_update(ref, payload)
 
+        version_was_requested = "version" in payload.get("_links", {})
         parsed = await self._api.parse_form(form)
         project_name = _trim_text(current.get("_links", {}).get("project", {}).get("title"))
         outcome = await _finalize_write(
@@ -2003,7 +2028,11 @@ class WorkPackageService:
             validation_errors=parsed.validation_errors,
             identity={"work_package_id": ref, "project": project_name},
             ensure_write_enabled=lambda: access.ensure_write_enabled("work_package", settings=self._settings),
-            commit=lambda p: self._api.commit_update(ref, p, text_limit=FORMATTABLE_LIMIT),
+            commit=lambda p: self._api.commit_update(
+                ref,
+                _strip_unrequested_target_versions(p) if version_was_requested else p,
+                text_limit=FORMATTABLE_LIMIT,
+            ),
             committed_identity=lambda record: {
                 "work_package_id": record.summary.id,
                 "project": record.summary.project,
