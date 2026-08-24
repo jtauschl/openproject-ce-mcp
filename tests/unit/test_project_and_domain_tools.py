@@ -621,22 +621,26 @@ async def test_view_category_and_attachment_tools_pass_expected_arguments(tmp_pa
 @pytest.mark.asyncio
 async def test_time_entry_tools_pass_expected_arguments() -> None:
     class StubClient:
-        async def list_time_entry_activities(self):
+        @property
+        def time_entry(self):
+            return self
+
+        async def list_activities(self):
             return {"activities": True}
 
-        async def list_time_entries(self, **kwargs):
+        async def list_all(self, **kwargs):
             return kwargs
 
-        async def get_time_entry(self, time_entry_id, **kwargs):
+        async def get(self, time_entry_id, **kwargs):
             return {"time_entry_id": time_entry_id, **kwargs}
 
-        async def create_time_entry(self, **kwargs):
+        async def create(self, **kwargs):
             return kwargs
 
-        async def update_time_entry(self, **kwargs):
+        async def update(self, **kwargs):
             return kwargs
 
-        async def delete_time_entry(self, **kwargs):
+        async def delete(self, **kwargs):
             return kwargs
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
@@ -682,7 +686,11 @@ async def test_time_entry_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_create_time_entry_until_computes_hours_and_never_forwards_end_time() -> None:
     class StubClient:
-        async def create_time_entry(self, **kwargs):
+        @property
+        def time_entry(self):
+            return self
+
+        async def create(self, **kwargs):
             return kwargs
 
     result = await create_time_entry_until(
@@ -704,7 +712,11 @@ async def test_create_time_entry_until_computes_hours_and_never_forwards_end_tim
 @pytest.mark.asyncio
 async def test_create_time_entry_until_requires_project_or_work_package() -> None:
     class StubClient:
-        async def create_time_entry(self, **kwargs):
+        @property
+        def time_entry(self):
+            return self
+
+        async def create(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match="Either project or work_package_id is required"):
@@ -721,7 +733,11 @@ async def test_create_time_entry_until_requires_project_or_work_package() -> Non
 @pytest.mark.asyncio
 async def test_create_time_entry_until_rejects_end_time_before_start_time() -> None:
     class StubClient:
-        async def create_time_entry(self, **kwargs):
+        @property
+        def time_entry(self):
+            return self
+
+        async def create(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match="end_time must be after start_time"):
@@ -739,7 +755,11 @@ async def test_create_time_entry_until_rejects_end_time_before_start_time() -> N
 @pytest.mark.asyncio
 async def test_update_time_entry_until_computes_hours_and_always_sets_ongoing_false() -> None:
     class StubClient:
-        async def update_time_entry(self, **kwargs):
+        @property
+        def time_entry(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     result = await update_time_entry_until(
@@ -759,7 +779,11 @@ async def test_update_time_entry_until_computes_hours_and_always_sets_ongoing_fa
 @pytest.mark.asyncio
 async def test_update_time_entry_until_rejects_end_time_before_start_time() -> None:
     class StubClient:
-        async def update_time_entry(self, **kwargs):
+        @property
+        def time_entry(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match="end_time must be after start_time"):
@@ -778,7 +802,11 @@ async def test_create_time_entry_tool_accepts_day_based_hours() -> None:
     # on work packages; day-based values must be accepted here too — a time
     # entry with hours="P1D" is created successfully and echoed back unchanged.
     class StubClient:
-        async def create_time_entry(self, **kwargs):
+        @property
+        def time_entry(self):
+            return self
+
+        async def create(self, **kwargs):
             return kwargs
 
     result = await create_time_entry(
@@ -796,7 +824,11 @@ async def test_create_time_entry_tool_accepts_day_based_hours() -> None:
 @pytest.mark.asyncio
 async def test_update_time_entry_tool_clears_comment() -> None:
     class StubClient:
-        async def update_time_entry(self, **kwargs):
+        @property
+        def time_entry(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     result = await update_time_entry(
@@ -812,10 +844,14 @@ async def test_update_time_entry_tool_clears_comment() -> None:
 @pytest.mark.asyncio
 async def test_create_time_entry_requires_scope_and_update_requires_change() -> None:
     class StubClient:
-        async def create_time_entry(self, **kwargs):
+        @property
+        def time_entry(self):
+            return self
+
+        async def create(self, **kwargs):
             return kwargs
 
-        async def update_time_entry(self, **kwargs):
+        async def update(self, **kwargs):
             return kwargs
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]

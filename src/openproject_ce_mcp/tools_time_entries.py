@@ -61,7 +61,7 @@ from .tools_validation import (
 async def list_time_entry_activities(ctx: Context) -> TimeEntryActivityListResult:
     """List available time entry activities."""
     client = _client_from_context(ctx)
-    return await _run_tool(client.list_time_entry_activities())
+    return await _run_tool(client.time_entry.list_activities())
 
 
 @register_tool
@@ -109,7 +109,7 @@ async def list_time_entries(
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=TimeEntrySummary)
     return await _run_tool(
-        client.list_time_entries(
+        client.time_entry.list_all(
             project=safe_project,
             work_package_id=safe_work_package_id,
             user=safe_user,
@@ -138,7 +138,7 @@ async def get_time_entry(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(time_entry_id, field_name="time_entry_id")
     safe_text_limit = _validate_optional_text_limit(text_limit)
-    return await _run_tool(client.get_time_entry(safe_id, text_limit=safe_text_limit))
+    return await _run_tool(client.time_entry.get(safe_id, text_limit=safe_text_limit))
 
 
 @register_tool
@@ -176,7 +176,7 @@ async def create_time_entry(
     if safe_project is None and safe_work_package_id is None:
         raise ValueError("Either project or work_package_id is required.")
     return await _run_tool(
-        client.create_time_entry(
+        client.time_entry.create(
             project=safe_project,
             work_package_id=safe_work_package_id,
             user=safe_user,
@@ -230,7 +230,7 @@ async def update_time_entry(
         message="At least one field to update is required.",
     )
     return await _run_tool(
-        client.update_time_entry(
+        client.time_entry.update(
             time_entry_id=safe_id,
             user=safe_user,
             activity=safe_activity,
@@ -279,7 +279,7 @@ async def create_time_entry_until(
     if safe_project is None and safe_work_package_id is None:
         raise ValueError("Either project or work_package_id is required.")
     return await _run_tool(
-        client.create_time_entry(
+        client.time_entry.create(
             project=safe_project,
             work_package_id=safe_work_package_id,
             user=safe_user,
@@ -323,7 +323,7 @@ async def update_time_entry_until(
     safe_spent_on = _validate_optional_date(spent_on, field_name="spent_on")
     safe_comment = _validate_optional_update_text(comment, field_name="comment", max_length=10_000)
     return await _run_tool(
-        client.update_time_entry(
+        client.time_entry.update(
             time_entry_id=safe_id,
             user=safe_user,
             activity=safe_activity,
@@ -346,7 +346,7 @@ async def delete_time_entry(
     """Prepare or delete a time entry."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(time_entry_id, field_name="time_entry_id")
-    return await _run_tool(client.delete_time_entry(time_entry_id=safe_id, confirm=confirm))
+    return await _run_tool(client.time_entry.delete(time_entry_id=safe_id, confirm=confirm))
 
 
 def _pad_fractional_seconds(value: str) -> str:
