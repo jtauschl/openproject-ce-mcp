@@ -60,7 +60,7 @@ async def list_roles(
     _validate_select(select, row_type=RoleSummary)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
-    return await _run_tool(client.list_roles(offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.role.list_roles(offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -81,7 +81,7 @@ async def list_actions(
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=ActionSummary)
-    return await _run_tool(client.list_actions(offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.action_capability.list_actions(offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -112,7 +112,7 @@ async def list_capabilities(
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=CapabilitySummary)
     return await _run_tool(
-        client.list_capabilities(
+        client.action_capability.list_capabilities(
             project=safe_project,
             capability_id=safe_capability_id,
             offset=safe_offset,
@@ -142,7 +142,7 @@ async def list_project_memberships(
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=MembershipSummary)
-    return await _run_tool(client.list_project_memberships(safe_project, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.membership.list_for_project(safe_project, offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -153,7 +153,7 @@ async def get_membership(
     """Get a compact membership summary by id."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(membership_id, field_name="membership_id")
-    return await _run_tool(client.get_membership(safe_id))
+    return await _run_tool(client.membership.get(safe_id))
 
 
 @register_tool
@@ -174,7 +174,7 @@ async def create_membership(
         notification_message, field_name="notification_message", max_length=10_000
     )
     return await _run_tool(
-        client.create_membership(
+        client.membership.create(
             project=safe_project,
             principal=safe_principal,
             roles=safe_roles,
@@ -200,7 +200,7 @@ async def update_membership(
         notification_message, field_name="notification_message", max_length=10_000
     )
     return await _run_tool(
-        client.update_membership(
+        client.membership.update(
             membership_id=safe_id,
             roles=safe_roles,
             notification_message=safe_notification_message,
@@ -218,11 +218,11 @@ async def delete_membership(
     """Prepare or delete a project membership."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(membership_id, field_name="membership_id")
-    return await _run_tool(client.delete_membership(membership_id=safe_id, confirm=confirm))
+    return await _run_tool(client.membership.delete(membership_id=safe_id, confirm=confirm))
 
 
 @register_tool
 async def get_current_user(ctx: Context) -> CurrentUser:
     """Return the currently authenticated user's profile."""
     client = _client_from_context(ctx)
-    return await _run_tool(client.get_current_user())
+    return await _run_tool(client.current_user.get_current_user())

@@ -249,6 +249,10 @@ async def test_update_project_tool_clears_description_and_status_explanation() -
 @pytest.mark.asyncio
 async def test_list_roles_tool_calls_client() -> None:
     class StubClient:
+        @property
+        def role(self):
+            return self
+
         async def list_roles(self, **kwargs):
             return {"ok": True}
 
@@ -259,7 +263,11 @@ async def test_list_roles_tool_calls_client() -> None:
 @pytest.mark.asyncio
 async def test_project_access_tools_pass_project_ref() -> None:
     class StubClient:
-        async def list_project_memberships(self, project, **kwargs):
+        @property
+        def membership(self):
+            return self
+
+        async def list_for_project(self, project, **kwargs):
             return {"project": project, **kwargs}
 
         async def get_my_project_access(self, project):
