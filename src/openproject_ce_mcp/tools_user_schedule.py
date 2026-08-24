@@ -69,7 +69,7 @@ async def list_user_non_working_times(
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     return await _run_tool(
-        client.list_user_non_working_times(safe_user, year=safe_year, offset=safe_offset, limit=safe_limit)
+        client.user_non_working_time.list_for_user(safe_user, year=safe_year, offset=safe_offset, limit=safe_limit)
     )
 
 
@@ -95,7 +95,7 @@ async def create_user_non_working_time(
     safe_start = _validate_required_date(start_date, field_name="start_date")
     safe_end = _validate_required_date(end_date, field_name="end_date")
     return await _run_tool(
-        client.create_user_non_working_time(safe_user, start_date=safe_start, end_date=safe_end, confirm=confirm)
+        client.user_non_working_time.create(safe_user, start_date=safe_start, end_date=safe_end, confirm=confirm)
     )
 
 
@@ -123,7 +123,7 @@ async def update_user_non_working_time(
     safe_start = _validate_optional_date(start_date, field_name="start_date")
     safe_end = _validate_optional_date(end_date, field_name="end_date")
     return await _run_tool(
-        client.update_user_non_working_time(
+        client.user_non_working_time.update(
             safe_user, safe_id, start_date=safe_start, end_date=safe_end, confirm=confirm
         )
     )
@@ -145,7 +145,7 @@ async def delete_user_non_working_time(
     client = _client_from_context(ctx)
     safe_user = _validate_required_query(user_ref, field_name="user_ref", max_length=100)
     safe_id = _validate_positive_int(non_working_time_id, field_name="non_working_time_id")
-    return await _run_tool(client.delete_user_non_working_time(safe_user, safe_id, confirm=confirm))
+    return await _run_tool(client.user_non_working_time.delete(safe_user, safe_id, confirm=confirm))
 
 
 @register_tool
@@ -174,7 +174,7 @@ async def list_user_working_hours(
     safe_user = _validate_required_query(user_ref, field_name="user_ref", max_length=100)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
-    return await _run_tool(client.list_user_working_hours(safe_user, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.user_working_hours.list_for_user(safe_user, offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -191,7 +191,7 @@ async def get_user_working_hours(
     client = _client_from_context(ctx)
     safe_user = _validate_required_query(user_ref, field_name="user_ref", max_length=100)
     safe_id = _validate_positive_int(working_hours_id, field_name="working_hours_id")
-    return await _run_tool(client.get_user_working_hours(safe_user, safe_id))
+    return await _run_tool(client.user_working_hours.get(safe_user, safe_id))
 
 
 @register_tool
@@ -229,7 +229,7 @@ async def create_user_working_hours(
     safe_user = _validate_required_query(user_ref, field_name="user_ref", max_length=100)
     safe_valid_from = _validate_required_date(valid_from, field_name="valid_from")
     return await _run_tool(
-        client.create_user_working_hours(
+        client.user_working_hours.create(
             safe_user,
             valid_from=safe_valid_from,
             monday_hours=monday_hours,
@@ -271,7 +271,7 @@ async def update_user_working_hours(
     safe_id = _validate_positive_int(working_hours_id, field_name="working_hours_id")
     safe_valid_from = _validate_optional_date(valid_from, field_name="valid_from")
     return await _run_tool(
-        client.update_user_working_hours(
+        client.user_working_hours.update(
             safe_user,
             safe_id,
             valid_from=safe_valid_from,
@@ -303,4 +303,4 @@ async def delete_user_working_hours(
     client = _client_from_context(ctx)
     safe_user = _validate_required_query(user_ref, field_name="user_ref", max_length=100)
     safe_id = _validate_positive_int(working_hours_id, field_name="working_hours_id")
-    return await _run_tool(client.delete_user_working_hours(safe_user, safe_id, confirm=confirm))
+    return await _run_tool(client.user_working_hours.delete(safe_user, safe_id, confirm=confirm))
