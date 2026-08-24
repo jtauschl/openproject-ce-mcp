@@ -728,96 +728,7 @@ Supersedes the never-released 0.1.1.
 
 ## 0.1.0 – 2026-07-01
 
-Add semantic work-package identifiers and automatic MCP-client setup, and
-harden the API surface (attachment containment, allowlisting, field-hiding)
-ahead of the first public release.
-
-### Compatibility
-
-- Reviewed for compatibility with OpenProject 17.5.1/17.5.0 — no breaking
-  API change affects this server.
-- Verified against OpenProject 16.6 (classic), 17.4 (displayId), and 17.5
-  (semantic) via the local Docker matrix, plus a source-level API audit
-  across 16.0–17.5.
-
-### Added
-
-- Single work package tools now accept a project-prefixed identifier (e.g.
-  `PROJ-123`) in addition to the numeric id; the bulk tools remain
-  numeric-only.
-- Relation and parent writes resolve a project-prefixed reference to the
-  numeric id.
-- Interactive setup can detect installed MCP clients (Claude Code, Claude
-  Desktop, Codex, Cursor, VS Code/Copilot) and register the server in a
-  client's user-wide config.
-- `uninstall.sh`/`uninstall.ps1` and a `configure_mcp.py --uninstall` mode
-  remove the `openproject` entry from client configs and clean up the local
-  environment.
-- `OPENPROJECT_ATTACHMENT_ROOT` confines attachment uploads to a directory;
-  files outside it, and credential/config files even inside it, are
-  refused.
-
-### Security
-
-- Attachment uploads can no longer read arbitrary local files, closing a
-  credential-exfiltration path.
-- `list_relations` is gated by the read scope and filtered by the project
-  read allowlist on both linked work packages; `update_relation`,
-  `update_reminder`, and `delete_reminder` apply the project write
-  allowlist; `copy_project` validates its destination; hidden work-package
-  subjects no longer leak through relation tools.
-- `OPENPROJECT_AUTO_CONFIRM_DELETE` now correctly governs the preview step
-  for all destructive deletes.
-
-### Docs
-
-- Onboarding docs reworked: install-once/register-per-client model,
-  per-client config matrix, per-OS paths, verification steps, and
-  gitignore reminders.
-
----
-
-## 0.0.1 (development baseline)
-
-Initial development baseline. The pre-release history is kept below as dated
-milestones.
-
-### 2026-05-18
-
-#### Compatibility
-
-- Verified against OpenProject 17.4. No breaking API changes in 17.4.
-- Work package responses now expose a `display_id` field, informational
-  ahead of 17.5's project-based identifiers; the numeric `id` remains the
-  canonical identifier for all tool parameters.
-
-#### Fixes
-
-- Authentication header changed from `Bearer <token>` to
-  `Basic base64(apikey:<token>)`, aligning with the OpenProject API
-  documentation.
-
-#### Bug fixes
-
-- `list_work_packages`, `list_my_open_work_packages`, `list_versions`, and
-  `list_projects` now report `total` and `count` consistently when the
-  read allowlist filters items out of the API response.
-- `list_work_packages` without an explicit `project` argument now
-  correctly filters results to allowed projects when
-  `OPENPROJECT_ALLOWED_PROJECTS_READ` is restricted.
-- Allowlist matching now resolves project names and hyphenated display
-  names to their canonical identifiers at startup.
-
-#### Configuration
-
-- `OPENPROJECT_ALLOWED_PROJECTS_READ` now accepts glob patterns in
-  addition to exact identifiers and names.
-
----
-
-### 2026-04-08
-
-#### Tools
+### Tools
 
 - **Projects** — list, get, create, copy (with background job tracking), update, delete;
   read admin context, project configuration, and lifecycle phase definitions/instances
@@ -855,8 +766,33 @@ milestones.
 - **Relations (global)** — list, update
 - **Actions & capabilities** — list
 - **Text rendering** — render markdown or plain text to HTML via OpenProject API
+- Single work package tools accept a project-prefixed identifier (e.g.
+  `PROJ-123`) in addition to the numeric id; the bulk tools are
+  numeric-only. Relation and parent writes resolve a project-prefixed
+  reference to the numeric id. Work package responses also expose a
+  `display_id` field, informational ahead of 17.5's project-based
+  identifiers; the numeric `id` is the canonical identifier for all tool
+  parameters.
+- Uses `Basic base64(apikey:<token>)` authentication, per the OpenProject
+  API documentation.
+- `list_work_packages`, `list_my_open_work_packages`, `list_versions`, and
+  `list_projects` report `total` and `count` consistently when the read
+  allowlist filters items out of the API response; `list_work_packages`
+  without an explicit `project` argument filters results to allowed
+  projects when the read allowlist is restricted; allowlist matching
+  resolves project names and hyphenated display names to their canonical
+  identifiers at startup, and accepts glob patterns in addition to exact
+  identifiers and names.
+- Interactive setup can detect installed MCP clients (Claude Code, Claude
+  Desktop, Codex, Cursor, VS Code/Copilot) and register the server in a
+  client's user-wide config. `uninstall.sh`/`uninstall.ps1` and a
+  `configure_mcp.py --uninstall` mode remove the `openproject` entry from
+  client configs and clean up the local environment.
+- `OPENPROJECT_ATTACHMENT_ROOT` confines attachment uploads to a
+  directory; files outside it, and credential/config files even inside
+  it, are refused.
 
-#### Permission model
+### Permission model
 
 - Scoped read flags per chain: `OPENPROJECT_ENABLE_PROJECT_READ`,
   `OPENPROJECT_ENABLE_WORK_PACKAGE_READ`, `OPENPROJECT_ENABLE_MEMBERSHIP_READ`,
@@ -870,7 +806,7 @@ milestones.
 - Two-layer safety model: MCP env-var gates (ceiling) + OpenProject server-side role
   permissions (final authority); a `403` from OpenProject surfaces as a tool error
 
-#### Architecture
+### Architecture
 
 - Five-module layout: `server.py`, `config.py`, `client.py`, `models.py`, `tools.py`
 - All policy logic (read gates, write gates, project scoping, field hiding) concentrated
@@ -887,13 +823,13 @@ milestones.
   `OPENPROJECT_MAX_RESULTS`
 - Form validation against OpenProject schema endpoints before create/update writes
 
-#### Test coverage
+### Test coverage
 
 - 152 unit tests (httpx mock transport, no network)
 - Integration test suite (`tests/integration/`) against a live OpenProject instance;
   excluded from the default run, opt in with `-m integration`
 
-#### Scope
+### Scope
 
 - Community Edition only — Enterprise features (Placeholder Users, Budgets, Portfolios,
   Programs, Custom Actions, Baseline Comparisons) are not implemented
@@ -901,7 +837,7 @@ milestones.
   not connected)
 - Project lifecycle phases included (read-only; degrades gracefully if unavailable)
 
-#### Known API notes
+### Known API notes
 
 - `GET /api/v3/projects/{id}/wiki_pages` is not implemented in OpenProject v3;
   `list_wiki_pages` is therefore not provided. Individual pages are accessible via
@@ -913,3 +849,29 @@ milestones.
   redirecting project-scoped path.
 - Groups PATCH requires a complete `_links.members` array (full replacement); the client
   fetches the current list and applies adds/removes before sending.
+
+### Compatibility
+
+- Reviewed for compatibility with OpenProject 17.5.1/17.5.0 — no breaking
+  API change affects this server.
+- Verified against OpenProject 16.6 (classic), 17.4 (displayId), and 17.5
+  (semantic) via the local Docker matrix, plus a source-level API audit
+  across 16.0–17.5.
+
+### Security
+
+- Attachment uploads are confined to files within `OPENPROJECT_ATTACHMENT_ROOT`; a
+  path outside it, or a credential/config file even inside it, is refused.
+- `list_relations` is gated by the read scope and filtered by the project
+  read allowlist on both linked work packages; `update_relation`,
+  `update_reminder`, and `delete_reminder` apply the project write
+  allowlist; `copy_project` validates its destination; hidden work-package
+  subjects never leak through relation tools.
+- `OPENPROJECT_AUTO_CONFIRM_DELETE` governs the preview step for all
+  destructive deletes.
+
+### Docs
+
+- Onboarding docs cover the install-once/register-per-client model,
+  a per-client config matrix, per-OS paths, verification steps, and
+  gitignore reminders.
