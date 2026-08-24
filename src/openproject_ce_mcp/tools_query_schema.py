@@ -33,7 +33,7 @@ async def get_query_filter(
     """Get a single query filter by id."""
     client = _client_from_context(ctx)
     safe_filter_id = _validate_required_query(filter_id, field_name="filter_id", max_length=100)
-    return await _run_tool(client.get_query_filter(safe_filter_id))
+    return await _run_tool(client.query_metadata.get_filter(safe_filter_id))
 
 
 @register_tool
@@ -44,7 +44,7 @@ async def get_query_column(
     """Get a single query column by id."""
     client = _client_from_context(ctx)
     safe_column_id = _validate_required_query(column_id, field_name="column_id", max_length=100)
-    return await _run_tool(client.get_query_column(safe_column_id))
+    return await _run_tool(client.query_metadata.get_column(safe_column_id))
 
 
 @register_tool
@@ -55,7 +55,7 @@ async def get_query_operator(
     """Get a single query operator by id."""
     client = _client_from_context(ctx)
     safe_operator_id = _validate_required_query(operator_id, field_name="operator_id", max_length=100)
-    return await _run_tool(client.get_query_operator(safe_operator_id))
+    return await _run_tool(client.query_metadata.get_operator(safe_operator_id))
 
 
 @register_tool
@@ -66,7 +66,7 @@ async def get_query_sort_by(
     """Get a single query sort-by definition by id."""
     client = _client_from_context(ctx)
     safe_sort_by_id = _validate_required_query(sort_by_id, field_name="sort_by_id", max_length=100)
-    return await _run_tool(client.get_query_sort_by(safe_sort_by_id))
+    return await _run_tool(client.query_metadata.get_sort_by(safe_sort_by_id))
 
 
 @register_tool
@@ -77,7 +77,7 @@ async def list_query_filter_instance_schemas(
     """List query filter instance schemas globally or for a project."""
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
-    return await _run_tool(client.list_query_filter_instance_schemas(project=safe_project))
+    return await _run_tool(client.query_metadata.list_filter_instance_schemas(project=safe_project))
 
 
 @register_tool
@@ -88,4 +88,4 @@ async def get_query_filter_instance_schema(
     """Get a single query filter instance schema by id."""
     client = _client_from_context(ctx)
     safe_schema_id = _validate_required_query(schema_id, field_name="schema_id", max_length=100)
-    return await _run_tool(client.get_query_filter_instance_schema(safe_schema_id))
+    return await _run_tool(client.query_metadata.get_filter_instance_schema(safe_schema_id))
