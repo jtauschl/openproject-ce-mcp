@@ -1031,19 +1031,23 @@ async def test_notification_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_user_crud_tools_pass_expected_arguments() -> None:
     class StubClient:
-        async def create_user(self, **kwargs):
+        @property
+        def user(self):
+            return self
+
+        async def create(self, **kwargs):
             return kwargs
 
-        async def update_user(self, user_id, **kwargs):
+        async def update(self, *, user_id, **kwargs):
             return {"user_id": user_id, **kwargs}
 
-        async def delete_user(self, user_id, **kwargs):
+        async def delete(self, user_id, **kwargs):
             return {"user_id": user_id, **kwargs}
 
-        async def lock_user(self, user_id, **kwargs):
+        async def lock(self, user_id, **kwargs):
             return {"user_id": user_id, **kwargs}
 
-        async def unlock_user(self, user_id, **kwargs):
+        async def unlock(self, user_id, **kwargs):
             return {"user_id": user_id, **kwargs}
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
@@ -1067,7 +1071,11 @@ async def test_user_crud_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_update_user_requires_at_least_one_field() -> None:
     class StubClient:
-        async def update_user(self, user_id, **kwargs):
+        @property
+        def user(self):
+            return self
+
+        async def update(self, *, user_id, **kwargs):
             return kwargs
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
@@ -1079,13 +1087,17 @@ async def test_update_user_requires_at_least_one_field() -> None:
 @pytest.mark.asyncio
 async def test_group_crud_tools_pass_expected_arguments() -> None:
     class StubClient:
-        async def create_group(self, **kwargs):
+        @property
+        def group(self):
+            return self
+
+        async def create(self, **kwargs):
             return kwargs
 
-        async def update_group(self, group_id, **kwargs):
+        async def update(self, group_id, **kwargs):
             return {"group_id": group_id, **kwargs}
 
-        async def delete_group(self, group_id, **kwargs):
+        async def delete(self, group_id, **kwargs):
             return {"group_id": group_id, **kwargs}
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
@@ -1102,7 +1114,11 @@ async def test_group_crud_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_update_group_requires_at_least_one_field() -> None:
     class StubClient:
-        async def update_group(self, group_id, **kwargs):
+        @property
+        def group(self):
+            return self
+
+        async def update(self, group_id, **kwargs):
             return kwargs
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]

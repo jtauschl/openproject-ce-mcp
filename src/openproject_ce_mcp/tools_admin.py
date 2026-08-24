@@ -64,7 +64,7 @@ async def list_principals(
     client = _client_from_context(ctx)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     _validate_select(select, row_type=PrincipalSummary)
-    return await _run_tool(client.list_principals(search=safe_search, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.principal.list_principals(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -90,7 +90,7 @@ async def list_users(
     client = _client_from_context(ctx)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     _validate_select(select, row_type=UserSummary)
-    return await _run_tool(client.list_users(search=safe_search, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.user.list_users(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -101,7 +101,7 @@ async def get_user(
     """Get a user by id, login, or `me` when supported by OpenProject."""
     client = _client_from_context(ctx)
     safe_user = _validate_required_query(user, field_name="user", max_length=100)
-    return await _run_tool(client.get_user(safe_user))
+    return await _run_tool(client.user.get_user(safe_user))
 
 
 @register_tool
@@ -126,7 +126,7 @@ async def list_groups(
     client = _client_from_context(ctx)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     _validate_select(select, row_type=GroupSummary)
-    return await _run_tool(client.list_groups(search=safe_search, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.group.list_groups(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -137,7 +137,7 @@ async def get_group(
     """Get a single group by id."""
     client = _client_from_context(ctx)
     safe_group_id = _validate_positive_int(group_id, field_name="group_id")
-    return await _run_tool(client.get_group(safe_group_id))
+    return await _run_tool(client.group.get_group(safe_group_id))
 
 
 @register_tool
@@ -159,7 +159,7 @@ async def list_storages(
     _validate_select(select, row_type=StorageSummary)
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
-    return await _run_tool(client.list_storages(offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.storage.list_storages(offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -170,7 +170,7 @@ async def get_storage(
     """Get a single OpenProject external file storage connection by id."""
     client = _client_from_context(ctx)
     safe_storage_id = _validate_positive_int(storage_id, field_name="storage_id")
-    return await _run_tool(client.get_storage(safe_storage_id))
+    return await _run_tool(client.storage.get_storage(safe_storage_id))
 
 
 @register_tool
@@ -195,7 +195,7 @@ async def create_user(
     safe_status = _validate_optional_query(status, field_name="status", max_length=50) or "active"
     safe_language = _validate_optional_query(language, field_name="language", max_length=10)
     return await _run_tool(
-        client.create_user(
+        client.user.create(
             login=safe_login,
             email=safe_email,
             firstname=safe_firstname,
@@ -239,8 +239,8 @@ async def update_user(
         message="At least one field must be provided to update.",
     )
     return await _run_tool(
-        client.update_user(
-            safe_id,
+        client.user.update(
+            user_id=safe_id,
             login=safe_login,
             email=safe_email,
             firstname=safe_firstname,
@@ -261,7 +261,7 @@ async def delete_user(
     """Prepare or delete a user (admin operation)."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(user_id, field_name="user_id")
-    return await _run_tool(client.delete_user(safe_id, confirm=confirm))
+    return await _run_tool(client.user.delete(safe_id, confirm=confirm))
 
 
 @register_tool
@@ -279,8 +279,8 @@ async def set_user_locked(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(user_id, field_name="user_id")
     if locked:
-        return await _run_tool(client.lock_user(safe_id, confirm=confirm))
-    return await _run_tool(client.unlock_user(safe_id, confirm=confirm))
+        return await _run_tool(client.user.lock(safe_id, confirm=confirm))
+    return await _run_tool(client.user.unlock(safe_id, confirm=confirm))
 
 
 @register_tool
@@ -293,7 +293,7 @@ async def create_group(
     """Prepare or create a new group (admin operation)."""
     client = _client_from_context(ctx)
     safe_name = _validate_required_query(name, field_name="name", max_length=255)
-    return await _run_tool(client.create_group(name=safe_name, user_ids=user_ids, confirm=confirm))
+    return await _run_tool(client.group.create(name=safe_name, user_ids=user_ids, confirm=confirm))
 
 
 @register_tool
@@ -313,7 +313,7 @@ async def update_group(
         safe_name, add_user_ids, remove_user_ids, message="At least one field must be provided to update."
     )
     return await _run_tool(
-        client.update_group(
+        client.group.update(
             safe_id, name=safe_name, add_user_ids=add_user_ids, remove_user_ids=remove_user_ids, confirm=confirm
         )
     )
@@ -328,7 +328,7 @@ async def delete_group(
     """Prepare or delete a group (admin operation)."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(group_id, field_name="group_id")
-    return await _run_tool(client.delete_group(safe_id, confirm=confirm))
+    return await _run_tool(client.group.delete(safe_id, confirm=confirm))
 
 
 @register_tool
@@ -370,7 +370,7 @@ async def create_storage(
     safe_tenant_id = _validate_optional_query(tenant_id, field_name="tenant_id", max_length=100)
     safe_drive_id = _validate_optional_query(drive_id, field_name="drive_id", max_length=255)
     return await _run_tool(
-        client.create_storage(
+        client.storage.create(
             name=safe_name,
             provider_type=safe_provider_type,
             host=safe_host,
@@ -400,7 +400,7 @@ async def update_storage(
     safe_name = _validate_optional_query(name, field_name="name", max_length=255)
     safe_host = _validate_optional_query(host, field_name="host", max_length=255)
     _require_at_least_one(safe_name, safe_host, message="At least one field must be provided to update.")
-    return await _run_tool(client.update_storage(storage_id=safe_id, name=safe_name, host=safe_host, confirm=confirm))
+    return await _run_tool(client.storage.update(storage_id=safe_id, name=safe_name, host=safe_host, confirm=confirm))
 
 
 @register_tool
@@ -418,4 +418,4 @@ async def delete_storage(
     """
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(storage_id, field_name="storage_id")
-    return await _run_tool(client.delete_storage(safe_id, confirm=confirm))
+    return await _run_tool(client.storage.delete(safe_id, confirm=confirm))
