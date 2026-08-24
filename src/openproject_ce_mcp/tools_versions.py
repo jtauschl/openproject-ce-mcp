@@ -59,7 +59,7 @@ async def list_versions(
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     _validate_select(select, row_type=VersionSummary)
     return await _run_tool(
-        client.list_versions(project=safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
+        client.version.list(project=safe_project, search=safe_search, offset=safe_offset, limit=safe_limit)
     )
 
 
@@ -79,7 +79,7 @@ async def get_version(
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(version_id, field_name="version_id")
     safe_text_limit = _validate_optional_text_limit(text_limit)
-    return await _run_tool(client.get_version(safe_id, text_limit=safe_text_limit))
+    return await _run_tool(client.version.get(safe_id, text_limit=safe_text_limit))
 
 
 def _validate_version_schedule_fields(
@@ -128,7 +128,7 @@ async def create_version(
     safe_description = _validate_optional_text(description, field_name="description", max_length=10_000)
     common = _validate_version_schedule_fields(start_date=start_date, end_date=end_date, status=status, sharing=sharing)
     return await _run_tool(
-        client.create_version(
+        client.version.create(
             project=safe_project,
             name=safe_name,
             description=safe_description,
@@ -173,7 +173,7 @@ async def update_version(
         message="At least one field to update is required.",
     )
     return await _run_tool(
-        client.update_version(
+        client.version.update(
             version_id=safe_id,
             name=safe_name,
             description=safe_description,
@@ -195,4 +195,4 @@ async def delete_version(
     """Prepare or delete a version."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(version_id, field_name="version_id")
-    return await _run_tool(client.delete_version(version_id=safe_id, confirm=confirm))
+    return await _run_tool(client.version.delete(version_id=safe_id, confirm=confirm))

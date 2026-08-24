@@ -414,19 +414,23 @@ async def test_job_document_news_and_wiki_tools_pass_arguments() -> None:
 @pytest.mark.asyncio
 async def test_version_tools_pass_expected_arguments() -> None:
     class StubClient:
-        async def list_versions(self, **kwargs):
+        @property
+        def version(self):
+            return self
+
+        async def list(self, **kwargs):
             return kwargs
 
-        async def get_version(self, version_id, **kwargs):
+        async def get(self, version_id, **kwargs):
             return {"version_id": version_id, **kwargs}
 
-        async def create_version(self, **kwargs):
+        async def create(self, **kwargs):
             return kwargs
 
-        async def update_version(self, **kwargs):
+        async def update(self, **kwargs):
             return kwargs
 
-        async def delete_version(self, **kwargs):
+        async def delete(self, **kwargs):
             return kwargs
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
@@ -485,7 +489,11 @@ async def test_sprint_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_update_version_tool_requires_at_least_one_field() -> None:
     class StubClient:
-        async def update_version(self, **kwargs):
+        @property
+        def version(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match="At least one field"):
