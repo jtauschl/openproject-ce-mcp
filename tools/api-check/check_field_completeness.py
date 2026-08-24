@@ -55,7 +55,7 @@ from typing import Any, NamedTuple
 ROOT = Path(__file__).resolve().parents[2]
 SOURCES = ROOT.parent / "op-sources"
 FIELD_COMPLETENESS_MD = Path(__file__).resolve().parent / "FIELD_COMPLETENESS.md"
-SOURCE_VERSION = "17.6"
+SOURCE_VERSION = "17.7"
 
 sys.path.insert(0, str(ROOT / "src"))
 from openproject_ce_mcp import models  # noqa: E402
@@ -315,6 +315,27 @@ EXCLUSIONS: list[FieldExclusion] = [
         "Same Enterprise-only Baseline Comparisons feature as _meta above "
         "(TimestampedRepresenter, property :attributes_by_timestamp, "
         "timestamps_active? gated).",
+    ),
+    FieldExclusion(
+        "work_package",
+        "targetVersions",
+        ExclusionCategory.INTERNAL_OTHER,
+        "Upstream's intended successor to the single-version model (multi-version "
+        "assignment, associated_resources :target_versions); this client deliberately "
+        "keeps the compatible single-version model instead, and strips the form's "
+        "own echoed value from write payloads so it never collides with an "
+        "intentional version change (see _strip_unrequested_target_versions). "
+        "Worth revisiting only if multi-version assignment is ever surfaced as a "
+        "feature in its own right, not a modeling gap today.",
+    ),
+    FieldExclusion(
+        "work_package",
+        "hasProjectAttributes",
+        ExclusionCategory.INTERNAL_OTHER,
+        "Read-only derived capability hint (true if the work package's project has "
+        "any custom fields configured for its type). A genuine, low-priority "
+        "modeling gap deliberately deferred rather than rushed into this release; "
+        "not excluded on technical grounds like the entries above it.",
     ),
 ]
 _EXCLUSION_INDEX: dict[tuple[str, str], FieldExclusion] = {(e.resource, e.wire_name): e for e in EXCLUSIONS}

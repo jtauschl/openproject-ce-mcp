@@ -118,7 +118,7 @@ jobs:
   # allowed version and updates the lockfile's pins accordingly (in-memory
   # for this job only, not committed back to the repo), so drift inside the
   # declared ranges (mcp>=2,<3 above all) gets caught here instead of by a
-  # real user (OPM-254).
+  # real user.
   test-newest-deps:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
