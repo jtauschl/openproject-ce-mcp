@@ -67,4 +67,4 @@ async def execute_query(
     safe_query_id = _validate_positive_int(query_id, field_name="query_id")
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
-    return await _run_tool(client.execute_query(safe_query_id, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.query_execution.execute(safe_query_id, offset=safe_offset, limit=safe_limit))
