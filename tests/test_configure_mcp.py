@@ -1422,6 +1422,31 @@ def test_main_project_cursor_writes_cursor_file(monkeypatch, tmp_path: Path) -> 
     assert data["mcpServers"]["openproject"]["command"] == "openproject-ce-mcp"
 
 
+def test_prompt_secret_uses_getpass_on_non_windows(monkeypatch) -> None:
+    monkeypatch.setattr(c, "_IS_WINDOWS", False)
+    monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": "opapi-secret")
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda prompt="": (_ for _ in ()).throw(AssertionError("input() must not be used off Windows")),
+    )
+    assert c._prompt_secret("OpenProject API token") == "opapi-secret"
+
+
+def test_prompt_secret_falls_back_to_input_on_windows(monkeypatch) -> None:
+    # getpass.getpass() on Windows reads keystrokes one at a time via msvcrt,
+    # which does not handle clipboard paste correctly (CPython #81607):
+    # Ctrl+V lands as the raw 0x16 control byte instead of the pasted text.
+    # On Windows we must use input() instead so pasted tokens survive intact.
+    monkeypatch.setattr(c, "_IS_WINDOWS", True)
+    monkeypatch.setattr(
+        c.getpass,
+        "getpass",
+        lambda prompt="": (_ for _ in ()).throw(AssertionError("getpass.getpass() must not be used on Windows")),
+    )
+    monkeypatch.setattr("builtins.input", lambda: "opapi-secret")
+    assert c._prompt_secret("OpenProject API token") == "opapi-secret"
+
+
 def test_main_neither_aborts_before_token(monkeypatch, tmp_path: Path) -> None:
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
     token_asked = {"v": False}
