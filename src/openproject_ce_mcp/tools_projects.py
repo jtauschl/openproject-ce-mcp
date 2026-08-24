@@ -94,7 +94,7 @@ async def list_projects(
     client = _client_from_context(ctx)
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     _validate_select(select, row_type=ProjectSummary)
-    return await _run_tool(client.list_projects(search=safe_search, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.project.list(search=safe_search, offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -115,7 +115,7 @@ async def get_project(
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
     safe_text_limit = _validate_optional_text_limit(text_limit)
-    return await _run_tool(client.get_project(safe_project, text_limit=safe_text_limit))
+    return await _run_tool(client.project.get(safe_project, text_limit=safe_text_limit))
 
 
 @register_tool
@@ -126,7 +126,7 @@ async def get_project_admin_context(
     """Return project admin metadata such as lifecycle statuses, parent options, and writable fields."""
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
-    return await _run_tool(client.get_project_admin_context(safe_project))
+    return await _run_tool(client.project_admin.get_admin_context(safe_project))
 
 
 @register_tool
@@ -137,7 +137,7 @@ async def get_project_configuration(
     """Return project-scoped configuration such as internal comment support."""
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
-    return await _run_tool(client.get_project_configuration(safe_project))
+    return await _run_tool(client.project.get_configuration(safe_project))
 
 
 def _validate_project_descriptive_fields(
@@ -252,7 +252,7 @@ async def get_job_status(
     # Job status ids are UUIDs (e.g. "32ac4e5e-1e49-4cbd-b70e-bc1c781d8af2"),
     # never a plain integer, on every supported OpenProject version.
     safe_id = _validate_required_text(job_status_id, field_name="job_status_id", max_length=64)
-    return await _run_tool(client.get_job_status(safe_id))
+    return await _run_tool(client.job_status.get(safe_id))
 
 
 @register_tool
@@ -322,7 +322,7 @@ async def delete_project(
     """Prepare or delete a project."""
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
-    return await _run_tool(client.delete_project(project_ref=safe_project, confirm=confirm))
+    return await _run_tool(client.project.delete(project_ref=safe_project, confirm=confirm))
 
 
 @register_tool
@@ -340,14 +340,14 @@ async def get_my_project_access(
 async def get_instance_configuration(ctx: Context) -> InstanceConfiguration:
     """Return instance-level OpenProject configuration and active feature flags."""
     client = _client_from_context(ctx)
-    return await _run_tool(client.get_instance_configuration())
+    return await _run_tool(client.instance_configuration.get_instance_configuration())
 
 
 @register_tool
 async def list_project_phase_definitions(ctx: Context) -> ProjectPhaseDefinitionListResult:
     """List available project lifecycle phase definitions exposed by OpenProject."""
     client = _client_from_context(ctx)
-    return await _run_tool(client.list_project_phase_definitions())
+    return await _run_tool(client.project.list_phase_definitions())
 
 
 @register_tool
@@ -358,7 +358,7 @@ async def get_project_phase_definition(
     """Get a single project lifecycle phase definition by id."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(phase_definition_id, field_name="phase_definition_id")
-    return await _run_tool(client.get_project_phase_definition(safe_id))
+    return await _run_tool(client.project.get_phase_definition(safe_id))
 
 
 @register_tool
@@ -369,7 +369,7 @@ async def get_project_phase(
     """Get a single project lifecycle phase by id."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(phase_id, field_name="phase_id")
-    return await _run_tool(client.get_project_phase(safe_id))
+    return await _run_tool(client.project.get_phase(safe_id))
 
 
 @register_tool
@@ -397,7 +397,9 @@ async def list_project_storages(
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=ProjectStorageSummary)
-    return await _run_tool(client.list_project_storages(project=safe_project, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(
+        client.project_storage.list_project_storages(project=safe_project, offset=safe_offset, limit=safe_limit)
+    )
 
 
 @register_tool
@@ -408,7 +410,7 @@ async def get_project_storage(
     """Get a single project's link to a configured external file storage by id."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(project_storage_id, field_name="project_storage_id")
-    return await _run_tool(client.get_project_storage(safe_id))
+    return await _run_tool(client.project_storage.get_project_storage(safe_id))
 
 
 @register_tool
@@ -438,6 +440,8 @@ async def set_project_favorite(
     """
     client = _client_from_context(ctx)
     safe_project = _validate_project_ref(project)
-    if favorite:
-        return await _run_tool(client.add_project_favorite(project=safe_project, confirm=confirm))
-    return await _run_tool(client.remove_project_favorite(project=safe_project, confirm=confirm))
+    # add_project_favorite/remove_project_favorite collapse through the client's private
+    # _set_project_favorite helper straight to project.set_favorite -- that helper adds no
+    # logic beyond fixing the `favorite` bool literal, so this is a deliberately-reviewed
+    # exception to the "pure single-hop delegation only" rule (OPM-394 plan review).
+    return await _run_tool(client.project.set_favorite(safe_project, favorite=favorite, confirm=confirm))

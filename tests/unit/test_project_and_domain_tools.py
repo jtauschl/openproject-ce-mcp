@@ -283,19 +283,27 @@ async def test_project_access_tools_pass_project_ref() -> None:
 @pytest.mark.asyncio
 async def test_instance_configuration_and_phase_tools_call_client() -> None:
     class StubClient:
+        @property
+        def instance_configuration(self):
+            return self
+
+        @property
+        def project(self):
+            return self
+
         async def get_instance_configuration(self):
             return {"configuration": True}
 
-        async def get_project_configuration(self, project):
-            return {"project": project, "project_configuration": True}
+        async def get_configuration(self, project_ref):
+            return {"project": project_ref, "project_configuration": True}
 
-        async def list_project_phase_definitions(self):
+        async def list_phase_definitions(self):
             return {"phases": True}
 
-        async def get_project_phase_definition(self, phase_definition_id):
+        async def get_phase_definition(self, phase_definition_id):
             return {"phase_definition_id": phase_definition_id}
 
-        async def get_project_phase(self, phase_id):
+        async def get_phase(self, phase_id):
             return {"phase_id": phase_id}
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
@@ -366,13 +374,15 @@ async def test_job_document_news_and_wiki_tools_pass_arguments() -> None:
         async def get(self, wiki_page_id, **kwargs):
             return {"wiki_page_id": wiki_page_id, **kwargs}
 
+    class _JobStatusNamespace:
+        async def get(self, job_status_id):
+            return {"job_status_id": job_status_id}
+
     class StubClient:
         document = _DocumentNamespace()
         news = _NewsNamespace()
         wiki_page = _WikiPageNamespace()
-
-        async def get_job_status(self, job_status_id):
-            return {"job_status_id": job_status_id}
+        job_status = _JobStatusNamespace()
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
@@ -899,11 +909,16 @@ async def test_reminder_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_project_favorite_tools_pass_expected_arguments() -> None:
     class StubClient:
-        async def add_project_favorite(self, **kwargs):
-            return {"action": "favorite", **kwargs}
+        @property
+        def project(self):
+            return self
 
-        async def remove_project_favorite(self, **kwargs):
-            return {"action": "unfavorite", **kwargs}
+        async def set_favorite(self, project_ref, *, favorite, confirm):
+            return {
+                "action": "favorite" if favorite else "unfavorite",
+                "project": project_ref,
+                "confirm": confirm,
+            }
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
 
@@ -912,6 +927,7 @@ async def test_project_favorite_tools_pass_expected_arguments() -> None:
 
     assert added["project"] == "demo"
     assert added["confirm"] is True
+    assert added["action"] == "favorite"
     assert removed["action"] == "unfavorite"
     assert removed["confirm"] is False
 
