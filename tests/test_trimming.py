@@ -193,6 +193,26 @@ def test_select_keeps_only_requested_row_fields() -> None:
     assert "offset" in out and "total" in out
 
 
+def test_select_trims_exact_match_the_same_way_as_a_result_row() -> None:
+    wp_list = m.WorkPackageListResult(
+        offset=1,
+        limit=20,
+        total=0,
+        count=0,
+        next_offset=None,
+        truncated=False,
+        results=[],
+        exact_match=_wp_summary(id=99),
+    )
+    out = _to_payload(wp_list, select=frozenset({"id", "subject"}))
+    assert sorted(out["exact_match"]) == ["id", "subject"]
+
+
+def test_exact_match_absent_from_payload_when_none() -> None:
+    out = _to_payload(_wp_list())
+    assert "exact_match" not in out
+
+
 def test_validate_select_rejects_unknown_field() -> None:
     with pytest.raises(ValueError, match="not a valid WorkPackageSummary field"):
         _validate_select(["id", "bogus"], row_type=m.WorkPackageSummary)

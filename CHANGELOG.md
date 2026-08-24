@@ -11,6 +11,12 @@ development baseline.
 
 ### Fixed
 
+- **`create_work_package`/`create_subtask`/`update_work_package` could fail
+  with "Version and target versions cannot both be changed at the same
+  time" when setting `version`, even though the request never touched
+  target versions at all.** The server's unrequested echo of that field is
+  now stripped from the committed payload whenever the request itself sets
+  `version`; previews and rejected-write responses are unaffected.
 - **`get.ps1`/`get.sh` (the source-install launchers) never installed the
   project's own dependencies before running `configure_mcp.py`**, which
   crashed immediately with `ModuleNotFoundError: No module named 'httpx'` on
@@ -39,6 +45,16 @@ development baseline.
   Windows PowerShell 5.1 install, where the `SystemDefault` TLS setting does
   not reliably negotiate TLS 1.2 with GitHub — the documented command now
   forces TLS 1.2 explicitly before downloading the script.
+
+### Added
+
+- **`search_work_packages` now also resolves its `query` directly as a
+  numeric id or display id (e.g. `PROJ-42`), returned separately as
+  `exact_match` when it satisfies every other active filter** — previously,
+  a display id never matched, since the underlying `subject_or_id` filter
+  only matches subject text or a numeric id. `exact_match` is kept separate
+  from `results`/`total`/pagination, and `select` applies to it the same
+  way it applies to a results row.
 
 ### Changed
 

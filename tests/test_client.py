@@ -917,6 +917,8 @@ async def test_delete_board_allows_identifier_write_scope() -> None:
 @pytest.mark.asyncio
 async def test_search_work_packages_uses_supported_subject_or_id_operator() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/Feature":
+            return httpx.Response(404, json={"message": "not found"}, request=request)
         assert request.url.path == "/api/v3/work_packages"
         assert json.loads(request.url.params["filters"]) == [
             {"subject_or_id": {"operator": "**", "values": ["Feature"]}}
@@ -929,6 +931,154 @@ async def test_search_work_packages_uses_supported_subject_or_id_operator() -> N
     result = await client.search_work_packages(query="Feature")
 
     assert result.count == 0
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_search_work_packages_resolves_exact_match_by_display_id() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/OPM-394":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 394,
+                    "subject": "Some ticket",
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages":
+            filters = json.loads(request.url.params["filters"])
+            if any("id" in f for f in filters):
+                return httpx.Response(
+                    200,
+                    json={
+                        "total": 1,
+                        "_embedded": {
+                            "elements": [
+                                {
+                                    "id": 394,
+                                    "subject": "Some ticket",
+                                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                                }
+                            ]
+                        },
+                    },
+                    request=request,
+                )
+            return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.search_work_packages(query="OPM-394")
+
+    assert result.count == 0
+    assert result.exact_match is not None
+    assert result.exact_match.id == 394
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_search_work_packages_exact_match_respects_other_filters() -> None:
+    # The resolved work package belongs to a different project than the
+    # caller scoped the search to -- must not surface as an exact match.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/OPM-394":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 394,
+                    "subject": "Some ticket",
+                    "_links": {"project": {"href": "/api/v3/projects/2", "title": "Other"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/demo":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo"},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages":
+            filters = json.loads(request.url.params["filters"])
+            if any("id" in f for f in filters):
+                # Server applies the project_id filter too -- work package 394
+                # belongs to project 2, not the scoped project 1, so no match.
+                return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
+            return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.search_work_packages(query="OPM-394", project="demo")
+
+    assert result.exact_match is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_search_work_packages_exact_match_deduplicated_against_results() -> None:
+    # The text search already found the same work package by subject match --
+    # exact_match must not duplicate it.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/OPM-394":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 394,
+                    "subject": "OPM-394 fix the thing",
+                    "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages":
+            return httpx.Response(
+                200,
+                json={
+                    "total": 1,
+                    "_embedded": {
+                        "elements": [
+                            {
+                                "id": 394,
+                                "subject": "OPM-394 fix the thing",
+                                "_links": {"project": {"href": "/api/v3/projects/1", "title": "Demo"}},
+                            }
+                        ]
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.search_work_packages(query="OPM-394")
+
+    assert result.count == 1
+    assert result.results[0].id == 394
+    assert result.exact_match is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_search_work_packages_exact_match_none_for_unresolvable_query() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path in ("/api/v3/work_packages/garbage%20text", "/api/v3/work_packages/garbage text"):
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+        if request.url.path == "/api/v3/work_packages":
+            return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
+
+    result = await client.search_work_packages(query="garbage text")
+
+    assert result.exact_match is None
 
     await client.aclose()
 
@@ -960,6 +1110,8 @@ async def test_search_work_packages_accepts_status_filter() -> None:
         if request.url.path == "/api/v3/statuses":
             status_calls["count"] += 1
             return await handler(request)
+        if request.url.path == "/api/v3/work_packages/Feature":
+            return httpx.Response(404, json={"message": "not found"}, request=request)
         if request.url.path == "/api/v3/work_packages":
             assert json.loads(request.url.params["filters"]) == [
                 {"subject_or_id": {"operator": "**", "values": ["Feature"]}},
@@ -1894,6 +2046,8 @@ async def test_list_work_packages_returns_parent_display_id_when_present() -> No
 @pytest.mark.asyncio
 async def test_search_work_packages_returns_parent_display_id_when_present() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/Block D":
+            return httpx.Response(404, json={"message": "not found"}, request=request)
         assert request.url.path == "/api/v3/work_packages"
         return httpx.Response(
             200,
@@ -7364,6 +7518,8 @@ async def test_create_time_entry_resolves_activity_from_linked_allowed_values() 
 @pytest.mark.asyncio
 async def test_project_scoped_reads_accept_numeric_project_ids_when_allowed_by_name() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/Scoped":
+            return httpx.Response(404, json={"message": "not found"}, request=request)
         if request.url.path == "/api/v3/projects/6":
             return httpx.Response(
                 200,
@@ -15342,6 +15498,8 @@ async def test_search_work_packages_date_filters() -> None:
     captured: dict[str, str] = {}
 
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/test":
+            return httpx.Response(404, json={"message": "not found"}, request=request)
         if request.url.path == "/api/v3/work_packages" and request.method == "GET":
             captured["filters"] = request.url.params.get("filters", "")
             return httpx.Response(200, json={"_embedded": {"elements": []}, "total": 0}, request=request)

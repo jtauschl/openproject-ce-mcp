@@ -2331,30 +2331,30 @@ class OpenProjectClient:
                 truncated=False,
                 results=[],
             )
-        filters: list[dict[str, Any]] = [{"subject_or_id": {"operator": "**", "values": [query]}}]
+        other_filters: list[dict[str, Any]] = []
         project_id: int | None = None
         total_is_scope_safe = _scope_allows_all(self.settings.read_projects)
         if project is not None:
             project_payload = await self._get_project_payload(project)
             project_id = int(project_payload["id"])
-            filters.append({"project_id": {"operator": "=", "values": [str(project_id)]}})
+            other_filters.append({"project_id": {"operator": "=", "values": [str(project_id)]}})
             total_is_scope_safe = True
         if status:
             status_id = await self._resolve_status_id(status)
-            filters.append({"status_id": {"operator": "=", "values": [status_id]}})
+            other_filters.append({"status_id": {"operator": "=", "values": [status_id]}})
         if open_only:
-            filters.append({"status_id": {"operator": "o", "values": []}})
+            other_filters.append({"status_id": {"operator": "o", "values": []}})
         if assignee_me:
             current_user = await self.get_current_user()
-            filters.append({"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}})
+            other_filters.append({"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}})
 
         if assignee and not assignee_me:
             assignee_id = await self._resolve_principal_id(assignee)
-            filters.append({"assigned_to_id": {"operator": "=", "values": [assignee_id]}})
+            other_filters.append({"assigned_to_id": {"operator": "=", "values": [assignee_id]}})
 
         if priority:
             priority_id = await self._resolve_priority_id(priority)
-            filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
+            other_filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
 
         # Mutual exclusivity: can't use both _on and _between for same field
         if created_on and created_between:
@@ -2366,37 +2366,78 @@ class OpenProjectClient:
 
         if created_on:
             validated_date = self._validate_date_format(created_on, "created_on")
-            filters.append({"created_at": {"operator": "=d", "values": [validated_date]}})
+            other_filters.append({"created_at": {"operator": "=d", "values": [validated_date]}})
 
         if created_between:
             validated_range = self._validate_date_range(created_between, "created_between")
-            filters.append({"created_at": {"operator": "<>d", "values": validated_range}})
+            other_filters.append({"created_at": {"operator": "<>d", "values": validated_range}})
 
         if updated_on:
             validated_date = self._validate_date_format(updated_on, "updated_on")
-            filters.append({"updated_at": {"operator": "=d", "values": [validated_date]}})
+            other_filters.append({"updated_at": {"operator": "=d", "values": [validated_date]}})
 
         if updated_between:
             validated_range = self._validate_date_range(updated_between, "updated_between")
-            filters.append({"updated_at": {"operator": "<>d", "values": validated_range}})
+            other_filters.append({"updated_at": {"operator": "<>d", "values": validated_range}})
 
         if due_on:
             validated_date = self._validate_date_format(due_on, "due_on")
-            filters.append({"due_date": {"operator": "=d", "values": [validated_date]}})
+            other_filters.append({"due_date": {"operator": "=d", "values": [validated_date]}})
 
         if due_between:
             validated_range = self._validate_date_range(due_between, "due_between")
-            filters.append({"due_date": {"operator": "<>d", "values": validated_range}})
+            other_filters.append({"due_date": {"operator": "<>d", "values": validated_range}})
 
-        return await self._list_work_package_collection(
-            project_id=project_id,
-            filters=filters,
-            offset=offset,
-            limit=effective_limit,
-            sort_by=sort_by,
-            group_by=group_by,
-            total_is_scope_safe=total_is_scope_safe,
+        result, exact_match = await asyncio.gather(
+            self._list_work_package_collection(
+                project_id=project_id,
+                filters=[{"subject_or_id": {"operator": "**", "values": [query]}}, *other_filters],
+                offset=offset,
+                limit=effective_limit,
+                sort_by=sort_by,
+                group_by=group_by,
+                total_is_scope_safe=total_is_scope_safe,
+            ),
+            self._resolve_search_exact_match(query, other_filters=other_filters),
         )
+        if exact_match is not None and any(item.id == exact_match.id for item in result.results):
+            exact_match = None
+        return replace(result, exact_match=exact_match)
+
+    async def _resolve_search_exact_match(
+        self, query: str, *, other_filters: list[dict[str, Any]]
+    ) -> WorkPackageSummary | None:
+        """Resolve search_work_packages' query directly (numeric id or display
+        id, via the same server-side lookup get_work_package uses) and check
+        it against every OTHER active filter server-side, without duplicating
+        any filter-matching logic client-side.
+
+        Returns None for "no exact match" -- both when the query simply
+        doesn't resolve to anything (NotFoundError), and when it resolves to
+        something the caller isn't allowed to read (PermissionDeniedError)
+        -- the latter must not leak the existence of an out-of-scope work
+        package by surfacing as an error from what looks like a plain text
+        search.
+        """
+        stripped = query.strip()
+        if not stripped:
+            return None
+        try:
+            resolved_id = await self._resolve_work_package_id(stripped)
+        except (NotFoundError, PermissionDeniedError, InvalidInputError):
+            return None
+        candidate_filters = [{"id": {"operator": "=", "values": [str(resolved_id)]}}, *other_filters]
+        candidates = await self._list_work_package_collection(
+            project_id=None,
+            filters=candidate_filters,
+            offset=1,
+            limit=1,
+            total_is_scope_safe=False,
+        )
+        for item in candidates.results:
+            if item.id == resolved_id:
+                return item
+        return None
 
     async def list_work_packages(
         self,

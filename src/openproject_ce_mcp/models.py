@@ -537,6 +537,12 @@ class WorkPackageListResult:
     next_offset: int | None
     truncated: bool
     results: list[WorkPackageSummary]
+    # Populated only by search_work_packages when its query resolves directly
+    # to a work package (numeric id or display id) that also satisfies every
+    # other active filter -- kept separate from `results` rather than merged
+    # in, since merging would break pagination/total/sort_by consistency for
+    # a result set that already has well-defined semantics of its own.
+    exact_match: WorkPackageSummary | None = None
 
 
 @dataclass

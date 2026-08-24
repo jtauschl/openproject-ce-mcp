@@ -1344,6 +1344,18 @@ async def search_work_packages(
     category, description, or other linked-resource fields. To filter by
     version, use list_work_packages(version=..., project=...) instead.
 
+    In parallel with that text/id search, query is always also resolved
+    directly (numeric id or display id like "PROJ-42") the same way
+    get_work_package does. When that resolves to a work package that also
+    satisfies every other filter given here (project/status/assignee/dates/
+    etc.), it's returned separately as exact_match — never folded into
+    results, and never counted toward total/count/pagination, since a
+    single extra item can't be paginated consistently. Absent (not present
+    in the response at all) when nothing resolves, when the resolved item
+    fails a filter, or when it's already present in results via the text
+    match. select applies to exact_match the same way it applies to each
+    results row.
+
     Without project, the search runs globally across every project readable
     under OPENPROJECT_READ_PROJECTS, not just one project — pass project
     explicitly to scope results to it.
@@ -3773,7 +3785,9 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None) -> Any:
     ``_SELECT_NESTED_FIELD`` (e.g. a batch-read item that wraps a
     single work package rather than being one), ``select`` instead trims that
     nested entity — the row's own wrapper fields (id/success/error) are kept
-    regardless of ``select``.
+    regardless of ``select``. A list result's ``exact_match`` (see
+    ``search_work_packages``) is trimmed the same way as one ``results`` row
+    when present.
 
     Non-dataclass values pass through unchanged, so tools (and test stubs) that
     already return plain dicts are untouched.
@@ -3791,9 +3805,13 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None) -> Any:
                 continue
             if is_list_result and name in ("count", "truncated"):
                 continue
+            if is_list_result and name == "exact_match" and getattr(value, name) is None:
+                continue
             child = getattr(value, name)
             if is_list_result and name == "results" and select is not None:
                 out[name] = [_select_fields(row, select) for row in child]
+            elif is_list_result and name == "exact_match" and select is not None and child is not None:
+                out[name] = _select_fields(child, select)
             else:
                 out[name] = _to_payload(child)
         return out
