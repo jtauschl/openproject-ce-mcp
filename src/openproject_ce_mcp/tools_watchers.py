@@ -37,7 +37,7 @@ async def list_work_package_watchers(
     client = _client_from_context(ctx)
     safe_id = _validate_work_package_ref(work_package_id)
     _validate_select(select, row_type=WatcherSummary)
-    return await _run_tool(client.list_work_package_watchers(safe_id))
+    return await _run_tool(client.watcher.list_for_work_package(safe_id))
 
 
 @register_tool
@@ -60,5 +60,5 @@ async def set_work_package_watcher(
     safe_wp_id = _validate_work_package_ref(work_package_id)
     safe_user_id = _validate_positive_int(user_id, field_name="user_id")
     if watching:
-        return await _run_tool(client.add_work_package_watcher(safe_wp_id, safe_user_id, confirm=confirm))
-    return await _run_tool(client.remove_work_package_watcher(safe_wp_id, safe_user_id, confirm=confirm))
+        return await _run_tool(client.watcher.add(safe_wp_id, safe_user_id, confirm=confirm))
+    return await _run_tool(client.watcher.remove(safe_wp_id, safe_user_id, confirm=confirm))

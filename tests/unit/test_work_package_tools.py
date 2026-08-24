@@ -842,13 +842,17 @@ async def test_create_work_package_tool_passes_custom_fields() -> None:
 @pytest.mark.asyncio
 async def test_watcher_tools_pass_expected_arguments() -> None:
     class StubClient:
-        async def list_work_package_watchers(self, work_package_id):
+        @property
+        def watcher(self):
+            return self
+
+        async def list_for_work_package(self, work_package_id):
             return {"work_package_id": work_package_id}
 
-        async def add_work_package_watcher(self, work_package_id, user_id, **kwargs):
+        async def add(self, work_package_id, user_id, **kwargs):
             return {"work_package_id": work_package_id, "user_id": user_id, **kwargs}
 
-        async def remove_work_package_watcher(self, work_package_id, user_id, **kwargs):
+        async def remove(self, work_package_id, user_id, **kwargs):
             return {"work_package_id": work_package_id, "user_id": user_id, **kwargs}
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
