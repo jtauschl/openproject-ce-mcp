@@ -826,6 +826,10 @@ async def test_create_time_entry_requires_scope_and_update_requires_change() -> 
 @pytest.mark.asyncio
 async def test_status_tools_pass_expected_arguments() -> None:
     class StubClient:
+        @property
+        def status_priority_type(self):
+            return self
+
         async def list_statuses(self):
             return {"statuses": True}
 
@@ -844,6 +848,10 @@ async def test_status_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_priority_tools_pass_expected_arguments() -> None:
     class StubClient:
+        @property
+        def status_priority_type(self):
+            return self
+
         async def list_priorities(self):
             return {"priorities": True}
 
@@ -862,6 +870,10 @@ async def test_priority_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_type_tools_pass_expected_arguments() -> None:
     class StubClient:
+        @property
+        def status_priority_type(self):
+            return self
+
         async def list_types(self, **kwargs):
             return kwargs
 

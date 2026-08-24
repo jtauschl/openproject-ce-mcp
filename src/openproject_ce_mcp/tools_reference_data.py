@@ -47,7 +47,7 @@ async def list_statuses(ctx: Context) -> StatusListResult:
     (Community Edition); configure them in the web admin UI.
     """
     client = _client_from_context(ctx)
-    return await _run_tool(client.list_statuses())
+    return await _run_tool(client.status_priority_type.list_statuses())
 
 
 @register_tool
@@ -55,14 +55,14 @@ async def get_status(ctx: Context, status_id: int) -> StatusSummary:
     """Get a single work package status by id."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(status_id, field_name="status_id")
-    return await _run_tool(client.get_status(safe_id))
+    return await _run_tool(client.status_priority_type.get_status(safe_id))
 
 
 @register_tool
 async def list_priorities(ctx: Context) -> PriorityListResult:
     """List all available work package priorities."""
     client = _client_from_context(ctx)
-    return await _run_tool(client.list_priorities())
+    return await _run_tool(client.status_priority_type.list_priorities())
 
 
 @register_tool
@@ -70,7 +70,7 @@ async def get_priority(ctx: Context, priority_id: int) -> PrioritySummary:
     """Get a single work package priority by id."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(priority_id, field_name="priority_id")
-    return await _run_tool(client.get_priority(safe_id))
+    return await _run_tool(client.status_priority_type.get_priority(safe_id))
 
 
 @register_tool
@@ -85,7 +85,7 @@ async def list_types(
     """
     client = _client_from_context(ctx)
     safe_project = _validate_optional_project_ref(project)
-    return await _run_tool(client.list_types(project=safe_project))
+    return await _run_tool(client.status_priority_type.list_types(project=safe_project))
 
 
 @register_tool
@@ -93,4 +93,4 @@ async def get_type(ctx: Context, type_id: int) -> TypeSummary:
     """Get a single work package type by id."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(type_id, field_name="type_id")
-    return await _run_tool(client.get_type(safe_id))
+    return await _run_tool(client.status_priority_type.get_type(safe_id))
