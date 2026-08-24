@@ -38,7 +38,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCES = ROOT.parent / "op-sources"
 CLIENT = ROOT / "src" / "openproject_ce_mcp" / "client.py"
 COVERAGE_MD = Path(__file__).resolve().parent / "COVERAGE.md"
-SOURCE_VERSION = "17.6"  # inventory reference
+SOURCE_VERSION = "17.7"  # inventory reference
 
 # Resources the client reaches under a different path segment than the
 # source directory name. Without this, check_coverage.py under-reports: the

@@ -117,7 +117,7 @@ jobs:
   # allowed version and updates the lockfile's pins accordingly (in-memory
   # for this job only, not committed back to the repo), so drift inside the
   # declared ranges (mcp>=2,<3 above all) gets caught here instead of by a
-  # real user (OPM-254).
+  # real user.
   #
   # GitHub only fires `schedule` from a workflow file that exists on the
   # repo's default branch (main), regardless of which branch it's checked
