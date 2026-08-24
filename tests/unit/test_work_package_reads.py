@@ -187,6 +187,38 @@ async def test_search_work_packages_exact_match_none_for_unresolvable_query() ->
 
 
 @pytest.mark.asyncio
+async def test_search_work_packages_exact_match_none_under_restricted_read_scope() -> None:
+    # The resolved work package belongs to a project outside the configured
+    # OPENPROJECT_READ_PROJECTS allowlist -- exact_match must not leak its
+    # existence via PermissionDeniedError, nor via the id/subject either.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/394":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 394,
+                    "subject": "Some ticket",
+                    "_links": {"project": {"href": "/api/v3/projects/2", "title": "other-project"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages":
+            # Main text search: no server-side project filter is sent for an
+            # unscoped search under a restricted allowlist, so this returns
+            # empty rather than leaking anything from outside the scope.
+            return httpx.Response(200, json={"total": 0, "_embedded": {"elements": []}}, request=request)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
+
+    result = await client.search_work_packages(search="394")
+
+    assert result.exact_match is None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_search_work_packages_accepts_status_filter() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v3/statuses"
