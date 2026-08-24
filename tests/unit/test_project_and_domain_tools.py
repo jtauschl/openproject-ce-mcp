@@ -892,16 +892,20 @@ async def test_type_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_reminder_tools_pass_expected_arguments() -> None:
     class StubClient:
-        async def list_reminders(self):
+        @property
+        def reminder(self):
+            return self
+
+        async def list_all(self):
             return {"listed": True}
 
-        async def create_work_package_reminder(self, **kwargs):
+        async def create(self, **kwargs):
             return kwargs
 
-        async def update_reminder(self, **kwargs):
+        async def update(self, **kwargs):
             return kwargs
 
-        async def delete_reminder(self, **kwargs):
+        async def delete(self, **kwargs):
             return kwargs
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]

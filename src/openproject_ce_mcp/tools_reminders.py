@@ -33,7 +33,7 @@ async def list_reminders(ctx: Context, select: list[str] | None = None) -> Remin
     """
     client = _client_from_context(ctx)
     _validate_select(select, row_type=ReminderSummary)
-    return await _run_tool(client.list_reminders())
+    return await _run_tool(client.reminder.list_all())
 
 
 @register_tool
@@ -55,7 +55,7 @@ async def create_work_package_reminder(
     safe_remind_at = _validate_required_datetime(remind_at, field_name="remind_at")
     safe_note = _validate_optional_text(note, field_name="note", max_length=2000)
     return await _run_tool(
-        client.create_work_package_reminder(
+        client.reminder.create(
             work_package_id=safe_id,
             remind_at=safe_remind_at,
             note=safe_note,
@@ -78,7 +78,7 @@ async def update_reminder(
     safe_remind_at = _validate_optional_datetime(remind_at, field_name="remind_at")
     safe_note = _validate_optional_update_text(note, field_name="note", max_length=2000)
     return await _run_tool(
-        client.update_reminder(
+        client.reminder.update(
             reminder_id=safe_id,
             remind_at=safe_remind_at,
             note=safe_note,
@@ -96,4 +96,4 @@ async def delete_reminder(
     """Prepare or delete a reminder; only deletes when called again with confirm=true."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(reminder_id, field_name="reminder_id")
-    return await _run_tool(client.delete_reminder(reminder_id=safe_id, confirm=confirm))
+    return await _run_tool(client.reminder.delete(reminder_id=safe_id, confirm=confirm))

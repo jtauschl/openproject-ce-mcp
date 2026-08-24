@@ -86,10 +86,14 @@ async def test_toggle_emoji_reaction_validates_inputs() -> None:
 @pytest.mark.asyncio
 async def test_reminder_tools_validate_inputs() -> None:
     class StubClient:
-        async def create_work_package_reminder(self, **kwargs):
+        @property
+        def reminder(self):
+            return self
+
+        async def create(self, **kwargs):
             return kwargs
 
-        async def update_reminder(self, **kwargs):
+        async def update(self, **kwargs):
             return kwargs
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
