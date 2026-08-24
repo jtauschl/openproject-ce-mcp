@@ -74,7 +74,7 @@ async def create_work_package_relation(
     safe_description = _validate_optional_text(description, field_name="description", max_length=255)
     safe_lag = _validate_optional_non_negative_int(lag, field_name="lag")
     return await _run_tool(
-        client.create_work_package_relation(
+        client.relation.create(
             work_package_id=safe_id,
             related_to_work_package_id=safe_related_id,
             relation_type=safe_relation_type,
@@ -94,7 +94,7 @@ async def delete_relation(
     """Prepare or delete a relation between work packages."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(relation_id, field_name="relation_id")
-    return await _run_tool(client.delete_relation(relation_id=safe_id, confirm=confirm))
+    return await _run_tool(client.relation.delete(relation_id=safe_id, confirm=confirm))
 
 
 @register_tool
@@ -136,7 +136,7 @@ async def get_work_package_relations(
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=RelationSummary)
-    return await _run_tool(client.get_work_package_relations(safe_id, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.relation.list_for_work_package(safe_id, offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -173,7 +173,7 @@ async def list_relations(
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=RelationSummary)
-    return await _run_tool(client.list_relations(relation_type=safe_type, offset=safe_offset, limit=safe_limit))
+    return await _run_tool(client.relation.list_all(relation_type=safe_type, offset=safe_offset, limit=safe_limit))
 
 
 @register_tool
@@ -197,7 +197,7 @@ async def update_relation(
     safe_type = _validate_relation_type(relation_type) if relation_type else None
     safe_desc = _validate_optional_update_text(description, field_name="description", max_length=500)
     return await _run_tool(
-        client.update_relation(
+        client.relation.update(
             relation_id=safe_id,
             relation_type=safe_type,
             description=safe_desc,

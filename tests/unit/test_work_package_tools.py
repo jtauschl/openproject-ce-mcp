@@ -742,7 +742,11 @@ async def test_add_work_package_comment_tool_passes_notify_flag() -> None:
 @pytest.mark.asyncio
 async def test_delete_relation_tool_passes_confirmation_flag() -> None:
     class StubClient:
-        async def delete_relation(self, **kwargs):
+        @property
+        def relation(self):
+            return self
+
+        async def delete(self, **kwargs):
             return kwargs
 
     result = await delete_relation(FakeContext(StubClient()), 99, confirm=True)  # type: ignore[arg-type]
@@ -756,7 +760,11 @@ async def test_update_relation_tool_clears_description() -> None:
     # The old falsy short-circuit (`if description else None`) meant an
     # explicit "" never even reached validation; this must now clear.
     class StubClient:
-        async def update_relation(self, **kwargs):
+        @property
+        def relation(self):
+            return self
+
+        async def update(self, **kwargs):
             return kwargs
 
     result = await update_relation(

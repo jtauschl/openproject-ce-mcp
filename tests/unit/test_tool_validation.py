@@ -49,7 +49,11 @@ def test_validate_optional_user_ref_reports_the_given_field_name() -> None:
 @pytest.mark.asyncio
 async def test_create_relation_tool_validates_relation_type() -> None:
     class StubClient:
-        async def create_work_package_relation(self, **kwargs):
+        @property
+        def relation(self):
+            return self
+
+        async def create(self, **kwargs):
             return kwargs
 
     with pytest.raises(ValueError, match="relation_type must be one of"):
