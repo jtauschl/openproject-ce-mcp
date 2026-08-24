@@ -85,6 +85,18 @@ development baseline.
   `--all`, and `--constants` modes) against the full 16.0–17.7 source range
   with no drift found, and live-verified against a real 17.7.2 instance.
 
+### Known Issues
+
+- **Source install fails on Windows on ARM64 (`win_arm64`)** — `cryptography`
+  has no prebuilt PyPI wheel for this platform, and building it from source
+  additionally requires the MSVC linker (Visual Studio Build Tools with the
+  C++ workload), which a normal end-user install won't have. The dependency
+  comes from the `mcp` package itself (`pyjwt[crypto]`, used only by an OAuth
+  flow this server never exercises) — filed upstream at
+  [modelcontextprotocol/python-sdk#3373](https://github.com/modelcontextprotocol/python-sdk/issues/3373).
+  Workaround: install Visual Studio Build Tools' C++ workload first, or use a
+  `win_amd64` Windows environment/WSL instead.
+
 ## 0.3.7 – 2026-08-17
 
 ### Security
