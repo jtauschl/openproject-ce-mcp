@@ -50,7 +50,7 @@ async def list_notifications(
     safe_offset = _validate_offset(offset)
     safe_limit = _validate_limit(limit)
     _validate_select(select, row_type=NotificationSummary)
-    return await _run_tool(client.list_notifications(unread_only=unread_only, limit=safe_limit, offset=safe_offset))
+    return await _run_tool(client.notification.list_all(unread_only=unread_only, limit=safe_limit, offset=safe_offset))
 
 
 @register_tool
@@ -65,9 +65,9 @@ async def mark_notifications_read(
     """
     client = _client_from_context(ctx)
     if notification_id is None:
-        return await _run_tool(client.mark_all_notifications_read(confirm=confirm))
+        return await _run_tool(client.notification.mark_all_read(confirm=confirm))
     safe_id = _validate_positive_int(notification_id, field_name="notification_id")
-    return await _run_tool(client.mark_notification_read(safe_id, confirm=confirm))
+    return await _run_tool(client.notification.mark_read(safe_id, confirm=confirm))
 
 
 @register_tool
@@ -78,7 +78,7 @@ async def get_my_preferences(ctx: Context) -> UserPreferences:
     "language" field to change it.
     """
     client = _client_from_context(ctx)
-    return await _run_tool(client.get_my_preferences())
+    return await _run_tool(client.user_preferences.get())
 
 
 @register_tool
@@ -98,7 +98,7 @@ async def update_my_preferences(
     """
     client = _client_from_context(ctx)
     return await _run_tool(
-        client.update_my_preferences(
+        client.user_preferences.update(
             time_zone=time_zone,
             comment_sort_descending=comment_sort_descending,
             warn_on_leaving_unsaved=warn_on_leaving_unsaved,

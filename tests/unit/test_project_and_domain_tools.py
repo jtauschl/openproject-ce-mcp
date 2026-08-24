@@ -919,13 +919,17 @@ async def test_project_favorite_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_notification_tools_pass_expected_arguments() -> None:
     class StubClient:
-        async def list_notifications(self, **kwargs):
+        @property
+        def notification(self):
+            return self
+
+        async def list_all(self, **kwargs):
             return kwargs
 
-        async def mark_notification_read(self, notification_id, confirm=False):
+        async def mark_read(self, notification_id, confirm=False):
             return {"notification_id": notification_id, "confirm": confirm}
 
-        async def mark_all_notifications_read(self, confirm=False):
+        async def mark_all_read(self, confirm=False):
             return {"all": True, "confirm": confirm}
 
     ctx = FakeContext(StubClient())  # type: ignore[arg-type]
