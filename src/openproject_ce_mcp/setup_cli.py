@@ -831,6 +831,19 @@ def _prompt(label: str, default: str = "") -> str:
 
 def _prompt_secret(label: str, has_existing: bool = False) -> str:
     hint = " [leave empty to keep current]" if has_existing else ""
+    if _IS_WINDOWS:
+        # getpass.getpass() reads keystrokes one at a time via msvcrt on
+        # Windows, bypassing the console's normal paste handling: Ctrl+V
+        # lands as the raw 0x16 control byte instead of the clipboard text
+        # (CPython #81607 / bpo-37426, closed as "not planned"). Tokens are
+        # almost always pasted, not typed, and end up in the plaintext
+        # config file anyway, so echo the input here rather than silently
+        # accepting a corrupted paste.
+        try:
+            print(f"{label}{hint} (visible while typing on Windows): ", end="", flush=True)
+            return input().strip()
+        except EOFError:
+            return ""
     try:
         return getpass.getpass(f"{label}{hint}: ").strip()
     except (EOFError, OSError):
