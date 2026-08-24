@@ -48,7 +48,7 @@ async def list_views(
     safe_search, safe_offset, safe_limit = _validate_list_query_params(search, offset, limit)
     _validate_select(select, row_type=ViewSummary)
     return await _run_tool(
-        client.list_views(
+        client.view.list(
             project=safe_project,
             view_type=safe_type,
             search=safe_search,
@@ -66,4 +66,4 @@ async def get_view(
     """Get a single OpenProject view by id."""
     client = _client_from_context(ctx)
     safe_id = _validate_positive_int(view_id, field_name="view_id")
-    return await _run_tool(client.get_view(safe_id))
+    return await _run_tool(client.view.get(safe_id))

@@ -575,12 +575,15 @@ async def test_view_category_and_attachment_tools_pass_expected_arguments(tmp_pa
         async def get(self, **kwargs):
             return kwargs
 
-    class StubClient:
-        async def list_views(self, **kwargs):
+    class _ViewNamespace:
+        async def list(self, **kwargs):
             return kwargs
 
-        async def get_view(self, view_id):
+        async def get(self, view_id):
             return {"view_id": view_id}
+
+    class StubClient:
+        view = _ViewNamespace()
 
         category = _CategoryNamespace()
 
