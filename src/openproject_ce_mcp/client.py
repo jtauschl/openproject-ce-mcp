@@ -234,6 +234,26 @@ def _narrow_cleared(value: _NarrowT | object, *, sentinel: object = None) -> _Na
     return cast(_NarrowT, value)
 
 
+def _strip_unrequested_target_versions(payload: dict[str, Any]) -> dict[str, Any]:
+    """Drop an echoed `_links.targetVersions` OpenProject's work-package form
+    response adds even when the request never set it, so committing the
+    form's own payload back verbatim -- this client's normal write pattern
+    -- doesn't collide with the `version` field the caller actually asked to
+    change. Upstream bug, tracking status/version scope in
+    openproject-ce-mcp-int's upstream-openproject-bugs.md (entry 11) --
+    remove this once that entry marks the upstream form-echo fixed.
+
+    Call only when the caller's own request set `_links.version` -- a
+    write that never touches version passes its payload through every other
+    field unaffected, so there's nothing to strip.
+    """
+    links = payload.get("_links")
+    if not isinstance(links, dict) or "targetVersions" not in links:
+        return payload
+    new_links = {k: v for k, v in links.items() if k != "targetVersions"}
+    return {**payload, "_links": new_links}
+
+
 class OpenProjectError(Exception):
     """Base error for safe OpenProject failures."""
 
@@ -2819,6 +2839,7 @@ class OpenProjectClient:
             form=form,
             write_path="work_packages",
             project_name=project_payload.get("name"),
+            commit_payload_override=_strip_unrequested_target_versions if version is not None else None,
         )
 
     async def create_subtask(
@@ -2874,6 +2895,7 @@ class OpenProjectClient:
             project_name=_link_title(parent.get("_links", {}).get("project")),
             preview_message="OpenProject validated the subtask. Ask for confirmation, then call again with confirm=true to create it.",
             success_message="Subtask created successfully.",
+            commit_payload_override=_strip_unrequested_target_versions if version is not None else None,
         )
 
     async def update_work_package(
@@ -3000,6 +3022,7 @@ class OpenProjectClient:
                 payload["lockVersion"] = lock_version
                 form = await self._post(f"work_packages/{work_package_id}/form", json_body=payload)
 
+        version_was_requested = "version" in payload.get("_links", {})
         return await self._finalize_work_package_write(
             action="update",
             confirm=confirm,
@@ -3008,6 +3031,7 @@ class OpenProjectClient:
             write_method="PATCH",
             work_package_id=work_package_id,
             project_name=_link_title(current.get("_links", {}).get("project")),
+            commit_payload_override=_strip_unrequested_target_versions if version_was_requested else None,
         )
 
     async def bulk_create_work_packages(
@@ -7900,6 +7924,7 @@ class OpenProjectClient:
         project_name: str | None = None,
         preview_message: str | None = None,
         success_message: str | None = None,
+        commit_payload_override: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     ) -> WorkPackageWriteResult:
         return await self._finalize_write(
             result_cls=WorkPackageWriteResult,
@@ -7916,6 +7941,7 @@ class OpenProjectClient:
             preview_message=preview_message
             or "OpenProject validated the change. Ask for confirmation, then call again with confirm=true to write it.",
             success_message=success_message or f"Work package {action}d successfully.",
+            commit_payload_override=commit_payload_override,
         )
 
     def _build_version_write_payload(

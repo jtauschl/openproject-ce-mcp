@@ -29,6 +29,7 @@ from openproject_ce_mcp.client import (
     _extract_formattable_text_with_meta,
     _narrow_cleared,
     _normalize_text,
+    _strip_unrequested_target_versions,
     _trim_text,
     _trim_text_with_meta,
 )
@@ -2786,6 +2787,442 @@ async def test_update_work_package_clears_version_with_null_href() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_work_package_strips_unrequested_target_versions_on_commit() -> None:
+    # Regression: OpenProject's form response echoes an unrequested
+    # _links.targetVersions, which the server then rejects on commit as a
+    # version/targetVersions conflict.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 3,
+                    "_links": {
+                        "project": {"title": "Demo", "href": "/api/v3/projects/1"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path in {"/api/v3/projects/1", "/api/v3/projects/demo"}:
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo"},
+                request=request,
+            )
+        if request.url.path in {"/api/v3/projects/1/versions", "/api/v3/projects/demo/versions"}:
+            return httpx.Response(
+                200,
+                json={"total": 1, "_embedded": {"elements": [{"id": 11, "name": "Q2", "_links": {}}]}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            assert body["_links"]["version"]["href"] == "/api/v3/versions/11"
+            assert "targetVersions" not in body["_links"]
+            # Simulates OpenProject's real form-echo behavior being tested here.
+            echoed = {**body, "_links": {**body["_links"], "targetVersions": []}}
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"schema": {}, "payload": echoed, "validationErrors": {}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body["_links"]["version"]["href"] == "/api/v3/versions/11"
+            assert "targetVersions" not in body["_links"], "committed PATCH must not echo targetVersions back"
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 4,
+                    "_links": {
+                        "project": {"title": "Demo"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "version": {"href": "/api/v3/versions/11", "title": "Q2"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = make_settings()
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url=settings.base_url,
+        api_token=settings.api_token,
+        enable_work_package_write=True,
+        timeout=settings.timeout,
+        verify_ssl=settings.verify_ssl,
+        default_page_size=settings.default_page_size,
+        max_page_size=settings.max_page_size,
+        max_results=settings.max_results,
+        log_level=settings.log_level,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    # Preview must still show the server's unstripped echo (targetVersions present).
+    preview = await client.update_work_package(work_package_id=42, version="Q2", confirm=False)
+    assert preview.confirmed is False
+    assert "targetVersions" in preview.payload["_links"]
+
+    result = await client.update_work_package(work_package_id=42, version="Q2", confirm=True)
+    assert result.confirmed is True
+    assert result.result is not None
+    assert result.result.version == "Q2"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_clear_version_strips_unrequested_target_versions_on_commit() -> None:
+    # Same upstream form-echo bug as above, reproduced on the CLEAR_VERSION path.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 3,
+                    "_links": {
+                        "project": {"title": "Demo", "href": "/api/v3/projects/1"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "version": {"href": "/api/v3/versions/15", "title": "Backlog"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            assert body["_links"]["version"]["href"] is None
+            echoed = {**body, "_links": {**body["_links"], "targetVersions": []}}
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"schema": {}, "payload": echoed, "validationErrors": {}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body["_links"]["version"]["href"] is None
+            assert "targetVersions" not in body["_links"], "committed PATCH must not echo targetVersions back"
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 4,
+                    "_links": {
+                        "project": {"title": "Demo"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "version": {"href": None},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = make_settings()
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url=settings.base_url,
+        api_token=settings.api_token,
+        enable_work_package_write=True,
+        timeout=settings.timeout,
+        verify_ssl=settings.verify_ssl,
+        default_page_size=settings.default_page_size,
+        max_page_size=settings.max_page_size,
+        max_results=settings.max_results,
+        log_level=settings.log_level,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.update_work_package(work_package_id=42, version=CLEAR_VERSION, confirm=True)
+
+    assert result.confirmed is True
+    assert result.result is not None
+    assert result.result.version is None
+
+    await client.aclose()
+
+
+def test_strip_unrequested_target_versions_does_not_mutate_input() -> None:
+    original_links = {"version": {"href": "/api/v3/versions/11"}, "targetVersions": []}
+    payload = {"subject": "WP", "_links": original_links}
+    original_payload = {"subject": "WP", "_links": {"version": {"href": "/api/v3/versions/11"}, "targetVersions": []}}
+
+    stripped = _strip_unrequested_target_versions(payload)
+
+    assert "targetVersions" not in stripped["_links"]
+    assert stripped is not payload
+    assert stripped["_links"] is not original_links
+    assert payload == original_payload
+    assert payload["_links"] is original_links
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_rejected_target_versions_conflict_reports_validation_errors() -> None:
+    # If the server still rejects the stripped commit for some other reason,
+    # the failure must surface as validation_errors, not a silent no-op.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "WP",
+                    "lockVersion": 3,
+                    "_links": {
+                        "project": {"title": "Demo", "href": "/api/v3/projects/1"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path in {"/api/v3/projects/1", "/api/v3/projects/demo"}:
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo"},
+                request=request,
+            )
+        if request.url.path in {"/api/v3/projects/1/versions", "/api/v3/projects/demo/versions"}:
+            return httpx.Response(
+                200,
+                json={"total": 1, "_embedded": {"elements": [{"id": 11, "name": "Q2", "_links": {}}]}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            echoed = {**body, "_links": {**body["_links"], "targetVersions": []}}
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Form",
+                    "_embedded": {
+                        "schema": {},
+                        "payload": echoed,
+                        "validationErrors": {"version": {"message": "Version is not assignable."}},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = make_settings()
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url=settings.base_url,
+        api_token=settings.api_token,
+        enable_work_package_write=True,
+        timeout=settings.timeout,
+        verify_ssl=settings.verify_ssl,
+        default_page_size=settings.default_page_size,
+        max_page_size=settings.max_page_size,
+        max_results=settings.max_results,
+        log_level=settings.log_level,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.update_work_package(work_package_id=42, version="Q2", confirm=True)
+
+    assert result.confirmed is False
+    assert result.ready is False
+    assert result.validation_errors == {"version": "Version is not assignable."}
+    assert "targetVersions" in result.payload["_links"]
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_work_package_strips_unrequested_target_versions_on_commit() -> None:
+    # Same upstream form-echo bug as the update case above, reproduced on create.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path in {"/api/v3/projects/demo", "/api/v3/projects/1"}:
+            return httpx.Response(
+                200,
+                json={
+                    "_type": "Project",
+                    "id": 1,
+                    "name": "Demo",
+                    "identifier": "demo",
+                    "_links": {"versions": {"href": "/api/v3/projects/demo/versions"}},
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(
+                200,
+                json={"_embedded": {"elements": [{"id": 7, "name": "Feature"}]}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/versions":
+            return httpx.Response(
+                200,
+                json={"total": 1, "_embedded": {"elements": [{"id": 11, "name": "Q2", "_links": {}}]}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/work_packages/form":
+            body = json.loads(request.content)
+            assert body["_links"]["version"]["href"] == "/api/v3/versions/11"
+            assert "targetVersions" not in body["_links"]
+            echoed = {**body, "_links": {**body["_links"], "targetVersions": []}}
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"payload": echoed, "validationErrors": {}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages" and request.method == "POST":
+            body = json.loads(request.content)
+            assert "targetVersions" not in body["_links"], "committed POST must not echo targetVersions back"
+            return httpx.Response(
+                201,
+                json={
+                    "id": 99,
+                    "subject": body["subject"],
+                    "lockVersion": 1,
+                    "_links": {
+                        "project": {"title": "Demo"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Feature"},
+                        "version": {"href": "/api/v3/versions/11", "title": "Q2"},
+                        "activities": {"href": "/api/v3/work_packages/99/activities"},
+                        "relations": {"href": "/api/v3/work_packages/99/relations"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=1,
+        max_page_size=1,
+        max_results=10,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.create_work_package(
+        project="demo",
+        type="Feature",
+        subject="New WP",
+        version="Q2",
+        confirm=True,
+    )
+
+    assert result.confirmed is True
+    assert result.result is not None
+    assert result.result.version == "Q2"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_update_work_package_without_version_intent_leaves_target_versions_untouched() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "Old title",
+                    "lockVersion": 3,
+                    "_links": {
+                        "project": {"title": "Demo", "href": "/api/v3/projects/1"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42/form":
+            body = json.loads(request.content)
+            assert "version" not in body.get("_links", {})
+            echoed = {
+                **body,
+                "_links": {**body.get("_links", {}), "targetVersions": [{"href": "/api/v3/versions/11"}]},
+            }
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"schema": {}, "payload": echoed, "validationErrors": {}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body["_links"]["targetVersions"] == [{"href": "/api/v3/versions/11"}], (
+                "no version intent -- targetVersions must pass through unmodified"
+            )
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "New title",
+                    "lockVersion": 4,
+                    "_links": {
+                        "project": {"title": "Demo"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = make_settings()
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url=settings.base_url,
+        api_token=settings.api_token,
+        enable_work_package_write=True,
+        timeout=settings.timeout,
+        verify_ssl=settings.verify_ssl,
+        default_page_size=settings.default_page_size,
+        max_page_size=settings.max_page_size,
+        max_results=settings.max_results,
+        log_level=settings.log_level,
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.update_work_package(work_package_id=42, subject="New title", confirm=True)
+
+    assert result.confirmed is True
+    assert result.result is not None
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_update_work_package_clears_sprint_with_null_href() -> None:
     # Sprint uses the generic CLEAR sentinel (not a dedicated CLEAR_SPRINT), and
     # must send _links.sprint = {"href": None} without trying to resolve "none".
@@ -3785,6 +4222,107 @@ async def test_create_subtask_uses_parent_link_in_form_payload() -> None:
     assert result.ready is True
     assert result.requires_confirmation is True
     assert result.payload["_links"]["parent"]["href"] == "/api/v3/work_packages/42"
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_subtask_strips_unrequested_target_versions_on_commit() -> None:
+    # Regression: OpenProject's form response echoes an unrequested
+    # _links.targetVersions, which the server rejects on commit as a
+    # version/targetVersions conflict.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/work_packages/42" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "subject": "Parent feature",
+                    "_links": {
+                        "project": {"title": "Demo", "href": "/api/v3/projects/1"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Feature"},
+                        "activities": {"href": "/api/v3/work_packages/42/activities"},
+                        "relations": {"href": "/api/v3/work_packages/42/relations"},
+                    },
+                },
+                request=request,
+            )
+        if request.url.path in {"/api/v3/projects/1", "/api/v3/projects/demo"} and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"_type": "Project", "id": 1, "identifier": "demo", "name": "Demo"},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/types":
+            return httpx.Response(
+                200,
+                json={"_embedded": {"elements": [{"id": 8, "name": "Task"}]}},
+                request=request,
+            )
+        if request.url.path in {"/api/v3/projects/1/versions", "/api/v3/projects/demo/versions"}:
+            return httpx.Response(
+                200,
+                json={"total": 1, "_embedded": {"elements": [{"id": 11, "name": "Q2", "_links": {}}]}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/projects/1/work_packages/form" and request.method == "POST":
+            body = json.loads(request.content)
+            assert body["_links"]["version"]["href"] == "/api/v3/versions/11"
+            assert "targetVersions" not in body["_links"]
+            echoed = {**body, "_links": {**body["_links"], "targetVersions": []}}
+            return httpx.Response(
+                200,
+                json={"_type": "Form", "_embedded": {"payload": echoed, "validationErrors": {}}},
+                request=request,
+            )
+        if request.url.path == "/api/v3/work_packages" and request.method == "POST":
+            body = json.loads(request.content)
+            assert "targetVersions" not in body["_links"], "committed POST must not echo targetVersions back"
+            return httpx.Response(
+                201,
+                json={
+                    "id": 99,
+                    "subject": body["subject"],
+                    "lockVersion": 1,
+                    "_links": {
+                        "project": {"title": "Demo"},
+                        "status": {"title": "New"},
+                        "type": {"title": "Task"},
+                        "version": {"href": "/api/v3/versions/11", "title": "Q2"},
+                        "activities": {"href": "/api/v3/work_packages/99/activities"},
+                        "relations": {"href": "/api/v3/work_packages/99/relations"},
+                    },
+                },
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    settings = Settings(
+        read_projects=("*",),
+        write_projects=("*",),
+        base_url="https://op.example.com",
+        api_token="token",
+        timeout=12,
+        verify_ssl=True,
+        default_page_size=1,
+        max_page_size=1,
+        max_results=10,
+        log_level="WARNING",
+    )
+    client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
+
+    result = await client.create_subtask(
+        parent_work_package_id=42,
+        type="Task",
+        subject="Implement API client",
+        version="Q2",
+        confirm=True,
+    )
+
+    assert result.confirmed is True
+    assert result.result is not None
+    assert result.result.version == "Q2"
 
     await client.aclose()
 
