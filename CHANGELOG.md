@@ -7,7 +7,9 @@ development baseline.
 
 ---
 
-## [0.3.8] - Unreleased
+## [Unreleased]
+
+## 0.3.8 – 2026-08-25
 
 ### Fixed
 
@@ -24,8 +26,7 @@ development baseline.
   intermittently fails on PowerShell 5.1 with a confusing TLS-negotiation
   error.
 - On Windows, the setup wizard's API token prompt now accepts pasted input
-  correctly instead of silently corrupting it — `getpass` doesn't handle
-  clipboard paste on Windows, so the token entry is visible while
+  correctly instead of silently corrupting it. The entry is visible while
   typing/pasting there instead of masked.
 
 ### Added
@@ -36,9 +37,10 @@ development baseline.
 
 ### Changed
 
+- The setup wizard's quick-mode write-scope question now asks per category
+  instead of offering only `none`/`work-packages`/`all`.
 - CI now also runs weekly against the newest dependency versions allowed by
-  `pyproject.toml`, not just the versions pinned in `uv.lock`. No
-  end-user-visible behavior change.
+  `pyproject.toml`.
 
 ### Docs
 
@@ -48,6 +50,8 @@ development baseline.
   primary recommendation.
 - Updated the OpenProject-version-verification claim to source-audited and
   runtime-smoke-tested through 17.7 (previously 17.5).
+- Documented how to connect a second OpenProject instance in the same
+  client.
 
 ### Known Issues
 
