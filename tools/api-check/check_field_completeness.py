@@ -325,8 +325,16 @@ EXCLUSIONS: list[FieldExclusion] = [
         "keeps the compatible single-version model instead, and strips the form's "
         "own echoed value from write payloads so it never collides with an "
         "intentional version change (see _strip_unrequested_target_versions). "
-        "Worth revisiting only if multi-version assignment is ever surfaced as a "
-        "feature in its own right, not a modeling gap today.",
+        "Known limitation, not a harmless echo: Setting::WorkPackageMultipleVersions "
+        "(app/models/setting/work_package_multiple_versions.rb) gates this feature "
+        "behind an ordinary Setting plus an experimental FeatureDecisions flag -- "
+        "not an Enterprise token -- so it is available, if off by default, on this "
+        "CE-only server too. If ever active, a write through the single `version` "
+        "field can collapse an existing multi-version assignment down to that one "
+        "version, since upstream syncs a version_id change back into "
+        "target_versions and this client never reads or preserves the pre-write "
+        "list. Accepted as a known modeling gap unless multi-version assignment "
+        "is ever surfaced as a feature in its own right here.",
     ),
     FieldExclusion(
         "work_package",

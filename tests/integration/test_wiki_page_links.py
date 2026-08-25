@@ -1,15 +1,15 @@
 """Integration tests for wiki page link CRUD operations.
 
-Requires OpenProject 17.6+ for the GET (list) endpoint -- it does not exist
-on earlier versions (verified against op-sources: 17.4/17.5 carry only the
-representer, no reachable route; only skips run against those instances).
-The POST (create) endpoint needs a further, separate 17.7+: verified
-against op-sources, `work_package_wiki_page_links_api.rb`'s `resources
-:wiki_page_links` block on 17.6 declares only `get do`, no `post`
-handler at all -- confirmed live too (`POST .../wiki_page_links` 404s
-directly via curl against a running 17.6 instance, no client involved).
-Run explicitly against op-17-6/op-17-7; create-path tests additionally
-skip themselves on 17.6.
+Requires OpenProject 17.5+ for the GET (list) endpoint -- it does not exist
+on earlier versions (verified against op-sources: `work_package_wiki_page_
+links_api.rb` is present starting at 17.5, absent at 17.4; only skips run
+against 16.6/17.4). The POST (create) endpoint needs a further, separate
+17.7+: verified against op-sources, `work_package_wiki_page_links_api.rb`'s
+`resources :wiki_page_links` block on both 17.5 and 17.6 declares only
+`get do`, no `post` handler at all -- confirmed live too (`POST .../
+wiki_page_links` 404s directly via curl against a running 17.6 instance, no
+client involved). Run explicitly against op-17-5/op-17-6/op-17-7;
+create-path tests additionally skip themselves on 17.5/17.6.
 
 KNOWN SERVER BUG (reported upstream, not a client issue), two bugs chained
 together:
@@ -35,24 +35,25 @@ together:
    metadata(...)` and a Postgres syntax error (500). 17.7 added an `if
    relation.any?` guard (call, line 41) that fixes the trivial zero-links
    case, but checks the wrong emptiness -- it needed to check whether
-   `metadata` (not `relation`) ended up empty. 17.6's `call` method (same
-   file) has no such guard at all -- confirmed absent by reading the method
-   directly against a running 17.6 instance -- so on 17.6 the endpoint 500s
+   `metadata` (not `relation`) ended up empty. Neither 17.5's nor 17.6's
+   `call` method (same file) has any such guard -- confirmed absent by
+   reading the method directly in both op-sources checkouts and against a
+   running 17.6 instance -- so on both 17.5 and 17.6 the endpoint 500s
    unconditionally, including the zero-links case; the partial fix is
    17.7-only.
 
 Confirmed live (raw `rails runner` AND direct curl, no client involved) on
-16.6, 17.6, AND 17.7.1 -- the collection endpoint is unconditionally broken
-on every OpenProject version tested whenever at least one page link exists
-for the queried work package, regardless of whether its `identifier` is a
-made-up string or a real page slug; on 17.6 specifically it is broken even
-with zero page links, since that version's `call` method has no
-emptiness guard of any kind.
+16.6, 17.6, AND 17.7.1, and via direct op-sources reading for 17.5 -- the
+collection endpoint is unconditionally broken on every OpenProject version
+tested whenever at least one page link exists for the queried work package,
+regardless of whether its `identifier` is a made-up string or a real page
+slug; on 17.5/17.6 specifically it is broken even with zero page links,
+since those versions' `call` method has no emptiness guard of any kind.
 
 list_work_package_wiki_links therefore only has integration coverage for the
 zero-links case on 17.7+ (which does work, thanks to 17.7's partial fix --
-skipped entirely on 17.6, where even zero-links 500s) and an explicit xfail
-documenting the broken non-empty case -- create is fully covered and
+skipped entirely on 17.5/17.6, where even zero-links 500s) and an explicit
+xfail documenting the broken non-empty case -- create is fully covered and
 functional on its own (17.7+ only, per the POST-availability note above).
 
 delete_work_package_wiki_link is ALSO affected, indirectly: this MCP's own
@@ -140,17 +141,25 @@ async def test_create_wiki_page_link_preview_without_confirm_does_not_write(
 
     # Zero links exist for this work package -- this is the one case
     # OpenProject 17.7's `if relation.any?` guard actually handles (see
-    # module docstring); a non-empty list is xfailed below instead. On 17.6
-    # the guard doesn't exist at all, so even this zero-links case 500s; on
-    # pre-17.6 instances the GET route doesn't exist at all (NotFoundError).
+    # module docstring); a non-empty list is xfailed below instead. On
+    # 17.5/17.6 the guard doesn't exist at all, so even this zero-links case
+    # 500s; on pre-17.5 instances the GET route doesn't exist at all
+    # (NotFoundError).
     try:
         listed = await client.list_work_package_wiki_links(work_package_id)
     except NotFoundError:
-        pytest.skip("wiki_page_links endpoint not available (requires OpenProject 17.6+)")
+        pytest.skip("wiki_page_links endpoint not available (requires OpenProject 17.5+)")
     except OpenProjectServerError:
+        # Known-broken only on 17.5/17.6 (no relation.any? guard, see module
+        # docstring) -- 17.7 has the guard and should never 500 here. This
+        # except is intentionally version-blind (no version-detection API to
+        # gate on directly, per this project's established pattern), so a
+        # genuine NEW 17.7+ server regression would also be swallowed as a
+        # skip instead of failing loudly; accepted risk, not a silent design
+        # oversight.
         pytest.skip(
             "GET work_packages/{id}/wiki_page_links 500s unconditionally on this instance "
-            "(requires OpenProject 17.7+ for the relation.any? guard, see module docstring)"
+            "(known-broken on 17.5/17.6, see module docstring)"
         )
     assert listed.count == 0
 

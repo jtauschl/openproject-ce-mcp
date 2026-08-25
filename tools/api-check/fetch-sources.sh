@@ -66,6 +66,9 @@ SPARSE_PATHS=(
     # 2026-08-17 while investigating a live host-probe behavior change)
     "modules/*/app/representers" # module-specific API v3 HAL representers (e.g. Boards/Grids widgets)
     "modules/*/app/queries"      # module-specific query/filter objects (mirrors core's app/models/queries)
+    "modules/*/app/services"     # module-specific service objects (e.g. Wikis::PageLinkMetadataService --
+    # found missing 2026-08-25 while verifying a live 500-error's root cause
+    # directly against a running container instead of the local sparse checkout)
 )
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
