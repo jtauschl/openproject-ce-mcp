@@ -34,7 +34,7 @@ _SUBJECT = "[integration-test] temp WP sprint-by-name"
 
 async def test_list_sprints(client: OpenProjectClient) -> None:
     try:
-        result = await client.list_sprints()
+        result = await client.sprint.list()
     except NotFoundError:
         pytest.skip("Backlogs module not installed/enabled on this instance")
     assert result is not None
@@ -43,7 +43,7 @@ async def test_list_sprints(client: OpenProjectClient) -> None:
 
 async def test_list_project_sprints(client: OpenProjectClient, test_project: str) -> None:
     try:
-        result = await client.list_project_sprints(test_project)
+        result = await client.sprint.list_for_project(test_project)
     except NotFoundError:
         pytest.skip("Backlogs module not installed/enabled on this instance")
     assert result is not None
@@ -52,7 +52,7 @@ async def test_list_project_sprints(client: OpenProjectClient, test_project: str
 
 async def test_get_sprint(client: OpenProjectClient) -> None:
     try:
-        existing = await client.list_sprints()
+        existing = await client.sprint.list()
     except NotFoundError:
         pytest.skip("Backlogs module not installed/enabled on this instance")
     if existing.count == 0:
@@ -60,7 +60,7 @@ async def test_get_sprint(client: OpenProjectClient) -> None:
 
     sprint_id = existing.results[0].id
 
-    sprint = await client.get_sprint(sprint_id)
+    sprint = await client.sprint.get(sprint_id)
     assert sprint.id == sprint_id
 
 
@@ -75,7 +75,7 @@ async def test_update_work_package_accepts_sprint_by_name(
     above), and as of this migration the Docker seed fleet doesn't create
     one either. Run unchanged before and after the resolver relocation."""
     try:
-        existing = await client.list_project_sprints(test_project)
+        existing = await client.sprint.list_for_project(test_project)
     except NotFoundError:
         pytest.skip("Backlogs module not installed/enabled on this instance")
     if existing.count == 0:
@@ -83,7 +83,7 @@ async def test_update_work_package_accepts_sprint_by_name(
 
     sprint_name = existing.results[0].name
 
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=_SUBJECT,
@@ -92,7 +92,7 @@ async def test_update_work_package_accepts_sprint_by_name(
     assert result.ready, result.validation_errors
     wp_ids.append(result.work_package_id)
 
-    update_result = await client.update_work_package(
+    update_result = await client.work_package.update(
         work_package_id=result.work_package_id,
         sprint=sprint_name,
         confirm=True,

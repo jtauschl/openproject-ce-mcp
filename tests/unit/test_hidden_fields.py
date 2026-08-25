@@ -249,7 +249,7 @@ async def test_hidden_document_field_is_rejected_on_write() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_DOCUMENT_FIELDS"):
-        await client.update_document(document_id=5, title="Blocked", confirm=False)
+        await client.document.update(document_id=5, title="Blocked", confirm=False)
 
     await client.aclose()
 
@@ -282,7 +282,7 @@ async def test_hidden_work_package_field_is_rejected_on_write() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_WORK_PACKAGE_FIELDS"):
-        await client.create_work_package(
+        await client.work_package.create(
             project="demo",
             type="Task",
             subject="Blocked",
@@ -312,7 +312,7 @@ async def test_hidden_activity_field_is_rejected_on_write() -> None:
     )
 
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_ACTIVITY_FIELDS"):
-        await client.create_time_entry(
+        await client.time_entry.create(
             activity="Development",
             hours="PT1H",
             spent_on="2026-03-20",
@@ -342,7 +342,7 @@ async def test_hidden_time_entry_field_is_rejected_on_write() -> None:
     )
 
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_TIME_ENTRY_FIELDS"):
-        await client.create_time_entry(
+        await client.time_entry.create(
             activity="Development",
             hours="PT1H",
             spent_on="2026-03-20",
@@ -378,7 +378,7 @@ async def test_hidden_time_entry_start_time_is_rejected_on_write() -> None:
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
     )
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_TIME_ENTRY_FIELDS"):
-        await client.create_time_entry(
+        await client.time_entry.create(
             activity="Development", hours="PT1H", spent_on="2026-03-20", start_time="09:00", confirm=False
         )
     await client.aclose()
@@ -412,7 +412,7 @@ async def test_hidden_custom_field_is_rejected_on_write() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_CUSTOM_FIELDS"):
-        await client.create_work_package(
+        await client.work_package.create(
             project="demo",
             type="Task",
             subject="Blocked",
@@ -653,7 +653,7 @@ async def test_hidden_version_description_also_suppresses_truncation_metadata() 
         transport=httpx.MockTransport(handler),
     )
 
-    detail = await client.get_version(1)
+    detail = await client.version.get(1)
     # description_truncated/description_length are blanked on the object itself
     # (not just dropped at serialization, since their field NAMES don't match
     # the "description" hide pattern -- without the fix they'd still carry the
@@ -667,7 +667,7 @@ async def test_hidden_version_description_also_suppresses_truncation_metadata() 
     # elided from the payload entirely (Phase 1 None-elision), not emitted as null.
     assert "description_length" not in serialized_detail
 
-    page = await client.list_versions()
+    page = await client.version.list()
     summary = page.results[0]
     assert summary.description_truncated is False
     assert summary.description_length is None
@@ -850,7 +850,7 @@ async def test_update_work_package_close_with_hidden_progress_fields_still_succe
 
     settings = _base_settings(hidden_fields={"work_package": ("percentage_done", "remaining_time")})
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    result = await client.update_work_package(work_package_id=42, status="Closed", confirm=False)
+    result = await client.work_package.update(work_package_id=42, status="Closed", confirm=False)
     assert result.ready
     await client.aclose()
 
@@ -874,7 +874,7 @@ async def test_hidden_attachment_field_is_rejected_on_write() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_ATTACHMENT_FIELDS"):
-        await client.create_work_package_attachment(
+        await client.attachment.create(
             work_package_id=42, file_path="/tmp/note.txt", description="secret", confirm=False
         )
 
@@ -896,9 +896,7 @@ async def test_hidden_reminder_field_is_rejected_on_create() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_REMINDER_FIELDS"):
-        await client.create_work_package_reminder(
-            work_package_id=42, remind_at="2026-08-01T09:00:00Z", note="secret", confirm=False
-        )
+        await client.reminder.create(work_package_id=42, remind_at="2026-08-01T09:00:00Z", note="secret", confirm=False)
 
     await client.aclose()
 
@@ -929,7 +927,7 @@ async def test_hidden_reminder_field_is_rejected_on_update() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_REMINDER_FIELDS"):
-        await client.update_reminder(reminder_id=9, note="secret", confirm=False)
+        await client.reminder.update(reminder_id=9, note="secret", confirm=False)
 
     await client.aclose()
 
@@ -959,7 +957,7 @@ async def test_hidden_relation_type_field_is_rejected_on_create() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_RELATION_FIELDS"):
-        await client.create_work_package_relation(
+        await client.relation.create(
             work_package_id=42, related_to_work_package_id=43, relation_type="blocks", confirm=False
         )
 
@@ -994,7 +992,7 @@ async def test_hidden_relation_type_field_is_rejected_on_update() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_RELATION_FIELDS"):
-        await client.update_relation(relation_id=3, relation_type="follows", confirm=False)
+        await client.relation.update(relation_id=3, relation_type="follows", confirm=False)
 
     await client.aclose()
 
@@ -1020,7 +1018,7 @@ async def test_hidden_attachment_file_name_field_is_rejected_on_write() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_ATTACHMENT_FIELDS"):
-        await client.create_work_package_attachment(work_package_id=42, file_path="/tmp/note.txt", confirm=False)
+        await client.attachment.create(work_package_id=42, file_path="/tmp/note.txt", confirm=False)
 
     await client.aclose()
 
@@ -1053,6 +1051,6 @@ async def test_hidden_relation_field_is_rejected_on_update() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_RELATION_FIELDS"):
-        await client.update_relation(relation_id=3, description="secret", confirm=False)
+        await client.relation.update(relation_id=3, description="secret", confirm=False)
 
     await client.aclose()

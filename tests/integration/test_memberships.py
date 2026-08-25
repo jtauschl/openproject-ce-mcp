@@ -28,8 +28,8 @@ async def _other_principal_id(client: OpenProjectClient) -> str:
     covered, Docker-instance-gated, by
     test_users.py::test_user_lifecycle_roundtrip -- this fixture only needs
     *a* second principal to assign, not to prove create_user works too."""
-    me = await client.get_current_user()
-    users = await client.list_users()
+    me = await client.current_user.get_current_user()
+    users = await client.user.list_users()
     other = next((u for u in users.results if u.id != me.id and u.status == "active"), None)
     if other is None:
         pytest.skip("Instance has no second active user to use as a create_membership principal")
@@ -37,7 +37,7 @@ async def _other_principal_id(client: OpenProjectClient) -> str:
 
 
 async def test_list_project_memberships(client: OpenProjectClient, test_project: str) -> None:
-    result = await client.list_project_memberships(test_project)
+    result = await client.membership.list_for_project(test_project)
     assert result is not None
     # seed.rb always makes admin a member of test_project with a
     # work-package-capable role.
@@ -47,7 +47,7 @@ async def test_list_project_memberships(client: OpenProjectClient, test_project:
 
 async def test_list_users(client: OpenProjectClient) -> None:
     try:
-        result = await client.list_users()
+        result = await client.user.list_users()
     except PermissionDeniedError:
         pytest.skip("Instance requires admin rights to list users")
     assert result.count > 0
@@ -55,14 +55,14 @@ async def test_list_users(client: OpenProjectClient) -> None:
 
 
 async def test_get_user_me(client: OpenProjectClient) -> None:
-    me = await client.get_current_user()
-    user = await client.get_user(str(me.id))
+    me = await client.current_user.get_current_user()
+    user = await client.user.get_user(str(me.id))
     assert user.id == me.id
     assert user.login == me.login
 
 
 async def test_list_groups(client: OpenProjectClient) -> None:
-    result = await client.list_groups()
+    result = await client.group.list_groups()
     assert result is not None
     # Groups are opt-in, instance-specific config -- a fresh instance can
     # genuinely have none.
@@ -94,18 +94,18 @@ async def test_create_and_update_membership_in_fresh_project(
 
     principal_id = await _other_principal_id(unrestricted_client)
 
-    roles = await unrestricted_client.list_roles()
+    roles = await unrestricted_client.role.list_roles()
     role_name = next((r.name for r in roles.results if r.name == "Member"), None)
     other_role_name = next((r.name for r in roles.results if r.name == "Reader"), None)
     if role_name is None or other_role_name is None:
         pytest.skip("Instance has no 'Member'/'Reader' project role to assign")
 
-    preview = await unrestricted_client.create_membership(
+    preview = await unrestricted_client.membership.create(
         project=new_identifier, principal=principal_id, roles=[role_name]
     )
     assert preview.state == "preview"
 
-    created = await unrestricted_client.create_membership(
+    created = await unrestricted_client.membership.create(
         project=new_identifier, principal=principal_id, roles=[role_name], confirm=True
     )
     assert created.state == "confirmed"
@@ -113,11 +113,11 @@ async def test_create_and_update_membership_in_fresh_project(
     membership_id = created.result.id
     assert role_name in created.result.role_names
 
-    fetched = await unrestricted_client.get_membership(membership_id)
+    fetched = await unrestricted_client.membership.get(membership_id)
     assert fetched.id == membership_id
     assert role_name in fetched.role_names
 
-    updated = await unrestricted_client.update_membership(
+    updated = await unrestricted_client.membership.update(
         membership_id=membership_id, roles=[other_role_name], confirm=True
     )
     assert updated.state == "confirmed"
@@ -142,22 +142,22 @@ async def test_delete_membership_in_fresh_project(client: OpenProjectClient, pro
 
     principal_id = await _other_principal_id(unrestricted_client)
 
-    roles = await unrestricted_client.list_roles()
+    roles = await unrestricted_client.role.list_roles()
     role_name = next((r.name for r in roles.results if r.name == "Member"), None)
     if role_name is None:
         pytest.skip("Instance has no 'Member' project role to assign")
 
-    created = await unrestricted_client.create_membership(
+    created = await unrestricted_client.membership.create(
         project=new_identifier, principal=principal_id, roles=[role_name], confirm=True
     )
     assert created.state == "confirmed"
     assert created.result is not None
     membership_id = created.result.id
 
-    deleted = await unrestricted_client.delete_membership(membership_id=membership_id, confirm=True)
+    deleted = await unrestricted_client.membership.delete(membership_id=membership_id, confirm=True)
     assert deleted.state == "confirmed"
 
-    remaining = await unrestricted_client.list_project_memberships(new_identifier)
+    remaining = await unrestricted_client.membership.list_for_project(new_identifier)
     assert all(m.id != membership_id for m in remaining.results)
 
 
@@ -180,19 +180,19 @@ async def test_update_membership_denied_outside_write_allowlist(
 
     principal_id = await _other_principal_id(unrestricted_client)
 
-    roles = await unrestricted_client.list_roles()
+    roles = await unrestricted_client.role.list_roles()
     role_name = next((r.name for r in roles.results if r.name == "Member"), None)
     if role_name is None:
         pytest.skip("Instance has no 'Member' role to assign")
 
-    created = await unrestricted_client.create_membership(
+    created = await unrestricted_client.membership.create(
         project=other_identifier, principal=principal_id, roles=[role_name], confirm=True
     )
     assert created.state == "confirmed"
 
     # denied_client can read test_project but not write it or other_identifier.
     with pytest.raises(PermissionDeniedError):
-        await denied_client.update_membership(membership_id=created.result.id, roles=[role_name], confirm=True)
+        await denied_client.membership.update(membership_id=created.result.id, roles=[role_name], confirm=True)
 
 
 async def test_list_project_memberships_paginates_beyond_a_single_page(
@@ -222,30 +222,30 @@ async def test_list_project_memberships_paginates_beyond_a_single_page(
 
     principal_id = await _other_principal_id(unrestricted_client)
 
-    roles = await unrestricted_client.list_roles()
+    roles = await unrestricted_client.role.list_roles()
     role_name = next((r.name for r in roles.results if r.name == "Member"), None)
     if role_name is None:
         pytest.skip("Instance has no 'Member' project role to assign")
 
-    created_self = await unrestricted_client.create_membership(
+    created_self = await unrestricted_client.membership.create(
         project=new_identifier, principal="me", roles=[role_name], confirm=True
     )
     assert created_self.state == "confirmed"
 
-    created_other = await unrestricted_client.create_membership(
+    created_other = await unrestricted_client.membership.create(
         project=new_identifier, principal=principal_id, roles=[role_name], confirm=True
     )
     assert created_other.state == "confirmed"
 
-    unfiltered = await unrestricted_client.list_project_memberships(new_identifier, limit=100)
+    unfiltered = await unrestricted_client.membership.list_for_project(new_identifier, limit=100)
     if unfiltered.total < 2:
         pytest.skip("Not enough memberships in the fresh project to prove pagination")
 
-    first_page = await unrestricted_client.list_project_memberships(new_identifier, limit=1)
+    first_page = await unrestricted_client.membership.list_for_project(new_identifier, limit=1)
     assert first_page.count == 1
     assert first_page.truncated
     assert first_page.next_offset == 2
 
-    second_page = await unrestricted_client.list_project_memberships(new_identifier, limit=1, offset=2)
+    second_page = await unrestricted_client.membership.list_for_project(new_identifier, limit=1, offset=2)
     assert second_page.count == 1
     assert second_page.results[0].id != first_page.results[0].id

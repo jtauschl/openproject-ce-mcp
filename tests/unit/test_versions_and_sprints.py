@@ -242,7 +242,7 @@ async def test_version_crud_uses_form_endpoints_and_commit_paths() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    created_preview = await client.create_version(
+    created_preview = await client.version.create(
         project="demo",
         name="Release 1",
         description="Initial rollout",
@@ -255,7 +255,7 @@ async def test_version_crud_uses_form_endpoints_and_commit_paths() -> None:
     assert created_preview.ready is True
     assert created_preview.state == "preview"
 
-    created = await client.create_version(
+    created = await client.version.create(
         project="demo",
         name="Release 1",
         description="Initial rollout",
@@ -269,15 +269,15 @@ async def test_version_crud_uses_form_endpoints_and_commit_paths() -> None:
     assert created.result is not None
     assert created.result.name == "Release 1"
 
-    updated = await client.update_version(version_id=8, name="Release 1.1", status="locked", confirm=True)
+    updated = await client.version.update(version_id=8, name="Release 1.1", status="locked", confirm=True)
     assert updated.result is not None
     assert updated.result.status == "locked"
 
-    deleted_preview = await client.delete_version(version_id=8, confirm=False)
+    deleted_preview = await client.version.delete(version_id=8, confirm=False)
     assert deleted_preview.ready is True
     assert deleted_preview.state == "preview"
 
-    deleted = await client.delete_version(version_id=8, confirm=True)
+    deleted = await client.version.delete(version_id=8, confirm=True)
     assert deleted.state == "confirmed"
     assert deleted.version_id == 8
 
@@ -321,7 +321,7 @@ async def test_create_version_returns_preview_when_not_confirmed() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.create_version(project="myproject", name="v2.0", confirm=False)
+    result = await client.version.create(project="myproject", name="v2.0", confirm=False)
 
     assert result.state == "preview"
     assert result.ready is True
@@ -367,7 +367,7 @@ async def test_create_version_rejects_validation_error() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.create_version(project="myproject", name="v2.0", confirm=True)
+    result = await client.version.create(project="myproject", name="v2.0", confirm=True)
 
     assert result.ready is False
     assert result.state == "invalid"
@@ -388,7 +388,7 @@ async def test_list_work_packages_version_status_builds_filter() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    await client.list_work_packages(version_status="closed")
+    await client.work_package.list(version_status="closed")
 
     filters = json.loads(captured["filters"])
     # Filter key is version_id per OpenProject's source-defined filter key
@@ -438,14 +438,14 @@ async def test_list_work_packages_version_filter_uses_correct_key() -> None:
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
     # Test 1: version equality filter
-    await client.list_work_packages(version="v1.0", project="demo")
+    await client.work_package.list(version="v1.0", project="demo")
     filters_eq = json.loads(captured_calls[0]["filters"])
     assert any("version_id" in f for f in filters_eq), "version_id filter key not found (equality)"
     assert not any("version" in f and "version_id" not in f for f in filters_eq), "Found deprecated 'version' key"
 
     # Test 2: version status filter
     captured_calls.clear()
-    await client.list_work_packages(version_status="open")
+    await client.work_package.list(version_status="open")
     filters_status = json.loads(captured_calls[0]["filters"])
     assert any("version_id" in f for f in filters_status), "version_id filter key not found (status)"
 
@@ -499,7 +499,7 @@ async def test_list_sprints_normalizes_backlogs_collection() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    result = await client.list_sprints()
+    result = await client.sprint.list()
 
     assert result.total == 1
     assert result.results[0].id == 1
@@ -530,7 +530,7 @@ async def test_list_project_sprints_resolves_project_and_allows_empty_collection
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    result = await client.list_project_sprints("demo")
+    result = await client.sprint.list_for_project("demo")
 
     assert result.total == 0
     assert result.count == 0
@@ -571,12 +571,12 @@ async def test_list_sprints_search_filters_by_name_substring() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    page = await client.list_sprints(search="0.3")
+    page = await client.sprint.list(search="0.3")
 
     assert [s.id for s in page.results] == [1]
     assert page.total == 1
 
-    no_match = await client.list_sprints(search="nonexistent")
+    no_match = await client.sprint.list(search="nonexistent")
     assert no_match.results == []
     assert no_match.total == 0
 
@@ -621,12 +621,12 @@ async def test_list_project_sprints_search_filters_by_name_substring() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    page = await client.list_project_sprints("demo", search="sprint")
+    page = await client.sprint.list_for_project("demo", search="sprint")
 
     assert [s.id for s in page.results] == [1, 2]
     assert page.total == 2
 
-    no_match = await client.list_project_sprints("demo", search="nonexistent")
+    no_match = await client.sprint.list_for_project("demo", search="nonexistent")
     assert no_match.results == []
     assert no_match.total == 0
 
@@ -698,7 +698,7 @@ async def test_list_project_sprints_filters_sprints_outside_allowed_projects() -
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    result = await client.list_project_sprints("demo")
+    result = await client.sprint.list_for_project("demo")
 
     assert result.total == 1
     assert result.count == 1
@@ -752,7 +752,7 @@ async def test_list_versions_global_backfills_after_allowlist_filter() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    page = await client.list_versions(limit=2)
+    page = await client.version.list(limit=2)
 
     assert [v.id for v in page.results] == [2, 4]
     assert page.count == 2
@@ -793,7 +793,7 @@ async def test_list_versions_description_capped_at_text_limit() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    page = await client.list_versions()
+    page = await client.version.list()
 
     assert page.results[0].description is not None
     assert page.results[0].description_truncated is True
@@ -824,12 +824,12 @@ async def test_get_version_returns_full_description_by_default() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    full = await client.get_version(1)
+    full = await client.version.get(1)
     assert full.description is not None
     assert len(full.description) == 1500 + len("<user-content></user-content>")
     assert full.description_truncated is False
 
-    capped = await client.get_version(1, text_limit=50)
+    capped = await client.version.get(1, text_limit=50)
     assert capped.description_truncated is True
     assert capped.description_length == 1500
 
@@ -876,7 +876,7 @@ async def test_list_versions_project_scoped_walks_and_slices_client_side() -> No
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    page = await client.list_versions(project="demo", limit=2)
+    page = await client.version.list(project="demo", limit=2)
 
     # list_versions must slice offset=1/limit=2 out of the full 5-element
     # result set client-side, not trust a server-reported page/total for this
@@ -922,12 +922,12 @@ async def test_list_versions_global_search_filters_by_name_substring() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    page = await client.list_versions(search="0.3")
+    page = await client.version.list(search="0.3")
 
     assert [v.id for v in page.results] == [2]
     assert page.total == 1
 
-    no_match = await client.list_versions(search="nonexistent")
+    no_match = await client.version.list(search="nonexistent")
     assert no_match.results == []
     assert no_match.total == 0
 
@@ -968,7 +968,7 @@ async def test_list_versions_global_not_truncated_when_exactly_limit_allowed_mat
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    page = await client.list_versions(limit=1)
+    page = await client.version.list(limit=1)
 
     assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
     assert [v.id for v in page.results] == [1]
@@ -1013,14 +1013,14 @@ async def test_list_versions_project_scoped_search_overfetches_and_filters() -> 
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    page = await client.list_versions(project="demo", search="sprint")
+    page = await client.version.list(project="demo", search="sprint")
 
     assert [v.id for v in page.results] == [1, 2, 4]
     assert page.total == 3
 
     # Filter-then-paginate ordering: with 3 "sprint" matches, limit=1/offset=2 must
     # return the 2nd filtered survivor (id=2), not slice the raw 4-item page first.
-    second_page = await client.list_versions(project="demo", search="sprint", limit=1, offset=2)
+    second_page = await client.version.list(project="demo", search="sprint", limit=1, offset=2)
     assert [v.id for v in second_page.results] == [2]
     assert second_page.total == 3
     assert second_page.truncated is True
@@ -1080,7 +1080,7 @@ async def test_list_sprints_backfills_after_allowlist_filter() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    page = await client.list_sprints(limit=2)
+    page = await client.sprint.list(limit=2)
 
     assert [s.id for s in page.results] == [2, 4]
     assert page.count == 2
@@ -1152,7 +1152,7 @@ async def test_list_project_sprints_backfills_after_allowlist_filter() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    page = await client.list_project_sprints("demo", limit=2)
+    page = await client.sprint.list_for_project("demo", limit=2)
 
     assert [s.id for s in page.results] == [2, 4]
     assert page.count == 2
@@ -1197,7 +1197,7 @@ async def test_list_sprints_not_truncated_when_exactly_limit_allowed_matches_exi
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    page = await client.list_sprints(limit=1)
+    page = await client.sprint.list(limit=1)
 
     assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
     assert [s.id for s in page.results] == [1]
@@ -1242,7 +1242,7 @@ async def test_list_project_sprints_not_truncated_when_exactly_limit_allowed_mat
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    page = await client.list_project_sprints("demo", limit=1)
+    page = await client.sprint.list_for_project("demo", limit=1)
 
     assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
     assert [s.id for s in page.results] == [1]
@@ -1287,7 +1287,7 @@ async def test_get_sprint_normalizes_detail() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    sprint = await client.get_sprint(1)
+    sprint = await client.sprint.get(1)
 
     assert sprint.id == 1
     assert sprint.start_date == "2026-07-09"
@@ -1307,6 +1307,6 @@ async def test_list_sprints_translates_missing_backlogs_module() -> None:
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
     with pytest.raises(NotFoundError, match="Backlogs module"):
-        await client.list_sprints()
+        await client.sprint.list()
 
     await client.aclose()

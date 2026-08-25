@@ -33,7 +33,7 @@ async def test_get_grid_denies_disallowed_project_scope() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
-        await client.get_grid(55)
+        await client.grid.get(55)
 
     await client.aclose()
 
@@ -59,7 +59,7 @@ async def test_create_work_package_denies_disallowed_parent_project() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
-        await client.create_work_package(
+        await client.work_package.create(
             project="demo", type="Task", subject="Child", parent_work_package_id=999, confirm=True
         )
     await client.aclose()
@@ -80,7 +80,7 @@ async def test_update_work_package_denies_disallowed_parent_project() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
-        await client.update_work_package(work_package_id=42, parent_work_package_id=999, confirm=True)
+        await client.work_package.update(work_package_id=42, parent_work_package_id=999, confirm=True)
     await client.aclose()
 
 
@@ -113,7 +113,7 @@ async def test_create_work_package_denies_reparent_into_a_readable_but_write_res
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
-        await client.create_work_package(
+        await client.work_package.create(
             project="demo", type="Task", subject="Child", parent_work_package_id=999, confirm=True
         )
     await client.aclose()
@@ -143,7 +143,7 @@ async def test_update_work_package_denies_reparent_into_a_readable_but_write_res
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
-        await client.update_work_package(work_package_id=42, parent_work_package_id=999, confirm=True)
+        await client.work_package.update(work_package_id=42, parent_work_package_id=999, confirm=True)
     await client.aclose()
 
 
@@ -162,7 +162,7 @@ async def test_create_work_package_relation_denies_disallowed_target_project() -
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
-        await client.create_work_package_relation(
+        await client.relation.create(
             work_package_id=42, related_to_work_package_id=999, relation_type="blocks", confirm=True
         )
     await client.aclose()
@@ -197,7 +197,7 @@ async def test_create_work_package_relation_denies_readable_but_write_restricted
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
-        await client.create_work_package_relation(
+        await client.relation.create(
             work_package_id=42, related_to_work_package_id=999, relation_type="blocks", confirm=True
         )
     await client.aclose()
@@ -232,7 +232,7 @@ async def test_update_work_package_denies_disallowed_sprint_project() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
-        await client.update_work_package(work_package_id=42, sprint="700", confirm=True)
+        await client.work_package.update(work_package_id=42, sprint="700", confirm=True)
     await client.aclose()
 
 
@@ -373,23 +373,23 @@ async def test_project_resolution_policy_matrix(
 
     async def call() -> None:
         if operation == "read":
-            project = await client.get_project(project_ref)
+            project = await client.project.get(project_ref)
             assert project.id == 1
         elif operation == "write":
             result = await client.update_project(project_ref=project_ref, confirm=False)
             assert result.ready
         elif operation == "membership":
-            result = await client.create_membership(project=project_ref, principal="5", roles=["2"], confirm=False)
+            result = await client.membership.create(project=project_ref, principal="5", roles=["2"], confirm=False)
             assert result.ready
         elif operation == "board":
-            result = await client.create_board(name="Board", project=project_ref, confirm=False)
+            result = await client.board.create(name="Board", project=project_ref, confirm=False)
             assert result.ready
         elif operation == "version":
-            result = await client.create_version(project=project_ref, name="v1.0", confirm=False)
+            result = await client.version.create(project=project_ref, name="v1.0", confirm=False)
             assert result.ready
         else:
             assert operation == "news"
-            result = await client.create_news(project=project_ref, title="New feature", confirm=False)
+            result = await client.news.create(project=project_ref, title="New feature", confirm=False)
             assert result.ready
 
     if expect_error is None:
@@ -780,7 +780,7 @@ async def test_get_project_resolves_by_exact_identifier_without_search() -> None
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
-    project = await client.get_project("demo")
+    project = await client.project.get("demo")
     assert project.identifier == "demo"
     await client.aclose()
 
@@ -799,7 +799,7 @@ async def test_get_project_resolves_by_exact_name_when_unique() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
-    project = await client.get_project("Website")
+    project = await client.project.get("Website")
     assert project.id == 5
     await client.aclose()
 
@@ -830,7 +830,7 @@ async def test_create_work_package_resolves_project_by_display_name() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
-    result = await client.create_work_package(project="My Project", type="Feature", subject="New idea", confirm=False)
+    result = await client.work_package.create(project="My Project", type="Feature", subject="New idea", confirm=False)
     assert result.ready
     await client.aclose()
 
@@ -856,7 +856,7 @@ async def test_create_work_package_by_display_name_still_enforces_write_allowlis
     settings = _base_settings(read_projects=("*",), write_projects=("other-project",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
-        await client.create_work_package(project="My Project", type="Feature", subject="New idea", confirm=False)
+        await client.work_package.create(project="My Project", type="Feature", subject="New idea", confirm=False)
     await client.aclose()
 
 
@@ -878,7 +878,7 @@ async def test_get_project_ambiguous_when_two_projects_share_exact_name() -> Non
 
     client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
     with pytest.raises(InvalidInputError, match="ambiguous"):
-        await client.get_project("Website")
+        await client.project.get("Website")
     await client.aclose()
 
 
@@ -894,7 +894,7 @@ async def test_get_project_not_found_when_no_name_match() -> None:
 
     client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
     with pytest.raises(NotFoundError):
-        await client.get_project("Nonexistent")
+        await client.project.get("Nonexistent")
     await client.aclose()
 
 
@@ -918,7 +918,7 @@ async def test_get_project_resolves_exact_name_past_earlier_substring_matches() 
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
-    project = await client.get_project("Website")
+    project = await client.project.get("Website")
     assert project.id == 5
     await client.aclose()
 
@@ -939,5 +939,5 @@ async def test_get_project_ambiguous_when_search_capped_before_exhaustion() -> N
 
     client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
     with pytest.raises(InvalidInputError, match="ambiguous"):
-        await client.get_project("Website")
+        await client.project.get("Website")
     await client.aclose()

@@ -26,7 +26,7 @@ async def test_client_maps_401_to_authentication_error() -> None:
     client = OpenProjectClient(make_settings(), transport=transport)
 
     with pytest.raises(AuthenticationError):
-        await client.get_project("demo")
+        await client.project.get("demo")
 
     await client.aclose()
 
@@ -229,7 +229,7 @@ async def test_get_project_admin_context_filters_parent_candidates_and_writable_
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.get_project_admin_context("demo")
+    result = await client.project_admin.get_admin_context("demo")
 
     assert [p.identifier for p in result.available_parent_projects] == ["allowed-parent"]
     # Lightweight ProjectRef, not a full ProjectSummary — no description/status_explanation.
@@ -319,11 +319,11 @@ async def test_list_roles_and_project_memberships_and_my_access() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    roles = await client.list_roles()
+    roles = await client.role.list_roles()
     assert roles.count == 2
     assert roles.results[0].name == "Project admin"
 
-    memberships = await client.list_project_memberships("demo")
+    memberships = await client.membership.list_for_project("demo")
     assert memberships.count == 1
     assert memberships.results[0].role_names == ["Project admin", "Member"]
 
@@ -379,12 +379,12 @@ async def test_list_project_memberships_paginates_and_preserves_project_filter()
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    page1 = await client.list_project_memberships("demo", offset=1, limit=1)
+    page1 = await client.membership.list_for_project("demo", offset=1, limit=1)
     assert [m.id for m in page1.results] == [1]
     assert page1.next_offset == 2
     assert page1.truncated is True
 
-    page2 = await client.list_project_memberships("demo", offset=page1.next_offset, limit=1)
+    page2 = await client.membership.list_for_project("demo", offset=page1.next_offset, limit=1)
     assert [m.id for m in page2.results] == [2]
     assert page2.next_offset is None
 
@@ -475,10 +475,10 @@ async def test_instance_configuration_and_project_phase_definitions() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    configuration = await client.get_instance_configuration()
-    phases = await client.list_project_phase_definitions()
-    phase = await client.get_project_phase_definition(1)
-    project_phase = await client.get_project_phase(5)
+    configuration = await client.instance_configuration.get_instance_configuration()
+    phases = await client.project.list_phase_definitions()
+    phase = await client.project.get_phase_definition(1)
+    project_phase = await client.project.get_phase(5)
 
     assert configuration.host_name == "op.example.com"
     assert configuration.active_feature_flags == ["mcpServer", "portfolioModels"]
@@ -570,14 +570,14 @@ async def test_get_project_configuration_and_copy_project() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    configuration = await client.get_project_configuration("demo")
-    preview = await client.copy_project(
+    configuration = await client.project.get_configuration("demo")
+    preview = await client.project.copy(
         source_project="demo",
         name="Demo Copy",
         identifier="demo-copy",
         confirm=False,
     )
-    copied = await client.copy_project(
+    copied = await client.project.copy(
         source_project="demo",
         name="Demo Copy",
         identifier="demo-copy",
@@ -835,22 +835,22 @@ async def test_job_status_documents_news_and_wiki() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    job = await client.get_job_status("77")
-    documents = await client.list_documents(project="demo")
-    document = await client.get_document(5)
-    document_preview = await client.update_document(document_id=5, title="Architecture Updated", confirm=False)
-    document_updated = await client.update_document(document_id=5, title="Architecture Updated", confirm=True)
-    news_list = await client.list_news(project="demo", search="release")
-    news_detail = await client.get_news(7)
-    news_preview = await client.create_news(
+    job = await client.job_status.get("77")
+    documents = await client.document.list(project="demo")
+    document = await client.document.get(5)
+    document_preview = await client.document.update(document_id=5, title="Architecture Updated", confirm=False)
+    document_updated = await client.document.update(document_id=5, title="Architecture Updated", confirm=True)
+    news_list = await client.news.list(project="demo", search="release")
+    news_detail = await client.news.get(7)
+    news_preview = await client.news.create(
         project="demo", title="Fresh Update", summary="Ready", description="Detailed body", confirm=False
     )
-    news_created = await client.create_news(
+    news_created = await client.news.create(
         project="demo", title="Fresh Update", summary="Ready", description="Detailed body", confirm=True
     )
-    news_updated = await client.update_news(news_id=7, summary="Sprint 8.1 is out", confirm=True)
-    news_deleted = await client.delete_news(news_id=7, confirm=True)
-    wiki_page = await client.get_wiki_page(9)
+    news_updated = await client.news.update(news_id=7, summary="Sprint 8.1 is out", confirm=True)
+    news_deleted = await client.news.delete(news_id=7, confirm=True)
+    wiki_page = await client.wiki_page.get(9)
     assert job.id == "77"
     assert job.project == "Demo"
     assert job.created_resource_id == 88
@@ -983,11 +983,11 @@ async def test_project_scoped_reads_accept_numeric_project_ids_when_allowed_by_n
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    searched = await client.search_work_packages(search="Scoped", project="6")
-    listed = await client.list_work_packages(project="6")
-    versions = await client.list_versions(project="6")
-    boards = await client.list_boards(project="6")
-    entries = await client.list_time_entries(project="6")
+    searched = await client.work_package.search(search="Scoped", project="6")
+    listed = await client.work_package.list(project="6")
+    versions = await client.version.list(project="6")
+    boards = await client.board.list(project="6")
+    entries = await client.time_entry.list_all(project="6")
 
     assert searched.count == 1
     assert listed.count == 1
@@ -1190,25 +1190,25 @@ async def test_views_categories_and_attachments() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    view_list = await client.list_views(project="demo", view_type="Views::TeamPlanner")
-    view_detail = await client.get_view(12)
-    categories = await client.list_categories("demo")
-    category = await client.get_category(project_ref="demo", category_id=3)
-    attachments = await client.list_work_package_attachments(7)
-    attachment = await client.get_attachment(5)
-    created_preview = await client.create_work_package_attachment(
+    view_list = await client.view.list(project="demo", view_type="Views::TeamPlanner")
+    view_detail = await client.view.get(12)
+    categories = await client.category.list("demo")
+    category = await client.category.get(project_ref="demo", category_id=3)
+    attachments = await client.attachment.list_for_work_package(7)
+    attachment = await client.attachment.get(5)
+    created_preview = await client.attachment.create(
         work_package_id=7,
         file_path="tests/fixtures/spec.md",
         description="Spec",
         confirm=False,
     )
-    created = await client.create_work_package_attachment(
+    created = await client.attachment.create(
         work_package_id=7,
         file_path="tests/fixtures/spec.md",
         description="Spec",
         confirm=True,
     )
-    deleted = await client.delete_attachment(attachment_id=5, confirm=True)
+    deleted = await client.attachment.delete(attachment_id=5, confirm=True)
 
     assert view_list.count == 1
     assert view_list.results[0].type == "Views::TeamPlanner"
@@ -1273,7 +1273,7 @@ async def test_list_work_package_attachments_walks_every_server_page_when_allowl
 
     # limit=2 (matching max_page_size) needs the limit+1 lookahead match on
     # page 2 to confirm truncation -- both server pages get requested.
-    result = await client.list_work_package_attachments(7, limit=2)
+    result = await client.attachment.list_for_work_package(7, limit=2)
 
     assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
     assert result.count == 2
@@ -1303,12 +1303,12 @@ async def test_list_views_search_filters_by_name_substring() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    page = await client.list_views(search="planner")
+    page = await client.view.list(search="planner")
 
     assert [v.id for v in page.results] == [1]
     assert page.total == 1
 
-    no_match = await client.list_views(search="nonexistent")
+    no_match = await client.view.list(search="nonexistent")
     assert no_match.results == []
     assert no_match.total == 0
 
@@ -1342,12 +1342,12 @@ async def test_list_documents_search_filters_by_title_substring() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    page = await client.list_documents(search="architecture")
+    page = await client.document.list(search="architecture")
 
     assert [d.id for d in page.results] == [1]
     assert page.total == 1
 
-    no_match = await client.list_documents(search="nonexistent")
+    no_match = await client.document.list(search="nonexistent")
     assert no_match.results == []
     assert no_match.total == 0
 
@@ -1441,11 +1441,11 @@ async def test_help_texts_and_working_days() -> None:
     settings = dataclasses.replace(make_settings(), enable_metadata_tools=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    help_texts = await client.list_help_texts()
+    help_texts = await client.extended_metadata.list_help_texts()
     assert help_texts.count == 1
     assert help_texts.results[0].attribute_name == "description"
 
-    help_text = await client.get_help_text(5)
+    help_text = await client.extended_metadata.get_help_text(5)
     assert help_text.help_text == "Describe the work."
 
     days = await client.list_working_days()
@@ -1600,11 +1600,11 @@ async def test_delete_project_returns_preview_and_executes_when_confirmed() -> N
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    preview = await client.delete_project(project_ref="old-project", confirm=False)
+    preview = await client.project.delete(project_ref="old-project", confirm=False)
     assert preview.state == "preview"
     assert preview.ready is True
 
-    confirmed = await client.delete_project(project_ref="old-project", confirm=True)
+    confirmed = await client.project.delete(project_ref="old-project", confirm=True)
     assert confirmed.state == "confirmed"
     assert confirmed.result is not None
     assert confirmed.result.name == "Old Project"
@@ -1694,7 +1694,7 @@ async def test_copy_project_checks_destination_allowlist() -> None:
     # The source "src" is allowed, so a PermissionDeniedError here can only come
     # from the destination identifier "dst-bad" being outside the allowlist.
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
-        await client.copy_project(source_project="src", name="Bad", identifier="dst-bad", confirm=True)
+        await client.project.copy(source_project="src", name="Bad", identifier="dst-bad", confirm=True)
 
     # Positive control: an allowed destination passes the allowlist stage (it then
     # proceeds to the copy/form request, which the handler serves).
@@ -1719,7 +1719,7 @@ async def test_copy_project_checks_destination_allowlist() -> None:
 
     client2 = OpenProjectClient(settings, transport=httpx.MockTransport(handler_ok))
     # Should NOT raise PermissionDeniedError for the allowed destination "dst-ok".
-    result = await client2.copy_project(source_project="src", name="Good", identifier="dst-ok", confirm=False)
+    result = await client2.project.copy(source_project="src", name="Good", identifier="dst-ok", confirm=False)
     assert result is not None  # reached preview without an allowlist denial
     await client2.aclose()
     await client.aclose()
@@ -1776,7 +1776,7 @@ async def test_list_projects_reports_filtered_total_when_allowlist_drops_items()
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_projects()
+    result = await client.project.list()
 
     assert result.count == 1
     assert result.total == 1
@@ -1854,7 +1854,7 @@ async def test_list_projects_walks_multiple_server_pages_when_allowlist_thins_fi
 
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_projects()
+    result = await client.project.list()
 
     assert requested_offsets == ["1", "2"], f"expected pages 1 then 2, got {requested_offsets}"
     assert result.count == 1
@@ -1893,11 +1893,11 @@ async def test_list_projects_cross_call_pagination_does_not_skip_or_duplicate() 
         return handler
 
     client_page1 = OpenProjectClient(make_settings(), transport=httpx.MockTransport(make_handler()))
-    first = await client_page1.list_projects(limit=2, offset=1)
+    first = await client_page1.project.list(limit=2, offset=1)
     await client_page1.aclose()
 
     client_page2 = OpenProjectClient(make_settings(), transport=httpx.MockTransport(make_handler()))
-    second = await client_page2.list_projects(limit=2, offset=2)
+    second = await client_page2.project.list(limit=2, offset=2)
     await client_page2.aclose()
 
     first_ids = [p.identifier for p in first.results]
@@ -1953,7 +1953,7 @@ async def test_list_projects_cross_call_pagination_with_allowlist_thinning_acros
     for call_offset in (1, 2, 3):
         seen: list[str] = []
         client = OpenProjectClient(settings, transport=httpx.MockTransport(make_handler(seen)))
-        result = await client.list_projects(limit=1, offset=call_offset)
+        result = await client.project.list(limit=1, offset=call_offset)
         await client.aclose()
         results_by_call.append((seen, [p.identifier for p in result.results]))
         truncated_by_call.append(result.truncated)

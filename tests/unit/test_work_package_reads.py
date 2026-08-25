@@ -36,7 +36,7 @@ async def test_search_work_packages_uses_supported_subject_or_id_operator() -> N
     transport = httpx.MockTransport(handler)
     client = OpenProjectClient(make_settings(), transport=transport)
 
-    result = await client.search_work_packages(search="Feature")
+    result = await client.work_package.search(search="Feature")
 
     assert result.count == 0
 
@@ -80,7 +80,7 @@ async def test_search_work_packages_resolves_exact_match_by_display_id() -> None
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.search_work_packages(search="OPM-394")
+    result = await client.work_package.search(search="OPM-394")
 
     assert result.count == 0
     assert result.exact_match is not None
@@ -116,7 +116,7 @@ async def test_search_work_packages_exact_match_respects_other_filters() -> None
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.search_work_packages(search="OPM-394", project="demo")
+    result = await client.work_package.search(search="OPM-394", project="demo")
 
     assert result.exact_match is None
 
@@ -159,7 +159,7 @@ async def test_search_work_packages_exact_match_deduplicated_against_results() -
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.search_work_packages(search="OPM-394")
+    result = await client.work_package.search(search="OPM-394")
 
     assert result.count == 1
     assert result.results[0].id == 394
@@ -179,7 +179,7 @@ async def test_search_work_packages_exact_match_none_for_unresolvable_query() ->
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.search_work_packages(search="garbage text")
+    result = await client.work_package.search(search="garbage text")
 
     assert result.exact_match is None
 
@@ -211,7 +211,7 @@ async def test_search_work_packages_exact_match_none_under_restricted_read_scope
 
     client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
 
-    result = await client.search_work_packages(search="394")
+    result = await client.work_package.search(search="394")
 
     assert result.exact_match is None
 
@@ -257,7 +257,7 @@ async def test_search_work_packages_accepts_status_filter() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(routed_handler))
 
-    result = await client.search_work_packages(search="Feature", status="In progress")
+    result = await client.work_package.search(search="Feature", status="In progress")
 
     assert result.count == 0
     assert status_calls["count"] == 1
@@ -336,7 +336,7 @@ async def test_list_work_packages_resolves_type_and_version_filters() -> None:
     transport = httpx.MockTransport(handler)
     client = OpenProjectClient(make_settings(), transport=transport)
 
-    result = await client.list_work_packages(
+    result = await client.work_package.list(
         project="demo",
         type="Feature",
         version="v1",
@@ -393,7 +393,7 @@ async def test_list_work_packages_returns_parent_display_id_when_present() -> No
 
     client = OpenProjectClient(_base_settings(read_projects=("*",)), transport=httpx.MockTransport(handler))
 
-    result = await client.list_work_packages()
+    result = await client.work_package.list()
 
     assert result.results[0].parent_id == 7
     assert result.results[0].parent_display_id == "EMTB-7"
@@ -435,7 +435,7 @@ async def test_search_work_packages_returns_parent_display_id_when_present() -> 
 
     client = OpenProjectClient(_base_settings(read_projects=("*",)), transport=httpx.MockTransport(handler))
 
-    result = await client.search_work_packages(search="Block D")
+    result = await client.work_package.search(search="Block D")
 
     assert result.results[0].parent_id == 7
     assert result.results[0].parent_display_id == "EMTB-7"
@@ -472,7 +472,7 @@ async def test_list_work_packages_exposes_real_total_when_scope_unrestricted() -
         )
 
     client = OpenProjectClient(_base_settings(read_projects=("*",)), transport=httpx.MockTransport(handler))
-    result = await client.list_work_packages(limit=2)
+    result = await client.work_package.list(limit=2)
 
     assert result.total == 5
     assert result.count == 2
@@ -499,7 +499,7 @@ async def test_list_work_packages_denies_when_project_cache_empty_under_restrict
     )
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
-        await client.list_work_packages(limit=2)
+        await client.work_package.list(limit=2)
 
     await client.aclose()
 
@@ -538,7 +538,7 @@ async def test_list_work_packages_exposes_real_total_when_restricted_scope_filte
 
     client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
     client._project_id_to_identifier[1] = "demo"
-    result = await client.list_work_packages(limit=2)
+    result = await client.work_package.list(limit=2)
 
     assert result.total == 5
     assert result.count == 2
@@ -577,7 +577,7 @@ async def test_search_work_packages_pagination_hints_do_not_leak_untrusted_total
         )
 
     client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
-    result = await client.search_work_packages(search="A", limit=5)
+    result = await client.work_package.search(search="A", limit=5)
 
     assert result.total == 1
     assert result.next_offset is None
@@ -627,7 +627,7 @@ async def test_search_work_packages_pagination_continues_with_untrusted_total_wh
         )
 
     client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
-    result = await client.search_work_packages(search="A", offset=1, limit=2)
+    result = await client.work_package.search(search="A", offset=1, limit=2)
 
     assert result.total == 2
     assert [wp.id for wp in result.results] == [1, 2]
@@ -673,7 +673,7 @@ async def test_search_work_packages_does_not_report_truncated_when_page_full_but
         )
 
     client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
-    result = await client.search_work_packages(search="A", offset=1, limit=2)
+    result = await client.work_package.search(search="A", offset=1, limit=2)
 
     assert result.total == 2
     assert [wp.id for wp in result.results] == [1, 2]
@@ -708,7 +708,7 @@ async def test_search_work_packages_falls_back_to_page_count_without_explicit_pr
         )
 
     client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
-    result = await client.search_work_packages(search="A", limit=5)
+    result = await client.work_package.search(search="A", limit=5)
 
     assert result.total == 1
     assert result.count == 1
@@ -744,7 +744,7 @@ async def test_search_work_packages_exposes_real_total_with_explicit_project() -
         )
 
     client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
-    result = await client.search_work_packages(search="A", project="demo", limit=5)
+    result = await client.work_package.search(search="A", project="demo", limit=5)
 
     assert result.total == 5
     assert result.count == 1
@@ -778,7 +778,7 @@ async def test_list_my_open_work_packages_falls_back_to_page_count_under_restric
         )
 
     client = OpenProjectClient(_base_settings(read_projects=("demo",)), transport=httpx.MockTransport(handler))
-    result = await client.list_my_open_work_packages(limit=5)
+    result = await client.work_package.list_my_open(limit=5)
 
     assert result.total == 1
     assert result.count == 1
@@ -791,7 +791,7 @@ async def test_list_my_open_work_packages_falls_back_to_page_count_under_restric
 async def test_list_work_packages_returns_empty_without_request_under_empty_read_projects() -> None:
     client = OpenProjectClient(_empty_scope_settings(), transport=httpx.MockTransport(_no_request_handler))
 
-    result = await client.list_work_packages()
+    result = await client.work_package.list()
 
     assert result.count == 0
     assert result.results == []
@@ -807,7 +807,7 @@ async def test_list_work_packages_returns_empty_without_request_even_with_projec
     # explicitly given, no lookup call (project resolution, type resolution) happens.
     client = OpenProjectClient(_empty_scope_settings(), transport=httpx.MockTransport(_no_request_handler))
 
-    result = await client.list_work_packages(project="demo", type="Bug")
+    result = await client.work_package.list(project="demo", type="Bug")
 
     assert result.results == []
 
@@ -818,7 +818,7 @@ async def test_list_work_packages_returns_empty_without_request_even_with_projec
 async def test_search_work_packages_returns_empty_without_request_under_empty_read_projects() -> None:
     client = OpenProjectClient(_empty_scope_settings(), transport=httpx.MockTransport(_no_request_handler))
 
-    result = await client.search_work_packages(search="demo")
+    result = await client.work_package.search(search="demo")
 
     assert result.count == 0
     assert result.results == []
@@ -831,7 +831,7 @@ async def test_list_my_open_work_packages_returns_empty_without_request_even_wit
     # Proves the guard fires before get_current_user() is ever called.
     client = OpenProjectClient(_empty_scope_settings(), transport=httpx.MockTransport(_no_request_handler))
 
-    result = await client.list_my_open_work_packages()
+    result = await client.work_package.list_my_open()
 
     assert result.count == 0
     assert result.results == []
@@ -919,8 +919,8 @@ async def test_global_list_work_packages_and_versions_respect_allowlist_ids() ->
     # covers it), so the cache must be populated to reach that code at all.
     client._project_id_to_identifier[6] = "6"
 
-    work_packages = await client.list_work_packages()
-    versions = await client.list_versions()
+    work_packages = await client.work_package.list()
+    versions = await client.version.list()
 
     assert work_packages.count == 1
     assert work_packages.total == 1
@@ -995,7 +995,7 @@ async def test_list_my_open_work_packages_filters_total_when_all_items_blocked_b
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_my_open_work_packages(limit=20, offset=1)
+    result = await client.work_package.list_my_open(limit=20, offset=1)
 
     assert result.results == []
     assert result.count == 0
@@ -1019,7 +1019,7 @@ async def test_get_work_package_returns_full_description_by_default() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    detail = await client.get_work_package("42")
+    detail = await client.work_package.get("42")
 
     assert detail.description is not None
     assert detail.description.endswith("END</user-content>")  # not cut, includes delimiter
@@ -1045,7 +1045,7 @@ async def test_get_work_package_text_limit_caps_and_flags() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    detail = await client.get_work_package("42", text_limit=200)
+    detail = await client.work_package.get("42", text_limit=200)
 
     assert detail.description is not None
     # Description includes <user-content> tags (29 chars), so limit is 200 + 29 = 229
@@ -1073,7 +1073,7 @@ async def test_get_work_package_preserves_paragraphs() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    detail = await client.get_work_package("42")
+    detail = await client.work_package.get("42")
 
     # newlines/list preserved, but wrapped in delimiters
     assert detail.description == f"<user-content>{structured}</user-content>"
@@ -1093,7 +1093,7 @@ async def test_get_work_package_numeric_reference_hits_canonical_path() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    detail = await client.get_work_package("42")
+    detail = await client.work_package.get("42")
 
     assert detail.id == 42
     # Exactly one request, straight to the canonical numeric path. No lookup roundtrip.
@@ -1113,7 +1113,7 @@ async def test_get_work_package_semantic_reference_passes_through_to_path() -> N
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    detail = await client.get_work_package("PROJ-123")
+    detail = await client.work_package.get("PROJ-123")
 
     assert detail.id == 412
     assert detail.display_id == "PROJ-123"
@@ -1133,7 +1133,7 @@ async def test_get_work_package_unknown_reference_maps_404_to_not_found() -> Non
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
     with pytest.raises(NotFoundError):
-        await client.get_work_package("PROJ-999")
+        await client.work_package.get("PROJ-999")
 
     await client.aclose()
 
@@ -1169,13 +1169,13 @@ async def test_list_work_packages_created_on_validates_format() -> None:
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: None))
 
     with pytest.raises(InvalidInputError, match="YYYY-MM-DD format"):
-        await client.list_work_packages(created_on="2024/01/15")
+        await client.work_package.list(created_on="2024/01/15")
 
     with pytest.raises(InvalidInputError, match="YYYY-MM-DD format"):
-        await client.list_work_packages(created_on="15-01-2024")
+        await client.work_package.list(created_on="15-01-2024")
 
     with pytest.raises(InvalidInputError, match="YYYY-MM-DD format"):
-        await client.list_work_packages(created_on="2024-13-01")
+        await client.work_package.list(created_on="2024-13-01")
 
     await client.aclose()
 
@@ -1186,13 +1186,13 @@ async def test_list_work_packages_created_between_validates_range() -> None:
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: None))
 
     with pytest.raises(InvalidInputError, match="start date must be <= end date"):
-        await client.list_work_packages(created_between=["2024-12-31", "2024-01-01"])
+        await client.work_package.list(created_between=["2024-12-31", "2024-01-01"])
 
     with pytest.raises(InvalidInputError, match="exactly 2 dates"):
-        await client.list_work_packages(created_between=["2024-01-01"])
+        await client.work_package.list(created_between=["2024-01-01"])
 
     with pytest.raises(InvalidInputError, match="exactly 2 dates"):
-        await client.list_work_packages(created_between=["2024-01-01", "2024-01-31", "2024-02-01"])
+        await client.work_package.list(created_between=["2024-01-01", "2024-01-31", "2024-02-01"])
 
     await client.aclose()
 
@@ -1203,13 +1203,13 @@ async def test_list_work_packages_rejects_both_on_and_between() -> None:
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(lambda r: None))
 
     with pytest.raises(InvalidInputError, match="Cannot specify both created_on and created_between"):
-        await client.list_work_packages(created_on="2024-01-15", created_between=["2024-01-01", "2024-01-31"])
+        await client.work_package.list(created_on="2024-01-15", created_between=["2024-01-01", "2024-01-31"])
 
     with pytest.raises(InvalidInputError, match="Cannot specify both updated_on and updated_between"):
-        await client.list_work_packages(updated_on="2024-01-15", updated_between=["2024-01-01", "2024-01-31"])
+        await client.work_package.list(updated_on="2024-01-15", updated_between=["2024-01-01", "2024-01-31"])
 
     with pytest.raises(InvalidInputError, match="Cannot specify both due_on and due_between"):
-        await client.list_work_packages(due_on="2024-01-15", due_between=["2024-01-01", "2024-01-31"])
+        await client.work_package.list(due_on="2024-01-15", due_between=["2024-01-01", "2024-01-31"])
 
     await client.aclose()
 
@@ -1226,7 +1226,7 @@ async def test_list_work_packages_created_on_builds_filter() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    await client.list_work_packages(created_on="2024-01-15")
+    await client.work_package.list(created_on="2024-01-15")
 
     filters = json.loads(captured["filters"])
     created_filter = next(f for f in filters if "created_at" in f)
@@ -1248,7 +1248,7 @@ async def test_list_work_packages_created_between_builds_filter() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    await client.list_work_packages(created_between=["2024-01-01", "2024-01-31"])
+    await client.work_package.list(created_between=["2024-01-01", "2024-01-31"])
 
     filters = json.loads(captured["filters"])
     created_filter = next(f for f in filters if "created_at" in f)
@@ -1270,7 +1270,7 @@ async def test_list_work_packages_multiple_date_filters() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    await client.list_work_packages(
+    await client.work_package.list(
         created_between=["2024-01-01", "2024-01-31"], updated_on="2024-01-15", due_on="2024-02-01"
     )
 
@@ -1305,7 +1305,7 @@ async def test_search_work_packages_date_filters() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    await client.search_work_packages(search="test", updated_on="2024-07-09")
+    await client.work_package.search(search="test", updated_on="2024-07-09")
 
     filters = json.loads(captured["filters"])
     # Should have both subject_or_id filter and updated_at filter
@@ -1333,7 +1333,7 @@ async def test_list_work_packages_custom_field_filters_builds_cf_filter_end_to_e
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    await client.list_work_packages(custom_field_filters={"cf_12": {"operator": "=", "values": ["42"]}})
+    await client.work_package.list(custom_field_filters={"cf_12": {"operator": "=", "values": ["42"]}})
 
     filters = json.loads(captured["filters"])
     cf_filter = next(f for f in filters if "cf_12" in f)
@@ -1356,7 +1356,7 @@ async def test_search_work_packages_custom_field_filters_builds_cf_filter_end_to
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    await client.search_work_packages(search="foo", custom_field_filters={"cf_7": {"operator": "!~", "values": ["x"]}})
+    await client.work_package.search(search="foo", custom_field_filters={"cf_7": {"operator": "!~", "values": ["x"]}})
 
     filters = json.loads(captured["filters"])
     cf_filter = next(f for f in filters if "cf_7" in f)
@@ -1402,7 +1402,7 @@ async def test_list_work_packages_type_filter_uses_correct_key() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    await client.list_work_packages(type="Task", project="demo")
+    await client.work_package.list(type="Task", project="demo")
 
     filters = json.loads(captured["filters"])
     # Must use "type_id" not "type"

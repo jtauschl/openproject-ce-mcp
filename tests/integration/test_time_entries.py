@@ -33,21 +33,21 @@ class _FakeContext:
 
 
 async def _first_activity_name(client: OpenProjectClient) -> str:
-    activities = await client.list_time_entry_activities()
+    activities = await client.time_entry.list_activities()
     if activities.count == 0:
         pytest.skip("Instance has no time entry activities configured")
     return activities.results[0].name
 
 
 async def _first_wp_id(client: OpenProjectClient, test_project: str) -> int | None:
-    result = await client.list_work_packages(project=test_project, limit=1)
+    result = await client.work_package.list(project=test_project, limit=1)
     if result.count == 0:
         return None
     return result.results[0].id
 
 
 async def test_list_time_entry_activities(client: OpenProjectClient) -> None:
-    result = await client.list_time_entry_activities()
+    result = await client.time_entry.list_activities()
     # Time entry activities are instance-configurable and could genuinely be
     # empty on a minimal instance without the Costs module enabled.
     if result.count == 0:
@@ -62,7 +62,7 @@ async def test_list_time_entries(
     # leftover -- test execution order within a file is incidental pytest
     # behavior, not a documented guarantee to depend on.
     activity = await _first_activity_name(client)
-    wp_result = await client.create_work_package(
+    wp_result = await client.work_package.create(
         project=test_project, type="Task", subject="Integration test WP for list_time_entries", confirm=True
     )
     assert wp_result.ready, wp_result.validation_errors
@@ -70,7 +70,7 @@ async def test_list_time_entries(
     assert wp_id is not None
     wp_ids.append(wp_id)
 
-    result = await client.create_time_entry(
+    result = await client.time_entry.create(
         activity=activity,
         hours="PT1H",
         spent_on=datetime.date.today().isoformat(),
@@ -80,7 +80,7 @@ async def test_list_time_entries(
     assert result.ready, result.validation_errors
     time_entry_ids.append(result.time_entry_id)
 
-    listed = await client.list_time_entries(project=test_project)
+    listed = await client.time_entry.list_all(project=test_project)
     assert listed is not None
     assert listed.count > 0
     assert any(te.id == result.time_entry_id for te in listed.results)
@@ -94,7 +94,7 @@ async def test_create_get_update_delete_time_entry(
     spent_on = datetime.date.today().isoformat()
 
     # Create
-    result = await client.create_time_entry(
+    result = await client.time_entry.create(
         activity=activity,
         hours="PT1H30M",
         spent_on=spent_on,
@@ -109,11 +109,11 @@ async def test_create_get_update_delete_time_entry(
     time_entry_ids.append(te_id)
 
     # Read
-    te = await client.get_time_entry(te_id)
+    te = await client.time_entry.get(te_id)
     assert te.id == te_id
 
     # Update
-    update_result = await client.update_time_entry(
+    update_result = await client.time_entry.update(
         time_entry_id=te_id,
         hours="PT2H",
         confirm=True,
@@ -121,7 +121,7 @@ async def test_create_get_update_delete_time_entry(
     assert update_result.ready, update_result.validation_errors
 
     # Delete
-    delete_result = await client.delete_time_entry(time_entry_id=te_id, confirm=True)
+    delete_result = await client.time_entry.delete(time_entry_id=te_id, confirm=True)
     assert delete_result.ready and delete_result.state == "confirmed"
     time_entry_ids.remove(te_id)
 
@@ -181,7 +181,7 @@ async def test_create_get_update_time_entry_until(
     assert result.result.start_time == f"{spent_on}T09:00:00.000Z"
     assert result.result.end_time == f"{spent_on}T10:30:00.000Z"
 
-    te = await client.get_time_entry(te_id)
+    te = await client.time_entry.get(te_id)
     assert te.id == te_id
     assert te.hours == "PT1H30M"
 
@@ -199,7 +199,7 @@ async def test_create_get_update_time_entry_until(
     assert update_result.result.end_time == f"{spent_on}T11:00:00.000Z"
     assert update_result.result.ongoing is False
 
-    delete_result = await client.delete_time_entry(time_entry_id=te_id, confirm=True)
+    delete_result = await client.time_entry.delete(time_entry_id=te_id, confirm=True)
     assert delete_result.ready and delete_result.state == "confirmed"
     time_entry_ids.remove(te_id)
 
@@ -237,7 +237,7 @@ async def test_create_time_entry_rejects_hidden_start_time_field(client: OpenPro
     await hidden_client.initialize()
 
     with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_TIME_ENTRY_FIELDS"):
-        await hidden_client.create_time_entry(
+        await hidden_client.time_entry.create(
             project=test_project,
             activity=activity,
             hours="PT1H",
@@ -259,7 +259,7 @@ async def test_create_update_delete_time_entry_denied_outside_write_allowlist(
     spent_on = datetime.date.today().isoformat()
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.create_time_entry(
+        await denied_client.time_entry.create(
             project=test_project,
             work_package_id=wp_id,
             activity=activity,
@@ -268,7 +268,7 @@ async def test_create_update_delete_time_entry_denied_outside_write_allowlist(
             confirm=True,
         )
 
-    existing = await client.create_time_entry(
+    existing = await client.time_entry.create(
         project=test_project, work_package_id=wp_id, activity=activity, hours="PT1H", spent_on=spent_on, confirm=True
     )
     assert existing.ready, existing.validation_errors
@@ -276,10 +276,10 @@ async def test_create_update_delete_time_entry_denied_outside_write_allowlist(
     time_entry_ids.append(te_id)
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.update_time_entry(time_entry_id=te_id, hours="PT2H", confirm=True)
+        await denied_client.time_entry.update(time_entry_id=te_id, hours="PT2H", confirm=True)
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.delete_time_entry(time_entry_id=te_id, confirm=True)
+        await denied_client.time_entry.delete(time_entry_id=te_id, confirm=True)
 
 
 async def test_create_time_entry_preview_surfaces_openproject_validation_error(
@@ -295,7 +295,7 @@ async def test_create_time_entry_preview_surfaces_openproject_validation_error(
     activity = await _first_activity_name(client)
     spent_on = datetime.date.today().isoformat()
 
-    result = await client.create_time_entry(
+    result = await client.time_entry.create(
         project=test_project,
         activity=activity,
         hours="PT0H",
@@ -312,14 +312,14 @@ async def test_create_time_entry_with_semantic_work_package_ref(
     activity = await _first_activity_name(client)
     spent_on = datetime.date.today().isoformat()
 
-    wp_result = await client.create_work_package(
+    wp_result = await client.work_package.create(
         project=test_project, type="Task", subject="Integration test WP for semantic time entry", confirm=True
     )
     assert wp_result.ready, wp_result.validation_errors
     wp_id = wp_result.work_package_id
     assert wp_id is not None
     wp_ids.append(wp_id)
-    wp = await client.get_work_package(wp_id)
+    wp = await client.work_package.get(wp_id)
     display_id = wp.display_id or ""
     # Semantic identifiers (project-prefixed, e.g. "TST-105") only exist on 17.5+
     # in semantic mode. On 16.x display_id is absent (added in 17.4); on classic
@@ -331,7 +331,7 @@ async def test_create_time_entry_with_semantic_work_package_ref(
 
     # The numeric-HAL-link-from-semantic-ref resolution path (client.py
     # _work_package_ref) — passing the display_id string, not the numeric id.
-    result = await client.create_time_entry(
+    result = await client.time_entry.create(
         activity=activity,
         hours="PT1H",
         spent_on=spent_on,
@@ -343,7 +343,7 @@ async def test_create_time_entry_with_semantic_work_package_ref(
     assert te_id > 0
     time_entry_ids.append(te_id)
 
-    te = await client.get_time_entry(te_id)
+    te = await client.time_entry.get(te_id)
     # entity_id is the proof that the semantic ref resolved to the right numeric
     # work package via the HAL entity link. entityType is not reliably present
     # on the live response (unlike the hand-built payloads in the unit tests),
@@ -371,7 +371,7 @@ async def test_create_time_entry_succeeds_for_log_own_time_only_role(
     activity = await _first_activity_name(client)
     spent_on = datetime.date.today().isoformat()
 
-    wp_result = await client.create_work_package(
+    wp_result = await client.work_package.create(
         project=test_project, type="Task", subject="Integration test WP for restricted-role time entry", confirm=True
     )
     assert wp_result.ready, wp_result.validation_errors
@@ -379,7 +379,7 @@ async def test_create_time_entry_succeeds_for_log_own_time_only_role(
     assert wp_id is not None
     wp_ids.append(wp_id)
 
-    result = await restricted_client.create_time_entry(
+    result = await restricted_client.time_entry.create(
         activity=activity,
         hours="PT1H",
         spent_on=spent_on,

@@ -21,7 +21,7 @@ pytestmark = pytest.mark.integration
 async def _create_wp_and_comment_activity_id(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> tuple[int, int]:
-    wp_result = await client.create_work_package(
+    wp_result = await client.work_package.create(
         project=test_project, type="Task", subject="Integration test WP for emoji reactions", confirm=True
     )
     assert wp_result.ready, wp_result.validation_errors
@@ -29,7 +29,7 @@ async def _create_wp_and_comment_activity_id(
     assert wp_id is not None
     wp_ids.append(wp_id)
 
-    comment_result = await client.add_work_package_comment(
+    comment_result = await client.work_package.add_comment(
         work_package_id=wp_id, comment="Integration test comment for emoji reactions", confirm=True
     )
     assert comment_result.ready, comment_result.validation_errors
@@ -38,7 +38,7 @@ async def _create_wp_and_comment_activity_id(
 
 
 async def test_list_work_package_reactions(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
-    wp_result = await client.create_work_package(
+    wp_result = await client.work_package.create(
         project=test_project, type="Task", subject="Integration test WP for reaction listing", confirm=True
     )
     assert wp_result.ready, wp_result.validation_errors
@@ -49,7 +49,7 @@ async def test_list_work_package_reactions(client: OpenProjectClient, test_proje
     # A freshly created work package has no reactions at all yet -- `== 0` is
     # the actual, checkable expectation here, not `>= 0` (true of any
     # response, including a broken one).
-    result = await client.list_work_package_reactions(wp_id)
+    result = await client.emoji_reaction.list_for_work_package(wp_id)
     assert result.count == 0
     assert result.results == []
 
@@ -59,7 +59,7 @@ async def test_toggle_activity_emoji_reaction_adds_then_removes(
 ) -> None:
     _wp_id, activity_id = await _create_wp_and_comment_activity_id(client, test_project, wp_ids)
 
-    added = await client.toggle_activity_emoji_reaction(activity_id, "thumbs_up", confirm=True)
+    added = await client.emoji_reaction.toggle(activity_id, "thumbs_up", confirm=True)
     assert added.state == "confirmed"
     assert added.result is not None
     matches = [r for r in added.result.results if r.reaction == "thumbs_up"]
@@ -67,7 +67,7 @@ async def test_toggle_activity_emoji_reaction_adds_then_removes(
     assert matches[0].count >= 1
 
     # Toggling the same reaction again removes it.
-    removed = await client.toggle_activity_emoji_reaction(activity_id, "thumbs_up", confirm=True)
+    removed = await client.emoji_reaction.toggle(activity_id, "thumbs_up", confirm=True)
     assert removed.state == "confirmed"
     assert removed.result is not None
     remaining = [r for r in removed.result.results if r.reaction == "thumbs_up"]
@@ -79,8 +79,8 @@ async def test_toggle_activity_emoji_reaction_preview_does_not_write(
 ) -> None:
     wp_id, activity_id = await _create_wp_and_comment_activity_id(client, test_project, wp_ids)
 
-    preview = await client.toggle_activity_emoji_reaction(activity_id, "heart", confirm=False)
+    preview = await client.emoji_reaction.toggle(activity_id, "heart", confirm=False)
     assert preview.state == "preview"
 
-    listed = await client.list_work_package_reactions(wp_id)
+    listed = await client.emoji_reaction.list_for_work_package(wp_id)
     assert all(r.reaction != "heart" for r in listed.results)

@@ -116,10 +116,10 @@ async def test_version_service_finalize_write_sends_the_same_payload_it_previewe
     settings = _base_settings(enable_version_write=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    preview = await client.create_version(project="myproject", name="v2.0", confirm=False)
+    preview = await client.version.create(project="myproject", name="v2.0", confirm=False)
     assert preview.payload == {"name": "v2.0", "_links": {"definingProject": {"href": "/api/v3/projects/5"}}}
 
-    committed = await client.create_version(project="myproject", name="v2.0", confirm=True)
+    committed = await client.version.create(project="myproject", name="v2.0", confirm=True)
     assert committed.state == "confirmed"
     assert sent_body == preview.payload
 
@@ -170,12 +170,12 @@ async def test_create_work_package_relation_preview_payload_matches_sent_body_mo
     settings = _base_settings(enable_work_package_write=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    preview = await client.create_work_package_relation(
+    preview = await client.relation.create(
         work_package_id=10, related_to_work_package_id=20, relation_type="follows", confirm=False
     )
     assert preview.payload["to_work_package_id"] == 20
 
-    committed = await client.create_work_package_relation(
+    committed = await client.relation.create(
         work_package_id=10, related_to_work_package_id=20, relation_type="follows", confirm=True
     )
     assert committed.state == "confirmed"
@@ -223,8 +223,8 @@ async def test_delete_work_package_preview_and_confirmed_target_the_same_resourc
     settings = _base_settings(enable_work_package_write=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    preview = await client.delete_work_package(work_package_id=42, confirm=False)
-    committed = await client.delete_work_package(work_package_id=42, confirm=True)
+    preview = await client.work_package.delete(work_package_id=42, confirm=False)
+    committed = await client.work_package.delete(work_package_id=42, confirm=True)
 
     assert preview.work_package_id == committed.work_package_id == 42
     assert preview.payload["id"] == 42

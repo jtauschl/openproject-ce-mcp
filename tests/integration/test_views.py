@@ -28,7 +28,7 @@ pytestmark = pytest.mark.integration
 
 
 async def test_list_views(client: OpenProjectClient, test_project: str) -> None:
-    result = await client.list_views(project=test_project)
+    result = await client.view.list(project=test_project)
     assert result is not None
     if result.count == 0:
         pytest.skip("no existing view in the test project (no create_view API to seed one)")
@@ -36,13 +36,13 @@ async def test_list_views(client: OpenProjectClient, test_project: str) -> None:
 
 
 async def test_get_view(client: OpenProjectClient, test_project: str) -> None:
-    existing = await client.list_views(project=test_project)
+    existing = await client.view.list(project=test_project)
     if existing.count == 0:
         pytest.skip("no existing view in the test project to read (no create_view API to seed one)")
 
     view_id = existing.results[0].id
 
-    view = await client.get_view(view_id)
+    view = await client.view.get(view_id)
     assert view.id == view_id
 
 
@@ -62,15 +62,15 @@ async def test_list_views_paginates_beyond_a_single_page(client: OpenProjectClie
     unrestricted_client = OpenProjectClient(unrestricted_settings)
     await unrestricted_client.initialize()
 
-    unfiltered = await unrestricted_client.list_views(limit=100)
+    unfiltered = await unrestricted_client.view.list(limit=100)
     if unfiltered.total < 2:
         pytest.skip("Not enough views on this instance to prove pagination")
 
-    first_page = await unrestricted_client.list_views(limit=1)
+    first_page = await unrestricted_client.view.list(limit=1)
     assert first_page.count == 1
     assert first_page.truncated
     assert first_page.next_offset == 2
 
-    second_page = await unrestricted_client.list_views(limit=1, offset=2)
+    second_page = await unrestricted_client.view.list(limit=1, offset=2)
     assert second_page.count == 1
     assert second_page.results[0].id != first_page.results[0].id

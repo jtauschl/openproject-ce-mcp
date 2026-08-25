@@ -12,7 +12,7 @@ pytestmark = pytest.mark.integration
 
 
 async def test_get_current_user(client: OpenProjectClient) -> None:
-    user = await client.get_current_user()
+    user = await client.current_user.get_current_user()
     # seed.rb always mints the primary integration test token for the admin
     # user (User.admin.active.first), so login is deterministic here.
     assert user.login == "admin"
@@ -20,7 +20,7 @@ async def test_get_current_user(client: OpenProjectClient) -> None:
 
 
 async def test_get_instance_configuration(client: OpenProjectClient) -> None:
-    config = await client.get_instance_configuration()
+    config = await client.instance_configuration.get_instance_configuration()
     assert config is not None
     assert config.host_name
     if config.maximum_api_v3_page_size is None:
@@ -40,8 +40,8 @@ async def test_get_current_user_is_consistent_across_repeated_calls(client: Open
     second call must return identical data to the first (same object
     reference within one client isn't asserted here, only value equality,
     since the fixture's client already lives for the whole test)."""
-    first = await client.get_current_user()
-    second = await client.get_current_user()
+    first = await client.current_user.get_current_user()
+    second = await client.current_user.get_current_user()
     assert first.id == second.id
     assert first.login == second.login
     assert first.name == second.name
@@ -50,30 +50,30 @@ async def test_get_current_user_is_consistent_across_repeated_calls(client: Open
 async def test_get_instance_configuration_is_consistent_across_repeated_calls(client: OpenProjectClient) -> None:
     """get_instance_configuration is cached for the process
     lifetime -- repeated calls must return identical data."""
-    first = await client.get_instance_configuration()
-    second = await client.get_instance_configuration()
+    first = await client.instance_configuration.get_instance_configuration()
+    second = await client.instance_configuration.get_instance_configuration()
     assert first.host_name == second.host_name
     assert first.maximum_api_v3_page_size == second.maximum_api_v3_page_size
 
 
 async def test_list_statuses_is_consistent_across_repeated_calls(client: OpenProjectClient) -> None:
     """list_statuses is cached for the process lifetime."""
-    first = await client.list_statuses()
-    second = await client.list_statuses()
+    first = await client.status_priority_type.list_statuses()
+    second = await client.status_priority_type.list_statuses()
     assert first.count == second.count
     assert [s.id for s in first.results] == [s.id for s in second.results]
 
 
 async def test_list_priorities_is_consistent_across_repeated_calls(client: OpenProjectClient) -> None:
     """list_priorities is cached for the process lifetime."""
-    first = await client.list_priorities()
-    second = await client.list_priorities()
+    first = await client.status_priority_type.list_priorities()
+    second = await client.status_priority_type.list_priorities()
     assert first.count == second.count
     assert [p.id for p in first.results] == [p.id for p in second.results]
 
 
 async def test_list_time_entry_activities(client: OpenProjectClient) -> None:
-    result = await client.list_time_entry_activities()
+    result = await client.time_entry.list_activities()
     # A fresh OpenProject instance ships default time entry activities
     # (Development, Management, ...) -- this is instance-wide config, not
     # seed data, so it's always non-empty on a real install.
@@ -106,7 +106,7 @@ async def test_list_working_days(client: OpenProjectClient) -> None:
 
 
 async def test_get_my_preferences(client: OpenProjectClient) -> None:
-    prefs = await client.get_my_preferences()
+    prefs = await client.user_preferences.get()
     assert prefs is not None
     assert prefs.time_zone is not None
 
@@ -123,20 +123,20 @@ async def test_update_my_preferences_roundtrip(client: OpenProjectClient) -> Non
     instead, a field the real representer does expose, and restores the
     token owner's original value afterwards since this mutates real, shared
     account state rather than disposable test data."""
-    original = await client.get_my_preferences()
+    original = await client.user_preferences.get()
     original_time_zone = original.time_zone
 
     try:
         new_time_zone = "America/New_York" if original_time_zone != "America/New_York" else "Europe/Berlin"
-        updated = await client.update_my_preferences(time_zone=new_time_zone, confirm=True)
+        updated = await client.user_preferences.update(time_zone=new_time_zone, confirm=True)
         assert updated.state == "confirmed"
         assert updated.result is not None
         assert updated.result.time_zone == new_time_zone
 
-        refetched = await client.get_my_preferences()
+        refetched = await client.user_preferences.get()
         assert refetched.time_zone == new_time_zone
     finally:
         if original_time_zone is not None:
-            restored = await client.update_my_preferences(time_zone=original_time_zone, confirm=True)
+            restored = await client.user_preferences.update(time_zone=original_time_zone, confirm=True)
             assert restored.result is not None
             assert restored.result.time_zone == original_time_zone

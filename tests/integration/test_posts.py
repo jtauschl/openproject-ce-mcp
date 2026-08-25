@@ -22,7 +22,7 @@ pytestmark = pytest.mark.integration
 
 
 async def test_get_post(client: OpenProjectClient, seed_post_id: int) -> None:
-    post = await client.get_post(seed_post_id)
+    post = await client.post.get(seed_post_id)
     assert post.id == seed_post_id
     assert post.subject
 
@@ -42,4 +42,4 @@ async def test_get_post_denied_outside_read_allowlist(client: OpenProjectClient,
     await read_denied_client.initialize()
 
     with pytest.raises(PermissionDeniedError):
-        await read_denied_client.get_post(seed_post_id)
+        await read_denied_client.post.get(seed_post_id)

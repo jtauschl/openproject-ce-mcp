@@ -36,7 +36,7 @@ pytestmark = pytest.mark.integration
 
 
 async def test_list_documents(client: OpenProjectClient, test_project: str) -> None:
-    result = await client.list_documents(project=test_project)
+    result = await client.document.list(project=test_project)
     assert result is not None
     # docker/test/seed.rb always seeds two documents (no create_document API
     # exists to seed one through a test-time call instead).
@@ -45,13 +45,13 @@ async def test_list_documents(client: OpenProjectClient, test_project: str) -> N
 
 
 async def test_get_and_update_document(client: OpenProjectClient, test_project: str) -> None:
-    existing = await client.list_documents(project=test_project)
+    existing = await client.document.list(project=test_project)
     if existing.count == 0:
         pytest.skip("no existing document in the test project to read/update (no create_document API to seed one)")
 
     document_id = existing.results[0].id
 
-    document = await client.get_document(document_id)
+    document = await client.document.get(document_id)
     assert document.id == document_id
 
     # See module docstring: this MCP server sends a well-formed request
@@ -60,7 +60,7 @@ async def test_get_and_update_document(client: OpenProjectClient, test_project: 
     # update_document's title path works end to end.
     new_title = f"{document.title} (updated)"
     try:
-        update_result = await client.update_document(
+        update_result = await client.document.update(
             document_id=document_id,
             title=new_title,
             confirm=True,
@@ -83,13 +83,13 @@ async def test_get_and_update_document(client: OpenProjectClient, test_project: 
 async def test_update_document_denied_outside_write_allowlist(
     denied_client: OpenProjectClient, client: OpenProjectClient, test_project: str
 ) -> None:
-    existing = await client.list_documents(project=test_project)
+    existing = await client.document.list(project=test_project)
     if existing.count == 0:
         pytest.skip("no existing document in the test project to attempt a denied update against")
 
     document_id = existing.results[0].id
     with pytest.raises(PermissionDeniedError):
-        await denied_client.update_document(document_id=document_id, title="denied update", confirm=True)
+        await denied_client.document.update(document_id=document_id, title="denied update", confirm=True)
 
 
 @pytest.mark.xfail(
@@ -102,14 +102,14 @@ async def test_update_document_description_round_trips(client: OpenProjectClient
     """Documents this MCP server's own client code is correct -- it sends
     the well-formed {"format": ..., "raw": ...} payload OpenProject's API
     documents -- the round-trip failure is entirely server-side."""
-    existing = await client.list_documents(project=test_project)
+    existing = await client.document.list(project=test_project)
     if existing.count == 0:
         pytest.skip("no existing document in the test project to read/update (no create_document API to seed one)")
 
     document_id = existing.results[0].id
     new_description = "A plain, unmangled description"
 
-    update_result = await client.update_document(
+    update_result = await client.document.update(
         document_id=document_id,
         description=new_description,
         confirm=True,
@@ -125,15 +125,15 @@ async def test_list_documents_paginates_beyond_a_single_page(client: OpenProject
     returned everything the server happened to include in that first page
     rather than genuinely paginating. Relies on docker/test/seed.rb's two
     pre-seeded documents (no create_document API exists to seed more here)."""
-    unfiltered = await client.list_documents(project=test_project, limit=100)
+    unfiltered = await client.document.list(project=test_project, limit=100)
     if unfiltered.total < 2:
         pytest.skip("Not enough documents in the test project to prove pagination (seed.rb should provide 2)")
 
-    first_page = await client.list_documents(project=test_project, limit=1)
+    first_page = await client.document.list(project=test_project, limit=1)
     assert first_page.count == 1
     assert first_page.truncated
     assert first_page.next_offset == 2
 
-    second_page = await client.list_documents(project=test_project, limit=1, offset=2)
+    second_page = await client.document.list(project=test_project, limit=1, offset=2)
     assert second_page.count == 1
     assert second_page.results[0].id != first_page.results[0].id

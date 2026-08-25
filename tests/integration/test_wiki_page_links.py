@@ -91,7 +91,7 @@ _PROVIDER = "internal"
 
 
 async def test_create_wiki_page_link(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
-    wp_result = await client.create_work_package(
+    wp_result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"[integration-test] wiki link {uuid.uuid4().hex[:8]}",
@@ -102,7 +102,7 @@ async def test_create_wiki_page_link(client: OpenProjectClient, test_project: st
     wp_ids.append(work_package_id)
 
     try:
-        create_result = await client.create_work_package_wiki_link(
+        create_result = await client.wiki_page_link.create(
             work_package_id, identifier="wiki", provider=_PROVIDER, confirm=True
         )
     except NotFoundError:
@@ -119,7 +119,7 @@ async def test_create_wiki_page_link(client: OpenProjectClient, test_project: st
 async def test_create_wiki_page_link_preview_without_confirm_does_not_write(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    wp_result = await client.create_work_package(
+    wp_result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"[integration-test] wiki link preview {uuid.uuid4().hex[:8]}",
@@ -133,7 +133,7 @@ async def test_create_wiki_page_link_preview_without_confirm_does_not_write(
     # WikiPageLinkService.create's own preview branch, which returns before
     # any API call) -- no 17.7+ skip needed here, unlike the confirmed-create
     # test above.
-    preview_result = await client.create_work_package_wiki_link(
+    preview_result = await client.wiki_page_link.create(
         work_package_id, identifier="wiki", provider=_PROVIDER, confirm=False
     )
     assert preview_result.state == "preview"
@@ -146,7 +146,7 @@ async def test_create_wiki_page_link_preview_without_confirm_does_not_write(
     # 500s; on pre-17.5 instances the GET route doesn't exist at all
     # (NotFoundError).
     try:
-        listed = await client.list_work_package_wiki_links(work_package_id)
+        listed = await client.wiki_page_link.list_for_work_package(work_package_id)
     except NotFoundError:
         pytest.skip("wiki_page_links endpoint not available (requires OpenProject 17.5+)")
     except OpenProjectServerError:
@@ -167,7 +167,7 @@ async def test_create_wiki_page_link_preview_without_confirm_does_not_write(
 async def test_create_wiki_page_link_denies_work_package_outside_write_allowlist(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    wp_result = await client.create_work_package(
+    wp_result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"[integration-test] wiki link denial {uuid.uuid4().hex[:8]}",
@@ -182,7 +182,7 @@ async def test_create_wiki_page_link_denies_work_package_outside_write_allowlist
     await restricted_client.initialize()
 
     with pytest.raises(PermissionDeniedError):
-        await restricted_client.create_work_package_wiki_link(
+        await restricted_client.wiki_page_link.create(
             work_package_id, identifier="wiki", provider=_PROVIDER, confirm=True
         )
 
@@ -208,7 +208,7 @@ async def test_list_work_package_wiki_links_finds_created_link(
     doesn't clean up its own work package's link, which is fine since the
     seed project doesn't get reset between test runs and leftover links
     don't affect any other test."""
-    wp_result = await client.create_work_package(
+    wp_result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"[integration-test] wiki link list {uuid.uuid4().hex[:8]}",
@@ -218,13 +218,13 @@ async def test_list_work_package_wiki_links_finds_created_link(
     work_package_id = wp_result.work_package_id
     wp_ids.append(work_package_id)
 
-    create_result = await client.create_work_package_wiki_link(
+    create_result = await client.wiki_page_link.create(
         work_package_id, identifier="wiki", provider=_PROVIDER, confirm=True
     )
     assert create_result.ready, create_result.validation_errors
     link_id = create_result.link_id
 
-    listed = await client.list_work_package_wiki_links(work_package_id)
+    listed = await client.wiki_page_link.list_for_work_package(work_package_id)
     assert any(link.id == link_id for link in listed.results)
 
-    await client.delete_work_package_wiki_link(work_package_id, link_id, confirm=True)
+    await client.wiki_page_link.delete(work_package_id, link_id, confirm=True)

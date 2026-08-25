@@ -53,7 +53,7 @@ async def test_create_get_update_delete_meeting(
 ) -> None:
     title = f"[integration-test] meeting {uuid.uuid4().hex[:8]}"
     try:
-        result = await client.create_meeting(project=test_project, title=title, confirm=True)
+        result = await client.meeting.create(project=test_project, title=title, confirm=True)
     except NotFoundError:
         pytest.skip("Meetings module not installed/enabled, or OpenProject < 17.4, on this instance")
     assert result.ready, result.validation_errors
@@ -61,18 +61,18 @@ async def test_create_get_update_delete_meeting(
     assert meeting_id is not None and meeting_id > 0
     meeting_ids.append(meeting_id)
 
-    meeting = await client.get_meeting(meeting_id)
+    meeting = await client.meeting.get(meeting_id)
     assert meeting.id == meeting_id
     assert meeting.title == title
     assert meeting.project is not None
 
-    update_result = await client.update_meeting(meeting_id=meeting_id, title=f"{title} updated", confirm=True)
+    update_result = await client.meeting.update(meeting_id=meeting_id, title=f"{title} updated", confirm=True)
     assert update_result.ready, update_result.validation_errors
 
-    updated = await client.get_meeting(meeting_id)
+    updated = await client.meeting.get(meeting_id)
     assert updated.title == f"{title} updated"
 
-    delete_result = await client.delete_meeting(meeting_id=meeting_id, confirm=True)
+    delete_result = await client.meeting.delete(meeting_id=meeting_id, confirm=True)
     assert delete_result.ready and delete_result.state == "confirmed"
     meeting_ids.remove(meeting_id)
 
@@ -82,26 +82,26 @@ async def test_create_meeting_preview_without_confirm_does_not_write(
 ) -> None:
     title = f"[integration-test] meeting preview {uuid.uuid4().hex[:8]}"
     try:
-        preview_result = await client.create_meeting(project=test_project, title=title, confirm=False)
+        preview_result = await client.meeting.create(project=test_project, title=title, confirm=False)
     except NotFoundError:
         pytest.skip("Meetings module not installed/enabled, or OpenProject < 17.4, on this instance")
     assert preview_result.state == "preview"
     assert preview_result.result is None
 
-    listed = await client.list_meetings(project=test_project)
+    listed = await client.meeting.list_all(project=test_project)
     assert not any(m.title == title for m in listed.results)
 
 
 async def test_list_meetings(client: OpenProjectClient, test_project: str, meeting_ids: list[int]) -> None:
     title = f"[integration-test] meeting list {uuid.uuid4().hex[:8]}"
     try:
-        create_result = await client.create_meeting(project=test_project, title=title, confirm=True)
+        create_result = await client.meeting.create(project=test_project, title=title, confirm=True)
     except NotFoundError:
         pytest.skip("Meetings module not installed/enabled, or OpenProject < 17.4, on this instance")
     assert create_result.ready, create_result.validation_errors
     meeting_ids.append(create_result.meeting_id)
 
-    result = await client.list_meetings(project=test_project)
+    result = await client.meeting.list_all(project=test_project)
     assert result.count > 0
     assert any(m.title == title for m in result.results)
 
@@ -114,12 +114,12 @@ async def test_create_and_update_meeting_denied_outside_write_allowlist(
     # the real NotFoundError risk ("Meetings module not installed/enabled,
     # or OpenProject < 17.4") is on the unrestricted client's own call below.
     with pytest.raises(PermissionDeniedError):
-        await denied_client.create_meeting(
+        await denied_client.meeting.create(
             project=test_project, title=f"[integration-test] denied {uuid.uuid4().hex[:8]}", confirm=True
         )
 
     try:
-        existing = await client.create_meeting(
+        existing = await client.meeting.create(
             project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
         )
     except NotFoundError:
@@ -129,7 +129,7 @@ async def test_create_and_update_meeting_denied_outside_write_allowlist(
     meeting_ids.append(meeting_id)
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.update_meeting(meeting_id=meeting_id, title="denied update", confirm=True)
+        await denied_client.meeting.update(meeting_id=meeting_id, title="denied update", confirm=True)
 
 
 # --- Meeting Sections + Agenda Items ----------------------------------------
@@ -139,7 +139,7 @@ async def test_create_get_update_delete_meeting_section(
     client: OpenProjectClient, test_project: str, meeting_ids: list[int]
 ) -> None:
     try:
-        meeting_result = await client.create_meeting(
+        meeting_result = await client.meeting.create(
             project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
         )
     except NotFoundError:
@@ -150,27 +150,27 @@ async def test_create_get_update_delete_meeting_section(
 
     title = f"[integration-test] section {uuid.uuid4().hex[:8]}"
     try:
-        create_result = await client.create_meeting_section(meeting_id=meeting_id, title=title, confirm=True)
+        create_result = await client.meeting_section.create(meeting_id=meeting_id, title=title, confirm=True)
     except NotFoundError:
         pytest.skip("meeting_sections endpoint not available (requires OpenProject 17.6+)")
     assert create_result.ready, create_result.validation_errors
     section_id = create_result.section_id
     assert section_id is not None
 
-    section = await client.get_meeting_section(section_id)
+    section = await client.meeting_section.get(section_id)
     assert section.id == section_id
     assert section.meeting_id == meeting_id
 
-    listed = await client.list_meeting_sections(meeting_id)
+    listed = await client.meeting_section.list_for_meeting(meeting_id)
     assert any(s.id == section_id for s in listed.results)
 
-    update_result = await client.update_meeting_section(section_id=section_id, title=f"{title} updated", confirm=True)
+    update_result = await client.meeting_section.update(section_id=section_id, title=f"{title} updated", confirm=True)
     assert update_result.ready, update_result.validation_errors
 
-    updated = await client.get_meeting_section(section_id)
+    updated = await client.meeting_section.get(section_id)
     assert updated.title == f"{title} updated"
 
-    delete_result = await client.delete_meeting_section(section_id=section_id, confirm=True)
+    delete_result = await client.meeting_section.delete(section_id=section_id, confirm=True)
     assert delete_result.ready and delete_result.state == "confirmed"
 
 
@@ -186,7 +186,7 @@ async def test_create_update_delete_meeting_section_denied_outside_write_allowli
     not the denied_client attempt above it (same reasoning as
     test_create_update_delete_meeting_outcome_denied_outside_write_allowlist)."""
     try:
-        meeting_result = await client.create_meeting(
+        meeting_result = await client.meeting.create(
             project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
         )
     except NotFoundError:
@@ -196,12 +196,12 @@ async def test_create_update_delete_meeting_section_denied_outside_write_allowli
     meeting_ids.append(meeting_id)
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.create_meeting_section(
+        await denied_client.meeting_section.create(
             meeting_id=meeting_id, title="[integration-test] denied", confirm=True
         )
 
     try:
-        existing = await client.create_meeting_section(
+        existing = await client.meeting_section.create(
             meeting_id=meeting_id, title="[integration-test] section", confirm=True
         )
     except NotFoundError:
@@ -210,17 +210,17 @@ async def test_create_update_delete_meeting_section_denied_outside_write_allowli
     section_id = existing.section_id
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.update_meeting_section(section_id=section_id, title="denied update", confirm=True)
+        await denied_client.meeting_section.update(section_id=section_id, title="denied update", confirm=True)
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.delete_meeting_section(section_id=section_id, confirm=True)
+        await denied_client.meeting_section.delete(section_id=section_id, confirm=True)
 
 
 async def test_create_get_update_delete_meeting_agenda_item(
     client: OpenProjectClient, test_project: str, meeting_ids: list[int]
 ) -> None:
     try:
-        meeting_result = await client.create_meeting(
+        meeting_result = await client.meeting.create(
             project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
         )
     except NotFoundError:
@@ -231,29 +231,29 @@ async def test_create_get_update_delete_meeting_agenda_item(
 
     title = f"[integration-test] agenda item {uuid.uuid4().hex[:8]}"
     try:
-        create_result = await client.create_meeting_agenda_item(meeting_id=meeting_id, title=title, confirm=True)
+        create_result = await client.meeting_agenda_item.create(meeting_id=meeting_id, title=title, confirm=True)
     except NotFoundError:
         pytest.skip("meeting_agenda_items endpoint not available (requires OpenProject 17.6+)")
     assert create_result.ready, create_result.validation_errors
     agenda_item_id = create_result.agenda_item_id
     assert agenda_item_id is not None
 
-    item = await client.get_meeting_agenda_item(agenda_item_id)
+    item = await client.meeting_agenda_item.get(agenda_item_id)
     assert item.id == agenda_item_id
     assert item.meeting_id == meeting_id
 
-    listed = await client.list_meeting_agenda_items(meeting_id)
+    listed = await client.meeting_agenda_item.list_for_meeting(meeting_id)
     assert any(i.id == agenda_item_id for i in listed.results)
 
-    update_result = await client.update_meeting_agenda_item(
+    update_result = await client.meeting_agenda_item.update(
         agenda_item_id=agenda_item_id, title=f"{title} updated", confirm=True
     )
     assert update_result.ready, update_result.validation_errors
 
-    updated = await client.get_meeting_agenda_item(agenda_item_id)
+    updated = await client.meeting_agenda_item.get(agenda_item_id)
     assert updated.title == f"{title} updated"
 
-    delete_result = await client.delete_meeting_agenda_item(agenda_item_id=agenda_item_id, confirm=True)
+    delete_result = await client.meeting_agenda_item.delete(agenda_item_id=agenda_item_id, confirm=True)
     assert delete_result.ready and delete_result.state == "confirmed"
 
 
@@ -263,7 +263,7 @@ async def test_list_meeting_agenda_items_text_limit_overrides_the_server_default
     """list_meeting_agenda_items' text_limit is a per-call override,
     not just the constructor-bound server default."""
     try:
-        meeting_result = await client.create_meeting(
+        meeting_result = await client.meeting.create(
             project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
         )
     except NotFoundError:
@@ -274,7 +274,7 @@ async def test_list_meeting_agenda_items_text_limit_overrides_the_server_default
 
     long_notes = "x" * 500
     try:
-        create_result = await client.create_meeting_agenda_item(
+        create_result = await client.meeting_agenda_item.create(
             meeting_id=meeting_id, title=f"[integration-test] {uuid.uuid4().hex[:8]}", notes=long_notes, confirm=True
         )
     except NotFoundError:
@@ -283,23 +283,23 @@ async def test_list_meeting_agenda_items_text_limit_overrides_the_server_default
     agenda_item_id = create_result.agenda_item_id
     assert agenda_item_id is not None
 
-    limited = await client.list_meeting_agenda_items(meeting_id, text_limit=10)
+    limited = await client.meeting_agenda_item.list_for_meeting(meeting_id, text_limit=10)
     item = next(i for i in limited.results if i.id == agenda_item_id)
     assert item.notes_truncated is True
     assert item.notes_length == 500
 
-    default = await client.list_meeting_agenda_items(meeting_id)
+    default = await client.meeting_agenda_item.list_for_meeting(meeting_id)
     item_default = next(i for i in default.results if i.id == agenda_item_id)
     assert item_default.notes_truncated is False
 
-    await client.delete_meeting_agenda_item(agenda_item_id=agenda_item_id, confirm=True)
+    await client.meeting_agenda_item.delete(agenda_item_id=agenda_item_id, confirm=True)
 
 
 async def test_meeting_agenda_item_links_to_work_package(
     client: OpenProjectClient, test_project: str, meeting_ids: list[int], wp_ids: list[int]
 ) -> None:
     try:
-        meeting_result = await client.create_meeting(
+        meeting_result = await client.meeting.create(
             project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
         )
     except NotFoundError:
@@ -308,7 +308,7 @@ async def test_meeting_agenda_item_links_to_work_package(
     meeting_id = meeting_result.meeting_id
     meeting_ids.append(meeting_id)
 
-    wp_result = await client.create_work_package(
+    wp_result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"[integration-test] meeting agenda item wp {uuid.uuid4().hex[:8]}",
@@ -319,7 +319,7 @@ async def test_meeting_agenda_item_links_to_work_package(
     wp_ids.append(work_package_id)
 
     try:
-        create_result = await client.create_meeting_agenda_item(
+        create_result = await client.meeting_agenda_item.create(
             meeting_id=meeting_id,
             title="[integration-test] linked agenda item",
             work_package_id=work_package_id,
@@ -330,11 +330,11 @@ async def test_meeting_agenda_item_links_to_work_package(
     assert create_result.ready, create_result.validation_errors
     agenda_item_id = create_result.agenda_item_id
 
-    item = await client.get_meeting_agenda_item(agenda_item_id)
+    item = await client.meeting_agenda_item.get(agenda_item_id)
     assert item.work_package_id == work_package_id
 
     try:
-        listed = await client.list_work_package_meeting_agenda_items(work_package_id)
+        listed = await client.meeting_agenda_item.list_for_work_package(work_package_id)
     except NotFoundError:
         pytest.skip("work_packages/{id}/meeting_agenda_items endpoint not available (requires OpenProject 17.7+)")
     assert any(i.id == agenda_item_id for i in listed.results)
@@ -352,7 +352,7 @@ async def test_create_update_delete_meeting_agenda_item_denied_outside_write_all
     below, not the denied_client attempt above it (same reasoning as
     test_create_update_delete_meeting_outcome_denied_outside_write_allowlist)."""
     try:
-        meeting_result = await client.create_meeting(
+        meeting_result = await client.meeting.create(
             project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
         )
     except NotFoundError:
@@ -362,12 +362,12 @@ async def test_create_update_delete_meeting_agenda_item_denied_outside_write_all
     meeting_ids.append(meeting_id)
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.create_meeting_agenda_item(
+        await denied_client.meeting_agenda_item.create(
             meeting_id=meeting_id, title="[integration-test] denied", confirm=True
         )
 
     try:
-        existing = await client.create_meeting_agenda_item(
+        existing = await client.meeting_agenda_item.create(
             meeting_id=meeting_id, title="[integration-test] agenda item", confirm=True
         )
     except NotFoundError:
@@ -376,12 +376,12 @@ async def test_create_update_delete_meeting_agenda_item_denied_outside_write_all
     agenda_item_id = existing.agenda_item_id
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.update_meeting_agenda_item(
+        await denied_client.meeting_agenda_item.update(
             agenda_item_id=agenda_item_id, title="denied update", confirm=True
         )
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.delete_meeting_agenda_item(agenda_item_id=agenda_item_id, confirm=True)
+        await denied_client.meeting_agenda_item.delete(agenda_item_id=agenda_item_id, confirm=True)
 
 
 # --- Meeting Outcomes (17.6+) ------------------------------------------
@@ -391,7 +391,7 @@ async def test_create_get_update_delete_meeting_outcome(
     client: OpenProjectClient, test_project: str, meeting_ids: list[int]
 ) -> None:
     try:
-        meeting_result = await client.create_meeting(
+        meeting_result = await client.meeting.create(
             project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
         )
     except NotFoundError:
@@ -401,7 +401,7 @@ async def test_create_get_update_delete_meeting_outcome(
     meeting_ids.append(meeting_id)
 
     try:
-        agenda_result = await client.create_meeting_agenda_item(
+        agenda_result = await client.meeting_agenda_item.create(
             meeting_id=meeting_id, title="[integration-test] agenda item for outcome", confirm=True
         )
     except NotFoundError:
@@ -415,11 +415,11 @@ async def test_create_get_update_delete_meeting_outcome(
     # state: :in_progress) -- a freshly created meeting defaults to "open"
     # and outcome writes are rejected with "This outcome is not editable
     # anymore." until the meeting is moved to in_progress.
-    state_result = await client.update_meeting(meeting_id=meeting_id, state="in_progress", confirm=True)
+    state_result = await client.meeting.update(meeting_id=meeting_id, state="in_progress", confirm=True)
     assert state_result.ready, state_result.validation_errors
 
     try:
-        create_result = await client.create_meeting_outcome(
+        create_result = await client.meeting_outcome.create(
             agenda_item_id=agenda_item_id, kind="information", notes="integration test note", confirm=True
         )
     except NotFoundError:
@@ -428,20 +428,20 @@ async def test_create_get_update_delete_meeting_outcome(
     outcome_id = create_result.outcome_id
     assert outcome_id is not None
 
-    outcome = await client.get_meeting_outcome(outcome_id)
+    outcome = await client.meeting_outcome.get(outcome_id)
     assert outcome.id == outcome_id
     assert outcome.meeting_agenda_item_id == agenda_item_id
 
-    listed = await client.list_meeting_outcomes(agenda_item_id)
+    listed = await client.meeting_outcome.list_for_agenda_item(agenda_item_id)
     assert any(o.id == outcome_id for o in listed.results)
 
-    update_result = await client.update_meeting_outcome(outcome_id=outcome_id, kind="decision", confirm=True)
+    update_result = await client.meeting_outcome.update(outcome_id=outcome_id, kind="decision", confirm=True)
     assert update_result.ready, update_result.validation_errors
 
-    updated = await client.get_meeting_outcome(outcome_id)
+    updated = await client.meeting_outcome.get(outcome_id)
     assert updated.kind == "decision"
 
-    delete_result = await client.delete_meeting_outcome(outcome_id=outcome_id, confirm=True)
+    delete_result = await client.meeting_outcome.delete(outcome_id=outcome_id, confirm=True)
     assert delete_result.ready and delete_result.state == "confirmed"
 
 
@@ -451,7 +451,7 @@ async def test_list_meeting_outcomes_text_limit_overrides_the_server_default(
     """list_meeting_outcomes' text_limit is a per-call override, not
     just the constructor-bound server default."""
     try:
-        meeting_result = await client.create_meeting(
+        meeting_result = await client.meeting.create(
             project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
         )
     except NotFoundError:
@@ -461,7 +461,7 @@ async def test_list_meeting_outcomes_text_limit_overrides_the_server_default(
     meeting_ids.append(meeting_id)
 
     try:
-        agenda_result = await client.create_meeting_agenda_item(
+        agenda_result = await client.meeting_agenda_item.create(
             meeting_id=meeting_id, title="[integration-test] agenda item for outcome text_limit", confirm=True
         )
     except NotFoundError:
@@ -469,12 +469,12 @@ async def test_list_meeting_outcomes_text_limit_overrides_the_server_default(
     assert agenda_result.ready, agenda_result.validation_errors
     agenda_item_id = agenda_result.agenda_item_id
 
-    state_result = await client.update_meeting(meeting_id=meeting_id, state="in_progress", confirm=True)
+    state_result = await client.meeting.update(meeting_id=meeting_id, state="in_progress", confirm=True)
     assert state_result.ready, state_result.validation_errors
 
     long_notes = "x" * 500
     try:
-        create_result = await client.create_meeting_outcome(
+        create_result = await client.meeting_outcome.create(
             agenda_item_id=agenda_item_id, kind="information", notes=long_notes, confirm=True
         )
     except NotFoundError:
@@ -483,16 +483,16 @@ async def test_list_meeting_outcomes_text_limit_overrides_the_server_default(
     outcome_id = create_result.outcome_id
     assert outcome_id is not None
 
-    limited = await client.list_meeting_outcomes(agenda_item_id, text_limit=10)
+    limited = await client.meeting_outcome.list_for_agenda_item(agenda_item_id, text_limit=10)
     outcome = next(o for o in limited.results if o.id == outcome_id)
     assert outcome.notes_truncated is True
     assert outcome.notes_length == 500
 
-    default = await client.list_meeting_outcomes(agenda_item_id)
+    default = await client.meeting_outcome.list_for_agenda_item(agenda_item_id)
     outcome_default = next(o for o in default.results if o.id == outcome_id)
     assert outcome_default.notes_truncated is False
 
-    await client.delete_meeting_outcome(outcome_id=outcome_id, confirm=True)
+    await client.meeting_outcome.delete(outcome_id=outcome_id, confirm=True)
 
 
 async def test_create_update_delete_meeting_outcome_denied_outside_write_allowlist(
@@ -509,7 +509,7 @@ async def test_create_update_delete_meeting_outcome_denied_outside_write_allowli
     client's own create_meeting_outcome call below, not the denied_client
     attempt above the latter."""
     try:
-        meeting_result = await client.create_meeting(
+        meeting_result = await client.meeting.create(
             project=test_project, title=f"[integration-test] {uuid.uuid4().hex[:8]}", confirm=True
         )
     except NotFoundError:
@@ -519,7 +519,7 @@ async def test_create_update_delete_meeting_outcome_denied_outside_write_allowli
     meeting_ids.append(meeting_id)
 
     try:
-        agenda_result = await client.create_meeting_agenda_item(
+        agenda_result = await client.meeting_agenda_item.create(
             meeting_id=meeting_id, title="[integration-test] agenda item for outcome denial", confirm=True
         )
     except NotFoundError:
@@ -530,14 +530,14 @@ async def test_create_update_delete_meeting_outcome_denied_outside_write_allowli
     # See test_create_get_update_delete_meeting_outcome's own comment: a
     # freshly created meeting defaults to state "open", but
     # MeetingOutcome#editable? requires "in_progress".
-    state_result = await client.update_meeting(meeting_id=meeting_id, state="in_progress", confirm=True)
+    state_result = await client.meeting.update(meeting_id=meeting_id, state="in_progress", confirm=True)
     assert state_result.ready, state_result.validation_errors
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.create_meeting_outcome(agenda_item_id=agenda_item_id, kind="information", confirm=True)
+        await denied_client.meeting_outcome.create(agenda_item_id=agenda_item_id, kind="information", confirm=True)
 
     try:
-        existing = await client.create_meeting_outcome(
+        existing = await client.meeting_outcome.create(
             agenda_item_id=agenda_item_id, kind="information", notes="integration test note", confirm=True
         )
     except NotFoundError:
@@ -546,10 +546,10 @@ async def test_create_update_delete_meeting_outcome_denied_outside_write_allowli
     outcome_id = existing.outcome_id
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.update_meeting_outcome(outcome_id=outcome_id, kind="decision", confirm=True)
+        await denied_client.meeting_outcome.update(outcome_id=outcome_id, kind="decision", confirm=True)
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.delete_meeting_outcome(outcome_id=outcome_id, confirm=True)
+        await denied_client.meeting_outcome.delete(outcome_id=outcome_id, confirm=True)
 
 
 # --- Recurring Meetings + Occurrences ------------------------------------
@@ -560,7 +560,7 @@ async def test_create_get_update_delete_recurring_meeting(
 ) -> None:
     title = f"[integration-test] recurring {uuid.uuid4().hex[:8]}"
     try:
-        result = await client.create_recurring_meeting(
+        result = await client.recurring_meeting.create(
             project=test_project,
             title=title,
             frequency="weekly",
@@ -574,19 +574,19 @@ async def test_create_get_update_delete_recurring_meeting(
     assert recurring_meeting_id is not None
     recurring_meeting_ids.append(recurring_meeting_id)
 
-    recurring = await client.get_recurring_meeting(recurring_meeting_id)
+    recurring = await client.recurring_meeting.get(recurring_meeting_id)
     assert recurring.id == recurring_meeting_id
     assert recurring.title == title
 
-    update_result = await client.update_recurring_meeting(
+    update_result = await client.recurring_meeting.update(
         recurring_meeting_id=recurring_meeting_id, title=f"{title} updated", confirm=True
     )
     assert update_result.ready, update_result.validation_errors
 
-    updated = await client.get_recurring_meeting(recurring_meeting_id)
+    updated = await client.recurring_meeting.get(recurring_meeting_id)
     assert updated.title == f"{title} updated"
 
-    delete_result = await client.delete_recurring_meeting(recurring_meeting_id=recurring_meeting_id, confirm=True)
+    delete_result = await client.recurring_meeting.delete(recurring_meeting_id=recurring_meeting_id, confirm=True)
     assert delete_result.ready and delete_result.state == "confirmed"
     recurring_meeting_ids.remove(recurring_meeting_id)
 
@@ -596,7 +596,7 @@ async def test_list_recurring_meetings(
 ) -> None:
     title = f"[integration-test] list {uuid.uuid4().hex[:8]}"
     try:
-        result = await client.create_recurring_meeting(
+        result = await client.recurring_meeting.create(
             project=test_project,
             title=title,
             frequency="weekly",
@@ -609,7 +609,7 @@ async def test_list_recurring_meetings(
     recurring_meeting_id = result.recurring_meeting_id
     recurring_meeting_ids.append(recurring_meeting_id)
 
-    listed = await client.list_recurring_meetings(project=test_project)
+    listed = await client.recurring_meeting.list_all(project=test_project)
     assert listed.count > 0
     assert any(rm.id == recurring_meeting_id and rm.title == title for rm in listed.results)
 
@@ -628,7 +628,7 @@ async def test_create_update_delete_recurring_meeting_and_init_occurrence_denied
     # available, or OpenProject < 17.4") is on the unrestricted client's own
     # call below.
     with pytest.raises(PermissionDeniedError):
-        await denied_client.create_recurring_meeting(
+        await denied_client.recurring_meeting.create(
             project=test_project,
             title=f"[integration-test] denied {uuid.uuid4().hex[:8]}",
             frequency="weekly",
@@ -637,7 +637,7 @@ async def test_create_update_delete_recurring_meeting_and_init_occurrence_denied
         )
 
     try:
-        existing = await client.create_recurring_meeting(
+        existing = await client.recurring_meeting.create(
             project=test_project,
             title=f"[integration-test] {uuid.uuid4().hex[:8]}",
             frequency="weekly",
@@ -651,22 +651,22 @@ async def test_create_update_delete_recurring_meeting_and_init_occurrence_denied
     recurring_meeting_ids.append(recurring_meeting_id)
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.update_recurring_meeting(
+        await denied_client.recurring_meeting.update(
             recurring_meeting_id=recurring_meeting_id, title="denied update", confirm=True
         )
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.delete_recurring_meeting(recurring_meeting_id=recurring_meeting_id, confirm=True)
+        await denied_client.recurring_meeting.delete(recurring_meeting_id=recurring_meeting_id, confirm=True)
 
     # Occurrence denial checked last, after delete's own denial is already
     # confirmed -- an empty upcoming-occurrence result skips only this final
     # portion, not the CRUD denial assertions already run above.
-    upcoming = await client.list_recurring_meeting_occurrences(recurring_meeting_id, filter="upcoming", limit=1)
+    upcoming = await client.recurring_meeting.list_occurrences(recurring_meeting_id, filter="upcoming", limit=1)
     if not upcoming.results:
         pytest.skip("No upcoming occurrence available to exercise init_recurring_meeting_occurrence's denial path")
     target = upcoming.results[0]
     with pytest.raises(PermissionDeniedError):
-        await denied_client.init_recurring_meeting_occurrence(
+        await denied_client.recurring_meeting.init_occurrence(
             recurring_meeting_id=recurring_meeting_id, start_time=target.start_time, confirm=True
         )
 
@@ -675,7 +675,7 @@ async def test_list_recurring_meeting_occurrences_all_four_filters(
     client: OpenProjectClient, test_project: str, recurring_meeting_ids: list[int]
 ) -> None:
     try:
-        result = await client.create_recurring_meeting(
+        result = await client.recurring_meeting.create(
             project=test_project,
             title=f"[integration-test] occurrences {uuid.uuid4().hex[:8]}",
             frequency="weekly",
@@ -689,7 +689,7 @@ async def test_list_recurring_meeting_occurrences_all_four_filters(
     recurring_meeting_ids.append(recurring_meeting_id)
 
     for filter_name in ("upcoming", "past", "cancelled", "open"):
-        listed = await client.list_recurring_meeting_occurrences(recurring_meeting_id, filter=filter_name)
+        listed = await client.recurring_meeting.list_occurrences(recurring_meeting_id, filter=filter_name)
         assert listed.filter == filter_name
         assert listed.count >= 0
 
@@ -708,7 +708,7 @@ async def test_recurring_meeting_occurrence_init_and_cancel(
     permanent side effect of calling cancel on a virtual occurrence, not a
     test-cleanup gap."""
     try:
-        result = await client.create_recurring_meeting(
+        result = await client.recurring_meeting.create(
             project=test_project,
             title=f"[integration-test] init-cancel {uuid.uuid4().hex[:8]}",
             frequency="weekly",
@@ -721,12 +721,12 @@ async def test_recurring_meeting_occurrence_init_and_cancel(
     recurring_meeting_id = result.recurring_meeting_id
     recurring_meeting_ids.append(recurring_meeting_id)
 
-    upcoming = await client.list_recurring_meeting_occurrences(recurring_meeting_id, filter="upcoming", limit=5)
+    upcoming = await client.recurring_meeting.list_occurrences(recurring_meeting_id, filter="upcoming", limit=5)
     if len(upcoming.results) < 2:
         pytest.skip("fewer than 2 upcoming occurrences computed by the server for this recurrence rule")
 
     init_target = upcoming.results[0]
-    init_result = await client.init_recurring_meeting_occurrence(
+    init_result = await client.recurring_meeting.init_occurrence(
         recurring_meeting_id=recurring_meeting_id, start_time=init_target.start_time, confirm=True
     )
     assert init_result.ready and init_result.state == "confirmed", init_result.validation_errors
@@ -735,12 +735,12 @@ async def test_recurring_meeting_occurrence_init_and_cancel(
     meeting_ids.append(materialized_meeting_id)
 
     cancel_target = upcoming.results[1]
-    cancel_result = await client.cancel_recurring_meeting_occurrence(
+    cancel_result = await client.recurring_meeting.cancel_occurrence(
         recurring_meeting_id=recurring_meeting_id, start_time=cancel_target.start_time, confirm=True
     )
     assert cancel_result.ready and cancel_result.state == "confirmed", cancel_result.validation_errors
 
-    cancelled = await client.list_recurring_meeting_occurrences(recurring_meeting_id, filter="cancelled")
+    cancelled = await client.recurring_meeting.list_occurrences(recurring_meeting_id, filter="cancelled")
     assert any(o.start_time == cancel_target.start_time for o in cancelled.results)
 
 
@@ -754,7 +754,7 @@ async def test_cancel_already_materialized_occurrence_fails(
     not cancelled" case -- surfaces as InvalidInputError with no
     special-casing needed client-side."""
     try:
-        result = await client.create_recurring_meeting(
+        result = await client.recurring_meeting.create(
             project=test_project,
             title=f"[integration-test] already-materialized {uuid.uuid4().hex[:8]}",
             frequency="weekly",
@@ -767,18 +767,18 @@ async def test_cancel_already_materialized_occurrence_fails(
     recurring_meeting_id = result.recurring_meeting_id
     recurring_meeting_ids.append(recurring_meeting_id)
 
-    upcoming = await client.list_recurring_meeting_occurrences(recurring_meeting_id, filter="upcoming", limit=1)
+    upcoming = await client.recurring_meeting.list_occurrences(recurring_meeting_id, filter="upcoming", limit=1)
     if not upcoming.results:
         pytest.skip("no upcoming occurrence computed by the server for this recurrence rule")
     target = upcoming.results[0]
 
-    init_result = await client.init_recurring_meeting_occurrence(
+    init_result = await client.recurring_meeting.init_occurrence(
         recurring_meeting_id=recurring_meeting_id, start_time=target.start_time, confirm=True
     )
     assert init_result.ready, init_result.validation_errors
     meeting_ids.append(init_result.result.id)
 
     with pytest.raises(InvalidInputError):
-        await client.cancel_recurring_meeting_occurrence(
+        await client.recurring_meeting.cancel_occurrence(
             recurring_meeting_id=recurring_meeting_id, start_time=target.start_time, confirm=True
         )

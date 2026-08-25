@@ -35,10 +35,10 @@ async def test_delete_file_link_denied_outside_allowlist(
     # "any" file link here would race with that test depending on execution
     # order (this test only denies, never deletes, but a plain "first link
     # found" could still resolve to an id the other test already removed).
-    work_packages = await client.list_work_packages(project=test_project, limit=50)
+    work_packages = await client.work_package.list(project=test_project, limit=50)
     file_link_id = None
     for wp in work_packages.results:
-        links = await client.list_work_package_file_links(wp.id)
+        links = await client.file_link.list_for_work_package(wp.id)
         match = next((link for link in links.results if link.title == "seed-file-link-persistent.txt"), None)
         if match is not None:
             file_link_id = match.id
@@ -47,13 +47,13 @@ async def test_delete_file_link_denied_outside_allowlist(
         pytest.skip("no 'seed-file-link-persistent.txt' file link in test_project to verify denial against")
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.delete_file_link(file_link_id, confirm=True)
+        await denied_client.file_link.delete(file_link_id, confirm=True)
 
 
 async def test_toggle_emoji_reaction_denied_outside_allowlist(
     client: OpenProjectClient, denied_client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    wp_result = await client.create_work_package(
+    wp_result = await client.work_package.create(
         project=test_project, type="Task", subject="Integration test WP for emoji denial", confirm=True
     )
     assert wp_result.ready, wp_result.validation_errors
@@ -62,9 +62,9 @@ async def test_toggle_emoji_reaction_denied_outside_allowlist(
     wp_ids.append(wp_id)
 
     # Work package creation always generates at least one activity.
-    activities = await client.get_work_package_activities(wp_id)
+    activities = await client.activity.list_for_work_package(wp_id)
     assert activities.count > 0
     activity_id = activities.results[0].id
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.toggle_activity_emoji_reaction(activity_id, "thumbs_up")
+        await denied_client.emoji_reaction.toggle(activity_id, "thumbs_up")

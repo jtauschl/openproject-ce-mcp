@@ -19,14 +19,14 @@ pytestmark = pytest.mark.integration
 
 
 async def test_list_actions(client: OpenProjectClient) -> None:
-    result = await client.list_actions()
+    result = await client.action_capability.list_actions()
     assert result is not None
     if result.count > 0:
         assert result.results[0].id
 
 
 async def test_list_capabilities_for_project(client: OpenProjectClient, test_project: str) -> None:
-    result = await client.list_capabilities(project=test_project)
+    result = await client.action_capability.list_capabilities(project=test_project)
     assert result is not None
     if result.count > 0:
         assert result.results[0].id
@@ -42,7 +42,7 @@ async def test_list_capabilities_by_id_denies_record_outside_read_allowlist(
     project first and thus already enforces the allowlist. A caller with no
     read access to test_project could still read any of its capability
     records by id."""
-    listed = await client.list_capabilities(project=test_project)
+    listed = await client.action_capability.list_capabilities(project=test_project)
     if listed.count == 0:
         pytest.skip("No capability records in test project")
     capability_id = listed.results[0].id
@@ -51,5 +51,5 @@ async def test_list_capabilities_by_id_denies_record_outside_read_allowlist(
     denied_client = OpenProjectClient(denied_settings)
     await denied_client.initialize()
 
-    denied_result = await denied_client.list_capabilities(capability_id=capability_id)
+    denied_result = await denied_client.action_capability.list_capabilities(capability_id=capability_id)
     assert denied_result.count == 0

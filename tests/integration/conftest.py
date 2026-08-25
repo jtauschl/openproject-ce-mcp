@@ -262,7 +262,7 @@ async def wp_ids(client: OpenProjectClient):
     yield created
     for wp_id in created:
         try:
-            await client.delete_work_package(work_package_id=wp_id, confirm=True)
+            await client.work_package.delete(work_package_id=wp_id, confirm=True)
         except Exception:
             pass
 
@@ -273,7 +273,7 @@ async def version_ids(client: OpenProjectClient):
     yield created
     for version_id in created:
         try:
-            await client.delete_version(version_id=version_id, confirm=True)
+            await client.version.delete(version_id=version_id, confirm=True)
         except Exception:
             pass
 
@@ -284,7 +284,7 @@ async def news_ids(client: OpenProjectClient):
     yield created
     for news_id in created:
         try:
-            await client.delete_news(news_id=news_id, confirm=True)
+            await client.news.delete(news_id=news_id, confirm=True)
         except Exception:
             pass
 
@@ -295,7 +295,7 @@ async def time_entry_ids(client: OpenProjectClient):
     yield created
     for te_id in created:
         try:
-            await client.delete_time_entry(time_entry_id=te_id, confirm=True)
+            await client.time_entry.delete(time_entry_id=te_id, confirm=True)
         except Exception:
             pass
 
@@ -306,7 +306,7 @@ async def grid_ids(client: OpenProjectClient):
     yield created
     for grid_id in created:
         try:
-            await client.delete_grid(grid_id=grid_id, confirm=True)
+            await client.grid.delete(grid_id=grid_id, confirm=True)
         except Exception:
             pass
 
@@ -317,7 +317,7 @@ async def board_ids(client: OpenProjectClient):
     yield created
     for board_id in created:
         try:
-            await client.delete_board(board_id=board_id, confirm=True)
+            await client.board.delete(board_id=board_id, confirm=True)
         except Exception:
             pass
 
@@ -337,7 +337,7 @@ async def meeting_ids(client: OpenProjectClient):
     yield created
     for meeting_id in created:
         try:
-            await client.delete_meeting(meeting_id=meeting_id, confirm=True)
+            await client.meeting.delete(meeting_id=meeting_id, confirm=True)
         except Exception:
             pass
 
@@ -350,7 +350,7 @@ async def recurring_meeting_ids(client: OpenProjectClient):
     yield created
     for recurring_meeting_id in created:
         try:
-            await client.delete_recurring_meeting(recurring_meeting_id=recurring_meeting_id, confirm=True)
+            await client.recurring_meeting.delete(recurring_meeting_id=recurring_meeting_id, confirm=True)
         except Exception:
             pass
 
@@ -368,7 +368,7 @@ async def reminder_ids(client: OpenProjectClient):
     yield created
     for reminder_id in created:
         try:
-            await client.delete_reminder(reminder_id=reminder_id, confirm=True)
+            await client.reminder.delete(reminder_id=reminder_id, confirm=True)
         except Exception:
             pass
 
@@ -384,7 +384,7 @@ async def group_ids(client: OpenProjectClient):
     yield created
     for group_id in created:
         try:
-            await client.delete_group(group_id=group_id, confirm=True)
+            await client.group.delete(group_id=group_id, confirm=True)
         except Exception:
             pass
 
@@ -400,7 +400,7 @@ async def storage_ids(client: OpenProjectClient):
     yield created
     for storage_id in created:
         try:
-            await client.delete_storage(storage_id, confirm=True)
+            await client.storage.delete(storage_id, confirm=True)
         except Exception:
             pass
 
@@ -416,7 +416,7 @@ async def user_ids(client: OpenProjectClient):
     yield created
     for user_id in created:
         try:
-            await client.delete_user(user_id, confirm=True)
+            await client.user.delete(user_id, confirm=True)
         except Exception:
             pass
 
@@ -447,7 +447,7 @@ async def second_user_client(client: OpenProjectClient, user_ids: list[int]):
 
     suffix = uuid.uuid4().hex[:8]
     login = f"integration-test-{suffix}"
-    create_result = await client.create_user(
+    create_result = await client.user.create(
         login=login,
         email=f"{login}@example.invalid",
         firstname="Integration",
@@ -487,7 +487,7 @@ async def user_non_working_time_ids(client: OpenProjectClient):
     yield created
     for user_ref, non_working_time_id in created:
         try:
-            await client.delete_user_non_working_time(user_ref, non_working_time_id, confirm=True)
+            await client.user_non_working_time.delete(user_ref, non_working_time_id, confirm=True)
         except Exception:
             pass
 
@@ -504,7 +504,7 @@ async def user_working_hours_ids(client: OpenProjectClient):
     yield created
     for user_ref, working_hours_id in created:
         try:
-            await client.delete_user_working_hours(user_ref, working_hours_id, confirm=True)
+            await client.user_working_hours.delete(user_ref, working_hours_id, confirm=True)
         except Exception:
             pass
 
@@ -619,6 +619,6 @@ async def project_refs(client: OpenProjectClient):
     yield created
     for project_ref in created:
         try:
-            await unrestricted_client.delete_project(project_ref=project_ref, confirm=True)
+            await unrestricted_client.project.delete(project_ref=project_ref, confirm=True)
         except Exception:
             pass

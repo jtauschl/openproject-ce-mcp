@@ -105,7 +105,7 @@ async def test_create_work_package_attachment_refuses_when_root_unset(tmp_path) 
     some_file = tmp_path / "note.txt"
     some_file.write_text("hello")
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ATTACHMENT_ROOT"):
-        await client.create_work_package_attachment(work_package_id=42, file_path=str(some_file), confirm=True)
+        await client.attachment.create(work_package_id=42, file_path=str(some_file), confirm=True)
     await client.aclose()
 
 
@@ -141,7 +141,7 @@ async def test_delete_file_link_allows_write_project() -> None:
     settings = _base_settings(enable_work_package_write=True, write_projects=("demo",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.delete_file_link(5, confirm=True)
+    result = await client.file_link.delete(5, confirm=True)
 
     assert deleted.get("done") is True
     assert result.state == "confirmed"
@@ -170,7 +170,7 @@ async def test_list_work_package_file_links_denies_anchor_outside_read_allowlist
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError):
-        await client.list_work_package_file_links(9)
+        await client.file_link.list_for_work_package(9)
 
     await client.aclose()
 
@@ -195,7 +195,7 @@ async def test_list_work_package_file_links_allows_anchor_inside_read_allowlist(
     settings = _base_settings(read_projects=("allowed",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_work_package_file_links(9)
+    result = await client.file_link.list_for_work_package(9)
 
     assert result.count == 1
 
@@ -221,6 +221,6 @@ async def test_delete_file_link_denies_when_container_unresolvable_even_under_wi
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError):
-        await client.delete_file_link(5, confirm=True)
+        await client.file_link.delete(5, confirm=True)
 
     await client.aclose()

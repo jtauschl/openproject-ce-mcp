@@ -32,7 +32,7 @@ pytestmark = pytest.mark.integration
 
 
 async def test_list_notifications(client: OpenProjectClient) -> None:
-    result = await client.list_notifications()
+    result = await client.notification.list_all()
     assert result is not None
     assert result.count >= 0
     assert result.total >= 0
@@ -41,7 +41,7 @@ async def test_list_notifications(client: OpenProjectClient) -> None:
 
 
 async def test_list_notifications_unread_only(client: OpenProjectClient) -> None:
-    result = await client.list_notifications(unread_only=True)
+    result = await client.notification.list_all(unread_only=True)
     assert result is not None
     assert result.count >= 0
     # Proves the actual filter contract, not just that a call succeeded --
@@ -58,7 +58,7 @@ async def test_list_notifications_scoped_by_read_allowlist(client: OpenProjectCl
     denied_client = OpenProjectClient(denied_settings)
     await denied_client.initialize()
 
-    result = await denied_client.list_notifications()
+    result = await denied_client.notification.list_all()
     assert result.count == 0
 
 
@@ -67,14 +67,14 @@ async def test_mark_notification_read_preview_does_not_write(client: OpenProject
     docstring) -- confirm the preview path is side-effect-free and reports
     requires_confirmation, without ever calling confirm=true against a real
     notification id."""
-    preview = await client.mark_notification_read(999999999, confirm=False)
+    preview = await client.notification.mark_read(999999999, confirm=False)
     assert preview.state == "preview"
 
 
 async def test_mark_all_notifications_read_preview_does_not_write(client: OpenProjectClient) -> None:
     """Deliberately never confirmed -- see module docstring. Only the
     preview/dry-run path is safe to exercise against a real account."""
-    preview = await client.mark_all_notifications_read(confirm=False)
+    preview = await client.notification.mark_all_read(confirm=False)
     assert preview.state == "preview"
 
 
@@ -84,7 +84,7 @@ async def test_mark_notification_read_denied_when_personal_write_disabled(client
     await disabled_client.initialize()
 
     with pytest.raises(PermissionDeniedError):
-        await disabled_client.mark_notification_read(999999999, confirm=True)
+        await disabled_client.notification.mark_read(999999999, confirm=True)
 
 
 async def test_mark_notification_read_confirmed_roundtrip(
@@ -99,13 +99,13 @@ async def test_mark_notification_read_confirmed_roundtrip(
     user is required to trigger a genuine notification at all."""
     second_user_id, second_client = second_user_client
 
-    me = await client.get_current_user()
+    me = await client.current_user.get_current_user()
 
-    roles = await client.list_roles()
+    roles = await client.role.list_roles()
     role_name = next((r.name for r in roles.results if r.name == "Member"), None)
     if role_name is None:
         pytest.skip("instance has no 'Member' role configured")
-    membership = await client.create_membership(
+    membership = await client.membership.create(
         project=test_project, principal=str(second_user_id), roles=[role_name], confirm=True
     )
     assert membership.ready, membership.validation_errors
@@ -120,7 +120,7 @@ async def test_mark_notification_read_confirmed_roundtrip(
     # numeric project id back to test_project's identifier.
     await second_client.initialize()
 
-    wp_result = await client.create_work_package(
+    wp_result = await client.work_package.create(
         project=test_project, type="Task", subject="Integration test WP for notification roundtrip", confirm=True
     )
     assert wp_result.ready, wp_result.validation_errors
@@ -128,7 +128,7 @@ async def test_mark_notification_read_confirmed_roundtrip(
     assert wp_id is not None
     wp_ids.append(wp_id)
 
-    watch_result = await client.add_work_package_watcher(wp_id, me.id, confirm=True)
+    watch_result = await client.watcher.add(wp_id, me.id, confirm=True)
     assert watch_result.state == "confirmed"
 
     # The comment must come from a DIFFERENT user (second_client) -- OpenProject
@@ -139,7 +139,7 @@ async def test_mark_notification_read_confirmed_roundtrip(
     # notification creation entirely server-side, not just outbound email --
     # confirmed live (a notify=False comment produced zero Notification rows
     # and zero enqueued Notifications::WorkflowJob work at all).
-    comment_result = await second_client.add_work_package_comment(
+    comment_result = await second_client.work_package.add_comment(
         work_package_id=wp_id,
         comment="Comment from a different user to trigger a real notification",
         notify=True,
@@ -161,7 +161,7 @@ async def test_mark_notification_read_confirmed_roundtrip(
     # could not reproduce.
     notification_id = None
     for _ in range(20):
-        listed = await client.list_notifications(unread_only=True)
+        listed = await client.notification.list_all(unread_only=True)
         match = next((n for n in listed.results if n.work_package_id == wp_id), None)
         if match is not None:
             notification_id = match.id
@@ -170,12 +170,12 @@ async def test_mark_notification_read_confirmed_roundtrip(
     if notification_id is None:
         pytest.fail("no notification appeared for the watched work package within the wait window")
 
-    marked = await client.mark_notification_read(notification_id, confirm=True)
+    marked = await client.notification.mark_read(notification_id, confirm=True)
     assert marked.state == "confirmed"
     assert marked.notification_id == notification_id
 
     # Confirm the read actually took effect server-side, not just that the
     # write call itself reported success -- a no-op 2xx response would
     # otherwise pass this test just as well as a real state change.
-    after = await client.list_notifications(unread_only=True)
+    after = await client.notification.list_all(unread_only=True)
     assert notification_id not in {n.id for n in after.results}

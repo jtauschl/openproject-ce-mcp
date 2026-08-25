@@ -18,7 +18,7 @@ async def test_create_attachment_rejects_hidden_file_name_field(
     """Regression: create_work_package_attachment's file_name field bypassed
     the hidden-fields guard on writes (only the optional description field
     was covered)."""
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject="[integration-test] attachment hidden field",
@@ -32,7 +32,7 @@ async def test_create_attachment_rejects_hidden_file_name_field(
     await hidden_client.initialize()
 
     with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_ATTACHMENT_FIELDS"):
-        await hidden_client.create_work_package_attachment(
+        await hidden_client.attachment.create(
             work_package_id=result.work_package_id,
             file_path="/nonexistent/path/does-not-matter.txt",
             confirm=False,
@@ -55,7 +55,7 @@ async def test_list_work_package_attachments_and_delete_attachment(
     """Round-trips list_work_package_attachments (GET
     work_packages/{id}/attachments) and delete_attachment (GET+DELETE
     attachments/{id}) against a real uploaded attachment."""
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject="[integration-test] attachment list-delete test",
@@ -67,7 +67,7 @@ async def test_list_work_package_attachments_and_delete_attachment(
     rooted_client = _attachment_capable_client(client)
     await rooted_client.initialize()
 
-    created = await rooted_client.create_work_package_attachment(
+    created = await rooted_client.attachment.create(
         work_package_id=result.work_package_id,
         file_path="tests/fixtures/spec.md",
         description="[integration-test] attachment",
@@ -77,26 +77,26 @@ async def test_list_work_package_attachments_and_delete_attachment(
     attachment_id = created.attachment_id
     assert attachment_id is not None
 
-    listed = await client.list_work_package_attachments(result.work_package_id)
+    listed = await client.attachment.list_for_work_package(result.work_package_id)
     assert any(a.id == attachment_id for a in listed.results)
 
-    fetched = await client.get_attachment(attachment_id)
+    fetched = await client.attachment.get(attachment_id)
     assert fetched.id == attachment_id
 
-    preview = await client.delete_attachment(attachment_id=attachment_id)
+    preview = await client.attachment.delete(attachment_id=attachment_id)
     assert preview.state == "preview"
 
-    deleted = await client.delete_attachment(attachment_id=attachment_id, confirm=True)
+    deleted = await client.attachment.delete(attachment_id=attachment_id, confirm=True)
     assert deleted.state == "confirmed"
 
-    listed_after = await client.list_work_package_attachments(result.work_package_id)
+    listed_after = await client.attachment.list_for_work_package(result.work_package_id)
     assert not any(a.id == attachment_id for a in listed_after.results)
 
 
 async def test_delete_attachment_denied_outside_write_allowlist(
     denied_client: OpenProjectClient, client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject="[integration-test] attachment delete-denied test",
@@ -108,7 +108,7 @@ async def test_delete_attachment_denied_outside_write_allowlist(
     rooted_client = _attachment_capable_client(client)
     await rooted_client.initialize()
 
-    created = await rooted_client.create_work_package_attachment(
+    created = await rooted_client.attachment.create(
         work_package_id=result.work_package_id,
         file_path="tests/fixtures/spec.md",
         description="[integration-test] attachment denied",
@@ -119,7 +119,7 @@ async def test_delete_attachment_denied_outside_write_allowlist(
     assert attachment_id is not None
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.delete_attachment(attachment_id=attachment_id, confirm=True)
+        await denied_client.attachment.delete(attachment_id=attachment_id, confirm=True)
 
     # Clean up directly since the denied client couldn't remove it.
-    await client.delete_attachment(attachment_id=attachment_id, confirm=True)
+    await client.attachment.delete(attachment_id=attachment_id, confirm=True)

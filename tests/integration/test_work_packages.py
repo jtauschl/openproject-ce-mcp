@@ -36,7 +36,7 @@ class _FakeContext:
 
 
 async def test_list_work_packages(client: OpenProjectClient, test_project: str) -> None:
-    result = await client.list_work_packages(project=test_project)
+    result = await client.work_package.list(project=test_project)
     assert result is not None
     # docker/test/seed.rb always seeds a work package in the test project.
     assert result.count > 0
@@ -48,11 +48,11 @@ async def test_search_work_packages(client: OpenProjectClient, test_project: str
     # substring match against whatever else happens to exist -- proves the
     # search actually finds a known, specific work package.
     subject = f"[integration-test] search {uuid.uuid4().hex[:8]}"
-    created = await client.create_work_package(project=test_project, type="Task", subject=subject, confirm=True)
+    created = await client.work_package.create(project=test_project, type="Task", subject=subject, confirm=True)
     assert created.ready, created.validation_errors
     wp_ids.append(created.work_package_id)
 
-    result = await client.search_work_packages(search=subject)
+    result = await client.work_package.search(search=subject)
     assert result is not None
     assert result.count > 0
     assert any(wp.id == created.work_package_id for wp in result.results)
@@ -61,8 +61,8 @@ async def test_search_work_packages(client: OpenProjectClient, test_project: str
 async def test_list_my_open_work_packages(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
     # Creates its own WP assigned to the calling user rather than relying on
     # incidental pre-existing assignments.
-    me = await client.get_current_user()
-    created = await client.create_work_package(
+    me = await client.current_user.get_current_user()
+    created = await client.work_package.create(
         project=test_project,
         type="Task",
         subject="[integration-test] my open work packages",
@@ -72,7 +72,7 @@ async def test_list_my_open_work_packages(client: OpenProjectClient, test_projec
     assert created.ready, created.validation_errors
     wp_ids.append(created.work_package_id)
 
-    result = await client.list_my_open_work_packages()
+    result = await client.work_package.list_my_open()
     assert result is not None
     assert result.count > 0
     assert any(wp.id == created.work_package_id for wp in result.results)
@@ -82,7 +82,7 @@ async def test_create_get_update_delete_work_package(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
     # Create
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=_SUBJECT,
@@ -94,30 +94,30 @@ async def test_create_get_update_delete_work_package(
     wp_ids.append(wp_id)
 
     # Read
-    wp = await client.get_work_package(wp_id)
+    wp = await client.work_package.get(wp_id)
     assert wp.subject == _SUBJECT
     assert wp.id == wp_id
 
     # Update
-    update_result = await client.update_work_package(
+    update_result = await client.work_package.update(
         work_package_id=wp_id,
         subject=f"{_SUBJECT} updated",
         confirm=True,
     )
     assert update_result.ready, update_result.validation_errors
 
-    updated = await client.get_work_package(wp_id)
+    updated = await client.work_package.get(wp_id)
     assert "updated" in updated.subject
 
     # Delete (cleanup fixture also deletes, but we verify delete works)
-    delete_result = await client.delete_work_package(work_package_id=wp_id, confirm=True)
+    delete_result = await client.work_package.delete(work_package_id=wp_id, confirm=True)
     assert delete_result.ready and delete_result.state == "confirmed"
     wp_ids.remove(wp_id)  # already deleted, don't try again in fixture
 
 
 async def test_create_subtask(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
     # Create parent
-    parent = await client.create_work_package(
+    parent = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"{_SUBJECT} parent",
@@ -127,7 +127,7 @@ async def test_create_subtask(client: OpenProjectClient, test_project: str, wp_i
     wp_ids.append(parent.work_package_id)
 
     # Create subtask
-    child = await client.create_subtask(
+    child = await client.work_package.create_subtask(
         parent_work_package_id=parent.work_package_id,
         type="Task",
         subject=f"{_SUBJECT} child",
@@ -136,7 +136,7 @@ async def test_create_subtask(client: OpenProjectClient, test_project: str, wp_i
     assert child.ready
     wp_ids.append(child.work_package_id)
 
-    wp = await client.get_work_package(child.work_package_id)
+    wp = await client.work_package.get(child.work_package_id)
     assert wp.subject
 
 
@@ -151,7 +151,7 @@ async def test_create_work_package_rejects_assignee_supplied_by_name(
     contract holds end-to-end against a live instance, not just against a
     mocked resolver."""
     with pytest.raises(InvalidInputError, match="assignee must be a positive integer user id or 'me'"):
-        await client.create_work_package(
+        await client.work_package.create(
             project=test_project,
             type="Task",
             subject=f"{_SUBJECT} assignee-by-name",
@@ -166,7 +166,7 @@ async def test_create_and_update_work_package_accept_assignee_me(
     """ "me" must still resolve correctly end-to-end (the one non-numeric value
     AssigneeRefResolver does accept) -- covers both create() and update()'s
     identical resolution path against a live instance."""
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"{_SUBJECT} assignee-me",
@@ -176,7 +176,7 @@ async def test_create_and_update_work_package_accept_assignee_me(
     assert result.ready, result.validation_errors
     wp_ids.append(result.work_package_id)
 
-    update_result = await client.update_work_package(
+    update_result = await client.work_package.update(
         work_package_id=result.work_package_id,
         assignee="me",
         confirm=True,
@@ -200,11 +200,11 @@ async def test_create_and_update_work_package_accept_status_and_priority_by_name
     workflow default status on create; status is settable on update_work_package
     only) -- priority-by-name is exercised on create, status-by-name on update,
     covering _resolve_priority_id and _resolve_status_id respectively."""
-    priorities = await client.list_priorities()
+    priorities = await client.status_priority_type.list_priorities()
     assert priorities.count > 0
     priority_name = priorities.results[0].name
 
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"{_SUBJECT} status-priority-by-name",
@@ -214,18 +214,18 @@ async def test_create_and_update_work_package_accept_status_and_priority_by_name
     assert result.ready, result.validation_errors
     wp_ids.append(result.work_package_id)
 
-    wp = await client.get_work_package(result.work_package_id)
+    wp = await client.work_package.get(result.work_package_id)
     assert wp.priority == priority_name
 
     other_priority_name = next(
         (p.name for p in priorities.results if p.name != priority_name),
         priority_name,
     )
-    statuses = await client.list_statuses()
+    statuses = await client.status_priority_type.list_statuses()
     assert statuses.count > 0
     status_name = statuses.results[0].name
 
-    update_result = await client.update_work_package(
+    update_result = await client.work_package.update(
         work_package_id=result.work_package_id,
         status=status_name,
         priority=other_priority_name,
@@ -233,7 +233,7 @@ async def test_create_and_update_work_package_accept_status_and_priority_by_name
     )
     assert update_result.ready, update_result.validation_errors
 
-    updated = await client.get_work_package(result.work_package_id)
+    updated = await client.work_package.get(result.work_package_id)
     assert updated.status == status_name
     assert updated.priority == other_priority_name
 
@@ -252,7 +252,7 @@ async def test_get_work_package_ancestors_tolerate_missing_display_id(
     the actual regression being guarded against is "doesn't crash either
     way," not "display_id is always None": assert display_id is well-typed
     (None or str) rather than assuming one specific value."""
-    parent = await client.create_work_package(
+    parent = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"{_SUBJECT} ancestors parent",
@@ -261,7 +261,7 @@ async def test_get_work_package_ancestors_tolerate_missing_display_id(
     assert parent.ready
     wp_ids.append(parent.work_package_id)
 
-    child = await client.create_subtask(
+    child = await client.work_package.create_subtask(
         parent_work_package_id=parent.work_package_id,
         type="Task",
         subject=f"{_SUBJECT} ancestors child",
@@ -270,13 +270,13 @@ async def test_get_work_package_ancestors_tolerate_missing_display_id(
     assert child.ready
     wp_ids.append(child.work_package_id)
 
-    wp = await client.get_work_package(child.work_package_id)
+    wp = await client.work_package.get(child.work_package_id)
     assert wp.ancestors
     parent_href_fragment = f"/work_packages/{parent.work_package_id}"
     ancestor = next(a for a in wp.ancestors if a.get("href", "").endswith(parent_href_fragment))
     assert ancestor["display_id"] is None or isinstance(ancestor["display_id"], str)
 
-    parent_wp = await client.get_work_package(parent.work_package_id)
+    parent_wp = await client.work_package.get(parent.work_package_id)
     assert parent_wp.children
     child_href_fragment = f"/work_packages/{child.work_package_id}"
     child_link = next(c for c in parent_wp.children if c.get("href", "").endswith(child_href_fragment))
@@ -305,13 +305,13 @@ async def test_create_and_update_work_package_deny_reparent_into_write_restricte
     assert create_project_result.ready, create_project_result.validation_errors
     project_refs.append(other_identifier)
 
-    other_parent = await unrestricted_client.create_work_package(
+    other_parent = await unrestricted_client.work_package.create(
         project=other_identifier, type="Task", subject="[integration-test] write-restricted parent", confirm=True
     )
     assert other_parent.ready
 
     with pytest.raises(PermissionDeniedError):
-        await client.create_work_package(
+        await client.work_package.create(
             project=test_project,
             type="Task",
             subject=f"{_SUBJECT} denied reparent on create",
@@ -319,14 +319,14 @@ async def test_create_and_update_work_package_deny_reparent_into_write_restricte
             confirm=True,
         )
 
-    existing = await client.create_work_package(
+    existing = await client.work_package.create(
         project=test_project, type="Task", subject=f"{_SUBJECT} denied reparent on update", confirm=True
     )
     assert existing.ready
     wp_ids.append(existing.work_package_id)
 
     with pytest.raises(PermissionDeniedError):
-        await client.update_work_package(
+        await client.work_package.update(
             work_package_id=existing.work_package_id,
             parent_work_package_id=other_parent.work_package_id,
             confirm=True,
@@ -342,23 +342,23 @@ async def test_create_update_delete_work_package_denied_outside_write_allowlist(
     tested above, which only proves a DIFFERENT project's write scope is
     checked on reparent, not that a baseline write to test_project itself is."""
     with pytest.raises(PermissionDeniedError):
-        await denied_client.create_work_package(
+        await denied_client.work_package.create(
             project=test_project, type="Task", subject=f"{_SUBJECT} baseline create denied", confirm=True
         )
 
-    existing = await client.create_work_package(
+    existing = await client.work_package.create(
         project=test_project, type="Task", subject=f"{_SUBJECT} baseline update/delete denied", confirm=True
     )
     assert existing.ready
     wp_ids.append(existing.work_package_id)
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.update_work_package(
+        await denied_client.work_package.update(
             work_package_id=existing.work_package_id, subject="denied update", confirm=True
         )
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.delete_work_package(work_package_id=existing.work_package_id, confirm=True)
+        await denied_client.work_package.delete(work_package_id=existing.work_package_id, confirm=True)
 
 
 async def test_create_reparent_and_unparent_work_package(
@@ -367,19 +367,19 @@ async def test_create_reparent_and_unparent_work_package(
     from openproject_ce_mcp.client import CLEAR_PARENT
 
     # Two candidate parents plus one child.
-    parent_a = await client.create_work_package(
+    parent_a = await client.work_package.create(
         project=test_project, type="Task", subject=f"{_SUBJECT} parent A", confirm=True
     )
     assert parent_a.ready
     wp_ids.append(parent_a.work_package_id)
-    parent_b = await client.create_work_package(
+    parent_b = await client.work_package.create(
         project=test_project, type="Task", subject=f"{_SUBJECT} parent B", confirm=True
     )
     assert parent_b.ready
     wp_ids.append(parent_b.work_package_id)
 
     # Create directly under parent A.
-    child = await client.create_work_package(
+    child = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"{_SUBJECT} reparent child",
@@ -388,29 +388,29 @@ async def test_create_reparent_and_unparent_work_package(
     )
     assert child.ready, child.validation_errors
     wp_ids.append(child.work_package_id)
-    assert (await client.get_work_package(child.work_package_id)).parent_id == parent_a.work_package_id
+    assert (await client.work_package.get(child.work_package_id)).parent_id == parent_a.work_package_id
 
     # Re-parent to B.
-    reparent = await client.update_work_package(
+    reparent = await client.work_package.update(
         work_package_id=child.work_package_id,
         parent_work_package_id=parent_b.work_package_id,
         confirm=True,
     )
     assert reparent.ready, reparent.validation_errors
-    assert (await client.get_work_package(child.work_package_id)).parent_id == parent_b.work_package_id
+    assert (await client.work_package.get(child.work_package_id)).parent_id == parent_b.work_package_id
 
     # Un-parent (make top-level).
-    unparent = await client.update_work_package(
+    unparent = await client.work_package.update(
         work_package_id=child.work_package_id,
         parent_work_package_id=CLEAR_PARENT,
         confirm=True,
     )
     assert unparent.ready, unparent.validation_errors
-    assert (await client.get_work_package(child.work_package_id)).parent_id is None
+    assert (await client.work_package.get(child.work_package_id)).parent_id is None
 
 
 async def test_add_work_package_comment(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"{_SUBJECT} comment-test",
@@ -419,7 +419,7 @@ async def test_add_work_package_comment(client: OpenProjectClient, test_project:
     assert result.ready
     wp_ids.append(result.work_package_id)
 
-    comment = await client.add_work_package_comment(
+    comment = await client.work_package.add_comment(
         work_package_id=result.work_package_id,
         comment="Integration test comment",
         confirm=True,
@@ -431,7 +431,7 @@ async def test_add_work_package_comment(client: OpenProjectClient, test_project:
     # field this server normalizes.
     assert comment.result.comment == "<user-content>Integration test comment</user-content>"
 
-    activities = await client.get_work_package_activities(result.work_package_id)
+    activities = await client.activity.list_for_work_package(result.work_package_id)
     assert activities.count > 0
 
 
@@ -442,7 +442,7 @@ async def test_get_work_package_activities_includes_creation_and_comment(
     ever exercised as a side-effect assertion inside other tests, e.g.
     test_add_work_package_comment above) -- checks the actual activity
     shape, not just a non-zero count."""
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"{_SUBJECT} get-activities-test",
@@ -453,7 +453,7 @@ async def test_get_work_package_activities_includes_creation_and_comment(
 
     # Work package creation itself generates at least one activity (a
     # "created" system journal entry) with no comment call needed.
-    activities = await client.get_work_package_activities(result.work_package_id)
+    activities = await client.activity.list_for_work_package(result.work_package_id)
     assert activities.count >= 1
     created_activity = activities.results[0]
     assert created_activity.id > 0
@@ -463,7 +463,7 @@ async def test_get_work_package_activities_includes_creation_and_comment(
     assert created_activity.created_at is not None
     assert created_activity.details
 
-    comment = await client.add_work_package_comment(
+    comment = await client.work_package.add_comment(
         work_package_id=result.work_package_id,
         comment="Integration test comment for get_work_package_activities",
         confirm=True,
@@ -474,7 +474,7 @@ async def test_get_work_package_activities_includes_creation_and_comment(
     # journal entry instead of always creating a new one (confirmed live: count
     # stayed the same here, with the existing entry's own `comment` field
     # populated instead) -- so >= growth, not exact +1, is the only safe assertion.
-    after_comment = await client.get_work_package_activities(result.work_package_id)
+    after_comment = await client.activity.list_for_work_package(result.work_package_id)
     assert after_comment.count >= activities.count
     # get_work_package_activities returns newest-first (client.py's own
     # docstring), so the comment's own entry is results[0] -- UNLESS
@@ -511,7 +511,7 @@ async def test_bulk_create_work_packages(client: OpenProjectClient, test_project
         {"project": test_project, "type": "Task", "subject": f"{_SUBJECT_BULK} 1"},
         {"project": test_project, "type": "Task", "subject": f"{_SUBJECT_BULK} 2"},
     ]
-    result = await client.bulk_create_work_packages(items=items, confirm=True)
+    result = await client.work_package.bulk_create(items=items, confirm=True)
     assert result.total == 2
 
     for item in result.items:
@@ -534,7 +534,7 @@ async def test_bulk_create_work_packages_applies_duration_fields(
             "estimated_time": "PT8H",
         },
     ]
-    result = await client.bulk_create_work_packages(items=items, confirm=True)
+    result = await client.work_package.bulk_create(items=items, confirm=True)
     assert result.succeeded == 1
     item = result.items[0]
     assert item.result is not None and item.result.work_package_id is not None
@@ -554,12 +554,12 @@ async def test_bulk_create_work_packages_resolves_responsible_by_name_across_ite
     resolve `responsible` correctly whether the second item hits the cache
     or not; this test only asserts correctness, not request counts (that's
     already covered at the unit level in test_app_work_package_service.py)."""
-    me = await client.get_current_user()
+    me = await client.current_user.get_current_user()
     items = [
         {"project": test_project, "type": "Task", "subject": f"{_SUBJECT_BULK} responsible 1", "responsible": me.name},
         {"project": test_project, "type": "Task", "subject": f"{_SUBJECT_BULK} responsible 2", "responsible": me.name},
     ]
-    result = await client.bulk_create_work_packages(items=items, confirm=True)
+    result = await client.work_package.bulk_create(items=items, confirm=True)
     assert result.succeeded == 2
     for item in result.items:
         assert item.result is not None and item.result.work_package_id is not None
@@ -569,7 +569,7 @@ async def test_bulk_create_work_packages_resolves_responsible_by_name_across_ite
 
 
 async def test_list_work_package_watchers(client: OpenProjectClient, test_project: str, wp_ids: list[int]) -> None:
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"{_SUBJECT} watcher-test",
@@ -578,12 +578,12 @@ async def test_list_work_package_watchers(client: OpenProjectClient, test_projec
     assert result.ready
     wp_ids.append(result.work_package_id)
 
-    watchers = await client.list_work_package_watchers(result.work_package_id)
+    watchers = await client.watcher.list_for_work_package(result.work_package_id)
     assert watchers is not None
     # OpenProject auto-adds the WP's author as a watcher on create -- proves
     # the call resolved and returned the real watcher list, not just
     # "returned something".
-    me = await client.get_current_user()
+    me = await client.current_user.get_current_user()
     assert any(w.id == me.id for w in watchers.results)
 
 
@@ -594,7 +594,7 @@ async def test_list_work_package_watchers_denies_anchor_outside_read_allowlist(
     work_packages/{id}/watchers with no allowlist check on the anchor work
     package at all, leaking watcher names/emails for any work package id
     regardless of OPENPROJECT_READ_PROJECTS."""
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"{_SUBJECT} watcher-denial-test",
@@ -610,7 +610,7 @@ async def test_list_work_package_watchers_denies_anchor_outside_read_allowlist(
     await read_denied_client.initialize()
 
     with pytest.raises(PermissionDeniedError):
-        await read_denied_client.list_work_package_watchers(result.work_package_id)
+        await read_denied_client.watcher.list_for_work_package(result.work_package_id)
 
 
 async def test_add_and_remove_work_package_watcher(
@@ -619,7 +619,7 @@ async def test_add_and_remove_work_package_watcher(
     """Round-trips add_work_package_watcher/remove_work_package_watcher against
     the real POST/DELETE work_packages/{id}/watchers[/{user_id}] endpoints,
     watching/unwatching the work package as the current (token-owning) user."""
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"{_SUBJECT} watcher-add-remove-test",
@@ -628,29 +628,29 @@ async def test_add_and_remove_work_package_watcher(
     assert result.ready
     wp_ids.append(result.work_package_id)
 
-    me = await client.get_current_user()
+    me = await client.current_user.get_current_user()
 
-    preview = await client.add_work_package_watcher(result.work_package_id, me.id)
+    preview = await client.watcher.add(result.work_package_id, me.id)
     assert preview.state == "preview"
 
-    added = await client.add_work_package_watcher(result.work_package_id, me.id, confirm=True)
+    added = await client.watcher.add(result.work_package_id, me.id, confirm=True)
     assert added.state == "confirmed"
     assert added.watcher_user_id == me.id
 
-    watchers_after_add = await client.list_work_package_watchers(result.work_package_id)
+    watchers_after_add = await client.watcher.list_for_work_package(result.work_package_id)
     assert any(w.id == me.id for w in watchers_after_add.results)
 
-    removed = await client.remove_work_package_watcher(result.work_package_id, me.id, confirm=True)
+    removed = await client.watcher.remove(result.work_package_id, me.id, confirm=True)
     assert removed.state == "confirmed"
 
-    watchers_after_remove = await client.list_work_package_watchers(result.work_package_id)
+    watchers_after_remove = await client.watcher.list_for_work_package(result.work_package_id)
     assert not any(w.id == me.id for w in watchers_after_remove.results)
 
 
 async def test_add_work_package_watcher_denied_outside_write_allowlist(
     denied_client: OpenProjectClient, client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"{_SUBJECT} watcher-add-denied-test",
@@ -659,10 +659,10 @@ async def test_add_work_package_watcher_denied_outside_write_allowlist(
     assert result.ready
     wp_ids.append(result.work_package_id)
 
-    me = await client.get_current_user()
+    me = await client.current_user.get_current_user()
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.add_work_package_watcher(result.work_package_id, me.id, confirm=True)
+        await denied_client.watcher.add(result.work_package_id, me.id, confirm=True)
 
 
 async def test_list_work_package_file_links_denies_anchor_outside_read_allowlist(
@@ -672,7 +672,7 @@ async def test_list_work_package_file_links_denies_anchor_outside_read_allowlist
     work_packages/{id}/file_links with no allowlist check on the anchor work
     package at all, leaking file link URLs/names for any work package id
     regardless of OPENPROJECT_READ_PROJECTS."""
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"{_SUBJECT} file-link-denial-test",
@@ -688,7 +688,7 @@ async def test_list_work_package_file_links_denies_anchor_outside_read_allowlist
     await read_denied_client.initialize()
 
     with pytest.raises(PermissionDeniedError):
-        await read_denied_client.list_work_package_file_links(result.work_package_id)
+        await read_denied_client.file_link.list_for_work_package(result.work_package_id)
 
 
 async def test_get_work_packages_batch_partial_failure(
@@ -697,7 +697,7 @@ async def test_get_work_packages_batch_partial_failure(
     """get_work_packages fans out one get_work_package call per id via
     asyncio.gather and tracks per-item success/failure, live, with a mix of
     a real id and one that must fail."""
-    created = await client.create_work_package(
+    created = await client.work_package.create(
         project=test_project, type="Task", subject=f"{_SUBJECT} batch-get", confirm=True
     )
     assert created.ready
@@ -723,12 +723,12 @@ async def test_bulk_update_work_packages_partial_failure(
     """bulk_update_work_packages loops update_work_package per item and
     tracks per-item success/failure -- bulk *create* has live coverage above,
     but bulk *update* (a distinct code path) did not until now."""
-    first = await client.create_work_package(
+    first = await client.work_package.create(
         project=test_project, type="Task", subject=f"{_SUBJECT} bulk-update 1", confirm=True
     )
     assert first.ready
     wp_ids.append(first.work_package_id)
-    second = await client.create_work_package(
+    second = await client.work_package.create(
         project=test_project, type="Task", subject=f"{_SUBJECT} bulk-update 2", confirm=True
     )
     assert second.ready
@@ -741,7 +741,7 @@ async def test_bulk_update_work_packages_partial_failure(
         {"work_package_id": bogus_id, "subject": "should fail"},
     ]
 
-    preview = await client.bulk_update_work_packages(items=items, confirm=False)
+    preview = await client.work_package.bulk_update(items=items, confirm=False)
     # requires_confirmation is only set when every item validates cleanly
     # (`not confirm and failed == 0`) -- with one item already failing
     # validation in preview, there's nothing to confirm yet.
@@ -749,14 +749,14 @@ async def test_bulk_update_work_packages_partial_failure(
     assert preview.succeeded == 2
     assert preview.failed == 1
 
-    result = await client.bulk_update_work_packages(items=items, confirm=True)
+    result = await client.work_package.bulk_update(items=items, confirm=True)
     assert result.total == 3
     assert result.succeeded == 2
     assert result.failed == 1
 
-    updated_first = await client.get_work_package(first.work_package_id)
+    updated_first = await client.work_package.get(first.work_package_id)
     assert "changed" in updated_first.subject
-    updated_second = await client.get_work_package(second.work_package_id)
+    updated_second = await client.work_package.get(second.work_package_id)
     assert "changed" in updated_second.subject
 
 
@@ -806,7 +806,7 @@ async def test_get_work_package_hierarchy_filters_ancestors_and_children_outside
     project_refs.append(other_identifier)
 
     # Parent lives OUTSIDE test_project (in the other, unrestricted-only project).
-    outside_parent = await unrestricted_client.create_work_package(
+    outside_parent = await unrestricted_client.work_package.create(
         project=other_identifier, type="Task", subject=f"{_SUBJECT} outside-scope parent", confirm=True
     )
     assert outside_parent.ready
@@ -818,7 +818,7 @@ async def test_get_work_package_hierarchy_filters_ancestors_and_children_outside
     # what the READ path exposes. Uses the unrestricted client so the write
     # allowlist check on the cross-project parent link succeeds; `client`
     # itself only reads below.
-    child = await unrestricted_client.create_work_package(
+    child = await unrestricted_client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"{_SUBJECT} inside-scope child",
@@ -831,7 +831,7 @@ async def test_get_work_package_hierarchy_filters_ancestors_and_children_outside
     # `client` (scoped to test_project only) reads the child: the anchor itself
     # is visible (its own project is in-scope), but the out-of-scope parent must
     # not appear in `ancestors`.
-    wp = await client.get_work_package(child.work_package_id)
+    wp = await client.work_package.get(child.work_package_id)
     assert wp.id == child.work_package_id
     outside_href_fragment = f"/work_packages/{outside_parent.work_package_id}"
     if wp.ancestors:
@@ -840,7 +840,7 @@ async def test_get_work_package_hierarchy_filters_ancestors_and_children_outside
     # The unrestricted client (read_projects=("*",)) must still see the real
     # ancestor -- proves the filtering above is allowlist-driven, not a
     # blanket/always-empty result.
-    unrestricted_wp = await unrestricted_client.get_work_package(child.work_package_id)
+    unrestricted_wp = await unrestricted_client.work_package.get(child.work_package_id)
     assert unrestricted_wp.ancestors
     assert any(a.get("href", "").endswith(outside_href_fragment) for a in unrestricted_wp.ancestors)
 
@@ -857,7 +857,7 @@ async def test_get_work_package_exposes_seeded_custom_field_value(client: OpenPr
     (which depends on the instance's own auto-increment history, not
     something this test can predict).
     """
-    result = await client.list_work_packages(project=test_project)
+    result = await client.work_package.list(project=test_project)
     assert result.count > 0
     # docker/test/seed.rb always seeds exactly one plain "Seed work package"
     # subject -- find it rather than assuming index 0 (bulk/search tests in
@@ -865,7 +865,7 @@ async def test_get_work_package_exposes_seeded_custom_field_value(client: OpenPr
     seed_wp_summary = next((wp for wp in result.results if wp.subject == "Seed work package"), None)
     assert seed_wp_summary is not None, "docker/test/seed.rb's seed work package was not found via list_work_packages"
 
-    wp = await client.get_work_package(seed_wp_summary.id)
+    wp = await client.work_package.get(seed_wp_summary.id)
     assert wp.custom_fields, "expected at least one custom_fields entry from the seeded 'Seed Text Field' CF"
 
     # The raw key is unknown ahead of time (depends on the instance's custom
@@ -886,11 +886,11 @@ async def test_list_work_packages_filters_by_seeded_custom_field(client: OpenPro
     list_work_packages(custom_field_filters={cf_<N>: ...}) actually narrows
     the result set to the seeded work package.
     """
-    result = await client.list_work_packages(project=test_project)
+    result = await client.work_package.list(project=test_project)
     seed_wp_summary = next((wp for wp in result.results if wp.subject == "Seed work package"), None)
     assert seed_wp_summary is not None, "docker/test/seed.rb's seed work package was not found via list_work_packages"
 
-    wp = await client.get_work_package(seed_wp_summary.id)
+    wp = await client.work_package.get(seed_wp_summary.id)
     assert wp.custom_fields
     cf_key = next(
         (key for key, value in wp.custom_fields.items() if value and "Seeded custom field value" in str(value)),
@@ -901,14 +901,14 @@ async def test_list_work_packages_filters_by_seeded_custom_field(client: OpenPro
     )
     cf_id = cf_key[len("customField") :]
 
-    filtered = await client.list_work_packages(
+    filtered = await client.work_package.list(
         project=test_project,
         custom_field_filters={f"cf_{cf_id}": {"operator": "~", "values": ["Seeded custom field value"]}},
     )
     assert filtered.count > 0
     assert any(item.id == seed_wp_summary.id for item in filtered.results)
 
-    non_matching = await client.list_work_packages(
+    non_matching = await client.work_package.list(
         project=test_project,
         custom_field_filters={f"cf_{cf_id}": {"operator": "~", "values": ["no-such-value-xyz"]}},
     )
@@ -923,16 +923,16 @@ async def test_list_work_packages_rejects_invalid_operator_for_custom_field(
     string-format field does not support ">=") must surface a clean error
     from OpenProject's own validation (mapped to InvalidInputError), not a
     raw/opaque failure."""
-    result = await client.list_work_packages(project=test_project)
+    result = await client.work_package.list(project=test_project)
     seed_wp_summary = next((wp for wp in result.results if wp.subject == "Seed work package"), None)
     assert seed_wp_summary is not None
-    wp = await client.get_work_package(seed_wp_summary.id)
+    wp = await client.work_package.get(seed_wp_summary.id)
     cf_key = next((key for key in wp.custom_fields if key.startswith("customField")), None)
     assert cf_key is not None
     cf_id = cf_key[len("customField") :]
 
     with pytest.raises(InvalidInputError):
-        await client.list_work_packages(
+        await client.work_package.list(
             project=test_project,
             custom_field_filters={f"cf_{cf_id}": {"operator": ">=", "values": ["1"]}},
         )
@@ -944,7 +944,7 @@ async def test_list_work_packages_rejects_hidden_custom_field_filter(
     """A custom field matched by OPENPROJECT_HIDE_CUSTOM_FIELDS must
     be rejected as a filter target, not silently ignored."""
     with pytest.raises(InvalidInputError, match="hidden"):
-        await hide_custom_fields_client.list_work_packages(
+        await hide_custom_fields_client.work_package.list(
             project=test_project,
             custom_field_filters={"cf_1": {"operator": "=", "values": ["x"]}},
         )

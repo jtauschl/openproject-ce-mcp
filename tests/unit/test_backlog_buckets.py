@@ -65,7 +65,7 @@ async def test_list_backlog_buckets_backfills_after_allowlist_filter() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    page = await client.list_backlog_buckets(limit=2)
+    page = await client.backlog_bucket.list(limit=2)
 
     assert [b.id for b in page.results] == [2, 4]
     assert page.count == 2
@@ -109,7 +109,7 @@ async def test_list_project_backlog_buckets_backfills_after_allowlist_filter() -
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    page = await client.list_project_backlog_buckets("demo", limit=2)
+    page = await client.backlog_bucket.list_for_project("demo", limit=2)
 
     assert [b.id for b in page.results] == [2, 4]
     assert page.count == 2
@@ -152,7 +152,7 @@ async def test_list_backlog_buckets_not_truncated_when_exactly_limit_allowed_mat
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    page = await client.list_backlog_buckets(limit=1)
+    page = await client.backlog_bucket.list(limit=1)
 
     assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
     assert [b.id for b in page.results] == [1]
@@ -198,7 +198,7 @@ async def test_list_project_backlog_buckets_not_truncated_when_exactly_limit_all
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    page = await client.list_project_backlog_buckets("demo", limit=1)
+    page = await client.backlog_bucket.list_for_project("demo", limit=1)
 
     assert requested_offsets == ["1"], f"expected only one (short) page, got {requested_offsets}"
     assert [b.id for b in page.results] == [1]

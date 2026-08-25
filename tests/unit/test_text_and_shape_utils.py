@@ -176,7 +176,7 @@ async def test_summary_sets_truncation_flag_and_stays_single_line() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.list_work_packages()
+    result = await client.work_package.list()
     summary = result.results[0]
 
     assert summary.description is not None
@@ -289,7 +289,7 @@ async def test_get_project_returns_full_description_by_default_get_projects_caps
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    detail = await client.get_project("demo")
+    detail = await client.project.get("demo")
 
     assert detail.description is not None
     assert len(detail.description) == 900 + len("<user-content></user-content>")
@@ -567,7 +567,7 @@ async def test_group_members_is_flat_array() -> None:
 
     settings = dataclasses.replace(make_settings(), enable_admin_read=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    group = await client.get_group(7)
+    group = await client.group.get_group(7)
 
     # Our normalization must correctly extract members from the bare array
     # The critical assertion: members is a list of names, not a dict with {count, elements}
@@ -608,7 +608,7 @@ async def test_emoji_reaction_toggle_uses_activity_work_package_link_shape() -> 
 
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.toggle_activity_emoji_reaction(1988, "heart", confirm=True)
+    result = await client.emoji_reaction.toggle(1988, "heart", confirm=True)
 
     assert result.result is not None
     assert result.result.count == 0
@@ -658,7 +658,7 @@ async def test_file_link_delete_uses_container_work_package_link_shape() -> None
     settings = _base_settings(enable_work_package_write=True, write_projects=("demo",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.delete_file_link(5, confirm=True)
+    result = await client.file_link.delete(5, confirm=True)
 
     assert result.work_package_id == 9
     assert result.state == "confirmed"
@@ -709,7 +709,7 @@ async def test_work_package_relations_use_canonical_involved_filter_shape() -> N
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.get_work_package_relations("PROJ-7")
+    result = await client.relation.list_for_work_package("PROJ-7")
 
     filters = json.loads(captured["filters"])
     assert filters == [{"involved": {"operator": "=", "values": ["55"]}}]
@@ -791,7 +791,7 @@ async def test_global_relations_allowlist_checks_from_and_to_link_shapes() -> No
     settings = _base_settings(read_projects=("demo",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_relations()
+    result = await client.relation.list_all()
 
     assert [relation.id for relation in result.results] == [1]
     assert fetched_work_packages == [10, 11, 20, 30, 31]
@@ -856,7 +856,7 @@ async def test_get_work_package_relations_filters_out_of_scope_other_side() -> N
     settings = _base_settings(read_projects=("demo",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.get_work_package_relations(10)
+    result = await client.relation.list_for_work_package(10)
 
     assert [relation.id for relation in result.results] == [1]
 
@@ -917,7 +917,7 @@ async def test_get_work_package_relations_paginates_allowed_results() -> None:
 
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    page1 = await client.get_work_package_relations(10, offset=1, limit=2)
+    page1 = await client.relation.list_for_work_package(10, offset=1, limit=2)
     assert [r.to_id for r in page1.results] == [11, 12]
     # total is a lower bound (len(results) on this page), not an exact count
     # of the full ACL-filtered collection -- this reflects a deliberate total-contract
@@ -926,7 +926,7 @@ async def test_get_work_package_relations_paginates_allowed_results() -> None:
     assert page1.next_offset == 2
     assert page1.truncated is True
 
-    page2 = await client.get_work_package_relations(10, offset=2, limit=2)
+    page2 = await client.relation.list_for_work_package(10, offset=2, limit=2)
     assert [r.to_id for r in page2.results] == [13]
     assert page2.next_offset is None
 
@@ -1107,7 +1107,7 @@ async def test_explicit_null_links_survives_list_work_packages_end_to_end() -> N
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.list_work_packages()
+    result = await client.work_package.list()
 
     # The null-_links element is denied (no resolvable project link), not
     # crashed on -- this is the actual regression this test guards against:
@@ -1147,7 +1147,7 @@ async def test_explicit_null_links_survives_attachment_multipart_upload(tmp_path
     settings = _base_settings(enable_work_package_write=True, attachment_root=str(tmp_path))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.create_work_package_attachment(work_package_id=42, file_path=str(file_path), confirm=True)
+    result = await client.attachment.create(work_package_id=42, file_path=str(file_path), confirm=True)
 
     assert result.state == "confirmed"
     assert result.result is not None

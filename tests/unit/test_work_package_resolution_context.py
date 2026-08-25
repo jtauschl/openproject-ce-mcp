@@ -84,7 +84,7 @@ async def test_create_work_package_single_call_resolves_type_and_version_once() 
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    result = await client.create_work_package(project="proj-a", type="Bug", subject="WP 1", version="Q2")
+    result = await client.work_package.create(project="proj-a", type="Bug", subject="WP 1", version="Q2")
     assert result.ready is True
 
     assert counts[("GET", "/api/v3/projects/proj-a")] == 1
@@ -130,7 +130,7 @@ async def test_update_work_package_single_call_resolves_type_version_sprint_once
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    result = await client.update_work_package(work_package_id=42, type="Bug", version="Q2", sprint="Sprint1")
+    result = await client.work_package.update(work_package_id=42, type="Bug", version="Q2", sprint="Sprint1")
     assert result.ready is True
 
     assert counts[("GET", "/api/v3/projects/1")] == 1
@@ -162,7 +162,7 @@ async def test_bulk_create_same_project_shares_project_and_type_version_resoluti
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    result = await client.bulk_create_work_packages(
+    result = await client.work_package.bulk_create(
         items=[
             {"project": "proj-a", "type": "Bug", "subject": "WP 1", "version": "Q2"},
             {"project": "proj-a", "type": "Bug", "subject": "WP 2", "version": "Q2"},
@@ -228,7 +228,7 @@ async def test_bulk_update_same_project_shares_type_version_sprint_resolution() 
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    result = await client.bulk_update_work_packages(
+    result = await client.work_package.bulk_update(
         items=[
             {"work_package_id": 42, "type": "Bug", "version": "Q2", "sprint": "Sprint1"},
             {"work_package_id": 43, "type": "Bug", "version": "Q2", "sprint": "Sprint1"},
@@ -300,7 +300,7 @@ async def test_bulk_update_different_projects_never_share_resolved_ids() -> None
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    result = await client.bulk_update_work_packages(
+    result = await client.work_package.bulk_update(
         items=[
             {"work_package_id": 42, "type": "Bug"},
             {"work_package_id": 43, "type": "Bug"},

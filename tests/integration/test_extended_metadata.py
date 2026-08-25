@@ -36,7 +36,7 @@ async def test_render_text(client: OpenProjectClient) -> None:
 
 
 async def test_list_help_texts(client: OpenProjectClient) -> None:
-    result = await client.list_help_texts()
+    result = await client.extended_metadata.list_help_texts()
     # Help texts are opt-in, per-attribute annotations -- a fresh instance
     # can genuinely have none configured, so this can't assert non-empty.
     if result.count == 0:
@@ -45,12 +45,12 @@ async def test_list_help_texts(client: OpenProjectClient) -> None:
 
 
 async def test_get_help_text(client: OpenProjectClient) -> None:
-    listed = await client.list_help_texts()
+    listed = await client.extended_metadata.list_help_texts()
     if listed.count == 0:
         pytest.skip("no help texts available on this instance")
 
     help_text_id = listed.results[0].id
-    help_text = await client.get_help_text(help_text_id)
+    help_text = await client.extended_metadata.get_help_text(help_text_id)
 
     assert help_text.id == help_text_id
 

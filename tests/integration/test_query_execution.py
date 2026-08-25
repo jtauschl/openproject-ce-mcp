@@ -21,7 +21,7 @@ pytestmark = pytest.mark.integration
 async def test_execute_query_returns_resolved_work_packages(
     client: OpenProjectClient, test_project: str, wp_ids: list[int], board_ids: list[int]
 ) -> None:
-    wp_result = await client.create_work_package(
+    wp_result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"[integration-test] execute_query {uuid.uuid4().hex[:8]}",
@@ -30,7 +30,7 @@ async def test_execute_query_returns_resolved_work_packages(
     assert wp_result.ready, wp_result.validation_errors
     wp_ids.append(wp_result.work_package_id)
 
-    board_result = await client.create_board(
+    board_result = await client.board.create(
         name=f"[integration-test] query {uuid.uuid4().hex[:8]}",
         project=test_project,
         public=False,
@@ -39,7 +39,7 @@ async def test_execute_query_returns_resolved_work_packages(
     assert board_result.ready, board_result.validation_errors
     board_ids.append(board_result.board_id)
 
-    result = await client.execute_query(board_result.board_id)
+    result = await client.query_execution.execute(board_result.board_id)
     assert any(wp.id == wp_result.work_package_id for wp in result.results)
 
 
@@ -49,7 +49,7 @@ async def test_execute_query_filters_results_against_read_allowlist(
     """A query executes with the API token's full server-side permissions --
     this MCP must still filter the resolved work packages against its own
     OPENPROJECT_READ_PROJECTS allowlist before returning them."""
-    wp_result = await client.create_work_package(
+    wp_result = await client.work_package.create(
         project=test_project,
         type="Task",
         subject=f"[integration-test] execute_query denial {uuid.uuid4().hex[:8]}",
@@ -58,7 +58,7 @@ async def test_execute_query_filters_results_against_read_allowlist(
     assert wp_result.ready, wp_result.validation_errors
     wp_ids.append(wp_result.work_package_id)
 
-    board_result = await client.create_board(
+    board_result = await client.board.create(
         name=f"[integration-test] query denial {uuid.uuid4().hex[:8]}",
         project=test_project,
         public=False,
@@ -71,5 +71,5 @@ async def test_execute_query_filters_results_against_read_allowlist(
     restricted_client = OpenProjectClient(restricted_settings)
     await restricted_client.initialize()
 
-    result = await restricted_client.execute_query(board_result.board_id)
+    result = await restricted_client.query_execution.execute(board_result.board_id)
     assert not any(wp.id == wp_result.work_package_id for wp in result.results)

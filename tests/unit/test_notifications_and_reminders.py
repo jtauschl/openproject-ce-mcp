@@ -51,7 +51,7 @@ async def test_list_notifications_filters_by_read_projects() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_notifications()
+    result = await client.notification.list_all()
 
     assert [n.id for n in result.results] == [1]
     assert result.count == 1
@@ -92,7 +92,7 @@ async def test_list_notifications_returns_only_project_less_under_empty_read_pro
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_notifications()
+    result = await client.notification.list_all()
 
     assert [n.id for n in result.results] == [2]
 
@@ -132,7 +132,7 @@ async def test_list_notifications_allows_all_under_wildcard_scope() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_notifications()
+    result = await client.notification.list_all()
 
     assert [n.id for n in result.results] == [1, 2]
 
@@ -163,7 +163,7 @@ async def test_list_notifications_denied_by_personal_read_not_work_package_read(
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
     with pytest.raises(PermissionDeniedError, match="personal"):
-        await client.list_notifications()
+        await client.notification.list_all()
     await client.aclose()
 
 
@@ -208,7 +208,7 @@ async def test_list_notifications_resolves_work_package_notification_without_pro
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_notifications()
+    result = await client.notification.list_all()
 
     assert result.results == []
     assert result.count == 0
@@ -233,7 +233,7 @@ async def test_list_reminders_returns_empty_without_a_request_under_empty_read_p
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_reminders()
+    result = await client.reminder.list_all()
 
     assert result.count == 0
     assert result.results == []
@@ -294,7 +294,7 @@ async def test_list_reminders_filters_by_read_projects_via_work_package() -> Non
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_reminders()
+    result = await client.reminder.list_all()
 
     assert [r.id for r in result.results] == [1]
 
@@ -308,7 +308,7 @@ async def test_mark_notification_read_previews_without_confirm() -> None:
 
     client = OpenProjectClient(_personal_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.mark_notification_read(10)
+    result = await client.notification.mark_read(10)
 
     assert result.state == "preview"
     assert result.notification_id == 10
@@ -328,7 +328,7 @@ async def test_mark_notification_read_posts_after_confirmation() -> None:
 
     client = OpenProjectClient(_personal_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.mark_notification_read(10, confirm=True)
+    result = await client.notification.mark_read(10, confirm=True)
 
     assert result.state == "confirmed"
     assert result.notification_id == 10
@@ -344,7 +344,7 @@ async def test_mark_all_notifications_read_previews_without_confirm() -> None:
 
     client = OpenProjectClient(_personal_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.mark_all_notifications_read()
+    result = await client.notification.mark_all_read()
 
     assert result.state == "preview"
     assert result.notification_id is None
@@ -364,7 +364,7 @@ async def test_mark_all_notifications_read_posts_after_confirmation() -> None:
 
     client = OpenProjectClient(_personal_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.mark_all_notifications_read(confirm=True)
+    result = await client.notification.mark_all_read(confirm=True)
 
     assert result.state == "confirmed"
     assert result.notification_id is None
@@ -403,9 +403,7 @@ async def test_create_work_package_reminder_posts_and_normalizes() -> None:
 
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.create_work_package_reminder(
-        work_package_id=42, remind_at="2026-12-01T09:00:00Z", note="n", confirm=True
-    )
+    result = await client.reminder.create(work_package_id=42, remind_at="2026-12-01T09:00:00Z", note="n", confirm=True)
 
     assert result.state == "confirmed"
     assert result.reminder_id == 7
@@ -432,7 +430,7 @@ async def test_update_reminder_denies_malformed_remindable_link_even_under_open_
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
-        await client.update_reminder(reminder_id=7, note="Updated", confirm=True)
+        await client.reminder.update(reminder_id=7, note="Updated", confirm=True)
 
     await client.aclose()
 
@@ -462,6 +460,6 @@ async def test_update_reminder_requires_a_field() -> None:
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
     with pytest.raises(InvalidInputError, match="At least one field"):
-        await client.update_reminder(reminder_id=7, confirm=True)
+        await client.reminder.update(reminder_id=7, confirm=True)
 
     await client.aclose()

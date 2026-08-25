@@ -66,7 +66,7 @@ pytestmark = pytest.mark.integration
 
 
 async def test_list_storages_finds_seed_nextcloud_storage(client: OpenProjectClient) -> None:
-    listed = await client.list_storages()
+    listed = await client.storage.list_storages()
     matches = [s for s in listed.results if s.name == "Seed Nextcloud Storage"]
     assert len(matches) == 1
     storage = matches[0]
@@ -77,10 +77,10 @@ async def test_list_storages_finds_seed_nextcloud_storage(client: OpenProjectCli
 
 
 async def test_get_storage_returns_nextcloud_fields(client: OpenProjectClient) -> None:
-    listed = await client.list_storages()
+    listed = await client.storage.list_storages()
     seed = next(s for s in listed.results if s.name == "Seed Nextcloud Storage")
 
-    detail = await client.get_storage(seed.id)
+    detail = await client.storage.get_storage(seed.id)
 
     assert detail.provider_type == "Nextcloud"
     assert detail.has_application_password is False
@@ -90,7 +90,7 @@ async def test_get_storage_returns_nextcloud_fields(client: OpenProjectClient) -
 
 
 async def test_list_project_storages_finds_seed_link(client: OpenProjectClient) -> None:
-    listed = await client.list_project_storages()
+    listed = await client.project_storage.list_project_storages()
     matches = [ps for ps in listed.results if ps.storage_name == "Seed Nextcloud Storage"]
     assert len(matches) == 1
     project_storage = matches[0]
@@ -99,10 +99,10 @@ async def test_list_project_storages_finds_seed_link(client: OpenProjectClient) 
 
 
 async def test_get_project_storage_returns_creator(client: OpenProjectClient) -> None:
-    listed = await client.list_project_storages()
+    listed = await client.project_storage.list_project_storages()
     seed = next(ps for ps in listed.results if ps.storage_name == "Seed Nextcloud Storage")
 
-    detail = await client.get_project_storage(seed.id)
+    detail = await client.project_storage.get_project_storage(seed.id)
 
     assert detail.creator is not None
     assert detail.storage_name == "Seed Nextcloud Storage"
@@ -119,12 +119,12 @@ async def test_update_storage_rename_rejected_by_seeded_insecure_host(client: Op
     non-localhost hostname, which `SecureContextUriValidator` always rejects
     -- so even this no-op-on-host rename 422s. See the module docstring
     for the full explanation."""
-    listed = await client.list_storages()
+    listed = await client.storage.list_storages()
     seed = next(s for s in listed.results if s.name == "Seed Nextcloud Storage")
 
     new_name = f"Seed Nextcloud Storage [{uuid.uuid4().hex[:8]}]"
     with pytest.raises(InvalidInputError, match="[Ss]ecure [Cc]ontext"):
-        await client.update_storage(storage_id=seed.id, name=new_name, confirm=True)
+        await client.storage.update(storage_id=seed.id, name=new_name, confirm=True)
 
 
 async def test_delete_file_link_deletes_seeded_link(client: OpenProjectClient, test_project: str) -> None:
@@ -136,11 +136,11 @@ async def test_delete_file_link_deletes_seeded_link(client: OpenProjectClient, t
     so deleting it here doesn't leave the fixture permanently gone. The
     "seed-file-link-persistent.txt" row is a separate, untouched fixture for
     test_write_denials.py -- this test must not delete that one."""
-    work_packages = await client.list_work_packages(project=test_project, limit=50)
+    work_packages = await client.work_package.list(project=test_project, limit=50)
     file_link_id = None
     owning_wp_id = None
     for wp in work_packages.results:
-        links = await client.list_work_package_file_links(wp.id)
+        links = await client.file_link.list_for_work_package(wp.id)
         match = next((link for link in links.results if link.title == "seed-file-link-deletable.txt"), None)
         if match is not None:
             file_link_id = match.id
@@ -151,15 +151,15 @@ async def test_delete_file_link_deletes_seeded_link(client: OpenProjectClient, t
             "no 'seed-file-link-deletable.txt' file link in test_project -- run docker/test/up.sh 177nc to seed one"
         )
 
-    preview = await client.delete_file_link(file_link_id, confirm=False)
+    preview = await client.file_link.delete(file_link_id, confirm=False)
     assert preview.state == "preview"
     assert preview.ready is True
 
-    delete_result = await client.delete_file_link(file_link_id, confirm=True)
+    delete_result = await client.file_link.delete(file_link_id, confirm=True)
     assert delete_result.state == "confirmed"
     assert delete_result.ready is True
 
-    remaining = await client.list_work_package_file_links(owning_wp_id)
+    remaining = await client.file_link.list_for_work_package(owning_wp_id)
     assert all(link.id != file_link_id for link in remaining.results)
 
 
@@ -192,7 +192,7 @@ async def test_create_storage_one_drive_rejected_without_enterprise_token(
     name = f"[integration-test] OneDrive {uuid.uuid4().hex[:8]}"
 
     with pytest.raises(InvalidInputError, match="[Ee]nterprise"):
-        await client.create_storage(
+        await client.storage.create(
             name=name,
             provider_type="OneDrive",
             tenant_id="11111111-1111-1111-1111-111111111111",
@@ -201,7 +201,7 @@ async def test_create_storage_one_drive_rejected_without_enterprise_token(
 
     # No storage should have been created -- nothing to register for cleanup,
     # but assert list_storages doesn't show it either, as defense in depth.
-    listed = await client.list_storages()
+    listed = await client.storage.list_storages()
     assert not any(s.name == name for s in listed.results)
 
 
@@ -213,7 +213,7 @@ async def test_create_storage_rejects_unknown_provider_type_before_any_http_call
     case the client-side pre-check has a bug and the request went out, real
     defense in depth, not merely a mock assertion)."""
     with pytest.raises(InvalidInputError, match="provider_type"):
-        await client.create_storage(name="Should Not Be Created", provider_type="Dropbox", confirm=True)
+        await client.storage.create(name="Should Not Be Created", provider_type="Dropbox", confirm=True)
 
 
 async def test_create_storage_nextcloud_unreachable_host_rejected_by_live_probe(
@@ -231,7 +231,7 @@ async def test_create_storage_nextcloud_unreachable_host_rejected_by_live_probe(
     name = f"[integration-test] Nextcloud {uuid.uuid4().hex[:8]}"
 
     with pytest.raises(InvalidInputError):
-        await client.create_storage(
+        await client.storage.create(
             name=name,
             provider_type="Nextcloud",
             host="http://nextcloud-integration-test-unreachable.invalid/",
@@ -239,5 +239,5 @@ async def test_create_storage_nextcloud_unreachable_host_rejected_by_live_probe(
             confirm=True,
         )
 
-    listed = await client.list_storages()
+    listed = await client.storage.list_storages()
     assert not any(s.name == name for s in listed.results)

@@ -62,7 +62,7 @@ async def test_create_list_update_delete_user_non_working_time(
     start_date = f"20{50 + year_offset}-01-10"
     end_date = f"20{50 + year_offset}-01-15"
 
-    create_result = await client.create_user_non_working_time(
+    create_result = await client.user_non_working_time.create(
         _USER_REF, start_date=start_date, end_date=end_date, confirm=True
     )
     assert create_result.ready and create_result.state == "confirmed", create_result.validation_errors
@@ -70,34 +70,34 @@ async def test_create_list_update_delete_user_non_working_time(
     assert non_working_time_id is not None and non_working_time_id > 0
     user_non_working_time_ids.append((_USER_REF, non_working_time_id))
 
-    listed = await client.list_user_non_working_times(_USER_REF, year=2050 + year_offset)
+    listed = await client.user_non_working_time.list_for_user(_USER_REF, year=2050 + year_offset)
     assert any(item.id == non_working_time_id for item in listed.results)
 
     updated_end_date = f"20{50 + year_offset}-01-20"
-    update_result = await client.update_user_non_working_time(
+    update_result = await client.user_non_working_time.update(
         _USER_REF, non_working_time_id, end_date=updated_end_date, confirm=True
     )
     assert update_result.ready and update_result.state == "confirmed", update_result.validation_errors
     assert update_result.result is not None
     assert update_result.result.end_date == updated_end_date
 
-    await client.delete_user_non_working_time(_USER_REF, non_working_time_id, confirm=True)
+    await client.user_non_working_time.delete(_USER_REF, non_working_time_id, confirm=True)
     user_non_working_time_ids.remove((_USER_REF, non_working_time_id))
 
-    listed_after_delete = await client.list_user_non_working_times(_USER_REF, year=2050 + year_offset)
+    listed_after_delete = await client.user_non_working_time.list_for_user(_USER_REF, year=2050 + year_offset)
     assert all(item.id != non_working_time_id for item in listed_after_delete.results)
 
 
 async def test_create_user_non_working_time_preview_without_confirm_does_not_write(
     client: OpenProjectClient, user_non_working_time_ids: list[tuple[str, int]]
 ) -> None:
-    preview_result = await client.create_user_non_working_time(
+    preview_result = await client.user_non_working_time.create(
         _USER_REF, start_date="2077-02-01", end_date="2077-02-05", confirm=False
     )
     assert preview_result.state == "preview"
     assert preview_result.result is None
 
-    listed = await client.list_user_non_working_times(_USER_REF, year=2077)
+    listed = await client.user_non_working_time.list_for_user(_USER_REF, year=2077)
     assert all(item.start_date != "2077-02-01" for item in listed.results)
 
 
@@ -107,7 +107,7 @@ async def test_update_user_non_working_time_preview_does_not_probe_id(client: Op
     # PATCH/DELETE routes already self-scope and 404 on their own) -- so a
     # preview call never touches the network and cannot fail even for a
     # nonsensical id; only the confirmed write can.
-    preview_result = await client.update_user_non_working_time(
+    preview_result = await client.user_non_working_time.update(
         _USER_REF, 2**31 - 1, end_date="2077-03-01", confirm=False
     )
     assert preview_result.state == "preview"
@@ -118,7 +118,7 @@ async def test_update_user_non_working_time_raises_not_found_for_unknown_id(clie
     from openproject_ce_mcp.client import NotFoundError
 
     with pytest.raises(NotFoundError):
-        await client.update_user_non_working_time(_USER_REF, 2**31 - 1, end_date="2077-03-01", confirm=True)
+        await client.user_non_working_time.update(_USER_REF, 2**31 - 1, end_date="2077-03-01", confirm=True)
 
 
 # --- User Working Hours ---------------------------------------------------
@@ -130,7 +130,7 @@ async def test_create_get_list_update_delete_user_working_hours(
     year_offset = (uuid.uuid4().int % 20) + 5
     valid_from = f"20{50 + year_offset}-02-01"
 
-    create_result = await client.create_user_working_hours(
+    create_result = await client.user_working_hours.create(
         _USER_REF, valid_from=valid_from, monday_hours=8.0, tuesday_hours=8.0, confirm=True
     )
     assert create_result.ready and create_result.state == "confirmed", create_result.validation_errors
@@ -138,31 +138,31 @@ async def test_create_get_list_update_delete_user_working_hours(
     assert working_hours_id is not None and working_hours_id > 0
     user_working_hours_ids.append((_USER_REF, working_hours_id))
 
-    fetched = await client.get_user_working_hours(_USER_REF, working_hours_id)
+    fetched = await client.user_working_hours.get(_USER_REF, working_hours_id)
     assert fetched.id == working_hours_id
     assert fetched.valid_from == valid_from
 
-    listed = await client.list_user_working_hours(_USER_REF)
+    listed = await client.user_working_hours.list_for_user(_USER_REF)
     assert any(item.id == working_hours_id for item in listed.results)
 
-    update_result = await client.update_user_working_hours(_USER_REF, working_hours_id, monday_hours=6.0, confirm=True)
+    update_result = await client.user_working_hours.update(_USER_REF, working_hours_id, monday_hours=6.0, confirm=True)
     assert update_result.ready and update_result.state == "confirmed", update_result.validation_errors
     assert update_result.result is not None
     assert update_result.result.monday_hours == 6.0
 
-    await client.delete_user_working_hours(_USER_REF, working_hours_id, confirm=True)
+    await client.user_working_hours.delete(_USER_REF, working_hours_id, confirm=True)
     user_working_hours_ids.remove((_USER_REF, working_hours_id))
 
     from openproject_ce_mcp.client import NotFoundError, OpenProjectServerError
 
     with pytest.raises((NotFoundError, OpenProjectServerError)):
-        await client.get_user_working_hours(_USER_REF, working_hours_id)
+        await client.user_working_hours.get(_USER_REF, working_hours_id)
 
 
 async def test_create_user_working_hours_preview_without_confirm_does_not_write(
     client: OpenProjectClient, user_working_hours_ids: list[tuple[str, int]]
 ) -> None:
-    preview_result = await client.create_user_working_hours(_USER_REF, valid_from="2078-03-01", confirm=False)
+    preview_result = await client.user_working_hours.create(_USER_REF, valid_from="2078-03-01", confirm=False)
     assert preview_result.state == "preview"
     assert preview_result.result is None
 
@@ -177,4 +177,4 @@ async def test_user_schedule_denies_read_when_scope_disabled(client: OpenProject
     await disabled_client.initialize()
 
     with pytest.raises(PermissionDeniedError):
-        await disabled_client.list_user_working_hours(_USER_REF)
+        await disabled_client.user_working_hours.list_for_user(_USER_REF)

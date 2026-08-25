@@ -35,7 +35,7 @@ async def test_create_user_rejects_hidden_field(client: OpenProjectClient) -> No
     await hidden_client.initialize()
 
     with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_USER_FIELDS"):
-        await hidden_client.create_user(
+        await hidden_client.user.create(
             login="integration-test-user",
             email="integration-test@example.org",
             firstname="Integration",
@@ -49,17 +49,17 @@ async def test_lock_user_rejects_hidden_locked_field(client: OpenProjectClient) 
     hidden_client = OpenProjectClient(hidden_settings)
     await hidden_client.initialize()
 
-    me = await client.get_current_user()
+    me = await client.current_user.get_current_user()
 
     with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_USER_FIELDS"):
-        await hidden_client.lock_user(user_id=me.id, confirm=False)
+        await hidden_client.user.lock(user_id=me.id, confirm=False)
 
 
 async def test_create_and_delete_user_denied_when_admin_write_disabled(
     admin_write_disabled_client: OpenProjectClient,
 ) -> None:
     with pytest.raises(PermissionDeniedError):
-        await admin_write_disabled_client.create_user(
+        await admin_write_disabled_client.user.create(
             login=f"integration-test-denied-{uuid.uuid4().hex[:8]}",
             email="integration-test-denied@example.invalid",
             firstname="Integration",
@@ -72,7 +72,7 @@ async def test_create_and_delete_user_denied_when_admin_write_disabled(
         # delete_user checks admin-write unconditionally before any lookup,
         # so a non-existent id is fine here -- the denial fires before the
         # API would ever be reached.
-        await admin_write_disabled_client.delete_user(999999999, confirm=True)
+        await admin_write_disabled_client.user.delete(999999999, confirm=True)
 
 
 async def test_user_lifecycle_roundtrip(client: OpenProjectClient, user_ids: list[int]) -> None:
@@ -94,7 +94,7 @@ async def test_user_lifecycle_roundtrip(client: OpenProjectClient, user_ids: lis
     suffix = uuid.uuid4().hex[:8]
     login = f"integration-test-{suffix}"
 
-    created = await client.create_user(
+    created = await client.user.create(
         login=login,
         email=f"{login}@example.invalid",
         firstname="Integration",
@@ -110,31 +110,31 @@ async def test_user_lifecycle_roundtrip(client: OpenProjectClient, user_ids: lis
     assert created.result is not None
     assert created.result.login == login
 
-    fetched = await client.get_user(str(user_id))
+    fetched = await client.user.get_user(str(user_id))
     assert fetched.id == user_id
     assert fetched.login == login
 
-    updated = await client.update_user(user_id, lastname=f"Test {suffix} Renamed", confirm=True)
+    updated = await client.user.update(user_id, lastname=f"Test {suffix} Renamed", confirm=True)
     assert updated.state == "confirmed"
     assert updated.result is not None
     assert updated.result.lastname == f"Test {suffix} Renamed"
 
-    locked = await client.lock_user(user_id, confirm=True)
+    locked = await client.user.lock(user_id, confirm=True)
     assert locked.state == "confirmed"
     assert locked.result is not None
     assert locked.result.status == "locked"
 
-    unlocked = await client.unlock_user(user_id, confirm=True)
+    unlocked = await client.user.unlock(user_id, confirm=True)
     assert unlocked.state == "confirmed"
     assert unlocked.result is not None
     assert unlocked.result.status != "locked"
 
-    deleted = await client.delete_user(user_id, confirm=True)
+    deleted = await client.user.delete(user_id, confirm=True)
     assert deleted.state == "confirmed"
     user_ids.remove(user_id)
 
     with pytest.raises(NotFoundError):
-        await client.get_user(str(user_id))
+        await client.user.get_user(str(user_id))
 
 
 async def test_second_user_membership_interaction(
@@ -148,12 +148,12 @@ async def test_second_user_membership_interaction(
     account, not just a database row that happens to pass validation."""
     second_user_id, second_client = second_user_client
 
-    roles = await client.list_roles()
+    roles = await client.role.list_roles()
     role_name = next((r.name for r in roles.results if r.name == "Member"), None)
     if role_name is None:
         pytest.skip("instance has no 'Member' role configured")
 
-    membership = await client.create_membership(
+    membership = await client.membership.create(
         project=test_project, principal=str(second_user_id), roles=[role_name], confirm=True
     )
     assert membership.ready, membership.validation_errors

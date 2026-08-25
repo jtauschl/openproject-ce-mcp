@@ -20,36 +20,36 @@ _SUBJECT = "[integration-test] semantic-id WP"
 async def test_numeric_reference_always_resolves(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    created = await client.create_work_package(project=test_project, type="Task", subject=_SUBJECT, confirm=True)
+    created = await client.work_package.create(project=test_project, type="Task", subject=_SUBJECT, confirm=True)
     assert created.ready, created.validation_errors
     wp_ids.append(created.work_package_id)
 
     # The numeric id must resolve on every version/mode (backwards compatible).
-    wp = await client.get_work_package(created.work_package_id)
+    wp = await client.work_package.get(created.work_package_id)
     assert wp.id == created.work_package_id
 
 
 async def test_reference_resolution_matches_instance_mode(
     client: OpenProjectClient, test_project: str, wp_ids: list[int]
 ) -> None:
-    created = await client.create_work_package(project=test_project, type="Task", subject=_SUBJECT, confirm=True)
+    created = await client.work_package.create(project=test_project, type="Task", subject=_SUBJECT, confirm=True)
     assert created.ready, created.validation_errors
     wp_ids.append(created.work_package_id)
 
-    wp = await client.get_work_package(created.work_package_id)
+    wp = await client.work_package.get(created.work_package_id)
     display_id = wp.display_id or ""
     is_semantic = "-" in display_id and not display_id.isdigit()
 
     if is_semantic:
         # Semantic instance: the project-prefixed reference resolves to the same WP,
         # and sub-resource lookups accept it too.
-        by_ref = await client.get_work_package(display_id)
+        by_ref = await client.work_package.get(display_id)
         assert by_ref.id == created.work_package_id
 
-        activities = await client.get_work_package_activities(display_id)
+        activities = await client.activity.list_for_work_package(display_id)
         assert activities is not None
 
-        relations = await client.get_work_package_relations(display_id)
+        relations = await client.relation.list_for_work_package(display_id)
         assert relations is not None
     else:
         # Classic instance. On 17.x classic mode display_id is the numeric id as a
@@ -58,4 +58,4 @@ async def test_reference_resolution_matches_instance_mode(
         assert display_id in ("", str(created.work_package_id))
         # A made-up project-prefixed reference degrades cleanly to not-found.
         with pytest.raises(NotFoundError):
-            await client.get_work_package("TST-999999")
+            await client.work_package.get("TST-999999")

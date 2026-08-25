@@ -17,6 +17,6 @@ pytestmark = pytest.mark.integration
 
 
 async def test_get_wiki_page(client: OpenProjectClient, seed_wiki_page_id: int) -> None:
-    page = await client.get_wiki_page(seed_wiki_page_id)
+    page = await client.wiki_page.get(seed_wiki_page_id)
     assert page.id == seed_wiki_page_id
     assert page.title

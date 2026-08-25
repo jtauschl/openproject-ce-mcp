@@ -39,7 +39,7 @@ pytestmark = pytest.mark.integration
 
 async def test_list_backlog_buckets(client: OpenProjectClient) -> None:
     try:
-        result = await client.list_backlog_buckets()
+        result = await client.backlog_bucket.list()
     except NotFoundError:
         pytest.skip("Backlogs module not installed/enabled, or OpenProject < 17.6, on this instance")
     assert result is not None
@@ -48,7 +48,7 @@ async def test_list_backlog_buckets(client: OpenProjectClient) -> None:
 
 async def test_list_project_backlog_buckets(client: OpenProjectClient, test_project: str) -> None:
     try:
-        result = await client.list_project_backlog_buckets(test_project)
+        result = await client.backlog_bucket.list_for_project(test_project)
     except NotFoundError:
         pytest.skip("Backlogs module not installed/enabled, or OpenProject < 17.6, on this instance")
     assert result is not None
@@ -57,7 +57,7 @@ async def test_list_project_backlog_buckets(client: OpenProjectClient, test_proj
 
 async def test_get_backlog_bucket(client: OpenProjectClient) -> None:
     try:
-        existing = await client.list_backlog_buckets()
+        existing = await client.backlog_bucket.list()
     except NotFoundError:
         pytest.skip("Backlogs module not installed/enabled, or OpenProject < 17.6, on this instance")
     if existing.count == 0:
@@ -65,5 +65,5 @@ async def test_get_backlog_bucket(client: OpenProjectClient) -> None:
 
     backlog_bucket_id = existing.results[0].id
 
-    bucket = await client.get_backlog_bucket(backlog_bucket_id)
+    bucket = await client.backlog_bucket.get(backlog_bucket_id)
     assert bucket.id == backlog_bucket_id

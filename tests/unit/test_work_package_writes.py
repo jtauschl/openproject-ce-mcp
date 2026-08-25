@@ -83,7 +83,7 @@ async def test_create_work_package_returns_confirmation_preview_before_writing()
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project="demo",
         type="Feature",
         subject="Apple HealthKit Anbindung",
@@ -175,7 +175,7 @@ async def test_update_work_package_writes_after_confirmation_when_enabled() -> N
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.update_work_package(
+    result = await client.work_package.update(
         work_package_id=42,
         subject="New title",
         status="In progress",
@@ -295,7 +295,7 @@ async def test_update_work_package_schema_probe_includes_lock_version() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.update_work_package(
+    result = await client.work_package.update(
         work_package_id=42,
         priority="High",
         confirm=True,
@@ -385,7 +385,7 @@ async def test_update_work_package_reparents_via_parent_link() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.update_work_package(
+    result = await client.work_package.update(
         work_package_id=42,
         parent_work_package_id=7,
         confirm=True,
@@ -500,7 +500,7 @@ async def test_update_work_package_unparents_with_null_href_through_schema_probe
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.update_work_package(
+    result = await client.work_package.update(
         work_package_id=42,
         parent_work_package_id=CLEAR_PARENT,
         priority="High",
@@ -585,7 +585,7 @@ async def test_update_work_package_clears_version_with_null_href() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.update_work_package(
+    result = await client.work_package.update(
         work_package_id=42,
         version=CLEAR_VERSION,
         confirm=True,
@@ -669,7 +669,7 @@ async def test_update_work_package_clears_sprint_with_null_href() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.update_work_package(
+    result = await client.work_package.update(
         work_package_id=42,
         sprint=CLEAR,
         confirm=True,
@@ -781,7 +781,7 @@ async def test_update_work_package_resolves_sprint_by_name() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.update_work_package(
+    result = await client.work_package.update(
         work_package_id=42,
         sprint="Cleanup",
         confirm=True,
@@ -863,7 +863,7 @@ async def test_update_work_package_clears_assignee_with_null_href() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.update_work_package(work_package_id=42, assignee=CLEAR, confirm=True)
+    result = await client.work_package.update(work_package_id=42, assignee=CLEAR, confirm=True)
 
     assert result.state == "confirmed"
     assert result.result is not None
@@ -941,7 +941,7 @@ async def test_update_work_package_clears_category_with_null_href() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.update_work_package(work_package_id=42, category=CLEAR, confirm=True)
+    result = await client.work_package.update(work_package_id=42, category=CLEAR, confirm=True)
 
     assert result.state == "confirmed"
     await client.aclose()
@@ -1006,7 +1006,7 @@ async def test_update_work_package_clears_project_phase_with_null_href() -> None
     settings = _write_enabled_settings()
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.update_work_package(work_package_id=42, project_phase=CLEAR, confirm=True)
+    result = await client.work_package.update(work_package_id=42, project_phase=CLEAR, confirm=True)
 
     assert result.state == "confirmed"
     await client.aclose()
@@ -1048,7 +1048,7 @@ async def test_delete_work_package_requires_confirmation_preview() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.delete_work_package(work_package_id=42, confirm=False)
+    result = await client.work_package.delete(work_package_id=42, confirm=False)
 
     assert result.ready is True
     assert result.state == "preview"
@@ -1098,7 +1098,7 @@ async def test_delete_work_package_deletes_when_enabled_and_confirmed() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.delete_work_package(work_package_id=42, confirm=True)
+    result = await client.work_package.delete(work_package_id=42, confirm=True)
 
     assert result.state == "confirmed"
     assert result.result is None
@@ -1147,7 +1147,7 @@ async def test_delete_work_package_requires_write_enablement() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="write support is disabled"):
-        await client.delete_work_package(work_package_id=42, confirm=True)
+        await client.work_package.delete(work_package_id=42, confirm=True)
 
     await client.aclose()
 
@@ -1198,7 +1198,7 @@ async def test_add_work_package_comment_writes_after_confirmation_when_enabled()
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.add_work_package_comment(
+    result = await client.work_package.add_comment(
         work_package_id=42,
         comment="Please verify on staging.",
         notify=False,
@@ -1247,7 +1247,7 @@ async def test_add_work_package_comment_echo_is_capped_by_default() -> None:
 
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.add_work_package_comment(work_package_id=42, comment=long_comment, confirm=True)
+    result = await client.work_package.add_comment(work_package_id=42, comment=long_comment, confirm=True)
 
     assert result.result is not None
     assert result.result.comment_truncated is True
@@ -1302,7 +1302,7 @@ async def test_add_work_package_comment_suppresses_aggregated_journal_details() 
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.add_work_package_comment(
+    result = await client.work_package.add_comment(
         work_package_id=42,
         comment="Looks good to me.",
         confirm=True,
@@ -1354,7 +1354,7 @@ async def test_add_work_package_comment_fetches_missing_user_via_fallback() -> N
 
     client = OpenProjectClient(_base_settings(enable_work_package_write=True), transport=httpx.MockTransport(handler))
 
-    result = await client.add_work_package_comment(
+    result = await client.work_package.add_comment(
         work_package_id=42,
         comment="Looks good to me.",
         confirm=True,
@@ -1388,7 +1388,7 @@ async def test_add_work_package_comment_fallback_get_also_missing_user_stays_non
 
     client = OpenProjectClient(_base_settings(enable_work_package_write=True), transport=httpx.MockTransport(handler))
 
-    result = await client.add_work_package_comment(work_package_id=42, comment="Ok.", confirm=True)
+    result = await client.work_package.add_comment(work_package_id=42, comment="Ok.", confirm=True)
 
     assert result.state == "confirmed"
     assert result.result is not None
@@ -1422,7 +1422,7 @@ async def test_add_work_package_comment_fallback_get_failure_does_not_fail_comme
     client = OpenProjectClient(_base_settings(enable_work_package_write=True), transport=httpx.MockTransport(handler))
 
     with caplog.at_level(logging.WARNING, logger="openproject_ce_mcp.client"):
-        result = await client.add_work_package_comment(work_package_id=42, comment="Ok.", confirm=True)
+        result = await client.work_package.add_comment(work_package_id=42, comment="Ok.", confirm=True)
 
     assert result.state == "confirmed"
     assert result.result is not None
@@ -1458,7 +1458,7 @@ async def test_add_work_package_comment_skips_fallback_without_usable_activity_i
     client = OpenProjectClient(_base_settings(enable_work_package_write=True), transport=httpx.MockTransport(handler))
 
     with pytest.raises(KeyError):
-        await client.add_work_package_comment(work_package_id=42, comment="Ok.", confirm=True)
+        await client.work_package.add_comment(work_package_id=42, comment="Ok.", confirm=True)
 
     await client.aclose()
 
@@ -1495,7 +1495,7 @@ async def test_add_work_package_comment_skips_fallback_fetch_when_user_hidden() 
     settings = _base_settings(enable_work_package_write=True, hide_activity_fields=("user",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.add_work_package_comment(work_package_id=42, comment="Ok.", confirm=True)
+    result = await client.work_package.add_comment(work_package_id=42, comment="Ok.", confirm=True)
 
     assert result.state == "confirmed"
     payload = _to_payload(result)
@@ -1537,7 +1537,7 @@ async def test_add_work_package_comment_hides_other_configured_activity_fields()
     settings = _base_settings(enable_work_package_write=True, hide_activity_fields=("version",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.add_work_package_comment(work_package_id=42, comment="Secret note.", confirm=True)
+    result = await client.work_package.add_comment(work_package_id=42, comment="Secret note.", confirm=True)
 
     assert result.state == "confirmed"
     payload = _to_payload(result)
@@ -1610,7 +1610,7 @@ async def test_create_subtask_uses_parent_link_in_form_payload() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.create_subtask(
+    result = await client.work_package.create_subtask(
         parent_work_package_id=42,
         type="Task",
         subject="Implement API client",
@@ -1743,7 +1743,7 @@ async def test_create_work_package_resolves_schema_backed_fields_and_custom_fiel
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project="demo",
         type="Feature",
         subject="Schema-backed create",
@@ -1805,7 +1805,7 @@ async def test_create_work_package_resolves_project_only_once_for_type_and_versi
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    result = await client.create_work_package(
+    result = await client.work_package.create(
         project="demo",
         type="Task",
         version="v1.0",
@@ -1837,7 +1837,7 @@ async def test_bulk_create_work_packages_preview_mode() -> None:
         raise AssertionError(f"Unexpected: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    result = await client.bulk_create_work_packages(
+    result = await client.work_package.bulk_create(
         items=[
             {"project": "demo", "type": "Task", "subject": "WP 1"},
             {"project": "demo", "type": "Task", "subject": "WP 2"},
@@ -1876,7 +1876,7 @@ async def test_bulk_create_work_packages_preview_forwards_duration_fields() -> N
         raise AssertionError(f"Unexpected: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    result = await client.bulk_create_work_packages(
+    result = await client.work_package.bulk_create(
         items=[
             {
                 "project": "demo",
@@ -1953,7 +1953,7 @@ async def test_bulk_create_work_packages_confirm_forwards_duration_fields() -> N
         enable_work_package_write=True,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    result = await client.bulk_create_work_packages(
+    result = await client.work_package.bulk_create(
         items=[
             {
                 "project": "demo",
@@ -2026,7 +2026,7 @@ async def test_bulk_create_work_packages_executes_with_confirm() -> None:
         log_level=settings.log_level,
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    result = await client.bulk_create_work_packages(
+    result = await client.work_package.bulk_create(
         items=[
             {"project": "demo", "type": "Task", "subject": "WP A"},
             {"project": "demo", "type": "Task", "subject": "WP B"},
@@ -2067,7 +2067,7 @@ async def test_bulk_create_work_packages_partial_failure() -> None:
         raise AssertionError(f"Unexpected: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    result = await client.bulk_create_work_packages(
+    result = await client.work_package.bulk_create(
         items=[
             {"project": "demo", "type": "Task", "subject": "Good WP"},
             {"project": "demo", "type": "Task", "subject": "Bad WP"},
@@ -2104,7 +2104,7 @@ async def test_bulk_create_work_packages_reraises_cancelled_error_with_diagnosti
 
     with caplog.at_level(logging.WARNING, logger="openproject_ce_mcp.client"):
         with pytest.raises(asyncio.CancelledError):
-            await client.bulk_create_work_packages(
+            await client.work_package.bulk_create(
                 items=[
                     {"project": "demo", "type": "Task", "subject": "Good WP"},
                     {"project": "demo", "type": "Task", "subject": "Cancel me"},
@@ -2147,7 +2147,7 @@ async def test_bulk_create_work_packages_cancelled_with_confirm_true_does_not_cl
 
     with caplog.at_level(logging.WARNING, logger="openproject_ce_mcp.client"):
         with pytest.raises(asyncio.CancelledError):
-            await client.bulk_create_work_packages(
+            await client.work_package.bulk_create(
                 items=[
                     {"project": "demo", "type": "Task", "subject": "Cancel me"},
                     {"project": "demo", "type": "Task", "subject": "Never attempted"},
@@ -2218,7 +2218,7 @@ async def test_bulk_update_work_packages_preview_mode() -> None:
         raise AssertionError(f"Unexpected: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    result = await client.bulk_update_work_packages(
+    result = await client.work_package.bulk_update(
         items=[
             {
                 "work_package_id": 10,
@@ -2272,7 +2272,7 @@ async def test_bulk_update_work_packages_continues_after_partial_failure() -> No
         raise AssertionError(f"Unexpected: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    result = await client.bulk_update_work_packages(
+    result = await client.work_package.bulk_update(
         items=[
             {"work_package_id": 10, "subject": "Will fail"},
             {"work_package_id": 20, "subject": "Should succeed"},
@@ -2320,7 +2320,7 @@ async def test_bulk_update_work_packages_reraises_cancelled_error_with_diagnosti
 
     with caplog.at_level(logging.WARNING, logger="openproject_ce_mcp.client"):
         with pytest.raises(asyncio.CancelledError):
-            await client.bulk_update_work_packages(
+            await client.work_package.bulk_update(
                 items=[
                     {"work_package_id": 10, "subject": "Should succeed"},
                     {"work_package_id": 20, "subject": "Cancel me"},
@@ -2377,7 +2377,7 @@ async def test_toggle_activity_emoji_reaction_patches_and_normalizes() -> None:
 
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.toggle_activity_emoji_reaction(1988, "heart", confirm=True)
+    result = await client.emoji_reaction.toggle(1988, "heart", confirm=True)
 
     assert result.state == "confirmed"
     assert result.result is not None
@@ -2413,7 +2413,7 @@ async def test_toggle_activity_emoji_reaction_previews_without_confirm() -> None
 
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.toggle_activity_emoji_reaction(1988, "heart")
+    result = await client.emoji_reaction.toggle(1988, "heart")
 
     assert result.state == "preview"
     assert result.ready is True
@@ -2450,14 +2450,14 @@ async def test_toggle_activity_emoji_reaction_previews_when_write_disabled() -> 
     settings = dataclasses.replace(make_settings(), enable_work_package_write=False)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.toggle_activity_emoji_reaction(1988, "heart")
+    result = await client.emoji_reaction.toggle(1988, "heart")
 
     assert result.state == "preview"
     assert result.ready is True
     assert result.result is None
 
     with pytest.raises(PermissionDeniedError, match="write support is disabled"):
-        await client.toggle_activity_emoji_reaction(1988, "heart", confirm=True)
+        await client.emoji_reaction.toggle(1988, "heart", confirm=True)
 
     await client.aclose()
 
@@ -2470,7 +2470,7 @@ async def test_toggle_activity_emoji_reaction_rejects_invalid_reaction() -> None
     )
 
     with pytest.raises(InvalidInputError, match="reaction must be one of"):
-        await client.toggle_activity_emoji_reaction(1988, "banana")
+        await client.emoji_reaction.toggle(1988, "banana")
 
     await client.aclose()
 
@@ -2489,7 +2489,7 @@ async def test_toggle_activity_emoji_reaction_fails_closed_without_work_package_
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
     with pytest.raises(OpenProjectServerError, match="missing a work package link"):
-        await client.toggle_activity_emoji_reaction(1988, "heart")
+        await client.emoji_reaction.toggle(1988, "heart")
 
     await client.aclose()
 
@@ -2513,7 +2513,7 @@ async def test_update_work_package_sets_percentage_done_explicitly() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
-    result = await client.update_work_package(work_package_id=42, percentage_done=40, confirm=False)
+    result = await client.work_package.update(work_package_id=42, percentage_done=40, confirm=False)
     assert result.ready
     await client.aclose()
 
@@ -2563,7 +2563,7 @@ async def test_update_work_package_autofills_progress_on_close_without_estimate(
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
-    result = await client.update_work_package(work_package_id=42, status="Closed", confirm=False)
+    result = await client.work_package.update(work_package_id=42, status="Closed", confirm=False)
     assert result.ready
     assert result.payload["percentageDone"] == 100
     assert result.payload["remainingTime"] is None
@@ -2619,7 +2619,7 @@ async def test_update_work_package_autofills_progress_on_close_with_existing_est
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
-    result = await client.update_work_package(work_package_id=42, status="Closed", confirm=False)
+    result = await client.work_package.update(work_package_id=42, status="Closed", confirm=False)
     assert result.ready
     assert result.payload["percentageDone"] == 100
     assert result.payload["remainingTime"] == "PT0H"
@@ -2667,7 +2667,7 @@ async def test_update_work_package_autofills_progress_using_this_calls_own_new_e
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
-    result = await client.update_work_package(work_package_id=42, status="Closed", estimated_time="PT4H", confirm=False)
+    result = await client.work_package.update(work_package_id=42, status="Closed", estimated_time="PT4H", confirm=False)
     assert result.ready
     assert result.payload["percentageDone"] == 100
     assert result.payload["remainingTime"] == "PT0H"
@@ -2714,7 +2714,7 @@ async def test_update_work_package_skips_autofill_when_schema_not_writable() -> 
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
-    result = await client.update_work_package(work_package_id=42, status="Closed", confirm=False)
+    result = await client.work_package.update(work_package_id=42, status="Closed", confirm=False)
     assert result.ready
     await client.aclose()
 
@@ -2745,7 +2745,7 @@ async def test_update_work_package_preserves_explicit_values_on_close() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
-    result = await client.update_work_package(
+    result = await client.work_package.update(
         work_package_id=42,
         status="Closed",
         percentage_done=50,
@@ -2782,7 +2782,7 @@ async def test_update_work_package_clears_duration_fields_via_clear_sentinel() -
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(_base_settings(), transport=httpx.MockTransport(handler))
-    result = await client.update_work_package(
+    result = await client.work_package.update(
         work_package_id=42,
         estimated_time=CLEAR,
         remaining_time=CLEAR,
@@ -2832,7 +2832,7 @@ async def test_update_work_package_close_succeeds_with_work_package_read_disable
 
     settings = _base_settings(enable_work_package_read=False)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    result = await client.update_work_package(work_package_id=42, status="Closed", confirm=False)
+    result = await client.work_package.update(work_package_id=42, status="Closed", confirm=False)
     assert result.ready
     assert result.payload["percentageDone"] == 100
     await client.aclose()
@@ -2888,7 +2888,7 @@ async def test_hidden_custom_field_is_rejected_after_schema_resolution_by_resolv
     # first gate (_ensure_custom_field_input_writable) lets it through -- only the second gate,
     # keyed on the schema-resolved display name, can catch this.
     with pytest.raises(InvalidInputError, match="hidden by OPENPROJECT_HIDE_CUSTOM_FIELDS"):
-        await client.create_work_package(
+        await client.work_package.create(
             project="demo",
             type="Task",
             subject="Blocked via resolved name",
@@ -2922,7 +2922,7 @@ async def test_create_work_package_rejects_assignee_supplied_by_name() -> None:
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
     with pytest.raises(InvalidInputError, match="assignee must be a positive integer user id or 'me'"):
-        await client.create_work_package(
+        await client.work_package.create(
             project="demo",
             type="Task",
             subject="Blocked assignee by name",

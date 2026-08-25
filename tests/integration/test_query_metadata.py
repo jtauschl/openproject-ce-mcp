@@ -19,19 +19,19 @@ pytestmark = pytest.mark.integration
 
 
 async def test_get_query_filter(client: OpenProjectClient) -> None:
-    filter_ = await client.get_query_filter("assignee")
+    filter_ = await client.query_metadata.get_filter("assignee")
     assert filter_.id == "assignee"
     assert filter_.name
 
 
 async def test_get_query_column(client: OpenProjectClient) -> None:
-    column = await client.get_query_column("subject")
+    column = await client.query_metadata.get_column("subject")
     assert column.id == "subject"
     assert column.name
 
 
 async def test_get_query_operator(client: OpenProjectClient) -> None:
-    operator = await client.get_query_operator("=")
+    operator = await client.query_metadata.get_operator("=")
     assert operator.id == "="
 
 
@@ -41,23 +41,23 @@ async def test_get_query_sort_by_resolves_colon_form_id(client: OpenProjectClien
     caller-facing colon-separated id ("subject:asc") must resolve against a
     real instance, and the public id contract must stay the caller's
     colon-form regardless of the server's own hyphen-form self-link."""
-    result = await client.get_query_sort_by("subject:asc")
+    result = await client.query_metadata.get_sort_by("subject:asc")
     assert result.id == "subject:asc"
     assert result.direction is not None
 
 
 async def test_list_query_filter_instance_schemas(client: OpenProjectClient) -> None:
-    result = await client.list_query_filter_instance_schemas()
+    result = await client.query_metadata.list_filter_instance_schemas()
     assert result.count > 0
     assert result.results[0].id
     assert result.results[0].name
 
 
 async def test_get_query_filter_instance_schema(client: OpenProjectClient) -> None:
-    listed = await client.list_query_filter_instance_schemas()
+    listed = await client.query_metadata.list_filter_instance_schemas()
     schema_id = listed.results[0].id
 
-    schema = await client.get_query_filter_instance_schema(schema_id)
+    schema = await client.query_metadata.get_filter_instance_schema(schema_id)
 
     assert schema.id == schema_id
 
@@ -68,7 +68,7 @@ async def test_list_capabilities_context_filter_accepted(client: OpenProjectClie
     form (w{id}), which OpenProject 16.x rejects outright ("Filters Context
     malformed value"). Confirm the request succeeds (no exception) against
     whatever version this instance actually is."""
-    result = await client.list_capabilities(project=test_project)
+    result = await client.action_capability.list_capabilities(project=test_project)
     assert result.count >= 0
     if result.count > 0:
         assert result.results[0].action_id
@@ -85,7 +85,7 @@ async def test_list_capabilities_by_id_denies_record_outside_read_allowlist(
     project first and thus already enforces the allowlist. A caller with no
     read access to test_project could still read any of its capability
     records by id."""
-    listed = await client.list_capabilities(project=test_project)
+    listed = await client.action_capability.list_capabilities(project=test_project)
     if listed.count == 0:
         pytest.skip("No capability records in test project")
     capability_id = listed.results[0].id
@@ -94,5 +94,5 @@ async def test_list_capabilities_by_id_denies_record_outside_read_allowlist(
     denied_client = OpenProjectClient(denied_settings)
     await denied_client.initialize()
 
-    denied_result = await denied_client.list_capabilities(capability_id=capability_id)
+    denied_result = await denied_client.action_capability.list_capabilities(capability_id=capability_id)
     assert denied_result.count == 0

@@ -20,7 +20,7 @@ pytestmark = pytest.mark.integration
 
 
 async def test_list_project_phase_definitions(client: OpenProjectClient) -> None:
-    result = await client.list_project_phase_definitions()
+    result = await client.project.list_phase_definitions()
     # OpenProject pre-seeds this instance-wide list itself (Initiating/
     # Planning/Executing/Closing, see module docstring) -- a real, healthy
     # instance always has at least one, so `count >= 0` alone (true even for
@@ -30,16 +30,16 @@ async def test_list_project_phase_definitions(client: OpenProjectClient) -> None
 
 
 async def test_get_project_phase_definition(client: OpenProjectClient) -> None:
-    listed = await client.list_project_phase_definitions()
+    listed = await client.project.list_phase_definitions()
     if listed.count == 0:
         pytest.skip("instance has no project phase definitions configured")
 
     definition_id = listed.results[0].id
-    definition = await client.get_project_phase_definition(definition_id)
+    definition = await client.project.get_phase_definition(definition_id)
     assert definition.id == definition_id
 
 
 async def test_get_project_phase(client: OpenProjectClient, seed_project_phase_id: int) -> None:
-    phase = await client.get_project_phase(seed_project_phase_id)
+    phase = await client.project.get_phase(seed_project_phase_id)
     assert phase.id == seed_project_phase_id
     assert phase.name

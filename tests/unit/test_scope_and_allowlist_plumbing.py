@@ -40,7 +40,7 @@ async def test_add_comment_requires_write_gate_not_delete_gate() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="write support is disabled"):
-        await client.add_work_package_comment(work_package_id=1, comment="Hello", confirm=True)
+        await client.work_package.add_comment(work_package_id=1, comment="Hello", confirm=True)
 
     await client.aclose()
 
@@ -72,7 +72,7 @@ async def test_board_create_respects_allowed_write_projects() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
-        await client.create_board(name="Sprint Board", project="other", confirm=False)
+        await client.board.create(name="Sprint Board", project="other", confirm=False)
 
     await client.aclose()
 
@@ -110,7 +110,7 @@ async def test_create_time_entry_with_work_package_respects_allowed_write_projec
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
-        await client.create_time_entry(
+        await client.time_entry.create(
             work_package_id=9,
             activity="Development",
             hours="PT1H",
@@ -144,7 +144,7 @@ async def test_explicit_empty_write_scope_blocks_project_scoped_write() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
-        await client.create_board(name="Sprint Board", project="demo", confirm=False)
+        await client.board.create(name="Sprint Board", project="demo", confirm=False)
 
     await client.aclose()
 
@@ -174,7 +174,7 @@ async def test_empty_read_projects_denies_project_scoped_read() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
-        await client.get_project("demo")
+        await client.project.get("demo")
 
     await client.aclose()
 
@@ -233,7 +233,7 @@ async def test_write_scope_is_intersection_of_read_scope() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
-        await client.create_board(name="Other Board", project="other", confirm=False)
+        await client.board.create(name="Other Board", project="other", confirm=False)
 
     await client.aclose()
 
@@ -500,7 +500,7 @@ async def test_project_wildcard_patterns_match_identifier_and_title() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    project = await client.get_project("mcp-test")
+    project = await client.project.get("mcp-test")
 
     assert project.id == 6
     assert project.name == "MCP-Test"
@@ -541,7 +541,7 @@ async def test_get_membership_respects_project_scope() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
-        await client.get_membership(3)
+        await client.membership.get(3)
 
     await client.aclose()
 
@@ -582,7 +582,7 @@ async def test_delete_membership_allows_identifier_write_scope() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    deleted = await client.delete_membership(membership_id=3, confirm=True)
+    deleted = await client.membership.delete(membership_id=3, confirm=True)
 
     assert deleted.membership_id == 3
     assert deleted.state == "confirmed"
@@ -626,7 +626,7 @@ async def test_delete_news_allows_identifier_write_scope() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    deleted = await client.delete_news(news_id=7, confirm=True)
+    deleted = await client.news.delete(news_id=7, confirm=True)
 
     assert deleted.news_id == 7
     assert deleted.state == "confirmed"
@@ -672,7 +672,7 @@ async def test_delete_time_entry_allows_identifier_write_scope() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    deleted = await client.delete_time_entry(time_entry_id=10, confirm=True)
+    deleted = await client.time_entry.delete(time_entry_id=10, confirm=True)
 
     assert deleted.time_entry_id == 10
     assert deleted.state == "confirmed"
@@ -716,7 +716,7 @@ async def test_delete_version_allows_identifier_write_scope() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    deleted = await client.delete_version(version_id=8, confirm=True)
+    deleted = await client.version.delete(version_id=8, confirm=True)
 
     assert deleted.version_id == 8
     assert deleted.state == "confirmed"
@@ -761,7 +761,7 @@ async def test_delete_board_allows_identifier_write_scope() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    deleted = await client.delete_board(board_id=12, confirm=True)
+    deleted = await client.board.delete(board_id=12, confirm=True)
 
     assert deleted.board_id == 12
     assert deleted.state == "confirmed"
@@ -789,7 +789,7 @@ async def test_chain_specific_read_flags_restrict_membership_reads_with_global_r
     )
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_MEMBERSHIP_READ"):
-        await client.list_roles()
+        await client.role.list_roles()
 
     await client.aclose()
 
@@ -817,7 +817,7 @@ async def test_toggle_activity_emoji_reaction_respects_allowed_write_projects() 
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
-        await client.toggle_activity_emoji_reaction(1988, "heart")
+        await client.emoji_reaction.toggle(1988, "heart")
 
     await client.aclose()
 
@@ -851,6 +851,6 @@ async def test_delete_file_link_respects_allowed_write_projects() -> None:
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
-        await client.delete_file_link(5, confirm=True)
+        await client.file_link.delete(5, confirm=True)
 
     await client.aclose()

@@ -21,7 +21,7 @@ pytestmark = pytest.mark.integration
 
 
 async def test_list_grids(client: OpenProjectClient) -> None:
-    result = await client.list_grids()
+    result = await client.grid.list()
     assert result is not None
     # A project's own overview page is itself a grid -- near-guaranteed
     # non-empty on any instance with at least one accessible project.
@@ -31,7 +31,7 @@ async def test_list_grids(client: OpenProjectClient) -> None:
 
 async def test_create_get_update_delete_grid(client: OpenProjectClient, grid_ids: list[int]) -> None:
     # Create
-    result = await client.create_grid(
+    result = await client.grid.create(
         name="[integration-test] grid",
         scope="/my/page",
         row_count=4,
@@ -44,19 +44,19 @@ async def test_create_get_update_delete_grid(client: OpenProjectClient, grid_ids
     grid_ids.append(grid_id)
 
     # Read
-    grid = await client.get_grid(grid_id)
+    grid = await client.grid.get(grid_id)
     assert grid.id == grid_id
     assert grid.scope == "/my/page"
 
     # Update
-    update_result = await client.update_grid(
+    update_result = await client.grid.update(
         grid_id=grid_id,
         row_count=5,
         confirm=True,
     )
     assert update_result.ready, update_result.validation_errors
 
-    updated = await client.get_grid(grid_id)
+    updated = await client.grid.get(grid_id)
     assert updated.row_count == 5
 
     # Delete -- OpenProject rejects deletion of /my/page grids for every user,
@@ -67,7 +67,7 @@ async def test_create_get_update_delete_grid(client: OpenProjectClient, grid_ids
     # is no API path that deletes a /my/page grid; this grid is intentionally
     # left behind, same as every prior run of this test, not a cleanup gap.
     with pytest.raises(PermissionDeniedError):
-        await client.delete_grid(grid_id=grid_id, confirm=True)
+        await client.grid.delete(grid_id=grid_id, confirm=True)
 
 
 async def test_update_grid_changes_dimensions(client: OpenProjectClient, project_refs: list[str]) -> None:
@@ -84,7 +84,7 @@ async def test_update_grid_changes_dimensions(client: OpenProjectClient, project
     await unrestricted_client.initialize()
 
     new_identifier = disposable_project_identifier()
-    create_project_result = await unrestricted_client.create_project(
+    create_project_result = await unrestricted_client.project.create(
         name=f"[integration-test] {new_identifier}", identifier=new_identifier, confirm=True
     )
     assert create_project_result.ready, create_project_result.validation_errors
@@ -93,7 +93,7 @@ async def test_update_grid_changes_dimensions(client: OpenProjectClient, project
     # rowCount/columnCount must be large enough to contain the server's
     # default project-overview widget layout (spans rows 1-4, columns 1-3) or
     # the form rejects the create with a widget-constraint validation error.
-    create_result = await unrestricted_client.create_grid(
+    create_result = await unrestricted_client.grid.create(
         name=f"[integration-test] {new_identifier}",
         scope=f"/projects/{new_identifier}",
         row_count=4,
@@ -104,7 +104,7 @@ async def test_update_grid_changes_dimensions(client: OpenProjectClient, project
     grid_id = create_result.grid_id
     assert grid_id is not None
 
-    updated = await unrestricted_client.update_grid(grid_id=grid_id, row_count=5, column_count=4, confirm=True)
+    updated = await unrestricted_client.grid.update(grid_id=grid_id, row_count=5, column_count=4, confirm=True)
     assert updated.state == "confirmed"
     assert updated.result is not None
     assert updated.result.row_count == 5
@@ -121,7 +121,7 @@ async def test_create_grid_rejects_hidden_name_field(client: OpenProjectClient, 
     await hidden_client.initialize()
 
     with pytest.raises(InvalidInputError, match="OPENPROJECT_HIDE_GRID_FIELDS"):
-        await hidden_client.create_grid(
+        await hidden_client.grid.create(
             name="[integration-test] hidden field",
             scope=f"/projects/{test_project}",
             confirm=False,
@@ -162,14 +162,14 @@ async def test_create_update_delete_grid_denied_outside_write_allowlist(
     await unrestricted_client.initialize()
 
     new_identifier = disposable_project_identifier()
-    create_project_result = await unrestricted_client.create_project(
+    create_project_result = await unrestricted_client.project.create(
         name=f"[integration-test] {new_identifier}", identifier=new_identifier, confirm=True
     )
     assert create_project_result.ready, create_project_result.validation_errors
     project_refs.append(new_identifier)
 
     with pytest.raises(PermissionDeniedError):
-        await write_denied_client.create_grid(
+        await write_denied_client.grid.create(
             name=f"[integration-test] {new_identifier}",
             scope=f"/projects/{new_identifier}",
             row_count=4,
@@ -177,7 +177,7 @@ async def test_create_update_delete_grid_denied_outside_write_allowlist(
             confirm=True,
         )
 
-    created = await unrestricted_client.create_grid(
+    created = await unrestricted_client.grid.create(
         name=f"[integration-test] {new_identifier} existing",
         scope=f"/projects/{new_identifier}",
         row_count=4,
@@ -189,10 +189,10 @@ async def test_create_update_delete_grid_denied_outside_write_allowlist(
     assert grid_id is not None
 
     with pytest.raises(PermissionDeniedError):
-        await write_denied_client.update_grid(grid_id=grid_id, row_count=5, confirm=True)
+        await write_denied_client.grid.update(grid_id=grid_id, row_count=5, confirm=True)
 
     with pytest.raises(PermissionDeniedError):
-        await write_denied_client.delete_grid(grid_id=grid_id, confirm=True)
+        await write_denied_client.grid.delete(grid_id=grid_id, confirm=True)
 
 
 async def test_list_grids_paginates_beyond_a_single_page(client: OpenProjectClient) -> None:
@@ -203,15 +203,15 @@ async def test_list_grids_paginates_beyond_a_single_page(client: OpenProjectClie
     paginating. OpenProject only allows one grid per scope, so this relies
     on the instance's pre-existing grids (dashboards/project overviews are
     themselves grids) rather than creating multiple new ones."""
-    unfiltered = await client.list_grids(limit=100)
+    unfiltered = await client.grid.list(limit=100)
     if unfiltered.total < 2:
         pytest.skip("Not enough grids on this instance to prove pagination")
 
-    first_page = await client.list_grids(limit=1)
+    first_page = await client.grid.list(limit=1)
     assert first_page.count == 1
     assert first_page.truncated
     assert first_page.next_offset == 2
 
-    second_page = await client.list_grids(limit=1, offset=2)
+    second_page = await client.grid.list(limit=1, offset=2)
     assert second_page.count == 1
     assert second_page.results[0].id != first_page.results[0].id

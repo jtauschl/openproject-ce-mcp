@@ -60,7 +60,7 @@ async def test_get_work_package_filters_children_and_ancestors_by_read_allowlist
     settings = _base_settings(read_projects=("allowed",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    detail = await client.get_work_package(1)
+    detail = await client.work_package.get(1)
 
     child_titles = {c["title"] for c in detail.children or []}
     ancestor_titles = {a["title"] for a in detail.ancestors or []}
@@ -94,7 +94,7 @@ async def test_get_work_package_keeps_children_and_ancestors_under_wide_open_all
     settings = _base_settings(read_projects=("*",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    detail = await client.get_work_package(1)
+    detail = await client.work_package.get(1)
 
     assert [c["title"] for c in detail.children or []] == ["Child"]
     assert [a["title"] for a in detail.ancestors or []] == ["Ancestor"]
@@ -123,7 +123,7 @@ async def test_list_work_package_watchers_denies_anchor_outside_read_allowlist()
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError):
-        await client.list_work_package_watchers(9)
+        await client.watcher.list_for_work_package(9)
 
     await client.aclose()
 
@@ -148,7 +148,7 @@ async def test_list_work_package_watchers_allows_anchor_inside_read_allowlist() 
     settings = _base_settings(read_projects=("allowed",))
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_work_package_watchers(9)
+    result = await client.watcher.list_for_work_package(9)
 
     assert result.count == 1
 

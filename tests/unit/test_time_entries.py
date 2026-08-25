@@ -196,10 +196,10 @@ async def test_time_entry_crud_and_activity_listing() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    activities = await client.list_time_entry_activities()
-    listed = await client.list_time_entries(project="demo", work_package_id=55)
-    detail = await client.get_time_entry(10)
-    created_preview = await client.create_time_entry(
+    activities = await client.time_entry.list_activities()
+    listed = await client.time_entry.list_all(project="demo", work_package_id=55)
+    detail = await client.time_entry.get(10)
+    created_preview = await client.time_entry.create(
         project="demo",
         activity="Development",
         hours="PT1H30M",
@@ -207,7 +207,7 @@ async def test_time_entry_crud_and_activity_listing() -> None:
         comment="Initial implementation",
         confirm=False,
     )
-    created = await client.create_time_entry(
+    created = await client.time_entry.create(
         project="demo",
         activity="Development",
         hours="PT1H30M",
@@ -215,8 +215,8 @@ async def test_time_entry_crud_and_activity_listing() -> None:
         comment="Initial implementation",
         confirm=True,
     )
-    updated = await client.update_time_entry(time_entry_id=10, hours="PT2H", confirm=True)
-    deleted = await client.delete_time_entry(time_entry_id=10, confirm=True)
+    updated = await client.time_entry.update(time_entry_id=10, hours="PT2H", confirm=True)
+    deleted = await client.time_entry.delete(time_entry_id=10, confirm=True)
 
     assert activities.count == 1
     assert activities.results[0].name == "Development"
@@ -278,7 +278,7 @@ async def test_update_time_entry_clears_comment_in_http_payload() -> None:
     settings = _base_settings(enable_work_package_write=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.update_time_entry(time_entry_id=10, comment="", confirm=True)
+    result = await client.time_entry.update(time_entry_id=10, comment="", confirm=True)
 
     assert result.state == "confirmed"
     await client.aclose()
@@ -356,7 +356,7 @@ async def test_list_time_entry_activities_paginates_project_fallback() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    activities = await client.list_time_entry_activities()
+    activities = await client.time_entry.list_activities()
 
     assert activities.count == 1
     assert activities.results[0].name == "Development"
@@ -419,7 +419,7 @@ async def test_list_time_entry_activities_falls_back_across_visible_projects() -
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    activities = await client.list_time_entry_activities()
+    activities = await client.time_entry.list_activities()
 
     assert activities.count == 1
     assert activities.results[0].name == "Development"
@@ -484,7 +484,7 @@ async def test_list_time_entry_activities_skips_projects_without_form_access() -
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    activities = await client.list_time_entry_activities()
+    activities = await client.time_entry.list_activities()
 
     assert activities.count == 1
     assert activities.results[0].name == "Development"
@@ -574,7 +574,7 @@ async def test_create_time_entry_resolves_activity_from_project_form_context() -
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    created = await client.create_time_entry(
+    created = await client.time_entry.create(
         project="demo",
         activity="Development",
         hours="PT15M",
@@ -623,7 +623,7 @@ async def test_create_time_entry_sends_start_time_but_never_end_time() -> None:
 
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.create_time_entry(
+    result = await client.time_entry.create(
         work_package_id=42,
         activity=None,
         hours="PT1H",
@@ -667,7 +667,7 @@ async def test_create_time_entry_entity_link_uses_numeric_id_for_semantic_ref() 
 
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
-    await client.create_time_entry(
+    await client.time_entry.create(
         work_package_id="PROJ-7",
         activity=None,
         hours="PT1H",
@@ -704,7 +704,7 @@ async def test_time_entry_semantic_work_package_ref_uses_numeric_entity_href_sha
 
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
-    await client.create_time_entry(
+    await client.time_entry.create(
         work_package_id="PROJ-7",
         activity=None,
         hours="PT1H",
@@ -748,7 +748,7 @@ async def test_list_time_entries_comment_capped_at_text_limit() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
-    page = await client.list_time_entries()
+    page = await client.time_entry.list_all()
 
     assert page.results[0].comment is not None
     assert page.results[0].comment_truncated is True
@@ -778,12 +778,12 @@ async def test_get_time_entry_returns_full_comment_by_default() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    full = await client.get_time_entry(1)
+    full = await client.time_entry.get(1)
     assert full.comment is not None
     assert len(full.comment) == 1500 + len("<user-content></user-content>")
     assert full.comment_truncated is False
 
-    capped = await client.get_time_entry(1, text_limit=50)
+    capped = await client.time_entry.get(1, text_limit=50)
     assert capped.comment_truncated is True
     assert capped.comment_length == 1500
 
@@ -817,7 +817,7 @@ async def test_create_time_entry_preview_reflects_openproject_validation_errors(
 
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.create_time_entry(
+    result = await client.time_entry.create(
         work_package_id=42, activity=None, hours="PT0H", spent_on="2026-03-20", confirm=False
     )
 
@@ -856,7 +856,7 @@ async def test_update_time_entry_preview_reflects_openproject_validation_errors(
 
     client = OpenProjectClient(_write_enabled_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.update_time_entry(time_entry_id=8, hours="PT0H", confirm=False)
+    result = await client.time_entry.update(time_entry_id=8, hours="PT0H", confirm=False)
 
     assert result.ready is False
     assert result.state == "rejected"
@@ -930,7 +930,7 @@ async def test_create_time_entry_resolves_activity_via_entity_link_when_work_pac
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.create_time_entry(
+    result = await client.time_entry.create(
         work_package_id=42,
         activity="Development",
         hours="PT15M",

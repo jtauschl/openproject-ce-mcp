@@ -29,7 +29,7 @@ pytestmark = pytest.mark.integration
 async def _poll_until_done(client: OpenProjectClient, job_status_id: str, *, timeout: float = 30.0):
     deadline = asyncio.get_event_loop().time() + timeout
     while True:
-        status = await client.get_job_status(job_status_id)
+        status = await client.job_status.get(job_status_id)
         if status.status in ("success", "failure", "error"):
             return status
         if asyncio.get_event_loop().time() > deadline:
@@ -57,7 +57,7 @@ async def test_copy_project_result_becomes_visible_to_allowlist_immediately(
     await unrestricted_client.initialize()
 
     new_identifier = disposable_project_identifier()
-    copy_result = await unrestricted_client.copy_project(
+    copy_result = await unrestricted_client.project.copy(
         source_project=test_project,
         name=f"[integration-test] {new_identifier}",
         identifier=new_identifier,
@@ -71,7 +71,7 @@ async def test_copy_project_result_becomes_visible_to_allowlist_immediately(
     assert status.status == "success", status.message
 
     # Immediately, no restart: the new project must already be resolvable.
-    new_project = await unrestricted_client.get_project(new_identifier)
+    new_project = await unrestricted_client.project.get(new_identifier)
     assert new_project.identifier == new_identifier
 
 
@@ -94,7 +94,7 @@ async def test_get_job_status_denies_project_link_outside_read_allowlist(
     await unrestricted_client.initialize()
 
     new_identifier = disposable_project_identifier()
-    copy_result = await unrestricted_client.copy_project(
+    copy_result = await unrestricted_client.project.copy(
         source_project=test_project,
         name=f"[integration-test] {new_identifier}",
         identifier=new_identifier,
@@ -112,4 +112,4 @@ async def test_get_job_status_denies_project_link_outside_read_allowlist(
     await denied_client.initialize()
 
     with pytest.raises(PermissionDeniedError):
-        await denied_client.get_job_status(copy_result.job_status_id)
+        await denied_client.job_status.get(copy_result.job_status_id)

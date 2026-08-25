@@ -16,32 +16,32 @@ pytestmark = pytest.mark.integration
 
 
 async def test_list_statuses(client: OpenProjectClient) -> None:
-    result = await client.list_statuses()
+    result = await client.status_priority_type.list_statuses()
     assert result.count > 0
     assert result.results[0].name
 
 
 async def test_get_status(client: OpenProjectClient) -> None:
-    listed = await client.list_statuses()
+    listed = await client.status_priority_type.list_statuses()
     status_id = listed.results[0].id
 
-    status = await client.get_status(status_id)
+    status = await client.status_priority_type.get_status(status_id)
 
     assert status.id == status_id
     assert status.name
 
 
 async def test_list_priorities(client: OpenProjectClient) -> None:
-    result = await client.list_priorities()
+    result = await client.status_priority_type.list_priorities()
     assert result.count > 0
     assert result.results[0].name
 
 
 async def test_get_priority(client: OpenProjectClient) -> None:
-    listed = await client.list_priorities()
+    listed = await client.status_priority_type.list_priorities()
     priority_id = listed.results[0].id
 
-    priority = await client.get_priority(priority_id)
+    priority = await client.status_priority_type.get_priority(priority_id)
 
     assert priority.id == priority_id
     assert priority.name
@@ -60,22 +60,22 @@ async def test_list_priorities_stamps_hidden_field_for_masking(client: OpenProje
     hidden_client = OpenProjectClient(hidden_settings)
     await hidden_client.initialize()
 
-    result = await hidden_client.list_priorities()
+    result = await hidden_client.status_priority_type.list_priorities()
     assert result.count > 0
     assert all(getattr(p, "_hidden_keys", None) == frozenset({"color"}) for p in result.results)
 
 
 async def test_list_types(client: OpenProjectClient) -> None:
-    result = await client.list_types()
+    result = await client.status_priority_type.list_types()
     assert result.count > 0
     assert result.results[0].name
 
 
 async def test_get_type(client: OpenProjectClient) -> None:
-    listed = await client.list_types()
+    listed = await client.status_priority_type.list_types()
     type_id = listed.results[0].id
 
-    work_package_type = await client.get_type(type_id)
+    work_package_type = await client.status_priority_type.get_type(type_id)
 
     assert work_package_type.id == type_id
     assert work_package_type.name

@@ -14,13 +14,13 @@ pytestmark = pytest.mark.integration
 
 
 async def test_list_projects(client: OpenProjectClient) -> None:
-    result = await client.list_projects()
+    result = await client.project.list()
     assert result.count > 0
     assert result.results[0].name
 
 
 async def test_get_project(client: OpenProjectClient, test_project: str) -> None:
-    project = await client.get_project(test_project)
+    project = await client.project.get(test_project)
     # OpenProject identifiers are always lowercase server-side (docker/test/
     # seed.rb creates the project as "tst" even when OPENPROJECT_TEST_PROJECT
     # is "TST", per that script's own comment) -- compare case-insensitively,
@@ -31,7 +31,7 @@ async def test_get_project(client: OpenProjectClient, test_project: str) -> None
 
 
 async def test_get_project_admin_context(client: OpenProjectClient, test_project: str) -> None:
-    ctx = await client.get_project_admin_context(test_project)
+    ctx = await client.project_admin.get_admin_context(test_project)
     assert ctx is not None
     assert ctx.project is not None
     assert ctx.project.identifier is not None
@@ -69,7 +69,7 @@ async def test_get_project_admin_context_filters_parent_candidates_by_read_allow
     assert create_result.ready, create_result.validation_errors
     project_refs.append(identifier)
 
-    ctx = await client.get_project_admin_context(test_project)
+    ctx = await client.project_admin.get_admin_context(test_project)
 
     candidate_identifiers = {ref.identifier for ref in ctx.available_parent_projects}
     assert identifier not in candidate_identifiers
@@ -78,7 +78,7 @@ async def test_get_project_admin_context_filters_parent_candidates_by_read_allow
 async def test_get_project_configuration(client: OpenProjectClient, test_project: str) -> None:
     # The project configuration endpoint was added in 17.4; older instances 404.
     try:
-        config = await client.get_project_configuration(test_project)
+        config = await client.project.get_configuration(test_project)
     except NotFoundError:
         pytest.skip("project configuration endpoint requires OpenProject 17.4+")
     assert config is not None
@@ -86,12 +86,12 @@ async def test_get_project_configuration(client: OpenProjectClient, test_project
 
 
 async def test_list_types_scoped_to_project(client: OpenProjectClient, test_project: str) -> None:
-    result = await client.list_types(project=test_project)
+    result = await client.status_priority_type.list_types(project=test_project)
     assert result.count > 0
 
 
 async def test_list_categories(client: OpenProjectClient, test_project: str) -> None:
-    result = await client.list_categories(test_project)
+    result = await client.category.list(test_project)
     assert result is not None
     if result.count == 0:
         pytest.skip("no existing category in the test project (no create_category API to seed one)")
@@ -103,32 +103,32 @@ async def test_list_categories(client: OpenProjectClient, test_project: str) -> 
 async def test_get_my_project_access(client: OpenProjectClient, test_project: str) -> None:
     access = await client.get_my_project_access(test_project)
     assert access is not None
-    me = await client.get_current_user()
+    me = await client.current_user.get_current_user()
     assert access.current_user_id == me.id
 
 
 async def test_list_principals(client: OpenProjectClient) -> None:
-    result = await client.list_principals()
+    result = await client.principal.list_principals()
     # test_project's admin member is seeded by docker/test/seed.rb and is a
     # Principal (a User) itself, so this must reliably be non-empty -- the
     # prior conditional check asserted nothing when the collection happened
     # to be empty.
     assert result.count > 0
-    me = await client.get_current_user()
+    me = await client.current_user.get_current_user()
     assert any(p.id == me.id for p in result.results)
 
 
 async def test_list_principals_paginates_beyond_a_single_page(client: OpenProjectClient) -> None:
-    unfiltered = await client.list_principals(limit=100)
+    unfiltered = await client.principal.list_principals(limit=100)
     if unfiltered.total < 2:
         pytest.skip("Not enough principals on this instance to prove pagination")
 
-    first_page = await client.list_principals(limit=1)
+    first_page = await client.principal.list_principals(limit=1)
     assert first_page.count == 1
     assert first_page.truncated
     assert first_page.next_offset == 2
 
-    second_page = await client.list_principals(limit=1, offset=2)
+    second_page = await client.principal.list_principals(limit=1, offset=2)
     assert second_page.count == 1
     assert second_page.results[0].id != first_page.results[0].id
 

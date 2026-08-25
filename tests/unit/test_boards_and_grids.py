@@ -52,7 +52,7 @@ async def test_list_boards_returns_empty_under_empty_read_projects() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.list_boards()
+    result = await client.board.list()
 
     assert result.count == 0
     assert result.results == []
@@ -207,9 +207,9 @@ async def test_board_crud_uses_query_form_endpoints_and_project_filtering() -> N
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    listed = await client.list_boards(project="demo")
-    detail = await client.get_board(12)
-    created = await client.create_board(
+    listed = await client.board.list(project="demo")
+    detail = await client.board.get(12)
+    created = await client.board.create(
         name="Sprint Board",
         project="demo",
         public=False,
@@ -220,8 +220,8 @@ async def test_board_crud_uses_query_form_endpoints_and_project_filtering() -> N
         highlighted_attributes=["status"],
         confirm=True,
     )
-    updated = await client.update_board(board_id=12, name="Sprint Board Updated", public=True, confirm=True)
-    deleted = await client.delete_board(board_id=12, confirm=True)
+    updated = await client.board.update(board_id=12, name="Sprint Board Updated", public=True, confirm=True)
+    deleted = await client.board.delete(board_id=12, confirm=True)
 
     assert listed.count == 1
     assert listed.results[0].name == "Sprint Board"
@@ -315,7 +315,7 @@ async def test_create_grid_uses_form_endpoint_and_project_scope() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    created = await client.create_grid(
+    created = await client.grid.create(
         name="Demo Grid",
         scope="/projects/demo",
         row_count=2,
@@ -379,9 +379,9 @@ async def test_create_board_global_requires_fully_open_scope(read_projects, proj
 
     if should_deny:
         with pytest.raises(PermissionDeniedError):
-            await client.create_board(name="Board", project=project, confirm=False)
+            await client.board.create(name="Board", project=project, confirm=False)
     else:
-        result = await client.create_board(name="Board", project=project, confirm=False)
+        result = await client.board.create(name="Board", project=project, confirm=False)
         assert result.ready is True
 
     await client.aclose()
@@ -418,7 +418,7 @@ async def test_create_board_returns_preview_when_not_confirmed() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.create_board(name="My Board", confirm=False)
+    result = await client.board.create(name="My Board", confirm=False)
 
     assert result.state == "preview"
     assert result.ready is True
@@ -458,7 +458,7 @@ async def test_create_board_rejects_validation_error() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.create_board(name="", confirm=True)
+    result = await client.board.create(name="", confirm=True)
 
     assert result.ready is False
     assert result.state == "invalid"
@@ -495,7 +495,7 @@ async def test_list_grids_filters_disallowed_project_scope() -> None:
 
     settings = _make_grid_settings({"read_projects": ("other",), "write_projects": ("other",)})
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    result = await client.list_grids()
+    result = await client.grid.list()
 
     assert [g.id for g in result.results] == [56]
     assert result.count == 1
@@ -511,7 +511,7 @@ async def test_get_grid_returns_summary_for_allowed_project() -> None:
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
-    result = await client.get_grid(55)
+    result = await client.grid.get(55)
 
     assert result.id == 55
 
@@ -541,7 +541,7 @@ async def test_get_grid_denies_missing_or_malformed_scope_under_restrictive_allo
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_READ_PROJECTS"):
-        await client.get_grid(77)
+        await client.grid.get(77)
 
     await client.aclose()
 
@@ -556,7 +556,7 @@ async def test_create_grid_denies_unrecognized_scope_under_restrictive_allowlist
     )
 
     with pytest.raises(PermissionDeniedError, match="disabled by OPENPROJECT_"):
-        await client.create_grid(name="Rogue Grid", scope="/api/v3/grids/some_bogus_scope", confirm=True)
+        await client.grid.create(name="Rogue Grid", scope="/api/v3/grids/some_bogus_scope", confirm=True)
 
     await client.aclose()
 
@@ -583,10 +583,10 @@ async def test_update_and_delete_grid_deny_unrecognized_scope_under_restrictive_
     client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
-        await client.update_grid(grid_id=77, name="Renamed", confirm=True)
+        await client.grid.update(grid_id=77, name="Renamed", confirm=True)
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_WRITE_PROJECTS"):
-        await client.delete_grid(grid_id=77, confirm=True)
+        await client.grid.delete(grid_id=77, confirm=True)
 
     await client.aclose()
 
@@ -608,7 +608,7 @@ async def test_update_grid_preview_mode() -> None:
         raise AssertionError(f"Unexpected: {request.method} {request.url}")
 
     client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
-    result = await client.update_grid(grid_id=55, name="Renamed Grid", confirm=False)
+    result = await client.grid.update(grid_id=55, name="Renamed Grid", confirm=False)
 
     assert result.action == "update"
     assert result.state == "preview"
@@ -644,7 +644,7 @@ async def test_update_grid_executes_with_confirm() -> None:
         raise AssertionError(f"Unexpected: {request.method} {request.url}")
 
     client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
-    result = await client.update_grid(grid_id=55, name="Renamed Grid", confirm=True)
+    result = await client.grid.update(grid_id=55, name="Renamed Grid", confirm=True)
 
     assert result.state == "confirmed"
     assert result.grid_id == 55
@@ -666,7 +666,7 @@ async def test_delete_grid_preview_mode() -> None:
         raise AssertionError(f"Unexpected: {request.method} {request.url}")
 
     client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
-    result = await client.delete_grid(grid_id=55, confirm=False)
+    result = await client.grid.delete(grid_id=55, confirm=False)
 
     assert result.action == "delete"
     assert result.state == "preview"
@@ -693,7 +693,7 @@ async def test_delete_grid_executes_with_confirm() -> None:
         raise AssertionError(f"Unexpected: {request.method} {request.url}")
 
     client = OpenProjectClient(_make_grid_settings(), transport=httpx.MockTransport(handler))
-    result = await client.delete_grid(grid_id=55, confirm=True)
+    result = await client.grid.delete(grid_id=55, confirm=True)
 
     assert result.state == "confirmed"
     assert result.grid_id == 55

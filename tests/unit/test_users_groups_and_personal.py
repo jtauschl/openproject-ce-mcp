@@ -45,7 +45,7 @@ async def test_update_membership_returns_preview_when_not_confirmed() -> None:
 
     client = OpenProjectClient(_membership_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.update_membership(membership_id=3, roles=["2"], confirm=False)
+    result = await client.membership.update(membership_id=3, roles=["2"], confirm=False)
 
     assert result.state == "preview"
     assert result.ready is True
@@ -97,7 +97,7 @@ async def test_update_membership_writes_after_confirmation_when_enabled() -> Non
 
     client = OpenProjectClient(_membership_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.update_membership(membership_id=3, roles=["2"], confirm=True)
+    result = await client.membership.update(membership_id=3, roles=["2"], confirm=True)
 
     assert result.state == "confirmed"
     assert result.membership_id == 3
@@ -207,10 +207,10 @@ async def test_user_and_group_endpoints_normalize_results() -> None:
     settings = dataclasses.replace(make_settings(), enable_admin_read=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    users = await client.list_users(search="alice")
-    user = await client.get_user("5")
-    groups = await client.list_groups(search="platform")
-    group = await client.get_group(7)
+    users = await client.user.list_users(search="alice")
+    user = await client.user.get_user("5")
+    groups = await client.group.list_groups(search="platform")
+    group = await client.group.get_group(7)
 
     assert users.count == 1
     assert users.results[0].email == "alice@example.com"
@@ -237,15 +237,15 @@ async def test_admin_scoped_reads_are_denied_before_any_http_call_without_admin_
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_ADMIN_READ"):
-        await client.list_principals()
+        await client.principal.list_principals()
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_ADMIN_READ"):
-        await client.list_users()
+        await client.user.list_users()
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_ADMIN_READ"):
-        await client.get_user("5")
+        await client.user.get_user("5")
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_ADMIN_READ"):
-        await client.list_groups()
+        await client.group.list_groups()
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_ADMIN_READ"):
-        await client.get_group(7)
+        await client.group.get_group(7)
 
     await client.aclose()
 
@@ -301,7 +301,7 @@ async def test_internal_principal_resolution_bypasses_admin_read_gate() -> None:
     assert settings.enable_admin_read is False  # the case this test exists to cover
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    result = await client.create_membership(project="demo-id", principal="Alice", roles=["Member"], confirm=False)
+    result = await client.membership.create(project="demo-id", principal="Alice", roles=["Member"], confirm=False)
 
     assert result.ready is True
 
@@ -409,13 +409,13 @@ async def test_actions_capabilities_and_query_metadata_endpoints_normalize_resul
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    actions = await client.list_actions()
-    capabilities = await client.list_capabilities(project="demo")
-    filter_ = await client.get_query_filter("assignee")
-    column = await client.get_query_column("subject")
-    operator = await client.get_query_operator("=")
-    sort_by = await client.get_query_sort_by("subject:asc")
-    schemas = await client.list_query_filter_instance_schemas()
+    actions = await client.action_capability.list_actions()
+    capabilities = await client.action_capability.list_capabilities(project="demo")
+    filter_ = await client.query_metadata.get_filter("assignee")
+    column = await client.query_metadata.get_column("subject")
+    operator = await client.query_metadata.get_operator("=")
+    sort_by = await client.query_metadata.get_sort_by("subject:asc")
+    schemas = await client.query_metadata.list_filter_instance_schemas()
 
     assert actions.count == 1
     assert actions.results[0].id == "update"
@@ -451,7 +451,7 @@ async def test_create_user_returns_preview_when_not_confirmed() -> None:
 
     client = OpenProjectClient(_base_settings(enable_admin_write=False), transport=httpx.MockTransport(handler))
 
-    result = await client.create_user(
+    result = await client.user.create(
         login="ada", email="ada@example.com", firstname="Ada", lastname="Lovelace", confirm=False
     )
 
@@ -485,7 +485,7 @@ async def test_create_user_rejects_validation_error() -> None:
         _base_settings(enable_admin_write=True, enable_admin_read=True), transport=httpx.MockTransport(handler)
     )
 
-    result = await client.create_user(
+    result = await client.user.create(
         login="ada", email="ada@example.com", firstname="Ada", lastname="Lovelace", confirm=True
     )
 
@@ -514,7 +514,7 @@ async def test_create_user_confirm_denied_without_admin_write_enabled() -> None:
     client = OpenProjectClient(_base_settings(enable_admin_write=False), transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError):
-        await client.create_user(
+        await client.user.create(
             login="ada", email="ada@example.com", firstname="Ada", lastname="Lovelace", confirm=True
         )
 
@@ -552,7 +552,7 @@ async def test_create_user_commits_using_form_payload_after_validation() -> None
         _base_settings(enable_admin_write=True, enable_admin_read=True), transport=httpx.MockTransport(handler)
     )
 
-    result = await client.create_user(
+    result = await client.user.create(
         login="Ada", email="ada@example.com", firstname="Ada", lastname="Lovelace", confirm=True
     )
 
@@ -578,7 +578,7 @@ async def test_update_user_preview_echoes_caller_supplied_user_id() -> None:
 
     client = OpenProjectClient(_base_settings(enable_admin_write=False), transport=httpx.MockTransport(handler))
 
-    result = await client.update_user(9, email="new@example.com", confirm=False)
+    result = await client.user.update(user_id=9, email="new@example.com", confirm=False)
 
     assert result.user_id == 9
     assert result.state == "preview"
@@ -601,7 +601,7 @@ async def test_update_user_confirm_denied_without_admin_write_enabled() -> None:
     client = OpenProjectClient(_base_settings(enable_admin_write=False), transport=httpx.MockTransport(handler))
 
     with pytest.raises(PermissionDeniedError):
-        await client.update_user(9, email="new@example.com", confirm=True)
+        await client.user.update(user_id=9, email="new@example.com", confirm=True)
 
     await client.aclose()
 
@@ -634,7 +634,7 @@ async def test_update_user_commits_using_form_payload_after_validation() -> None
         _base_settings(enable_admin_write=True, enable_admin_read=True), transport=httpx.MockTransport(handler)
     )
 
-    result = await client.update_user(9, email="new@example.com", confirm=True)
+    result = await client.user.update(user_id=9, email="new@example.com", confirm=True)
 
     assert calls == [("POST", "/api/v3/users/9/form"), ("PATCH", "/api/v3/users/9")]
     assert result.state == "confirmed"
@@ -689,14 +689,14 @@ async def test_user_preferences_get_and_update() -> None:
     )
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    prefs = await client.get_my_preferences()
+    prefs = await client.user_preferences.get()
     assert prefs.time_zone == "Europe/Berlin"
     assert prefs.comment_sort_descending is False
 
-    preview = await client.update_my_preferences(time_zone="America/New_York", confirm=False)
+    preview = await client.user_preferences.update(time_zone="America/New_York", confirm=False)
     assert preview.state == "preview"
 
-    updated = await client.update_my_preferences(time_zone="America/New_York", confirm=True)
+    updated = await client.user_preferences.update(time_zone="America/New_York", confirm=True)
     assert updated.result is not None
     assert updated.result.time_zone == "America/New_York"
 
@@ -713,7 +713,7 @@ async def test_get_my_preferences_denied_without_personal_read() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
     with pytest.raises(PermissionDeniedError, match="personal"):
-        await client.get_my_preferences()
+        await client.user_preferences.get()
     await client.aclose()
 
 
@@ -726,7 +726,7 @@ async def test_update_my_preferences_denied_without_personal_write() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
     with pytest.raises(PermissionDeniedError, match="OPENPROJECT_ENABLE_PERSONAL_WRITE"):
-        await client.update_my_preferences(time_zone="UTC", confirm=True)
+        await client.user_preferences.update(time_zone="UTC", confirm=True)
     await client.aclose()
 
 
@@ -738,7 +738,7 @@ async def test_update_my_preferences_succeeds_with_personal_write_enabled() -> N
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = OpenProjectClient(_personal_write_enabled_settings(), transport=httpx.MockTransport(handler))
-    result = await client.update_my_preferences(time_zone="UTC", confirm=True)
+    result = await client.user_preferences.update(time_zone="UTC", confirm=True)
     assert result.state == "confirmed"
     await client.aclose()
 
@@ -768,7 +768,7 @@ async def test_list_users_no_search_uses_exact_server_pagination() -> None:
 
     settings = dataclasses.replace(make_settings(), enable_admin_read=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    page = await client.list_users(limit=2)
+    page = await client.user.list_users(limit=2)
 
     assert [u.id for u in page.results] == [1, 2]
     assert page.total == 5
@@ -804,7 +804,7 @@ async def test_list_users_search_overfetches_and_filters_then_paginates() -> Non
 
     settings = dataclasses.replace(make_settings(), enable_admin_read=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    page = await client.list_users(search="ali")
+    page = await client.user.list_users(search="ali")
 
     # "ali" substring-matches ids 1 (name+login) and 4 (name "Alicente"); 2 and 3 don't match.
     assert {u.id for u in page.results} == {1, 4}
@@ -815,7 +815,7 @@ async def test_list_users_search_overfetches_and_filters_then_paginates() -> Non
 
     # Filter-then-paginate ordering: limit=1/offset=2 must return the 2nd filtered
     # survivor (id=4), not slice the raw 4-item page first.
-    second_page = await client.list_users(search="ali", limit=1, offset=2)
+    second_page = await client.user.list_users(search="ali", limit=1, offset=2)
     assert [u.id for u in second_page.results] == [4]
     assert second_page.total == 1
     assert second_page.truncated is False
@@ -849,7 +849,7 @@ async def test_list_groups_no_search_uses_exact_server_pagination() -> None:
 
     settings = dataclasses.replace(make_settings(), enable_admin_read=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    page = await client.list_groups(limit=2)
+    page = await client.group.list_groups(limit=2)
 
     assert [g.id for g in page.results] == [1, 2]
     assert page.total == 5
@@ -885,7 +885,7 @@ async def test_list_groups_search_overfetches_and_filters_then_paginates() -> No
 
     settings = dataclasses.replace(make_settings(), enable_admin_read=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
-    page = await client.list_groups(search="alpha")
+    page = await client.group.list_groups(search="alpha")
 
     assert {g.id for g in page.results} == {1, 4}
     # total is a lower bound (len(results) on this page), not an exact count
@@ -893,7 +893,7 @@ async def test_list_groups_search_overfetches_and_filters_then_paginates() -> No
     # total-contract change.
     assert page.total == 2
 
-    second_page = await client.list_groups(search="alpha", limit=1, offset=2)
+    second_page = await client.group.list_groups(search="alpha", limit=1, offset=2)
     assert [g.id for g in second_page.results] == [4]
     assert second_page.total == 1
     assert second_page.truncated is False
