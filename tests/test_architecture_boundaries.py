@@ -1966,15 +1966,27 @@ def test_client_public_methods_are_pure_delegations_except_named_coordinators() 
     )
 
 
-def _flat_call_targets_in(source: str) -> set[str]:
+def _flat_call_targets_in(source: str, *, allow_bare_self: bool) -> set[str]:
     """Every method name called in the flat `client.<name>(`/`self.client.<name>(`/
-    `self.<name>(` shape anywhere in `source`, found via real `ast.Call` nodes --
-    never a text/substring search, which a comment or docstring mentioning that
-    exact shape (e.g. `client.py`'s own Service-namespace-properties comment,
-    which literally contains the text "client.list_projects(...)" as an
-    illustrative example) would satisfy without there being any real call at
-    all (caught by an independent review after an earlier, substring-based
-    version of this check passed despite that comment existing)."""
+    (only when `allow_bare_self`) `self.<name>(` shape in `source`, found via real
+    `ast.Call` nodes -- never a text/substring search, which a comment or docstring
+    mentioning that exact shape (e.g. `client.py`'s own Service-namespace-properties
+    comment, which literally contains the text "client.list_projects(...)" as an
+    illustrative example) would satisfy without there being any real call at all
+    (caught by an independent review after an earlier, substring-based version of
+    this check passed despite that comment existing).
+
+    `allow_bare_self` must be True only when scanning `client.py` itself: `self` is
+    only guaranteed to BE an `OpenProjectClient` there. Elsewhere in src/, `self`
+    belongs to whatever class the enclosing method is on -- an unrelated class with
+    a same-named method (e.g. `setup_cli.py`'s own `Client` dataclass, a completely
+    different concept sharing the variable name `client`, has a `merge()` method)
+    would otherwise register as a false "caller" (caught by a second independent
+    review). `client.<name>(`/`self.client.<name>(` are still recognized file-wide
+    -- eliminating that residual name-collision risk entirely would need real type
+    inference, which this repo-local AST scan does not have; the trade-off accepted
+    here is the same one the sibling test above already makes by matching on
+    variable name, not resolved type."""
     targets: set[str] = set()
     try:
         tree = ast.parse(source)
@@ -1995,8 +2007,9 @@ def _flat_call_targets_in(source: str) -> set[str]:
             and callee.value.id == "self"
         ):
             targets.add(node.func.attr)
-        # self.<name>(...) -- a call from within client.py itself
-        elif isinstance(callee, ast.Name) and callee.id == "self":
+        # self.<name>(...) -- only meaningful where `self` is guaranteed to be an
+        # OpenProjectClient, i.e. inside client.py itself.
+        elif allow_bare_self and isinstance(callee, ast.Name) and callee.id == "self":
             targets.add(node.func.attr)
     return targets
 
@@ -2036,7 +2049,7 @@ def test_client_pure_delegation_methods_have_a_production_caller() -> None:
 
     called_names: set[str] = set()
     for path in SRC.rglob("*.py"):
-        called_names |= _flat_call_targets_in(path.read_text())
+        called_names |= _flat_call_targets_in(path.read_text(), allow_bare_self=(path == SRC / "client.py"))
 
     orphaned = [m.name for m in pure_delegations if m.name not in called_names]
     assert not orphaned, (
