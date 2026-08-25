@@ -1966,6 +1966,41 @@ def test_client_public_methods_are_pure_delegations_except_named_coordinators() 
     )
 
 
+def test_client_pure_delegation_methods_have_a_production_caller() -> None:
+    """OPM-462: a method can be a structurally pure Service delegation (passing
+    the sibling test above) while having zero real callers under src/ --
+    OPM-394's cleanup missed exactly this shape 7 times (OPM-461), because
+    "is this a pure delegation" and "does anything still call it" are
+    independent questions. A delegation method that only tests call is
+    exactly as dead as one nothing calls at all: production code has already
+    moved on to `client.<domain>.<method>(...)` and left the flat wrapper
+    behind. This scans every non-`_CLIENT_NON_DELEGATING_METHODS` pure
+    delegation for a `client.<name>(`/`self.client.<name>(` call site
+    anywhere under src/ (the facade property + real Service method it
+    delegates to are exempt, matched by name, since the delegation's own body
+    is itself a caller of those)."""
+    tree = ast.parse((SRC / "client.py").read_text())
+    class_node = next(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == "OpenProjectClient")
+    public_methods = [n for n in class_node.body if isinstance(n, ast.AsyncFunctionDef) and not n.name.startswith("_")]
+    pure_delegations = [
+        m for m in public_methods if m.name not in _CLIENT_NON_DELEGATING_METHODS and _is_pure_service_delegation(m)
+    ]
+    if not pure_delegations:
+        # OPM-461 deleted every one of these; a future domain addition may
+        # reintroduce flat delegations again, at which point this check
+        # resumes doing real work. Nothing to check right now.
+        return
+
+    src_text = "\n".join(path.read_text() for path in SRC.rglob("*.py"))
+    orphaned = [m.name for m in pure_delegations if f".{m.name}(" not in src_text.replace(f"def {m.name}(", "", 1)]
+    assert not orphaned, (
+        f"OpenProjectClient methods {orphaned} are pure Service delegations with no caller anywhere under "
+        "src/ (only tests still call them, if anything does) -- migrate their test call sites to the facade "
+        "form (client.<domain>.<method>(...)) and delete the method, the same cleanup OPM-461 already did "
+        "for this exact shape."
+    )
+
+
 @pytest.mark.asyncio
 async def test_client_service_namespaces_are_complete_and_identity_preserving() -> None:
     """OPM-394: every `self._<domain>_service` attribute OpenProjectClient constructs in
