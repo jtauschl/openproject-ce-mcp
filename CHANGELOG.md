@@ -94,8 +94,12 @@ development baseline.
   comes from the `mcp` package itself (`pyjwt[crypto]`, used only by an OAuth
   flow this server never exercises) — filed upstream at
   [modelcontextprotocol/python-sdk#3373](https://github.com/modelcontextprotocol/python-sdk/issues/3373).
-  Workaround: install Visual Studio Build Tools' C++ workload first, or use a
-  `win_amd64` Windows environment/WSL instead.
+  `cryptography` itself is expected to ship `win_arm64` wheels again around
+  its 51 release (likely September/October 2026), which would resolve this
+  regardless of the linked issue's own outcome —
+  [pyca/cryptography#15350](https://github.com/pyca/cryptography/pull/15350).
+  Workaround until then: install Visual Studio Build Tools' C++ workload
+  first, or use a `win_amd64` Windows environment/WSL instead.
 
 ## 0.3.7 – 2026-08-17
 
