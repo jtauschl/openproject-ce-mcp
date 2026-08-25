@@ -143,6 +143,12 @@ from ..ports.work_package_ref import (
     work_package_ref,
 )
 from ..ports.work_package_resolution import WorkPackageAllowedContext
+from ._work_package_write_helpers import (
+    resolve_custom_field_key,
+    resolve_custom_field_links,
+    resolve_schema_option_href,
+    resolve_wp_ref_id,
+)
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 LOGGER = logging.getLogger(__name__)
@@ -1319,28 +1325,6 @@ class WorkPackageService:
     # Write paths.
     # ------------------------------------------------------------------
 
-    async def _resolve_wp_ref_id(
-        self,
-        kind: str,
-        ref: str,
-        *,
-        project: str,
-        cache: WorkPackageResolutionContext | None,
-        resolve: Any,
-    ) -> str:
-        """Cache-then-resolve wrapper around resolve_type_id/resolve_version_id/
-        resolve_sprint_id. When `cache` is shared across a bulk call's items,
-        a repeated name->id lookup for the same (project, kind, ref) is
-        skipped instead of re-querying OpenProject once per item."""
-        if cache is not None:
-            cached = cache.get_id(kind, project, ref)
-            if cached is not None:
-                return cached
-        resolved = await resolve()
-        if cache is not None:
-            cache.store_id(kind, project, ref, resolved)
-        return resolved
-
     async def _get_write_schema(
         self,
         *,
@@ -1387,55 +1371,6 @@ class WorkPackageService:
         form = await self._api.validate_create(project, schema_payload)
         return (await self._api.parse_form(form, resolve_links=True, allowed_values_cache=allowed_values_cache)).schema
 
-    def _resolve_schema_option_href(self, schema: dict[str, Any], key: str, raw_value: Any) -> str:
-        field = schema.get(key)
-        if not isinstance(field, dict):
-            raise InvalidInputError(f"OpenProject schema does not expose field '{key}' for this work package.")
-        allowed_values = field.get("_embedded", {}).get("allowedValues", [])
-        if not isinstance(allowed_values, list):
-            raise InvalidInputError(f"OpenProject schema does not expose allowed values for field '{key}'.")
-
-        normalized = str(raw_value).strip()
-        if not normalized:
-            raise InvalidInputError(f"{key} must not be empty.")
-
-        for item in allowed_values:
-            href = item.get("_links", {}).get("self", {}).get("href")
-            if not href:
-                continue
-            item_id = _id_from_href(href)
-            title = _trim_text(item.get("name") or item.get("_links", {}).get("self", {}).get("title"))
-            if normalized.isdigit() and item_id is not None and int(normalized) == item_id:
-                return str(href)
-            if title and title.casefold() == normalized.casefold():
-                return str(href)
-        raise InvalidInputError(f"OpenProject value '{raw_value}' is not allowed for field '{key}'.")
-
-    def _resolve_custom_field_key(self, schema: dict[str, Any], raw_key: str) -> str:
-        normalized = str(raw_key).strip()
-        if not normalized:
-            raise InvalidInputError("custom field keys must not be empty.")
-        if normalized in schema:
-            return normalized
-        if normalized.casefold().startswith("customfield") and normalized[11:].isdigit():
-            candidate = f"customField{normalized[11:]}"
-            if candidate in schema:
-                return candidate
-        for key, field in schema.items():
-            if not key.startswith("customField") or not isinstance(field, dict):
-                continue
-            name = _trim_text(field.get("name"))
-            if name and name.casefold() == normalized.casefold():
-                return key
-        raise InvalidInputError(f"OpenProject custom field '{raw_key}' is not available for this work package.")
-
-    def _resolve_custom_field_links(self, field: dict[str, Any], raw_value: Any, key: str) -> builtins.list[str]:
-        values = raw_value if isinstance(raw_value, list) else [raw_value]
-        hrefs = [self._resolve_schema_option_href({key: field}, key, value) for value in values]
-        if not hrefs:
-            raise InvalidInputError(f"OpenProject custom field '{key}' requires at least one value.")
-        return hrefs
-
     def _apply_custom_fields(
         self,
         payload: dict[str, Any],
@@ -1445,14 +1380,14 @@ class WorkPackageService:
     ) -> None:
         for raw_key, raw_value in custom_fields.items():
             hidden_fields.ensure_custom_field_input_writable(raw_key, settings=self._settings)
-            schema_key = self._resolve_custom_field_key(schema, raw_key)
+            schema_key = resolve_custom_field_key(schema, raw_key)
             field = schema[schema_key]
             hidden_fields.ensure_custom_field_writable(
                 _trim_text(field.get("name")) or schema_key, schema_key, settings=self._settings
             )
             location = field.get("location")
             if location == "_links":
-                hrefs = self._resolve_custom_field_links(field, raw_value, schema_key)
+                hrefs = resolve_custom_field_links(field, raw_value, schema_key)
                 if len(hrefs) == 1:
                     links[schema_key] = {"href": hrefs[0]}
                 else:
@@ -1534,7 +1469,7 @@ class WorkPackageService:
 
         if type is not None:
             hidden_fields.ensure_field_writable("work_package", "type", settings=self._settings)
-            type_id = await self._resolve_wp_ref_id(
+            type_id = await resolve_wp_ref_id(
                 "type",
                 type,
                 project=project,
@@ -1548,7 +1483,7 @@ class WorkPackageService:
         elif version is not None:
             hidden_fields.ensure_field_writable("work_package", "version", settings=self._settings)
             version_ref = _narrow_cleared(version, sentinel=CLEAR_VERSION)
-            version_id = await self._resolve_wp_ref_id(
+            version_id = await resolve_wp_ref_id(
                 "version",
                 version_ref,
                 project=project,
@@ -1562,7 +1497,7 @@ class WorkPackageService:
         elif sprint is not None:
             hidden_fields.ensure_field_writable("work_package", "sprint", settings=self._settings)
             sprint_ref = _narrow_cleared(sprint, sentinel=CLEAR)
-            sprint_id = await self._resolve_wp_ref_id(
+            sprint_id = await resolve_wp_ref_id(
                 "sprint",
                 sprint_ref,
                 project=project,
@@ -1619,18 +1554,16 @@ class WorkPackageService:
             )
             if responsible is not None and responsible is not CLEAR:
                 hidden_fields.ensure_field_writable("work_package", "responsible", settings=self._settings)
-                links["responsible"] = {"href": self._resolve_schema_option_href(schema, "responsible", responsible)}
+                links["responsible"] = {"href": resolve_schema_option_href(schema, "responsible", responsible)}
             if priority is not None:
                 hidden_fields.ensure_field_writable("work_package", "priority", settings=self._settings)
-                links["priority"] = {"href": self._resolve_schema_option_href(schema, "priority", priority)}
+                links["priority"] = {"href": resolve_schema_option_href(schema, "priority", priority)}
             if category is not None and category is not CLEAR:
                 hidden_fields.ensure_field_writable("work_package", "category", settings=self._settings)
-                links["category"] = {"href": self._resolve_schema_option_href(schema, "category", category)}
+                links["category"] = {"href": resolve_schema_option_href(schema, "category", category)}
             if project_phase is not None and project_phase is not CLEAR:
                 hidden_fields.ensure_field_writable("work_package", "project_phase", settings=self._settings)
-                links["projectPhase"] = {
-                    "href": self._resolve_schema_option_href(schema, "projectPhase", project_phase)
-                }
+                links["projectPhase"] = {"href": resolve_schema_option_href(schema, "projectPhase", project_phase)}
             if custom_fields:
                 self._apply_custom_fields(payload, links, schema, custom_fields)
 
