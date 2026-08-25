@@ -48,19 +48,15 @@ def _run_doctor(
 
     failures = 0
 
-    # Check 1: Binary and version
     if not _check_binary():
         failures += 1
 
-    # Check 2: Client discovery
     client_configs = _discover_clients()
 
-    # Check 3: Config parsing
     config_ok, client_env = _check_config_parsing(client_configs)
     if not config_ok:
         failures += 1
 
-    # Check 4: Environment configuration
     env_ok, settings = _check_env_config(settings_override, client_env)
     if not env_ok:
         failures += 1
@@ -71,7 +67,6 @@ def _run_doctor(
     # (only the `(False, None)` failure path omits it).
     assert settings is not None
 
-    # Check 5: API connectivity (async)
     async def _api_check() -> bool:
         api_ok, _ = await _check_api_connectivity(settings, transport)
         return api_ok
@@ -80,15 +75,12 @@ def _run_doctor(
     if not api_ok:
         failures += 1
 
-    # Check 6: Tool registration preview
     if not _check_tool_registration(settings):
         failures += 1
 
-    # Print restart hints
     if client_configs:
         _print_restart_hints(client_configs)
 
-    # Summary
     if failures == 0:
         print("\nAll checks passed.")
         return EXIT_SUCCESS
@@ -115,12 +107,10 @@ def _discover_clients() -> list[tuple]:
         detected = c.detected()
         status = "detected" if detected else "not detected"
 
-        # Check global target
         if c.target.exists():
             print(f"  - {c.label} (global, {status}): {c.target}")
             found.append((c, c.target))
 
-        # Check project target
         if c.project_target and c.project_target.exists():
             print(f"  - {c.label} (project, {status}): {c.project_target}")
             found.append((c, c.project_target))
@@ -147,11 +137,9 @@ def _check_config_parsing(client_configs: list[tuple]) -> tuple[bool, dict[str, 
     env_sources: list[str] = []
 
     for client, target in client_configs:
-        # First, structurally validate the config file
         try:
             if client.fmt == "json":
                 config = json.loads(target.read_text())
-                # Check for openproject entry explicitly
                 root_key = client.root_key or "mcpServers"
                 has_entry = "openproject" in config.get(root_key, {})
             elif client.fmt == "toml":
@@ -185,7 +173,6 @@ def _check_config_parsing(client_configs: list[tuple]) -> tuple[bool, dict[str, 
             print(f"[WARN] {client.label}: no openproject entry ({target.name})", file=sys.stderr)
             continue
 
-        # Now extract env using existing helper
         env = _read_client_env(client, target=target)
         if env:
             print(f"[OK] {client.label}: openproject entry valid ({target.name})")
@@ -195,7 +182,6 @@ def _check_config_parsing(client_configs: list[tuple]) -> tuple[bool, dict[str, 
             # Entry exists but env extraction failed
             print(f"[WARN] {client.label}: openproject entry has no env ({target.name})", file=sys.stderr)
 
-    # Report which configs contributed env
     if env_sources:
         print(f"  Environment from: {', '.join(env_sources)}")
 
@@ -296,19 +282,19 @@ def _check_tool_registration(settings: Settings) -> bool:
     fetch. This shows what tools are enabled by your settings, not necessarily
     what a live server would register (which may vary based on instance features).
     """
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.mcpserver import MCPServer
 
     from .tools import register_tools
 
-    # FastMCP sets up logging — temporarily suppress
+    # MCPServer sets up logging — temporarily suppress
     prev_level = logging.root.level
     logging.root.setLevel(logging.CRITICAL)
 
     try:
-        # Plain FastMCP, not StrictFastMCP: this preview path only registers
+        # Plain MCPServer, not StrictMCPServer: this preview path only registers
         # tools and lists them, it never calls call_tool(), so the strict
         # argument-validation override has nothing to intercept here.
-        mcp = FastMCP("doctor-preview", json_response=True, log_level="CRITICAL")
+        mcp = MCPServer("doctor-preview", log_level="CRITICAL")
         register_tools(mcp, settings)
         tools = list(mcp._tool_manager.list_tools())
 

@@ -15,6 +15,15 @@ REPO="https://github.com/opf/openproject.git"
 # Lets the API check map exactly which release changes a symbol the client uses.
 # 16.x = classic numeric identifiers; 17.4 adds displayId; 17.5 adds semantic ids.
 # Bump / extend when verifying newer releases.
+#
+# Whenever you add a new version here: also read that version's official
+# release notes (openproject.org/docs/release-notes/) for REST API v3
+# changes, not just what check_api.py's symbol diff catches -- a symbol
+# check only flags renamed/removed fields, never a field that starts
+# appearing in a response without being requested (the class of bug behind
+# the targetVersions form-echo regression, found in 17.7 by reading source,
+# not by any automated check). Log findings in
+# openproject-ce-mcp-int/30-implementation/openproject-release-tracking.md.
 VERSIONS=(
     "16.0:v16.0.1"
     "16.1:v16.1.1"

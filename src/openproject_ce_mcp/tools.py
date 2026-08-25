@@ -8,7 +8,7 @@ from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass
 from typing import Any, cast
 
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
 
 from .client import (
     BATCH_READ_MAX_IDS,
@@ -139,12 +139,9 @@ DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:
 # Full ISO 8601 duration: either weeks alone ("P2W") or a year/month/day date part
 # and/or a "T"-prefixed time part (hours/minutes/seconds) — the week designator
 # cannot combine with anything else, per the ISO 8601 standard's own week-format
-# rule. Live-verified 2026-07-17 against real OpenProject 16.6 (Docker test harness):
-# "P1D"/"P2W"/"P1Y"/"P1M"/"P1Y2M3D"/"P1DT18H" are all accepted and echoed back
-# unchanged (an earlier version of this regex rejected day-based values entirely,
-# based on an incorrect assumption), while "P1W2D"/"P2WT3H" (week mixed with
-# another designator) are rejected by OpenProject itself with a format error —
-# confirmed here too, not just assumed from the standard. The seconds component
+# rule. OpenProject accepts "P1D"/"P2W"/"P1Y"/"P1M"/"P1Y2M3D"/"P1DT18H" and
+# echoes them back unchanged, while rejecting "P1W2D"/"P2WT3H" (week mixed
+# with another designator) with a format error. The seconds component
 # additionally allows an optional decimal fraction (e.g. "PT7H30M15.5S") —
 # verified directly against the `iso8601` Ruby gem OpenProject uses server-side
 # (ISO8601::Duration.new(...), see time_entry_representer.rb's `hours=` setter):
@@ -434,14 +431,14 @@ def enabled_tool_names(settings: Settings) -> tuple[str, ...]:
     return tuple(enabled)
 
 
-def register_tools(mcp: FastMCP, settings: Settings) -> None:
+def register_tools(mcp: MCPServer, settings: Settings) -> None:
     # Register a tool with error-categorization applied, so every failure reaches
     # the agent with a stable [category] prefix.
     #
     # Tools that return a list/write/bulk result are routed through _to_payload for
     # context reduction: payload is dropped on confirmed writes,
     # count/truncated on lists, and `select` trims rows. Those tools are registered
-    # with structured_output=False so FastMCP does not build a fixed dataclass
+    # with structured_output=False so MCPServer does not build a fixed dataclass
     # output schema — it serializes the trimmed dict we return verbatim, letting us
     # omit keys. Detection is by the result model's fields, so no per-tool tagging
     # is needed and it cannot drift. Tool bodies are unchanged; they still return
@@ -869,6 +866,10 @@ async def list_capabilities(
     limit: int | None = None,
 ) -> CapabilityListResult:
     """List API capabilities exposed by OpenProject.
+
+    At least one of project or capability_id is required — there is no
+    unfiltered global listing, since one would bypass the project read
+    allowlist.
 
     limit is capped at OPENPROJECT_MAX_PAGE_SIZE (default 50); pass the returned
     next_offset as the next call's offset to page past the cap.
@@ -1343,6 +1344,18 @@ async def search_work_packages(
     category, description, or other linked-resource fields. To filter by
     version, use list_work_packages(version=..., project=...) instead.
 
+    In parallel with that text/id search, query is always also resolved
+    directly (numeric id or display id like "PROJ-42") the same way
+    get_work_package does. When that resolves to a work package that also
+    satisfies every other filter given here (project/status/assignee/dates/
+    etc.), it's returned separately as exact_match — never folded into
+    results, and never counted toward total/count/pagination, since a
+    single extra item can't be paginated consistently. Absent (not present
+    in the response at all) when nothing resolves, when the resolved item
+    fails a filter, or when it's already present in results via the text
+    match. select applies to exact_match the same way it applies to each
+    results row.
+
     Without project, the search runs globally across every project readable
     under OPENPROJECT_READ_PROJECTS, not just one project — pass project
     explicitly to scope results to it.
@@ -1456,6 +1469,11 @@ async def list_work_packages(
     select: list[str] | None = None,
 ) -> WorkPackageListResult:
     """List work packages with structured filters and no free-text query requirement.
+
+    project accepts a numeric ID, exact identifier/slug, or project name; the
+    parameter is named project, not project_id. There is no generic
+    filters=[...] parameter — each filter is its own named argument (version,
+    status, assignee, the date filters, etc.), listed below.
 
     version_status filters by the status of a work package's assigned version:
     one of 'open', 'closed', or 'locked'.
@@ -1597,13 +1615,11 @@ async def get_work_packages(
     """
     client = _client_from_context(ctx)
 
-    # Validate input
     if not isinstance(ids, list):
         raise ValueError("ids must be a list")
     if not ids:
         raise ValueError("ids list cannot be empty")
 
-    # Validate and deduplicate while preserving order
     seen = set()
     unique_ids: list[int | str] = []
     for raw_id in ids:
@@ -3769,7 +3785,9 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None) -> Any:
     ``_SELECT_NESTED_FIELD`` (e.g. a batch-read item that wraps a
     single work package rather than being one), ``select`` instead trims that
     nested entity — the row's own wrapper fields (id/success/error) are kept
-    regardless of ``select``.
+    regardless of ``select``. A list result's ``exact_match`` (see
+    ``search_work_packages``) is trimmed the same way as one ``results`` row
+    when present.
 
     Non-dataclass values pass through unchanged, so tools (and test stubs) that
     already return plain dicts are untouched.
@@ -3787,9 +3805,13 @@ def _to_payload(value: Any, *, select: frozenset[str] | None = None) -> Any:
                 continue
             if is_list_result and name in ("count", "truncated"):
                 continue
+            if is_list_result and name == "exact_match" and getattr(value, name) is None:
+                continue
             child = getattr(value, name)
             if is_list_result and name == "results" and select is not None:
                 out[name] = [_select_fields(row, select) for row in child]
+            elif is_list_result and name == "exact_match" and select is not None and child is not None:
+                out[name] = _select_fields(child, select)
             else:
                 out[name] = _to_payload(child)
         return out
@@ -3901,7 +3923,7 @@ def _validate_optional_query(value: str | None, *, field_name: str, max_length: 
     if not isinstance(value, str):
         # Reachable with a non-str JSON scalar (e.g. a bare number or bool) from
         # bulk_update_work_packages' untyped `items: list[dict[str, Any]]` — MCP
-        # tool parameters are str-typed and coerced/rejected by FastMCP before
+        # tool parameters are str-typed and coerced/rejected by MCPServer before
         # reaching here, but a dict value has no such guarantee.
         raise ValueError(f"{field_name} must be a string.")
     normalized = " ".join(value.split())
@@ -4297,14 +4319,12 @@ def _validate_optional_date_range(dates: list[str] | None, field_name: str) -> l
     if len(dates) != 2:
         raise ValueError(f"{field_name} must contain exactly 2 dates [start, end]")
 
-    # Validate each date using existing validator
     start = _validate_optional_date(dates[0], f"{field_name}[0]")
     end = _validate_optional_date(dates[1], f"{field_name}[1]")
 
     if start is None or end is None:
         raise ValueError(f"{field_name} dates cannot be empty")
 
-    # Validate range using existing helper
     _validate_date_range(after=start, before=end, prefix=field_name)
 
     return [start, end]

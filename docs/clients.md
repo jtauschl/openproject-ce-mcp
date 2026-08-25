@@ -54,6 +54,14 @@ Registration only points your client at the installed command; it is not a
 second install. Using more than one client (say Claude and Codex)? Create one
 config file per client; they sit side by side.
 
+Most setups need only one OpenProject instance, which is all `configure`
+manages — it always writes under the fixed key `openproject`, and running it
+again overwrites that same entry rather than adding a second one. To connect
+a second instance in the same client, add another entry by hand under a
+different key (e.g. `openproject-other`), pointing at the same installed
+command with its own `env` block (base URL, token, scope). See the manual
+setup example in your client's own guide for the entry's exact shape.
+
 ## Choosing a client guide
 
 | If you use… | Guide |

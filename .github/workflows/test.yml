@@ -2,10 +2,17 @@ name: Tests
 
 on:
   push:
-    branches: [main, release/0.3.7]
+    branches: [main, release/0.3.8]
   pull_request:
   workflow_call:
   workflow_dispatch:
+  # GitHub only fires `schedule` from a workflow file that exists on the
+  # repo's default branch (main), regardless of which branch it's checked
+  # out on here — until this file is promoted to main, this trigger is
+  # inert. A manual `workflow_dispatch` run against this branch already
+  # works today, since that lets you pick the ref to run against.
+  schedule:
+    - cron: "17 5 * * 1" # weekly, Monday ~05:17 UTC (off the hour, less likely to be delayed/dropped)
 
 permissions:
   contents: read
@@ -21,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
 
@@ -64,7 +71,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -92,12 +99,44 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: uv sync --dev
+
+      - name: Run tests
+        run: uv run pytest
+
+  # A real end-user install (pipx/uv tool install/pip/uvx) resolves the
+  # newest version satisfying pyproject.toml's declared ranges at install
+  # time -- uv.lock only pins one specific version, so the normal test-linux
+  # job above never exercises anything newer than that pin. This job runs
+  # `uv sync --upgrade`, which re-resolves every dependency to its newest
+  # allowed version and updates the lockfile's pins accordingly (in-memory
+  # for this job only, not committed back to the repo), so drift inside the
+  # declared ranges (mcp>=2,<3 above all) gets caught here instead of by a
+  # real user.
+  #
+  # GitHub only fires `schedule` from a workflow file that exists on the
+  # repo's default branch (main), regardless of which branch it's checked
+  # out on here — until this file is promoted to main, this trigger is
+  # inert. A manual `workflow_dispatch` run against this branch already
+  # works today, since that lets you pick the ref to run against.
+  test-newest-deps:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies at their newest allowed versions
+        run: uv sync --dev --upgrade
 
       - name: Run tests
         run: uv run pytest
@@ -108,7 +147,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
 
@@ -123,7 +162,7 @@ jobs:
           uv export --no-dev --format requirements-txt --no-hashes -o requirements.txt
           uvx --from cyclonedx-bom cyclonedx-py requirements requirements.txt --of JSON -o sbom.json
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sbom
           path: sbom.json
@@ -134,7 +173,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
 

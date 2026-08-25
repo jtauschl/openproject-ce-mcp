@@ -234,6 +234,26 @@ def _narrow_cleared(value: _NarrowT | object, *, sentinel: object = None) -> _Na
     return cast(_NarrowT, value)
 
 
+def _strip_unrequested_target_versions(payload: dict[str, Any]) -> dict[str, Any]:
+    """Drop an echoed `_links.targetVersions` OpenProject's work-package form
+    response adds even when the request never set it, so committing the
+    form's own payload back verbatim -- this client's normal write pattern
+    -- doesn't collide with the `version` field the caller actually asked to
+    change. Upstream bug, tracking status/version scope in
+    openproject-ce-mcp-int's upstream-openproject-bugs.md (entry 11) --
+    remove this once that entry marks the upstream form-echo fixed.
+
+    Call only when the caller's own request set `_links.version` -- a
+    write that never touches version passes its payload through every other
+    field unaffected, so there's nothing to strip.
+    """
+    links = payload.get("_links")
+    if not isinstance(links, dict) or "targetVersions" not in links:
+        return payload
+    new_links = {k: v for k, v in links.items() if k != "targetVersions"}
+    return {**payload, "_links": new_links}
+
+
 class OpenProjectError(Exception):
     """Base error for safe OpenProject failures."""
 
@@ -267,10 +287,9 @@ def _combined_error_message(payload: dict[str, Any]) -> str:
     ("Multiple field constraints have been violated.") when OpenProject
     wraps several validation failures in a `MultipleErrors` HAL error --
     the real per-field detail lives in `_embedded.errors[]`, each itself a
-    full Error payload with its own `message`. Verified live against a real
-    17.7.1 instance (2026-08-13): a two-provider storage create with an
-    Enterprise-gate violation AND an unrelated field error returns exactly
-    this shape, and without this, InvalidInputError only ever surfaced
+    full Error payload with its own `message`. A two-provider storage create
+    with an Enterprise-gate violation AND an unrelated field error returns
+    exactly this shape, and without this, InvalidInputError only ever surfaced
     "Multiple field constraints have been violated." with no way for a
     caller (or a test asserting on the message) to see which fields, or
     that the Enterprise gate was even involved.
@@ -321,13 +340,11 @@ class OpenProjectClient:
         # saturated get_work_packages() batch.
         self._allowlist_semaphore = asyncio.Semaphore(_ALLOWLIST_BULK_CONCURRENCY)
 
-        # Wrap transport with retry logic if max_retries > 0
         if settings.max_retries > 0:
             from .retry_transport import RetryTransport
 
             # Don't double-wrap if user already provided RetryTransport
             if not isinstance(transport, RetryTransport):
-                # If no transport provided, use default httpx transport
                 base_transport = transport or httpx.AsyncHTTPTransport()
                 transport = RetryTransport(
                     wrapped_transport=base_transport,
@@ -366,9 +383,9 @@ class OpenProjectClient:
             # Projects is genuinely OffsetPaginatedCollection server-side (verified
             # against opf/openproject's lib/api/v3/projects/project_collection_representer.rb,
             # which extends API::Decorators::OffsetPaginatedCollection) -- a
-            # single bounded fetch capped at 500 used to
-            # silently skip caching the identifier of any project beyond that cap,
-            # which then failed link-based allowlist matching for that project.
+            # single bounded fetch capped at 500 would silently skip caching
+            # the identifier of any project beyond that cap, which would then
+            # fail link-based allowlist matching for that project.
             elements = await self._fetch_all_pages("projects")
             for item in elements:
                 project_id = item.get("id")
@@ -2314,33 +2331,31 @@ class OpenProjectClient:
                 truncated=False,
                 results=[],
             )
-        filters: list[dict[str, Any]] = [{"subject_or_id": {"operator": "**", "values": [query]}}]
+        other_filters: list[dict[str, Any]] = []
         project_id: int | None = None
         total_is_scope_safe = _scope_allows_all(self.settings.read_projects)
         if project is not None:
             project_payload = await self._get_project_payload(project)
             project_id = int(project_payload["id"])
-            filters.append({"project_id": {"operator": "=", "values": [str(project_id)]}})
+            other_filters.append({"project_id": {"operator": "=", "values": [str(project_id)]}})
             total_is_scope_safe = True
         if status:
             status_id = await self._resolve_status_id(status)
-            filters.append({"status_id": {"operator": "=", "values": [status_id]}})
+            other_filters.append({"status_id": {"operator": "=", "values": [status_id]}})
         if open_only:
-            filters.append({"status_id": {"operator": "o", "values": []}})
+            other_filters.append({"status_id": {"operator": "o", "values": []}})
         if assignee_me:
             current_user = await self.get_current_user()
-            filters.append({"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}})
+            other_filters.append({"assigned_to_id": {"operator": "=", "values": [str(current_user.id)]}})
 
-        # Extended filters (same as list_work_packages)
         if assignee and not assignee_me:
             assignee_id = await self._resolve_principal_id(assignee)
-            filters.append({"assigned_to_id": {"operator": "=", "values": [assignee_id]}})
+            other_filters.append({"assigned_to_id": {"operator": "=", "values": [assignee_id]}})
 
         if priority:
             priority_id = await self._resolve_priority_id(priority)
-            filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
+            other_filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
 
-        # Date filters
         # Mutual exclusivity: can't use both _on and _between for same field
         if created_on and created_between:
             raise InvalidInputError("Cannot specify both created_on and created_between")
@@ -2351,37 +2366,78 @@ class OpenProjectClient:
 
         if created_on:
             validated_date = self._validate_date_format(created_on, "created_on")
-            filters.append({"created_at": {"operator": "=d", "values": [validated_date]}})
+            other_filters.append({"created_at": {"operator": "=d", "values": [validated_date]}})
 
         if created_between:
             validated_range = self._validate_date_range(created_between, "created_between")
-            filters.append({"created_at": {"operator": "<>d", "values": validated_range}})
+            other_filters.append({"created_at": {"operator": "<>d", "values": validated_range}})
 
         if updated_on:
             validated_date = self._validate_date_format(updated_on, "updated_on")
-            filters.append({"updated_at": {"operator": "=d", "values": [validated_date]}})
+            other_filters.append({"updated_at": {"operator": "=d", "values": [validated_date]}})
 
         if updated_between:
             validated_range = self._validate_date_range(updated_between, "updated_between")
-            filters.append({"updated_at": {"operator": "<>d", "values": validated_range}})
+            other_filters.append({"updated_at": {"operator": "<>d", "values": validated_range}})
 
         if due_on:
             validated_date = self._validate_date_format(due_on, "due_on")
-            filters.append({"due_date": {"operator": "=d", "values": [validated_date]}})
+            other_filters.append({"due_date": {"operator": "=d", "values": [validated_date]}})
 
         if due_between:
             validated_range = self._validate_date_range(due_between, "due_between")
-            filters.append({"due_date": {"operator": "<>d", "values": validated_range}})
+            other_filters.append({"due_date": {"operator": "<>d", "values": validated_range}})
 
-        return await self._list_work_package_collection(
-            project_id=project_id,
-            filters=filters,
-            offset=offset,
-            limit=effective_limit,
-            sort_by=sort_by,
-            group_by=group_by,
-            total_is_scope_safe=total_is_scope_safe,
+        result, exact_match = await asyncio.gather(
+            self._list_work_package_collection(
+                project_id=project_id,
+                filters=[{"subject_or_id": {"operator": "**", "values": [query]}}, *other_filters],
+                offset=offset,
+                limit=effective_limit,
+                sort_by=sort_by,
+                group_by=group_by,
+                total_is_scope_safe=total_is_scope_safe,
+            ),
+            self._resolve_search_exact_match(query, other_filters=other_filters),
         )
+        if exact_match is not None and any(item.id == exact_match.id for item in result.results):
+            exact_match = None
+        return replace(result, exact_match=exact_match)
+
+    async def _resolve_search_exact_match(
+        self, query: str, *, other_filters: list[dict[str, Any]]
+    ) -> WorkPackageSummary | None:
+        """Resolve search_work_packages' query directly (numeric id or display
+        id, via the same server-side lookup get_work_package uses) and check
+        it against every OTHER active filter server-side, without duplicating
+        any filter-matching logic client-side.
+
+        Returns None for "no exact match" -- both when the query simply
+        doesn't resolve to anything (NotFoundError), and when it resolves to
+        something the caller isn't allowed to read (PermissionDeniedError)
+        -- the latter must not leak the existence of an out-of-scope work
+        package by surfacing as an error from what looks like a plain text
+        search.
+        """
+        stripped = query.strip()
+        if not stripped:
+            return None
+        try:
+            resolved_id = await self._resolve_work_package_id(stripped)
+        except (NotFoundError, PermissionDeniedError, InvalidInputError):
+            return None
+        candidate_filters = [{"id": {"operator": "=", "values": [str(resolved_id)]}}, *other_filters]
+        candidates = await self._list_work_package_collection(
+            project_id=None,
+            filters=candidate_filters,
+            offset=1,
+            limit=1,
+            total_is_scope_safe=False,
+        )
+        for item in candidates.results:
+            if item.id == resolved_id:
+                return item
+        return None
 
     async def list_work_packages(
         self,
@@ -2465,7 +2521,6 @@ class OpenProjectClient:
             # Use official filter key per source (version_filter.rb:def self.key → :version_id)
             filters.append({"version_id": {"operator": status_operator, "values": []}})
 
-        # Extended filters
         # assignee_me takes precedence for backward compatibility
         if assignee and not assignee_me:
             assignee_id = await self._resolve_principal_id(assignee)
@@ -2479,7 +2534,6 @@ class OpenProjectClient:
             priority_id = await self._resolve_priority_id(priority)
             filters.append({"priority_id": {"operator": "=", "values": [priority_id]}})
 
-        # Date filters
         # Mutual exclusivity: can't use both _on and _between for same field
         if created_on and created_between:
             raise InvalidInputError("Cannot specify both created_on and created_between")
@@ -2551,14 +2605,12 @@ class OpenProjectClient:
             "filters": _json_param(filters),
         }
 
-        # Add sortBy as JSON array if provided
         # Format: [["field", "direction"], ...] e.g. [["status", "desc"], ["priority", "asc"]]
         # sort_by is already validated and parsed to SortCriterion by tool layer
         if sort_by:
             sort_criteria = [[criterion.field, criterion.direction] for criterion in sort_by]
             params["sortBy"] = json.dumps(sort_criteria, separators=(",", ":"))
 
-        # Add groupBy as simple field name string if provided
         # group_by is already validated and normalized by tool layer
         if group_by:
             params["groupBy"] = group_by
@@ -2639,10 +2691,8 @@ class OpenProjectClient:
         # WORK_PACKAGE_ANCESTORS_LIMIT=20), not a paginated server scan -- unlike
         # the 3 scan sites (Relations/Notifications/Reminders), there is no
         # early-stopping concern here, so both arrays' hrefs are collected and
-        # resolved together in ONE bulk call rather than page-by-page. Every
-        # entry in both arrays was unconditionally visited by the old
-        # sequential `keep()` too (no short-circuit), so every outcome here
-        # is "sequentially reachable" and a real Exception is always
+        # resolved together in ONE bulk call rather than page-by-page, with
+        # every outcome "sequentially reachable" and a real Exception always
         # re-raised, never swallowed.
         all_hrefs = [
             href
@@ -2731,10 +2781,8 @@ class OpenProjectClient:
                     # Catch expected API errors, not system exceptions like CancelledError
                     return (work_package_ref, None, str(e))
 
-        # Execute in parallel
         results = await asyncio.gather(*[fetch_one(work_package_ref) for work_package_ref in ids])
 
-        # Build result items
         items = []
         succeeded = 0
         failed = 0
@@ -2760,7 +2808,6 @@ class OpenProjectClient:
                     )
                 )
 
-        # Build user-facing summary message
         if failed == 0:
             message = f"Successfully fetched all {succeeded} work packages."
         elif succeeded == 0:
@@ -2833,6 +2880,7 @@ class OpenProjectClient:
             form=form,
             write_path="work_packages",
             project_name=project_payload.get("name"),
+            commit_payload_override=_strip_unrequested_target_versions if version is not None else None,
         )
 
     async def create_subtask(
@@ -2888,6 +2936,7 @@ class OpenProjectClient:
             project_name=_link_title(parent.get("_links", {}).get("project")),
             preview_message="OpenProject validated the subtask. Ask for confirmation, then call again with confirm=true to create it.",
             success_message="Subtask created successfully.",
+            commit_payload_override=_strip_unrequested_target_versions if version is not None else None,
         )
 
     async def update_work_package(
@@ -3014,6 +3063,7 @@ class OpenProjectClient:
                 payload["lockVersion"] = lock_version
                 form = await self._post(f"work_packages/{work_package_id}/form", json_body=payload)
 
+        version_was_requested = "version" in payload.get("_links", {})
         return await self._finalize_work_package_write(
             action="update",
             confirm=confirm,
@@ -3022,6 +3072,7 @@ class OpenProjectClient:
             write_method="PATCH",
             work_package_id=work_package_id,
             project_name=_link_title(current.get("_links", {}).get("project")),
+            commit_payload_override=_strip_unrequested_target_versions if version_was_requested else None,
         )
 
     async def bulk_create_work_packages(
@@ -5633,11 +5684,10 @@ class OpenProjectClient:
         # Note: there is no "lang" parameter here. OpenProject's real
         # UserPreferenceRepresenter has no "lang" property at all -- language
         # is a User attribute (see update_user's "language" field), not a
-        # preference. A previous version of this method sent {"lang": ...} to
-        # PATCH /api/v3/my_preferences, which the real API silently ignored
-        # (verified live: even a nonsense value returned 200 with no
-        # validation error and no effect), so it always appeared to succeed
-        # while doing nothing.
+        # preference. PATCH /api/v3/my_preferences silently ignores an
+        # unknown key like "lang" (verified live: even a nonsense value
+        # returns 200 with no validation error and no effect), so sending it
+        # here would always appear to succeed while doing nothing.
         self._ensure_write_enabled("personal")
         body: dict[str, Any] = {}
         if time_zone is not None:
@@ -6177,6 +6227,13 @@ class OpenProjectClient:
         )
 
     def normalize_principal(self, payload: dict[str, Any]) -> PrincipalSummary:
+        # No login/status fields: list_principals hits GET /api/v3/principals
+        # with no select parameter, which always takes the SQL fast-path
+        # representer (verified against op-sources 17.7's
+        # UserSqlRepresenter/GroupSqlRepresenter/PlaceholderUserSqlRepresenter),
+        # none of which declare a login or status property -- only
+        # _type/id/name/email. login/status exist only on the full
+        # single-resource UserRepresenter (GET /users/{id}), never called here.
         principal_type = _trim_text(payload.get("_type"), limit=SUBJECT_LIMIT)
         principal_id = int(payload["id"])
         return self._apply_hidden_fields(
@@ -6185,15 +6242,15 @@ class OpenProjectClient:
                 id=principal_id,
                 type=principal_type,
                 name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Principal {principal_id}",
-                login=_trim_text(payload.get("login"), limit=SUBJECT_LIMIT),
                 email=_trim_text(payload.get("email"), limit=SUBJECT_LIMIT),
-                status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
             ),
         )
 
     def normalize_user(self, payload: dict[str, Any]) -> UserSummary:
-        links = payload.get("_links", {})
-        avatar_link = links.get("avatar")
+        # avatar is a top-level string property (already a full absolute
+        # URL), not a `_links.avatar` link -- verified against
+        # user_representer.rb (`property :avatar, getter: ->(*) {
+        # avatar_url(represented) }`) and live against a real instance.
         return self._apply_hidden_fields(
             "user",
             UserSummary(
@@ -6204,7 +6261,7 @@ class OpenProjectClient:
                 status=_trim_text(payload.get("status"), limit=SUBJECT_LIMIT),
                 admin=payload.get("admin"),
                 locked=payload.get("locked"),
-                avatar_url=self._link_to_web_url(avatar_link.get("href")) if isinstance(avatar_link, dict) else None,
+                avatar_url=_trim_text(payload.get("avatar"), limit=SUBJECT_LIMIT),
                 created_at=payload.get("createdAt"),
                 updated_at=payload.get("updatedAt"),
                 firstname=_trim_text(payload.get("firstName"), limit=SUBJECT_LIMIT),
@@ -6215,9 +6272,13 @@ class OpenProjectClient:
     def normalize_user_detail(self, payload: dict[str, Any]) -> UserDetail:
         summary = self.normalize_user(payload)
         links = payload.get("_links", {})
-        groups = [title for item in links.get("groups", []) if isinstance(item, dict) and (title := _link_title(item))]
         auth_source = _link_title(links.get("authSource"))
         identity_url = payload.get("identityUrl")
+        # No groups field: user_representer.rb declares no `_links.groups`
+        # (or any other group-membership exposure) at all. There is no route
+        # that lists a user's groups from the user side; get_group's own
+        # `members` field is the only way to see this relationship, from the
+        # group's side.
         return self._apply_hidden_fields(
             "user",
             UserDetail(
@@ -6234,7 +6295,6 @@ class OpenProjectClient:
                 language=_trim_text(payload.get("language"), limit=SUBJECT_LIMIT),
                 identity_url=identity_url,
                 auth_source=auth_source,
-                groups=groups,
                 firstname=summary.firstname,
                 lastname=summary.lastname,
             ),
@@ -6834,9 +6894,11 @@ class OpenProjectClient:
         sort_by_id = requested_id if requested_id is not None else derived_id
         column_link = links.get("column")
         direction_link = links.get("direction")
-        direction = _trim_text(payload.get("direction"), limit=SUBJECT_LIMIT)
-        if direction is None and isinstance(direction_link, dict):
-            direction = _trim_text(direction_link.get("title"), limit=SUBJECT_LIMIT)
+        # QuerySortByRepresenter has no top-level `direction` property, only the
+        # `_links.direction` link's title.
+        direction = (
+            _trim_text(direction_link.get("title"), limit=SUBJECT_LIMIT) if isinstance(direction_link, dict) else None
+        )
         return self._apply_hidden_fields(
             "query_sort_by",
             QuerySortBySummary(
@@ -6983,6 +7045,10 @@ class OpenProjectClient:
         job_id = _trim_text(payload.get("jobId") or payload.get("id"), limit=SUBJECT_LIMIT) or _slug_from_href(
             top_level_links.get("self", {}).get("href")
         )
+        # No percentage_complete/created_at/updated_at fields: JobStatusRepresenter
+        # renders only job_id/status/message/payload/_type -- there is no
+        # progress concept or timestamp property anywhere in the job_status
+        # module.
         return self._apply_hidden_fields(
             "job_status",
             JobStatusDetail(
@@ -6992,9 +7058,6 @@ class OpenProjectClient:
                     payload.get("status") or payload.get("jobStatus") or payload.get("state"), limit=SUBJECT_LIMIT
                 ),
                 message=_trim_text(payload.get("message") or payload.get("error"), limit=FORMATTABLE_LIMIT),
-                created_at=payload.get("createdAt"),
-                updated_at=payload.get("updatedAt"),
-                percentage_complete=payload.get("percentageDone") or payload.get("progress"),
                 project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
                 project=_link_title(project_link),
                 created_resource_type=_trim_text(resource_link.get("type"), limit=SUBJECT_LIMIT)
@@ -7014,6 +7077,11 @@ class OpenProjectClient:
         project_id: int | None,
         project_name: str | None,
     ) -> CategorySummary:
+        # No is_default field: CategoryRepresenter renders only id, name, the
+        # project link, and defaultAssignee (an unrelated concept -- the user
+        # auto-assigned to work packages in this category, not "is this the
+        # project's default category"). The Category model has no such
+        # attribute anywhere.
         category_id = int(payload["id"])
         links = payload.get("_links", {})
         default_assignee_link = links.get("defaultAssignee")
@@ -7024,7 +7092,6 @@ class OpenProjectClient:
                 name=_trim_text(payload.get("name"), limit=SUBJECT_LIMIT) or f"Category {category_id}",
                 project_id=project_id,
                 project=project_name,
-                is_default=bool(payload.get("isDefault")),
                 default_assignee_id=_id_from_href(
                     default_assignee_link.get("href") if isinstance(default_assignee_link, dict) else None
                 ),
@@ -7051,8 +7118,8 @@ class OpenProjectClient:
             "attachment",
             AttachmentSummary(
                 id=int(payload["id"]),
-                title=_trim_text(payload.get("title") or payload.get("fileName"), limit=SUBJECT_LIMIT)
-                or f"Attachment {payload['id']}",
+                # AttachmentRepresenter has no `title` property, only `file_name`.
+                title=_trim_text(payload.get("fileName"), limit=SUBJECT_LIMIT) or f"Attachment {payload['id']}",
                 file_name=_trim_text(payload.get("fileName"), limit=SUBJECT_LIMIT),
                 file_size=payload.get("fileSize"),
                 description=self._visible_formattable_text(payload.get("description"), "attachment", "description"),
@@ -7216,6 +7283,7 @@ class OpenProjectClient:
         links = payload.get("_links", {})
         project_link = links.get("project")
         entity_link = links.get("entity")
+        entity_href = entity_link.get("href") if isinstance(entity_link, dict) else None
         comment, comment_truncated, comment_length = self._visible_formattable_text_with_meta(
             payload.get("comment"), "time_entry", "comment"
         )
@@ -7224,8 +7292,8 @@ class OpenProjectClient:
             TimeEntrySummary(
                 id=int(payload["id"]),
                 project=_link_title(project_link),
-                entity_type=_trim_text(payload.get("entityType"), limit=SUBJECT_LIMIT),
-                entity_id=_id_from_href(entity_link.get("href")) if isinstance(entity_link, dict) else None,
+                entity_type=_entity_type_from_href(entity_href),
+                entity_id=_id_from_href(entity_href),
                 entity_name=_link_title(entity_link),
                 user=_link_title(links.get("user")),
                 activity=_link_title(links.get("activity")),
@@ -7316,13 +7384,18 @@ class OpenProjectClient:
         read_ian = payload.get("readIAN")
         if read_ian is None:
             read_ian = bool(payload.get("read"))
-        reason_link = links.get("reason")
-        reason = _link_title(reason_link) or _trim_text(payload.get("reason"), limit=SUBJECT_LIMIT)
+        # reason is a top-level string property (an enum-like identifier, e.g.
+        # "mentioned"/"assigned"), not a link -- notification_representer.rb
+        # has no `_links.reason` at all.
+        reason = _trim_text(payload.get("reason"), limit=SUBJECT_LIMIT)
         return self._apply_hidden_fields(
             "notification",
             NotificationSummary(
                 id=notification_id,
-                subject=_trim_text(payload.get("subject"), limit=SUBJECT_LIMIT) or f"Notification {notification_id}",
+                # notification_representer.rb has no top-level `subject`
+                # property either -- use the resource link's title instead
+                # (the affected work package's/etc. own name).
+                subject=_link_title(resource_link) or f"Notification {notification_id}",
                 reason=reason,
                 read=bool(read_ian),
                 project_id=_id_from_href(project_link.get("href")) if isinstance(project_link, dict) else None,
@@ -7343,7 +7416,8 @@ class OpenProjectClient:
             "file_link",
             FileLinkSummary(
                 id=file_link_id,
-                title=_trim_text(payload.get("title") or payload.get("originData", {}).get("name"), limit=SUBJECT_LIMIT)
+                # FileLinkRepresenter has no top-level `title` property, only `originData.name`.
+                title=_trim_text(payload.get("originData", {}).get("name"), limit=SUBJECT_LIMIT)
                 or f"File link {file_link_id}",
                 storage_id=storage_id,
                 storage_name=storage_name,
@@ -7381,10 +7455,12 @@ class OpenProjectClient:
         )
 
     def normalize_help_text(self, payload: dict[str, Any]) -> HelpTextSummary:
+        # attribute_caption reads `caption` -- HelpTextRepresenter declares
+        # `property :caption` with no `as:` rename, not `attributeCaption`.
         return HelpTextSummary(
             id=int(payload["id"]),
             attribute_name=payload.get("attribute") or payload.get("attributeName"),
-            attribute_caption=payload.get("attributeCaption"),
+            attribute_caption=payload.get("caption"),
             help_text=_trim_text(
                 (payload.get("helpText") or {}).get("raw")
                 if isinstance(payload.get("helpText"), dict)
@@ -7394,9 +7470,11 @@ class OpenProjectClient:
         )
 
     def normalize_working_day(self, payload: dict[str, Any]) -> WorkingDay:
+        # day_of_week reads `day` -- WeekDayRepresenter declares
+        # `property :day`, not `dayOfWeek`.
         return WorkingDay(
             name=payload.get("name", ""),
-            day_of_week=int(payload.get("dayOfWeek", 0)),
+            day_of_week=int(payload.get("day", 0)),
             working=bool(payload.get("working", True)),
         )
 
@@ -7887,6 +7965,7 @@ class OpenProjectClient:
         project_name: str | None = None,
         preview_message: str | None = None,
         success_message: str | None = None,
+        commit_payload_override: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     ) -> WorkPackageWriteResult:
         return await self._finalize_write(
             result_cls=WorkPackageWriteResult,
@@ -7903,6 +7982,7 @@ class OpenProjectClient:
             preview_message=preview_message
             or "OpenProject validated the change. Ask for confirmation, then call again with confirm=true to write it.",
             success_message=success_message or f"Work package {action}d successfully.",
+            commit_payload_override=commit_payload_override,
         )
 
     def _build_version_write_payload(
@@ -8961,10 +9041,9 @@ class OpenProjectClient:
     ) -> str | None:
         """Hide-aware, delimited formattable text.
 
-        The returned text is always wrapped by ``_delimit_user_content`` --
-        every caller used to do this immediately after calling this method (or,
-        for several call sites, not at all), so it is folded in here instead of
-        repeated (or missing) at each call site.
+        The returned text is always wrapped by ``_delimit_user_content`` here,
+        rather than left to each call site, so no caller can forget it or
+        duplicate it.
         """
         if self._field_hidden(entity, field_name):
             return None
@@ -9530,7 +9609,6 @@ def _normalize_text(value: Any, *, preserve_newlines: bool) -> str:
             blank_run += 1
             if blank_run <= 1:
                 normalized.append("")
-    # Strip leading/trailing blank lines.
     while normalized and normalized[0] == "":
         normalized.pop(0)
     while normalized and normalized[-1] == "":
@@ -9638,6 +9716,24 @@ def _id_from_href(href: str | None) -> int | None:
         return int(parts[-1])
     except (ValueError, IndexError):
         return None
+
+
+_ENTITY_TYPE_BY_HREF_SEGMENT = {"work_packages": "WorkPackage", "meetings": "Meeting"}
+
+
+def _entity_type_from_href(href: str | None) -> str | None:
+    """OpenProject's TimeEntry representer never emits an `entityType` field --
+    the entity's type is only ever distinguishable by which resource collection
+    its `entity` link's href points into (`/api/v3/work_packages/<id>` vs.
+    `/api/v3/meetings/<id>`), matching `EntityRepresenterFactory.representer_type`
+    server-side."""
+    if not href:
+        return None
+    segments = [s for s in href.split("/") if s]
+    for segment, entity_type in _ENTITY_TYPE_BY_HREF_SEGMENT.items():
+        if segment in segments:
+            return entity_type
+    return None
 
 
 def _slug_from_href(href: str | None) -> str | None:

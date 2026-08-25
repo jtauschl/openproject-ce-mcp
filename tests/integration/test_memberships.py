@@ -29,11 +29,9 @@ pytestmark = pytest.mark.integration
 
 async def _other_principal_id(client: OpenProjectClient) -> str:
     """Returns a principal id other than the token owner's own, to use as a
-    create_membership principal. Historically documented here as working
-    around an "OpenProject auto-adds the creator as a member on
-    create_project" behavior -- live-verified 2026-08-07 that this is NOT
-    actually true for API-created projects (a fresh project has zero
-    memberships until one is explicitly created). Kept as the default
+    create_membership principal. OpenProject does NOT auto-add the creator
+    as a member on create_project for API-created projects (a fresh project
+    has zero memberships until one is explicitly created). Kept as the default
     principal source anyway since most tests here want a *non-admin*
     principal specifically (the token owner is typically the instance
     admin), not because "me" would fail. Picks any other active user already

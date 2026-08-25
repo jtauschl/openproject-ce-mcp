@@ -360,7 +360,7 @@ def test_settings_from_env_rejects_invalid_log_level() -> None:
 
 def test_settings_from_env_accepts_debug_log_level() -> None:
     # Regression guard: DEBUG is a real Python logging level and is part of
-    # FastMCP's accepted log_level Literal, but was previously missing from
+    # MCPServer's accepted log_level Literal, but was previously missing from
     # this validator's allowed set and got wrongly rejected.
     settings = Settings.from_env(
         {

@@ -25,9 +25,10 @@ to). Three flags control what it does; see [Clients](clients.md) for the
 global-vs-project-scoped question every mode asks first:
 
 - **`configure` / `configure --quick`** (the default) — client target(s), base
-  URL, token, readable projects, and one *project-scoped* write-scope choice
-  (`none` / `work-packages` / `all`, mapped to the five project-scoped
-  `OPENPROJECT_ENABLE_*_WRITE` flags). This choice does not touch personal-data
+  URL, token, readable projects, and (if write access is enabled) a Y/N per
+  project-scoped write category — work packages, projects, memberships,
+  versions, boards — mapped directly to the matching
+  `OPENPROJECT_ENABLE_*_WRITE` flag. These prompts do not touch personal-data
   writes (`OPENPROJECT_ENABLE_PERSONAL_WRITE`) or admin writes
   (`OPENPROJECT_ENABLE_ADMIN_WRITE`) — those are independent and keep
   whatever value they already had (off, on a fresh setup). Use `--advanced`

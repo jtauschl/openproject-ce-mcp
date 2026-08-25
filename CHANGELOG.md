@@ -7,6 +7,64 @@ development baseline.
 
 ---
 
+## [Unreleased]
+
+## 0.3.8 – 2026-08-25
+
+### Fixed
+
+- Setting `version` on `create_work_package`/`create_subtask`/
+  `update_work_package` no longer fails with "Version and target versions
+  cannot both be changed at the same time".
+- `get.ps1`/`get.sh` now actually install dependencies before running
+  `configure_mcp.py`, instead of crashing with `ModuleNotFoundError`.
+- `get.ps1` no longer closes the user's entire PowerShell window on error
+  when run via `irm ... | iex`.
+- `get.ps1` now reports "Python 3.10 or later is required" instead of an
+  opaque crash when `python`/`py` resolve to Windows' Microsoft Store stub.
+- The Windows source-install one-liner in `docs/installation.md` no longer
+  intermittently fails on PowerShell 5.1 with a confusing TLS-negotiation
+  error.
+- On Windows, the setup wizard's API token prompt now accepts pasted input
+  correctly instead of silently corrupting it. The entry is visible while
+  typing/pasting there instead of masked.
+
+### Added
+
+- `search_work_packages` now resolves a numeric id or display id (e.g.
+  `PROJ-42`) directly, returned separately as `exact_match` — previously a
+  display id never matched at all.
+
+### Changed
+
+- The setup wizard's quick-mode write-scope question now asks per category
+  instead of offering only `none`/`work-packages`/`all`.
+- CI now also runs weekly against the newest dependency versions allowed by
+  `pyproject.toml`.
+
+### Docs
+
+- Corrected `list_work_packages`' `project` parameter docstring: a numeric
+  project ID is accepted too, not only an identifier/slug.
+- Reordered `docs/installation.md`'s install methods, with `pipx` as the
+  primary recommendation.
+- Updated the OpenProject-version-verification claim to source-audited and
+  runtime-smoke-tested through 17.7 (previously 17.5).
+- Documented how to connect a second OpenProject instance in the same
+  client.
+
+### Known Issues
+
+- Source install fails on Windows on ARM64 (`win_arm64`): `cryptography` has
+  no prebuilt wheel for this platform, and a source build additionally needs
+  the MSVC linker. Filed upstream at
+  [modelcontextprotocol/python-sdk#3373](https://github.com/modelcontextprotocol/python-sdk/issues/3373);
+  expected to resolve on its own once `cryptography` 51 ships (likely
+  Sept/Oct 2026,
+  [pyca/cryptography#15350](https://github.com/pyca/cryptography/pull/15350)).
+  Workaround: install Visual Studio Build Tools' C++ workload, or use
+  `win_amd64`/WSL instead.
+
 ## 0.3.7 – 2026-08-17
 
 ### Security
@@ -34,18 +92,10 @@ development baseline.
   detail fix directly above. The actual error type is now classified
   correctly again.
 - **`list_my_open_work_packages` could silently return zero or incomplete
-  results even when matching, allowed work packages genuinely existed.**
-  This query has no server-side project filter at all, so under a
-  restricted `OPENPROJECT_READ_PROJECTS` scope a single bounded fetch could
-  land entirely on server pages whose matches belonged to disallowed
-  projects, missing every allowed match beyond that window — reproduced
-  live against a real OpenProject instance: 33 total server matches, only
-  1 in an allowed project, that one match landing past a single page's
-  worth of results. Now scans as many server pages as needed (skipping
-  already-seen allowed matches, stopping once enough are found or the
-  server is exhausted) instead of inspecting only one bounded page —
-  reusing the existing `_scan_and_paginate` helper the same way
-  `list_relations`/`list_views`/etc. already do.
+  results even when matching, allowed work packages genuinely existed**,
+  under a restricted `OPENPROJECT_READ_PROJECTS` scope. It now scans as
+  many server pages as needed instead of inspecting only a single bounded
+  page.
 - **`create_subtask`'s docstring now states that `parent_work_package_id`
   is the same value `list_work_packages`/`get_work_package` return as each
   row's `id` field (and as `parent_id`/`parent_display_id` on a child work
@@ -658,96 +708,7 @@ Supersedes the never-released 0.1.1.
 
 ## 0.1.0 – 2026-07-01
 
-Add semantic work-package identifiers and automatic MCP-client setup, and
-harden the API surface (attachment containment, allowlisting, field-hiding)
-ahead of the first public release.
-
-### Compatibility
-
-- Reviewed for compatibility with OpenProject 17.5.1/17.5.0 — no breaking
-  API change affects this server.
-- Verified against OpenProject 16.6 (classic), 17.4 (displayId), and 17.5
-  (semantic) via the local Docker matrix, plus a source-level API audit
-  across 16.0–17.5.
-
-### Added
-
-- Single work package tools now accept a project-prefixed identifier (e.g.
-  `PROJ-123`) in addition to the numeric id; the bulk tools remain
-  numeric-only.
-- Relation and parent writes resolve a project-prefixed reference to the
-  numeric id.
-- Interactive setup can detect installed MCP clients (Claude Code, Claude
-  Desktop, Codex, Cursor, VS Code/Copilot) and register the server in a
-  client's user-wide config.
-- `uninstall.sh`/`uninstall.ps1` and a `configure_mcp.py --uninstall` mode
-  remove the `openproject` entry from client configs and clean up the local
-  environment.
-- `OPENPROJECT_ATTACHMENT_ROOT` confines attachment uploads to a directory;
-  files outside it, and credential/config files even inside it, are
-  refused.
-
-### Security
-
-- Attachment uploads can no longer read arbitrary local files, closing a
-  credential-exfiltration path.
-- `list_relations` is gated by the read scope and filtered by the project
-  read allowlist on both linked work packages; `update_relation`,
-  `update_reminder`, and `delete_reminder` apply the project write
-  allowlist; `copy_project` validates its destination; hidden work-package
-  subjects no longer leak through relation tools.
-- `OPENPROJECT_AUTO_CONFIRM_DELETE` now correctly governs the preview step
-  for all destructive deletes.
-
-### Docs
-
-- Onboarding docs reworked: install-once/register-per-client model,
-  per-client config matrix, per-OS paths, verification steps, and
-  gitignore reminders.
-
----
-
-## 0.0.1 (development baseline)
-
-Initial development baseline. The pre-release history is kept below as dated
-milestones.
-
-### 2026-05-18
-
-#### Compatibility
-
-- Verified against OpenProject 17.4. No breaking API changes in 17.4.
-- Work package responses now expose a `display_id` field, informational
-  ahead of 17.5's project-based identifiers; the numeric `id` remains the
-  canonical identifier for all tool parameters.
-
-#### Fixes
-
-- Authentication header changed from `Bearer <token>` to
-  `Basic base64(apikey:<token>)`, aligning with the OpenProject API
-  documentation.
-
-#### Bug fixes
-
-- `list_work_packages`, `list_my_open_work_packages`, `list_versions`, and
-  `list_projects` now report `total` and `count` consistently when the
-  read allowlist filters items out of the API response.
-- `list_work_packages` without an explicit `project` argument now
-  correctly filters results to allowed projects when
-  `OPENPROJECT_ALLOWED_PROJECTS_READ` is restricted.
-- Allowlist matching now resolves project names and hyphenated display
-  names to their canonical identifiers at startup.
-
-#### Configuration
-
-- `OPENPROJECT_ALLOWED_PROJECTS_READ` now accepts glob patterns in
-  addition to exact identifiers and names.
-
----
-
-### 2026-04-08
-
-#### Tools
+### Tools
 
 - **Projects** — list, get, create, copy (with background job tracking), update, delete;
   read admin context, project configuration, and lifecycle phase definitions/instances
@@ -785,8 +746,33 @@ milestones.
 - **Relations (global)** — list, update
 - **Actions & capabilities** — list
 - **Text rendering** — render markdown or plain text to HTML via OpenProject API
+- Single work package tools accept a project-prefixed identifier (e.g.
+  `PROJ-123`) in addition to the numeric id; the bulk tools are
+  numeric-only. Relation and parent writes resolve a project-prefixed
+  reference to the numeric id. Work package responses also expose a
+  `display_id` field, informational ahead of 17.5's project-based
+  identifiers; the numeric `id` is the canonical identifier for all tool
+  parameters.
+- Uses `Basic base64(apikey:<token>)` authentication, per the OpenProject
+  API documentation.
+- `list_work_packages`, `list_my_open_work_packages`, `list_versions`, and
+  `list_projects` report `total` and `count` consistently when the read
+  allowlist filters items out of the API response; `list_work_packages`
+  without an explicit `project` argument filters results to allowed
+  projects when the read allowlist is restricted; allowlist matching
+  resolves project names and hyphenated display names to their canonical
+  identifiers at startup, and accepts glob patterns in addition to exact
+  identifiers and names.
+- Interactive setup can detect installed MCP clients (Claude Code, Claude
+  Desktop, Codex, Cursor, VS Code/Copilot) and register the server in a
+  client's user-wide config. `uninstall.sh`/`uninstall.ps1` and a
+  `configure_mcp.py --uninstall` mode remove the `openproject` entry from
+  client configs and clean up the local environment.
+- `OPENPROJECT_ATTACHMENT_ROOT` confines attachment uploads to a
+  directory; files outside it, and credential/config files even inside
+  it, are refused.
 
-#### Permission model
+### Permission model
 
 - Scoped read flags per chain: `OPENPROJECT_ENABLE_PROJECT_READ`,
   `OPENPROJECT_ENABLE_WORK_PACKAGE_READ`, `OPENPROJECT_ENABLE_MEMBERSHIP_READ`,
@@ -800,7 +786,7 @@ milestones.
 - Two-layer safety model: MCP env-var gates (ceiling) + OpenProject server-side role
   permissions (final authority); a `403` from OpenProject surfaces as a tool error
 
-#### Architecture
+### Architecture
 
 - Five-module layout: `server.py`, `config.py`, `client.py`, `models.py`, `tools.py`
 - All policy logic (read gates, write gates, project scoping, field hiding) concentrated
@@ -817,13 +803,13 @@ milestones.
   `OPENPROJECT_MAX_RESULTS`
 - Form validation against OpenProject schema endpoints before create/update writes
 
-#### Test coverage
+### Test coverage
 
 - 152 unit tests (httpx mock transport, no network)
 - Integration test suite (`tests/integration/`) against a live OpenProject instance;
   excluded from the default run, opt in with `-m integration`
 
-#### Scope
+### Scope
 
 - Community Edition only — Enterprise features (Placeholder Users, Budgets, Portfolios,
   Programs, Custom Actions, Baseline Comparisons) are not implemented
@@ -831,7 +817,7 @@ milestones.
   not connected)
 - Project lifecycle phases included (read-only; degrades gracefully if unavailable)
 
-#### Known API notes
+### Known API notes
 
 - `GET /api/v3/projects/{id}/wiki_pages` is not implemented in OpenProject v3;
   `list_wiki_pages` is therefore not provided. Individual pages are accessible via
@@ -843,3 +829,29 @@ milestones.
   redirecting project-scoped path.
 - Groups PATCH requires a complete `_links.members` array (full replacement); the client
   fetches the current list and applies adds/removes before sending.
+
+### Compatibility
+
+- Reviewed for compatibility with OpenProject 17.5.1/17.5.0 — no breaking
+  API change affects this server.
+- Verified against OpenProject 16.6 (classic), 17.4 (displayId), and 17.5
+  (semantic) via the local Docker matrix, plus a source-level API audit
+  across 16.0–17.5.
+
+### Security
+
+- Attachment uploads are confined to files within `OPENPROJECT_ATTACHMENT_ROOT`; a
+  path outside it, or a credential/config file even inside it, is refused.
+- `list_relations` is gated by the read scope and filtered by the project
+  read allowlist on both linked work packages; `update_relation`,
+  `update_reminder`, and `delete_reminder` apply the project write
+  allowlist; `copy_project` validates its destination; hidden work-package
+  subjects never leak through relation tools.
+- `OPENPROJECT_AUTO_CONFIRM_DELETE` governs the preview step for all
+  destructive deletes.
+
+### Docs
+
+- Onboarding docs cover the install-once/register-per-client model,
+  a per-client config matrix, per-OS paths, verification steps, and
+  gitignore reminders.

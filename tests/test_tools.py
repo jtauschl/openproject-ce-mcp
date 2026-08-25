@@ -239,7 +239,7 @@ async def test_create_project_tool_does_not_raise_on_rejected_validation_preview
     """A rejected validation preview (ready=False, validation_errors populated)
     is a normal tool result, not an exception. This secures the local
     precondition for the MCP envelope's isError staying False on such a
-    result; it does not exercise the FastMCP protocol layer itself.
+    result; it does not exercise the MCPServer protocol layer itself.
     """
 
     class StubClient:
@@ -1237,9 +1237,8 @@ async def test_time_entry_tools_pass_expected_arguments() -> None:
 @pytest.mark.asyncio
 async def test_create_time_entry_tool_accepts_day_based_hours() -> None:
     # hours shares ISO8601_DURATION_RE with estimated_time/remaining_time/duration
-    # on work packages; day-based values must be accepted here too. Live-verified
-    # 2026-07-17 against real OpenProject 16.6: a time entry with hours="P1D" was
-    # created successfully and echoed back unchanged.
+    # on work packages; day-based values must be accepted here too — a time
+    # entry with hours="P1D" is created successfully and echoed back unchanged.
     class StubClient:
         async def create_time_entry(self, **kwargs):
             return kwargs
@@ -1797,11 +1796,14 @@ async def test_list_notifications_returns_normalized_results() -> None:
                         "elements": [
                             {
                                 "id": 5,
-                                "subject": "You were mentioned",
                                 "readIAN": False,
                                 "createdAt": "2026-03-20T10:00:00Z",
                                 "_links": {
                                     "project": {"href": "/api/v3/projects/1", "title": "Demo"},
+                                    "resource": {
+                                        "href": "/api/v3/work_packages/42",
+                                        "title": "You were mentioned",
+                                    },
                                 },
                             }
                         ]
@@ -2247,9 +2249,8 @@ async def test_bulk_update_work_packages_tool_version_error_has_item_index() -> 
 
 
 def test_validate_optional_duration_accepts_date_part_units() -> None:
-    # Live-verified 2026-07-17 against real OpenProject 16.6 (Docker harness):
-    # day/week/month/year units and date+time combinations are accepted and
-    # echoed back unchanged, contrary to the regex's former PT-only restriction.
+    # OpenProject accepts day/week/month/year units and date+time combinations
+    # and echoes them back unchanged.
     assert _validate_optional_duration("P1D", field_name="x") == "P1D"
     assert _validate_optional_duration("P2W", field_name="x") == "P2W"
     assert _validate_optional_duration("P1Y", field_name="x") == "P1Y"
@@ -2263,9 +2264,8 @@ def test_validate_optional_duration_accepts_date_part_units() -> None:
 
 
 def test_validate_optional_duration_rejects_week_combined_with_other_units() -> None:
-    # Live-verified 2026-07-17 against real OpenProject 16.6: "P1W2D" and
-    # "P2WT3H" are rejected by OpenProject itself ("Invalid format for
-    # property... Expected format like 'ISO 8601 duration'") — the week
+    # "P1W2D" and "P2WT3H" are rejected by OpenProject itself ("Invalid format
+    # for property... Expected format like 'ISO 8601 duration'") — the week
     # designator cannot combine with any other designator, per the ISO 8601
     # standard's own week-format rule. The regex must reject these locally
     # too, not silently accept something OpenProject itself refuses.

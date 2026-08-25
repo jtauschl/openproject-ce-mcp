@@ -50,7 +50,7 @@ UNINSTALL_PS1 = REPO_ROOT / "uninstall.ps1"
 SH = shutil.which("sh")
 BASH = shutil.which("bash")
 PWSH = shutil.which("pwsh")
-_REAL_TOOLS = {name: shutil.which(name) for name in ("rm", "find", "dirname", "mkdir")}
+_REAL_TOOLS = {name: shutil.which(name) for name in ("rm", "find", "dirname", "mkdir", "cp", "chmod")}
 
 GET_SCRIPTS = [GET_SH] + ([GET_PS1] if PWSH else [])
 UNINSTALL_SCRIPTS = [UNINSTALL_SH] + ([UNINSTALL_PS1] if PWSH else [])
@@ -68,9 +68,13 @@ esac
 
 _PYTHON_STUB = """#!/bin/sh
 echo "python $* (cwd=$(pwd))" >> "$FAKE_LOG"
-arg1="$1"
-if [ "$arg1" = "-3" ]; then arg1="$2"; fi
-if [ "$arg1" = "-c" ]; then
+# `py -3 ...` shifts the leading `-3` off entirely (not just a local peek at
+# $1) so every check below sees the SAME positional layout regardless of
+# whether this stub was invoked as `py -3 <rest>` or `python <rest>` --
+# otherwise `-m`'s own $2/$3 (the module name / venv dir) would still be
+# offset by one when called via the -3 form.
+if [ "$1" = "-3" ]; then shift; fi
+if [ "$1" = "-c" ]; then
   if [ "${FAKE_PY_VERSION_OK:-1}" = "1" ]; then
     echo True
     exit 0
@@ -78,11 +82,51 @@ if [ "$arg1" = "-c" ]; then
   echo False
   exit 1
 fi
+if [ "$1" = "-m" ]; then
+  case "$2" in
+    venv)
+      # get.sh/get.ps1's pip fallback: `python -m venv <dir>` must produce a
+      # working interpreter at the exact relative path each script's own pip
+      # calls and final exec then use (.venv/bin/python on sh,
+      # .venv\\Scripts\\python.exe on PowerShell) -- copy this same stub there
+      # under both names so either path finds a working "python".
+      venv_dir="$3"
+      mkdir -p "$venv_dir/bin" "$venv_dir/Scripts"
+      cp "$0" "$venv_dir/bin/python"
+      chmod +x "$venv_dir/bin/python"
+      cp "$0" "$venv_dir/Scripts/python.exe"
+      chmod +x "$venv_dir/Scripts/python.exe"
+      exit 0
+      ;;
+    pip)
+      # `python -m pip install ...` -- no real package installation needed,
+      # this stub already "has" everything (it accepts any arguments).
+      exit 0
+      ;;
+  esac
+fi
 exit "${FAKE_PY_EXIT:-0}"
 """
 
+_UV_STUB = """#!/bin/sh
+echo "uv $* (cwd=$(pwd))" >> "$FAKE_LOG"
+case "$1" in
+  sync)
+    exit "${FAKE_UV_SYNC_EXIT:-0}"
+    ;;
+  run)
+    # `uv run python configure_mcp.py` -- both scripts' final exec, once uv
+    # was detected. FAKE_PY_EXIT governs this exactly like the plain python
+    # stub's own final exec, so a single env var controls the "configure_mcp.py
+    # failed" case regardless of which dependency-install branch ran.
+    exit "${FAKE_PY_EXIT:-0}"
+    ;;
+esac
+exit 0
+"""
 
-def _fakebin(tmp_path: Path, *, git: bool = True, python: bool = True) -> Path:
+
+def _fakebin(tmp_path: Path, *, git: bool = True, python: bool = True, uv: bool = False) -> Path:
     fakebin = tmp_path / "fakebin"
     fakebin.mkdir()
     for name, target in _REAL_TOOLS.items():
@@ -93,6 +137,8 @@ def _fakebin(tmp_path: Path, *, git: bool = True, python: bool = True) -> Path:
     if python:
         for name in ("python3", "python", "py"):
             _write_executable(fakebin / name, _PYTHON_STUB)
+    if uv:
+        _write_executable(fakebin / "uv", _UV_STUB)
     return fakebin
 
 
@@ -202,6 +248,34 @@ def test_get_clones_into_fresh_target(tmp_path: Path, script: Path) -> None:
     assert "clone" in log_text
     assert (target / ".git").is_dir()
     assert (target / "configure_mcp.py").exists()
+
+
+@pytest.mark.parametrize("script", GET_SCRIPTS, ids=lambda p: p.name)
+def test_get_installs_dependencies_via_uv_when_available(tmp_path: Path, script: Path) -> None:
+    fakebin = _fakebin(tmp_path, uv=True)
+    log = tmp_path / "fake.log"
+    target = tmp_path / "target"
+    rc, out = _run_launcher(script, cwd=tmp_path, env=_env(fakebin, log, DIR=str(target)))
+    assert rc == 0, out
+    log_text = log.read_text()
+    assert "uv sync" in log_text
+    assert "uv run" in log_text
+    # The pip fallback must not also run when uv is available.
+    assert "-m venv" not in log_text
+    assert "-m pip" not in log_text
+
+
+@pytest.mark.parametrize("script", GET_SCRIPTS, ids=lambda p: p.name)
+def test_get_falls_back_to_venv_and_pip_without_uv(tmp_path: Path, script: Path) -> None:
+    fakebin = _fakebin(tmp_path, uv=False)
+    log = tmp_path / "fake.log"
+    target = tmp_path / "target"
+    rc, out = _run_launcher(script, cwd=tmp_path, env=_env(fakebin, log, DIR=str(target)))
+    assert rc == 0, out
+    log_text = log.read_text()
+    assert "-m venv" in log_text
+    assert "-m pip" in log_text
+    assert "uv" not in log_text
 
 
 @pytest.mark.parametrize("script", GET_SCRIPTS, ids=lambda p: p.name)

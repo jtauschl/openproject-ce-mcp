@@ -16,7 +16,7 @@ asks and every environment variable it can set, see
 |---|---|
 | Python | 3.10 or later |
 | git | only for the "install from source" path (clones this repository) |
-| OpenProject | Community Edition 16.1 or later (source-audited through 17.6, runtime-smoke-tested through 17.5), API v3 accessible |
+| OpenProject | Community Edition 16.1 or later (source-audited through 17.7, runtime-smoke-tested through 17.7), API v3 accessible |
 | OS | macOS 12+, Linux, or Windows 10/11 |
 
 ## Prepare your OpenProject instance
@@ -33,11 +33,15 @@ An administrator must enable API token creation once:
 
 To create a personal token: **My account → Access tokens → + API token**. Copy the token immediately — it is only shown once. Format: `opapi-...`.
 
-## Install pipx (prerequisite)
+## Install
 
-[`pipx`](https://pipx.pypa.io/) installs Python CLI tools into isolated
-environments and is the recommended way to install this package. It does not
-ship with Python — install it once per machine:
+This package ships two globally-runnable console commands
+(`openproject-ce-mcp` and `openproject-ce-mcp configure`), the kind of
+standalone CLI tool [`pipx`](https://pipx.pypa.io/) is designed for: each
+tool gets its own isolated environment while staying available on your
+`PATH`, without the version conflicts a plain `pip install` into your system
+Python can cause. `pipx` does not ship with Python — install it once per
+machine:
 
 ```bash
 # macOS
@@ -53,11 +57,7 @@ py -m pip install --user pipx
 py -m pipx ensurepath
 ```
 
-See the [official pipx installation guide](https://pipx.pypa.io/stable/installation/) for other package managers.
-
-[`uv`](https://github.com/astral-sh/uv) is a faster alternative to pipx, but it must also be installed first — see the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/). `uvx`, which is included with `uv`, can instead run the package on demand without installing `openproject-ce-mcp` as a persistent tool — see [Advanced install alternatives](#advanced-install-alternatives) below.
-
-## Install
+See the [official pipx installation guide](https://pipx.pypa.io/stable/installation/) for other package managers. Then:
 
 ```bash
 pipx install openproject-ce-mcp
@@ -74,6 +74,60 @@ the wizard asks and every setting it can write.
 Restart your MCP client after installation or configuration, then ask it to
 call `get_current_user` or `list_projects` to verify.
 
+### If you already use uv
+
+[`uv`](https://github.com/astral-sh/uv)'s own tool-install mode works the
+same way `pipx` does — isolated per-tool environment, available on `PATH`:
+
+```bash
+uv tool install openproject-ce-mcp
+openproject-ce-mcp configure
+```
+
+Prefer this over `pipx` only if you already have `uv` installed for other
+reasons; it isn't worth installing just for this package over `pipx`.
+
+### Plain pip
+
+Use `pip install openproject-ce-mcp` only inside an environment you're
+already managing explicitly — a virtualenv, a container, or a project that
+pins its own dependencies. A bare `pip install` into your system/user Python
+is not recommended: it skips the isolation `pipx`/`uv tool` give you, and can
+conflict with other Python tools on the same interpreter.
+
+### Run without installing
+
+`uvx openproject-ce-mcp` runs the package on demand via `uv`, with no
+persistent install at all. This is a client-config detail, not a separate
+install method: point your MCP client's `command` at `uvx` with args
+`["openproject-ce-mcp"]` instead of running `configure` — see
+[Clients](clients.md) for the per-client config shape.
+
+<details>
+<summary><b>Alternative: install from source</b> (curl one-liner, needs git)</summary>
+
+The source installer clones the repo, installs dependencies (via `uv` if
+available, or `venv` + `pip` otherwise), and runs the same interactive setup.
+
+**Windows (PowerShell)** — clones to `%USERPROFILE%\openproject-ce-mcp`, binary at `...\.venv\Scripts\openproject-ce-mcp.exe`; set `$env:DIR` to override the destination:
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; irm https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.ps1 | iex
+```
+
+The `SecurityProtocol` line forces TLS 1.2 for this download — Windows PowerShell 5.1's `SystemDefault` setting does not reliably negotiate TLS 1.2 with GitHub on some Windows installs, and without it `irm` can silently return an empty response (surfacing later as a confusing `iex`/`Invoke-Expression` error about an empty string, not an obvious network error).
+
+**macOS / Linux** — clones to `~/openproject-ce-mcp`, binary at `~/openproject-ce-mcp/.venv/bin/openproject-ce-mcp`; `DIR=…` overrides the destination:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.sh | sh
+```
+
+</details>
+
+PyPI and source installs use the same setup flow after installation — see
+[Clients](clients.md) and [Configuration](configuration.md) for what happens next.
+
 ## Update
 
 Upgrade the installed PyPI package, then restart your MCP client:
@@ -87,50 +141,13 @@ If you installed with another tool:
 
 ```bash
 uv tool install --upgrade openproject-ce-mcp
-# or
+# or, inside the environment you installed it into:
 pip install --upgrade openproject-ce-mcp
 ```
 
 No config rewrite is usually needed after an update. Re-run
 `openproject-ce-mcp configure` only when you want to change client targets,
 project scope, write access, or advanced settings.
-
-## Advanced install alternatives
-
-Use these when `pipx` is not the right fit for your environment:
-
-```bash
-uv tool install openproject-ce-mcp
-pip install openproject-ce-mcp
-```
-
-With `uv`, you can also skip installing entirely and point your client's
-`command` at `uvx` with args `["openproject-ce-mcp"]`. Treat this as an
-advanced client-config option; the normal path is to install once and let
-`configure` write the client config.
-
-<details>
-<summary><b>Alternative: install from source</b> (curl one-liner, needs git)</summary>
-
-The source installer clones the repo, installs dependencies (via `uv` if
-available, or `venv` + `pip` otherwise), and runs the same interactive setup.
-
-**Windows (PowerShell)** — clones to `%USERPROFILE%\openproject-ce-mcp`, binary at `...\.venv\Scripts\openproject-ce-mcp.exe`; set `$env:DIR` to override the destination:
-
-```powershell
-irm https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.ps1 | iex
-```
-
-**macOS / Linux** — clones to `~/openproject-ce-mcp`, binary at `~/openproject-ce-mcp/.venv/bin/openproject-ce-mcp`; `DIR=…` overrides the destination:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jtauschl/openproject-ce-mcp/main/get.sh | sh
-```
-
-</details>
-
-PyPI and source installs use the same setup flow after installation — see
-[Clients](clients.md) and [Configuration](configuration.md) for what happens next.
 
 ## Uninstall
 

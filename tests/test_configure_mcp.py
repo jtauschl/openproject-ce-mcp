@@ -6,7 +6,7 @@ import json
 import subprocess
 import sys
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -337,6 +337,23 @@ class _AnswerBook:
         leftover = {key: queue for key, queue in self._queues.items() if queue}
         if leftover:
             raise AssertionError(f"answers registered but never consumed: {leftover}")
+
+
+def _input_with_token_fallback(book: _AnswerBook, secret: str) -> Callable[[str], str]:
+    """`input()` mock for tests that patch getpass.getpass with `secret`.
+
+    On a real Windows platform, _prompt_secret() reads the token via input()
+    instead of getpass.getpass() — route that one prompt straight to
+    `secret` here too, same as the getpass patch, so the same test behaves
+    identically regardless of which OS actually runs it.
+    """
+
+    def _input(prompt: str = "") -> str:
+        if "OpenProject API token" in prompt:
+            return secret
+        return book(prompt)
+
+    return _input
 
 
 @contextmanager
@@ -1217,7 +1234,7 @@ def _run_main(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PWD", str(tmp_path))
     book = _AnswerBook(answers)
-    monkeypatch.setattr("builtins.input", lambda prompt="": book(prompt))
+    monkeypatch.setattr("builtins.input", _input_with_token_fallback(book, secret))
     monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": secret)
     c.main(list(argv), interactive=interactive)
     if strict:
@@ -1271,6 +1288,17 @@ _ADVANCED_ONLY_DEFAULTS: dict[str, str] = {
     "Retry max delay seconds": "",
     "Log level": "",
 }
+# Quick mode (not --advanced): once "Enable write access?" is answered yes,
+# these 5 per-category Y/N prompts are asked unconditionally. Tests that drive
+# write access on but don't care about the specific per-category split merge
+# this in with "" (keep-default) answers.
+_QUICK_WRITE_SCOPE_DEFAULTS: dict[str, str] = {
+    "Work packages (create": "",
+    "Versions (create": "",
+    "Projects (create": "",
+    "Memberships (create": "",
+    "Boards (create": "",
+}
 
 
 def test_main_global_only_writes_no_mcp_json(monkeypatch, tmp_path: Path) -> None:
@@ -1283,7 +1311,7 @@ def test_main_global_only_writes_no_mcp_json(monkeypatch, tmp_path: Path) -> Non
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers)
     assert gtarget.exists(), "global claude config should be written"
@@ -1310,12 +1338,37 @@ def test_main_project_cursor_writes_cursor_file(monkeypatch, tmp_path: Path) -> 
         "Configure Cursor?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
     }
     _run_main(monkeypatch, tmp_path, [cursor], answers)
     assert ctarget.exists(), "cursor project config should be written"
     data = json.loads(ctarget.read_text())
     assert data["mcpServers"]["openproject"]["command"] == "openproject-ce-mcp"
+
+
+def test_prompt_secret_uses_getpass_on_non_windows(monkeypatch) -> None:
+    monkeypatch.setattr(c, "_IS_WINDOWS", False)
+    monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": "opapi-secret")
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda prompt="": (_ for _ in ()).throw(AssertionError("input() must not be used off Windows")),
+    )
+    assert c._prompt_secret("OpenProject API token") == "opapi-secret"
+
+
+def test_prompt_secret_falls_back_to_input_on_windows(monkeypatch) -> None:
+    # getpass.getpass() on Windows reads keystrokes one at a time via msvcrt,
+    # which does not handle clipboard paste correctly (CPython #81607):
+    # Ctrl+V lands as the raw 0x16 control byte instead of the pasted text.
+    # On Windows we must use input() instead so pasted tokens survive intact.
+    monkeypatch.setattr(c, "_IS_WINDOWS", True)
+    monkeypatch.setattr(
+        c.getpass,
+        "getpass",
+        lambda prompt="": (_ for _ in ()).throw(AssertionError("getpass.getpass() must not be used on Windows")),
+    )
+    monkeypatch.setattr("builtins.input", lambda prompt="": "opapi-secret")
+    assert c._prompt_secret("OpenProject API token") == "opapi-secret"
 
 
 def test_main_neither_aborts_before_token(monkeypatch, tmp_path: Path) -> None:
@@ -1448,7 +1501,7 @@ def test_main_project_prefill_does_not_use_global_values(monkeypatch, tmp_path: 
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -1468,7 +1521,7 @@ def test_main_project_non_claude_writes_generic_mcp_json(monkeypatch, tmp_path: 
         "Configure Codex?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
     }
     _run_main(monkeypatch, tmp_path, [codex], answers)
     assert (tmp_path / ".codex" / "config.toml").exists()
@@ -1489,7 +1542,7 @@ def test_main_project_claude_no_duplicate_mcp_json(monkeypatch, tmp_path: Path) 
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers)
     assert (tmp_path / ".mcp.json").exists()
@@ -1508,7 +1561,7 @@ def test_main_basic_setup_safe_advanced_defaults(monkeypatch, tmp_path: Path) ->
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers)
 
@@ -1552,7 +1605,7 @@ def test_main_fresh_setup_defaults_read_projects_to_empty_not_wildcard(monkeypat
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers)
 
@@ -1583,16 +1636,16 @@ def test_main_write_access_no_disables_write_flags(monkeypatch, tmp_path: Path) 
         )
     )
     claude = _json_client(tmp_path / ".claude.json", project_target=target)
-    # Explicit "none" disables project-scoped writes even though the existing
-    # config has a non-standard (project_write, work_package_write) combo that
-    # would otherwise classify as "custom" — an explicit choice always wins.
+    # Explicit "no" disables project-scoped writes even though the existing
+    # config has a non-standard (project_write, work_package_write) combo —
+    # an explicit choice always wins over any prefill.
     answers = {
         "Configure globally": "n",
         "Configure project-scoped": "y",
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "*",
-        "Write scope": "none",
+        "Enable write access?": "n",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -1636,18 +1689,23 @@ def test_main_write_access_enter_keeps_existing_scope(monkeypatch, tmp_path: Pat
         )
     )
     claude = _json_client(tmp_path / ".claude.json", project_target=target)
-    # Enter on every prompt: the existing (work_package_write-only, non-empty
-    # write scope) combo classifies as "work-packages", so the write-scope
-    # prompt's default is "work-packages" and the "Writable projects" prompt
-    # fires with the existing scope as its own default too.
+    # Enter on every prompt: "Enable write access?" defaults to yes (existing
+    # write scope non-empty), "Writable projects" fires with the existing
+    # scope as its own default, and each per-category default follows its
+    # own existing flag.
     answers = {
         "Configure globally": "n",
         "Configure project-scoped": "y",
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
         "Writable projects": "",
+        "Work packages (create": "",
+        "Versions (create": "",
+        "Projects (create": "",
+        "Memberships (create": "",
+        "Boards (create": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -1691,7 +1749,7 @@ def test_main_migrates_legacy_only_project_scope_keys(monkeypatch, tmp_path: Pat
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -1732,7 +1790,7 @@ def test_main_explicit_empty_new_key_overrides_nonempty_legacy_key(monkeypatch, 
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -1748,9 +1806,9 @@ def test_main_explicit_empty_new_key_overrides_nonempty_legacy_key(monkeypatch, 
 
 
 def test_main_write_access_yes_defaults_write_controls_on(monkeypatch, tmp_path: Path) -> None:
-    # Choosing the "all" write scope in quick mode enables every write-group
-    # flag (project/membership/work_package/version/board). There is no
-    # auto-confirm prompt anymore: every write/delete always
+    # Answering yes to every write-category prompt in quick mode enables
+    # every write-group flag (project/membership/work_package/version/board).
+    # There is no auto-confirm prompt anymore: every write/delete always
     # requires explicit confirm=true, no operator-level bypass exists.
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
 
@@ -1760,8 +1818,13 @@ def test_main_write_access_yes_defaults_write_controls_on(monkeypatch, tmp_path:
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "OPM, TST",
-        "Write scope": "all",
+        "Enable write access?": "y",
         "Writable projects": "TST",
+        "Work packages (create": "y",
+        "Versions (create": "y",
+        "Projects (create": "y",
+        "Memberships (create": "y",
+        "Boards (create": "y",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers)
 
@@ -1810,7 +1873,7 @@ def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, 
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -1827,16 +1890,16 @@ def test_main_skipping_advanced_preserves_existing_advanced_values(monkeypatch, 
 # ── quick/advanced mode ─────────────────────────────────────────────
 
 
-def test_main_quick_write_scope_none_disables_all_write_flags(monkeypatch, tmp_path: Path) -> None:
+def test_main_quick_write_access_no_disables_all_write_flags(monkeypatch, tmp_path: Path) -> None:
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
-    # "none" never triggers the "Writable projects" prompt at all.
+    # "Enable write access?" = no never triggers the per-category prompts at all.
     answers = {
         "Configure globally": "n",
         "Configure project-scoped": "y",
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "*",
-        "Write scope": "none",
+        "Enable write access?": "n",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers)
 
@@ -1860,8 +1923,13 @@ def test_main_quick_write_scope_work_packages_only(monkeypatch, tmp_path: Path) 
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "OPM",
-        "Write scope": "work-packages",
+        "Enable write access?": "y",
         "Writable projects": "OPM",
+        "Work packages (create": "y",
+        "Versions (create": "n",
+        "Projects (create": "n",
+        "Memberships (create": "n",
+        "Boards (create": "n",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers)
 
@@ -1884,8 +1952,13 @@ def test_main_quick_write_scope_all_enables_every_scoped_write(monkeypatch, tmp_
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "*",
-        "Write scope": "all",
+        "Enable write access?": "y",
         "Writable projects": "*",
+        "Work packages (create": "y",
+        "Versions (create": "y",
+        "Projects (create": "y",
+        "Memberships (create": "y",
+        "Boards (create": "y",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers)
 
@@ -1899,9 +1972,10 @@ def test_main_quick_write_scope_all_enables_every_scoped_write(monkeypatch, tmp_
     assert settings.enable_board_write is True
 
 
-def test_main_quick_write_scope_default_is_none_on_fresh_setup(monkeypatch, tmp_path: Path) -> None:
-    # A brand-new setup (no prefill) must classify to "none" and accepting the
-    # default (empty answer) must not ask "Writable projects" at all.
+def test_main_quick_write_scope_default_is_off_on_fresh_setup(monkeypatch, tmp_path: Path) -> None:
+    # A brand-new setup (no prefill) must default "Enable write access?" to
+    # No, and accepting that default must not ask "Writable projects" or any
+    # per-category question at all.
     claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
     answers = {
         "Configure globally": "n",
@@ -1909,7 +1983,7 @@ def test_main_quick_write_scope_default_is_none_on_fresh_setup(monkeypatch, tmp_
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers)
 
@@ -1921,10 +1995,10 @@ def test_main_quick_write_scope_default_is_none_on_fresh_setup(monkeypatch, tmp_
     assert settings.enable_work_package_write is False
 
 
-def test_main_quick_write_scope_prefill_matches_existing_standard_combo(monkeypatch, tmp_path: Path) -> None:
-    # Existing config (new-style keys) has only work_package_write on — a
-    # standard "work-packages" combo — so accepting the default must
-    # reproduce it exactly, including the "Writable projects" default.
+def test_main_quick_write_scope_prefill_matches_existing_combo(monkeypatch, tmp_path: Path) -> None:
+    # Existing config (new-style keys) has only work_package_write on —
+    # accepting every per-category default must reproduce it exactly,
+    # including the "Writable projects" default.
     target = tmp_path / ".mcp.json"
     target.write_text(
         json.dumps(
@@ -1954,8 +2028,13 @@ def test_main_quick_write_scope_prefill_matches_existing_standard_combo(monkeypa
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
         "Writable projects": "",
+        "Work packages (create": "",
+        "Versions (create": "",
+        "Projects (create": "",
+        "Memberships (create": "",
+        "Boards (create": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -1970,57 +2049,11 @@ def test_main_quick_write_scope_prefill_matches_existing_standard_combo(monkeypa
     assert settings.enable_board_write is False
 
 
-def test_main_quick_write_scope_dormant_flags_with_empty_write_projects_default_to_none(
-    monkeypatch, tmp_path: Path
-) -> None:
-    # Regression: a flag left on from a prior config but with an empty
-    # OPENPROJECT_WRITE_PROJECTS grants no actual write access today
-    # (_ensure_project_write_allowed requires both) — the classifier must
-    # treat this as "none", never letting the accepted default silently
-    # activate the dormant flag against read_projects.
-    target = tmp_path / ".mcp.json"
-    target.write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "openproject": {
-                        "command": "old",
-                        "env": {
-                            "OPENPROJECT_BASE_URL": "https://old.example.com",
-                            "OPENPROJECT_API_TOKEN": "old-token",
-                            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
-                            "OPENPROJECT_WRITE_PROJECTS": "",
-                            "OPENPROJECT_READ_PROJECTS": "*",
-                        },
-                    }
-                }
-            }
-        )
-    )
-    claude = _json_client(tmp_path / ".claude.json", project_target=target)
-    answers = {
-        "Configure globally": "n",
-        "Configure project-scoped": "y",
-        "Configure Claude Code?": "y",
-        "OpenProject base URL": "",
-        "Readable projects": "",
-        "Write scope": "",
-    }
-    _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
-
-    data = json.loads(target.read_text())
-    env = data["mcpServers"]["openproject"]["env"]
-    assert "OPENPROJECT_WRITE_PROJECTS" not in env
-    settings = c.Settings.from_env(env)
-    assert settings.write_projects == ()
-    assert settings.enable_work_package_write is False
-
-
-def test_main_quick_write_scope_custom_combo_defaults_to_keep_and_is_unchanged(monkeypatch, tmp_path: Path) -> None:
-    # A non-standard combo (version_write + board_write, neither "none",
-    # "work-packages", nor "all") must classify as "custom": accepting the
-    # "keep" default reproduces both the flags AND the write scope exactly,
-    # never re-prompting "Writable projects" or falling back to read_projects.
+def test_main_quick_write_scope_custom_combo_prefill_reproduced(monkeypatch, tmp_path: Path) -> None:
+    # A non-standard combo (version_write + board_write only) is just as
+    # reproducible as any other combo now — each category is its own
+    # independent Y/N with its own prefilled default, no "custom"/"keep"
+    # bucketing needed.
     target = tmp_path / ".mcp.json"
     target.write_text(
         json.dumps(
@@ -2050,7 +2083,13 @@ def test_main_quick_write_scope_custom_combo_defaults_to_keep_and_is_unchanged(m
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
+        "Writable projects": "",
+        "Work packages (create": "",
+        "Versions (create": "",
+        "Projects (create": "",
+        "Memberships (create": "",
+        "Boards (create": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -2065,7 +2104,7 @@ def test_main_quick_write_scope_custom_combo_defaults_to_keep_and_is_unchanged(m
     assert settings.enable_membership_write is False
 
 
-def test_main_quick_write_scope_custom_combo_explicit_choice_overrides_keep(monkeypatch, tmp_path: Path) -> None:
+def test_main_quick_write_access_no_overrides_existing_custom_combo(monkeypatch, tmp_path: Path) -> None:
     target = tmp_path / ".mcp.json"
     target.write_text(
         json.dumps(
@@ -2092,7 +2131,7 @@ def test_main_quick_write_scope_custom_combo_explicit_choice_overrides_keep(monk
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "none",
+        "Enable write access?": "n",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -2105,66 +2144,10 @@ def test_main_quick_write_scope_custom_combo_explicit_choice_overrides_keep(monk
     assert settings.enable_board_write is False
 
 
-def test_main_quick_write_scope_invalid_then_valid_reprompts(monkeypatch, tmp_path: Path) -> None:
-    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
-    answers = {
-        "Configure globally": "n",
-        "Configure project-scoped": "y",
-        "Configure Claude Code?": "y",
-        "OpenProject base URL": "",
-        "Readable projects": "*",
-        "Write scope": ["banana", "all"],  # exact-match only — no fuzzy/prefix guessing
-        "Writable projects": "*",
-    }
-    _run_main(monkeypatch, tmp_path, [claude], answers)
-
-    data = json.loads((tmp_path / ".mcp.json").read_text())
-    env = data["mcpServers"]["openproject"]["env"]
-    settings = c.Settings.from_env(env)
-    assert settings.enable_work_package_write is True
-    assert settings.enable_board_write is True
-
-
-def test_main_quick_write_scope_exhausts_retries_and_exits_without_writing(monkeypatch, tmp_path: Path) -> None:
-    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
-    answers = {
-        "Configure globally": "n",
-        "Configure project-scoped": "y",
-        "Configure Claude Code?": "y",
-        "OpenProject base URL": "",
-        "Readable projects": "",
-        "Write scope": ["bogus1", "bogus2", "bogus3"],
-    }
-    with pytest.raises(SystemExit) as exc:
-        _run_main(monkeypatch, tmp_path, [claude], answers)
-    assert exc.value.code == 1
-    assert not (tmp_path / ".mcp.json").exists()
-
-
-def test_main_quick_write_scope_keep_rejected_on_standard_combo(monkeypatch, tmp_path: Path) -> None:
-    # "keep" is not a member of the allowed set unless the existing combo is
-    # "custom" — on a fresh (all-off, "none") setup it must be rejected and
-    # re-prompted just like any other invalid value.
-    claude = _json_client(tmp_path / ".claude.json", project_target=tmp_path / ".mcp.json")
-    answers = {
-        "Configure globally": "n",
-        "Configure project-scoped": "y",
-        "Configure Claude Code?": "y",
-        "OpenProject base URL": "",
-        "Readable projects": "",
-        "Write scope": ["keep", "none"],
-    }
-    _run_main(monkeypatch, tmp_path, [claude], answers)
-
-    data = json.loads((tmp_path / ".mcp.json").read_text())
-    env = data["mcpServers"]["openproject"]["env"]
-    assert "OPENPROJECT_WRITE_PROJECTS" not in env
-
-
 def test_main_quick_write_scope_classification_uses_legacy_write_projects_key(monkeypatch, tmp_path: Path) -> None:
     # Only the legacy OPENPROJECT_ALLOWED_PROJECTS_WRITE key is set (not the
-    # new OPENPROJECT_WRITE_PROJECTS) — classification must still see it as
-    # non-empty via _merge_scope_prefill's migration, not treat it as "none".
+    # new OPENPROJECT_WRITE_PROJECTS) — "Enable write access?" must still
+    # default to Yes via _merge_scope_prefill's migration, not treat it as off.
     target = tmp_path / ".mcp.json"
     target.write_text(
         json.dumps(
@@ -2194,8 +2177,13 @@ def test_main_quick_write_scope_classification_uses_legacy_write_projects_key(mo
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
         "Writable projects": "",
+        "Work packages (create": "",
+        "Versions (create": "",
+        "Projects (create": "",
+        "Memberships (create": "",
+        "Boards (create": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -2205,14 +2193,12 @@ def test_main_quick_write_scope_classification_uses_legacy_write_projects_key(mo
     assert c.Settings.from_env(env).enable_work_package_write is True
 
 
-def test_main_quick_write_scope_classification_prefers_new_key_over_legacy_when_both_set(
+def test_main_quick_write_scope_prefers_new_write_projects_key_over_legacy_when_both_set(
     monkeypatch, tmp_path: Path
 ) -> None:
     # Both the new and legacy write-scope keys are set to DIFFERENT non-empty
-    # values — classification (and the accepted default) must follow the new
-    # key, matching _merge_scope_prefill's precedence. Asserting only the
-    # classification bucket wouldn't prove this (both values are non-empty,
-    # so both land in "work-packages") — assert the exact resolved scope.
+    # values — the "Writable projects" default must follow the new key,
+    # matching _merge_scope_prefill's precedence.
     target = tmp_path / ".mcp.json"
     target.write_text(
         json.dumps(
@@ -2239,8 +2225,13 @@ def test_main_quick_write_scope_classification_prefers_new_key_over_legacy_when_
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
         "Writable projects": "",
+        "Work packages (create": "",
+        "Versions (create": "",
+        "Projects (create": "",
+        "Memberships (create": "",
+        "Boards (create": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -2249,12 +2240,11 @@ def test_main_quick_write_scope_classification_prefers_new_key_over_legacy_when_
     assert env["OPENPROJECT_WRITE_PROJECTS"] == "OPM"
 
 
-def test_main_quick_write_scope_classification_new_key_explicitly_empty_overrides_nonempty_legacy(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_main_quick_write_scope_new_key_explicitly_empty_overrides_nonempty_legacy(monkeypatch, tmp_path: Path) -> None:
     # An explicit empty OPENPROJECT_WRITE_PROJECTS must win over a non-empty
-    # legacy value — classification is "none" and the "Writable projects"
-    # prompt (which would need its own answer) must never fire.
+    # legacy value — "Enable write access?" must default to No and the
+    # "Writable projects"/per-category prompts (which would need their own
+    # answers) must never fire.
     target = tmp_path / ".mcp.json"
     target.write_text(
         json.dumps(
@@ -2280,7 +2270,7 @@ def test_main_quick_write_scope_classification_new_key_explicitly_empty_override
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -2290,11 +2280,57 @@ def test_main_quick_write_scope_classification_new_key_explicitly_empty_override
     assert c.Settings.from_env(env).write_projects == ()
 
 
-def test_main_quick_write_scope_none_does_not_touch_personal_or_admin_write(monkeypatch, tmp_path: Path) -> None:
-    # The quick-mode write-scope choice only governs the five project-scoped
-    # write flags — personal-data and admin writes are independent axes and
-    # must keep their existing value even when "none" is chosen. "none" means
-    # "no project-scoped writes", not "read-only" in the absolute sense.
+def test_main_quick_write_scope_dormant_flags_with_empty_write_projects_default_off(
+    monkeypatch, tmp_path: Path
+) -> None:
+    # Regression: a flag left on from a prior config but with an empty
+    # OPENPROJECT_WRITE_PROJECTS grants no actual write access today
+    # (_ensure_project_write_allowed requires both) — "Enable write access?"
+    # must default to No (existing_write_projects is empty), so the per-
+    # category prompts never even fire and the dormant flag's stale "true"
+    # can't silently resurrect itself via an accepted default.
+    target = tmp_path / ".mcp.json"
+    target.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "openproject": {
+                        "command": "old",
+                        "env": {
+                            "OPENPROJECT_BASE_URL": "https://old.example.com",
+                            "OPENPROJECT_API_TOKEN": "old-token",
+                            "OPENPROJECT_ENABLE_WORK_PACKAGE_WRITE": "true",
+                            "OPENPROJECT_WRITE_PROJECTS": "",
+                            "OPENPROJECT_READ_PROJECTS": "*",
+                        },
+                    }
+                }
+            }
+        )
+    )
+    claude = _json_client(tmp_path / ".claude.json", project_target=target)
+    answers = {
+        "Configure globally": "n",
+        "Configure project-scoped": "y",
+        "Configure Claude Code?": "y",
+        "OpenProject base URL": "",
+        "Readable projects": "",
+        "Enable write access?": "",
+    }
+    _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
+
+    data = json.loads(target.read_text())
+    env = data["mcpServers"]["openproject"]["env"]
+    assert "OPENPROJECT_WRITE_PROJECTS" not in env
+    settings = c.Settings.from_env(env)
+    assert settings.write_projects == ()
+    assert settings.enable_work_package_write is False
+
+
+def test_main_quick_write_scope_off_does_not_touch_personal_or_admin_write(monkeypatch, tmp_path: Path) -> None:
+    # "Enable write access?" only governs the five project-scoped write
+    # flags — personal-data and admin writes are independent axes and must
+    # keep their existing value even when write access is disabled.
     target = tmp_path / ".mcp.json"
     target.write_text(
         json.dumps(
@@ -2322,7 +2358,7 @@ def test_main_quick_write_scope_none_does_not_touch_personal_or_admin_write(monk
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "none",
+        "Enable write access?": "n",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -2351,7 +2387,7 @@ def test_main_quick_skips_tool_exposure_prompts(monkeypatch, tmp_path: Path) -> 
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers)
 
@@ -2564,20 +2600,25 @@ def test_main_legacy_migration_reconciles_read_off_write_on_same_scope(monkeypat
     )
     claude = _json_client(tmp_path / ".claude.json", project_target=target)
     # Advanced entirely skipped (quick mode): only board_write is true in the
-    # existing config, a non-standard combo that classifies as "custom", so
-    # accepting the default "keep" choice carries board_write=true (and the
-    # existing "*" write scope) through unchanged — proving reconciliation
-    # (which then keeps OPENPROJECT_ENABLE_BOARD_READ=false, since board read
-    # was already false in the existing config) fires even in this
-    # non-advanced/migration-only path, not just when the user answers the
-    # advanced tool-exposure prompts by hand.
+    # existing config, so accepting every per-category default carries
+    # board_write=true (and the existing "*" write scope) through unchanged —
+    # proving reconciliation (which then keeps OPENPROJECT_ENABLE_BOARD_READ=
+    # false, since board read was already false in the existing config) fires
+    # even in this non-advanced/migration-only path, not just when the user
+    # answers the advanced tool-exposure prompts by hand.
     answers = {
         "Configure globally": "n",
         "Configure project-scoped": "y",
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "keep",
+        "Enable write access?": "",
+        "Writable projects": "",
+        "Work packages (create": "",
+        "Versions (create": "",
+        "Projects (create": "",
+        "Memberships (create": "",
+        "Boards (create": "",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, secret="")
 
@@ -2734,7 +2775,7 @@ def test_main_interactive_declined_confirm_leaves_everything_unchanged(monkeypat
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
         "Proceed with these changes?": "n",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, interactive=True)
@@ -2765,7 +2806,7 @@ def test_main_interactive_confirm_yes_applies_mixed_remove_and_create(monkeypatc
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
         "Proceed with these changes?": "y",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, interactive=True)
@@ -2822,7 +2863,7 @@ def test_main_interactive_network_error_proceed_unverified(monkeypatch, tmp_path
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
         "Retry the connection check": "proceed",
         "Proceed with these changes?": "y",
     }
@@ -2849,7 +2890,7 @@ def test_main_interactive_network_error_retry_then_ok(monkeypatch, tmp_path: Pat
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
         "Retry the connection check": "retry",
         "Proceed with these changes?": "y",
     }
@@ -2876,7 +2917,7 @@ def test_main_interactive_network_error_edit_reenters_credentials(monkeypatch, t
         "Configure Claude Code?": "y",
         "OpenProject base URL": ["", ""],
         "Readable projects": ["", ""],
-        "Write scope": ["", ""],
+        "Enable write access?": ["", ""],
         "Retry the connection check": "edit",
         "Proceed with these changes?": "y",
     }
@@ -2904,7 +2945,7 @@ def test_main_interactive_auth_error_forces_credential_reentry_no_menu(monkeypat
         "Configure Claude Code?": "y",
         "OpenProject base URL": ["", ""],
         "Readable projects": ["", ""],
-        "Write scope": ["", ""],
+        "Enable write access?": ["", ""],
         "Proceed with these changes?": "y",
     }
     _run_main(monkeypatch, tmp_path, [claude], answers, interactive=True)
@@ -2926,7 +2967,7 @@ def test_main_interactive_credentials_exhausted_aborts_without_writing(monkeypat
         "Configure Claude Code?": "y",
         "OpenProject base URL": ["", "", ""],
         "Readable projects": ["", "", ""],
-        "Write scope": ["", "", ""],
+        "Enable write access?": ["", "", ""],
     }
     with pytest.raises(SystemExit) as exc:
         _run_main(monkeypatch, tmp_path, [claude], answers, interactive=True)
@@ -2949,7 +2990,7 @@ def _run_main_autodetect(monkeypatch, tmp_path: Path, clients, answers, argv=(),
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PWD", str(tmp_path))
     book = _AnswerBook(answers)
-    monkeypatch.setattr("builtins.input", lambda prompt="": book(prompt))
+    monkeypatch.setattr("builtins.input", _input_with_token_fallback(book, secret))
     monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": secret)
     c.main(list(argv))
     return book
@@ -2972,7 +3013,7 @@ def test_main_interactive_autodetect_ignores_redirected_stdout(monkeypatch, tmp_
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
         "Proceed with these changes?": "y",
     }
     book = _run_main_autodetect(monkeypatch, tmp_path, [claude], answers)
@@ -2993,7 +3034,7 @@ def test_main_non_interactive_flag_forces_skip_even_with_real_stdin(monkeypatch,
         "Configure Claude Code?": "y",
         "OpenProject base URL": "",
         "Readable projects": "",
-        "Write scope": "",
+        "Enable write access?": "",
     }
     book = _run_main_autodetect(monkeypatch, tmp_path, [claude], answers, argv=["--non-interactive"])
 

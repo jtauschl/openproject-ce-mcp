@@ -15,8 +15,8 @@ src/openproject_ce_mcp/
 ├── retry_transport.py    HTTP retry with backoff for transient failures
 ├── models.py             compact dataclasses returned to MCP clients
 ├── tools.py              validated MCP tool handlers
-├── strict_fastmcp.py     rejects unknown tool arguments instead of silently dropping them
-├── server.py             FastMCP server bootstrap and lifecycle management
+├── strict_mcpserver.py   rejects unknown tool arguments instead of silently dropping them
+├── server.py             MCPServer bootstrap and lifecycle management
 ├── setup_cli.py          the interactive `configure` command
 └── doctor.py             the `doctor` diagnostics command
 ```
@@ -59,17 +59,17 @@ This is the main policy boundary of the project.
 - Validates and normalizes user input before it reaches the client.
 - Translates internal exceptions into MCP-safe tool errors.
 
-### `strict_fastmcp.py`
+### `strict_mcpserver.py`
 
-- Subclasses FastMCP's `call_tool` to reject any argument a tool doesn't
-  declare, instead of FastMCP's default behavior of silently dropping it and
+- Subclasses MCPServer's `call_tool` to reject any argument a tool doesn't
+  declare, instead of MCPServer's default behavior of silently dropping it and
   running with defaults.
 - A startup self-test (`verify_strict_dispatch`) fails loudly if a future
   `mcp` SDK change ever routes tool calls around this check.
 
 ### `server.py`
 
-- Wires FastMCP to the tool set.
+- Wires MCPServer to the tool set.
 - Creates the shared app context and client lifecycle.
 - Keeps startup and shutdown logic isolated from domain code.
 
@@ -139,7 +139,7 @@ The model has two independent layers:
 - `OPENPROJECT_READ_PROJECTS` / `OPENPROJECT_WRITE_PROJECTS` (fail-closed: empty or unset denies all project-scoped access on that side)
 - `OPENPROJECT_HIDE_<ENTITY>_FIELDS` / `OPENPROJECT_HIDE_CUSTOM_FIELDS` (see [Field hiding](field-hiding.md))
 - preview-by-default writes — every mutation always requires explicit `confirm=true`, with no bypass
-- unknown tool arguments are rejected outright (`strict_fastmcp.py`) rather than silently ignored, so a caller passing a misnamed parameter gets an error instead of an unfiltered/default result
+- unknown tool arguments are rejected outright (`strict_mcpserver.py`) rather than silently ignored, so a caller passing a misnamed parameter gets an error instead of an unfiltered/default result
 
 **Layer 2 — OpenProject server permissions** (enforced by the API, not the MCP):
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openproject-ce-mcp"
-version = "0.3.7"
+version = "0.3.8"
 description = "MCP server for OpenProject Community Edition with guarded read/write support."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -28,7 +28,10 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27,<1",
-  "mcp>=1.13,<2",
+  # >=2 (not >=1.13): the code imports mcp.server.mcpserver exclusively,
+  # which does not exist before 2.0.0 -- a caller could otherwise install a
+  # 1.x version that fails to import at all.
+  "mcp>=2,<3",
 ]
 
 [project.optional-dependencies]

@@ -4,11 +4,10 @@ This MCP server exposes list/get only (no create/update/delete tool for
 views). OpenProject's own API does have a real create route --
 `POST /api/v3/views/{type_name}` (only "work_packages_table" is registered
 as a type; `modules/backlogs` does not add a Sprint-backed view type),
-gated on a `query` link -- live-verified 2026-08-07 against a Docker test
-instance: creating a query via `POST /api/v3/queries` then a view via
-`POST /api/v3/views/work_packages_table` with `_links.query` pointing at it
-succeeds and returns a real view id. This client has no create_query tool at
-all, so there is currently no way to drive view creation through this
+gated on a `query` link -- creating a query via `POST /api/v3/queries` then
+a view via `POST /api/v3/views/work_packages_table` with `_links.query`
+pointing at it succeeds and returns a real view id. This client has no
+create_query tool at all, so there is currently no way to drive view creation through this
 server's own tool surface. get_view is exercised against a pre-existing view
 sourced via list_views -- if the test project has none, that test is
 skipped rather than failed, since this server has no create_view/

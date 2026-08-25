@@ -126,9 +126,6 @@ class JobStatusDetail:
     type: str | None
     status: str | None
     message: str | None
-    created_at: str | None
-    updated_at: str | None
-    percentage_complete: int | float | None
     project_id: int | None
     project: str | None
     created_resource_type: str | None
@@ -169,9 +166,7 @@ class PrincipalSummary:
     id: int
     type: str | None
     name: str
-    login: str | None
     email: str | None
-    status: str | None
 
 
 @dataclass
@@ -216,7 +211,6 @@ class UserDetail:
     language: str | None
     identity_url: str | None
     auth_source: str | None
-    groups: list[str]
     firstname: str | None = None
     lastname: str | None = None
 
@@ -543,6 +537,12 @@ class WorkPackageListResult:
     next_offset: int | None
     truncated: bool
     results: list[WorkPackageSummary]
+    # Populated only by search_work_packages when its query resolves directly
+    # to a work package (numeric id or display id) that also satisfies every
+    # other active filter -- kept separate from `results` rather than merged
+    # in, since merging would break pagination/total/sort_by consistency for
+    # a result set that already has well-defined semantics of its own.
+    exact_match: WorkPackageSummary | None = None
 
 
 @dataclass
@@ -563,7 +563,7 @@ class BatchWorkPackageReadResult:
     total: int
     succeeded: int
     failed: int
-    message: str  # User-facing summary
+    message: str
     results: list[BatchWorkPackageReadItemResult]
 
 
@@ -828,7 +828,6 @@ class CategorySummary:
     name: str
     project_id: int | None
     project: str | None
-    is_default: bool
     default_assignee_id: int | None = None
     default_assignee: str | None = None
 
@@ -1352,8 +1351,7 @@ class GridWriteResult:
 class UserPreferences:
     # Note: OpenProject's real UserPreferenceRepresenter exposes no id, lang,
     # or updatedAt property at all -- language lives on the User resource
-    # (see update_user's "language" field), not on preferences. Verified
-    # live against a running instance (2026-07-29).
+    # (see update_user's "language" field), not on preferences.
     time_zone: str | None
     comment_sort_descending: bool | None
     warn_on_leaving_unsaved: bool | None
