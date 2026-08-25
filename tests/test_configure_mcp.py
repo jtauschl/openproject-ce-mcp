@@ -1454,7 +1454,7 @@ def test_prompt_secret_falls_back_to_input_on_windows(monkeypatch) -> None:
         "getpass",
         lambda prompt="": (_ for _ in ()).throw(AssertionError("getpass.getpass() must not be used on Windows")),
     )
-    monkeypatch.setattr("builtins.input", lambda: "opapi-secret")
+    monkeypatch.setattr("builtins.input", lambda prompt="": "opapi-secret")
     assert c._prompt_secret("OpenProject API token") == "opapi-secret"
 
 

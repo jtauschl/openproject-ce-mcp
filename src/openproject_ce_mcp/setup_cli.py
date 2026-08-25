@@ -944,8 +944,7 @@ def _prompt_secret(label: str, has_existing: bool = False) -> str:
         # config file anyway, so echo the input here rather than silently
         # accepting a corrupted paste.
         try:
-            print(f"{label}{hint} (visible while typing on Windows): ", end="", flush=True)
-            return input().strip()
+            return input(f"{label}{hint} (visible while typing on Windows): ").strip()
         except EOFError:
             return ""
     try:
