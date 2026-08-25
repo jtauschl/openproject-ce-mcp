@@ -4,7 +4,7 @@
 Combines three sources of truth into one matrix:
 
 1. **Source inventory** — every ``lib/api/v3/<resource>/`` directory in the
-   pinned 17.6 clone (the full set of API resources).
+   pinned SOURCE_VERSION clone (the full set of API resources).
 2. **Client usage** — resources this MCP actually calls, extracted from the
    request paths and HAL hrefs in ``src/openproject_ce_mcp/client.py``.
 3. **Live CE probe** (optional) — ``GET /api/v3/<resource>`` against a running
@@ -87,7 +87,7 @@ CLASSIFICATION: dict[str, str] = {
     "emoji_reactions": "subresource",
     "favorites": "subresource",  # legacy `namespace :favorite` mixin; client uses the newer workspaces/{id}/favorite route instead
     # Confirmed by reading each resource's actual *_api.rb file in the pinned
-    # 17.6 clone (not merely a live-probe 404 — see the module docstring's
+    # SOURCE_VERSION clone (not merely a live-probe 404 — see the module docstring's
     # warning that CE/Enterprise and subresource-vs-top-level status aren't
     # reliably inferable from an HTTP status alone across versions): each of
     # these has no bare-collection GET of its own; the only listing action is
@@ -120,7 +120,7 @@ CLASSIFICATION: dict[str, str] = {
 }
 
 # Confirmed genuine top-level CE gaps — verified by reading each resource's
-# actual *_api.rb file in the pinned 17.6 clone (not a live probe against a
+# actual *_api.rb file in the pinned SOURCE_VERSION clone (not a live probe against a
 # different version; see CLASSIFICATION's subresource entries above for why
 # that would be unreliable). Encoded here so `_classify` reports them as
 # `GAP (CE)` deterministically, without requiring a live probe on every run —
