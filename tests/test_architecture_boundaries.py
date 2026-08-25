@@ -1975,10 +1975,15 @@ def test_client_pure_delegation_methods_have_a_production_caller() -> None:
     exactly as dead as one nothing calls at all: production code has already
     moved on to `client.<domain>.<method>(...)` and left the flat wrapper
     behind. This scans every non-`_CLIENT_NON_DELEGATING_METHODS` pure
-    delegation for a `client.<name>(`/`self.client.<name>(` call site
-    anywhere under src/ (the facade property + real Service method it
-    delegates to are exempt, matched by name, since the delegation's own body
-    is itself a caller of those)."""
+    delegation for a `.<name>(` call site anywhere under src/ OUTSIDE the
+    delegation's own body -- the delegation's own `return await
+    self._x_service.<name>(...)` line always contains that substring too, so
+    it must be excised (by source line range, not just its `def` line) before
+    searching, or the check trivially finds itself as a "caller" every time
+    and never flags anything (confirmed live: a first version of this check
+    that only stripped the `def` line passed even with a genuinely orphaned
+    method manually injected -- caught by an independent review, not by this
+    test itself)."""
     tree = ast.parse((SRC / "client.py").read_text())
     class_node = next(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == "OpenProjectClient")
     public_methods = [n for n in class_node.body if isinstance(n, ast.AsyncFunctionDef) and not n.name.startswith("_")]
@@ -1991,8 +1996,22 @@ def test_client_pure_delegation_methods_have_a_production_caller() -> None:
         # resumes doing real work. Nothing to check right now.
         return
 
-    src_text = "\n".join(path.read_text() for path in SRC.rglob("*.py"))
-    orphaned = [m.name for m in pure_delegations if f".{m.name}(" not in src_text.replace(f"def {m.name}(", "", 1)]
+    client_lines = (SRC / "client.py").read_text().splitlines(keepends=True)
+    other_files_text = "\n".join(path.read_text() for path in SRC.rglob("*.py") if path != SRC / "client.py")
+
+    orphaned = []
+    for m in pure_delegations:
+        # Excise the delegation's own def-through-body source range (its full
+        # AST span, not just the `def` line) from client.py's text -- what
+        # remains is every OTHER call site in this file, which combined with
+        # every other src/ file is the true "does anything besides this
+        # method's own body call it" search space.
+        client_text_without_self = "".join(
+            line for i, line in enumerate(client_lines, start=1) if not (m.lineno <= i <= m.end_lineno)
+        )
+        search_space = client_text_without_self + other_files_text
+        if f".{m.name}(" not in search_space:
+            orphaned.append(m.name)
     assert not orphaned, (
         f"OpenProjectClient methods {orphaned} are pure Service delegations with no caller anywhere under "
         "src/ (only tests still call them, if anything does) -- migrate their test call sites to the facade "
