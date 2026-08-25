@@ -704,7 +704,7 @@ async def test_get_work_packages_batch_partial_failure(
     wp_ids.append(created.work_package_id)
 
     bogus_id = 2**31 - 1  # exceeds any real work package id on a fresh test instance
-    result = await client.get_work_packages(ids=[created.work_package_id, bogus_id])
+    result = await client.work_package.get_batch(ids=[created.work_package_id, bogus_id])
 
     assert result.total == 2
     assert result.succeeded == 1

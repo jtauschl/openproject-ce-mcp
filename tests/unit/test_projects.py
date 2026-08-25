@@ -1368,7 +1368,7 @@ async def test_render_text() -> None:
 
     client = OpenProjectClient(make_settings(), transport=httpx.MockTransport(handler))
 
-    result = await client.render_text(text="**Hello**", format="markdown")
+    result = await client.extended_metadata.render_text(text="**Hello**", format="markdown")
     assert result.html == "<p><strong>Hello</strong></p>"
     assert result.raw == "**Hello**"
 
@@ -1448,13 +1448,13 @@ async def test_help_texts_and_working_days() -> None:
     help_text = await client.extended_metadata.get_help_text(5)
     assert help_text.help_text == "Describe the work."
 
-    days = await client.list_working_days()
+    days = await client.extended_metadata.list_working_days()
     assert days.count == 2
     assert days.results[0].name == "Monday"
     assert days.results[0].working is True
     assert days.results[1].working is False
 
-    non_working = await client.list_non_working_days()
+    non_working = await client.extended_metadata.list_non_working_days()
     assert non_working.count == 1
     assert non_working.results[0].name == "Christmas Day"
 
@@ -1477,7 +1477,7 @@ async def test_get_custom_option() -> None:
     settings = dataclasses.replace(make_settings(), enable_metadata_tools=True)
     client = OpenProjectClient(settings, transport=httpx.MockTransport(handler))
 
-    option = await client.get_custom_option(42)
+    option = await client.extended_metadata.get_custom_option(42)
     assert option.id == 42
     assert option.value == "High Priority"
 

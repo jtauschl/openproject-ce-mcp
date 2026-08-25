@@ -83,7 +83,7 @@ async def test_list_time_entry_activities(client: OpenProjectClient) -> None:
 
 async def test_render_text(client: OpenProjectClient) -> None:
     try:
-        result = await client.render_text(text="**hello**", format="markdown")
+        result = await client.extended_metadata.render_text(text="**hello**", format="markdown")
     except (OpenProjectError, json.JSONDecodeError):
         pytest.skip("render_text endpoint not available on this instance")
     assert result.html
@@ -91,7 +91,7 @@ async def test_render_text(client: OpenProjectClient) -> None:
 
 
 async def test_list_working_days(client: OpenProjectClient) -> None:
-    result = await client.list_working_days()
+    result = await client.extended_metadata.list_working_days()
     # A default OpenProject instance's working-day config is Mon-Fri; weekends
     # are absent. Not asserting a fixed set of specific days here since this
     # is instance-configurable, but the shape must be non-empty and each

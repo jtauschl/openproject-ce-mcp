@@ -210,16 +210,11 @@ from .app.transport.httpx_transport import HttpxTransport
 from .config import Settings
 from .hal import normalize_links
 from .models import (
-    BatchWorkPackageReadResult,
-    CustomOptionSummary,
     FavoriteWriteResult,
-    NonWorkingDayListResult,
     OptionValue,
     ProjectAccessSummary,
     ProjectWorkPackageContext,
     ProjectWriteResult,
-    RenderedText,
-    WorkingDayListResult,
     WorkPackageFieldSchema,
 )
 
@@ -1307,26 +1302,6 @@ class OpenProjectClient:
             custom_fields=custom_fields,
         )
 
-    async def get_work_packages(
-        self,
-        *,
-        ids: list[int | str],
-        text_limit: int | None = None,
-    ) -> BatchWorkPackageReadResult:
-        """Fetch multiple work packages in parallel.
-
-        Args:
-            ids: List of work package IDs (numeric or PROJ-123 format)
-            text_limit: Optional description truncation limit
-
-        Returns:
-            BatchWorkPackageReadResult with per-item success/failure tracking
-
-        Raises:
-            ValueError: If ids list is empty or exceeds 100 items
-        """
-        return await self._work_package_service.get_batch(ids=ids, text_limit=text_limit)
-
     async def _set_project_favorite(self, project: str, *, favorite: bool, confirm: bool) -> FavoriteWriteResult:
         return await self._project_service.set_favorite(project, favorite=favorite, confirm=confirm)
 
@@ -1337,28 +1312,6 @@ class OpenProjectClient:
         return await self._set_project_favorite(project, favorite=False, confirm=confirm)
 
     # --- Statuses ---
-
-    # --- Text Rendering ---
-
-    async def render_text(self, *, text: str, format: str = "markdown") -> RenderedText:
-        """Render plain or markdown text to HTML via the OpenProject API."""
-        return await self._extended_metadata_service.render_text(text=text, format=format)
-
-    # --- Help Texts ---
-
-    async def list_working_days(self) -> WorkingDayListResult:
-        """List the Mon–Sun working-day configuration (7 entries)."""
-        return await self._extended_metadata_service.list_working_days()
-
-    async def list_non_working_days(self, *, year: int | None = None) -> NonWorkingDayListResult:
-        """List non-working days (public holidays / closures) for the given year."""
-        return await self._extended_metadata_service.list_non_working_days(year=year)
-
-    # --- Custom Options ---
-
-    async def get_custom_option(self, custom_option_id: int) -> CustomOptionSummary:
-        """Fetch a single custom field option value by id."""
-        return await self._extended_metadata_service.get_custom_option(custom_option_id)
 
     # --- Relations (update + global list) ---
 

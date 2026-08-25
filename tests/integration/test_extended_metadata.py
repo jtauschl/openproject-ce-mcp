@@ -28,7 +28,7 @@ pytestmark = pytest.mark.integration
 
 async def test_render_text(client: OpenProjectClient) -> None:
     try:
-        result = await client.render_text(text="**hello**", format="markdown")
+        result = await client.extended_metadata.render_text(text="**hello**", format="markdown")
     except (OpenProjectError, json.JSONDecodeError):
         pytest.skip("render_text endpoint not available on this instance")
     assert result.html
@@ -56,12 +56,12 @@ async def test_get_help_text(client: OpenProjectClient) -> None:
 
 
 async def test_list_working_days(client: OpenProjectClient) -> None:
-    result = await client.list_working_days()
+    result = await client.extended_metadata.list_working_days()
     assert result.count > 0
 
 
 async def test_list_non_working_days(client: OpenProjectClient) -> None:
-    result = await client.list_non_working_days()
+    result = await client.extended_metadata.list_non_working_days()
     # A default OpenProject instance may genuinely have zero configured
     # non-working days (holidays are opt-in, instance-specific config).
     if result.count == 0:
