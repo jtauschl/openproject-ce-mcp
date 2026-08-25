@@ -6,7 +6,7 @@ import json
 import subprocess
 import sys
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -337,6 +337,23 @@ class _AnswerBook:
         leftover = {key: queue for key, queue in self._queues.items() if queue}
         if leftover:
             raise AssertionError(f"answers registered but never consumed: {leftover}")
+
+
+def _input_with_token_fallback(book: _AnswerBook, secret: str) -> Callable[[str], str]:
+    """`input()` mock for tests that patch getpass.getpass with `secret`.
+
+    On a real Windows platform, _prompt_secret() reads the token via input()
+    instead of getpass.getpass() — route that one prompt straight to
+    `secret` here too, same as the getpass patch, so the same test behaves
+    identically regardless of which OS actually runs it.
+    """
+
+    def _input(prompt: str = "") -> str:
+        if "OpenProject API token" in prompt:
+            return secret
+        return book(prompt)
+
+    return _input
 
 
 @contextmanager
@@ -1217,7 +1234,7 @@ def _run_main(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PWD", str(tmp_path))
     book = _AnswerBook(answers)
-    monkeypatch.setattr("builtins.input", lambda prompt="": book(prompt))
+    monkeypatch.setattr("builtins.input", _input_with_token_fallback(book, secret))
     monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": secret)
     c.main(list(argv), interactive=interactive)
     if strict:
@@ -2973,7 +2990,7 @@ def _run_main_autodetect(monkeypatch, tmp_path: Path, clients, answers, argv=(),
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PWD", str(tmp_path))
     book = _AnswerBook(answers)
-    monkeypatch.setattr("builtins.input", lambda prompt="": book(prompt))
+    monkeypatch.setattr("builtins.input", _input_with_token_fallback(book, secret))
     monkeypatch.setattr(c.getpass, "getpass", lambda prompt="": secret)
     c.main(list(argv))
     return book
