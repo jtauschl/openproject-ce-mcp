@@ -128,6 +128,25 @@ else
   log("users_deletable_by_admins already enabled")
 end
 
+# Instance-wide feature flag, present only on 16.6.10 of the pinned versions
+# below (removed again by 17.4.1 -- the documents_api.rb gate this flag
+# controlled is gone there, patch runs unconditionally). Where it exists and
+# is OFF (the fresh-install default), PATCH /documents/{id} unconditionally
+# raises Unauthorized *before* any permission/ownership check ever runs, so
+# even a full admin token gets a generic 403 "not authorized" that has
+# nothing to do with document permissions. Needed for update_document's
+# integration test to exercise the real PATCH endpoint at all on 16.6.
+if Setting.respond_to?(:feature_block_note_editor_active?)
+  unless Setting.feature_block_note_editor_active?
+    Setting.feature_block_note_editor_active = true
+    log("enabled feature_block_note_editor_active")
+  else
+    log("feature_block_note_editor_active already enabled")
+  end
+else
+  log("feature_block_note_editor_active not present on this version (expected on 17.4+)")
+end
+
 # Per-user notification setting: the admin's default global NotificationSetting
 # has watched=true but work_package_commented=false -- being a watcher alone
 # does NOT trigger an in-app notification for a new comment; the specific
