@@ -33,6 +33,7 @@ from ..policies import scope as scope_policy
 from ..ports.meeting_api import MeetingApi
 from ..ports.principal_ref import PrincipalRefResolver
 from ..ports.project_ref import ProjectIdResolver, ProjectRefResolver
+from ..version_gate import call_version_gated
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 
@@ -100,7 +101,11 @@ class MeetingService:
                 )
 
             raw_items, truncated = await scan_records_and_paginate(
-                lambda o, lim: self._api.list_page(offset=o, limit=lim, project_id=resolved_project_id),
+                lambda o, lim: call_version_gated(
+                    lambda: self._api.list_page(offset=o, limit=lim, project_id=resolved_project_id),
+                    feature="Meetings",
+                    floor="17.4",
+                ),
                 item_allowed=_record_allowed,
                 server_page_size=self._settings.max_page_size,
                 offset=offset,
@@ -119,7 +124,11 @@ class MeetingService:
                 results=results,
             )
 
-        records, total = await self._api.list_page(offset=offset, limit=effective_limit, project_id=resolved_project_id)
+        records, total = await call_version_gated(
+            lambda: self._api.list_page(offset=offset, limit=effective_limit, project_id=resolved_project_id),
+            feature="Meetings",
+            floor="17.4",
+        )
         results = [self._stamp(record.summary) for record in records]
         next_offset, truncated = paginate_server(offset=offset, limit=effective_limit, total=total)
         return MeetingListResult(
@@ -134,7 +143,7 @@ class MeetingService:
 
     async def get(self, meeting_id: int) -> MeetingSummary:
         access.ensure_read_enabled("meeting", settings=self._settings)
-        record = await self._api.get(meeting_id)
+        record = await call_version_gated(lambda: self._api.get(meeting_id), feature="Meetings", floor="17.4")
         scope_policy.ensure_project_link_allowed(
             record.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
@@ -225,7 +234,7 @@ class MeetingService:
             participant_user_refs=participant_user_refs,
             lock_version=None,
         )
-        form = await self._api.create_form(payload)
+        form = await call_version_gated(lambda: self._api.create_form(payload), feature="Meetings", floor="17.4")
         identity_project = form.payload.get("_links", {}).get("project", {}).get("title") or project_payload.get("name")
         outcome = await _finalize_write(
             confirm=confirm,
@@ -233,7 +242,7 @@ class MeetingService:
             validation_errors=form.validation_errors,
             identity={"meeting_id": None, "project": identity_project},
             ensure_write_enabled=lambda: access.ensure_write_enabled("meeting", settings=self._settings),
-            commit=self._api.commit_create,
+            commit=lambda p: call_version_gated(lambda: self._api.commit_create(p), feature="Meetings", floor="17.4"),
             committed_identity=lambda record: {"meeting_id": record.summary.id, "project": record.summary.project},
             rejected_message="OpenProject rejected the proposed meeting. Fix the validation errors before confirming.",
             preview_message="OpenProject validated the meeting. Ask for confirmation, then call again with confirm=true to create it.",
@@ -256,7 +265,7 @@ class MeetingService:
         lock_version: int | None = None,
         confirm: bool = False,
     ) -> MeetingWriteResult:
-        current = await self._api.get(meeting_id)
+        current = await call_version_gated(lambda: self._api.get(meeting_id), feature="Meetings", floor="17.4")
         scope_policy.ensure_project_write_link_allowed(
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
@@ -272,7 +281,9 @@ class MeetingService:
             participant_user_refs=participant_user_refs,
             lock_version=lock_version,
         )
-        form = await self._api.update_form(meeting_id, payload)
+        form = await call_version_gated(
+            lambda: self._api.update_form(meeting_id, payload), feature="Meetings", floor="17.4"
+        )
         identity_project = form.payload.get("_links", {}).get("project", {}).get("title") or current.summary.project
         outcome = await _finalize_write(
             confirm=confirm,
@@ -280,7 +291,9 @@ class MeetingService:
             validation_errors=form.validation_errors,
             identity={"meeting_id": meeting_id, "project": identity_project},
             ensure_write_enabled=lambda: access.ensure_write_enabled("meeting", settings=self._settings),
-            commit=lambda p: self._api.commit_update(meeting_id, p),
+            commit=lambda p: call_version_gated(
+                lambda: self._api.commit_update(meeting_id, p), feature="Meetings", floor="17.4"
+            ),
             committed_identity=lambda record: {"meeting_id": record.summary.id, "project": record.summary.project},
             rejected_message="OpenProject rejected the proposed meeting changes. Fix the validation errors before confirming.",
             preview_message="OpenProject validated the meeting update. Ask for confirmation, then call again with confirm=true to write it.",
@@ -289,7 +302,7 @@ class MeetingService:
         return self._to_write_result("update", outcome)
 
     async def delete(self, *, meeting_id: int, confirm: bool = False) -> MeetingWriteResult:
-        current = await self._api.get(meeting_id)
+        current = await call_version_gated(lambda: self._api.get(meeting_id), feature="Meetings", floor="17.4")
         scope_policy.ensure_project_write_link_allowed(
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
@@ -310,7 +323,7 @@ class MeetingService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        await self._api.delete(meeting_id)
+        await call_version_gated(lambda: self._api.delete(meeting_id), feature="Meetings", floor="17.4")
         return MeetingWriteResult(
             action="delete",
             state="confirmed",

@@ -34,6 +34,7 @@ from ..policies import scope as scope_policy
 from ..ports.meeting_agenda_item_api import MeetingAgendaItemApi
 from ..ports.meeting_api import MeetingApi
 from ..ports.meeting_outcome_api import MeetingOutcomeApi
+from ..version_gate import call_version_gated
 
 
 class MeetingOutcomeService:
@@ -61,11 +62,19 @@ class MeetingOutcomeService:
         """Fetch agenda item -> extract meeting_id -> fetch meeting -> check
         allowlist against the meeting's project. Returns meeting_id (needed
         by list_for_agenda_item's two-id path)."""
-        agenda_item = await self._meeting_agenda_item_api.get(agenda_item_id)
+        # Both calls below are the 17.4 floor of their OWN domains (Meeting
+        # Agenda Items / Meetings), not this Service's own 17.6 floor -- an
+        # instance below 17.4 (but at/above 17.6, impossible, but keeping the
+        # distinction explicit) must not get a misleading "Meeting outcomes
+        # requires 17.6" hint when the real cause is an older instance
+        # failing on the agenda-item/meeting lookup itself.
+        agenda_item = await call_version_gated(
+            lambda: self._meeting_agenda_item_api.get(agenda_item_id), feature="Meeting agenda items", floor="17.4"
+        )
         meeting_id = agenda_item.summary.meeting_id
         if meeting_id is None:
             raise NotFoundError(f"OpenProject meeting agenda item {agenda_item_id} has no parent meeting.")
-        meeting = await self._meeting_api.get(meeting_id)
+        meeting = await call_version_gated(lambda: self._meeting_api.get(meeting_id), feature="Meetings", floor="17.4")
         if write:
             scope_policy.ensure_project_write_link_allowed(
                 meeting.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
@@ -87,7 +96,11 @@ class MeetingOutcomeService:
             max_results=self._settings.max_results,
         )
         meeting_id = await self._ensure_via_agenda_item(agenda_item_id, write=False)
-        records = await self._api.list_for_agenda_item(meeting_id, agenda_item_id, text_limit=text_limit)
+        records = await call_version_gated(
+            lambda: self._api.list_for_agenda_item(meeting_id, agenda_item_id, text_limit=text_limit),
+            feature="Meeting outcomes",
+            floor="17.6",
+        )
         summaries = [self._stamp(record.summary) for record in records]
         page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=summaries)
         return MeetingOutcomeListResult(
@@ -114,7 +127,7 @@ class MeetingOutcomeService:
 
     async def get(self, outcome_id: int) -> MeetingOutcomeSummary:
         access.ensure_read_enabled("meeting", settings=self._settings)
-        record = await self._api.get(outcome_id)
+        record = await call_version_gated(lambda: self._api.get(outcome_id), feature="Meeting outcomes", floor="17.6")
         await self._ensure_outcome_allowed(outcome_id, record.summary.meeting_agenda_item_id, write=False)
         return self._stamp(record.summary)
 
@@ -179,7 +192,7 @@ class MeetingOutcomeService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        record = await self._api.create(payload)
+        record = await call_version_gated(lambda: self._api.create(payload), feature="Meeting outcomes", floor="17.6")
         result = self._stamp(record.summary)
         return MeetingOutcomeWriteResult(
             action="create",
@@ -202,7 +215,7 @@ class MeetingOutcomeService:
         work_package_id: int | None = None,
         confirm: bool = False,
     ) -> MeetingOutcomeWriteResult:
-        current = await self._api.get(outcome_id)
+        current = await call_version_gated(lambda: self._api.get(outcome_id), feature="Meeting outcomes", floor="17.6")
         agenda_item_id = current.summary.meeting_agenda_item_id
         await self._ensure_outcome_allowed(outcome_id, agenda_item_id, write=True)
         payload = await self._build_write_payload(
@@ -222,7 +235,9 @@ class MeetingOutcomeService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        record = await self._api.update(outcome_id, payload)
+        record = await call_version_gated(
+            lambda: self._api.update(outcome_id, payload), feature="Meeting outcomes", floor="17.6"
+        )
         result = self._stamp(record.summary)
         return MeetingOutcomeWriteResult(
             action="update",
@@ -237,7 +252,7 @@ class MeetingOutcomeService:
         )
 
     async def delete(self, *, outcome_id: int, confirm: bool = False) -> MeetingOutcomeWriteResult:
-        current = await self._api.get(outcome_id)
+        current = await call_version_gated(lambda: self._api.get(outcome_id), feature="Meeting outcomes", floor="17.6")
         agenda_item_id = current.summary.meeting_agenda_item_id
         await self._ensure_outcome_allowed(outcome_id, agenda_item_id, write=True)
         outcome = self._stamp(current.summary)
@@ -257,7 +272,7 @@ class MeetingOutcomeService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        await self._api.delete(outcome_id)
+        await call_version_gated(lambda: self._api.delete(outcome_id), feature="Meeting outcomes", floor="17.6")
         return MeetingOutcomeWriteResult(
             action="delete",
             state="confirmed",

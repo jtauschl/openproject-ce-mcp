@@ -42,6 +42,7 @@ from ..policies import scope as scope_policy
 from ..ports.meeting_agenda_item_api import MeetingAgendaItemApi
 from ..ports.meeting_api import MeetingApi
 from ..ports.work_package_ref import WorkPackageIdResolver
+from ..version_gate import call_version_gated
 
 
 class MeetingAgendaItemService:
@@ -66,7 +67,9 @@ class MeetingAgendaItemService:
         return hidden_fields.apply_hidden_fields("meeting_agenda_item", summary, settings=self._settings)
 
     async def _ensure_meeting_allowed(self, meeting_id: int, *, write: bool) -> None:
-        meeting = await self._meeting_api.get(meeting_id)
+        meeting = await call_version_gated(
+            lambda: self._meeting_api.get(meeting_id), feature="Meeting agenda items", floor="17.4"
+        )
         if write:
             scope_policy.ensure_project_write_link_allowed(
                 meeting.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
@@ -87,7 +90,11 @@ class MeetingAgendaItemService:
             max_results=self._settings.max_results,
         )
         await self._ensure_meeting_allowed(meeting_id, write=False)
-        records = await self._api.list_for_meeting(meeting_id, text_limit=text_limit)
+        records = await call_version_gated(
+            lambda: self._api.list_for_meeting(meeting_id, text_limit=text_limit),
+            feature="Meeting agenda items",
+            floor="17.4",
+        )
         summaries = [self._stamp(record.summary) for record in records]
         page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=summaries)
         return MeetingAgendaItemListResult(
@@ -116,7 +123,11 @@ class MeetingAgendaItemService:
             max_results=self._settings.max_results,
         )
         resolved_id = await self._resolve_work_package_id(work_package_id, write=False)
-        records = await self._api.list_for_work_package(resolved_id, text_limit=text_limit)
+        records = await call_version_gated(
+            lambda: self._api.list_for_work_package(resolved_id, text_limit=text_limit),
+            feature="Meeting agenda items",
+            floor="17.4",
+        )
         summaries = [self._stamp(record.summary) for record in records]
         page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=summaries)
         return MeetingAgendaItemListResult(
@@ -131,7 +142,9 @@ class MeetingAgendaItemService:
 
     async def get(self, agenda_item_id: int) -> MeetingAgendaItemSummary:
         access.ensure_read_enabled("meeting", settings=self._settings)
-        record = await self._api.get(agenda_item_id)
+        record = await call_version_gated(
+            lambda: self._api.get(agenda_item_id), feature="Meeting agenda items", floor="17.4"
+        )
         meeting_id = record.summary.meeting_id
         if meeting_id is None:
             # meeting_id is a mandatory belongs_to upstream (validates
@@ -228,7 +241,9 @@ class MeetingAgendaItemService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        record = await self._api.create(payload)
+        record = await call_version_gated(
+            lambda: self._api.create(payload), feature="Meeting agenda items", floor="17.4"
+        )
         result = self._stamp(record.summary)
         return MeetingAgendaItemWriteResult(
             action="create",
@@ -254,7 +269,9 @@ class MeetingAgendaItemService:
         meeting_section_id: int | None = None,
         confirm: bool = False,
     ) -> MeetingAgendaItemWriteResult:
-        current = await self._api.get(agenda_item_id)
+        current = await call_version_gated(
+            lambda: self._api.get(agenda_item_id), feature="Meeting agenda items", floor="17.4"
+        )
         meeting_id = current.summary.meeting_id
         if meeting_id is None:
             # See get()'s comment: fail closed rather than silently skip the
@@ -287,7 +304,9 @@ class MeetingAgendaItemService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        record = await self._api.update(agenda_item_id, payload)
+        record = await call_version_gated(
+            lambda: self._api.update(agenda_item_id, payload), feature="Meeting agenda items", floor="17.4"
+        )
         result = self._stamp(record.summary)
         return MeetingAgendaItemWriteResult(
             action="update",
@@ -302,7 +321,9 @@ class MeetingAgendaItemService:
         )
 
     async def delete(self, *, agenda_item_id: int, confirm: bool = False) -> MeetingAgendaItemWriteResult:
-        current = await self._api.get(agenda_item_id)
+        current = await call_version_gated(
+            lambda: self._api.get(agenda_item_id), feature="Meeting agenda items", floor="17.4"
+        )
         meeting_id = current.summary.meeting_id
         if meeting_id is None:
             # See get()'s comment: fail closed rather than silently skip the
@@ -326,7 +347,7 @@ class MeetingAgendaItemService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        await self._api.delete(agenda_item_id)
+        await call_version_gated(lambda: self._api.delete(agenda_item_id), feature="Meeting agenda items", floor="17.4")
         return MeetingAgendaItemWriteResult(
             action="delete",
             state="confirmed",

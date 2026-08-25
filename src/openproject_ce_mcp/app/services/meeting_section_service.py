@@ -33,6 +33,7 @@ from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.meeting_api import MeetingApi
 from ..ports.meeting_section_api import MeetingSectionApi
+from ..version_gate import call_version_gated
 
 
 class MeetingSectionService:
@@ -55,7 +56,9 @@ class MeetingSectionService:
         return hidden_fields.apply_hidden_fields("meeting_section", summary, settings=self._settings)
 
     async def _ensure_meeting_allowed(self, meeting_id: int, *, write: bool) -> None:
-        meeting = await self._meeting_api.get(meeting_id)
+        meeting = await call_version_gated(
+            lambda: self._meeting_api.get(meeting_id), feature="Meeting sections", floor="17.4"
+        )
         if write:
             scope_policy.ensure_project_write_link_allowed(
                 meeting.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
@@ -76,7 +79,9 @@ class MeetingSectionService:
             max_results=self._settings.max_results,
         )
         await self._ensure_meeting_allowed(meeting_id, write=False)
-        records = await self._api.list_for_meeting(meeting_id)
+        records = await call_version_gated(
+            lambda: self._api.list_for_meeting(meeting_id), feature="Meeting sections", floor="17.4"
+        )
         summaries = [self._stamp(record.summary) for record in records]
         page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=summaries)
         return MeetingSectionListResult(
@@ -91,7 +96,7 @@ class MeetingSectionService:
 
     async def get(self, section_id: int) -> MeetingSectionSummary:
         access.ensure_read_enabled("meeting", settings=self._settings)
-        record = await self._api.get(section_id)
+        record = await call_version_gated(lambda: self._api.get(section_id), feature="Meeting sections", floor="17.4")
         meeting_id = record.summary.meeting_id
         if meeting_id is None:
             # meeting_id is a mandatory belongs_to upstream and the global
@@ -144,7 +149,7 @@ class MeetingSectionService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        record = await self._api.create(payload)
+        record = await call_version_gated(lambda: self._api.create(payload), feature="Meeting sections", floor="17.4")
         result = self._stamp(record.summary)
         return MeetingSectionWriteResult(
             action="create",
@@ -170,7 +175,7 @@ class MeetingSectionService:
 
         `backlog` cannot be changed after creation -- pass it only on create().
         """
-        current = await self._api.get(section_id)
+        current = await call_version_gated(lambda: self._api.get(section_id), feature="Meeting sections", floor="17.4")
         meeting_id = current.summary.meeting_id
         if meeting_id is None:
             # See get()'s comment: fail closed rather than silently skip the
@@ -199,7 +204,9 @@ class MeetingSectionService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        record = await self._api.update(section_id, payload)
+        record = await call_version_gated(
+            lambda: self._api.update(section_id, payload), feature="Meeting sections", floor="17.4"
+        )
         result = self._stamp(record.summary)
         return MeetingSectionWriteResult(
             action="update",
@@ -214,7 +221,7 @@ class MeetingSectionService:
         )
 
     async def delete(self, *, section_id: int, confirm: bool = False) -> MeetingSectionWriteResult:
-        current = await self._api.get(section_id)
+        current = await call_version_gated(lambda: self._api.get(section_id), feature="Meeting sections", floor="17.4")
         meeting_id = current.summary.meeting_id
         if meeting_id is None:
             # See get()'s comment: fail closed rather than silently skip the
@@ -238,7 +245,7 @@ class MeetingSectionService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        await self._api.delete(section_id)
+        await call_version_gated(lambda: self._api.delete(section_id), feature="Meeting sections", floor="17.4")
         return MeetingSectionWriteResult(
             action="delete",
             state="confirmed",

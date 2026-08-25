@@ -50,6 +50,7 @@ from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_client
 from ..policies import access, hidden_fields
 from ..ports.user_non_working_time_api import UserNonWorkingTimeApi, UserNonWorkingTimeRecord
+from ..version_gate import call_version_gated
 
 
 class UserNonWorkingTimeService:
@@ -70,8 +71,10 @@ class UserNonWorkingTimeService:
         # by max_results, not effective_limit) and slice locally instead of
         # trusting a server-side page that never actually happens. See
         # RoleService.list_roles for the identical precedent.
-        records, _server_total = await self._api.list_for_user(
-            user_ref, year=year, offset=1, page_size=self._settings.max_results
+        records, _server_total = await call_version_gated(
+            lambda: self._api.list_for_user(user_ref, year=year, offset=1, page_size=self._settings.max_results),
+            feature="User non-working times",
+            floor="17.3",
         )
         all_results = [self._stamp(record) for record in records]
         page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=all_results)
@@ -108,7 +111,11 @@ class UserNonWorkingTimeService:
                 result=None,
             )
         access.ensure_write_enabled("user_schedule", settings=self._settings)
-        record = await self._api.create(user_ref, start_date=start_date, end_date=end_date)
+        record = await call_version_gated(
+            lambda: self._api.create(user_ref, start_date=start_date, end_date=end_date),
+            feature="User non-working times",
+            floor="17.3",
+        )
         result = self._stamp(record)
         return UserNonWorkingTimeWriteResult(
             action="create",
@@ -152,7 +159,11 @@ class UserNonWorkingTimeService:
                 result=None,
             )
         access.ensure_write_enabled("user_schedule", settings=self._settings)
-        record = await self._api.update(user_ref, non_working_time_id, payload=payload)
+        record = await call_version_gated(
+            lambda: self._api.update(user_ref, non_working_time_id, payload=payload),
+            feature="User non-working times",
+            floor="17.3",
+        )
         result = self._stamp(record)
         return UserNonWorkingTimeWriteResult(
             action="update",
@@ -184,7 +195,11 @@ class UserNonWorkingTimeService:
                 result=None,
             )
         access.ensure_write_enabled("user_schedule", settings=self._settings)
-        await self._api.delete(user_ref, non_working_time_id)
+        await call_version_gated(
+            lambda: self._api.delete(user_ref, non_working_time_id),
+            feature="User non-working times",
+            floor="17.3",
+        )
         return UserNonWorkingTimeWriteResult(
             action="delete",
             state="confirmed",

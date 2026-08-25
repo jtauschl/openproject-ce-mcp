@@ -37,7 +37,7 @@ from ...models import (
     ProjectWriteResult,
 )
 from ..api_href import api_href as _api_href
-from ..errors import InvalidInputError, NotFoundError
+from ..errors import InvalidInputError
 from ..pagination import clamp_limit
 from ..policies import access, hidden_fields
 from ..policies import project_policy as project_policy_module
@@ -45,6 +45,7 @@ from ..policies.scope import ensure_project_link_allowed, payload_allowed
 from ..ports.project_api import ProjectApi
 from ..resolvers.project_query import fetch_project_page
 from ..resolvers.project_resolver import ProjectResolver
+from ..version_gate import call_version_gated
 from ._write_outcome import _finalize_write, _WriteOutcome
 
 SUBJECT_LIMIT = 255
@@ -442,12 +443,11 @@ class ProjectService:
         # The workspaces favorite endpoint exists only from 17.0; on older
         # instances a 404 is translated into a clear version hint. Kept in the
         # Service (not the adapter) -- the adapter stays a dumb HTTP translator.
-        try:
-            await self._api.set_favorite(project_id, favorite=favorite)
-        except NotFoundError as exc:
-            raise NotFoundError(
-                "Project favorites requires OpenProject 17.0 or newer; this instance appears to be older."
-            ) from exc
+        await call_version_gated(
+            lambda: self._api.set_favorite(project_id, favorite=favorite),
+            feature="Project favorites",
+            floor="17.0",
+        )
         return FavoriteWriteResult(
             action=action,
             state="confirmed",

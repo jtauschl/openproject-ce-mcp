@@ -44,6 +44,7 @@ from ..policies import access, hidden_fields
 from ..policies import scope as scope_policy
 from ..ports.project_ref import ProjectRefResolver
 from ..ports.recurring_meeting_api import RecurringMeetingApi
+from ..version_gate import call_version_gated
 
 
 class RecurringMeetingService:
@@ -100,7 +101,11 @@ class RecurringMeetingService:
                 )
 
             raw_items, truncated = await scan_records_and_paginate(
-                lambda o, lim: self._api.list_page(offset=o, limit=lim, project_id=resolved_project_id),
+                lambda o, lim: call_version_gated(
+                    lambda: self._api.list_page(offset=o, limit=lim, project_id=resolved_project_id),
+                    feature="Recurring meetings",
+                    floor="17.4",
+                ),
                 item_allowed=_record_allowed,
                 server_page_size=self._settings.max_page_size,
                 offset=offset,
@@ -119,7 +124,11 @@ class RecurringMeetingService:
                 results=results,
             )
 
-        records, total = await self._api.list_page(offset=offset, limit=effective_limit, project_id=resolved_project_id)
+        records, total = await call_version_gated(
+            lambda: self._api.list_page(offset=offset, limit=effective_limit, project_id=resolved_project_id),
+            feature="Recurring meetings",
+            floor="17.4",
+        )
         results = [self._stamp(record.summary) for record in records]
         next_offset, truncated = paginate_server(offset=offset, limit=effective_limit, total=total)
         return RecurringMeetingListResult(
@@ -134,7 +143,9 @@ class RecurringMeetingService:
 
     async def get(self, recurring_meeting_id: int) -> RecurringMeetingSummary:
         access.ensure_read_enabled("meeting", settings=self._settings)
-        record = await self._api.get(recurring_meeting_id)
+        record = await call_version_gated(
+            lambda: self._api.get(recurring_meeting_id), feature="Recurring meetings", floor="17.4"
+        )
         scope_policy.ensure_project_link_allowed(
             record.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
@@ -247,7 +258,7 @@ class RecurringMeetingService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        record = await self._api.create(payload)
+        record = await call_version_gated(lambda: self._api.create(payload), feature="Recurring meetings", floor="17.4")
         result = self._stamp(record.summary)
         return RecurringMeetingWriteResult(
             action="create",
@@ -274,7 +285,9 @@ class RecurringMeetingService:
         iterations: int | None = None,
         confirm: bool = False,
     ) -> RecurringMeetingWriteResult:
-        current = await self._api.get(recurring_meeting_id)
+        current = await call_version_gated(
+            lambda: self._api.get(recurring_meeting_id), feature="Recurring meetings", floor="17.4"
+        )
         scope_policy.ensure_project_write_link_allowed(
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
@@ -306,7 +319,9 @@ class RecurringMeetingService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        record = await self._api.update(recurring_meeting_id, payload)
+        record = await call_version_gated(
+            lambda: self._api.update(recurring_meeting_id, payload), feature="Recurring meetings", floor="17.4"
+        )
         result = self._stamp(record.summary)
         return RecurringMeetingWriteResult(
             action="update",
@@ -321,7 +336,9 @@ class RecurringMeetingService:
         )
 
     async def delete(self, *, recurring_meeting_id: int, confirm: bool = False) -> RecurringMeetingWriteResult:
-        current = await self._api.get(recurring_meeting_id)
+        current = await call_version_gated(
+            lambda: self._api.get(recurring_meeting_id), feature="Recurring meetings", floor="17.4"
+        )
         scope_policy.ensure_project_write_link_allowed(
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
@@ -345,7 +362,9 @@ class RecurringMeetingService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        await self._api.delete(recurring_meeting_id)
+        await call_version_gated(
+            lambda: self._api.delete(recurring_meeting_id), feature="Recurring meetings", floor="17.4"
+        )
         return RecurringMeetingWriteResult(
             action="delete",
             state="confirmed",
@@ -362,11 +381,17 @@ class RecurringMeetingService:
         self, recurring_meeting_id: int, *, filter: str = "upcoming", limit: int | None = None
     ) -> RecurringMeetingOccurrenceListResult:
         access.ensure_read_enabled("meeting", settings=self._settings)
-        current = await self._api.get(recurring_meeting_id)
+        current = await call_version_gated(
+            lambda: self._api.get(recurring_meeting_id), feature="Recurring meeting occurrences", floor="17.4"
+        )
         scope_policy.ensure_project_link_allowed(
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
-        records = await self._api.list_occurrences(recurring_meeting_id, filter=filter, limit=limit)
+        records = await call_version_gated(
+            lambda: self._api.list_occurrences(recurring_meeting_id, filter=filter, limit=limit),
+            feature="Recurring meeting occurrences",
+            floor="17.4",
+        )
         results = [self._stamp_occurrence(record.summary) for record in records]
         return RecurringMeetingOccurrenceListResult(
             recurring_meeting_id=recurring_meeting_id,
@@ -376,7 +401,9 @@ class RecurringMeetingService:
         )
 
     async def _ensure_recurring_meeting_write_allowed(self, recurring_meeting_id: int) -> Any:
-        current = await self._api.get(recurring_meeting_id)
+        current = await call_version_gated(
+            lambda: self._api.get(recurring_meeting_id), feature="Recurring meeting occurrences", floor="17.4"
+        )
         scope_policy.ensure_project_write_link_allowed(
             current.project_link, settings=self._settings, project_id_to_identifier=self._project_id_to_identifier
         )
@@ -405,7 +432,11 @@ class RecurringMeetingService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        meeting: MeetingSummary = await self._api.init_occurrence(recurring_meeting_id, start_time=start_time)
+        meeting: MeetingSummary = await call_version_gated(
+            lambda: self._api.init_occurrence(recurring_meeting_id, start_time=start_time),
+            feature="Recurring meeting occurrences",
+            floor="17.4",
+        )
         return RecurringMeetingOccurrenceWriteResult(
             action="init",
             state="confirmed",
@@ -442,7 +473,11 @@ class RecurringMeetingService:
             )
 
         access.ensure_write_enabled("meeting", settings=self._settings)
-        await self._api.cancel_occurrence(recurring_meeting_id, start_time=start_time)
+        await call_version_gated(
+            lambda: self._api.cancel_occurrence(recurring_meeting_id, start_time=start_time),
+            feature="Recurring meeting occurrences",
+            floor="17.4",
+        )
         return RecurringMeetingOccurrenceWriteResult(
             action="cancel",
             state="confirmed",

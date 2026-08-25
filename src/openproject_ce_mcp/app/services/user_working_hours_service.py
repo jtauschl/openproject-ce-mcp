@@ -42,6 +42,7 @@ from ..pagination import effective_limit as _effective_limit
 from ..pagination import paginate_client
 from ..policies import access, hidden_fields
 from ..ports.user_working_hours_api import UserWorkingHoursApi, UserWorkingHoursRecord
+from ..version_gate import call_version_gated
 
 _WRITABLE_FIELDS: tuple[tuple[str, str], ...] = (
     ("valid_from", "validFrom"),
@@ -74,7 +75,11 @@ class UserWorkingHoursService:
         # not effective_limit) and slice locally instead of trusting a
         # server-side page that never actually happens. See
         # RoleService.list_roles for the identical precedent.
-        records, _server_total = await self._api.list_for_user(user_ref, offset=1, page_size=self._settings.max_results)
+        records, _server_total = await call_version_gated(
+            lambda: self._api.list_for_user(user_ref, offset=1, page_size=self._settings.max_results),
+            feature="User working hours",
+            floor="17.3",
+        )
         all_results = [self._stamp(record) for record in records]
         page, total, next_offset, truncated = paginate_client(offset=offset, limit=effective_limit, results=all_results)
         return UserWorkingHoursListResult(
@@ -89,7 +94,9 @@ class UserWorkingHoursService:
 
     async def get(self, user_ref: str, working_hours_id: int) -> UserWorkingHoursSummary:
         access.ensure_read_enabled("user_schedule", settings=self._settings)
-        record = await self._api.get(user_ref, working_hours_id)
+        record = await call_version_gated(
+            lambda: self._api.get(user_ref, working_hours_id), feature="User working hours", floor="17.3"
+        )
         return self._stamp(record)
 
     async def create(
@@ -154,17 +161,21 @@ class UserWorkingHoursService:
                 result=None,
             )
         access.ensure_write_enabled("user_schedule", settings=self._settings)
-        record = await self._api.create(
-            user_ref,
-            valid_from=valid_from,
-            monday_hours=monday_hours,
-            tuesday_hours=tuesday_hours,
-            wednesday_hours=wednesday_hours,
-            thursday_hours=thursday_hours,
-            friday_hours=friday_hours,
-            saturday_hours=saturday_hours,
-            sunday_hours=sunday_hours,
-            availability_factor=availability_factor,
+        record = await call_version_gated(
+            lambda: self._api.create(
+                user_ref,
+                valid_from=valid_from,
+                monday_hours=monday_hours,
+                tuesday_hours=tuesday_hours,
+                wednesday_hours=wednesday_hours,
+                thursday_hours=thursday_hours,
+                friday_hours=friday_hours,
+                saturday_hours=saturday_hours,
+                sunday_hours=sunday_hours,
+                availability_factor=availability_factor,
+            ),
+            feature="User working hours",
+            floor="17.3",
         )
         result = self._stamp(record)
         return UserWorkingHoursWriteResult(
@@ -196,7 +207,9 @@ class UserWorkingHoursService:
         confirm: bool = False,
     ) -> UserWorkingHoursWriteResult:
         access.ensure_read_enabled("user_schedule", settings=self._settings)
-        current = await self._api.get(user_ref, working_hours_id)
+        current = await call_version_gated(
+            lambda: self._api.get(user_ref, working_hours_id), feature="User working hours", floor="17.3"
+        )
         supplied = {
             "valid_from": valid_from,
             "monday_hours": monday_hours,
@@ -227,7 +240,11 @@ class UserWorkingHoursService:
                 result=None,
             )
         access.ensure_write_enabled("user_schedule", settings=self._settings)
-        record = await self._api.update(user_ref, working_hours_id, payload=payload)
+        record = await call_version_gated(
+            lambda: self._api.update(user_ref, working_hours_id, payload=payload),
+            feature="User working hours",
+            floor="17.3",
+        )
         result = self._stamp(record)
         return UserWorkingHoursWriteResult(
             action="update",
@@ -245,7 +262,9 @@ class UserWorkingHoursService:
         self, user_ref: str, working_hours_id: int, *, confirm: bool = False
     ) -> UserWorkingHoursWriteResult:
         access.ensure_read_enabled("user_schedule", settings=self._settings)
-        current = await self._api.get(user_ref, working_hours_id)
+        current = await call_version_gated(
+            lambda: self._api.get(user_ref, working_hours_id), feature="User working hours", floor="17.3"
+        )
         payload = {"id": working_hours_id}
         if not confirm:
             return UserWorkingHoursWriteResult(
@@ -260,7 +279,9 @@ class UserWorkingHoursService:
                 result=None,
             )
         access.ensure_write_enabled("user_schedule", settings=self._settings)
-        await self._api.delete(user_ref, working_hours_id)
+        await call_version_gated(
+            lambda: self._api.delete(user_ref, working_hours_id), feature="User working hours", floor="17.3"
+        )
         return UserWorkingHoursWriteResult(
             action="delete",
             state="confirmed",

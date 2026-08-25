@@ -51,6 +51,7 @@ from ..policies import access, hidden_fields
 from ..ports.current_user import CurrentUserLookup
 from ..ports.wiki_page_link_api import WikiPageLinkApi, WikiPageLinkRecord
 from ..ports.work_package_ref import WorkPackageIdResolver
+from ..version_gate import call_version_gated
 
 
 class WikiPageLinkService:
@@ -77,7 +78,11 @@ class WikiPageLinkService:
         `link_id` is one of them. Without this, a write-allowed anchor work package
         could be paired with an arbitrary link_id from a disallowed project."""
         records = await paginate_all(
-            lambda o, ps: self._api.list_for_work_package(resolved_work_package_id, offset=o, page_size=ps),
+            lambda o, ps: call_version_gated(
+                lambda: self._api.list_for_work_package(resolved_work_package_id, offset=o, page_size=ps),
+                feature="Wiki page links",
+                floor="17.6",
+            ),
             page_size=self._settings.max_page_size,
             key=lambda r: r.summary.id,
         )
@@ -99,7 +104,11 @@ class WikiPageLinkService:
         resolved_id = await self._resolve_work_package_id(work_package_id, write=False)
 
         raw_items, truncated = await scan_records_and_paginate(
-            lambda o, ps: self._api.list_for_work_package(resolved_id, offset=o, page_size=ps),
+            lambda o, ps: call_version_gated(
+                lambda: self._api.list_for_work_package(resolved_id, offset=o, page_size=ps),
+                feature="Wiki page links",
+                floor="17.6",
+            ),
             item_allowed=lambda _record: True,
             server_page_size=self._settings.max_page_size,
             offset=offset,
@@ -149,8 +158,10 @@ class WikiPageLinkService:
 
         access.ensure_write_enabled("work_package", settings=self._settings)
         current_user = await self._current_user()
-        record = await self._api.create(
-            resolved_id, identifier=identifier, provider=provider, author_id=current_user.id
+        record = await call_version_gated(
+            lambda: self._api.create(resolved_id, identifier=identifier, provider=provider, author_id=current_user.id),
+            feature="Wiki page links",
+            floor="17.6",
         )
         result = self._stamp(record)
         return WikiPageLinkWriteResult(
@@ -186,7 +197,7 @@ class WikiPageLinkService:
             )
 
         access.ensure_write_enabled("work_package", settings=self._settings)
-        await self._api.delete(link_id)
+        await call_version_gated(lambda: self._api.delete(link_id), feature="Wiki page links", floor="17.6")
         return WikiPageLinkWriteResult(
             action="delete",
             state="confirmed",
