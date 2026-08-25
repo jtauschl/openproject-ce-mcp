@@ -1966,6 +1966,41 @@ def test_client_public_methods_are_pure_delegations_except_named_coordinators() 
     )
 
 
+def _flat_call_targets_in(source: str) -> set[str]:
+    """Every method name called in the flat `client.<name>(`/`self.client.<name>(`/
+    `self.<name>(` shape anywhere in `source`, found via real `ast.Call` nodes --
+    never a text/substring search, which a comment or docstring mentioning that
+    exact shape (e.g. `client.py`'s own Service-namespace-properties comment,
+    which literally contains the text "client.list_projects(...)" as an
+    illustrative example) would satisfy without there being any real call at
+    all (caught by an independent review after an earlier, substring-based
+    version of this check passed despite that comment existing)."""
+    targets: set[str] = set()
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return targets
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+            continue
+        callee = node.func.value
+        # client.<name>(...)
+        if isinstance(callee, ast.Name) and callee.id == "client":
+            targets.add(node.func.attr)
+        # self.client.<name>(...)
+        elif (
+            isinstance(callee, ast.Attribute)
+            and callee.attr == "client"
+            and isinstance(callee.value, ast.Name)
+            and callee.value.id == "self"
+        ):
+            targets.add(node.func.attr)
+        # self.<name>(...) -- a call from within client.py itself
+        elif isinstance(callee, ast.Name) and callee.id == "self":
+            targets.add(node.func.attr)
+    return targets
+
+
 def test_client_pure_delegation_methods_have_a_production_caller() -> None:
     """OPM-462: a method can be a structurally pure Service delegation (passing
     the sibling test above) while having zero real callers under src/ --
@@ -1976,21 +2011,17 @@ def test_client_pure_delegation_methods_have_a_production_caller() -> None:
     moved on to `client.<domain>.<method>(...)` and left the flat wrapper
     behind.
 
-    This scans for a call to the FLAT form specifically -- `client.<name>(`,
-    `self.client.<name>(`, or (for a call from within client.py itself, as
-    `get_my_project_access` calls `self.current_user.get_current_user()`'s
-    sibling flat methods) `self.<name>(` -- never a bare `.<name>(`, which
-    would also match the facade form `client.<domain>.<name>(...)` and so
-    prove nothing: the facade calling a same-named Service method is not
-    evidence the flat wrapper is still needed, it's the exact reason it
-    usually isn't (caught by an independent review: an earlier version of
-    this check used the bare-substring form and could not tell the two
-    apart). The delegation's own body -- `return await
-    self._x_service.<name>(...)` -- never matches any of these three
-    patterns (the object before the dot is `self._x_service`, not `client`,
-    `self.client`, or bare `self`), so no self-referential false positive is
-    possible here, unlike the bare-substring version's failure mode; the
-    def-through-body span therefore does not need excising."""
+    Looks for a real AST call in the flat form specifically -- `client.<name>(`,
+    `self.client.<name>(`, or `self.<name>(` (a call from within client.py
+    itself, as `get_my_project_access` calls its sibling flat methods) --
+    never a bare `.<name>(` substring, which would also match the facade form
+    `client.<domain>.<name>(...)`: a same-named facade call is not evidence
+    the flat wrapper is still needed, it's usually the reason it isn't
+    (caught by an independent review: an earlier substring-based version of
+    this check couldn't tell the two apart, and a second, AST-based version
+    was needed after a further review found that even a substring search
+    restricted to the three flat-call shapes above still matched a plain
+    comment mentioning one of them as illustrative text, not a real call)."""
     tree = ast.parse((SRC / "client.py").read_text())
     class_node = next(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == "OpenProjectClient")
     public_methods = [n for n in class_node.body if isinstance(n, ast.AsyncFunctionDef) and not n.name.startswith("_")]
@@ -2003,14 +2034,11 @@ def test_client_pure_delegation_methods_have_a_production_caller() -> None:
         # resumes doing real work. Nothing to check right now.
         return
 
-    all_files_text = "\n".join(path.read_text() for path in SRC.rglob("*.py"))
-    orphaned = [
-        m.name
-        for m in pure_delegations
-        if not any(
-            pattern in all_files_text for pattern in (f"client.{m.name}(", f"self.client.{m.name}(", f"self.{m.name}(")
-        )
-    ]
+    called_names: set[str] = set()
+    for path in SRC.rglob("*.py"):
+        called_names |= _flat_call_targets_in(path.read_text())
+
+    orphaned = [m.name for m in pure_delegations if m.name not in called_names]
     assert not orphaned, (
         f"OpenProjectClient methods {orphaned} are pure Service delegations with no caller anywhere under "
         "src/ (only tests still call them, if anything does) -- migrate their test call sites to the facade "
